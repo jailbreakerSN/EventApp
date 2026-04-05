@@ -17,8 +17,8 @@ This is the **minimum viable product**. Without create → register → badge, t
 | API (Fastify) | **Done** | 128 tests, review fixes applied |
 | Cloud Functions | **Done** | Badge auto-generation triggers |
 | Shared Types | **Done** | All schemas complete |
-| Web Backoffice | **Sprint 1 — in progress** | Stub pages → real UI |
-| Mobile (Flutter) | **Sprint 2 — not started** | Stub pages → real UI |
+| Web Backoffice | **Done** (Sprint 1) | Auth guard, CRUD, registrations |
+| Mobile (Flutter) | **Done** (Sprint 2) | API client, events, registration, badges |
 
 ---
 
@@ -72,34 +72,40 @@ This is the **minimum viable product**. Without create → register → badge, t
 - [x] Audit actions: event.unpublished, waitlist.promoted, ticket_type.added/updated/removed
 - [ ] Registration export schema *(deferred)*
 
-### Web Backoffice (Next.js) — Sprint 1
+### Web Backoffice (Next.js) — Sprint 1 COMPLETE
 
-- [ ] API client layer (typed HTTP service with Firebase Auth token)
-- [ ] Event list page with filters and pagination
-- [ ] Event creation form (multi-step: details → tickets → settings → review)
-- [ ] Event detail/edit page (tabs: Info, Tickets, Registrations)
-- [ ] Registration list with status filters + approve/reject actions
-- [ ] Dashboard overview (event count, registration count)
+- [x] API client layer (typed HTTP service with Firebase Auth token)
+- [x] Event list page with filters and pagination
+- [x] Event creation form (multi-step: details → tickets → settings → review)
+- [x] Event detail/edit page (tabs: Info, Tickets, Registrations)
+- [x] Registration list with status filters + approve/reject actions
+- [x] Dashboard overview (event count, registration count)
+- [x] Auth guard on dashboard layout (redirect to /login if unauthenticated)
+- [x] Firebase SDK init fix (initializeFirestore for correct emulator order)
 
-### Mobile (Flutter) — Sprint 2
+### Mobile (Flutter) — Sprint 2 COMPLETE
 
-- [ ] API/data layer (Dio client + Riverpod providers)
-- [ ] Event discovery screen (list + search + filters)
-- [ ] Event detail screen (info, ticket types, register button)
-- [ ] Registration flow (select ticket → confirm → success with QR)
-- [ ] My registrations list (with status badges)
-- [ ] Badge view screen (QR code display, downloadable PDF)
-- [ ] Pull-to-refresh + offline caching for event list
+- [x] Firebase config with real project credentials + emulator support
+- [x] API/data layer (Dio client with Firebase token interceptor)
+- [x] Data models (Event, TicketType, EventLocation, Registration)
+- [x] Riverpod providers (events list, event detail, registrations, registration notifier)
+- [x] Event discovery screen (list + search + category filters + pull-to-refresh)
+- [x] Event detail screen (cover image, info, ticket selection, register button)
+- [x] Registration flow (select ticket → confirm → success snackbar)
+- [x] Badge view screen (QR code display from real registration data)
+- [x] Profile page (avatar, stats, menu, logout)
+- [x] Feed & Networking pages (Wave 4 placeholders with "coming soon" UI)
+- [ ] Pull-to-refresh + offline caching for event list *(deferred to Wave 2)*
 
 ---
 
 ## Exit Criteria
 
-- [ ] Organizer can create and publish an event via web backoffice
-- [ ] Participant can discover, view, and register for events on mobile
+- [x] Organizer can create and publish an event via web backoffice
+- [x] Participant can discover, view, and register for events on mobile
 - [x] Badge with QR code is auto-generated on registration
-- [ ] Participant can view their badge/QR in the app
-- [ ] Organizer can view and manage registrations in backoffice
+- [x] Participant can view their badge/QR in the app
+- [x] Organizer can view and manage registrations in backoffice
 - [x] All new endpoints have tests (128 passing)
 - [x] Firestore rules updated for any new collections/fields
 

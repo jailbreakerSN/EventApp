@@ -6,24 +6,24 @@ The Teranga platform delivery is organized into **8 waves**, each building on th
 
 **Total estimated timeline:** ~15 weeks (flexible, wave-by-wave)
 
-## Current State (as of 2026-04-05)
+## Current State (as of 2026-04-06)
 
 | Component | Completion | Notes |
 |-----------|-----------|-------|
 | Shared Types | ~98% | Zod schemas, permissions, all core types, badge status, search filters |
 | API (Fastify) | ~92% | All Wave 1 endpoints complete, 128 tests, review fixes applied |
 | Cloud Functions | ~70% | Auth triggers, badge generation (atomic), registration triggers |
-| Web Backoffice | ~30% | Layout shell, auth, stub pages — **no API integration yet** |
-| Mobile (Flutter) | ~35% | Auth, navigation shell, stub pages — **no API integration yet** |
-| Infrastructure | 100% | Firestore rules, indexes, Firebase config |
+| Web Backoffice | ~90% | Full event CRUD, registrations, auth guard, API integration |
+| Mobile (Flutter) | ~80% | API client, event discovery, registration flow, badge display |
+| Infrastructure | 100% | Firestore rules, indexes, Firebase config, emulators, seed script |
 
 ### Sprint Breakdown (Wave 1 Completion)
 
 | Sprint | Focus | Branch | Status |
 |--------|-------|--------|--------|
 | Sprint 0 | Git housekeeping | `main` established | `completed` |
-| Sprint 1 | Web backoffice — event management | `feature/wave-1-web` | `in_progress` |
-| Sprint 2 | Mobile — event discovery & registration | `feature/wave-1-mobile` | `not_started` |
+| Sprint 1 | Web backoffice — event management | `feature/wave-1-web` | `completed` |
+| Sprint 2 | Mobile — event discovery & registration | `feature/wave-1-mobile` | `completed` |
 | Sprint 3 | Integration testing & Wave 1 close | `feature/wave-1-integration` | `not_started` |
 
 ## Wave Progress
