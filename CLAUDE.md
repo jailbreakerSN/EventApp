@@ -238,7 +238,7 @@ Other packages import from `@teranga/shared-types` and depend on the compiled ou
 - Verified with `crypto.timingSafeEqual` (constant-time comparison to prevent timing attacks)
 - v2 includes a base36 epoch timestamp for replay detection
 - Staff app validates offline against locally cached registration list (synced via Firestore)
-- QR signing functions are in `apps/api/src/services/registration.service.ts` (module-level private functions)
+- QR signing functions are in `apps/api/src/services/qr-signing.ts` (exported, imported by registration service and tests)
 
 ### Firestore Rules Key Principles
 
@@ -290,6 +290,45 @@ The project is configured for local development with Firebase emulators:
 | Emulator UI | 4000 |
 
 Start all: `firebase emulators:start`
+
+---
+
+## Git Branching Strategy
+
+This project follows a **trunk-based development** model with short-lived feature branches.
+
+### Branch Naming Convention
+
+| Prefix | Purpose | Example |
+|--------|---------|---------|
+| `feature/` | New features and wave implementations | `feature/wave-1-core-loop` |
+| `fix/` | Bug fixes | `fix/qr-signature-validation` |
+| `refactor/` | Code improvements with no behavior change | `refactor/extract-badge-service` |
+| `chore/` | Tooling, CI, dependencies, config | `chore/update-eslint-config` |
+| `docs/` | Documentation only | `docs/api-endpoints` |
+| `hotfix/` | Urgent production fixes | `hotfix/registration-crash` |
+
+### Workflow Rules
+
+1. **`main` is the stable trunk** — always deployable, protected by CI gate
+2. **One branch per wave or logical unit** — e.g., `feature/wave-1-core-loop` for all Wave 1 work
+3. **Branch from `main`**, merge back to `main` via PR (or direct merge for solo development)
+4. **Commit early, commit often** — small, atomic commits with conventional commit messages
+5. **Conventional Commits** format: `type(scope): description`
+   - Types: `feat`, `fix`, `refactor`, `test`, `chore`, `docs`, `ci`, `perf`
+   - Scope: the affected area — `api`, `web`, `mobile`, `shared-types`, `functions`, `infra`
+   - Examples: `feat(api): add badge PDF generation endpoint`, `fix(shared-types): correct registration status enum`
+6. **Never force-push to `main`** — rebase or merge, never rewrite shared history
+7. **Delete branches after merge** — keep the branch list clean
+8. **Tag releases** with semver: `v0.1.0` (Wave 1), `v0.2.0` (Wave 2), etc.
+
+### Wave Development Flow
+
+```
+main ──────────────────────────────────────────────►
+  └── feature/wave-1-core-loop ──── commits ──── merge back to main
+                                                    └── feature/wave-2-offline-checkin ──── ...
+```
 
 ---
 
@@ -404,4 +443,4 @@ The platform is delivered in **8 waves**, each building on the previous and prod
 - Use `vi.mock()` for Firebase dependencies
 - Use factories from `src/__tests__/factories.ts` for test data (`buildAuthUser`, `buildOrganizerUser`, `buildSuperAdmin`)
 - Service tests should mock repositories; route tests should use `fastify.inject()`
-- QR tests replicate signing functions locally to avoid mocking Firestore
+- QR tests import directly from `src/services/qr-signing.ts` — no duplication needed
