@@ -1,0 +1,252 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ─── Helper Functions ───────────────────────────────────────────────────
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function currentUid() {
+      return request.auth.uid;
+    }
+
+    function hasRole(role) {
+      return isAuthenticated()
+          && role in request.auth.token.roles;
+    }
+
+    function isSuperAdmin() {
+      return hasRole('super_admin');
+    }
+
+    function isOrganizer() {
+      return hasRole('organizer');
+    }
+
+    function isStaff() {
+      return hasRole('staff');
+    }
+
+    function belongsToOrg(orgId) {
+      return isAuthenticated()
+          && request.auth.token.organizationId == orgId;
+    }
+
+    function isOwnerOf(uid) {
+      return isAuthenticated() && currentUid() == uid;
+    }
+
+    // Validates that only specific fields are being changed
+    function onlyChanges(fields) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(fields);
+    }
+
+    // ─── Deny all by default ───────────────────────────────────────────────
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // ─── Users ─────────────────────────────────────────────────────────────
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+
+      // Owner can update own profile fields; cannot change roles/uid/isActive
+      allow update: if isOwnerOf(userId)
+                    && onlyChanges(['displayName', 'photoURL', 'phone', 'bio',
+                                    'preferredLanguage', 'fcmTokens', 'updatedAt']);
+
+      // Super admin can update everything (including roles)
+      allow update: if isSuperAdmin();
+
+      // Users are created by Cloud Functions (auth trigger), not directly
+      allow create: if false;
+      allow delete: if false;
+    }
+
+    // ─── Organizations ──────────────────────────────────────────────────────
+    match /organizations/{orgId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated()
+                    && request.resource.data.ownerId == currentUid();
+      allow update: if (belongsToOrg(orgId) && isOrganizer()) || isSuperAdmin();
+      allow delete: if isSuperAdmin();
+    }
+
+    // ─── Events ─────────────────────────────────────────────────────────────
+    match /events/{eventId} {
+      // Published public events are readable by anyone (sharing links)
+      allow read: if (resource.data.status == 'published' && resource.data.isPublic == true)
+                  || isAuthenticated();
+
+      allow create: if (isOrganizer() && belongsToOrg(request.resource.data.organizationId))
+                    || isSuperAdmin();
+
+      allow update: if (isOrganizer() && belongsToOrg(resource.data.organizationId))
+                    || isSuperAdmin();
+
+      // Soft-delete only — set status to 'archived'
+      allow delete: if false;
+    }
+
+    // ─── Sessions (Agenda) ─────────────────────────────────────────────────
+    match /sessions/{sessionId} {
+      allow read: if isAuthenticated();
+
+      allow create: if isSuperAdmin()
+                    || (isOrganizer() && belongsToOrg(
+                       get(/databases/$(database)/documents/events/$(request.resource.data.eventId)).data.organizationId
+                    ));
+
+      allow update: if isSuperAdmin()
+                    || (isOrganizer() && belongsToOrg(
+                       get(/databases/$(database)/documents/events/$(resource.data.eventId)).data.organizationId
+                    ));
+
+      allow delete: if isSuperAdmin();
+    }
+
+    // ─── Registrations ──────────────────────────────────────────────────────
+    match /registrations/{regId} {
+      allow read: if isOwnerOf(resource.data.userId)
+                  || isOrganizer()
+                  || isStaff()
+                  || isSuperAdmin();
+
+      // Participants register themselves — validated in API but guard here too
+      allow create: if isAuthenticated()
+                    && request.resource.data.userId == currentUid()
+                    && request.resource.data.status in ['confirmed', 'pending', 'waitlisted'];
+
+      // Participant can only cancel their own registration
+      allow update: if isOwnerOf(resource.data.userId)
+                    && onlyChanges(['status', 'updatedAt'])
+                    && request.resource.data.status == 'cancelled';
+
+      // Staff and organizer can update status and check-in fields only
+      allow update: if (isOrganizer() || isStaff())
+                    && onlyChanges(['status', 'checkedInAt', 'checkedInBy',
+                                    'accessZoneId', 'updatedAt']);
+
+      // Super admin can update any field
+      allow update: if isSuperAdmin();
+
+      allow delete: if false;
+    }
+
+    // ─── Badges ─────────────────────────────────────────────────────────────
+    match /badges/{badgeId} {
+      // Owner can read their own badge; organizers only for their org's events
+      allow read: if isOwnerOf(resource.data.userId)
+                  || (isOrganizer() && belongsToOrg(
+                      get(/databases/$(database)/documents/events/$(resource.data.eventId)).data.organizationId
+                  ))
+                  || isSuperAdmin();
+
+      // Created via API, which writes using Admin SDK
+      allow create: if false;
+      allow update: if false; // only Admin SDK (Cloud Functions update pdfURL)
+      allow delete: if false;
+    }
+
+    match /badgeTemplates/{templateId} {
+      allow read: if isOrganizer() || isSuperAdmin();
+      allow create: if (isOrganizer() && belongsToOrg(request.resource.data.organizationId))
+                    || isSuperAdmin();
+      allow update: if (isOrganizer() && belongsToOrg(resource.data.organizationId))
+                    || isSuperAdmin();
+      allow delete: if isSuperAdmin();
+    }
+
+    // ─── Conversations & Messages ────────────────────────────────────────────
+    match /conversations/{convId} {
+      allow read: if isAuthenticated()
+                  && currentUid() in resource.data.participantIds;
+
+      allow create: if isAuthenticated()
+                    && currentUid() in request.resource.data.participantIds
+                    && request.resource.data.participantIds.size() == 2;
+
+      allow update: if isAuthenticated()
+                    && currentUid() in resource.data.participantIds;
+
+      allow delete: if false;
+
+      match /messages/{msgId} {
+        allow read: if isAuthenticated()
+                    && currentUid() in get(/databases/$(database)/documents/conversations/$(convId)).data.participantIds;
+
+        allow create: if isAuthenticated()
+                      && request.resource.data.senderId == currentUid();
+
+        // Soft-delete own messages only (set deletedAt)
+        allow update: if isOwnerOf(resource.data.senderId)
+                      && onlyChanges(['deletedAt', 'updatedAt']);
+
+        allow delete: if false;
+      }
+    }
+
+    // ─── Feed Posts ─────────────────────────────────────────────────────────
+    match /feedPosts/{postId} {
+      allow read: if isAuthenticated();
+
+      allow create: if isAuthenticated()
+                    && request.resource.data.authorId == currentUid();
+
+      allow update: if isOwnerOf(resource.data.authorId)
+                    || isOrganizer()
+                    || isSuperAdmin();
+
+      // Soft-delete — set deletedAt
+      allow delete: if false;
+
+      match /comments/{commentId} {
+        allow read: if isAuthenticated();
+        allow create: if isAuthenticated()
+                      && request.resource.data.authorId == currentUid();
+        // Author can only soft-delete (set deletedAt) or edit content
+        allow update: if isOwnerOf(resource.data.authorId)
+                      && onlyChanges(['content', 'deletedAt', 'updatedAt']);
+        allow delete: if false;
+      }
+    }
+
+    // ─── Notifications ───────────────────────────────────────────────────────
+    match /notifications/{notifId} {
+      allow read: if isOwnerOf(resource.data.userId);
+
+      // Users can only mark as read
+      allow update: if isOwnerOf(resource.data.userId)
+                    && onlyChanges(['isRead', 'readAt']);
+
+      // Created only by Cloud Functions (Admin SDK)
+      allow create: if false;
+      allow delete: if false;
+    }
+
+    // ─── Audit Logs ─────────────────────────────────────────────────────────
+    // Written exclusively by the API via Admin SDK (fire-and-forget).
+    // Only super admins can read audit logs from the client.
+    // No client writes, updates, or deletes.
+    match /auditLogs/{logId} {
+      allow read: if isSuperAdmin();
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    // ─── Offline Sync Data ──────────────────────────────────────────────────
+    // Cached registration data for staff QR scanning when offline.
+    // Written by Admin SDK, readable only by staff/organizers of the same org.
+    match /offlineSync/{docId} {
+      allow read: if isSuperAdmin()
+                  || ((isStaff() || isOrganizer())
+                      && belongsToOrg(resource.data.organizationId));
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
+    }
+  }
+}

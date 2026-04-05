@@ -1,0 +1,9 @@
+{
+  "projects": {
+    "default": "teranga-events-dev",
+    "staging": "teranga-events-staging",
+    "production": "teranga-events-prod"
+  },
+  "targets": {},
+  "etags": {}
+}

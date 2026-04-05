@@ -1,0 +1,10 @@
+node_modules
+dist
+lib
+.next
+build
+coverage
+*.g.dart
+*.freezed.dart
+apps/mobile
+infrastructure/terraform/.terraform

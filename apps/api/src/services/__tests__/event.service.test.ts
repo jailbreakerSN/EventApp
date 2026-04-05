@@ -1,0 +1,317 @@
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { EventService } from "../event.service";
+import { buildAuthUser, buildOrganizerUser, buildSuperAdmin, buildEvent, buildOrganization } from "@/__tests__/factories";
+
+// ─── Mocks ─────────────────────────────────────────────────────────────────
+
+const mockEventRepo = {
+  create: vi.fn(),
+  findByIdOrThrow: vi.fn(),
+  findBySlug: vi.fn(),
+  findPublished: vi.fn(),
+  findByOrganization: vi.fn(),
+  update: vi.fn(),
+  publish: vi.fn(),
+  softDelete: vi.fn(),
+};
+
+const mockOrgRepo = {
+  findByIdOrThrow: vi.fn(),
+};
+
+vi.mock("@/repositories/event.repository", () => ({
+  eventRepository: new Proxy({}, {
+    get: (_target, prop) => (mockEventRepo as Record<string, unknown>)[prop as string],
+  }),
+}));
+
+vi.mock("@/repositories/organization.repository", () => ({
+  organizationRepository: new Proxy({}, {
+    get: (_target, prop) => (mockOrgRepo as Record<string, unknown>)[prop as string],
+  }),
+}));
+
+vi.mock("@/events/event-bus", () => ({
+  eventBus: { emit: vi.fn() },
+}));
+
+vi.mock("@/context/request-context", () => ({
+  getRequestId: () => "test-request-id",
+}));
+
+// ─── Tests ─────────────────────────────────────────────────────────────────
+
+const service = new EventService();
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
+
+describe("EventService.create", () => {
+  const org = buildOrganization({ id: "org-1" });
+
+  it("creates an event and emits domain event", async () => {
+    const user = buildOrganizerUser("org-1");
+    const dto = {
+      organizationId: "org-1",
+      title: "Teranga Fest",
+      description: "An awesome event",
+      category: "conference" as const,
+      format: "in_person" as const,
+      status: "draft" as const,
+      startDate: new Date(Date.now() + 86400000).toISOString(),
+      endDate: new Date(Date.now() + 2 * 86400000).toISOString(),
+      timezone: "Africa/Dakar",
+      location: { name: "CICAD", address: "Diamniadio", city: "Dakar", country: "SN" },
+      isPublic: true,
+      isFeatured: false,
+      requiresApproval: false,
+      ticketTypes: [],
+      accessZones: [],
+      tags: [],
+      maxAttendees: null,
+      shortDescription: null,
+      coverImageURL: null,
+      bannerImageURL: null,
+      templateId: null,
+    };
+
+    mockOrgRepo.findByIdOrThrow.mockResolvedValue(org);
+    const createdEvent = buildEvent({ organizationId: "org-1", title: "Teranga Fest" });
+    mockEventRepo.create.mockResolvedValue(createdEvent);
+
+    const result = await service.create(dto, user);
+
+    expect(result.title).toBe("Teranga Fest");
+    expect(mockEventRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        organizationId: "org-1",
+        slug: expect.stringMatching(/^teranga-fest-[a-f0-9]{6}$/),
+        registeredCount: 0,
+        checkedInCount: 0,
+        createdBy: user.uid,
+      }),
+    );
+  });
+
+  it("rejects participant without event:create permission", async () => {
+    const user = buildAuthUser({ roles: ["participant"] });
+    const dto = { organizationId: "org-1", title: "Test" } as any;
+
+    await expect(service.create(dto, user)).rejects.toThrow("Missing permission");
+  });
+
+  it("rejects if user does not belong to the organization", async () => {
+    const user = buildOrganizerUser("org-other");
+    const dto = {
+      organizationId: "org-1",
+      title: "Test",
+      startDate: new Date(Date.now() + 86400000).toISOString(),
+      endDate: new Date(Date.now() + 2 * 86400000).toISOString(),
+    } as any;
+
+    mockOrgRepo.findByIdOrThrow.mockResolvedValue(org);
+
+    await expect(service.create(dto, user)).rejects.toThrow("do not belong");
+  });
+
+  it("allows super_admin to create event for any org", async () => {
+    const admin = buildSuperAdmin();
+    const dto = {
+      organizationId: "org-1",
+      title: "Admin Event",
+      startDate: new Date(Date.now() + 86400000).toISOString(),
+      endDate: new Date(Date.now() + 2 * 86400000).toISOString(),
+    } as any;
+
+    mockOrgRepo.findByIdOrThrow.mockResolvedValue(org);
+    mockEventRepo.create.mockResolvedValue(buildEvent({ title: "Admin Event" }));
+
+    const result = await service.create(dto, admin);
+    expect(result.title).toBe("Admin Event");
+  });
+
+  it("rejects when endDate is before startDate", async () => {
+    const user = buildOrganizerUser("org-1");
+    const dto = {
+      organizationId: "org-1",
+      title: "Bad Dates",
+      startDate: new Date(Date.now() + 2 * 86400000).toISOString(),
+      endDate: new Date(Date.now() + 86400000).toISOString(),
+    } as any;
+
+    mockOrgRepo.findByIdOrThrow.mockResolvedValue(org);
+
+    await expect(service.create(dto, user)).rejects.toThrow("End date must be after start date");
+  });
+});
+
+describe("EventService.getById", () => {
+  it("returns published public event without auth", async () => {
+    const event = buildEvent({ status: "published", isPublic: true });
+    mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
+
+    const result = await service.getById(event.id);
+    expect(result.id).toBe(event.id);
+  });
+
+  it("rejects unauthenticated access to draft event", async () => {
+    const event = buildEvent({ status: "draft", isPublic: false });
+    mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
+
+    await expect(service.getById(event.id)).rejects.toThrow("Authentication required");
+  });
+
+  it("allows organizer to view draft event", async () => {
+    const event = buildEvent({ status: "draft", isPublic: false });
+    const user = buildOrganizerUser("org-1");
+    mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
+
+    const result = await service.getById(event.id, user);
+    expect(result.id).toBe(event.id);
+  });
+});
+
+describe("EventService.update", () => {
+  it("updates event and emits domain event", async () => {
+    const user = buildOrganizerUser("org-1");
+    const event = buildEvent({ organizationId: "org-1", status: "draft" });
+    mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
+    mockEventRepo.update.mockResolvedValue(undefined);
+
+    await service.update(event.id, { title: "Updated Title" } as any, user);
+
+    expect(mockEventRepo.update).toHaveBeenCalledWith(
+      event.id,
+      expect.objectContaining({ title: "Updated Title", updatedBy: user.uid }),
+    );
+  });
+
+  it("rejects update on cancelled event", async () => {
+    const user = buildOrganizerUser("org-1");
+    const event = buildEvent({ organizationId: "org-1", status: "cancelled" as any });
+    mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
+
+    await expect(
+      service.update(event.id, { title: "Nope" } as any, user),
+    ).rejects.toThrow("Cannot update an event with status 'cancelled'");
+  });
+
+  it("rejects update on archived event", async () => {
+    const user = buildOrganizerUser("org-1");
+    const event = buildEvent({ organizationId: "org-1", status: "archived" as any });
+    mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
+
+    await expect(
+      service.update(event.id, { title: "Nope" } as any, user),
+    ).rejects.toThrow("Cannot update an event with status 'archived'");
+  });
+
+  it("validates date consistency on update", async () => {
+    const user = buildOrganizerUser("org-1");
+    const event = buildEvent({
+      organizationId: "org-1",
+      status: "draft",
+      startDate: "2026-06-01T00:00:00Z",
+      endDate: "2026-06-02T00:00:00Z",
+    });
+    mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
+
+    await expect(
+      service.update(event.id, { endDate: "2026-05-01T00:00:00Z" } as any, user),
+    ).rejects.toThrow("End date must be after start date");
+  });
+
+  it("rejects if user doesn't belong to event's org", async () => {
+    const user = buildOrganizerUser("org-other");
+    const event = buildEvent({ organizationId: "org-1", status: "draft" });
+    mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
+
+    await expect(
+      service.update(event.id, { title: "Nope" } as any, user),
+    ).rejects.toThrow("Access denied");
+  });
+});
+
+describe("EventService.publish", () => {
+  it("publishes a draft event", async () => {
+    const user = buildOrganizerUser("org-1");
+    const event = buildEvent({
+      organizationId: "org-1",
+      status: "draft",
+      title: "Ready Event",
+      location: { name: "CICAD", address: "Diamniadio", city: "Dakar", country: "SN" },
+    });
+    mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
+    mockEventRepo.publish.mockResolvedValue(undefined);
+
+    await service.publish(event.id, user);
+
+    expect(mockEventRepo.publish).toHaveBeenCalledWith(event.id, user.uid);
+  });
+
+  it("rejects publishing an already published event", async () => {
+    const user = buildOrganizerUser("org-1");
+    const event = buildEvent({ organizationId: "org-1", status: "published" });
+    mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
+
+    await expect(service.publish(event.id, user)).rejects.toThrow("Only draft events can be published");
+  });
+
+  it("rejects publishing an incomplete event", async () => {
+    const user = buildOrganizerUser("org-1");
+    const event = buildEvent({
+      organizationId: "org-1",
+      status: "draft",
+      location: null as any,
+    });
+    mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
+
+    await expect(service.publish(event.id, user)).rejects.toThrow("must have title, dates, and location");
+  });
+});
+
+describe("EventService.cancel", () => {
+  it("cancels a published event", async () => {
+    const user = buildOrganizerUser("org-1");
+    const event = buildEvent({ organizationId: "org-1", status: "published" });
+    mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
+    mockEventRepo.update.mockResolvedValue(undefined);
+
+    await service.cancel(event.id, user);
+
+    expect(mockEventRepo.update).toHaveBeenCalledWith(
+      event.id,
+      expect.objectContaining({ status: "cancelled" }),
+    );
+  });
+
+  it("rejects cancelling an already cancelled event", async () => {
+    const user = buildOrganizerUser("org-1");
+    const event = buildEvent({ organizationId: "org-1", status: "cancelled" as any });
+    mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
+
+    await expect(service.cancel(event.id, user)).rejects.toThrow("already cancelled");
+  });
+});
+
+describe("EventService.archive", () => {
+  it("archives an event with soft delete", async () => {
+    const user = buildOrganizerUser("org-1");
+    const event = buildEvent({ organizationId: "org-1", status: "published" });
+    mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
+    mockEventRepo.softDelete.mockResolvedValue(undefined);
+
+    await service.archive(event.id, user);
+
+    expect(mockEventRepo.softDelete).toHaveBeenCalledWith(event.id, "status", "archived");
+  });
+
+  it("requires event:delete permission", async () => {
+    const user = buildAuthUser({ roles: ["participant"] });
+    const event = buildEvent();
+    mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
+
+    await expect(service.archive(event.id, user)).rejects.toThrow("Missing permission");
+  });
+});

@@ -1,0 +1,85 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // ─── Helper Functions ──────────────────────────────────────────────────
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function currentUid() {
+      return request.auth.uid;
+    }
+
+    function hasRole(role) {
+      return isAuthenticated() && role in request.auth.token.roles;
+    }
+
+    function isOrgMember() {
+      return isAuthenticated() && request.auth.token.organizationId != null;
+    }
+
+    function maxSize(mb) {
+      return request.resource.size < mb * 1024 * 1024;
+    }
+
+    function isImage() {
+      return request.resource.contentType.matches('image/(png|jpeg|jpg|gif|webp|svg\\+xml)');
+    }
+
+    function isPdf() {
+      return request.resource.contentType == 'application/pdf';
+    }
+
+    // ─── Deny all by default ───────────────────────────────────────────────
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+
+    // ─── Profile Photos ────────────────────────────────────────────────────
+    match /users/{userId}/profile/{filename} {
+      allow read: if isAuthenticated();
+      allow write: if currentUid() == userId && isImage() && maxSize(5);
+    }
+
+    // ─── Event Assets ──────────────────────────────────────────────────────
+    // Readable by authenticated users only (not public to prevent asset scraping)
+    match /events/{eventId}/{filename} {
+      allow read: if isAuthenticated();
+      allow write: if hasRole('organizer') && isImage() && maxSize(10);
+    }
+
+    // ─── Organization Logos ────────────────────────────────────────────────
+    // Logos are semi-public (needed for event listings) — require auth
+    match /organizations/{orgId}/{filename} {
+      allow read: if isAuthenticated();
+      allow write: if hasRole('organizer') && isImage() && maxSize(5);
+    }
+
+    // ─── Badges (PDF) — written by Cloud Functions only ───────────────────
+    match /badges/{eventId}/{userId}/{filename} {
+      allow read: if isAuthenticated()
+                  && (currentUid() == userId
+                      || hasRole('organizer')
+                      || hasRole('super_admin'));
+      allow write: if false; // Admin SDK only via Cloud Functions
+    }
+
+    // ─── Feed Media ────────────────────────────────────────────────────────
+    match /feed/{postId}/{filename} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated()
+                   && isImage()
+                   && maxSize(8);
+    }
+
+    // ─── Message Attachments ───────────────────────────────────────────────
+    match /messages/{conversationId}/{filename} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated()
+                   && (isImage() || isPdf())
+                   && maxSize(15);
+    }
+  }
+}

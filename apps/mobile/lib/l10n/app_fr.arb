@@ -1,0 +1,68 @@
+{
+  "@@locale": "fr",
+  "appTitle": "Teranga",
+  "@appTitle": { "description": "Nom de l'application" },
+  "tagline": "L'Événementiel Africain, Connecté et Mémorable",
+
+  "login": "Connexion",
+  "register": "Inscription",
+  "logout": "Déconnexion",
+  "email": "Adresse email",
+  "password": "Mot de passe",
+  "fullName": "Nom complet",
+  "loginButton": "Se connecter",
+  "registerButton": "S'inscrire",
+  "noAccountYet": "Pas encore de compte ? S'inscrire",
+  "alreadyHaveAccount": "Déjà un compte ? Se connecter",
+  "invalidEmail": "Email invalide",
+  "passwordTooShort": "Minimum 8 caractères",
+  "loginError": "Email ou mot de passe incorrect",
+  "nameRequired": "Nom requis",
+
+  "events": "Événements",
+  "feed": "Fil",
+  "networking": "Réseau",
+  "badge": "Badge",
+  "profile": "Profil",
+
+  "eventDetail": "Détail de l'événement",
+  "agenda": "Programme",
+  "speakers": "Intervenants",
+  "registerForEvent": "S'inscrire",
+  "alreadyRegistered": "Déjà inscrit",
+  "registrationConfirmed": "Inscription confirmée",
+  "waitlisted": "En liste d'attente",
+
+  "myBadge": "Mon Badge",
+  "downloadBadgePdf": "Télécharger le badge PDF",
+  "scanBadge": "Scanner les badges",
+  "scanResult": "Résultat du scan",
+  "validBadge": "Badge valide",
+  "invalidBadge": "Badge invalide",
+  "alreadyScanned": "Déjà scanné",
+  "offlineMode": "Hors-ligne",
+  "syncData": "Synchroniser les données",
+
+  "noEventsYet": "Aucun événement pour l'instant",
+  "noPostsYet": "Aucune publication pour l'instant",
+  "searchEvents": "Rechercher des événements",
+  "filterByCategory": "Filtrer par catégorie",
+  "all": "Tous",
+  "conference": "Conférence",
+  "concert": "Concert",
+  "workshop": "Atelier",
+  "festival": "Festival",
+  "sport": "Sport",
+
+  "settings": "Paramètres",
+  "language": "Langue",
+  "editProfile": "Modifier le profil",
+  "notifications": "Notifications",
+  "about": "À propos",
+  "version": "Version {version}",
+  "@version": {
+    "placeholders": {
+      "version": { "type": "String" }
+    }
+  }
+}

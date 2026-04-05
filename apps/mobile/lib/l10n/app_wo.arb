@@ -1,0 +1,30 @@
+{
+  "@@locale": "wo",
+  "appTitle": "Teranga",
+  "tagline": "Evenement yi ci Afrique, Lëkkaliku ak Fàttali",
+
+  "login": "Dugg",
+  "register": "Bindu",
+  "logout": "Génn",
+  "email": "Adresse email",
+  "password": "Baatu jàll",
+  "fullName": "Tur bu mat",
+  "loginButton": "Dugg",
+  "registerButton": "Bindu",
+  "noAccountYet": "Amoo sa compte? Bindu",
+  "alreadyHaveAccount": "Am nga sa compte? Dugg",
+
+  "events": "Evenement yi",
+  "feed": "Xibaar yi",
+  "networking": "Jàmm",
+  "badge": "Badge",
+  "profile": "Sama profil",
+
+  "myBadge": "Sama Badge",
+  "offlineMode": "Internet nekkul",
+  "all": "Yépp",
+
+  "settings": "Paramètre yi",
+  "language": "Làkk",
+  "about": "Ci"
+}

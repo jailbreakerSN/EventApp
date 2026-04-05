@@ -1,0 +1,36 @@
+{
+  "name": "teranga",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Teranga - African Event Management Platform",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "turbo build",
+    "dev": "turbo dev",
+    "lint": "turbo lint",
+    "test": "turbo test",
+    "format": "prettier --write \"**/*.{ts,tsx,json,md}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,json,md}\"",
+    "type-check": "turbo type-check",
+    "api:dev": "turbo dev --filter=@teranga/api",
+    "functions:dev": "turbo dev --filter=@teranga/functions",
+    "web:dev": "turbo dev --filter=@teranga/web-backoffice",
+    "types:build": "turbo build --filter=@teranga/shared-types"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.17.0",
+    "eslint": "^9.17.0",
+    "prettier": "^3.4.2",
+    "turbo": "^2.3.3",
+    "typescript": "^5.7.3",
+    "typescript-eslint": "^8.18.2"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  },
+  "packageManager": "npm@10.9.2"
+}

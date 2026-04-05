@@ -1,0 +1,274 @@
+import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from "vitest";
+import Fastify, { type FastifyInstance } from "fastify";
+import { eventRoutes } from "../events.routes";
+import { buildEvent } from "@/__tests__/factories";
+
+// ─── Mock auth middleware ──────────────────────────────────────────────────
+
+const mockVerifyIdToken = vi.fn();
+
+vi.mock("@/config/firebase", () => ({
+  auth: {
+    verifyIdToken: (...args: unknown[]) => mockVerifyIdToken(...args),
+  },
+}));
+
+// ─── Mock event service ───────────────���───────────────────────────────────
+
+const mockEventService = {
+  listPublished: vi.fn(),
+  getById: vi.fn(),
+  create: vi.fn(),
+  update: vi.fn(),
+  publish: vi.fn(),
+  cancel: vi.fn(),
+  archive: vi.fn(),
+};
+
+vi.mock("@/services/event.service", () => ({
+  eventService: new Proxy({}, {
+    get: (_target, prop) => (mockEventService as Record<string, unknown>)[prop as string],
+  }),
+}));
+
+// ─── Build app ──────���──────────────────────────────────────────────────────
+
+let app: FastifyInstance;
+
+beforeAll(async () => {
+  app = Fastify({ logger: false });
+  // Register event routes at /v1/events to match real prefix
+  await app.register(eventRoutes, { prefix: "/v1/events" });
+
+  // Minimal error handler for clean assertions
+  app.setErrorHandler((error, _request, reply) => {
+    const statusCode = error.statusCode ?? 500;
+    return reply.status(statusCode).send({
+      success: false,
+      error: { code: "ERROR", message: error.message },
+    });
+  });
+
+  await app.ready();
+});
+
+afterAll(async () => {
+  await app.close();
+});
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
+
+// ─── Helpers ──────────────���────────────────────────────────────────────────
+
+function authHeaders(overrides: Record<string, unknown> = {}) {
+  mockVerifyIdToken.mockResolvedValue({
+    uid: "user-1",
+    email: "test@teranga.events",
+    roles: ["organizer"],
+    organizationId: "org-1",
+    ...overrides,
+  });
+  return { authorization: "Bearer valid-token" };
+}
+
+// ─── Tests ───────────────────────────────────────���─────────────────────────
+
+describe("GET /v1/events", () => {
+  it("returns paginated event list", async () => {
+    const events = [buildEvent(), buildEvent()];
+    mockEventService.listPublished.mockResolvedValue({
+      data: events,
+      meta: { page: 1, limit: 20, total: 2, totalPages: 1 },
+    });
+
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/events?page=1&limit=20",
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.success).toBe(true);
+    expect(body.data).toHaveLength(2);
+    expect(body.meta.total).toBe(2);
+  });
+
+  it("does not require authentication", async () => {
+    mockEventService.listPublished.mockResolvedValue({
+      data: [],
+      meta: { page: 1, limit: 20, total: 0, totalPages: 0 },
+    });
+
+    const res = await app.inject({ method: "GET", url: "/v1/events" });
+    expect(res.statusCode).toBe(200);
+  });
+});
+
+describe("GET /v1/events/:eventId", () => {
+  it("returns event by ID", async () => {
+    const event = buildEvent({ id: "ev-1" });
+    mockEventService.getById.mockResolvedValue(event);
+
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/events/ev-1",
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data.id).toBe("ev-1");
+  });
+});
+
+describe("POST /v1/events", () => {
+  it("returns 401 without auth", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/events",
+      headers: { "content-type": "application/json" },
+      payload: {},
+    });
+
+    expect(res.statusCode).toBe(401);
+  });
+
+  it("returns 201 on successful creation", async () => {
+    const headers = authHeaders();
+    const event = buildEvent({ title: "New Event" });
+    mockEventService.create.mockResolvedValue(event);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/events",
+      headers: { ...headers, "content-type": "application/json" },
+      payload: {
+        organizationId: "org-1",
+        title: "New Event",
+        description: "Description",
+        category: "conference",
+        format: "in_person",
+        status: "draft",
+        startDate: new Date(Date.now() + 86400000).toISOString(),
+        endDate: new Date(Date.now() + 2 * 86400000).toISOString(),
+        timezone: "Africa/Dakar",
+        location: { name: "CICAD", address: "Diamniadio", city: "Dakar", country: "SN" },
+        isPublic: true,
+        isFeatured: false,
+        requiresApproval: false,
+        ticketTypes: [],
+        accessZones: [],
+        tags: [],
+        maxAttendees: null,
+        shortDescription: null,
+        coverImageURL: null,
+        bannerImageURL: null,
+        templateId: null,
+      },
+    });
+
+    expect(res.statusCode).toBe(201);
+    expect(res.json().success).toBe(true);
+    expect(res.json().data.title).toBe("New Event");
+  });
+
+  it("returns 403 for participant without event:create", async () => {
+    const headers = authHeaders({ roles: ["participant"] });
+    mockEventService.create.mockRejectedValue(
+      Object.assign(new Error("Missing permission: event:create"), { statusCode: 403 }),
+    );
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/events",
+      headers: { ...headers, "content-type": "application/json" },
+      payload: { organizationId: "org-1", title: "Nope" },
+    });
+
+    expect(res.statusCode).toBe(403);
+  });
+});
+
+describe("PATCH /v1/events/:eventId", () => {
+  it("returns 401 without auth", async () => {
+    const res = await app.inject({
+      method: "PATCH",
+      url: "/v1/events/ev-1",
+      headers: { "content-type": "application/json" },
+      payload: { title: "Updated" },
+    });
+
+    expect(res.statusCode).toBe(401);
+  });
+
+  it("updates event successfully", async () => {
+    const headers = authHeaders();
+    mockEventService.update.mockResolvedValue(undefined);
+
+    const res = await app.inject({
+      method: "PATCH",
+      url: "/v1/events/ev-1",
+      headers: { ...headers, "content-type": "application/json" },
+      payload: { title: "Updated Title" },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data.id).toBe("ev-1");
+  });
+});
+
+describe("POST /v1/events/:eventId/publish", () => {
+  it("publishes event and returns 200", async () => {
+    const headers = authHeaders();
+    mockEventService.publish.mockResolvedValue(undefined);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/events/ev-1/publish",
+      headers,
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data.status).toBe("published");
+  });
+});
+
+describe("POST /v1/events/:eventId/cancel", () => {
+  it("cancels event and returns 200", async () => {
+    const headers = authHeaders();
+    mockEventService.cancel.mockResolvedValue(undefined);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/events/ev-1/cancel",
+      headers,
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data.status).toBe("cancelled");
+  });
+});
+
+describe("DELETE /v1/events/:eventId", () => {
+  it("archives event and returns 204", async () => {
+    const headers = authHeaders();
+    mockEventService.archive.mockResolvedValue(undefined);
+
+    const res = await app.inject({
+      method: "DELETE",
+      url: "/v1/events/ev-1",
+      headers,
+    });
+
+    expect(res.statusCode).toBe(204);
+  });
+
+  it("returns 401 without auth", async () => {
+    const res = await app.inject({
+      method: "DELETE",
+      url: "/v1/events/ev-1",
+    });
+
+    expect(res.statusCode).toBe(401);
+  });
+});

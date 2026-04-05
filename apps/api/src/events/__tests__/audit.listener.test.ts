@@ -1,0 +1,166 @@
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { eventBus } from "../event-bus";
+import { auditService } from "@/services/audit.service";
+import { registerAuditListeners } from "../listeners/audit.listener";
+import { type RegistrationCreatedEvent, type CheckInCompletedEvent, type EventPublishedEvent } from "../domain-events";
+
+vi.mock("@/services/audit.service", () => ({
+  auditService: {
+    log: vi.fn().mockResolvedValue(undefined),
+  },
+}));
+
+beforeEach(() => {
+  eventBus.removeAllListeners();
+  vi.clearAllMocks();
+  registerAuditListeners();
+});
+
+/** Flush setImmediate-scheduled callbacks and microtask queue */
+const flush = async () => {
+  await new Promise((r) => setImmediate(r));
+  await new Promise((r) => setImmediate(r));
+};
+
+describe("Audit Listener", () => {
+  it("logs registration.created with correct fields", async () => {
+    const payload: RegistrationCreatedEvent = {
+      registration: {
+        id: "reg-1",
+        eventId: "ev-1",
+        userId: "u-1",
+        ticketTypeId: "tt-1",
+        status: "confirmed",
+      } as any,
+      eventId: "ev-1",
+      organizationId: "org-1",
+      actorId: "u-1",
+      requestId: "req-abc",
+      timestamp: "2026-04-04T10:00:00.000Z",
+    };
+
+    eventBus.emit("registration.created", payload);
+    await flush();
+
+    expect(auditService.log).toHaveBeenCalledWith({
+      action: "registration.created",
+      actorId: "u-1",
+      requestId: "req-abc",
+      timestamp: "2026-04-04T10:00:00.000Z",
+      resourceType: "registration",
+      resourceId: "reg-1",
+      eventId: "ev-1",
+      organizationId: "org-1",
+      details: {
+        userId: "u-1",
+        ticketTypeId: "tt-1",
+        status: "confirmed",
+      },
+    });
+  });
+
+  it("logs checkin.completed with staff and zone info", async () => {
+    const payload: CheckInCompletedEvent = {
+      registrationId: "reg-2",
+      eventId: "ev-1",
+      participantId: "u-2",
+      staffId: "staff-1",
+      accessZoneId: "zone-vip",
+      actorId: "staff-1",
+      requestId: "req-def",
+      timestamp: "2026-04-04T11:00:00.000Z",
+    };
+
+    eventBus.emit("checkin.completed", payload);
+    await flush();
+
+    expect(auditService.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "checkin.completed",
+        resourceType: "registration",
+        resourceId: "reg-2",
+        details: expect.objectContaining({
+          staffId: "staff-1",
+          accessZoneId: "zone-vip",
+        }),
+      }),
+    );
+  });
+
+  it("logs event.published with event title", async () => {
+    const payload: EventPublishedEvent = {
+      event: { id: "ev-1", title: "Teranga Fest" } as any,
+      organizationId: "org-1",
+      actorId: "u-org",
+      requestId: "req-ghi",
+      timestamp: "2026-04-04T12:00:00.000Z",
+    };
+
+    eventBus.emit("event.published", payload);
+    await flush();
+
+    expect(auditService.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "event.published",
+        resourceType: "event",
+        resourceId: "ev-1",
+        details: { title: "Teranga Fest" },
+      }),
+    );
+  });
+
+  it("logs all 13 event types", async () => {
+    eventBus.emit("registration.created", {
+      registration: { id: "r1", userId: "u1", ticketTypeId: "t1", status: "confirmed" } as any,
+      eventId: "e1", organizationId: "o1", actorId: "a1", requestId: "req1", timestamp: "t1",
+    });
+    eventBus.emit("registration.cancelled", {
+      registrationId: "r2", eventId: "e1", userId: "u1", organizationId: "o1",
+      actorId: "a1", requestId: "req2", timestamp: "t2",
+    });
+    eventBus.emit("registration.approved", {
+      registrationId: "r3", eventId: "e1", userId: "u1", organizationId: "o1",
+      actorId: "a1", requestId: "req3", timestamp: "t3",
+    });
+    eventBus.emit("checkin.completed", {
+      registrationId: "r4", eventId: "e1", participantId: "u1", staffId: "s1",
+      actorId: "s1", requestId: "req4", timestamp: "t4",
+    });
+    eventBus.emit("event.created", {
+      event: { id: "e1", title: "New Event" } as any, organizationId: "o1",
+      actorId: "a1", requestId: "req5a", timestamp: "t5a",
+    });
+    eventBus.emit("event.updated", {
+      eventId: "e1", organizationId: "o1", changes: { title: "Updated" },
+      actorId: "a1", requestId: "req5b", timestamp: "t5b",
+    });
+    eventBus.emit("event.published", {
+      event: { id: "e1", title: "Test" } as any, organizationId: "o1",
+      actorId: "a1", requestId: "req5", timestamp: "t5",
+    });
+    eventBus.emit("event.cancelled", {
+      eventId: "e1", organizationId: "o1", actorId: "a1", requestId: "req6", timestamp: "t6",
+    });
+    eventBus.emit("event.archived", {
+      eventId: "e1", organizationId: "o1", actorId: "a1", requestId: "req7", timestamp: "t7",
+    });
+    eventBus.emit("organization.created", {
+      organization: { id: "o1", name: "Test Org", plan: "free" } as any,
+      actorId: "a1", requestId: "req8", timestamp: "t8",
+    });
+    eventBus.emit("member.added", {
+      organizationId: "o1", memberId: "m1", actorId: "a1", requestId: "req9", timestamp: "t9",
+    });
+    eventBus.emit("member.removed", {
+      organizationId: "o1", memberId: "m1", actorId: "a1", requestId: "req10", timestamp: "t10",
+    });
+    eventBus.emit("badge.generated", {
+      badgeId: "b1", registrationId: "r1", eventId: "e1", userId: "u1",
+      actorId: "a1", requestId: "req11", timestamp: "t11",
+    });
+
+    await flush();
+
+    expect(auditService.log).toHaveBeenCalledTimes(13);
+  });
+});

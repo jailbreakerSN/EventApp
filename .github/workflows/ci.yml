@@ -1,0 +1,246 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "20"
+  FLUTTER_VERSION: "3.27.x"
+
+jobs:
+  # ─── Shared Types (must build first — other packages depend on it) ───────
+  shared-types:
+    name: Build shared-types
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: Turbo cache
+        uses: actions/cache@v4
+        with:
+          path: node_modules/.cache/turbo
+          key: turbo-shared-types-${{ runner.os }}-${{ hashFiles('packages/shared-types/src/**', 'packages/shared-types/package.json') }}
+          restore-keys: turbo-shared-types-${{ runner.os }}-
+      - run: npx turbo build --filter=@teranga/shared-types
+      - uses: actions/upload-artifact@v4
+        with:
+          name: shared-types-dist
+          path: packages/shared-types/dist
+          retention-days: 1
+
+  # ─── API: Lint & Type-check ──────────────────────────────────────────────
+  api-lint:
+    name: "API: Lint & Type-check"
+    runs-on: ubuntu-latest
+    needs: shared-types
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - uses: actions/download-artifact@v4
+        with:
+          name: shared-types-dist
+          path: packages/shared-types/dist
+      - name: Turbo cache
+        uses: actions/cache@v4
+        with:
+          path: node_modules/.cache/turbo
+          key: turbo-api-lint-${{ runner.os }}-${{ hashFiles('apps/api/src/**', 'apps/api/package.json') }}
+          restore-keys: turbo-api-lint-${{ runner.os }}-
+      - name: Lint
+        run: npx eslint apps/api/src/ --max-warnings 0
+      - name: Type-check
+        run: npm run type-check --workspace=apps/api
+
+  # ─── API: Tests ──────────────────────────────────────────────────────────
+  api-test:
+    name: "API: Tests"
+    runs-on: ubuntu-latest
+    needs: shared-types
+    env:
+      NODE_ENV: test
+      PORT: "3000"
+      HOST: "0.0.0.0"
+      LOG_LEVEL: silent
+      FIREBASE_PROJECT_ID: teranga-events-test
+      FIREBASE_STORAGE_BUCKET: teranga-events-test.appspot.com
+      GOOGLE_APPLICATION_CREDENTIALS: ""
+      CORS_ORIGINS: "http://localhost:3001"
+      RATE_LIMIT_MAX: "1000"
+      RATE_LIMIT_WINDOW_MS: "60000"
+      QR_SECRET: ci-test-secret-minimum-16-chars
+      RESEND_API_KEY: re_test_placeholder
+      EMAIL_FROM: test@teranga.events
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - uses: actions/download-artifact@v4
+        with:
+          name: shared-types-dist
+          path: packages/shared-types/dist
+      - name: Run tests
+        run: npm run test --workspace=apps/api
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-coverage
+          path: apps/api/coverage
+          retention-days: 7
+          if-no-files-found: ignore
+
+  # ─── Dependency Audit ────────────────────────────────────────────────────
+  audit:
+    name: Dependency Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: Audit production dependencies
+        run: npm audit --audit-level=high --omit=dev || true
+        # NOTE: || true because audit may report issues in transitive deps
+        # that have no fix available yet. Review output manually.
+
+  # ─── Cloud Functions ─────────────────────────────────────────────────────
+  functions:
+    name: Functions
+    runs-on: ubuntu-latest
+    needs: shared-types
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - uses: actions/download-artifact@v4
+        with:
+          name: shared-types-dist
+          path: packages/shared-types/dist
+      - run: npm run type-check --workspace=apps/functions
+      - run: npm run build --workspace=apps/functions
+
+  # ─── Web Backoffice ──────────────────────────────────────────────────────
+  web-backoffice:
+    name: Web Backoffice
+    runs-on: ubuntu-latest
+    needs: shared-types
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - uses: actions/download-artifact@v4
+        with:
+          name: shared-types-dist
+          path: packages/shared-types/dist
+      - name: Turbo cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            node_modules/.cache/turbo
+            apps/web-backoffice/.next/cache
+          key: turbo-web-${{ runner.os }}-${{ hashFiles('apps/web-backoffice/src/**', 'apps/web-backoffice/package.json') }}
+          restore-keys: turbo-web-${{ runner.os }}-
+      - name: Lint
+        run: npx next lint --dir apps/web-backoffice/src
+      - name: Type-check
+        run: npm run type-check --workspace=apps/web-backoffice
+      - name: Build
+        run: npm run build --workspace=apps/web-backoffice
+        env:
+          NEXT_PUBLIC_FIREBASE_API_KEY: ci-placeholder
+          NEXT_PUBLIC_FIREBASE_PROJECT_ID: teranga-events-dev
+          NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: teranga-events-dev.firebaseapp.com
+          NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: teranga-events-dev.appspot.com
+          NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: "000000000000"
+          NEXT_PUBLIC_FIREBASE_APP_ID: ci-placeholder
+          NEXT_PUBLIC_API_URL: http://localhost:3000
+
+  # ─── Flutter Mobile ──────────────────────────────────────────────────────
+  flutter:
+    name: Flutter
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: Install dependencies
+        working-directory: apps/mobile
+        run: flutter pub get
+      - name: Run analyzer
+        working-directory: apps/mobile
+        run: flutter analyze --no-fatal-infos
+      - name: Run tests
+        working-directory: apps/mobile
+        run: flutter test --no-pub
+
+  # ─── Firestore Rules Validation ──────────────────────────────────────────
+  firebase-rules:
+    name: Firebase Rules (syntax check)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - run: npm install -g firebase-tools@13
+      - run: firebase emulators:exec "echo 'Rules loaded successfully'" --only firestore --project teranga-events-dev
+
+  # ─── CI Gate (all required checks must pass) ─────────────────────────────
+  ci-gate:
+    name: CI Gate
+    runs-on: ubuntu-latest
+    if: always()
+    needs: [api-lint, api-test, functions, web-backoffice, flutter, firebase-rules]
+    steps:
+      - name: Check results
+        run: |
+          failed=""
+          for job in api-lint api-test functions web-backoffice flutter firebase-rules; do
+            result="${{ needs.api-lint.result }}"
+            case "$job" in
+              api-lint)       result="${{ needs.api-lint.result }}" ;;
+              api-test)       result="${{ needs.api-test.result }}" ;;
+              functions)      result="${{ needs.functions.result }}" ;;
+              web-backoffice) result="${{ needs.web-backoffice.result }}" ;;
+              flutter)        result="${{ needs.flutter.result }}" ;;
+              firebase-rules) result="${{ needs.firebase-rules.result }}" ;;
+            esac
+            if [[ "$result" == "failure" ]]; then
+              echo "::error::Job '$job' failed"
+              failed="$failed $job"
+            fi
+          done
+          if [[ -n "$failed" ]]; then
+            echo "Failed jobs:$failed"
+            exit 1
+          fi
+          echo "All required checks passed"
