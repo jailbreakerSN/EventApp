@@ -102,6 +102,29 @@ export interface MemberRemovedEvent extends BaseEventPayload {
   memberId: string;
 }
 
+// ── Ticket Type ─────────────────────────────────────────────────────────────
+
+export interface TicketTypeAddedEvent extends BaseEventPayload {
+  eventId: string;
+  organizationId: string;
+  ticketTypeId: string;
+  ticketTypeName: string;
+}
+
+export interface TicketTypeUpdatedEvent extends BaseEventPayload {
+  eventId: string;
+  organizationId: string;
+  ticketTypeId: string;
+  changes: Record<string, unknown>;
+}
+
+export interface TicketTypeRemovedEvent extends BaseEventPayload {
+  eventId: string;
+  organizationId: string;
+  ticketTypeId: string;
+  ticketTypeName: string;
+}
+
 // ── Badge ────────────────────────────────────────────────────────────────────
 
 export interface BadgeGeneratedEvent extends BaseEventPayload {
@@ -127,6 +150,9 @@ export interface DomainEventMap {
   "event.cancelled": EventCancelledEvent;
   "event.archived": EventArchivedEvent;
   "waitlist.promoted": WaitlistPromotedEvent;
+  "ticket_type.added": TicketTypeAddedEvent;
+  "ticket_type.updated": TicketTypeUpdatedEvent;
+  "ticket_type.removed": TicketTypeRemovedEvent;
   "organization.created": OrganizationCreatedEvent;
   "member.added": MemberAddedEvent;
   "member.removed": MemberRemovedEvent;

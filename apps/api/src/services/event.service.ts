@@ -264,6 +264,16 @@ export class EventService extends BaseService {
       updatedBy: user.uid,
     } as Partial<Event>);
 
+    eventBus.emit("ticket_type.added", {
+      eventId,
+      organizationId: event.organizationId,
+      ticketTypeId: ticketId,
+      ticketTypeName: dto.name,
+      actorId: user.uid,
+      requestId: getRequestId(),
+      timestamp: new Date().toISOString(),
+    });
+
     return { ...event, ticketTypes: updatedTicketTypes };
   }
 
@@ -291,6 +301,16 @@ export class EventService extends BaseService {
       updatedBy: user.uid,
     } as Partial<Event>);
 
+    eventBus.emit("ticket_type.updated", {
+      eventId,
+      organizationId: event.organizationId,
+      ticketTypeId,
+      changes: dto as Record<string, unknown>,
+      actorId: user.uid,
+      requestId: getRequestId(),
+      timestamp: new Date().toISOString(),
+    });
+
     return { ...event, ticketTypes: updatedTicketTypes };
   }
 
@@ -315,6 +335,16 @@ export class EventService extends BaseService {
       ticketTypes: updatedTicketTypes,
       updatedBy: user.uid,
     } as Partial<Event>);
+
+    eventBus.emit("ticket_type.removed", {
+      eventId,
+      organizationId: event.organizationId,
+      ticketTypeId,
+      ticketTypeName: ticketType.name,
+      actorId: user.uid,
+      requestId: getRequestId(),
+      timestamp: new Date().toISOString(),
+    });
   }
 
   // ─── Search ──────────────────────────────────────────────────────────────
@@ -323,6 +353,11 @@ export class EventService extends BaseService {
     query: EventSearchQuery,
     user?: AuthUser,
   ): Promise<PaginatedResult<Event>> {
+    // Normalize tags: accept comma-separated string or array
+    const tags = query.tags
+      ? (Array.isArray(query.tags) ? query.tags : query.tags.split(",").map((t) => t.trim()))
+      : undefined;
+
     const filters: EventSearchFilters = {
       category: query.category,
       format: query.format,
@@ -330,6 +365,9 @@ export class EventService extends BaseService {
       isFeatured: query.isFeatured,
       dateFrom: query.dateFrom,
       dateTo: query.dateTo,
+      city: query.city,
+      country: query.country,
+      tags,
     };
 
     const result = await eventRepository.search(filters, {

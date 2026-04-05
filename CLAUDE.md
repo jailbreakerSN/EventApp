@@ -418,7 +418,7 @@ The platform is delivered in **8 waves**, each building on the previous and prod
 
 ### Current Test Suite
 
-- **110 tests** across 10 test files (as of 2026-04-05)
+- **128 tests** across 12 test files (as of 2026-04-05)
 - Test runner: **Vitest** with TypeScript
 - Run: `cd apps/api && npx vitest run`
 - Test files follow `__tests__/` convention next to source files
@@ -437,6 +437,8 @@ The platform is delivered in **8 waves**, each building on the previous and prod
 | Audit listener | `src/events/__tests__/audit.listener.test.ts` | Domain event → audit log mapping |
 | Health routes | `src/routes/__tests__/health.routes.test.ts` | Liveness, readiness with Firestore check |
 | Event routes | `src/routes/__tests__/events.routes.test.ts` | Auth enforcement, CRUD, response shapes |
+| Upload service | `src/services/__tests__/upload.service.test.ts` | Signed URL generation, org access validation |
+| Badge template service | `src/services/__tests__/badge-template.service.test.ts` | Template CRUD, org access, permission checks |
 
 ### Writing Tests
 

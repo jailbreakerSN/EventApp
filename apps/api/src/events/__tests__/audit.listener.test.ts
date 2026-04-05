@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { eventBus } from "../event-bus";
 import { auditService } from "@/services/audit.service";
 import { registerAuditListeners } from "../listeners/audit.listener";
-import { type RegistrationCreatedEvent, type CheckInCompletedEvent, type EventPublishedEvent } from "../domain-events";
+import { type RegistrationCreatedEvent, type CheckInCompletedEvent, type EventPublishedEvent, type TicketTypeAddedEvent } from "../domain-events";
 
 vi.mock("@/services/audit.service", () => ({
   auditService: {
@@ -109,7 +109,34 @@ describe("Audit Listener", () => {
     );
   });
 
-  it("logs all 13 event types", async () => {
+  it("logs ticket_type.added with correct fields", async () => {
+    const payload: TicketTypeAddedEvent = {
+      eventId: "ev-1",
+      organizationId: "org-1",
+      ticketTypeId: "tt-new",
+      ticketTypeName: "VIP",
+      actorId: "u-org",
+      requestId: "req-tt",
+      timestamp: "2026-04-05T10:00:00.000Z",
+    };
+
+    eventBus.emit("ticket_type.added", payload);
+    await flush();
+
+    expect(auditService.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "ticket_type.added",
+        resourceType: "event",
+        resourceId: "ev-1",
+        details: {
+          ticketTypeId: "tt-new",
+          ticketTypeName: "VIP",
+        },
+      }),
+    );
+  });
+
+  it("logs all 16 event types", async () => {
     eventBus.emit("registration.created", {
       registration: { id: "r1", userId: "u1", ticketTypeId: "t1", status: "confirmed" } as any,
       eventId: "e1", organizationId: "o1", actorId: "a1", requestId: "req1", timestamp: "t1",
@@ -158,9 +185,28 @@ describe("Audit Listener", () => {
       badgeId: "b1", registrationId: "r1", eventId: "e1", userId: "u1",
       actorId: "a1", requestId: "req11", timestamp: "t11",
     });
+    eventBus.emit("waitlist.promoted", {
+      registrationId: "r5", eventId: "e1", userId: "u1", organizationId: "o1",
+      actorId: "a1", requestId: "req12", timestamp: "t12",
+    });
+    eventBus.emit("event.unpublished", {
+      eventId: "e1", organizationId: "o1", actorId: "a1", requestId: "req13", timestamp: "t13",
+    });
+    eventBus.emit("ticket_type.added", {
+      eventId: "e1", organizationId: "o1", ticketTypeId: "tt-1", ticketTypeName: "VIP",
+      actorId: "a1", requestId: "req14", timestamp: "t14",
+    });
+    eventBus.emit("ticket_type.updated", {
+      eventId: "e1", organizationId: "o1", ticketTypeId: "tt-1", changes: { name: "VVIP" },
+      actorId: "a1", requestId: "req15", timestamp: "t15",
+    });
+    eventBus.emit("ticket_type.removed", {
+      eventId: "e1", organizationId: "o1", ticketTypeId: "tt-1", ticketTypeName: "VIP",
+      actorId: "a1", requestId: "req16", timestamp: "t16",
+    });
 
     await flush();
 
-    expect(auditService.log).toHaveBeenCalledTimes(13);
+    expect(auditService.log).toHaveBeenCalledTimes(18);
   });
 });

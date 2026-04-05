@@ -2,6 +2,8 @@ import crypto from "node:crypto";
 import { storage } from "@/config/firebase";
 import { type UploadUrlRequest } from "@teranga/shared-types";
 import { type AuthUser } from "@/middlewares/auth.middleware";
+import { eventRepository } from "@/repositories/event.repository";
+import { organizationRepository } from "@/repositories/organization.repository";
 import { BaseService } from "./base.service";
 
 export class UploadService extends BaseService {
@@ -17,6 +19,15 @@ export class UploadService extends BaseService {
   ): Promise<{ uploadUrl: string; publicUrl: string }> {
     const permission = entityType === "event" ? "event:update" : "organization:update";
     this.requirePermission(user, permission);
+
+    // Validate entity exists and user has org access
+    if (entityType === "event") {
+      const event = await eventRepository.findByIdOrThrow(entityId);
+      this.requireOrganizationAccess(user, event.organizationId);
+    } else {
+      await organizationRepository.findByIdOrThrow(entityId);
+      this.requireOrganizationAccess(user, entityId);
+    }
 
     const ext = dto.fileName.split(".").pop() ?? "jpg";
     const uniqueName = `${crypto.randomBytes(8).toString("hex")}.${ext}`;

@@ -4,16 +4,10 @@ import { authenticate } from "@/middlewares/auth.middleware";
 import { validate } from "@/middlewares/validate.middleware";
 import { requirePermission } from "@/middlewares/permission.middleware";
 import { badgeService } from "@/services/badge.service";
-
-const GenerateBadgeBody = z.object({
-  registrationId: z.string(),
-  templateId: z.string(),
-});
-
-const BulkGenerateBody = z.object({
-  eventId: z.string(),
-  templateId: z.string(),
-});
+import {
+  BadgeGenerateRequestSchema,
+  BulkBadgeGenerateRequestSchema,
+} from "@teranga/shared-types";
 
 const ParamsWithEventId = z.object({ eventId: z.string() });
 const ParamsWithBadgeId = z.object({ badgeId: z.string() });
@@ -23,11 +17,11 @@ export const badgeRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post(
     "/generate",
     {
-      preHandler: [authenticate, requirePermission("badge:generate"), validate({ body: GenerateBadgeBody })],
+      preHandler: [authenticate, requirePermission("badge:generate"), validate({ body: BadgeGenerateRequestSchema })],
       schema: { tags: ["Badges"], summary: "Generate badge for a registration", security: [{ BearerAuth: [] }] },
     },
     async (request, reply) => {
-      const { registrationId, templateId } = request.body as z.infer<typeof GenerateBadgeBody>;
+      const { registrationId, templateId } = request.body as z.infer<typeof BadgeGenerateRequestSchema>;
       const badge = await badgeService.generate(registrationId, templateId, request.user!);
       return reply.status(202).send({ success: true, data: badge });
     },
@@ -37,11 +31,11 @@ export const badgeRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post(
     "/bulk-generate",
     {
-      preHandler: [authenticate, requirePermission("badge:bulk_generate"), validate({ body: BulkGenerateBody })],
+      preHandler: [authenticate, requirePermission("badge:bulk_generate"), validate({ body: BulkBadgeGenerateRequestSchema })],
       schema: { tags: ["Badges"], summary: "Bulk generate badges for an event", security: [{ BearerAuth: [] }] },
     },
     async (request, reply) => {
-      const { eventId, templateId } = request.body as z.infer<typeof BulkGenerateBody>;
+      const { eventId, templateId } = request.body as z.infer<typeof BulkBadgeGenerateRequestSchema>;
       const result = await badgeService.bulkGenerate(eventId, templateId, request.user!);
       return reply.status(202).send({ success: true, data: result });
     },

@@ -6,6 +6,12 @@ import { requirePermission } from "@/middlewares/permission.middleware";
 import { eventService } from "@/services/event.service";
 import { uploadService } from "@/services/upload.service";
 import {
+  type CreateEventDto,
+  type UpdateEventDto,
+  type CreateTicketTypeDto,
+  type UpdateTicketTypeDto,
+  type UploadUrlRequest,
+  type EventSearchQuery,
   CreateEventSchema,
   UpdateEventSchema,
   EventSearchQuerySchema,
@@ -54,7 +60,7 @@ export const eventRoutes: FastifyPluginAsync = async (fastify) => {
       schema: { tags: ["Events"], summary: "Create a new event", security: [{ BearerAuth: [] }] },
     },
     async (request, reply) => {
-      const event = await eventService.create(request.body as any, request.user!);
+      const event = await eventService.create(request.body as CreateEventDto, request.user!);
       return reply.status(201).send({ success: true, data: event });
     },
   );
@@ -72,8 +78,9 @@ export const eventRoutes: FastifyPluginAsync = async (fastify) => {
     },
     async (request, reply) => {
       const { eventId } = request.params as z.infer<typeof ParamsWithEventId>;
-      await eventService.update(eventId, request.body as any, request.user!);
-      return reply.send({ success: true, data: { id: eventId } });
+      await eventService.update(eventId, request.body as UpdateEventDto, request.user!);
+      const updated = await eventService.getById(eventId, request.user!);
+      return reply.send({ success: true, data: updated });
     },
   );
 
@@ -146,7 +153,7 @@ export const eventRoutes: FastifyPluginAsync = async (fastify) => {
     },
     async (request, reply) => {
       const { eventId } = request.params as z.infer<typeof ParamsWithEventId>;
-      const event = await eventService.addTicketType(eventId, request.body as any, request.user!);
+      const event = await eventService.addTicketType(eventId, request.body as CreateTicketTypeDto, request.user!);
       return reply.status(201).send({ success: true, data: event });
     },
   );
@@ -164,7 +171,7 @@ export const eventRoutes: FastifyPluginAsync = async (fastify) => {
     },
     async (request, reply) => {
       const { eventId, ticketTypeId } = request.params as z.infer<typeof TicketTypeParams>;
-      const event = await eventService.updateTicketType(eventId, ticketTypeId, request.body as any, request.user!);
+      const event = await eventService.updateTicketType(eventId, ticketTypeId, request.body as UpdateTicketTypeDto, request.user!);
       return reply.send({ success: true, data: event });
     },
   );
@@ -200,7 +207,7 @@ export const eventRoutes: FastifyPluginAsync = async (fastify) => {
     },
     async (request, reply) => {
       const { eventId } = request.params as z.infer<typeof ParamsWithEventId>;
-      const result = await uploadService.generateUploadUrl("event", eventId, request.body as any, request.user!);
+      const result = await uploadService.generateUploadUrl("event", eventId, request.body as UploadUrlRequest, request.user!);
       return reply.send({ success: true, data: result });
     },
   );

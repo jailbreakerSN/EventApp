@@ -52,6 +52,7 @@ export const onRegistrationApproved = onDocumentUpdated(
 
 /**
  * Shared logic: create a badge document for a registration.
+ * Uses a transaction to atomically check for duplicates and create the badge.
  * Looks up the org's default template, or uses no template (defaults applied in PDF generation).
  */
 async function createBadgeForRegistration(
@@ -60,19 +61,7 @@ async function createBadgeForRegistration(
 ): Promise<void> {
   const { eventId, userId, qrCodeValue } = registration;
 
-  // Check if badge already exists to prevent duplicates
-  const existingBadge = await db
-    .collection(COLLECTIONS.BADGES)
-    .where("registrationId", "==", regId)
-    .limit(1)
-    .get();
-
-  if (!existingBadge.empty) {
-    logger.info(`Badge already exists for registration ${regId}, skipping`);
-    return;
-  }
-
-  // Try to find a default template for the event's organization
+  // Look up default template before the transaction (read-only, no consistency concern)
   let templateId = "";
   try {
     const eventDoc = await db.collection(COLLECTIONS.EVENTS).doc(eventId).get();
@@ -95,24 +84,45 @@ async function createBadgeForRegistration(
     logger.warn(`Failed to find default template for registration ${regId}`, err);
   }
 
-  // Create badge document — triggers onBadgeCreated for PDF generation
+  // Atomic duplicate check + create inside a transaction
   const now = new Date().toISOString();
   const badgeRef = db.collection(COLLECTIONS.BADGES).doc();
-  await badgeRef.set({
-    id: badgeRef.id,
-    registrationId: regId,
-    eventId,
-    userId,
-    templateId,
-    pdfURL: null,
-    qrCodeValue,
-    generatedAt: now,
-    downloadCount: 0,
-  });
 
-  logger.info(`Badge ${badgeRef.id} created for registration ${regId}`, {
-    eventId,
-    userId,
-    templateId: templateId || "none",
-  });
+  try {
+    await db.runTransaction(async (tx) => {
+      // Check for existing badge inside the transaction
+      const existingBadge = await tx.get(
+        db.collection(COLLECTIONS.BADGES)
+          .where("registrationId", "==", regId)
+          .limit(1),
+      );
+
+      if (!existingBadge.empty) {
+        logger.info(`Badge already exists for registration ${regId}, skipping`);
+        return;
+      }
+
+      tx.set(badgeRef, {
+        id: badgeRef.id,
+        registrationId: regId,
+        eventId,
+        userId,
+        templateId,
+        status: "pending",
+        pdfURL: null,
+        qrCodeValue,
+        error: null,
+        generatedAt: now,
+        downloadCount: 0,
+      });
+    });
+
+    logger.info(`Badge ${badgeRef.id} created for registration ${regId}`, {
+      eventId,
+      userId,
+      templateId: templateId || "none",
+    });
+  } catch (err) {
+    logger.error(`Failed to create badge for registration ${regId}`, err);
+  }
 }

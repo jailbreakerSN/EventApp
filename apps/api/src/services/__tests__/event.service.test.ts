@@ -378,6 +378,50 @@ describe("EventService.addTicketType", () => {
   });
 });
 
+describe("EventService.updateTicketType", () => {
+  it("updates a ticket type successfully", async () => {
+    const user = buildOrganizerUser("org-1");
+    const event = buildEvent({
+      organizationId: "org-1",
+      ticketTypes: [{ id: "tt-1", name: "Standard", price: 0, currency: "XOF" as const, totalQuantity: 100, soldCount: 0, accessZoneIds: [], isVisible: true }],
+    });
+    mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
+    mockEventRepo.update.mockResolvedValue(undefined);
+
+    const result = await service.updateTicketType(event.id, "tt-1", { name: "VIP", price: 5000 }, user);
+
+    expect(result.ticketTypes[0].name).toBe("VIP");
+    expect(result.ticketTypes[0].price).toBe(5000);
+    expect(mockEventRepo.update).toHaveBeenCalledWith(
+      event.id,
+      expect.objectContaining({ updatedBy: user.uid }),
+    );
+  });
+
+  it("rejects updating a non-existent ticket type", async () => {
+    const user = buildOrganizerUser("org-1");
+    const event = buildEvent({ organizationId: "org-1", ticketTypes: [] });
+    mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
+
+    await expect(
+      service.updateTicketType(event.id, "tt-999", { name: "Nope" }, user),
+    ).rejects.toThrow("not found");
+  });
+
+  it("rejects if user doesn't belong to event's org", async () => {
+    const user = buildOrganizerUser("org-other");
+    const event = buildEvent({
+      organizationId: "org-1",
+      ticketTypes: [{ id: "tt-1", name: "Standard", price: 0, currency: "XOF" as const, totalQuantity: 100, soldCount: 0, accessZoneIds: [], isVisible: true }],
+    });
+    mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
+
+    await expect(
+      service.updateTicketType(event.id, "tt-1", { name: "VIP" }, user),
+    ).rejects.toThrow("Access denied");
+  });
+});
+
 describe("EventService.removeTicketType", () => {
   it("removes a ticket type with zero sales", async () => {
     const user = buildOrganizerUser("org-1");
@@ -440,6 +484,32 @@ describe("EventService.search", () => {
     expect(mockEventRepo.search).toHaveBeenCalledWith(
       expect.objectContaining({ category: "conference" }),
       expect.objectContaining({ page: 1, limit: 20 }),
+    );
+  });
+
+  it("passes city, country, and tags filters to repository", async () => {
+    mockEventRepo.search.mockResolvedValue({
+      data: [],
+      meta: { page: 1, limit: 20, total: 0, totalPages: 0 },
+    });
+
+    await service.search({
+      city: "Dakar",
+      country: "SN",
+      tags: "tech,startup",
+      page: 1,
+      limit: 20,
+      orderBy: "startDate",
+      orderDir: "asc",
+    });
+
+    expect(mockEventRepo.search).toHaveBeenCalledWith(
+      expect.objectContaining({
+        city: "Dakar",
+        country: "SN",
+        tags: ["tech", "startup"],
+      }),
+      expect.any(Object),
     );
   });
 

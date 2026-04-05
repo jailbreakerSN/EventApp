@@ -221,6 +221,59 @@ export function registerAuditListeners(): void {
     });
   });
 
+  // ── Ticket Type Events ──────────────────────────────────────────────────
+
+  eventBus.on("ticket_type.added", async (payload) => {
+    await auditService.log({
+      action: "ticket_type.added",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "event",
+      resourceId: payload.eventId,
+      eventId: payload.eventId,
+      organizationId: payload.organizationId,
+      details: {
+        ticketTypeId: payload.ticketTypeId,
+        ticketTypeName: payload.ticketTypeName,
+      },
+    });
+  });
+
+  eventBus.on("ticket_type.updated", async (payload) => {
+    await auditService.log({
+      action: "ticket_type.updated",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "event",
+      resourceId: payload.eventId,
+      eventId: payload.eventId,
+      organizationId: payload.organizationId,
+      details: {
+        ticketTypeId: payload.ticketTypeId,
+        changes: payload.changes,
+      },
+    });
+  });
+
+  eventBus.on("ticket_type.removed", async (payload) => {
+    await auditService.log({
+      action: "ticket_type.removed",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "event",
+      resourceId: payload.eventId,
+      eventId: payload.eventId,
+      organizationId: payload.organizationId,
+      details: {
+        ticketTypeId: payload.ticketTypeId,
+        ticketTypeName: payload.ticketTypeName,
+      },
+    });
+  });
+
   // ── Badge Events ────────────────────────────────────────────────────────
 
   eventBus.on("badge.generated", async (payload) => {

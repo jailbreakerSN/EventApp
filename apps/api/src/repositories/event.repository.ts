@@ -17,6 +17,9 @@ export interface EventSearchFilters {
   isFeatured?: boolean;
   dateFrom?: string;
   dateTo?: string;
+  city?: string;
+  country?: string;
+  tags?: string[];
 }
 
 export class EventRepository extends BaseRepository<Event> {
@@ -103,6 +106,16 @@ export class EventRepository extends BaseRepository<Event> {
     }
     if (filters.dateTo) {
       whereFilters.push({ field: "startDate", op: "<=", value: filters.dateTo });
+    }
+    if (filters.city) {
+      whereFilters.push({ field: "location.city", op: "==", value: filters.city });
+    }
+    if (filters.country) {
+      whereFilters.push({ field: "location.country", op: "==", value: filters.country });
+    }
+    if (filters.tags && filters.tags.length > 0) {
+      // Firestore array-contains-any: find events matching ANY of the tags (max 30)
+      whereFilters.push({ field: "tags", op: "array-contains-any", value: filters.tags.slice(0, 30) });
     }
 
     return this.findMany(whereFilters, {

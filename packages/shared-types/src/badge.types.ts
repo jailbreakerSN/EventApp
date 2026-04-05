@@ -28,14 +28,19 @@ export const BadgeTemplateSchema = z.object({
 
 export type BadgeTemplate = z.infer<typeof BadgeTemplateSchema>;
 
+export const BadgeStatusSchema = z.enum(["pending", "generated", "failed"]);
+export type BadgeStatus = z.infer<typeof BadgeStatusSchema>;
+
 export const GeneratedBadgeSchema = z.object({
   id: z.string(),
   registrationId: z.string(),
   eventId: z.string(),
   userId: z.string(),
   templateId: z.string(),
+  status: BadgeStatusSchema.default("pending"),
   pdfURL: z.string().url().nullable().optional(),   // Cloud Storage URL
   qrCodeValue: z.string(),                          // payload encoded in QR
+  error: z.string().nullable().optional(),           // error message if generation failed
   generatedAt: z.string().datetime(),
   downloadCount: z.number().int().default(0),
 });

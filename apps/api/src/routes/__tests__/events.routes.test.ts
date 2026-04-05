@@ -216,9 +216,11 @@ describe("PATCH /v1/events/:eventId", () => {
     expect(res.statusCode).toBe(401);
   });
 
-  it("updates event successfully", async () => {
+  it("updates event successfully and returns full event", async () => {
     const headers = authHeaders();
+    const event = buildEvent({ id: "ev-1", title: "Updated Title" });
     mockEventService.update.mockResolvedValue(undefined);
+    mockEventService.getById.mockResolvedValue(event);
 
     const res = await app.inject({
       method: "PATCH",
@@ -228,7 +230,7 @@ describe("PATCH /v1/events/:eventId", () => {
     });
 
     expect(res.statusCode).toBe(200);
-    expect(res.json().data.id).toBe("ev-1");
+    expect(res.json().data.title).toBe("Updated Title");
   });
 });
 
@@ -301,6 +303,35 @@ describe("POST /v1/events/:eventId/ticket-types", () => {
     const res = await app.inject({
       method: "POST",
       url: "/v1/events/ev-1/ticket-types",
+      headers: { "content-type": "application/json" },
+      payload: { name: "VIP" },
+    });
+
+    expect(res.statusCode).toBe(401);
+  });
+});
+
+describe("PATCH /v1/events/:eventId/ticket-types/:ticketTypeId", () => {
+  it("updates a ticket type and returns 200", async () => {
+    const headers = authHeaders();
+    const event = buildEvent({ ticketTypes: [{ id: "tt-1", name: "VIP Updated", price: 10000, currency: "XOF", totalQuantity: 50, soldCount: 0, accessZoneIds: [], isVisible: true }] });
+    mockEventService.updateTicketType.mockResolvedValue(event);
+
+    const res = await app.inject({
+      method: "PATCH",
+      url: "/v1/events/ev-1/ticket-types/tt-1",
+      headers: { ...headers, "content-type": "application/json" },
+      payload: { name: "VIP Updated", price: 10000 },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().success).toBe(true);
+  });
+
+  it("returns 401 without auth", async () => {
+    const res = await app.inject({
+      method: "PATCH",
+      url: "/v1/events/ev-1/ticket-types/tt-1",
       headers: { "content-type": "application/json" },
       payload: { name: "VIP" },
     });

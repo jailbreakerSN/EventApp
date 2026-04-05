@@ -73,8 +73,10 @@ export class BadgeService extends BaseService {
       eventId: registration.eventId,
       userId: registration.userId,
       templateId,
+      status: "pending",
       pdfURL: null,
       qrCodeValue: registration.qrCodeValue,
+      error: null,
       generatedAt: now,
       downloadCount: 0,
     };
@@ -148,8 +150,10 @@ export class BadgeService extends BaseService {
           eventId,
           userId: reg.userId,
           templateId,
+          status: "pending",
           pdfURL: null,
           qrCodeValue: reg.qrCodeValue,
+          error: null,
           generatedAt: now,
           downloadCount: 0,
         });
@@ -192,9 +196,15 @@ export class BadgeService extends BaseService {
 
     const badge = { id: snap.id, ...snap.data() } as GeneratedBadge;
 
-    // Check access: own badge or has badge:generate permission
+    // Check access: own badge or badge:generate permission with org verification
     if (badge.userId !== user.uid) {
       this.requirePermission(user, "badge:generate");
+      const event = await eventRepository.findByIdOrThrow(badge.eventId);
+      this.requireOrganizationAccess(user, event.organizationId);
+    }
+
+    if (badge.status === "failed") {
+      throw new ValidationError(`Badge generation failed: ${badge.error ?? "unknown error"}`);
     }
 
     if (!badge.pdfURL) {
@@ -212,10 +222,13 @@ export class BadgeService extends BaseService {
       expires: Date.now() + 60 * 60 * 1000, // 1 hour
     });
 
-    // Increment download counter (fire-and-forget)
+    // Increment download counter (fire-and-forget, log errors with context)
+    const reqId = getRequestId();
     this.badgesCollection.doc(badgeId).update({
       downloadCount: (badge.downloadCount ?? 0) + 1,
-    }).catch(() => { /* swallow counter increment errors */ });
+    }).catch((err: unknown) => {
+      process.stderr.write(`[BadgeService] reqId=${reqId} Failed to increment download counter for badge ${badgeId}: ${err}\n`);
+    });
 
     return { downloadUrl };
   }
