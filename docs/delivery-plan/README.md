@@ -10,12 +10,21 @@ The Teranga platform delivery is organized into **8 waves**, each building on th
 
 | Component | Completion | Notes |
 |-----------|-----------|-------|
-| Shared Types | ~95% | Zod schemas, permissions, all core types |
-| API (Fastify) | ~85% | Routes, services, repos, middleware, RBAC, transactions, audit, health |
-| Cloud Functions | ~60% | Auth triggers, badge generation, notifications |
-| Web Backoffice | ~30% | Layout shell, auth, basic event CRUD pages |
-| Mobile (Flutter) | ~35% | Auth, home, event list, basic navigation |
+| Shared Types | ~98% | Zod schemas, permissions, all core types, badge status, search filters |
+| API (Fastify) | ~92% | All Wave 1 endpoints complete, 128 tests, review fixes applied |
+| Cloud Functions | ~70% | Auth triggers, badge generation (atomic), registration triggers |
+| Web Backoffice | ~30% | Layout shell, auth, stub pages — **no API integration yet** |
+| Mobile (Flutter) | ~35% | Auth, navigation shell, stub pages — **no API integration yet** |
 | Infrastructure | 100% | Firestore rules, indexes, Firebase config |
+
+### Sprint Breakdown (Wave 1 Completion)
+
+| Sprint | Focus | Branch | Status |
+|--------|-------|--------|--------|
+| Sprint 0 | Git housekeeping | `main` established | `completed` |
+| Sprint 1 | Web backoffice — event management | `feature/wave-1-web` | `in_progress` |
+| Sprint 2 | Mobile — event discovery & registration | `feature/wave-1-mobile` | `not_started` |
+| Sprint 3 | Integration testing & Wave 1 close | `feature/wave-1-integration` | `not_started` |
 
 ## Wave Progress
 

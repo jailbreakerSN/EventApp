@@ -1,6 +1,6 @@
 {
   "projects": {
-    "default": "teranga-events-dev",
+    "default": "teranga-app-990a8",
     "staging": "teranga-events-staging",
     "production": "teranga-events-prod"
   },

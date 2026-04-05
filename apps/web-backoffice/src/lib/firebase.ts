@@ -1,9 +1,10 @@
 import { initializeApp, getApps } from "firebase/app";
 import { getAuth, connectAuthEmulator } from "firebase/auth";
 import {
-  getFirestore,
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
   connectFirestoreEmulator,
-  enableIndexedDbPersistence,
 } from "firebase/firestore";
 import { getStorage, connectStorageEmulator } from "firebase/storage";
 import { getMessaging, isSupported } from "firebase/messaging";
@@ -21,18 +22,25 @@ const firebaseConfig = {
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
 
 export const firebaseAuth = getAuth(app);
-export const firestore = getFirestore(app);
+
+// Use initializeFirestore with persistence built in (replaces deprecated enableIndexedDbPersistence)
+const useEmulators =
+  process.env.NODE_ENV === "development" &&
+  process.env.NEXT_PUBLIC_USE_EMULATORS === "true";
+
+export const firestore = initializeFirestore(app, {
+  localCache: useEmulators
+    ? undefined // skip persistence when using emulators (avoids conflicts)
+    : persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+});
+
 export const firebaseStorage = getStorage(app);
 
-// Enable offline persistence for web (PWA)
-if (typeof window !== "undefined") {
-  enableIndexedDbPersistence(firestore).catch((err) => {
-    if (err.code === "failed-precondition") {
-      console.warn("Firestore persistence: multiple tabs open");
-    } else if (err.code === "unimplemented") {
-      console.warn("Firestore persistence: not supported in this browser");
-    }
-  });
+// Connect to emulators BEFORE any other Firestore/Auth/Storage calls
+if (useEmulators) {
+  connectAuthEmulator(firebaseAuth, "http://localhost:9099", { disableWarnings: true });
+  connectFirestoreEmulator(firestore, "localhost", 8080);
+  connectStorageEmulator(firebaseStorage, "localhost", 9199);
 }
 
 // FCM (only in browser, and only if supported)
@@ -41,13 +49,3 @@ export const getFirebaseMessaging = async () => {
   const supported = await isSupported();
   return supported ? getMessaging(app) : null;
 };
-
-// Connect to emulators in development
-if (
-  process.env.NODE_ENV === "development" &&
-  process.env.NEXT_PUBLIC_USE_EMULATORS === "true"
-) {
-  connectAuthEmulator(firebaseAuth, "http://localhost:9099", { disableWarnings: true });
-  connectFirestoreEmulator(firestore, "localhost", 8080);
-  connectStorageEmulator(firebaseStorage, "localhost", 9199);
-}

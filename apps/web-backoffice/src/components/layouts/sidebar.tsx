@@ -6,7 +6,6 @@ import {
   LayoutDashboard,
   CalendarDays,
   Users,
-  CreditCard,
   Bell,
   Settings,
   Building2,

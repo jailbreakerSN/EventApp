@@ -8,12 +8,22 @@ import { config } from "./index";
 function initFirebaseAdmin() {
   if (getApps().length > 0) return;
 
-  // Uses Workload Identity on GCP, GOOGLE_APPLICATION_CREDENTIALS locally
-  initializeApp({
-    credential: applicationDefault(),
-    projectId: config.FIREBASE_PROJECT_ID,
-    storageBucket: config.FIREBASE_STORAGE_BUCKET,
-  });
+  const useEmulators = !!process.env.FIRESTORE_EMULATOR_HOST;
+
+  if (useEmulators) {
+    // Emulators don't need real credentials
+    initializeApp({
+      projectId: config.FIREBASE_PROJECT_ID,
+      storageBucket: config.FIREBASE_STORAGE_BUCKET,
+    });
+  } else {
+    // Uses Workload Identity on GCP, GOOGLE_APPLICATION_CREDENTIALS locally
+    initializeApp({
+      credential: applicationDefault(),
+      projectId: config.FIREBASE_PROJECT_ID,
+      storageBucket: config.FIREBASE_STORAGE_BUCKET,
+    });
+  }
 }
 
 initFirebaseAdmin();

@@ -67,3 +67,4 @@ infrastructure/terraform/*.tfvars
 *.json.key
 service-account*.json
 *-service-account.json
+*firebase_adminsdk*.json
