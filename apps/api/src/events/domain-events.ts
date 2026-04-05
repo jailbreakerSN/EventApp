@@ -69,8 +69,20 @@ export interface EventCancelledEvent extends BaseEventPayload {
   organizationId: string;
 }
 
+export interface EventUnpublishedEvent extends BaseEventPayload {
+  eventId: string;
+  organizationId: string;
+}
+
 export interface EventArchivedEvent extends BaseEventPayload {
   eventId: string;
+  organizationId: string;
+}
+
+export interface WaitlistPromotedEvent extends BaseEventPayload {
+  registrationId: string;
+  eventId: string;
+  userId: string;
   organizationId: string;
 }
 
@@ -111,8 +123,10 @@ export interface DomainEventMap {
   "event.created": EventCreatedEvent;
   "event.updated": EventUpdatedEvent;
   "event.published": EventPublishedEvent;
+  "event.unpublished": EventUnpublishedEvent;
   "event.cancelled": EventCancelledEvent;
   "event.archived": EventArchivedEvent;
+  "waitlist.promoted": WaitlistPromotedEvent;
   "organization.created": OrganizationCreatedEvent;
   "member.added": MemberAddedEvent;
   "member.removed": MemberRemovedEvent;

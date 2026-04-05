@@ -17,13 +17,28 @@ vi.mock("@/config/firebase", () => ({
 
 const mockEventService = {
   listPublished: vi.fn(),
+  search: vi.fn(),
   getById: vi.fn(),
   create: vi.fn(),
   update: vi.fn(),
   publish: vi.fn(),
+  unpublish: vi.fn(),
   cancel: vi.fn(),
   archive: vi.fn(),
+  addTicketType: vi.fn(),
+  updateTicketType: vi.fn(),
+  removeTicketType: vi.fn(),
 };
+
+const mockUploadService = {
+  generateUploadUrl: vi.fn(),
+};
+
+vi.mock("@/services/upload.service", () => ({
+  uploadService: new Proxy({}, {
+    get: (_target, prop) => (mockUploadService as Record<string, unknown>)[prop as string],
+  }),
+}));
 
 vi.mock("@/services/event.service", () => ({
   eventService: new Proxy({}, {
@@ -78,7 +93,7 @@ function authHeaders(overrides: Record<string, unknown> = {}) {
 describe("GET /v1/events", () => {
   it("returns paginated event list", async () => {
     const events = [buildEvent(), buildEvent()];
-    mockEventService.listPublished.mockResolvedValue({
+    mockEventService.search.mockResolvedValue({
       data: events,
       meta: { page: 1, limit: 20, total: 2, totalPages: 1 },
     });
@@ -96,7 +111,7 @@ describe("GET /v1/events", () => {
   });
 
   it("does not require authentication", async () => {
-    mockEventService.listPublished.mockResolvedValue({
+    mockEventService.search.mockResolvedValue({
       data: [],
       meta: { page: 1, limit: 20, total: 0, totalPages: 0 },
     });
@@ -246,6 +261,66 @@ describe("POST /v1/events/:eventId/cancel", () => {
 
     expect(res.statusCode).toBe(200);
     expect(res.json().data.status).toBe("cancelled");
+  });
+});
+
+describe("POST /v1/events/:eventId/unpublish", () => {
+  it("unpublishes event and returns 200", async () => {
+    const headers = authHeaders();
+    mockEventService.unpublish.mockResolvedValue(undefined);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/events/ev-1/unpublish",
+      headers,
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().data.status).toBe("draft");
+  });
+});
+
+describe("POST /v1/events/:eventId/ticket-types", () => {
+  it("adds a ticket type and returns 201", async () => {
+    const headers = authHeaders();
+    const event = buildEvent({ ticketTypes: [{ id: "tt-new", name: "VIP", price: 5000, currency: "XOF", totalQuantity: 50, soldCount: 0, accessZoneIds: [], isVisible: true }] });
+    mockEventService.addTicketType.mockResolvedValue(event);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/events/ev-1/ticket-types",
+      headers: { ...headers, "content-type": "application/json" },
+      payload: { name: "VIP", price: 5000, currency: "XOF", totalQuantity: 50, accessZoneIds: [], isVisible: true },
+    });
+
+    expect(res.statusCode).toBe(201);
+    expect(res.json().success).toBe(true);
+  });
+
+  it("returns 401 without auth", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/events/ev-1/ticket-types",
+      headers: { "content-type": "application/json" },
+      payload: { name: "VIP" },
+    });
+
+    expect(res.statusCode).toBe(401);
+  });
+});
+
+describe("DELETE /v1/events/:eventId/ticket-types/:ticketTypeId", () => {
+  it("removes a ticket type and returns 204", async () => {
+    const headers = authHeaders();
+    mockEventService.removeTicketType.mockResolvedValue(undefined);
+
+    const res = await app.inject({
+      method: "DELETE",
+      url: "/v1/events/ev-1/ticket-types/tt-1",
+      headers,
+    });
+
+    expect(res.statusCode).toBe(204);
   });
 });
 

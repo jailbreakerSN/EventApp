@@ -24,5 +24,8 @@ export const COLLECTIONS = {
   CONVERSATIONS: "conversations",
   MESSAGES: "messages",
   FEED_POSTS: "feedPosts",
+  FEED_COMMENTS: "feedComments",
   NOTIFICATIONS: "notifications",
+  OFFLINE_SYNC: "offlineSync",
+  AUDIT_LOGS: "auditLogs",
 } as const;

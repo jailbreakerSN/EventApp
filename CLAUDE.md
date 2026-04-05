@@ -418,7 +418,7 @@ The platform is delivered in **8 waves**, each building on the previous and prod
 
 ### Current Test Suite
 
-- **96 tests** across 10 test files (as of 2026-04-05)
+- **110 tests** across 10 test files (as of 2026-04-05)
 - Test runner: **Vitest** with TypeScript
 - Run: `cd apps/api && npx vitest run`
 - Test files follow `__tests__/` convention next to source files

@@ -2,10 +2,13 @@ import crypto from "node:crypto";
 import {
   type CreateEventDto,
   type UpdateEventDto,
+  type CreateTicketTypeDto,
+  type UpdateTicketTypeDto,
   type Event,
   type EventStatus,
+  type EventSearchQuery,
 } from "@teranga/shared-types";
-import { eventRepository, type EventFilters } from "@/repositories/event.repository";
+import { eventRepository, type EventFilters, type EventSearchFilters } from "@/repositories/event.repository";
 import { organizationRepository } from "@/repositories/organization.repository";
 import { type PaginationParams, type PaginatedResult } from "@/repositories/base.repository";
 import { type AuthUser } from "@/middlewares/auth.middleware";
@@ -217,6 +220,136 @@ export class EventService extends BaseService {
       requestId: getRequestId(),
       timestamp: new Date().toISOString(),
     });
+  }
+
+  async unpublish(eventId: string, user: AuthUser): Promise<void> {
+    this.requirePermission(user, "event:publish");
+
+    const event = await eventRepository.findByIdOrThrow(eventId);
+    this.requireOrganizationAccess(user, event.organizationId);
+
+    if (event.status !== "published") {
+      throw new ValidationError(`Cannot unpublish event with status '${event.status}'. Only published events can be unpublished.`);
+    }
+
+    await eventRepository.unpublish(eventId, user.uid);
+
+    eventBus.emit("event.unpublished", {
+      eventId,
+      organizationId: event.organizationId,
+      actorId: user.uid,
+      requestId: getRequestId(),
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  // ─── Ticket Type Management ──────────────────────────────────────────────
+
+  async addTicketType(eventId: string, dto: CreateTicketTypeDto, user: AuthUser): Promise<Event> {
+    this.requirePermission(user, "event:update");
+
+    const event = await eventRepository.findByIdOrThrow(eventId);
+    this.requireOrganizationAccess(user, event.organizationId);
+
+    if (event.status === "cancelled" || event.status === "archived") {
+      throw new ValidationError(`Cannot modify ticket types on a ${event.status} event`);
+    }
+
+    const ticketId = `tt-${crypto.randomBytes(4).toString("hex")}`;
+    const newTicketType = { ...dto, id: ticketId, soldCount: 0 };
+    const updatedTicketTypes = [...event.ticketTypes, newTicketType];
+
+    await eventRepository.update(eventId, {
+      ticketTypes: updatedTicketTypes,
+      updatedBy: user.uid,
+    } as Partial<Event>);
+
+    return { ...event, ticketTypes: updatedTicketTypes };
+  }
+
+  async updateTicketType(
+    eventId: string,
+    ticketTypeId: string,
+    dto: UpdateTicketTypeDto,
+    user: AuthUser,
+  ): Promise<Event> {
+    this.requirePermission(user, "event:update");
+
+    const event = await eventRepository.findByIdOrThrow(eventId);
+    this.requireOrganizationAccess(user, event.organizationId);
+
+    const index = event.ticketTypes.findIndex((t) => t.id === ticketTypeId);
+    if (index === -1) {
+      throw new ValidationError(`Ticket type '${ticketTypeId}' not found`);
+    }
+
+    const updatedTicketTypes = [...event.ticketTypes];
+    updatedTicketTypes[index] = { ...updatedTicketTypes[index], ...dto };
+
+    await eventRepository.update(eventId, {
+      ticketTypes: updatedTicketTypes,
+      updatedBy: user.uid,
+    } as Partial<Event>);
+
+    return { ...event, ticketTypes: updatedTicketTypes };
+  }
+
+  async removeTicketType(eventId: string, ticketTypeId: string, user: AuthUser): Promise<void> {
+    this.requirePermission(user, "event:update");
+
+    const event = await eventRepository.findByIdOrThrow(eventId);
+    this.requireOrganizationAccess(user, event.organizationId);
+
+    const ticketType = event.ticketTypes.find((t) => t.id === ticketTypeId);
+    if (!ticketType) {
+      throw new ValidationError(`Ticket type '${ticketTypeId}' not found`);
+    }
+
+    if (ticketType.soldCount > 0) {
+      throw new ValidationError("Cannot remove a ticket type with existing sales");
+    }
+
+    const updatedTicketTypes = event.ticketTypes.filter((t) => t.id !== ticketTypeId);
+
+    await eventRepository.update(eventId, {
+      ticketTypes: updatedTicketTypes,
+      updatedBy: user.uid,
+    } as Partial<Event>);
+  }
+
+  // ─── Search ──────────────────────────────────────────────────────────────
+
+  async search(
+    query: EventSearchQuery,
+    user?: AuthUser,
+  ): Promise<PaginatedResult<Event>> {
+    const filters: EventSearchFilters = {
+      category: query.category,
+      format: query.format,
+      organizationId: query.organizationId,
+      isFeatured: query.isFeatured,
+      dateFrom: query.dateFrom,
+      dateTo: query.dateTo,
+    };
+
+    const result = await eventRepository.search(filters, {
+      page: query.page,
+      limit: query.limit,
+      orderBy: query.orderBy,
+      orderDir: query.orderDir,
+    });
+
+    // Client-side title prefix filter (Firestore lacks full-text search)
+    if (query.q) {
+      const q = query.q.toLowerCase();
+      result.data = result.data.filter(
+        (e) => e.title.toLowerCase().includes(q) || e.description?.toLowerCase().includes(q),
+      );
+      result.meta.total = result.data.length;
+      result.meta.totalPages = Math.ceil(result.data.length / query.limit);
+    }
+
+    return result;
   }
 
 }

@@ -1,6 +1,6 @@
 import { COLLECTIONS } from "@/config/firebase";
 import { BaseRepository, type PaginatedResult, type PaginationParams } from "./base.repository";
-import { type Event, type EventStatus, type EventCategory } from "@teranga/shared-types";
+import { type Event, type EventStatus, type EventCategory, type EventFormat } from "@teranga/shared-types";
 
 export interface EventFilters {
   organizationId?: string;
@@ -8,6 +8,15 @@ export interface EventFilters {
   category?: EventCategory;
   isPublic?: boolean;
   isFeatured?: boolean;
+}
+
+export interface EventSearchFilters {
+  category?: EventCategory;
+  format?: EventFormat;
+  organizationId?: string;
+  isFeatured?: boolean;
+  dateFrom?: string;
+  dateTo?: string;
 }
 
 export class EventRepository extends BaseRepository<Event> {
@@ -58,6 +67,49 @@ export class EventRepository extends BaseRepository<Event> {
       publishedAt: now,
       updatedBy: userId,
     } as Partial<Event>);
+  }
+
+  async unpublish(id: string, userId: string): Promise<void> {
+    await this.update(id, {
+      status: "draft" as EventStatus,
+      publishedAt: null,
+      updatedBy: userId,
+    } as Partial<Event>);
+  }
+
+  async search(
+    filters: EventSearchFilters,
+    pagination: PaginationParams,
+  ): Promise<PaginatedResult<Event>> {
+    const whereFilters: Array<{ field: string; op: "==" | ">=" | "<=" | "array-contains-any"; value: unknown }> = [
+      { field: "status", op: "==", value: "published" },
+      { field: "isPublic", op: "==", value: true },
+    ];
+
+    if (filters.category) {
+      whereFilters.push({ field: "category", op: "==", value: filters.category });
+    }
+    if (filters.format) {
+      whereFilters.push({ field: "format", op: "==", value: filters.format });
+    }
+    if (filters.organizationId) {
+      whereFilters.push({ field: "organizationId", op: "==", value: filters.organizationId });
+    }
+    if (filters.isFeatured !== undefined) {
+      whereFilters.push({ field: "isFeatured", op: "==", value: filters.isFeatured });
+    }
+    if (filters.dateFrom) {
+      whereFilters.push({ field: "startDate", op: ">=", value: filters.dateFrom });
+    }
+    if (filters.dateTo) {
+      whereFilters.push({ field: "startDate", op: "<=", value: filters.dateTo });
+    }
+
+    return this.findMany(whereFilters, {
+      ...pagination,
+      orderBy: pagination.orderBy ?? "startDate",
+      orderDir: pagination.orderDir ?? "asc",
+    });
   }
 }
 

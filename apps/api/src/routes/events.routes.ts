@@ -4,38 +4,30 @@ import { authenticate, optionalAuth } from "@/middlewares/auth.middleware";
 import { validate } from "@/middlewares/validate.middleware";
 import { requirePermission } from "@/middlewares/permission.middleware";
 import { eventService } from "@/services/event.service";
+import { uploadService } from "@/services/upload.service";
 import {
   CreateEventSchema,
   UpdateEventSchema,
-  PaginationSchema,
+  EventSearchQuerySchema,
+  CreateTicketTypeSchema,
+  UpdateTicketTypeSchema,
+  UploadUrlRequestSchema,
 } from "@teranga/shared-types";
 
 const ParamsWithEventId = z.object({ eventId: z.string() });
-
-const ListEventsQuery = z.object({
-  ...PaginationSchema.shape,
-  category: z.string().optional(),
-  organizationId: z.string().optional(),
-  featured: z.coerce.boolean().optional(),
-});
+const TicketTypeParams = z.object({ eventId: z.string(), ticketTypeId: z.string() });
 
 export const eventRoutes: FastifyPluginAsync = async (fastify) => {
-  // ─── List Published Events (public) ──────────────────────────────────────
+  // ─── Search / List Published Events (public) ──────────────────────────────
   fastify.get(
     "/",
     {
-      preHandler: [validate({ query: ListEventsQuery })],
-      schema: { tags: ["Events"], summary: "List published events" },
+      preHandler: [optionalAuth, validate({ query: EventSearchQuerySchema })],
+      schema: { tags: ["Events"], summary: "Search published events" },
     },
     async (request, reply) => {
-      const { page, limit, orderBy, orderDir, category, organizationId, featured } =
-        request.query as z.infer<typeof ListEventsQuery>;
-
-      const result = await eventService.listPublished(
-        { category: category as any, organizationId, isFeatured: featured },
-        { page, limit, orderBy, orderDir },
-      );
-
+      const query = request.query as z.infer<typeof EventSearchQuerySchema>;
+      const result = await eventService.search(query, request.user ?? undefined);
       return reply.send({ success: true, data: result.data, meta: result.meta });
     },
   );
@@ -49,7 +41,7 @@ export const eventRoutes: FastifyPluginAsync = async (fastify) => {
     },
     async (request, reply) => {
       const { eventId } = request.params as z.infer<typeof ParamsWithEventId>;
-      const event = await eventService.getById(eventId, request.user);
+      const event = await eventService.getById(eventId, request.user ?? undefined);
       return reply.send({ success: true, data: event });
     },
   );
@@ -99,6 +91,20 @@ export const eventRoutes: FastifyPluginAsync = async (fastify) => {
     },
   );
 
+  // ─── Unpublish Event ─────────────────────────────────────────────────────
+  fastify.post(
+    "/:eventId/unpublish",
+    {
+      preHandler: [authenticate, requirePermission("event:publish"), validate({ params: ParamsWithEventId })],
+      schema: { tags: ["Events"], summary: "Unpublish an event (revert to draft)", security: [{ BearerAuth: [] }] },
+    },
+    async (request, reply) => {
+      const { eventId } = request.params as z.infer<typeof ParamsWithEventId>;
+      await eventService.unpublish(eventId, request.user!);
+      return reply.send({ success: true, data: { id: eventId, status: "draft" } });
+    },
+  );
+
   // ─── Cancel Event ────────────────────────────────────────────────────────
   fastify.post(
     "/:eventId/cancel",
@@ -124,6 +130,78 @@ export const eventRoutes: FastifyPluginAsync = async (fastify) => {
       const { eventId } = request.params as z.infer<typeof ParamsWithEventId>;
       await eventService.archive(eventId, request.user!);
       return reply.status(204).send();
+    },
+  );
+
+  // ─── Ticket Type: Add ───────────────────────────────────────────────────
+  fastify.post(
+    "/:eventId/ticket-types",
+    {
+      preHandler: [
+        authenticate,
+        requirePermission("event:update"),
+        validate({ params: ParamsWithEventId, body: CreateTicketTypeSchema }),
+      ],
+      schema: { tags: ["Events"], summary: "Add a ticket type to an event", security: [{ BearerAuth: [] }] },
+    },
+    async (request, reply) => {
+      const { eventId } = request.params as z.infer<typeof ParamsWithEventId>;
+      const event = await eventService.addTicketType(eventId, request.body as any, request.user!);
+      return reply.status(201).send({ success: true, data: event });
+    },
+  );
+
+  // ─── Ticket Type: Update ────────────────────────────────────────────────
+  fastify.patch(
+    "/:eventId/ticket-types/:ticketTypeId",
+    {
+      preHandler: [
+        authenticate,
+        requirePermission("event:update"),
+        validate({ params: TicketTypeParams, body: UpdateTicketTypeSchema }),
+      ],
+      schema: { tags: ["Events"], summary: "Update a ticket type", security: [{ BearerAuth: [] }] },
+    },
+    async (request, reply) => {
+      const { eventId, ticketTypeId } = request.params as z.infer<typeof TicketTypeParams>;
+      const event = await eventService.updateTicketType(eventId, ticketTypeId, request.body as any, request.user!);
+      return reply.send({ success: true, data: event });
+    },
+  );
+
+  // ─── Ticket Type: Remove ────────────────────────────────────────────────
+  fastify.delete(
+    "/:eventId/ticket-types/:ticketTypeId",
+    {
+      preHandler: [
+        authenticate,
+        requirePermission("event:update"),
+        validate({ params: TicketTypeParams }),
+      ],
+      schema: { tags: ["Events"], summary: "Remove a ticket type", security: [{ BearerAuth: [] }] },
+    },
+    async (request, reply) => {
+      const { eventId, ticketTypeId } = request.params as z.infer<typeof TicketTypeParams>;
+      await eventService.removeTicketType(eventId, ticketTypeId, request.user!);
+      return reply.status(204).send();
+    },
+  );
+
+  // ─── Upload URL for Event Images ────────────────────────────────────────
+  fastify.post(
+    "/:eventId/upload-url",
+    {
+      preHandler: [
+        authenticate,
+        requirePermission("event:update"),
+        validate({ params: ParamsWithEventId, body: UploadUrlRequestSchema }),
+      ],
+      schema: { tags: ["Events"], summary: "Get a signed upload URL for event images", security: [{ BearerAuth: [] }] },
+    },
+    async (request, reply) => {
+      const { eventId } = request.params as z.infer<typeof ParamsWithEventId>;
+      const result = await uploadService.generateUploadUrl("event", eventId, request.body as any, request.user!);
+      return reply.send({ success: true, data: result });
     },
   );
 };

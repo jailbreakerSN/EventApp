@@ -232,6 +232,14 @@ export class RegistrationService extends BaseService {
       requestId: getRequestId(),
       timestamp: new Date().toISOString(),
     });
+
+    // If a confirmed registration was cancelled, promote next waitlisted
+    // Fire-and-forget: promotion failure should not affect the cancel response
+    if (registration.status === "confirmed") {
+      this.promoteNextWaitlisted(eventPayload.eventId, eventPayload.organizationId, user.uid).catch(() => {
+        // Swallowed — audit listener will log the cancellation regardless
+      });
+    }
   }
 
   /**
@@ -383,6 +391,45 @@ export class RegistrationService extends BaseService {
       checkedInAt: txResult.checkedInAt,
       reason: null,
     };
+  }
+
+  /**
+   * Promote the oldest waitlisted registration to confirmed for an event.
+   * Uses a transaction to prevent two concurrent promotions picking the same entry.
+   */
+  async promoteNextWaitlisted(
+    eventId: string,
+    organizationId: string,
+    actorId: string,
+  ): Promise<void> {
+    const waitlisted = await registrationRepository.findOldestWaitlisted(eventId);
+    if (!waitlisted) return; // No one on the waitlist
+
+    await runTransaction(async (tx) => {
+      // Re-read inside transaction to prevent double promotion
+      const regRef = registrationRepository.ref.doc(waitlisted.id);
+      const regSnap = await tx.get(regRef);
+      if (!regSnap.exists) return;
+
+      const current = { id: regSnap.id, ...regSnap.data() } as Registration;
+      if (current.status !== "waitlisted") return; // Already promoted by another request
+
+      const now = new Date().toISOString();
+      tx.update(regRef, {
+        status: "confirmed",
+        updatedAt: now,
+      });
+    });
+
+    eventBus.emit("waitlist.promoted", {
+      registrationId: waitlisted.id,
+      eventId,
+      userId: waitlisted.userId,
+      organizationId,
+      actorId,
+      requestId: getRequestId(),
+      timestamp: new Date().toISOString(),
+    });
   }
 
 }

@@ -77,3 +77,52 @@ export const OfflineEventDataSchema = z.object({
 });
 
 export type OfflineEventData = z.infer<typeof OfflineEventDataSchema>;
+
+// ─── Badge Template CRUD ─────────────────────────────────────────────────────
+
+export const CreateBadgeTemplateSchema = BadgeTemplateSchema.omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type CreateBadgeTemplateDto = z.infer<typeof CreateBadgeTemplateSchema>;
+
+export const UpdateBadgeTemplateSchema = CreateBadgeTemplateSchema.partial().omit({
+  organizationId: true,
+});
+
+export type UpdateBadgeTemplateDto = z.infer<typeof UpdateBadgeTemplateSchema>;
+
+// ─── Badge Generation Request ────────────────────────────────────────────────
+
+export const BadgeGenerateRequestSchema = z.object({
+  registrationId: z.string(),
+  templateId: z.string().optional(),
+});
+
+export type BadgeGenerateRequest = z.infer<typeof BadgeGenerateRequestSchema>;
+
+export const BulkBadgeGenerateRequestSchema = z.object({
+  eventId: z.string(),
+  templateId: z.string().optional(),
+});
+
+export type BulkBadgeGenerateRequest = z.infer<typeof BulkBadgeGenerateRequestSchema>;
+
+// ─── Upload URL Request ──────────────────────────────────────────────────────
+
+export const UploadUrlRequestSchema = z.object({
+  fileName: z.string().min(1).max(255),
+  contentType: z.enum(["image/jpeg", "image/png", "image/webp"]),
+  purpose: z.enum(["cover", "banner", "logo"]),
+});
+
+export type UploadUrlRequest = z.infer<typeof UploadUrlRequestSchema>;
+
+export const UploadUrlResponseSchema = z.object({
+  uploadUrl: z.string().url(),
+  publicUrl: z.string().url(),
+});
+
+export type UploadUrlResponse = z.infer<typeof UploadUrlResponseSchema>;

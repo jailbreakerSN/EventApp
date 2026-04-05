@@ -16,6 +16,7 @@ const BulkGenerateBody = z.object({
 });
 
 const ParamsWithEventId = z.object({ eventId: z.string() });
+const ParamsWithBadgeId = z.object({ badgeId: z.string() });
 
 export const badgeRoutes: FastifyPluginAsync = async (fastify) => {
   // ─── Generate Badge ──────────────────────────────────────────────────────
@@ -57,6 +58,20 @@ export const badgeRoutes: FastifyPluginAsync = async (fastify) => {
       const { eventId } = request.params as z.infer<typeof ParamsWithEventId>;
       const badge = await badgeService.getMyBadge(eventId, request.user!);
       return reply.send({ success: true, data: badge });
+    },
+  );
+
+  // ─── Download Badge PDF ──────────────────────────────────────────────────
+  fastify.get(
+    "/:badgeId/download",
+    {
+      preHandler: [authenticate, validate({ params: ParamsWithBadgeId })],
+      schema: { tags: ["Badges"], summary: "Get a download URL for a badge PDF", security: [{ BearerAuth: [] }] },
+    },
+    async (request, reply) => {
+      const { badgeId } = request.params as z.infer<typeof ParamsWithBadgeId>;
+      const result = await badgeService.download(badgeId, request.user!);
+      return reply.send({ success: true, data: result });
     },
   );
 

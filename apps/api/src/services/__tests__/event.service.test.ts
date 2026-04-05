@@ -10,8 +10,10 @@ const mockEventRepo = {
   findBySlug: vi.fn(),
   findPublished: vi.fn(),
   findByOrganization: vi.fn(),
+  search: vi.fn(),
   update: vi.fn(),
   publish: vi.fn(),
+  unpublish: vi.fn(),
   softDelete: vi.fn(),
 };
 
@@ -313,5 +315,153 @@ describe("EventService.archive", () => {
     mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
 
     await expect(service.archive(event.id, user)).rejects.toThrow("Missing permission");
+  });
+});
+
+describe("EventService.unpublish", () => {
+  it("unpublishes a published event", async () => {
+    const user = buildOrganizerUser("org-1");
+    const event = buildEvent({ organizationId: "org-1", status: "published" });
+    mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
+    mockEventRepo.unpublish.mockResolvedValue(undefined);
+
+    await service.unpublish(event.id, user);
+
+    expect(mockEventRepo.unpublish).toHaveBeenCalledWith(event.id, user.uid);
+  });
+
+  it("rejects unpublishing a draft event", async () => {
+    const user = buildOrganizerUser("org-1");
+    const event = buildEvent({ organizationId: "org-1", status: "draft" });
+    mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
+
+    await expect(service.unpublish(event.id, user)).rejects.toThrow("Only published events can be unpublished");
+  });
+
+  it("requires event:publish permission", async () => {
+    const user = buildAuthUser({ roles: ["participant"] });
+
+    await expect(service.unpublish("ev-1", user)).rejects.toThrow("Missing permission");
+  });
+});
+
+describe("EventService.addTicketType", () => {
+  it("adds a ticket type to an event", async () => {
+    const user = buildOrganizerUser("org-1");
+    const event = buildEvent({ organizationId: "org-1", status: "draft", ticketTypes: [] });
+    mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
+    mockEventRepo.update.mockResolvedValue(undefined);
+
+    const result = await service.addTicketType(event.id, {
+      name: "VIP",
+      price: 5000,
+      currency: "XOF",
+      totalQuantity: 50,
+      accessZoneIds: [],
+      isVisible: true,
+    }, user);
+
+    expect(result.ticketTypes).toHaveLength(1);
+    expect(result.ticketTypes[0].name).toBe("VIP");
+    expect(result.ticketTypes[0].soldCount).toBe(0);
+    expect(result.ticketTypes[0].id).toMatch(/^tt-/);
+  });
+
+  it("rejects adding to a cancelled event", async () => {
+    const user = buildOrganizerUser("org-1");
+    const event = buildEvent({ organizationId: "org-1", status: "cancelled" as any });
+    mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
+
+    await expect(
+      service.addTicketType(event.id, { name: "VIP" } as any, user),
+    ).rejects.toThrow("Cannot modify ticket types");
+  });
+});
+
+describe("EventService.removeTicketType", () => {
+  it("removes a ticket type with zero sales", async () => {
+    const user = buildOrganizerUser("org-1");
+    const event = buildEvent({
+      organizationId: "org-1",
+      ticketTypes: [{ id: "tt-1", name: "Standard", price: 0, currency: "XOF" as const, totalQuantity: 100, soldCount: 0, accessZoneIds: [], isVisible: true }],
+    });
+    mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
+    mockEventRepo.update.mockResolvedValue(undefined);
+
+    await service.removeTicketType(event.id, "tt-1", user);
+
+    expect(mockEventRepo.update).toHaveBeenCalledWith(
+      event.id,
+      expect.objectContaining({ ticketTypes: [] }),
+    );
+  });
+
+  it("rejects removing a ticket type with sales", async () => {
+    const user = buildOrganizerUser("org-1");
+    const event = buildEvent({
+      organizationId: "org-1",
+      ticketTypes: [{ id: "tt-1", name: "Standard", price: 0, currency: "XOF" as const, totalQuantity: 100, soldCount: 5, accessZoneIds: [], isVisible: true }],
+    });
+    mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
+
+    await expect(
+      service.removeTicketType(event.id, "tt-1", user),
+    ).rejects.toThrow("existing sales");
+  });
+
+  it("rejects removing a non-existent ticket type", async () => {
+    const user = buildOrganizerUser("org-1");
+    const event = buildEvent({ organizationId: "org-1", ticketTypes: [] });
+    mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
+
+    await expect(
+      service.removeTicketType(event.id, "tt-999", user),
+    ).rejects.toThrow("not found");
+  });
+});
+
+describe("EventService.search", () => {
+  it("delegates to repository search", async () => {
+    const events = [buildEvent(), buildEvent()];
+    mockEventRepo.search.mockResolvedValue({
+      data: events,
+      meta: { page: 1, limit: 20, total: 2, totalPages: 1 },
+    });
+
+    const result = await service.search({
+      page: 1,
+      limit: 20,
+      orderBy: "startDate",
+      orderDir: "asc",
+      category: "conference",
+    });
+
+    expect(result.data).toHaveLength(2);
+    expect(mockEventRepo.search).toHaveBeenCalledWith(
+      expect.objectContaining({ category: "conference" }),
+      expect.objectContaining({ page: 1, limit: 20 }),
+    );
+  });
+
+  it("filters results by title when q is provided", async () => {
+    const events = [
+      buildEvent({ title: "Teranga Fest" }),
+      buildEvent({ title: "Dakar Tech Summit" }),
+    ];
+    mockEventRepo.search.mockResolvedValue({
+      data: events,
+      meta: { page: 1, limit: 20, total: 2, totalPages: 1 },
+    });
+
+    const result = await service.search({
+      q: "teranga",
+      page: 1,
+      limit: 20,
+      orderBy: "startDate",
+      orderDir: "asc",
+    });
+
+    expect(result.data).toHaveLength(1);
+    expect(result.data[0].title).toBe("Teranga Fest");
   });
 });

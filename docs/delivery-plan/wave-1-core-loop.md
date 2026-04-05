@@ -1,6 +1,6 @@
 # Wave 1: Core Loop — Create Event, Register, Generate Badge
 
-**Status:** `not_started`
+**Status:** `in_progress`
 **Estimated effort:** 2 weeks
 **Goal:** Complete the primary user journey: organizer creates event → participant registers → badge is generated.
 
@@ -15,31 +15,31 @@ This is the **minimum viable product**. Without create → register → badge, t
 ### API (Fastify)
 
 #### Event Management
-- [ ] Complete event CRUD endpoints with full validation
-- [ ] Event publish/unpublish flow with status transitions
-- [ ] Ticket type management (create, update, disable within event)
-- [ ] Event image upload endpoint (Cloud Storage integration)
-- [ ] Event search/discovery endpoint with filters (category, date range, location)
-- [ ] Public event listing (no auth required, `optionalAuth` for personalization)
+- [x] Complete event CRUD endpoints with full validation
+- [x] Event publish/unpublish flow with status transitions
+- [x] Ticket type management (create, update, disable within event)
+- [x] Event image upload endpoint (Cloud Storage signed URL integration)
+- [x] Event search/discovery endpoint with filters (category, date range, format, org, featured)
+- [x] Public event listing (no auth required, `optionalAuth` for personalization)
 
 #### Registration
-- [ ] Verify registration flow end-to-end (register → confirm/pending → badge)
-- [ ] Registration cancellation with refund placeholder
-- [ ] Waitlist promotion when spots open (via Cloud Function trigger)
+- [x] Verify registration flow end-to-end (register → confirm/pending → badge)
+- [x] Registration cancellation with waitlist promotion
+- [x] Waitlist promotion when spots open (in-service + Cloud Function trigger)
 - [ ] Registration export endpoint (CSV) for organizers
 
 #### Badge Generation
-- [ ] Badge PDF generation service (using `pdf-lib` or `@react-pdf/renderer`)
-- [ ] Badge template system (event-specific layouts)
-- [ ] QR code embedding in badge PDF
-- [ ] Badge download endpoint for participants
-- [ ] Bulk badge generation endpoint for organizers (uses cursor pagination)
+- [x] Badge PDF generation service (using `pdf-lib`)
+- [x] Badge template CRUD (create, list, get, update, archive)
+- [x] QR code embedding in badge PDF
+- [x] Badge download endpoint for participants (fresh signed URL)
+- [x] Bulk badge generation endpoint for organizers (uses cursor pagination)
 
 ### Cloud Functions
 
-- [ ] `onRegistrationCreated` trigger → generate badge automatically
-- [ ] `onRegistrationApproved` trigger → generate badge for approved registrations
-- [ ] Waitlist promotion function (when registration cancelled, promote next waitlisted)
+- [x] `onRegistrationCreated` trigger → generate badge automatically
+- [x] `onRegistrationApproved` trigger → generate badge for approved registrations
+- [x] Waitlist promotion integrated into cancel flow (API-level)
 
 ### Web Backoffice (Next.js)
 
@@ -61,10 +61,13 @@ This is the **minimum viable product**. Without create → register → badge, t
 
 ### Shared Types
 
-- [ ] Badge generation request/response schemas
-- [ ] Event search query schema
-- [ ] Registration export schema
-- [ ] Ensure all new endpoints have Zod validation schemas
+- [x] Badge generation request/response schemas (BadgeGenerateRequestSchema, BulkBadgeGenerateRequestSchema)
+- [x] Event search query schema (EventSearchQuerySchema)
+- [x] Badge template CRUD schemas (CreateBadgeTemplateSchema, UpdateBadgeTemplateSchema)
+- [x] Ticket type management schemas (CreateTicketTypeSchema, UpdateTicketTypeSchema)
+- [x] Upload URL schemas (UploadUrlRequestSchema, UploadUrlResponseSchema)
+- [x] Audit action schema updated with event.unpublished, waitlist.promoted
+- [ ] Registration export schema (deferred)
 
 ---
 

@@ -84,6 +84,19 @@ export class RegistrationRepository extends BaseRepository<Registration> {
     return { data, lastDoc };
   }
 
+  async findOldestWaitlisted(eventId: string): Promise<Registration | null> {
+    const snap = await this.collection
+      .where("eventId", "==", eventId)
+      .where("status", "==", "waitlisted")
+      .orderBy("createdAt", "asc")
+      .limit(1)
+      .get();
+
+    if (snap.empty) return null;
+    const doc = snap.docs[0];
+    return { id: doc.id, ...doc.data() } as Registration;
+  }
+
   async checkIn(
     id: string,
     staffId: string,

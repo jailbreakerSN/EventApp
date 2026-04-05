@@ -187,3 +187,52 @@ export const RegistrationSchema = z.object({
 });
 
 export type Registration = z.infer<typeof RegistrationSchema>;
+
+// ─── Event Search Query ──────────────────────────────────────────────────────
+
+export const EventSearchQuerySchema = z.object({
+  q: z.string().max(200).optional(),                 // title prefix search
+  category: EventCategorySchema.optional(),
+  format: EventFormatSchema.optional(),
+  city: z.string().optional(),
+  country: z.string().length(2).optional(),
+  tags: z.union([z.string(), z.array(z.string())]).optional(), // comma-separated or array
+  dateFrom: z.string().datetime().optional(),         // events starting on or after
+  dateTo: z.string().datetime().optional(),           // events starting on or before
+  organizationId: z.string().optional(),
+  isFeatured: z.coerce.boolean().optional(),
+  page: z.coerce.number().int().positive().default(1),
+  limit: z.coerce.number().int().positive().max(100).default(20),
+  orderBy: z.enum(["startDate", "createdAt", "title"]).default("startDate"),
+  orderDir: z.enum(["asc", "desc"]).default("asc"),
+});
+
+export type EventSearchQuery = z.infer<typeof EventSearchQuerySchema>;
+
+// ─── Registration Export ─────────────────────────────────────────────────────
+
+export const RegistrationExportItemSchema = z.object({
+  registrationId: z.string(),
+  participantName: z.string().nullable(),
+  participantEmail: z.string().nullable(),
+  ticketType: z.string(),
+  status: RegistrationStatusSchema,
+  registeredAt: z.string().datetime(),
+  checkedIn: z.boolean(),
+  checkedInAt: z.string().datetime().nullable(),
+});
+
+export type RegistrationExportItem = z.infer<typeof RegistrationExportItemSchema>;
+
+// ─── Ticket Type Management ──────────────────────────────────────────────────
+
+export const CreateTicketTypeSchema = TicketTypeSchema.omit({
+  id: true,
+  soldCount: true,
+});
+
+export type CreateTicketTypeDto = z.infer<typeof CreateTicketTypeSchema>;
+
+export const UpdateTicketTypeSchema = CreateTicketTypeSchema.partial();
+
+export type UpdateTicketTypeDto = z.infer<typeof UpdateTicketTypeSchema>;

@@ -128,6 +128,20 @@ export function registerAuditListeners(): void {
     });
   });
 
+  eventBus.on("event.unpublished", async (payload) => {
+    await auditService.log({
+      action: "event.unpublished",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "event",
+      resourceId: payload.eventId,
+      eventId: payload.eventId,
+      organizationId: payload.organizationId,
+      details: {},
+    });
+  });
+
   eventBus.on("event.cancelled", async (payload) => {
     await auditService.log({
       action: "event.cancelled",
@@ -221,6 +235,22 @@ export function registerAuditListeners(): void {
       organizationId: null,
       details: {
         registrationId: payload.registrationId,
+        userId: payload.userId,
+      },
+    });
+  });
+
+  eventBus.on("waitlist.promoted", async (payload) => {
+    await auditService.log({
+      action: "waitlist.promoted",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "registration",
+      resourceId: payload.registrationId,
+      eventId: payload.eventId,
+      organizationId: payload.organizationId,
+      details: {
         userId: payload.userId,
       },
     });

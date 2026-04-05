@@ -4,7 +4,7 @@ import {
   type Registration,
 } from "@teranga/shared-types";
 import { type DocumentSnapshot } from "firebase-admin/firestore";
-import { db, COLLECTIONS } from "@/config/firebase";
+import { db, storage, COLLECTIONS } from "@/config/firebase";
 import { eventRepository } from "@/repositories/event.repository";
 import { registrationRepository } from "@/repositories/registration.repository";
 import { userRepository } from "@/repositories/user.repository";
@@ -180,6 +180,44 @@ export class BadgeService extends BaseService {
 
     const doc = snap.docs[0];
     return { id: doc.id, ...doc.data() } as GeneratedBadge;
+  }
+
+  /**
+   * Get a download URL for a badge PDF.
+   * Generates a fresh signed URL from Cloud Storage (the stored pdfURL may expire).
+   */
+  async download(badgeId: string, user: AuthUser): Promise<{ downloadUrl: string }> {
+    const snap = await this.badgesCollection.doc(badgeId).get();
+    if (!snap.exists) throw new NotFoundError("Badge", badgeId);
+
+    const badge = { id: snap.id, ...snap.data() } as GeneratedBadge;
+
+    // Check access: own badge or has badge:generate permission
+    if (badge.userId !== user.uid) {
+      this.requirePermission(user, "badge:generate");
+    }
+
+    if (!badge.pdfURL) {
+      throw new ValidationError("Badge PDF has not been generated yet");
+    }
+
+    // Generate fresh signed URL from the known storage path
+    const storagePath = `badges/${badge.eventId}/${badge.userId}/${badge.id}.pdf`;
+    const bucket = storage.bucket();
+    const file = bucket.file(storagePath);
+
+    const [downloadUrl] = await file.getSignedUrl({
+      version: "v4",
+      action: "read",
+      expires: Date.now() + 60 * 60 * 1000, // 1 hour
+    });
+
+    // Increment download counter (fire-and-forget)
+    this.badgesCollection.doc(badgeId).update({
+      downloadCount: (badge.downloadCount ?? 0) + 1,
+    }).catch(() => { /* swallow counter increment errors */ });
+
+    return { downloadUrl };
   }
 
   /**
