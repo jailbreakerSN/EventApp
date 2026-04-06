@@ -24,14 +24,14 @@ The Teranga platform delivery is organized into **8 waves**, each building on th
 | Sprint 0 | Git housekeeping | `main` established | `completed` |
 | Sprint 1 | Web backoffice — event management | `feature/wave-1-web` | `completed` |
 | Sprint 2 | Mobile — event discovery & registration | `feature/wave-1-mobile` | `completed` |
-| Sprint 3 | Integration testing & Wave 1 close | `feature/wave-1-integration` | `not_started` |
+| Sprint 3 | Integration testing & Wave 1 close | `feature/wave-1-integration` | `completed` |
 
 ## Wave Progress
 
 | Wave | Name | Status | File |
 |------|------|--------|------|
 | Pre-Wave | Foundation Hardening | `completed` | [wave-0-prerequisites.md](wave-0-prerequisites.md) |
-| Wave 1 | Core Loop — Create, Register, Badge | `in_progress` | [wave-1-core-loop.md](wave-1-core-loop.md) |
+| Wave 1 | Core Loop — Create, Register, Badge | `completed` | [wave-1-core-loop.md](wave-1-core-loop.md) |
 | Wave 2 | Offline QR Scanning & Check-in | `not_started` | [wave-2-offline-checkin.md](wave-2-offline-checkin.md) |
 | Wave 3 | Organizer Productivity | `not_started` | [wave-3-organizer-tools.md](wave-3-organizer-tools.md) |
 | Wave 4 | Feed, Messaging, Sessions | `not_started` | [wave-4-social-sessions.md](wave-4-social-sessions.md) |

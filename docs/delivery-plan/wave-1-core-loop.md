@@ -1,6 +1,6 @@
 # Wave 1: Core Loop — Create Event, Register, Generate Badge
 
-**Status:** `in_progress`
+**Status:** `completed`
 **Estimated effort:** 2 weeks
 **Goal:** Complete the primary user journey: organizer creates event → participant registers → badge is generated.
 
