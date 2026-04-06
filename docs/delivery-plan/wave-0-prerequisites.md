@@ -17,7 +17,7 @@ The backend foundations (routes, services, repos, middleware, RBAC, transactions
 - [x] GitHub Actions workflow: lint + type-check + test on PR
 - [x] Turborepo cache for faster CI runs
 - [x] Separate workflows for API, web, shared-types
-- [ ] Firebase emulator-based integration test job (future — deferred to Wave 8)
+- [ ] Firebase emulator-based integration test job (future — deferred to Wave 10)
 
 ### 2. Test Coverage Gaps
 - [x] Service-layer tests for `event.service.ts` (create, update, publish, cancel, archive — 20 tests)
@@ -43,7 +43,7 @@ The backend foundations (routes, services, repos, middleware, RBAC, transactions
 - [x] Fix badge read: add `belongsToOrg()` check to prevent cross-org data leaks
 - [x] Fix offline sync: add `belongsToOrg()` org validation
 - [x] Fix feed post comments: add `onlyChanges()` field restriction
-- [ ] Test rules with Firebase emulator rule testing SDK (deferred to Wave 8)
+- [ ] Test rules with Firebase emulator rule testing SDK (deferred to Wave 10)
 
 ### 6. Lint & Code Quality (bonus)
 - [x] Fix all ESLint errors (0 errors, was 10)

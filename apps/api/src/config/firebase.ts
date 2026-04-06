@@ -49,4 +49,5 @@ export const COLLECTIONS = {
   NOTIFICATIONS: "notifications",
   OFFLINE_SYNC: "offlineSync",
   AUDIT_LOGS: "auditLogs",
+  CHECKIN_FEED: "checkinFeed",
 } as const;

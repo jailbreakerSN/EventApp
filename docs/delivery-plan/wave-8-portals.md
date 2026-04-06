@@ -1,4 +1,4 @@
-# Wave 7: Sponsor & Speaker Portals
+# Wave 8: Sponsor & Speaker Portals
 
 **Status:** `not_started`
 **Estimated effort:** 1.5 weeks
@@ -42,14 +42,16 @@ Sponsors fund events. Speakers make events worth attending. Both need dedicated 
 - [ ] Sponsor/speaker invitation flow
 - [ ] Sponsor tier configuration (name, perks, pricing)
 
-### Mobile (Flutter)
+### Web Participant App
 
-- [ ] Speaker profile screen (view for participants)
-- [ ] Speaker self-service: edit profile, upload slides, view schedule
-- [ ] Sponsor booth screen (view for participants)
-- [ ] Sponsor lead scanner (separate scanner mode for sponsors)
-- [ ] Lead list and notes for sponsors
-- [ ] Sponsor booth directory (list all sponsors for an event)
+- [ ] Speaker profile page (public, SEO-indexed)
+- [ ] Sponsor booth/directory page (public, SEO-indexed)
+- [ ] Speaker self-service portal (edit profile, upload slides, view schedule)
+- [ ] Sponsor self-service portal (manage booth, view leads)
+
+### Mobile (Flutter) — DEFERRED TO WAVE 9
+
+> Deferred: Speaker/sponsor screens, sponsor lead scanner (QR-based, requires camera), lead list and notes.
 
 ### Shared Types
 
@@ -73,11 +75,11 @@ Sponsors fund events. Speakers make events worth attending. Both need dedicated 
 ## Dependencies
 
 - Wave 1 (events, registrations, badges)
-- Wave 4 (sessions for speaker assignment, feed for sponsor posts)
+- Wave 5 (sessions for speaker assignment, feed for sponsor posts)
 - QR scanning infrastructure (from Wave 2)
 
 ## Deploys After This Wave
 
 - API: Speaker, sponsor, lead collection endpoints
 - Web: Speaker/sponsor management pages
-- Mobile: Speaker/sponsor self-service + lead scanner
+- Mobile: Deferred to Wave 9

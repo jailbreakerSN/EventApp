@@ -6,15 +6,25 @@ import { Sidebar } from "@/components/layouts/sidebar";
 import { TopBar } from "@/components/layouts/topbar";
 import { useAuth } from "@/hooks/use-auth";
 
+const BACKOFFICE_ROLES = ["organizer", "co_organizer", "super_admin"] as const;
+
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const { user, loading } = useAuth();
+  const { user, loading, hasRole } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
-    if (!loading && !user) {
+    if (loading) return;
+
+    if (!user) {
       router.replace("/login");
+      return;
     }
-  }, [user, loading, router]);
+
+    // Role gate: only organizers, co-organizers, and super admins can access backoffice
+    if (!hasRole(...BACKOFFICE_ROLES)) {
+      router.replace("/unauthorized");
+    }
+  }, [user, loading, hasRole, router]);
 
   if (loading) {
     return (
@@ -24,7 +34,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     );
   }
 
-  if (!user) return null;
+  if (!user || !hasRole(...BACKOFFICE_ROLES)) return null;
 
   return (
     <div className="flex h-screen bg-gray-50 overflow-hidden">

@@ -1,4 +1,4 @@
-# Wave 3: Organizer Productivity
+# Wave 4: Organizer Productivity
 
 **Status:** `not_started`
 **Estimated effort:** 2 weeks
@@ -31,7 +31,7 @@ After the core loop (Wave 1) and check-in (Wave 2), organizers need productivity
 #### Event Analytics
 - [ ] Registration analytics: registrations over time, by ticket type, by status
 - [ ] Check-in analytics: check-ins over time, by zone, peak hours
-- [ ] Revenue analytics placeholder (for Wave 5 payments)
+- [ ] Revenue analytics placeholder (for Wave 6 payments)
 - [ ] Export analytics as CSV/PDF
 
 #### Event Duplication
@@ -49,11 +49,9 @@ After the core loop (Wave 1) and check-in (Wave 2), organizers need productivity
 - [ ] Event duplication action
 - [ ] Plan/subscription display and upgrade flow placeholder
 
-### Mobile (Flutter)
+### Mobile (Flutter) — DEFERRED TO WAVE 9
 
-- [ ] Organization switcher (for users in multiple orgs)
-- [ ] Basic event management for organizers (edit, publish/unpublish from mobile)
-- [ ] Push notification preferences
+> Deferred: Organization switcher, mobile event management, push notification preferences.
 
 ### Shared Types
 
@@ -83,4 +81,4 @@ After the core loop (Wave 1) and check-in (Wave 2), organizers need productivity
 
 - API: Organization, team, analytics, duplication endpoints
 - Web: Organization settings, team management, analytics dashboard
-- Mobile: Basic org management features
+- Mobile: Deferred to Wave 9

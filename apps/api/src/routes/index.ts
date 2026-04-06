@@ -3,6 +3,7 @@ import { eventRoutes } from "./events.routes";
 import { registrationRoutes } from "./registrations.routes";
 import { badgeRoutes } from "./badges.routes";
 import { badgeTemplateRoutes } from "./badge-templates.routes";
+import { checkinRoutes } from "./checkin.routes";
 import { userRoutes } from "./users.routes";
 import { organizationRoutes } from "./organizations.routes";
 import { healthRoutes } from "./health.routes";
@@ -13,6 +14,7 @@ export async function registerRoutes(app: FastifyInstance) {
 
   // ── API v1 ───────────────────────────────────────────────────────────────
   await app.register(eventRoutes, { prefix: "/v1/events" });
+  await app.register(checkinRoutes, { prefix: "/v1/events" });
   await app.register(registrationRoutes, { prefix: "/v1/registrations" });
   await app.register(badgeRoutes, { prefix: "/v1/badges" });
   await app.register(badgeTemplateRoutes, { prefix: "/v1/badge-templates" });

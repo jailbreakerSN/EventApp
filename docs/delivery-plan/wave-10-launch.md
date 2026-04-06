@@ -1,4 +1,4 @@
-# Wave 8: Production Hardening & Launch
+# Wave 10: Production Hardening & Launch
 
 **Status:** `not_started`
 **Estimated effort:** 2 weeks
@@ -58,13 +58,21 @@ Everything built in Waves 1-7 needs to be hardened for real-world usage. This wa
 - [ ] Crash reporting (Firebase Crashlytics)
 - [ ] App version management and forced update mechanism
 
-### Web Release
+### Web Release — Backoffice
 
-- [ ] Custom domain setup for backoffice
-- [ ] SEO meta tags for public event pages
-- [ ] Open Graph tags for social sharing
+- [ ] Custom domain setup for backoffice (e.g., `app.teranga.sn`)
 - [ ] PWA manifest and offline shell
 - [ ] Cookie consent (if needed for Senegalese regulations)
+
+### Web Release — Participant App
+
+- [ ] Custom domain setup for participant app (e.g., `www.teranga.sn`)
+- [ ] SEO audit with Lighthouse (score > 90)
+- [ ] Open Graph tags verification (WhatsApp, Facebook, Twitter sharing)
+- [ ] schema.org/Event JSON-LD for rich Google search results
+- [ ] PWA manifest and install prompt
+- [ ] Performance audit: < 2s load on simulated 3G
+- [ ] i18n setup for French (default) and English
 
 ### Launch Preparation
 

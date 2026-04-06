@@ -95,7 +95,7 @@ This is the **minimum viable product**. Without create → register → badge, t
 - [x] Badge view screen (QR code display from real registration data)
 - [x] Profile page (avatar, stats, menu, logout)
 - [x] Feed & Networking pages (Wave 4 placeholders with "coming soon" UI)
-- [ ] Pull-to-refresh + offline caching for event list *(deferred to Wave 2)*
+- [ ] Pull-to-refresh + offline caching for event list *(deferred to Wave 9)*
 
 ---
 

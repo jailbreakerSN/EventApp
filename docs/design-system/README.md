@@ -1,0 +1,31 @@
+# Teranga Design System
+
+## Overview
+
+This document defines the visual identity, design tokens, component patterns, and UX guidelines for the Teranga event platform. It serves as the **single source of truth** for all design decisions across:
+
+- `apps/web-backoffice/` — Organizer dashboard (Next.js)
+- `apps/web-participant/` — Participant web experience (Next.js)
+- `apps/mobile/` — Flutter mobile app
+- Marketing materials and social assets
+
+**Design principles:**
+1. **Teranga (Hospitality)** — warm, welcoming, trustworthy
+2. **Francophone-first** — French is the default; all copy, labels, and patterns reflect francophone conventions
+3. **Africa-optimized** — fast on low bandwidth, works on older devices, high-contrast for outdoor use
+4. **Progressive disclosure** — show what matters first, reveal complexity on demand
+5. **Accessible** — WCAG 2.1 AA minimum, touch-friendly, keyboard-navigable
+
+---
+
+## Files in this directory
+
+| File | Purpose |
+|------|---------|
+| [brand-identity.md](brand-identity.md) | Brand story, logo, name usage, tone of voice |
+| [design-tokens.md](design-tokens.md) | Colors, typography, spacing, shadows, radii — the atomic values |
+| [component-patterns.md](component-patterns.md) | Reusable UI patterns (buttons, cards, forms, tables, badges, modals) |
+| [page-layouts.md](page-layouts.md) | Page structure, navigation, responsive breakpoints |
+| [ux-guidelines.md](ux-guidelines.md) | UX patterns for event discovery, registration, dashboards |
+| [accessibility.md](accessibility.md) | WCAG compliance, ARIA patterns, touch targets |
+| [iconography.md](iconography.md) | Icon library, usage guidelines |

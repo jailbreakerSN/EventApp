@@ -1,7 +1,7 @@
 # Future Roadmap (Post-Launch)
 
 **Status:** Planning
-**Scope:** Features to consider after the initial 8-wave launch.
+**Scope:** Features to consider after the initial 10-wave launch.
 
 These items are ordered by estimated impact for the Senegalese/West African market.
 
@@ -53,14 +53,15 @@ These items are ordered by estimated impact for the Senegalese/West African mark
 - Custom email templates with org branding
 - Custom domain for event pages
 
-### 9. Marketplace / Event Discovery
-- Public event marketplace for participants
-- Category-based browsing
-- Location-based discovery
-- Featured events and promotions
+### 9. Advanced Event Discovery (extends Wave 3 participant web)
+- Location-based discovery with map view
+- Recommendation engine (based on past attendance, categories)
+- Featured events and paid promotion placements
+- Event series and recurring event discovery
 
 ### 10. Offline-First Web (PWA)
-- Web backoffice works offline for critical reads
+- Participant web app: offline-cached event details for registered events
+- Web backoffice: offline for critical reads
 - Service worker caching strategy
 - Background sync for mutations
 

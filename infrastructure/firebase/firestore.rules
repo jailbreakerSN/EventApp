@@ -76,9 +76,13 @@ service cloud.firestore {
 
     // ─── Events ─────────────────────────────────────────────────────────────
     match /events/{eventId} {
-      // Published public events are readable by anyone (sharing links)
-      allow read: if (resource.data.status == 'published' && resource.data.isPublic == true)
-                  || isAuthenticated();
+      // Published public events are readable by anyone (including unauthenticated for sharing links)
+      allow read: if resource.data.status == 'published' && resource.data.isPublic == true;
+
+      // Non-public or draft events: only org members, staff, or super admins
+      allow read: if isAuthenticated()
+                  && (belongsToOrg(resource.data.organizationId)
+                      || isSuperAdmin());
 
       allow create: if (isOrganizer() && belongsToOrg(request.resource.data.organizationId))
                     || isSuperAdmin();
@@ -94,7 +98,15 @@ service cloud.firestore {
 
     // ─── Sessions (Agenda) ─────────────────────────────────────────────────
     match /sessions/{sessionId} {
-      allow read: if isAuthenticated();
+      // Sessions for published events are readable by any authenticated user (participants need agenda)
+      allow read: if isAuthenticated()
+                  && get(/databases/$(database)/documents/events/$(resource.data.eventId)).data.status == 'published';
+
+      // Sessions for non-published events: only org members or super admins
+      allow read: if isAuthenticated()
+                  && (belongsToOrg(
+                      get(/databases/$(database)/documents/events/$(resource.data.eventId)).data.organizationId
+                  ) || isSuperAdmin());
 
       allow create: if isSuperAdmin()
                     || (isOrganizer() && belongsToOrg(
@@ -111,10 +123,17 @@ service cloud.firestore {
 
     // ─── Registrations ──────────────────────────────────────────────────────
     match /registrations/{regId} {
-      allow read: if isOwnerOf(resource.data.userId)
-                  || isOrganizer()
-                  || isStaff()
-                  || isSuperAdmin();
+      // Owner can read their own registration
+      allow read: if isOwnerOf(resource.data.userId);
+
+      // Organizers/staff can only read registrations for events in their org
+      allow read: if (isOrganizer() || isStaff())
+                  && belongsToOrg(
+                      get(/databases/$(database)/documents/events/$(resource.data.eventId)).data.organizationId
+                  );
+
+      // Super admin can read all
+      allow read: if isSuperAdmin();
 
       // Participants register themselves — validated in API but guard here too
       allow create: if isAuthenticated()
@@ -126,8 +145,11 @@ service cloud.firestore {
                     && onlyChanges(['status', 'updatedAt'])
                     && request.resource.data.status == 'cancelled';
 
-      // Staff and organizer can update status and check-in fields only
+      // Staff and organizer can update status and check-in fields — org-scoped
       allow update: if (isOrganizer() || isStaff())
+                    && belongsToOrg(
+                        get(/databases/$(database)/documents/events/$(resource.data.eventId)).data.organizationId
+                    )
                     && onlyChanges(['status', 'checkedInAt', 'checkedInBy',
                                     'accessZoneId', 'updatedAt']);
 
@@ -153,7 +175,8 @@ service cloud.firestore {
     }
 
     match /badgeTemplates/{templateId} {
-      allow read: if isOrganizer() || isSuperAdmin();
+      allow read: if (isOrganizer() && belongsToOrg(resource.data.organizationId))
+                  || isSuperAdmin();
       allow create: if (isOrganizer() && belongsToOrg(request.resource.data.organizationId))
                     || isSuperAdmin();
       allow update: if (isOrganizer() && belongsToOrg(resource.data.organizationId))
@@ -247,6 +270,18 @@ service cloud.firestore {
                   || ((isStaff() || isOrganizer())
                       && belongsToOrg(resource.data.organizationId));
       allow create: if false;
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    // ─── Check-in Feed ─────────────────────────────────────────────────────
+    // Real-time check-in entries written by Cloud Function trigger.
+    // Readable by staff/organizers of the same org for live dashboards.
+    match /checkinFeed/{feedId} {
+      allow read: if isSuperAdmin()
+                  || ((isStaff() || isOrganizer())
+                      && belongsToOrg(resource.data.organizationId));
+      allow create: if false;  // Only Admin SDK (Cloud Function)
       allow update: if false;
       allow delete: if false;
     }

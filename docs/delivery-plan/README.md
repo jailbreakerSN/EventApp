@@ -2,20 +2,31 @@
 
 ## Overview
 
-The Teranga platform delivery is organized into **8 waves**, each building on the previous one and producing a deployable increment. Every wave ends with a working, testable product that can be demonstrated to stakeholders.
+The Teranga platform delivery is organized into **10 waves**, each building on the previous one and producing a deployable increment. Every wave ends with a working, testable product that can be demonstrated to stakeholders.
 
-**Total estimated timeline:** ~15 weeks (flexible, wave-by-wave)
+**Total estimated timeline:** ~18 weeks (flexible, wave-by-wave)
+
+### MVP Strategy: Web-First
+
+The MVP prioritizes the **web platform** (participant web app + organizer backoffice) over the mobile app. Mobile is deferred to Wave 9 after the web experience is validated. Rationale:
+- **SEO**: Event discovery must be Google-indexed for promotion (impossible with Flutter Web)
+- **WhatsApp sharing**: Rich link previews require server-rendered HTML with OG tags
+- **Faster iteration**: Web deploys instantly vs app store review cycles
+- **Market validation**: Prove the product works before investing in native mobile
+- **Mobile app becomes the premium layer**: Adds offline QR scanning, push notifications, and native UX on top of a proven web product
 
 ## Current State (as of 2026-04-06)
 
 | Component | Completion | Notes |
 |-----------|-----------|-------|
 | Shared Types | ~98% | Zod schemas, permissions, all core types, badge status, search filters |
-| API (Fastify) | ~92% | All Wave 1 endpoints complete, 128 tests, review fixes applied |
+| API (Fastify) | ~92% | All Wave 1+2 endpoints complete, 153 tests, security hardening applied |
 | Cloud Functions | ~70% | Auth triggers, badge generation (atomic), registration triggers |
 | Web Backoffice | ~90% | Full event CRUD, registrations, auth guard, API integration |
-| Mobile (Flutter) | ~80% | API client, event discovery, registration flow, badge display |
-| Infrastructure | 100% | Firestore rules, indexes, Firebase config, emulators, seed script |
+| **Web Participant** | **0%** | **Wave 3 priority** — Next.js SSR/SSG for SEO + participant registration |
+| Mobile (Flutter) | ~35% | Wave 1 basics done; full app deferred to Wave 9 after web validation |
+| Shared UI | 0% | Planned for Wave 3 — extract reusable React components for both web apps |
+| Infrastructure | 100% | Firestore rules (org-scoped), indexes, Firebase config, emulators, seed script |
 
 ### Sprint Breakdown (Wave 1 Completion)
 
@@ -28,34 +39,38 @@ The Teranga platform delivery is organized into **8 waves**, each building on th
 
 ## Wave Progress
 
-| Wave | Name | Status | File |
-|------|------|--------|------|
-| Pre-Wave | Foundation Hardening | `completed` | [wave-0-prerequisites.md](wave-0-prerequisites.md) |
-| Wave 1 | Core Loop — Create, Register, Badge | `completed` | [wave-1-core-loop.md](wave-1-core-loop.md) |
-| Wave 2 | Offline QR Scanning & Check-in | `not_started` | [wave-2-offline-checkin.md](wave-2-offline-checkin.md) |
-| Wave 3 | Organizer Productivity | `not_started` | [wave-3-organizer-tools.md](wave-3-organizer-tools.md) |
-| Wave 4 | Feed, Messaging, Sessions | `not_started` | [wave-4-social-sessions.md](wave-4-social-sessions.md) |
-| Wave 5 | Payments | `not_started` | [wave-5-payments.md](wave-5-payments.md) |
-| Wave 6 | SMS, Email, Communication | `not_started` | [wave-6-communications.md](wave-6-communications.md) |
-| Wave 7 | Sponsor & Speaker Portals | `not_started` | [wave-7-portals.md](wave-7-portals.md) |
-| Wave 8 | Production Hardening & Launch | `not_started` | [wave-8-launch.md](wave-8-launch.md) |
+| Wave | Name | Platform | Status | File |
+|------|------|----------|--------|------|
+| Pre-Wave | Foundation Hardening | All | `completed` | [wave-0-prerequisites.md](wave-0-prerequisites.md) |
+| Wave 1 | Core Loop — Create, Register, Badge | API + Web + Mobile | `completed` | [wave-1-core-loop.md](wave-1-core-loop.md) |
+| Wave 2 | Check-in API & Web Dashboard | API + Web | `in_progress` | [wave-2-offline-checkin.md](wave-2-offline-checkin.md) |
+| **Wave 3** | **Participant Web App** | **Web** | `not_started` | [wave-3-participant-web.md](wave-3-participant-web.md) |
+| Wave 4 | Organizer Productivity | API + Web | `not_started` | [wave-4-organizer-tools.md](wave-4-organizer-tools.md) |
+| Wave 5 | Feed, Messaging, Sessions | API + Web | `not_started` | [wave-5-social-sessions.md](wave-5-social-sessions.md) |
+| Wave 6 | Payments | API + Web | `not_started` | [wave-6-payments.md](wave-6-payments.md) |
+| Wave 7 | SMS, Email, Communication | API + Web | `not_started` | [wave-7-communications.md](wave-7-communications.md) |
+| Wave 8 | Sponsor & Speaker Portals | API + Web | `not_started` | [wave-8-portals.md](wave-8-portals.md) |
+| **Wave 9** | **Mobile App Completion** | **Mobile** | `not_started` | [wave-9-mobile-app.md](wave-9-mobile-app.md) |
+| Wave 10 | Production Hardening & Launch | All | `not_started` | [wave-10-launch.md](wave-10-launch.md) |
 
 **Status values:** `not_started` | `in_progress` | `completed` | `blocked`
 
 ## Delivery Principles
 
 1. **Each wave is independently deployable** — stakeholders can test after every wave
-2. **API-first** — backend endpoints land before frontend consumes them
-3. **Shared types are the contract** — Zod schemas updated first, then API + clients
-4. **Offline-first for mobile** — every mobile feature must work with intermittent connectivity
-5. **Tests accompany every feature** — unit tests for services, integration tests for routes
-6. **Security at every layer** — Firestore rules, API middleware, input validation
-7. **Francophone-first** — French is the default language for all user-facing strings
+2. **Web-first MVP** — participant web app and backoffice are the priority; mobile comes after web validation
+3. **API-first** — backend endpoints land before frontend consumes them
+4. **Shared types are the contract** — Zod schemas updated first, then API + clients
+5. **SEO for event discovery** — public event pages must be server-rendered and Google-indexable
+6. **Tests accompany every feature** — unit tests for services, integration tests for routes
+7. **Security at every layer** — Firestore rules, API middleware, input validation
+8. **Francophone-first** — French is the default language for all user-facing strings
+9. **Mobile = premium layer** — offline QR scanning, push notifications, and native UX on top of proven web product
 
 ## Architecture Reference
 
 See [CLAUDE.md](../../CLAUDE.md) for full architecture documentation.
 
-## Future Roadmap (Post-Wave 8)
+## Future Roadmap (Post-Wave 10)
 
 See [future-roadmap.md](future-roadmap.md) for post-launch feature ideas.
