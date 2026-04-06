@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-**Teranga** is an African event management platform (mobile app + web back-office) designed for the Senegalese and West African market. The name comes from the Wolof word for *hospitality* — the cultural foundation of every event.
+**Teranga** is an African event management platform (mobile app + web back-office + participant web app) designed for the Senegalese and West African market. The name comes from the Wolof word for *hospitality* — the cultural foundation of every event.
 
 **Core differentiator:** Offline-first QR badge scanning that works reliably with intermittent connectivity, which is critical for the African market.
 
@@ -20,9 +20,12 @@ teranga/
 │   ├── api/                  # Fastify REST API → deployed on Cloud Run
 │   ├── functions/            # Firebase Cloud Functions v2 (triggers only)
 │   ├── web-backoffice/       # Next.js 14 PWA for organizers + admin
+│   ├── web-participant/      # Next.js 14 — participant event discovery & registration (Wave 3)
 │   └── mobile/               # Flutter app (iOS + Android)
 ├── packages/
-│   └── shared-types/         # Zod schemas + TypeScript types (single source of truth)
+│   ├── shared-types/         # Zod schemas + TypeScript types (single source of truth)
+│   ├── shared-ui/            # Reusable React components (Button, Card, etc.) — shared by both Next.js apps
+│   └── shared-config/        # Shared Tailwind preset, ESLint config
 ├── infrastructure/
 │   ├── firebase/             # Firestore rules, storage rules, composite indexes
 │   └── terraform/            # GCP IaC (future)
@@ -38,6 +41,7 @@ teranga/
 |-------|-----------|-----------|
 | Mobile | **Flutter 3** (Riverpod, go_router, Hive) | Best offline/Firestore SDK, cross-platform |
 | Web backoffice | **Next.js 14** App Router + TailwindCSS + shadcn/ui | PWA support, SSR, accessible components |
+| Web participant | **Next.js 14** App Router + TailwindCSS + shared-ui | SSR/SSG for SEO, fast on African networks, WhatsApp sharing |
 | REST API | **Fastify 4** + TypeScript on **Cloud Run** | Low latency, no cold starts, Swagger/OpenAPI |
 | Background jobs | **Firebase Cloud Functions v2** | Event-driven triggers (auth, Firestore, Pub/Sub) |
 | Database | **Cloud Firestore** (primary) | Real-time, offline sync, security rules |
@@ -396,19 +400,21 @@ Switch with: `firebase use <alias>`
 
 ## Delivery Roadmap
 
-The platform is delivered in **8 waves**, each building on the previous and producing a deployable increment. Full details with task checklists are in `docs/delivery-plan/`.
+The platform is delivered in **10 waves** with a **web-first MVP strategy**. Mobile is deferred to Wave 9 after the web platform is validated. Full details with task checklists are in `docs/delivery-plan/`.
 
-| Wave | Name | Scope | Est. Effort |
-|------|------|-------|-------------|
-| Pre-Wave | Foundation Hardening | CI/CD, test gaps, config audit, Firestore rules | 3-4 days |
-| Wave 1 | **Core Loop** | Create event → register → generate badge (MVP) | 2 weeks |
-| Wave 2 | **Offline QR Check-in** | Staff scanner, offline cache, sync queue (differentiator) | 1.5 weeks |
-| Wave 3 | Organizer Productivity | Team mgmt, analytics, event duplication, plan limits | 2 weeks |
-| Wave 4 | Social & Sessions | Event feed, messaging, session/agenda builder | 2 weeks |
-| Wave 5 | Payments | Wave/Orange Money integration, paid tickets, payouts | 2 weeks |
-| Wave 6 | Communications | SMS (Africa's Talking), email, broadcast, notifications | 1.5 weeks |
-| Wave 7 | Portals | Speaker self-service, sponsor booths, lead collection | 1.5 weeks |
-| Wave 8 | Production Launch | Load testing, security audit, monitoring, app store submission | 2 weeks |
+| Wave | Name | Platform | Est. Effort |
+|------|------|----------|-------------|
+| Pre-Wave | Foundation Hardening | All | 3-4 days |
+| Wave 1 | **Core Loop** | API + Web + Mobile | 2 weeks |
+| Wave 2 | **Check-in API & Dashboard** | API + Web | 1.5 weeks |
+| Wave 3 | **Participant Web App** | Web (SSR/SSG) | 1.5 weeks |
+| Wave 4 | Organizer Productivity | API + Web | 2 weeks |
+| Wave 5 | Social & Sessions | API + Web | 2 weeks |
+| Wave 6 | Payments | API + Web | 2 weeks |
+| Wave 7 | Communications | API + Web | 1.5 weeks |
+| Wave 8 | Portals | API + Web | 1.5 weeks |
+| Wave 9 | **Mobile App Completion** | Mobile (Flutter) | 3-4 weeks |
+| Wave 10 | Production Launch | All | 2 weeks |
 
 **Tracking:** Each wave file contains a task checklist. Mark tasks `[x]` as they are completed. Update status in `docs/delivery-plan/README.md` as waves progress.
 
@@ -418,7 +424,7 @@ The platform is delivered in **8 waves**, each building on the previous and prod
 
 ### Current Test Suite
 
-- **129 tests** across 12 test files (as of 2026-04-06)
+- **153 tests** across 14 test files (as of 2026-04-06)
 - Test runner: **Vitest** with TypeScript
 - Run: `cd apps/api && npx vitest run`
 - Test files follow `__tests__/` convention next to source files

@@ -1,4 +1,4 @@
-# Wave 5: Payments
+# Wave 6: Payments
 
 **Status:** `not_started`
 **Estimated effort:** 2 weeks
@@ -56,16 +56,19 @@ Teranga's revenue model and organizer monetization depend on payments. The West 
 - [ ] Financial reports with date range filters
 - [ ] Refund management UI
 
-### Mobile (Flutter)
+### Web Participant App
 
-- [ ] Payment flow during registration
-  - [ ] Ticket price display and selection
+- [ ] Payment flow during web registration
+  - [ ] Ticket price display on event detail page
   - [ ] Payment method selection (Wave, Orange Money, card)
-  - [ ] Redirect to payment provider (or in-app SDK)
-  - [ ] Payment confirmation screen
-  - [ ] Payment failure/retry flow
-- [ ] Payment history in user profile
+  - [ ] Redirect to payment provider and callback handling
+  - [ ] Payment confirmation + badge display
+- [ ] Payment history in profile page
 - [ ] Receipt download
+
+### Mobile (Flutter) — DEFERRED TO WAVE 9
+
+> Deferred: Mobile payment flow (provider selection, redirect, confirmation), payment history, receipt download.
 
 ### Shared Types
 
@@ -98,7 +101,7 @@ Teranga's revenue model and organizer monetization depend on payments. The West 
 
 - API: Payment endpoints, modified registration flow
 - Web: Payment dashboard, pricing in event creation
-- Mobile: Payment flow in registration
+- Mobile: Deferred to Wave 9
 - Functions: Payment lifecycle triggers
 
 ## Technical Notes

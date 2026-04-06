@@ -2,18 +2,31 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { eventsApi } from "@/lib/api-client";
+import { useAuth } from "@/hooks/use-auth";
 import type {
   CreateEventDto,
   UpdateEventDto,
-  EventSearchQuery,
   CreateTicketTypeDto,
   UpdateTicketTypeDto,
 } from "@teranga/shared-types";
 
-export function useEvents(query: Partial<EventSearchQuery> = {}) {
+/**
+ * Fetch events scoped to the current user's organization.
+ * Falls back to public search only if no organizationId is set (should not happen in backoffice).
+ */
+export function useEvents(params: { page?: number; limit?: number; orderBy?: string; orderDir?: string } = {}) {
+  const { user } = useAuth();
+  const orgId = user?.organizationId;
+
   return useQuery({
-    queryKey: ["events", query],
-    queryFn: () => eventsApi.search(query),
+    queryKey: ["events", "org", orgId, params],
+    queryFn: () => {
+      if (!orgId) {
+        throw new Error("Organization ID is missing. Please contact your administrator to ensure your account is assigned to an organization.");
+      }
+      return eventsApi.listByOrg(orgId, params);
+    },
+    enabled: !!user && !!orgId,
   });
 }
 

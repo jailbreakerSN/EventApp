@@ -1,4 +1,4 @@
-# Wave 4: Feed, Messaging, Sessions
+# Wave 5: Feed, Messaging, Sessions
 
 **Status:** `not_started`
 **Estimated effort:** 2 weeks
@@ -51,23 +51,16 @@ Events are social. Participants want to see updates, message each other, and pla
 - [ ] Session speaker assignment UI
 - [ ] Message moderation dashboard
 
-### Mobile (Flutter)
+### Web Participant App
 
-- [ ] Event feed screen (real-time updates via Firestore streams)
-  - [ ] Post creation (text + image upload)
-  - [ ] Like/react animation
-  - [ ] Comment thread
-  - [ ] Pull-to-refresh + infinite scroll
-- [ ] Messaging screen
-  - [ ] Conversation list with unread count
-  - [ ] Chat screen with real-time messages (Firestore stream)
-  - [ ] Image sending in chat
-  - [ ] Typing indicators (optional, Firestore presence)
-- [ ] Session/agenda screen
-  - [ ] Daily schedule view (timeline)
-  - [ ] Session detail (description, speaker bio, room)
-  - [ ] Bookmark/save session to personal agenda
-  - [ ] Personal agenda view (only bookmarked sessions)
+- [ ] Event feed page (`/events/[eventId]/feed`) — post list, create post, comments
+- [ ] Session schedule page (`/events/[eventId]/schedule`) — daily timeline, session detail, bookmarks
+- [ ] Messaging page (`/messages`) — conversation list, chat screen
+- [ ] Push notification opt-in via Web Push API
+
+### Mobile (Flutter) — DEFERRED TO WAVE 9
+
+> Deferred: Feed screen (real-time Firestore streams, post creation, likes, comments), messaging screen (conversation list, chat, image sending, typing indicators), session/agenda screen (daily timeline, bookmarks, personal agenda).
 
 ### Shared Types
 
@@ -85,7 +78,6 @@ Events are social. Participants want to see updates, message each other, and pla
 - [ ] Organizer can build a session schedule with speakers and rooms
 - [ ] Participants can browse the agenda and bookmark sessions
 - [ ] Push notifications work for feed posts and messages
-- [ ] Real-time updates work on mobile (Firestore streams)
 - [ ] All new endpoints tested
 
 ## Dependencies
@@ -98,7 +90,7 @@ Events are social. Participants want to see updates, message each other, and pla
 
 - API: Feed, messaging, session endpoints
 - Web: Feed management, agenda builder, message moderation
-- Mobile: Feed, messaging, agenda screens
+- Mobile: Deferred to Wave 9
 - Functions: Notification triggers
 
 ## Technical Notes

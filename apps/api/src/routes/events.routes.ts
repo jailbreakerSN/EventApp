@@ -22,6 +22,7 @@ import {
   CreateAccessZoneSchema,
   UpdateAccessZoneSchema,
   UploadUrlRequestSchema,
+  PaginationSchema,
 } from "@teranga/shared-types";
 
 const ParamsWithEventId = z.object({ eventId: z.string() });
@@ -39,6 +40,25 @@ export const eventRoutes: FastifyPluginAsync = async (fastify) => {
     async (request, reply) => {
       const query = request.query as z.infer<typeof EventSearchQuerySchema>;
       const result = await eventService.search(query, request.user ?? undefined);
+      return reply.send({ success: true, data: result.data, meta: result.meta });
+    },
+  );
+
+  // ─── List Organization Events (backoffice — all statuses) ──────────────
+  fastify.get(
+    "/org/:orgId",
+    {
+      preHandler: [
+        authenticate,
+        requirePermission("event:read"),
+        validate({ params: z.object({ orgId: z.string() }), query: PaginationSchema }),
+      ],
+      schema: { tags: ["Events"], summary: "List all events for an organization (requires org membership)", security: [{ BearerAuth: [] }] },
+    },
+    async (request, reply) => {
+      const { orgId } = request.params as { orgId: string };
+      const pagination = request.query as z.infer<typeof PaginationSchema>;
+      const result = await eventService.listByOrganization(orgId, request.user!, pagination);
       return reply.send({ success: true, data: result.data, meta: result.meta });
     },
   );

@@ -18,6 +18,7 @@ vi.mock("@/config/firebase", () => ({
 const mockEventService = {
   listPublished: vi.fn(),
   search: vi.fn(),
+  listByOrganization: vi.fn(),
   getById: vi.fn(),
   create: vi.fn(),
   update: vi.fn(),
@@ -118,6 +119,75 @@ describe("GET /v1/events", () => {
 
     const res = await app.inject({ method: "GET", url: "/v1/events" });
     expect(res.statusCode).toBe(200);
+  });
+});
+
+describe("GET /v1/events/org/:orgId", () => {
+  it("returns 401 without auth", async () => {
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/events/org/org-1",
+    });
+
+    expect(res.statusCode).toBe(401);
+  });
+
+  it("returns paginated org-scoped event list", async () => {
+    const headers = authHeaders();
+    const events = [buildEvent({ organizationId: "org-1" }), buildEvent({ organizationId: "org-1" })];
+    mockEventService.listByOrganization.mockResolvedValue({
+      data: events,
+      meta: { page: 1, limit: 20, total: 2, totalPages: 1 },
+    });
+
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/events/org/org-1?page=1&limit=20",
+      headers,
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.success).toBe(true);
+    expect(body.data).toHaveLength(2);
+    expect(body.meta.total).toBe(2);
+    expect(mockEventService.listByOrganization).toHaveBeenCalledWith(
+      "org-1",
+      expect.objectContaining({ uid: "user-1" }),
+      expect.objectContaining({ page: 1, limit: 20 }),
+    );
+  });
+
+  it("returns 403 for participant without event:read permission", async () => {
+    const headers = authHeaders({ roles: ["participant"] });
+    mockEventService.listByOrganization.mockRejectedValue(
+      Object.assign(new Error("Missing permission: event:read"), { statusCode: 403 }),
+    );
+
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/events/org/org-1",
+      headers,
+    });
+
+    expect(res.statusCode).toBe(403);
+  });
+
+  it("passes pagination params correctly", async () => {
+    const headers = authHeaders();
+    mockEventService.listByOrganization.mockResolvedValue({
+      data: [],
+      meta: { page: 2, limit: 10, total: 15, totalPages: 2 },
+    });
+
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/events/org/org-1?page=2&limit=10&orderBy=startDate&orderDir=asc",
+      headers,
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.json().meta.page).toBe(2);
   });
 });
 

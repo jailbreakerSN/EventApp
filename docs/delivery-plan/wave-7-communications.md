@@ -1,4 +1,4 @@
-# Wave 6: SMS, Email, Communication Channels
+# Wave 7: SMS, Email, Communication Channels
 
 **Status:** `not_started`
 **Estimated effort:** 1.5 weeks
@@ -53,12 +53,15 @@ In Senegal and West Africa, many users don't have constant internet access or ma
 - [ ] SMS/Email template editor
 - [ ] Notification analytics dashboard
 
-### Mobile (Flutter)
+### Web Participant App
 
-- [ ] Notification preferences screen
-- [ ] Push notification handling (foreground, background, terminated)
-- [ ] Notification center (in-app notification list)
-- [ ] Deep linking from notifications to relevant screens
+- [ ] Notification preferences page
+- [ ] Web Push notification opt-in and handling
+- [ ] Notification center (in-app notification list page)
+
+### Mobile (Flutter) — DEFERRED TO WAVE 9
+
+> Deferred: Push notification handling (foreground/background/terminated), notification center, deep linking from notifications.
 
 ### Shared Types
 
@@ -84,13 +87,13 @@ In Senegal and West Africa, many users don't have constant internet access or ma
 - Wave 1 completed (registrations exist)
 - Africa's Talking API account and credits
 - Email service provider account (SendGrid/Resend)
-- FCM already configured (from Wave 4)
+- FCM already configured (from Wave 5)
 
 ## Deploys After This Wave
 
 - API: SMS, email, broadcast, notification preferences endpoints
 - Web: Broadcast composer, notification analytics
-- Mobile: Notification center, preferences
+- Mobile: Deferred to Wave 9
 - Functions: Multi-channel notification triggers
 
 ## Technical Notes
