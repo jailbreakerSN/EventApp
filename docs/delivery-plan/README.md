@@ -19,10 +19,10 @@ The MVP prioritizes the **web platform** (participant web app + organizer backof
 
 | Component | Completion | Notes |
 |-----------|-----------|-------|
-| Shared Types | ~98% | Zod schemas, permissions, all core types, badge status, search filters |
-| API (Fastify) | ~96% | All Wave 1-3 endpoints, 153 tests, slug route for SSG |
+| Shared Types | ~99% | Zod schemas, permissions, invites, analytics, clone, member roles |
+| API (Fastify) | ~98% | Waves 1-4 endpoints, invite/analytics/clone services, 170+ tests |
 | Cloud Functions | ~80% | Auth triggers, badge generation, registration triggers, check-in feed trigger |
-| Web Backoffice | ~95% | Full event CRUD, registrations, check-in dashboard, access zones, auth guard |
+| Web Backoffice | ~97% | Full event CRUD, registrations, check-in, org settings, team, analytics, clone |
 | Web Participant | ~90% | SSG/ISR event pages, auth, registration, badges, profile — Wave 3 complete |
 | Mobile (Flutter) | ~35% | Wave 1 basics done; full app deferred to Wave 9 after web validation |
 | Shared UI | ~70% | Button, Card, Input, Badge, Spinner + utility functions (cn, format) |
@@ -45,7 +45,7 @@ The MVP prioritizes the **web platform** (participant web app + organizer backof
 | Wave 1 | Core Loop — Create, Register, Badge | API + Web + Mobile | `completed` | [wave-1-core-loop.md](wave-1-core-loop.md) |
 | Wave 2 | Check-in API & Web Dashboard | API + Web | `completed` | [wave-2-offline-checkin.md](wave-2-offline-checkin.md) |
 | Wave 3 | Participant Web App | Web | `completed` | [wave-3-participant-web.md](wave-3-participant-web.md) |
-| **Wave 4** | **Organizer Productivity** | **API + Web** | `not_started` | [wave-4-organizer-tools.md](wave-4-organizer-tools.md) |
+| **Wave 4** | **Organizer Productivity** | **API + Web** | `completed` | [wave-4-organizer-tools.md](wave-4-organizer-tools.md) |
 | Wave 5 | Feed, Messaging, Sessions | API + Web | `not_started` | [wave-5-social-sessions.md](wave-5-social-sessions.md) |
 | Wave 6 | Payments | API + Web | `not_started` | [wave-6-payments.md](wave-6-payments.md) |
 | Wave 7 | SMS, Email, Communication | API + Web | `not_started` | [wave-7-communications.md](wave-7-communications.md) |
