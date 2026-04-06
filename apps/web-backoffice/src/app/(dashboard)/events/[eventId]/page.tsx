@@ -32,9 +32,11 @@ import {
   ChevronRight,
   ScanLine,
   MapPin,
+  Copy,
 } from "lucide-react";
 import Link from "next/link";
 import { useAddAccessZone, useRemoveAccessZone } from "@/hooks/use-access-zones";
+import { eventsApi } from "@/lib/api-client";
 import type { Event, CreateTicketTypeDto, CreateAccessZoneDto } from "@teranga/shared-types";
 
 const TABS = ["Infos", "Billets", "Inscriptions", "Zones"] as const;
@@ -152,12 +154,41 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 function EventActions({ event }: { event: Event }) {
+  const router = useRouter();
   const publish = usePublishEvent();
   const unpublish = useUnpublishEvent();
   const cancel = useCancelEvent();
+  const [cloning, setCloning] = useState(false);
+
+  const handleClone = async () => {
+    setCloning(true);
+    try {
+      // Set new dates 1 month from now
+      const now = new Date();
+      const newStart = new Date(now.getFullYear(), now.getMonth() + 1, now.getDate(), 9, 0);
+      const newEnd = new Date(newStart.getTime() + (new Date(event.endDate).getTime() - new Date(event.startDate).getTime()));
+      const result = await eventsApi.clone(event.id, {
+        newStartDate: newStart.toISOString(),
+        newEndDate: newEnd.toISOString(),
+        copyTicketTypes: true,
+        copyAccessZones: true,
+      });
+      router.push(`/events/${result.data.id}`);
+    } finally {
+      setCloning(false);
+    }
+  };
 
   return (
     <div className="flex gap-2">
+      <button
+        onClick={handleClone}
+        disabled={cloning}
+        className="inline-flex items-center gap-1.5 border border-gray-200 text-gray-600 rounded-lg px-4 py-2 text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
+      >
+        <Copy className="h-4 w-4" />
+        {cloning ? "Duplication..." : "Dupliquer"}
+      </button>
       {event.status === "draft" && (
         <button
           onClick={() => publish.mutate(event.id)}

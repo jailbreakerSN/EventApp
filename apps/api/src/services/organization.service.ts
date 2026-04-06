@@ -82,6 +82,14 @@ export class OrganizationService extends BaseService {
     this.requireOrganizationAccess(user, org.id);
 
     await organizationRepository.update(orgId, dto as Partial<Organization>);
+
+    eventBus.emit("organization.updated", {
+      organizationId: orgId,
+      changes: dto as Record<string, unknown>,
+      actorId: user.uid,
+      requestId: getRequestId(),
+      timestamp: new Date().toISOString(),
+    });
   }
 
   async addMember(orgId: string, userId: string, user: AuthUser): Promise<void> {

@@ -23,6 +23,12 @@ export const AuditActionSchema = z.enum([
   "ticket_type.added",
   "ticket_type.updated",
   "ticket_type.removed",
+  "event.cloned",
+  "invite.created",
+  "invite.accepted",
+  "invite.declined",
+  "member.role_changed",
+  "organization.updated",
 ]);
 
 export type AuditAction = z.infer<typeof AuditActionSchema>;
