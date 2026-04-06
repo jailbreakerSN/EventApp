@@ -33,10 +33,13 @@ async function getAuthHeader(): Promise<string> {
   return `Bearer ${token}`;
 }
 
+const REQUEST_TIMEOUT_MS = 30_000;
+
 async function request<T>(
   path: string,
   options: RequestInit = {},
-  auth = true
+  auth = true,
+  _isRetry = false,
 ): Promise<T> {
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -47,10 +50,33 @@ async function request<T>(
     headers.Authorization = await getAuthHeader();
   }
 
-  const response = await fetch(`${API_URL}${path}`, {
-    ...options,
-    headers,
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  let response: Response;
+  try {
+    response = await fetch(`${API_URL}${path}`, {
+      ...options,
+      headers,
+      signal: controller.signal,
+    });
+  } catch (err: unknown) {
+    if (err instanceof DOMException && err.name === "AbortError") {
+      throw new ApiError("TIMEOUT", "Request timed out", 408);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  // Token expired — force refresh and retry once
+  if (response.status === 401 && !_isRetry && auth) {
+    const user = firebaseAuth.currentUser;
+    if (user) {
+      await user.getIdToken(true); // force refresh
+      return request<T>(path, options, auth, true);
+    }
+  }
 
   // DELETE 204 has no body
   if (response.status === 204) {

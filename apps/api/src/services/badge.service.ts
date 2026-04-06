@@ -242,6 +242,7 @@ export class BadgeService extends BaseService {
     this.requirePermission(user, "checkin:sync_offline");
 
     const event = await eventRepository.findByIdOrThrow(eventId);
+    this.requireOrganizationAccess(user, event.organizationId);
 
     const CHUNK_SIZE = 1000;
     const MAX_REGISTRATIONS = 20_000;

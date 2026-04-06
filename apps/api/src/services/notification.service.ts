@@ -233,7 +233,7 @@ export class NotificationService extends BaseService {
       });
     } catch (err) {
       // Push failures should not break the flow
-      console.warn(`[NotificationService] FCM push failed for user ${userId}:`, err);
+      process.stderr.write(`[NotificationService] FCM push failed for user ${userId}: ${err}\n`);
     }
   }
 
@@ -259,7 +259,7 @@ export class NotificationService extends BaseService {
         });
       }
     } catch (err) {
-      console.warn("[NotificationService] FCM multicast push failed:", err);
+      process.stderr.write(`[NotificationService] FCM multicast push failed: ${err}\n`);
     }
   }
 

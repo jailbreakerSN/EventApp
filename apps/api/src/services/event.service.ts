@@ -16,6 +16,8 @@ import {
   ForbiddenError,
   ValidationError,
 } from "@/errors/app-error";
+import { db } from "@/config/firebase";
+import { COLLECTIONS } from "@/config/firebase";
 import { BaseService } from "./base.service";
 import { eventBus } from "@/events/event-bus";
 import { getRequestId } from "@/context/request-context";
@@ -83,19 +85,28 @@ export class EventService extends BaseService {
     // Published public events are visible to everyone
     if (event.status === "published" && event.isPublic) return event;
 
-    // Non-public or draft events require authentication and event:read
+    // Non-public or draft events require authentication + org membership
     if (!user) throw new ForbiddenError("Authentication required to view this event");
     this.requirePermission(user, "event:read");
+    this.requireOrganizationAccess(user, event.organizationId);
 
     return event;
   }
 
-  async getBySlug(slug: string): Promise<Event> {
+  async getBySlug(slug: string, user?: AuthUser): Promise<Event> {
     const event = await eventRepository.findBySlug(slug);
     if (!event) {
       const { NotFoundError } = await import("@/errors/app-error");
       throw new NotFoundError("Event", slug);
     }
+
+    // Same visibility logic as getById
+    if (event.status === "published" && event.isPublic) return event;
+
+    if (!user) throw new ForbiddenError("Authentication required to view this event");
+    this.requirePermission(user, "event:read");
+    this.requireOrganizationAccess(user, event.organizationId);
+
     return event;
   }
 
@@ -248,25 +259,31 @@ export class EventService extends BaseService {
   async addTicketType(eventId: string, dto: CreateTicketTypeDto, user: AuthUser): Promise<Event> {
     this.requirePermission(user, "event:update");
 
-    const event = await eventRepository.findByIdOrThrow(eventId);
-    this.requireOrganizationAccess(user, event.organizationId);
-
-    if (event.status === "cancelled" || event.status === "archived") {
-      throw new ValidationError(`Cannot modify ticket types on a ${event.status} event`);
-    }
-
     const ticketId = `tt-${crypto.randomBytes(4).toString("hex")}`;
     const newTicketType = { ...dto, id: ticketId, soldCount: 0 };
-    const updatedTicketTypes = [...event.ticketTypes, newTicketType];
 
-    await eventRepository.update(eventId, {
-      ticketTypes: updatedTicketTypes,
-      updatedBy: user.uid,
-    } as Partial<Event>);
+    const updatedEvent = await db.runTransaction(async (tx) => {
+      const docRef = db.collection(COLLECTIONS.EVENTS).doc(eventId);
+      const snap = await tx.get(docRef);
+      if (!snap.exists) {
+        const { NotFoundError } = await import("@/errors/app-error");
+        throw new NotFoundError("Event", eventId);
+      }
+      const event = { id: snap.id, ...snap.data() } as Event;
+      this.requireOrganizationAccess(user, event.organizationId);
+
+      if (event.status === "cancelled" || event.status === "archived") {
+        throw new ValidationError(`Cannot modify ticket types on a ${event.status} event`);
+      }
+
+      const updatedTicketTypes = [...event.ticketTypes, newTicketType];
+      tx.update(docRef, { ticketTypes: updatedTicketTypes, updatedBy: user.uid });
+      return { ...event, ticketTypes: updatedTicketTypes };
+    });
 
     eventBus.emit("ticket_type.added", {
       eventId,
-      organizationId: event.organizationId,
+      organizationId: updatedEvent.organizationId,
       ticketTypeId: ticketId,
       ticketTypeName: dto.name,
       actorId: user.uid,
@@ -274,7 +291,7 @@ export class EventService extends BaseService {
       timestamp: new Date().toISOString(),
     });
 
-    return { ...event, ticketTypes: updatedTicketTypes };
+    return updatedEvent;
   }
 
   async updateTicketType(
@@ -285,25 +302,30 @@ export class EventService extends BaseService {
   ): Promise<Event> {
     this.requirePermission(user, "event:update");
 
-    const event = await eventRepository.findByIdOrThrow(eventId);
-    this.requireOrganizationAccess(user, event.organizationId);
+    const updatedEvent = await db.runTransaction(async (tx) => {
+      const docRef = db.collection(COLLECTIONS.EVENTS).doc(eventId);
+      const snap = await tx.get(docRef);
+      if (!snap.exists) {
+        const { NotFoundError } = await import("@/errors/app-error");
+        throw new NotFoundError("Event", eventId);
+      }
+      const event = { id: snap.id, ...snap.data() } as Event;
+      this.requireOrganizationAccess(user, event.organizationId);
 
-    const index = event.ticketTypes.findIndex((t) => t.id === ticketTypeId);
-    if (index === -1) {
-      throw new ValidationError(`Ticket type '${ticketTypeId}' not found`);
-    }
+      const index = event.ticketTypes.findIndex((t) => t.id === ticketTypeId);
+      if (index === -1) {
+        throw new ValidationError(`Ticket type '${ticketTypeId}' not found`);
+      }
 
-    const updatedTicketTypes = [...event.ticketTypes];
-    updatedTicketTypes[index] = { ...updatedTicketTypes[index], ...dto };
-
-    await eventRepository.update(eventId, {
-      ticketTypes: updatedTicketTypes,
-      updatedBy: user.uid,
-    } as Partial<Event>);
+      const updatedTicketTypes = [...event.ticketTypes];
+      updatedTicketTypes[index] = { ...updatedTicketTypes[index], ...dto };
+      tx.update(docRef, { ticketTypes: updatedTicketTypes, updatedBy: user.uid });
+      return { ...event, ticketTypes: updatedTicketTypes };
+    });
 
     eventBus.emit("ticket_type.updated", {
       eventId,
-      organizationId: event.organizationId,
+      organizationId: updatedEvent.organizationId,
       ticketTypeId,
       changes: dto as Record<string, unknown>,
       actorId: user.uid,
@@ -311,36 +333,40 @@ export class EventService extends BaseService {
       timestamp: new Date().toISOString(),
     });
 
-    return { ...event, ticketTypes: updatedTicketTypes };
+    return updatedEvent;
   }
 
   async removeTicketType(eventId: string, ticketTypeId: string, user: AuthUser): Promise<void> {
     this.requirePermission(user, "event:update");
 
-    const event = await eventRepository.findByIdOrThrow(eventId);
-    this.requireOrganizationAccess(user, event.organizationId);
+    const result = await db.runTransaction(async (tx) => {
+      const docRef = db.collection(COLLECTIONS.EVENTS).doc(eventId);
+      const snap = await tx.get(docRef);
+      if (!snap.exists) {
+        const { NotFoundError } = await import("@/errors/app-error");
+        throw new NotFoundError("Event", eventId);
+      }
+      const event = { id: snap.id, ...snap.data() } as Event;
+      this.requireOrganizationAccess(user, event.organizationId);
 
-    const ticketType = event.ticketTypes.find((t) => t.id === ticketTypeId);
-    if (!ticketType) {
-      throw new ValidationError(`Ticket type '${ticketTypeId}' not found`);
-    }
+      const ticketType = event.ticketTypes.find((t) => t.id === ticketTypeId);
+      if (!ticketType) {
+        throw new ValidationError(`Ticket type '${ticketTypeId}' not found`);
+      }
+      if (ticketType.soldCount > 0) {
+        throw new ValidationError("Cannot remove a ticket type with existing sales");
+      }
 
-    if (ticketType.soldCount > 0) {
-      throw new ValidationError("Cannot remove a ticket type with existing sales");
-    }
-
-    const updatedTicketTypes = event.ticketTypes.filter((t) => t.id !== ticketTypeId);
-
-    await eventRepository.update(eventId, {
-      ticketTypes: updatedTicketTypes,
-      updatedBy: user.uid,
-    } as Partial<Event>);
+      const updatedTicketTypes = event.ticketTypes.filter((t) => t.id !== ticketTypeId);
+      tx.update(docRef, { ticketTypes: updatedTicketTypes, updatedBy: user.uid });
+      return { organizationId: event.organizationId, ticketTypeName: ticketType.name };
+    });
 
     eventBus.emit("ticket_type.removed", {
       eventId,
-      organizationId: event.organizationId,
+      organizationId: result.organizationId,
       ticketTypeId,
-      ticketTypeName: ticketType.name,
+      ticketTypeName: result.ticketTypeName,
       actorId: user.uid,
       requestId: getRequestId(),
       timestamp: new Date().toISOString(),

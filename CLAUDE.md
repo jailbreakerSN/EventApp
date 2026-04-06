@@ -418,7 +418,7 @@ The platform is delivered in **8 waves**, each building on the previous and prod
 
 ### Current Test Suite
 
-- **128 tests** across 12 test files (as of 2026-04-05)
+- **129 tests** across 12 test files (as of 2026-04-06)
 - Test runner: **Vitest** with TypeScript
 - Run: `cd apps/api && npx vitest run`
 - Test files follow `__tests__/` convention next to source files
@@ -446,3 +446,121 @@ The platform is delivered in **8 waves**, each building on the previous and prod
 - Use factories from `src/__tests__/factories.ts` for test data (`buildAuthUser`, `buildOrganizerUser`, `buildSuperAdmin`)
 - Service tests should mock repositories; route tests should use `fastify.inject()`
 - QR tests import directly from `src/services/qr-signing.ts` — no duplication needed
+- When services use `db.runTransaction()`, tests must mock `db` and `COLLECTIONS` from `@/config/firebase` and provide a mock transaction with `get`/`update` methods
+
+---
+
+## Pre-Implementation Checklist
+
+Before writing any code, Claude MUST evaluate the task against these dimensions. This applies to every feature, fix, or refactor — no exceptions.
+
+### 1. Security Review (MANDATORY for every change)
+
+- **Multi-tenancy isolation**: Does this operation access data across organizations? Every service method that reads/writes org-scoped data MUST call `requireOrganizationAccess()`.
+- **Permission check**: Is the correct permission enforced? Check `permissions.types.ts` for the right `resource:action` string.
+- **Input validation**: Is all user input validated via Zod schemas from `@teranga/shared-types`? Never trust client data.
+- **Content-type validation**: If accepting file uploads, whitelist MIME types. Never allow `svg+xml` (XSS vector).
+- **Immutable fields**: Firestore rules must guard fields that should never change after creation (e.g., `organizationId` on events, `userId` on registrations).
+- **Transaction safety**: Any read-then-write operation MUST use `db.runTransaction()`. Non-transactional read-then-write = race condition.
+- **No console.log in services**: Use `process.stderr.write()` for fire-and-forget error logging, or Fastify logger via request context for request-scoped logging.
+
+### 2. Architecture Alignment
+
+- **Layer discipline**: Routes are thin controllers. Business logic lives ONLY in services. Data access ONLY in repositories.
+- **Domain events**: Every mutation (create, update, delete, status change) MUST emit a domain event for audit trail. Never skip audit for "minor" changes.
+- **Shared types first**: If a new data shape is needed, define the Zod schema in `packages/shared-types/` FIRST, then `npm run types:build`, then use in API/web.
+- **API-first**: Backend endpoints must exist before any frontend consumes them. Never build frontend against imagined API shapes.
+- **Offline-first for mobile**: Every mobile feature must consider what happens with no network. Cache-first reads, queue writes for sync.
+
+### 3. Design & UX Principles
+
+- **Francophone-first**: Default language is French. All user-facing strings must have French translations. Use `Africa/Dakar` timezone, `XOF` currency.
+- **Progressive disclosure**: Forms should use multi-step wizards for complex inputs (e.g., event creation: Details → Tickets → Settings → Review).
+- **Error states**: Every data-fetching UI must handle loading, empty, and error states. Never show a blank page.
+- **Accessibility**: All interactive elements need ARIA labels. Toggle switches, buttons, form inputs must be keyboard-navigable.
+- **Mobile-responsive**: Web backoffice must work on tablets (organizers use them at events).
+
+### 4. Testing Requirements
+
+- **Every new service method** needs a unit test with at least: happy path, permission denial, and org access denial cases.
+- **Transactional operations** must be tested with mock transactions (`mockTxGet`, `mockTxUpdate`).
+- **Run tests before committing**: `cd apps/api && npx vitest run` — all tests must pass.
+- **New API routes** need route-level integration tests using `fastify.inject()`.
+
+---
+
+## Security Hardening Checklist (applied post-Wave 1 review)
+
+These security patterns were established during the Wave 1 review and MUST be maintained in all future work:
+
+| Pattern | Rule | Applies To |
+|---------|------|-----------|
+| Org access on reads | `requireOrganizationAccess()` on every non-public data access | Services |
+| Org access on writes | `requireOrganizationAccess()` before any mutation | Services |
+| Transactional read-write | `db.runTransaction()` for any read-then-modify-then-write | Services |
+| Content-type whitelist | Validate against `ALLOWED_CONTENT_TYPES` set | Upload endpoints |
+| Immutable field guards | Firestore rules prevent mutation of `organizationId`, `userId`, `createdBy` | Firestore rules |
+| No SVG uploads | SVG removed from storage rules and upload whitelist | Storage rules, upload service |
+| API client timeout | 30s `AbortController` timeout on all fetch calls | Web API client |
+| Token refresh on 401 | Single retry with `getIdToken(true)` on authentication failure | Web API client |
+| Signed QR codes | HMAC-SHA256 with `timingSafeEqual`, never truncated | QR service |
+| No hard deletes | Soft-delete only (`status: "archived"` or `"cancelled"`) | All services |
+
+---
+
+## Agent & Skill Utilization Guide
+
+When working on this project, Claude should leverage specialized agents and skills effectively:
+
+### When to Use Agents
+
+| Scenario | Agent Type | Why |
+|----------|-----------|-----|
+| Broad codebase exploration | `Explore` | Find patterns across multiple files/directories |
+| Multi-file implementation | `general-purpose` | Complex changes spanning API + web + mobile |
+| Implementation planning | `Plan` | Architectural decisions, multi-step feature design |
+| Parallel independent tasks | Multiple agents in parallel | e.g., API fix + web fix + mobile fix simultaneously |
+
+### Development Workflow
+
+1. **Before any implementation**:
+   - Read the relevant wave file in `docs/delivery-plan/` to understand context
+   - Read this CLAUDE.md for architecture and security constraints
+   - Check `docs/delivery-plan/README.md` for current project state
+   - Review existing tests to understand patterns
+
+2. **During implementation**:
+   - Use `Plan` agent for non-trivial features (3+ files affected)
+   - Use `Explore` agent when searching across the monorepo
+   - Create tasks to track multi-step work
+   - Run tests after each significant change
+
+3. **After implementation**:
+   - Run full test suite: `cd apps/api && npx vitest run`
+   - Verify no `console.log` added in services
+   - Verify org access checks on new service methods
+   - Verify Firestore transactions on read-then-write operations
+   - Use `/commit` skill with conventional commit format
+
+### Review Protocol
+
+For any substantial change (new feature, security fix, refactor), perform a self-review:
+
+1. **Security**: Walk through every new service method — is there an org access check? Is input validated?
+2. **Atomicity**: Any read-then-write? Wrap in transaction.
+3. **Audit**: Does the mutation emit a domain event?
+4. **Tests**: Are happy path, error path, and permission denial tested?
+5. **Types**: Are shared-types schemas updated and rebuilt?
+
+---
+
+## WSL2 Development Notes
+
+This project runs on WSL2. Key configuration:
+
+- All servers bind to `0.0.0.0` (not `localhost`) for Windows host access
+- Firebase emulators: configured in `firebase.json` with `"host": "0.0.0.0"`
+- Next.js: `--hostname 0.0.0.0` flag in `apps/web-backoffice/package.json`
+- API: Fastify binds to `0.0.0.0` by default
+- Flutter emulator: uses `10.0.2.2` to reach host machine
+- Seed emulators: `npx tsx scripts/seed-emulators.ts` (idempotent, handles existing users)

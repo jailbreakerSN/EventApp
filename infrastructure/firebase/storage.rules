@@ -25,7 +25,7 @@ service firebase.storage {
     }
 
     function isImage() {
-      return request.resource.contentType.matches('image/(png|jpeg|jpg|gif|webp|svg\\+xml)');
+      return request.resource.contentType.matches('image/(png|jpeg|jpg|gif|webp)');
     }
 
     function isPdf() {

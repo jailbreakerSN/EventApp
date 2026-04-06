@@ -21,7 +21,7 @@ class AuditService {
       });
     } catch (err) {
       // Audit logging must never break the request flow
-      console.error("[AuditService] Failed to write audit log:", err);
+      process.stderr.write(`[AuditService] Failed to write audit log: ${err}\n`);
     }
   }
 }

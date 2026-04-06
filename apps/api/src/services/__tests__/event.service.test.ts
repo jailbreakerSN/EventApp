@@ -41,6 +41,24 @@ vi.mock("@/context/request-context", () => ({
   getRequestId: () => "test-request-id",
 }));
 
+// Mock db for transactional ticket type operations
+const mockTxUpdate = vi.fn();
+const mockTxGet = vi.fn();
+const mockDocRef = { id: "mock-doc" };
+
+vi.mock("@/config/firebase", () => ({
+  db: {
+    runTransaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => {
+      const tx = { get: mockTxGet, update: mockTxUpdate };
+      return fn(tx);
+    }),
+    collection: vi.fn(() => ({
+      doc: vi.fn(() => mockDocRef),
+    })),
+  },
+  COLLECTIONS: { EVENTS: "events" },
+}));
+
 // ─── Tests ─────────────────────────────────────────────────────────────────
 
 const service = new EventService();
@@ -164,13 +182,21 @@ describe("EventService.getById", () => {
     await expect(service.getById(event.id)).rejects.toThrow("Authentication required");
   });
 
-  it("allows organizer to view draft event", async () => {
-    const event = buildEvent({ status: "draft", isPublic: false });
+  it("allows organizer to view draft event in their org", async () => {
+    const event = buildEvent({ status: "draft", isPublic: false, organizationId: "org-1" });
     const user = buildOrganizerUser("org-1");
     mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
 
     const result = await service.getById(event.id, user);
     expect(result.id).toBe(event.id);
+  });
+
+  it("rejects organizer viewing draft event in another org", async () => {
+    const event = buildEvent({ status: "draft", isPublic: false, organizationId: "org-other" });
+    const user = buildOrganizerUser("org-1");
+    mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
+
+    await expect(service.getById(event.id, user)).rejects.toThrow("Access denied");
   });
 });
 
@@ -349,8 +375,7 @@ describe("EventService.addTicketType", () => {
   it("adds a ticket type to an event", async () => {
     const user = buildOrganizerUser("org-1");
     const event = buildEvent({ organizationId: "org-1", status: "draft", ticketTypes: [] });
-    mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
-    mockEventRepo.update.mockResolvedValue(undefined);
+    mockTxGet.mockResolvedValue({ exists: true, id: event.id, data: () => ({ ...event, id: undefined }) });
 
     const result = await service.addTicketType(event.id, {
       name: "VIP",
@@ -365,12 +390,13 @@ describe("EventService.addTicketType", () => {
     expect(result.ticketTypes[0].name).toBe("VIP");
     expect(result.ticketTypes[0].soldCount).toBe(0);
     expect(result.ticketTypes[0].id).toMatch(/^tt-/);
+    expect(mockTxUpdate).toHaveBeenCalled();
   });
 
   it("rejects adding to a cancelled event", async () => {
     const user = buildOrganizerUser("org-1");
     const event = buildEvent({ organizationId: "org-1", status: "cancelled" as any });
-    mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
+    mockTxGet.mockResolvedValue({ exists: true, id: event.id, data: () => ({ ...event, id: undefined }) });
 
     await expect(
       service.addTicketType(event.id, { name: "VIP" } as any, user),
@@ -385,15 +411,14 @@ describe("EventService.updateTicketType", () => {
       organizationId: "org-1",
       ticketTypes: [{ id: "tt-1", name: "Standard", price: 0, currency: "XOF" as const, totalQuantity: 100, soldCount: 0, accessZoneIds: [], isVisible: true }],
     });
-    mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
-    mockEventRepo.update.mockResolvedValue(undefined);
+    mockTxGet.mockResolvedValue({ exists: true, id: event.id, data: () => ({ ...event, id: undefined }) });
 
     const result = await service.updateTicketType(event.id, "tt-1", { name: "VIP", price: 5000 }, user);
 
     expect(result.ticketTypes[0].name).toBe("VIP");
     expect(result.ticketTypes[0].price).toBe(5000);
-    expect(mockEventRepo.update).toHaveBeenCalledWith(
-      event.id,
+    expect(mockTxUpdate).toHaveBeenCalledWith(
+      mockDocRef,
       expect.objectContaining({ updatedBy: user.uid }),
     );
   });
@@ -401,7 +426,7 @@ describe("EventService.updateTicketType", () => {
   it("rejects updating a non-existent ticket type", async () => {
     const user = buildOrganizerUser("org-1");
     const event = buildEvent({ organizationId: "org-1", ticketTypes: [] });
-    mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
+    mockTxGet.mockResolvedValue({ exists: true, id: event.id, data: () => ({ ...event, id: undefined }) });
 
     await expect(
       service.updateTicketType(event.id, "tt-999", { name: "Nope" }, user),
@@ -414,7 +439,7 @@ describe("EventService.updateTicketType", () => {
       organizationId: "org-1",
       ticketTypes: [{ id: "tt-1", name: "Standard", price: 0, currency: "XOF" as const, totalQuantity: 100, soldCount: 0, accessZoneIds: [], isVisible: true }],
     });
-    mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
+    mockTxGet.mockResolvedValue({ exists: true, id: event.id, data: () => ({ ...event, id: undefined }) });
 
     await expect(
       service.updateTicketType(event.id, "tt-1", { name: "VIP" }, user),
@@ -429,13 +454,12 @@ describe("EventService.removeTicketType", () => {
       organizationId: "org-1",
       ticketTypes: [{ id: "tt-1", name: "Standard", price: 0, currency: "XOF" as const, totalQuantity: 100, soldCount: 0, accessZoneIds: [], isVisible: true }],
     });
-    mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
-    mockEventRepo.update.mockResolvedValue(undefined);
+    mockTxGet.mockResolvedValue({ exists: true, id: event.id, data: () => ({ ...event, id: undefined }) });
 
     await service.removeTicketType(event.id, "tt-1", user);
 
-    expect(mockEventRepo.update).toHaveBeenCalledWith(
-      event.id,
+    expect(mockTxUpdate).toHaveBeenCalledWith(
+      mockDocRef,
       expect.objectContaining({ ticketTypes: [] }),
     );
   });
@@ -446,7 +470,7 @@ describe("EventService.removeTicketType", () => {
       organizationId: "org-1",
       ticketTypes: [{ id: "tt-1", name: "Standard", price: 0, currency: "XOF" as const, totalQuantity: 100, soldCount: 5, accessZoneIds: [], isVisible: true }],
     });
-    mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
+    mockTxGet.mockResolvedValue({ exists: true, id: event.id, data: () => ({ ...event, id: undefined }) });
 
     await expect(
       service.removeTicketType(event.id, "tt-1", user),
@@ -456,7 +480,7 @@ describe("EventService.removeTicketType", () => {
   it("rejects removing a non-existent ticket type", async () => {
     const user = buildOrganizerUser("org-1");
     const event = buildEvent({ organizationId: "org-1", ticketTypes: [] });
-    mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
+    mockTxGet.mockResolvedValue({ exists: true, id: event.id, data: () => ({ ...event, id: undefined }) });
 
     await expect(
       service.removeTicketType(event.id, "tt-999", user),

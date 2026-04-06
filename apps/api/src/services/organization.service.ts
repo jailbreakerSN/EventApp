@@ -7,7 +7,7 @@ import {
 } from "@teranga/shared-types";
 import { organizationRepository } from "@/repositories/organization.repository";
 import { type AuthUser } from "@/middlewares/auth.middleware";
-import { auth } from "@/config/firebase";
+import { auth, db, COLLECTIONS } from "@/config/firebase";
 import {
   ValidationError,
   ConflictError,
@@ -86,17 +86,27 @@ export class OrganizationService extends BaseService {
 
   async addMember(orgId: string, userId: string, user: AuthUser): Promise<void> {
     this.requirePermission(user, "organization:manage_members");
+    this.requireOrganizationAccess(user, orgId);
 
-    const org = await organizationRepository.findByIdOrThrow(orgId);
-    this.requireOrganizationAccess(user, org.id);
+    await db.runTransaction(async (tx) => {
+      const docRef = db.collection(COLLECTIONS.ORGANIZATIONS).doc(orgId);
+      const snap = await tx.get(docRef);
+      if (!snap.exists) {
+        const { NotFoundError } = await import("@/errors/app-error");
+        throw new NotFoundError("Organization", orgId);
+      }
+      const org = { id: snap.id, ...snap.data() } as Organization;
+      const members: string[] = org.memberIds ?? [];
 
-    // Check plan limits
-    const limits = PLAN_LIMITS[org.plan];
-    if (org.memberIds.length >= limits.maxMembers) {
-      throw new PlanLimitError(`Maximum ${limits.maxMembers} members on the ${org.plan} plan`);
-    }
+      if (members.includes(userId)) return;
 
-    await organizationRepository.addMember(orgId, userId);
+      const limits = PLAN_LIMITS[org.plan];
+      if (members.length >= limits.maxMembers) {
+        throw new PlanLimitError(`Maximum ${limits.maxMembers} members on the ${org.plan} plan`);
+      }
+
+      tx.update(docRef, { memberIds: [...members, userId] });
+    });
 
     eventBus.emit("member.added", {
       organizationId: orgId,

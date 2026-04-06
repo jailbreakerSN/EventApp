@@ -20,11 +20,25 @@ vi.mock("@/repositories/organization.repository", () => ({
   }),
 }));
 
+const mockTxUpdate = vi.fn();
+const mockTxGet = vi.fn();
+const mockDocRef = { id: "mock-doc" };
+
 vi.mock("@/config/firebase", () => ({
   auth: {
     setCustomUserClaims: vi.fn().mockResolvedValue(undefined),
     getUser: vi.fn().mockResolvedValue({ customClaims: {} }),
   },
+  db: {
+    runTransaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => {
+      const tx = { get: mockTxGet, update: mockTxUpdate };
+      return fn(tx);
+    }),
+    collection: vi.fn(() => ({
+      doc: vi.fn(() => mockDocRef),
+    })),
+  },
+  COLLECTIONS: { ORGANIZATIONS: "organizations" },
 }));
 
 vi.mock("@/events/event-bus", () => ({
@@ -154,12 +168,14 @@ describe("OrganizationService.addMember", () => {
   it("adds a member and sets custom claims", async () => {
     const org = buildOrganization({ id: "org-1", plan: "free", memberIds: ["owner-1"] });
     const user = buildOrganizerUser("org-1");
-    mockOrgRepo.findByIdOrThrow.mockResolvedValue(org);
-    mockOrgRepo.addMember.mockResolvedValue(undefined);
+    mockTxGet.mockResolvedValue({ exists: true, id: org.id, data: () => ({ ...org, id: undefined }) });
 
     await service.addMember("org-1", "new-member-1", user);
 
-    expect(mockOrgRepo.addMember).toHaveBeenCalledWith("org-1", "new-member-1");
+    expect(mockTxUpdate).toHaveBeenCalledWith(
+      mockDocRef,
+      expect.objectContaining({ memberIds: ["owner-1", "new-member-1"] }),
+    );
   });
 
   it("enforces plan member limit", async () => {
@@ -170,15 +186,13 @@ describe("OrganizationService.addMember", () => {
       memberIds: ["m1", "m2", "m3"], // already at max
     });
     const user = buildOrganizerUser("org-1");
-    mockOrgRepo.findByIdOrThrow.mockResolvedValue(org);
+    mockTxGet.mockResolvedValue({ exists: true, id: org.id, data: () => ({ ...org, id: undefined }) });
 
     await expect(service.addMember("org-1", "new-member", user)).rejects.toThrow(/Maximum.*members/);
   });
 
   it("rejects if user doesn't belong to org", async () => {
-    const org = buildOrganization({ id: "org-1" });
     const user = buildOrganizerUser("org-other");
-    mockOrgRepo.findByIdOrThrow.mockResolvedValue(org);
 
     await expect(service.addMember("org-1", "new-member", user)).rejects.toThrow("Access denied");
   });

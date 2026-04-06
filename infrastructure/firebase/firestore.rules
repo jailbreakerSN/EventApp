@@ -83,8 +83,10 @@ service cloud.firestore {
       allow create: if (isOrganizer() && belongsToOrg(request.resource.data.organizationId))
                     || isSuperAdmin();
 
-      allow update: if (isOrganizer() && belongsToOrg(resource.data.organizationId))
-                    || isSuperAdmin();
+      allow update: if ((isOrganizer() && belongsToOrg(resource.data.organizationId))
+                    || isSuperAdmin())
+                    // Prevent cross-tenant migration: organizationId is immutable
+                    && request.resource.data.organizationId == resource.data.organizationId;
 
       // Soft-delete only — set status to 'archived'
       allow delete: if false;
