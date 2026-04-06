@@ -4,8 +4,12 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
+import { firebaseAuth } from "@/lib/firebase";
 import { LoginSchema, type LoginDto } from "@teranga/shared-types";
 import { useState } from "react";
+import type { UserRole } from "@teranga/shared-types";
+
+const BACKOFFICE_ROLES: UserRole[] = ["organizer", "co_organizer", "super_admin"];
 
 export function LoginForm() {
   const { login } = useAuth();
@@ -22,6 +26,18 @@ export function LoginForm() {
     setError(null);
     try {
       await login(data.email, data.password);
+
+      // Check roles from token claims before redirecting
+      const currentUser = firebaseAuth.currentUser;
+      if (currentUser) {
+        const tokenResult = await currentUser.getIdTokenResult(true);
+        const roles = (tokenResult.claims.roles as UserRole[]) ?? ["participant"];
+        if (!roles.some((r) => BACKOFFICE_ROLES.includes(r))) {
+          router.push("/unauthorized");
+          return;
+        }
+      }
+
       router.push("/dashboard");
     } catch {
       setError("Email ou mot de passe incorrect.");

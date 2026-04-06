@@ -11,22 +11,37 @@ import {
   Building2,
   QrCode,
   BarChart3,
+  type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/hooks/use-auth";
+import type { UserRole } from "@teranga/shared-types";
 
-const navItems = [
-  { href: "/dashboard", icon: LayoutDashboard, label: "Tableau de bord" },
-  { href: "/events", icon: CalendarDays, label: "Événements" },
-  { href: "/participants", icon: Users, label: "Participants" },
-  { href: "/badges", icon: QrCode, label: "Badges & QR" },
-  { href: "/analytics", icon: BarChart3, label: "Analytiques" },
-  { href: "/notifications", icon: Bell, label: "Notifications" },
-  { href: "/organization", icon: Building2, label: "Organisation" },
-  { href: "/settings", icon: Settings, label: "Paramètres" },
+interface NavItem {
+  href: string;
+  icon: LucideIcon;
+  label: string;
+  roles: UserRole[]; // which roles can see this item
+}
+
+const navItems: NavItem[] = [
+  { href: "/dashboard", icon: LayoutDashboard, label: "Tableau de bord", roles: ["organizer", "co_organizer", "super_admin"] },
+  { href: "/events", icon: CalendarDays, label: "Événements", roles: ["organizer", "co_organizer", "super_admin"] },
+  { href: "/participants", icon: Users, label: "Participants", roles: ["organizer", "super_admin"] },
+  { href: "/badges", icon: QrCode, label: "Badges & QR", roles: ["organizer", "super_admin"] },
+  { href: "/analytics", icon: BarChart3, label: "Analytiques", roles: ["organizer", "super_admin"] },
+  { href: "/notifications", icon: Bell, label: "Notifications", roles: ["organizer", "co_organizer", "super_admin"] },
+  { href: "/organization", icon: Building2, label: "Organisation", roles: ["organizer", "super_admin"] },
+  { href: "/settings", icon: Settings, label: "Paramètres", roles: ["organizer", "super_admin"] },
 ];
 
 export function Sidebar() {
   const pathname = usePathname();
+  const { hasRole } = useAuth();
+
+  const visibleItems = navItems.filter((item) =>
+    hasRole(...item.roles)
+  );
 
   return (
     <aside className="w-60 bg-[#1A1A2E] flex flex-col h-full shrink-0">
@@ -38,7 +53,7 @@ export function Sidebar() {
 
       {/* Navigation */}
       <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
-        {navItems.map(({ href, icon: Icon, label }) => (
+        {visibleItems.map(({ href, icon: Icon, label }) => (
           <Link
             key={href}
             href={href}
