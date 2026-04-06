@@ -20,9 +20,9 @@ The MVP prioritizes the **web platform** (participant web app + organizer backof
 | Component | Completion | Notes |
 |-----------|-----------|-------|
 | Shared Types | ~98% | Zod schemas, permissions, all core types, badge status, search filters |
-| API (Fastify) | ~92% | All Wave 1+2 endpoints complete, 153 tests, security hardening applied |
-| Cloud Functions | ~70% | Auth triggers, badge generation (atomic), registration triggers |
-| Web Backoffice | ~90% | Full event CRUD, registrations, auth guard, API integration |
+| API (Fastify) | ~95% | All Wave 1+2 endpoints complete, 153 tests, security hardening applied |
+| Cloud Functions | ~80% | Auth triggers, badge generation, registration triggers, check-in feed trigger |
+| Web Backoffice | ~95% | Full event CRUD, registrations, check-in dashboard, access zones, auth guard |
 | **Web Participant** | **0%** | **Wave 3 priority** — Next.js SSR/SSG for SEO + participant registration |
 | Mobile (Flutter) | ~35% | Wave 1 basics done; full app deferred to Wave 9 after web validation |
 | Shared UI | 0% | Planned for Wave 3 — extract reusable React components for both web apps |
@@ -43,8 +43,8 @@ The MVP prioritizes the **web platform** (participant web app + organizer backof
 |------|------|----------|--------|------|
 | Pre-Wave | Foundation Hardening | All | `completed` | [wave-0-prerequisites.md](wave-0-prerequisites.md) |
 | Wave 1 | Core Loop — Create, Register, Badge | API + Web + Mobile | `completed` | [wave-1-core-loop.md](wave-1-core-loop.md) |
-| Wave 2 | Check-in API & Web Dashboard | API + Web | `in_progress` | [wave-2-offline-checkin.md](wave-2-offline-checkin.md) |
-| **Wave 3** | **Participant Web App** | **Web** | `not_started` | [wave-3-participant-web.md](wave-3-participant-web.md) |
+| Wave 2 | Check-in API & Web Dashboard | API + Web | `completed` | [wave-2-offline-checkin.md](wave-2-offline-checkin.md) |
+| **Wave 3** | **Participant Web App** | **Web** | `in_progress` | [wave-3-participant-web.md](wave-3-participant-web.md) |
 | Wave 4 | Organizer Productivity | API + Web | `not_started` | [wave-4-organizer-tools.md](wave-4-organizer-tools.md) |
 | Wave 5 | Feed, Messaging, Sessions | API + Web | `not_started` | [wave-5-social-sessions.md](wave-5-social-sessions.md) |
 | Wave 6 | Payments | API + Web | `not_started` | [wave-6-payments.md](wave-6-payments.md) |

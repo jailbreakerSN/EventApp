@@ -1,6 +1,6 @@
 # Wave 2: Offline QR Scanning & Check-in
 
-**Status:** `in_progress`
+**Status:** `completed`
 **Estimated effort:** 1.5 weeks
 **Goal:** Staff can scan QR badges at event entrances, even with no internet connection.
 
