@@ -4,6 +4,8 @@ import {
   type UpdateEventDto,
   type CreateTicketTypeDto,
   type UpdateTicketTypeDto,
+  type CreateAccessZoneDto,
+  type UpdateAccessZoneDto,
   type Event,
   type EventStatus,
   type EventSearchQuery,
@@ -367,6 +369,122 @@ export class EventService extends BaseService {
       organizationId: result.organizationId,
       ticketTypeId,
       ticketTypeName: result.ticketTypeName,
+      actorId: user.uid,
+      requestId: getRequestId(),
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  // ─── Access Zone Management ──────────────────────────────────────────────
+
+  async addAccessZone(eventId: string, dto: CreateAccessZoneDto, user: AuthUser): Promise<Event> {
+    this.requirePermission(user, "event:update");
+
+    const zoneId = `zone-${crypto.randomBytes(4).toString("hex")}`;
+    const newZone = { ...dto, id: zoneId };
+
+    const updatedEvent = await db.runTransaction(async (tx) => {
+      const docRef = db.collection(COLLECTIONS.EVENTS).doc(eventId);
+      const snap = await tx.get(docRef);
+      if (!snap.exists) {
+        const { NotFoundError } = await import("@/errors/app-error");
+        throw new NotFoundError("Event", eventId);
+      }
+      const event = { id: snap.id, ...snap.data() } as Event;
+      this.requireOrganizationAccess(user, event.organizationId);
+
+      if (event.status === "cancelled" || event.status === "archived") {
+        throw new ValidationError(`Cannot modify access zones on a ${event.status} event`);
+      }
+
+      const updatedZones = [...event.accessZones, newZone];
+      tx.update(docRef, { accessZones: updatedZones, updatedBy: user.uid });
+      return { ...event, accessZones: updatedZones };
+    });
+
+    eventBus.emit("access_zone.added", {
+      eventId,
+      organizationId: updatedEvent.organizationId,
+      zoneId,
+      zoneName: dto.name,
+      actorId: user.uid,
+      requestId: getRequestId(),
+      timestamp: new Date().toISOString(),
+    });
+
+    return updatedEvent;
+  }
+
+  async updateAccessZone(
+    eventId: string,
+    zoneId: string,
+    dto: UpdateAccessZoneDto,
+    user: AuthUser,
+  ): Promise<Event> {
+    this.requirePermission(user, "event:update");
+
+    const updatedEvent = await db.runTransaction(async (tx) => {
+      const docRef = db.collection(COLLECTIONS.EVENTS).doc(eventId);
+      const snap = await tx.get(docRef);
+      if (!snap.exists) {
+        const { NotFoundError } = await import("@/errors/app-error");
+        throw new NotFoundError("Event", eventId);
+      }
+      const event = { id: snap.id, ...snap.data() } as Event;
+      this.requireOrganizationAccess(user, event.organizationId);
+
+      const index = event.accessZones.findIndex((z) => z.id === zoneId);
+      if (index === -1) {
+        throw new ValidationError(`Access zone '${zoneId}' not found`);
+      }
+
+      const updatedZones = [...event.accessZones];
+      updatedZones[index] = { ...updatedZones[index], ...dto };
+      tx.update(docRef, { accessZones: updatedZones, updatedBy: user.uid });
+      return { ...event, accessZones: updatedZones };
+    });
+
+    eventBus.emit("access_zone.updated", {
+      eventId,
+      organizationId: updatedEvent.organizationId,
+      zoneId,
+      changes: dto as Record<string, unknown>,
+      actorId: user.uid,
+      requestId: getRequestId(),
+      timestamp: new Date().toISOString(),
+    });
+
+    return updatedEvent;
+  }
+
+  async removeAccessZone(eventId: string, zoneId: string, user: AuthUser): Promise<void> {
+    this.requirePermission(user, "event:update");
+
+    const result = await db.runTransaction(async (tx) => {
+      const docRef = db.collection(COLLECTIONS.EVENTS).doc(eventId);
+      const snap = await tx.get(docRef);
+      if (!snap.exists) {
+        const { NotFoundError } = await import("@/errors/app-error");
+        throw new NotFoundError("Event", eventId);
+      }
+      const event = { id: snap.id, ...snap.data() } as Event;
+      this.requireOrganizationAccess(user, event.organizationId);
+
+      const zone = event.accessZones.find((z) => z.id === zoneId);
+      if (!zone) {
+        throw new ValidationError(`Access zone '${zoneId}' not found`);
+      }
+
+      const updatedZones = event.accessZones.filter((z) => z.id !== zoneId);
+      tx.update(docRef, { accessZones: updatedZones, updatedBy: user.uid });
+      return { organizationId: event.organizationId, zoneName: zone.name };
+    });
+
+    eventBus.emit("access_zone.removed", {
+      eventId,
+      organizationId: result.organizationId,
+      zoneId,
+      zoneName: result.zoneName,
       actorId: user.uid,
       requestId: getRequestId(),
       timestamp: new Date().toISOString(),

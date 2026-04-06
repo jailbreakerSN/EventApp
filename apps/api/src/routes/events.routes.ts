@@ -10,6 +10,8 @@ import {
   type UpdateEventDto,
   type CreateTicketTypeDto,
   type UpdateTicketTypeDto,
+  type CreateAccessZoneDto,
+  type UpdateAccessZoneDto,
   type UploadUrlRequest,
   type EventSearchQuery,
   CreateEventSchema,
@@ -17,11 +19,14 @@ import {
   EventSearchQuerySchema,
   CreateTicketTypeSchema,
   UpdateTicketTypeSchema,
+  CreateAccessZoneSchema,
+  UpdateAccessZoneSchema,
   UploadUrlRequestSchema,
 } from "@teranga/shared-types";
 
 const ParamsWithEventId = z.object({ eventId: z.string() });
 const TicketTypeParams = z.object({ eventId: z.string(), ticketTypeId: z.string() });
+const AccessZoneParams = z.object({ eventId: z.string(), zoneId: z.string() });
 
 export const eventRoutes: FastifyPluginAsync = async (fastify) => {
   // ─── Search / List Published Events (public) ──────────────────────────────
@@ -190,6 +195,60 @@ export const eventRoutes: FastifyPluginAsync = async (fastify) => {
     async (request, reply) => {
       const { eventId, ticketTypeId } = request.params as z.infer<typeof TicketTypeParams>;
       await eventService.removeTicketType(eventId, ticketTypeId, request.user!);
+      return reply.status(204).send();
+    },
+  );
+
+  // ─── Access Zone: Add ───────────────────────────────────────────────────
+  fastify.post(
+    "/:eventId/access-zones",
+    {
+      preHandler: [
+        authenticate,
+        requirePermission("event:update"),
+        validate({ params: ParamsWithEventId, body: CreateAccessZoneSchema }),
+      ],
+      schema: { tags: ["Events"], summary: "Add an access zone", security: [{ BearerAuth: [] }] },
+    },
+    async (request, reply) => {
+      const { eventId } = request.params as z.infer<typeof ParamsWithEventId>;
+      const event = await eventService.addAccessZone(eventId, request.body as CreateAccessZoneDto, request.user!);
+      return reply.status(201).send({ success: true, data: event });
+    },
+  );
+
+  // ─── Access Zone: Update ───────────────────────────────────────────────
+  fastify.patch(
+    "/:eventId/access-zones/:zoneId",
+    {
+      preHandler: [
+        authenticate,
+        requirePermission("event:update"),
+        validate({ params: AccessZoneParams, body: UpdateAccessZoneSchema }),
+      ],
+      schema: { tags: ["Events"], summary: "Update an access zone", security: [{ BearerAuth: [] }] },
+    },
+    async (request, reply) => {
+      const { eventId, zoneId } = request.params as z.infer<typeof AccessZoneParams>;
+      const event = await eventService.updateAccessZone(eventId, zoneId, request.body as UpdateAccessZoneDto, request.user!);
+      return reply.send({ success: true, data: event });
+    },
+  );
+
+  // ─── Access Zone: Remove ───────────────────────────────────────────────
+  fastify.delete(
+    "/:eventId/access-zones/:zoneId",
+    {
+      preHandler: [
+        authenticate,
+        requirePermission("event:update"),
+        validate({ params: AccessZoneParams }),
+      ],
+      schema: { tags: ["Events"], summary: "Remove an access zone", security: [{ BearerAuth: [] }] },
+    },
+    async (request, reply) => {
+      const { eventId, zoneId } = request.params as z.infer<typeof AccessZoneParams>;
+      await eventService.removeAccessZone(eventId, zoneId, request.user!);
       return reply.status(204).send();
     },
   );
