@@ -239,7 +239,7 @@ export default async function EventDetailPage({ params }: PageProps) {
 
                 <div className="mt-6">
                   <Link
-                    href={`/events/${event.id}/register`}
+                    href={`/register/${event.id}`}
                     className="block w-full rounded-lg bg-teranga-gold py-3 text-center text-base font-semibold text-white transition-colors hover:bg-teranga-gold/90"
                   >
                     {isFree ? "S'inscrire gratuitement" : `S'inscrire — à partir de ${formatCurrency(minPrice!)}`}
