@@ -63,6 +63,20 @@ export const eventRoutes: FastifyPluginAsync = async (fastify) => {
     },
   );
 
+  // ─── Get Event by Slug (public if published — for SEO pages) ──────────────
+  fastify.get(
+    "/by-slug/:slug",
+    {
+      preHandler: [optionalAuth, validate({ params: z.object({ slug: z.string() }) })],
+      schema: { tags: ["Events"], summary: "Get event by slug (public if published)" },
+    },
+    async (request, reply) => {
+      const { slug } = request.params as { slug: string };
+      const event = await eventService.getBySlug(slug, request.user ?? undefined);
+      return reply.send({ success: true, data: event });
+    },
+  );
+
   // ─── Get Event by ID (public if published) ────────────────────────────────
   fastify.get(
     "/:eventId",

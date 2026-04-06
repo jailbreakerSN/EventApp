@@ -18,6 +18,7 @@
     "api:dev": "turbo dev --filter=@teranga/api",
     "functions:dev": "turbo dev --filter=@teranga/functions",
     "web:dev": "turbo dev --filter=@teranga/web-backoffice",
+    "participant:dev": "turbo dev --filter=@teranga/web-participant",
     "types:build": "turbo build --filter=@teranga/shared-types"
   },
   "devDependencies": {

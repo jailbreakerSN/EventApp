@@ -1,6 +1,6 @@
 # Wave 3: Participant Web App
 
-**Status:** `not_started`
+**Status:** `in_progress`
 **Estimated effort:** 1.5 weeks
 **Goal:** Launch a participant-facing web application for event discovery, registration, and badge viewing — with SEO-optimized public pages.
 
@@ -36,58 +36,59 @@ Mobile-only limits reach. Many participants discover events via WhatsApp links, 
 
 ### Monorepo Setup
 
-- [ ] Create `packages/shared-ui/` — extract reusable React components from backoffice
-  - [ ] Button, Card, Input, Modal, Badge, Spinner components
-  - [ ] Shared Tailwind preset (colors, fonts, spacing — Teranga design tokens)
-  - [ ] Package.json with `@teranga/shared-ui` name
-- [ ] Create `packages/shared-config/` — shared ESLint and Tailwind configs
-- [ ] Create `apps/web-participant/` — Next.js 14 App Router scaffold
-  - [ ] TailwindCSS + shared design tokens
-  - [ ] Firebase Auth client setup (reuse pattern from backoffice)
-  - [ ] API client (extract shared fetch wrapper from backoffice into shared-lib or copy)
-  - [ ] React Query provider
-  - [ ] Mobile-first responsive layout
-- [ ] Update `turbo.json` build pipeline for new packages and app
-- [ ] Add Firebase Hosting target for participant app in `firebase.json`
+- [x] Create `packages/shared-ui/` — reusable React components (CVA-based)
+  - [x] Button, Card, Input, Badge, Spinner components
+  - [x] Shared utility functions (cn, formatDate, formatDateTime, formatCurrency)
+  - [x] Package.json with `@teranga/shared-ui` name
+- [x] Create `packages/shared-config/` — shared Tailwind preset and PostCSS config
+- [x] Create `apps/web-participant/` — Next.js 14 App Router scaffold
+  - [x] TailwindCSS + shared design tokens
+  - [x] Firebase Auth client setup (login, register, Google sign-in)
+  - [x] API client (server-side for SSG + client-side with auth)
+  - [x] React Query provider + Auth provider
+  - [x] Mobile-first responsive layout (header, footer, public/auth/authenticated layouts)
+- [x] Update root `package.json` with `participant:dev` script
+- [x] Add Firebase Hosting multi-site config (backoffice + participant targets)
 
 ### Public Pages (No Auth — SSG/ISR for SEO)
 
-- [ ] Landing page with featured events
-- [ ] Event listing page with search, category filters, and pagination
-  - [ ] Server-side rendered with ISR (revalidate every 60s)
-  - [ ] Calls `GET /v1/events` (public search endpoint)
-- [ ] Event detail page (`/events/[slug]`)
-  - [ ] SSG with `generateStaticParams` for published events
-  - [ ] Full `generateMetadata()` — title, description, OG image, event schema.org JSON-LD
-  - [ ] Rich Open Graph tags for WhatsApp/Facebook/Twitter sharing
-  - [ ] Ticket types display, location map, schedule preview
-  - [ ] "Register" CTA button (redirects to auth if not logged in)
+- [x] Landing page with featured events, value props, organizer CTA
+- [x] Event listing page with search, category/format filters, and pagination
+  - [x] Server-side rendered with ISR (revalidate every 60s)
+  - [x] Debounced search input (400ms)
+- [x] Event detail page (`/events/[slug]`)
+  - [x] SSG with `generateStaticParams` for published events
+  - [x] Full `generateMetadata()` — title, description, OG image
+  - [x] Rich Open Graph tags for WhatsApp/Facebook/Twitter sharing
+  - [x] schema.org/Event JSON-LD structured data
+  - [x] Ticket types display, location with Google Maps link
+  - [x] "Register" CTA button (links to auth-protected registration flow)
 
 ### Authenticated Pages (Client-rendered with React Query)
 
-- [ ] Auth flow — login/register pages (reuse pattern from backoffice)
-  - [ ] Firebase Auth (email/password, Google)
-  - [ ] Post-login redirect back to intended page
-- [ ] Registration flow (`/events/[eventId]/register`)
-  - [ ] Ticket type selection
-  - [ ] Confirmation step
-  - [ ] Success screen with QR code display
-  - [ ] Calls `POST /v1/registrations`
-- [ ] My events page — list of user's registrations with status badges
-  - [ ] Calls `GET /v1/registrations/me`
-  - [ ] Cancel registration action
-- [ ] My badges page — QR code display and PDF download
-  - [ ] Calls `GET /v1/badges/me/:eventId`
-  - [ ] QR code rendering (client-side, e.g., `qrcode.react`)
-  - [ ] PDF download link
-- [ ] Profile page — view/edit user profile
-  - [ ] Calls `GET /v1/users/me` and `PATCH /v1/users/me`
+- [x] Auth flow — login/register pages
+  - [x] Firebase Auth (email/password, Google sign-in via popup)
+  - [x] Post-login redirect back to intended page (sessionStorage)
+- [x] Registration flow (`/events/[eventId]/register`)
+  - [x] Ticket type selection
+  - [x] Confirmation step
+  - [x] Success screen with QR code display (qrcode.react)
+  - [x] Calls `POST /v1/registrations`
+- [x] My events page — list of user's registrations with status badges
+  - [x] Calls `GET /v1/registrations/me`
+  - [x] Cancel registration action
+- [x] Badge viewer — QR code display and PDF download
+  - [x] QR code rendering via `qrcode.react`
+  - [x] PDF download link from badge endpoint
+- [x] Profile page — view/edit user profile
+  - [x] Display name, phone, bio, preferred language
+  - [x] Calls `GET /v1/users/me` and `PATCH /v1/users/me`
 
 ### Shared Types & API
 
-- [ ] Verify all participant API endpoints exist (most from Wave 1 — should be ready)
-- [ ] Add `GET /v1/events/by-slug/:slug` route if not already present (for SSG)
-- [ ] Ensure public endpoints return SEO-relevant fields (description, image, location)
+- [x] All participant API endpoints verified (Wave 1+2 endpoints cover all needs)
+- [x] Added `GET /v1/events/by-slug/:slug` route for SSG pages
+- [x] Public endpoints return SEO-relevant fields (description, image, location)
 
 ---
 
