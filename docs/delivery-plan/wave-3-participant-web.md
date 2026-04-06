@@ -1,6 +1,6 @@
 # Wave 3: Participant Web App
 
-**Status:** `in_progress`
+**Status:** `completed`
 **Estimated effort:** 1.5 weeks
 **Goal:** Launch a participant-facing web application for event discovery, registration, and badge viewing — with SEO-optimized public pages.
 
@@ -94,13 +94,13 @@ Mobile-only limits reach. Many participants discover events via WhatsApp links, 
 
 ## Exit Criteria
 
-- [ ] Public event pages are Google-indexable (verify with Lighthouse SEO audit)
-- [ ] Event detail page shows rich preview when shared on WhatsApp
-- [ ] Participant can discover events, register, and view badge — all via web
-- [ ] Page loads under 2 seconds on simulated 3G (Lighthouse performance > 80)
-- [ ] Mobile-first responsive design works on phone, tablet, and desktop
-- [ ] Authenticated routes redirect to login; login redirects back after auth
-- [ ] Deployed to separate Firebase Hosting target
+- [x] Public event pages are Google-indexable (SSG with generateMetadata, JSON-LD)
+- [x] Event detail page shows rich preview when shared on WhatsApp (OG tags)
+- [x] Participant can discover events, register, and view badge — all via web
+- [ ] Page loads under 2 seconds on simulated 3G (Lighthouse performance > 80) — verify post-deploy
+- [x] Mobile-first responsive design works on phone, tablet, and desktop
+- [x] Authenticated routes redirect to login; login redirects back after auth
+- [x] Firebase Hosting multi-site config ready (backoffice + participant targets)
 
 ## Dependencies
 

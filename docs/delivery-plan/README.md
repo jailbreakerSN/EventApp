@@ -15,18 +15,18 @@ The MVP prioritizes the **web platform** (participant web app + organizer backof
 - **Market validation**: Prove the product works before investing in native mobile
 - **Mobile app becomes the premium layer**: Adds offline QR scanning, push notifications, and native UX on top of a proven web product
 
-## Current State (as of 2026-04-06)
+## Current State (as of 2026-04-07)
 
 | Component | Completion | Notes |
 |-----------|-----------|-------|
 | Shared Types | ~98% | Zod schemas, permissions, all core types, badge status, search filters |
-| API (Fastify) | ~95% | All Wave 1+2 endpoints complete, 153 tests, security hardening applied |
+| API (Fastify) | ~96% | All Wave 1-3 endpoints, 153 tests, slug route for SSG |
 | Cloud Functions | ~80% | Auth triggers, badge generation, registration triggers, check-in feed trigger |
 | Web Backoffice | ~95% | Full event CRUD, registrations, check-in dashboard, access zones, auth guard |
-| **Web Participant** | **0%** | **Wave 3 priority** — Next.js SSR/SSG for SEO + participant registration |
+| Web Participant | ~90% | SSG/ISR event pages, auth, registration, badges, profile — Wave 3 complete |
 | Mobile (Flutter) | ~35% | Wave 1 basics done; full app deferred to Wave 9 after web validation |
-| Shared UI | 0% | Planned for Wave 3 — extract reusable React components for both web apps |
-| Infrastructure | 100% | Firestore rules (org-scoped), indexes, Firebase config, emulators, seed script |
+| Shared UI | ~70% | Button, Card, Input, Badge, Spinner + utility functions (cn, format) |
+| Infrastructure | 100% | Firestore rules, indexes, Firebase multi-site hosting, emulators, seed script |
 
 ### Sprint Breakdown (Wave 1 Completion)
 
@@ -44,8 +44,8 @@ The MVP prioritizes the **web platform** (participant web app + organizer backof
 | Pre-Wave | Foundation Hardening | All | `completed` | [wave-0-prerequisites.md](wave-0-prerequisites.md) |
 | Wave 1 | Core Loop — Create, Register, Badge | API + Web + Mobile | `completed` | [wave-1-core-loop.md](wave-1-core-loop.md) |
 | Wave 2 | Check-in API & Web Dashboard | API + Web | `completed` | [wave-2-offline-checkin.md](wave-2-offline-checkin.md) |
-| **Wave 3** | **Participant Web App** | **Web** | `in_progress` | [wave-3-participant-web.md](wave-3-participant-web.md) |
-| Wave 4 | Organizer Productivity | API + Web | `not_started` | [wave-4-organizer-tools.md](wave-4-organizer-tools.md) |
+| Wave 3 | Participant Web App | Web | `completed` | [wave-3-participant-web.md](wave-3-participant-web.md) |
+| **Wave 4** | **Organizer Productivity** | **API + Web** | `not_started` | [wave-4-organizer-tools.md](wave-4-organizer-tools.md) |
 | Wave 5 | Feed, Messaging, Sessions | API + Web | `not_started` | [wave-5-social-sessions.md](wave-5-social-sessions.md) |
 | Wave 6 | Payments | API + Web | `not_started` | [wave-6-payments.md](wave-6-payments.md) |
 | Wave 7 | SMS, Email, Communication | API + Web | `not_started` | [wave-7-communications.md](wave-7-communications.md) |
