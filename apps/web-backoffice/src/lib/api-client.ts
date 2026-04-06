@@ -7,6 +7,11 @@ import type {
   EventSearchQuery,
   CreateTicketTypeDto,
   UpdateTicketTypeDto,
+  CheckinStats,
+  CheckinLogEntry,
+  CheckinHistoryQuery,
+  CreateAccessZoneDto,
+  UpdateAccessZoneDto,
 } from "@teranga/shared-types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
@@ -133,6 +138,9 @@ export const eventsApi = {
   search: (query: Partial<EventSearchQuery> = {}) =>
     api.get<PaginatedResponse<Event>>(`/v1/events${buildQuery(query)}`),
 
+  listByOrg: (orgId: string, params: { page?: number; limit?: number; orderBy?: string; orderDir?: string } = {}) =>
+    api.get<PaginatedResponse<Event>>(`/v1/events/org/${orgId}${buildQuery(params)}`),
+
   getById: (id: string) =>
     api.get<ApiResponse<Event>>(`/v1/events/${id}`),
 
@@ -173,6 +181,25 @@ export const registrationsApi = {
 
   cancel: (registrationId: string) =>
     api.post<ApiResponse<void>>(`/v1/registrations/${registrationId}/cancel`, {}),
+};
+
+export const checkinApi = {
+  getStats: (eventId: string) =>
+    api.get<ApiResponse<CheckinStats>>(`/v1/events/${eventId}/checkin/stats`),
+
+  getHistory: (eventId: string, params: Partial<CheckinHistoryQuery> = {}) =>
+    api.get<PaginatedResponse<CheckinLogEntry>>(`/v1/events/${eventId}/checkin/history${buildQuery(params)}`),
+};
+
+export const accessZonesApi = {
+  add: (eventId: string, dto: CreateAccessZoneDto) =>
+    api.post<ApiResponse<Event>>(`/v1/events/${eventId}/access-zones`, dto),
+
+  update: (eventId: string, zoneId: string, dto: Partial<UpdateAccessZoneDto>) =>
+    api.patch<ApiResponse<Event>>(`/v1/events/${eventId}/access-zones/${zoneId}`, dto),
+
+  remove: (eventId: string, zoneId: string) =>
+    api.delete(`/v1/events/${eventId}/access-zones/${zoneId}`),
 };
 
 export { ApiError };

@@ -43,7 +43,40 @@ export interface CheckInCompletedEvent extends BaseEventPayload {
   eventId: string;
   participantId: string;
   staffId: string;
-  accessZoneId?: string;
+  accessZoneId?: string | null;
+  checkedInAt?: string;
+  source?: "live" | "offline_sync";
+}
+
+export interface BulkCheckinSyncedEvent extends BaseEventPayload {
+  eventId: string;
+  organizationId: string;
+  processed: number;
+  succeeded: number;
+  failed: number;
+}
+
+// ── Access Zone ─────────────────────────────────────────────────────────────
+
+export interface AccessZoneAddedEvent extends BaseEventPayload {
+  eventId: string;
+  organizationId: string;
+  zoneId: string;
+  zoneName: string;
+}
+
+export interface AccessZoneUpdatedEvent extends BaseEventPayload {
+  eventId: string;
+  organizationId: string;
+  zoneId: string;
+  changes: Record<string, unknown>;
+}
+
+export interface AccessZoneRemovedEvent extends BaseEventPayload {
+  eventId: string;
+  organizationId: string;
+  zoneId: string;
+  zoneName: string;
 }
 
 // ── Event ────────────────────────────────────────────────────────────────────
@@ -143,6 +176,10 @@ export interface DomainEventMap {
   "registration.cancelled": RegistrationCancelledEvent;
   "registration.approved": RegistrationApprovedEvent;
   "checkin.completed": CheckInCompletedEvent;
+  "checkin.bulk_synced": BulkCheckinSyncedEvent;
+  "access_zone.added": AccessZoneAddedEvent;
+  "access_zone.updated": AccessZoneUpdatedEvent;
+  "access_zone.removed": AccessZoneRemovedEvent;
   "event.created": EventCreatedEvent;
   "event.updated": EventUpdatedEvent;
   "event.published": EventPublishedEvent;

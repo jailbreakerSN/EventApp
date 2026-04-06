@@ -4,6 +4,8 @@ import {
   type BulkCheckinResult,
   type BulkCheckinResultStatus,
   type CheckinStats,
+  type CheckinLogEntry,
+  type CheckinHistoryQuery,
   type OfflineSyncData,
   type Registration,
   type RegistrationStatus,
@@ -208,6 +210,22 @@ export class CheckinService extends BaseService {
           };
         }
 
+        // Zone capacity check
+        const eventRef = db.collection(COLLECTIONS.EVENTS).doc(eventId);
+        const { FieldValue } = await import("firebase-admin/firestore");
+
+        if (item.accessZoneId) {
+          const eventSnap = await tx.get(eventRef);
+          const eventData = eventSnap.data();
+          const zone = eventData?.accessZones?.find((z: { id: string; capacity?: number | null }) => z.id === item.accessZoneId);
+          if (zone?.capacity) {
+            const zoneCount = eventData?.zoneCheckedInCounts?.[item.accessZoneId] ?? 0;
+            if (zoneCount >= zone.capacity) {
+              return { status: "zone_full" as BulkCheckinResultStatus, reason: `Zone "${zone.name}" is at capacity (${zone.capacity})` };
+            }
+          }
+        }
+
         // Apply check-in using the offline scannedAt timestamp
         tx.update(regRef, {
           status: "checked_in" as RegistrationStatus,
@@ -217,12 +235,14 @@ export class CheckinService extends BaseService {
           updatedAt: new Date().toISOString(),
         });
 
-        // Increment event checkedInCount
-        const eventRef = db.collection(COLLECTIONS.EVENTS).doc(eventId);
-        const { FieldValue } = await import("firebase-admin/firestore");
-        tx.update(eventRef, {
+        // Increment event checkedInCount + zone counter
+        const updateData: Record<string, unknown> = {
           checkedInCount: FieldValue.increment(1),
-        });
+        };
+        if (item.accessZoneId) {
+          updateData[`zoneCheckedInCounts.${item.accessZoneId}`] = FieldValue.increment(1);
+        }
+        tx.update(eventRef, updateData);
 
         return { status: "success" as BulkCheckinResultStatus, checkedInAt: item.scannedAt };
       });
@@ -233,11 +253,12 @@ export class CheckinService extends BaseService {
         eventBus.emit("checkin.completed", {
           eventId,
           registrationId: registration.id,
-          userId: registration.userId,
+          participantId: registration.userId,
           staffId: user.uid,
           accessZoneId: item.accessZoneId ?? null,
           checkedInAt: item.scannedAt,
           source: "offline_sync",
+          actorId: user.uid,
           requestId: getRequestId(),
           timestamp: new Date().toISOString(),
         });
@@ -323,6 +344,98 @@ export class CheckinService extends BaseService {
         checkedIn: ticketMap.get(tt.id)?.checkedIn ?? 0,
       })),
       lastCheckinAt: lastCheckin?.checkedInAt ?? null,
+    };
+  }
+  /**
+   * Get paginated check-in history for an event (checked-in registrations with participant info).
+   */
+  async getHistory(
+    eventId: string,
+    query: CheckinHistoryQuery,
+    user: AuthUser,
+  ): Promise<{ data: CheckinLogEntry[]; meta: { page: number; limit: number; total: number; totalPages: number } }> {
+    this.requirePermission(user, "checkin:view_log");
+
+    const event = await eventRepository.findByIdOrThrow(eventId);
+    this.requireOrganizationAccess(user, event.organizationId);
+
+    // Build Firestore query for checked-in registrations
+    let baseQuery = db
+      .collection(COLLECTIONS.REGISTRATIONS)
+      .where("eventId", "==", eventId)
+      .where("status", "==", "checked_in");
+
+    if (query.accessZoneId) {
+      baseQuery = baseQuery.where("accessZoneId", "==", query.accessZoneId);
+    }
+
+    // Get total count
+    const countSnap = await baseQuery.count().get();
+    const total = countSnap.data().count;
+
+    // Paginate
+    const limit = query.limit ?? 20;
+    const page = query.page ?? 1;
+    const offset = (page - 1) * limit;
+
+    const snap = await baseQuery
+      .orderBy("checkedInAt", "desc")
+      .offset(offset)
+      .limit(limit)
+      .get();
+
+    const registrations = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }) as Registration);
+
+    // Batch-fetch participant + staff info
+    const userIds = [
+      ...new Set([
+        ...registrations.map((r) => r.userId),
+        ...registrations.filter((r) => r.checkedInBy).map((r) => r.checkedInBy!),
+      ]),
+    ];
+    const users = await userRepository.batchGet(userIds);
+    const userMap = new Map(users.map((u) => [u.uid ?? u.id, u]));
+
+    // Build zone name map
+    const zoneMap = new Map(event.accessZones.map((z) => [z.id, z.name]));
+
+    // Build ticket type name map
+    const ttMap = new Map(event.ticketTypes.map((t) => [t.id, t.name]));
+
+    // Filter by search query (post-query — Firestore doesn't support text search)
+    let entries: CheckinLogEntry[] = registrations.map((reg) => {
+      const participant = userMap.get(reg.userId);
+      const staff = reg.checkedInBy ? userMap.get(reg.checkedInBy) : null;
+      return {
+        registrationId: reg.id,
+        participantName: participant?.displayName ?? null,
+        participantEmail: participant?.email ?? null,
+        ticketTypeName: ttMap.get(reg.ticketTypeId) ?? "Unknown",
+        accessZoneName: reg.accessZoneId ? (zoneMap.get(reg.accessZoneId) ?? null) : null,
+        checkedInAt: reg.checkedInAt ?? reg.updatedAt ?? new Date().toISOString(),
+        checkedInBy: reg.checkedInBy ?? "unknown",
+        staffName: staff?.displayName ?? null,
+        source: "live" as const,
+      };
+    });
+
+    if (query.q) {
+      const q = query.q.toLowerCase();
+      entries = entries.filter(
+        (e) =>
+          e.participantName?.toLowerCase().includes(q) ||
+          e.participantEmail?.toLowerCase().includes(q),
+      );
+    }
+
+    return {
+      data: entries,
+      meta: {
+        page,
+        limit,
+        total: query.q ? entries.length : total, // if filtered client-side, use filtered count
+        totalPages: Math.ceil((query.q ? entries.length : total) / limit),
+      },
     };
   }
 }

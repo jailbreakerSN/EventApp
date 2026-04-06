@@ -30,10 +30,14 @@ import {
   Info,
   ChevronLeft,
   ChevronRight,
+  ScanLine,
+  MapPin,
 } from "lucide-react";
-import type { Event, CreateTicketTypeDto } from "@teranga/shared-types";
+import Link from "next/link";
+import { useAddAccessZone, useRemoveAccessZone } from "@/hooks/use-access-zones";
+import type { Event, CreateTicketTypeDto, CreateAccessZoneDto } from "@teranga/shared-types";
 
-const TABS = ["Infos", "Billets", "Inscriptions"] as const;
+const TABS = ["Infos", "Billets", "Inscriptions", "Zones"] as const;
 type Tab = (typeof TABS)[number];
 
 const STATUS_LABELS: Record<string, { label: string; className: string }> = {
@@ -99,7 +103,18 @@ export default function EventDetailPage() {
             {formatDate(event.startDate)} — {event.location?.city ?? "En ligne"}
           </p>
         </div>
-        <EventActions event={event} />
+        <div className="flex items-center gap-3">
+          {event.status === "published" && (
+            <Link
+              href={`/events/${eventId}/checkin`}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 text-sm font-medium"
+            >
+              <ScanLine className="h-4 w-4" />
+              Check-in
+            </Link>
+          )}
+          <EventActions event={event} />
+        </div>
       </div>
 
       {/* Tabs */}
@@ -122,6 +137,7 @@ export default function EventDetailPage() {
       {tab === "Infos" && <InfoTab event={event} />}
       {tab === "Billets" && <TicketsTab event={event} />}
       {tab === "Inscriptions" && <RegistrationsTab eventId={eventId} />}
+      {tab === "Zones" && <AccessZonesTab event={event} />}
     </div>
   );
 }
@@ -493,6 +509,135 @@ function RegistrationsTab({ eventId }: { eventId: string }) {
             </div>
           )}
         </>
+      )}
+    </div>
+  );
+}
+
+// ─── Access Zones Tab ──────────────────────────────────────────────────────
+
+function AccessZonesTab({ event }: { event: Event }) {
+  const [showForm, setShowForm] = useState(false);
+  const [name, setName] = useState("");
+  const [color, setColor] = useState("#3B82F6");
+  const [capacity, setCapacity] = useState("");
+
+  const addZone = useAddAccessZone(event.id);
+  const removeZone = useRemoveAccessZone(event.id);
+
+  const handleAdd = async () => {
+    if (!name.trim()) return;
+    const dto: CreateAccessZoneDto = {
+      name: name.trim(),
+      color,
+      capacity: capacity ? parseInt(capacity, 10) : null,
+      allowedTicketTypes: [],
+    };
+    await addZone.mutateAsync(dto);
+    setName("");
+    setColor("#3B82F6");
+    setCapacity("");
+    setShowForm(false);
+  };
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+          <MapPin className="h-5 w-5" /> Zones d'acces
+        </h2>
+        {event.status === "draft" && (
+          <button
+            onClick={() => setShowForm((v) => !v)}
+            className="inline-flex items-center gap-1 px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
+          >
+            <Plus className="h-4 w-4" /> Ajouter
+          </button>
+        )}
+      </div>
+
+      {showForm && (
+        <div className="bg-gray-50 rounded-lg p-4 mb-4 space-y-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Nom</label>
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Ex: Zone VIP"
+                className="w-full px-3 py-2 border rounded-lg text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Couleur</label>
+              <input
+                type="color"
+                value={color}
+                onChange={(e) => setColor(e.target.value)}
+                className="w-full h-9 rounded-lg border cursor-pointer"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Capacite (optionnel)</label>
+              <input
+                type="number"
+                value={capacity}
+                onChange={(e) => setCapacity(e.target.value)}
+                placeholder="Illimite"
+                className="w-full px-3 py-2 border rounded-lg text-sm"
+              />
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={handleAdd}
+              disabled={addZone.isPending || !name.trim()}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm disabled:opacity-50"
+            >
+              {addZone.isPending ? "Ajout..." : "Ajouter la zone"}
+            </button>
+            <button
+              onClick={() => setShowForm(false)}
+              className="px-4 py-2 border rounded-lg text-sm hover:bg-gray-100"
+            >
+              Annuler
+            </button>
+          </div>
+        </div>
+      )}
+
+      {event.accessZones.length === 0 ? (
+        <div className="text-center py-12 text-gray-400">
+          <MapPin className="h-12 w-12 mx-auto mb-3 opacity-30" />
+          <p>Aucune zone d'acces configuree</p>
+          <p className="text-sm mt-1">Les zones permettent de controler l'entree par secteur</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {event.accessZones.map((zone) => (
+            <div key={zone.id} className="bg-white border rounded-lg p-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-4 h-4 rounded-full" style={{ backgroundColor: zone.color }} />
+                <div>
+                  <span className="font-medium text-gray-900">{zone.name}</span>
+                  {zone.capacity && (
+                    <span className="text-sm text-gray-500 ml-2">Capacite: {zone.capacity}</span>
+                  )}
+                </div>
+              </div>
+              {event.status === "draft" && (
+                <button
+                  onClick={() => removeZone.mutate(zone.id)}
+                  disabled={removeZone.isPending}
+                  className="p-2 rounded-lg text-red-500 hover:bg-red-50"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );

@@ -15,75 +15,69 @@ This is Teranga's **core differentiator**. African events often have unreliable 
 ### API (Fastify)
 
 #### Check-in Endpoints
-- [ ] Verify `checkIn()` transactional flow works end-to-end
-- [ ] Offline sync data endpoint: GET `/v1/events/:id/sync` (returns registrations for offline cache)
-- [ ] Bulk check-in sync endpoint: POST `/v1/events/:id/checkin/sync` (accepts array of offline check-ins)
-- [ ] Check-in statistics endpoint: GET `/v1/events/:id/checkin/stats`
-- [ ] Conflict resolution for offline check-ins (timestamp-based, last-write-wins with audit)
+- [x] Verify `checkIn()` transactional flow works end-to-end
+- [x] Offline sync data endpoint: GET `/v1/events/:id/sync` (returns registrations for offline cache)
+- [x] Bulk check-in sync endpoint: POST `/v1/events/:id/checkin/sync` (accepts array of offline check-ins)
+- [x] Check-in statistics endpoint: GET `/v1/events/:id/checkin/stats`
+- [x] Check-in history endpoint: GET `/v1/events/:id/checkin/history` (paginated, searchable)
+- [x] Conflict resolution for offline check-ins (timestamp-based, last-write-wins with audit)
 
 #### Access Zones
-- [ ] Access zone management endpoints (CRUD within event)
-- [ ] Zone-specific check-in validation
-- [ ] Zone capacity tracking
+- [x] Access zone management endpoints (CRUD within event)
+- [x] Zone-specific check-in validation
+- [x] Zone capacity tracking (atomic counters with `zoneCheckedInCounts`)
 
-### Mobile (Flutter) — Staff Scanner
+### Mobile (Flutter) — DEFERRED TO WAVE 9
 
-- [ ] QR scanner screen using device camera (`mobile_scanner` package)
-- [ ] Offline registration cache using Hive
-  - [ ] Pre-event sync: download all registrations for assigned event
-  - [ ] Store QR → registration mapping locally
-  - [ ] Periodic background sync when online
-- [ ] Offline check-in queue
-  - [ ] Scan → validate against local cache → mark checked-in locally
-  - [ ] Queue check-in records in Hive when offline
-  - [ ] Auto-sync queue when connectivity returns
-  - [ ] Visual indicator: online/offline status, pending sync count
-- [ ] Check-in result screen (participant name, ticket type, access zone, photo if available)
-- [ ] Duplicate scan detection (show "already checked in" with timestamp)
-- [ ] Manual check-in search (find by name/email when QR fails)
-- [ ] Check-in statistics dashboard (scanned/total, by zone)
+> **All mobile scanner tasks have been deferred to Wave 9 (Mobile App Completion).**
+> The MVP prioritizes web-first delivery. The offline QR scanner is the core mobile differentiator and will be built when the web platform is stable.
+>
+> Deferred tasks: QR camera scanner, Hive offline cache, offline check-in queue, auto-sync, duplicate detection, manual search, mobile stats dashboard.
 
 ### Cloud Functions
 
-- [ ] `onCheckinCompleted` trigger → update real-time dashboard counters
+- [x] `onCheckinCompleted` trigger → write check-in feed entry for real-time dashboard
 - [ ] Conflict resolution function for simultaneous online/offline check-ins
 
 ### Web Backoffice
 
-- [ ] Live check-in dashboard (real-time counter, recent check-ins feed)
-- [ ] Check-in history table with search
-- [ ] Access zone management UI
+- [x] Live check-in dashboard (stat cards, progress bar, zone capacity, ticket breakdown, recent feed)
+- [x] Check-in history table with search and zone filter
+- [x] Access zone management UI (add/remove zones with color picker and capacity)
+- [x] Check-in button on published event detail page
 
 ### Shared Types
 
-- [ ] Offline sync data schema
-- [ ] Bulk check-in sync request/response schemas
-- [ ] Check-in statistics schema
-- [ ] Access zone CRUD schemas
+- [x] Offline sync data schema
+- [x] Bulk check-in sync request/response schemas
+- [x] Check-in statistics schema
+- [x] Access zone CRUD schemas
+- [x] Check-in history query/response schemas
+- [x] Zone capacity status (`zone_full`)
 
 ---
 
 ## Exit Criteria
 
-- [ ] Staff can scan QR codes and check in participants while online
-- [ ] Staff can pre-sync event data and scan QR codes while completely offline
-- [ ] Offline check-ins sync automatically when connectivity returns
-- [ ] Duplicate scans are caught both online and offline
-- [ ] Access zones restrict entry correctly
-- [ ] Real-time check-in dashboard works in web backoffice
-- [ ] End-to-end test: go offline → scan 10 badges → come online → verify all synced
+- [x] Check-in API endpoints work end-to-end (online check-in via API)
+- [x] Offline sync data endpoint returns correct registration payload
+- [x] Bulk check-in sync processes offline check-ins with conflict resolution
+- [x] Access zones restrict entry correctly (zone capacity enforcement)
+- [x] Real-time check-in dashboard works in web backoffice
+- [x] Check-in statistics endpoint returns accurate data
+- [ ] ~~Mobile offline scanner~~ → Deferred to Wave 9
 
 ## Dependencies
 
 - Wave 1 completed (badges exist, registrations exist)
 - QR signing/verification working (already implemented)
-- Mobile scanner package integrated
+- Mobile scanner package integrated (deferred to Wave 9)
 
 ## Deploys After This Wave
 
 - API: Sync + bulk check-in + stats endpoints
-- Mobile: Full scanner with offline capability
 - Web: Live check-in dashboard
+- Mobile: Deferred to Wave 9
 - Functions: Check-in counter triggers
 
 ## Technical Notes

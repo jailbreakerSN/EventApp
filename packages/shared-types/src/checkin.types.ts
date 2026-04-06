@@ -64,6 +64,7 @@ export const BulkCheckinResultStatusSchema = z.enum([
   "invalid_qr",      // QR signature invalid
   "not_found",        // registration not found
   "invalid_status",   // registration in non-checkable status (pending, waitlisted)
+  "zone_full",        // access zone at capacity
 ]);
 
 export type BulkCheckinResultStatus = z.infer<typeof BulkCheckinResultStatusSchema>;
@@ -146,3 +147,28 @@ export const ManualCheckinSearchSchema = z.object({
 });
 
 export type ManualCheckinSearch = z.infer<typeof ManualCheckinSearchSchema>;
+
+// ─── Check-in History ───────────────────────────────────────────────────────
+
+export const CheckinLogEntrySchema = z.object({
+  registrationId: z.string(),
+  participantName: z.string().nullable(),
+  participantEmail: z.string().nullable(),
+  ticketTypeName: z.string(),
+  accessZoneName: z.string().nullable(),
+  checkedInAt: z.string().datetime(),
+  checkedInBy: z.string(),
+  staffName: z.string().nullable(),
+  source: z.enum(["live", "offline_sync"]),
+});
+
+export type CheckinLogEntry = z.infer<typeof CheckinLogEntrySchema>;
+
+export const CheckinHistoryQuerySchema = z.object({
+  q: z.string().max(200).optional(),
+  accessZoneId: z.string().optional(),
+  page: z.coerce.number().int().positive().default(1),
+  limit: z.coerce.number().int().positive().max(100).default(20),
+});
+
+export type CheckinHistoryQuery = z.infer<typeof CheckinHistoryQuerySchema>;

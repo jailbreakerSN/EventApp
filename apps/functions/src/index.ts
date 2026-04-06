@@ -12,5 +12,8 @@ export { onBadgeCreated } from "./triggers/badge.triggers";
 // ─── Registration Triggers (auto badge generation) ───────────────────────────
 export { onRegistrationCreated, onRegistrationApproved } from "./triggers/registration.triggers";
 
+// ─── Check-in Triggers ───────────────────────────────────────────────────────
+export { onCheckinCompleted } from "./triggers/checkin.triggers";
+
 // ─── Notification Triggers ────────────────────────────────────────────────────
 export { onFeedPostCreated, onRegistrationConfirmed } from "./triggers/notification.triggers";
