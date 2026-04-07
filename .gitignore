@@ -38,6 +38,9 @@ Thumbs.db
 # Claude Code
 .claude/
 
+# Code Review Graph (machine-specific binary DB)
+.code-review-graph/
+
 # Turbo
 .turbo/
 
