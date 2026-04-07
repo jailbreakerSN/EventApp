@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { FeedService } from "../feed.service";
 import { buildOrganizerUser, buildAuthUser, buildEvent } from "@/__tests__/factories";
+import { db } from "@/config/firebase";
 
 // ─── Mocks ─────────────────────────────────────────────────────────────────
 
@@ -50,8 +51,19 @@ vi.mock("@/config/firebase", () => ({
   db: {
     collection: vi.fn().mockReturnValue({
       doc: vi.fn().mockReturnValue({
+        id: "mock-comment-id",
         update: vi.fn().mockResolvedValue(undefined),
       }),
+    }),
+    runTransaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => {
+      const mockTx = {
+        get: vi.fn().mockResolvedValue({
+          data: () => ({ likedByIds: [], likeCount: 0 }),
+        }),
+        update: vi.fn(),
+        create: vi.fn(),
+      };
+      return fn(mockTx);
     }),
   },
   COLLECTIONS: {
@@ -132,6 +144,15 @@ describe("FeedService", () => {
       mockFeedPostRepo.findByIdOrThrow.mockResolvedValue({
         id: "post-1", eventId, likedByIds: [],
       });
+      (db.runTransaction as ReturnType<typeof vi.fn>).mockImplementation(
+        async (fn: (tx: unknown) => Promise<unknown>) => {
+          const mockTx = {
+            get: vi.fn().mockResolvedValue({ data: () => ({ likedByIds: [], likeCount: 0 }) }),
+            update: vi.fn(),
+          };
+          return fn(mockTx);
+        },
+      );
 
       const result = await service.toggleLike(eventId, "post-1", user);
 
@@ -142,6 +163,15 @@ describe("FeedService", () => {
       mockFeedPostRepo.findByIdOrThrow.mockResolvedValue({
         id: "post-1", eventId, likedByIds: [user.uid],
       });
+      (db.runTransaction as ReturnType<typeof vi.fn>).mockImplementation(
+        async (fn: (tx: unknown) => Promise<unknown>) => {
+          const mockTx = {
+            get: vi.fn().mockResolvedValue({ data: () => ({ likedByIds: [user.uid], likeCount: 1 }) }),
+            update: vi.fn(),
+          };
+          return fn(mockTx);
+        },
+      );
 
       const result = await service.toggleLike(eventId, "post-1", user);
 
@@ -196,14 +226,20 @@ describe("FeedService", () => {
   });
 
   describe("addComment", () => {
-    it("adds a comment to a post", async () => {
+    it("adds a comment to a post via transaction", async () => {
       mockFeedPostRepo.findByIdOrThrow.mockResolvedValue({ id: "post-1", eventId });
-      mockFeedCommentRepo.create.mockResolvedValue({ id: "cmt-1", content: "Nice!" });
+      const mockTx = { create: vi.fn(), update: vi.fn() };
+      (db.runTransaction as ReturnType<typeof vi.fn>).mockImplementation(
+        async (fn: (tx: unknown) => Promise<unknown>) => fn(mockTx),
+      );
 
       const result = await service.addComment(eventId, "post-1", { content: "Nice!" }, user);
 
-      expect(result.id).toBe("cmt-1");
-      expect(mockFeedPostRepo.increment).toHaveBeenCalledWith("post-1", "commentCount", 1);
+      expect(result.content).toBe("Nice!");
+      expect(result.postId).toBe("post-1");
+      expect(result.authorId).toBe(user.uid);
+      expect(mockTx.create).toHaveBeenCalledTimes(1);
+      expect(mockTx.update).toHaveBeenCalledTimes(1);
     });
   });
 

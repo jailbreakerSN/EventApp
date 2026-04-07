@@ -55,6 +55,8 @@ export const PermissionSchema = z.enum([
   "feed:read",                 // read event feed posts
   "feed:create_post",          // create a post in the event feed
   "feed:create_announcement",  // create an announcement (pushed to all)
+  "feed:delete_post",          // delete own posts or comments
+  "feed:manage_content",       // pin/unpin posts, moderate content (admin)
   "feed:moderate",             // delete/pin posts
 
   "messaging:send",            // send direct messages
@@ -120,6 +122,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRole, readonly Permission[]>
     "notification:read_own",
     "feed:read",
     "feed:create_post",
+    "feed:delete_post",
     "messaging:send",
     "messaging:read_own",
     "profile:read_own",
@@ -175,6 +178,8 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRole, readonly Permission[]>
     // Plus communication
     "notification:send",
     "feed:create_announcement",
+    "feed:delete_post",
+    "feed:manage_content",
     "feed:moderate",
     "payment:initiate",
     "payment:read_own",
@@ -225,6 +230,8 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRole, readonly Permission[]>
     // Plus announcements
     "notification:send",
     "feed:create_announcement",
+    "feed:delete_post",
+    "feed:manage_content",
     "feed:moderate",
     "broadcast:send",
     "broadcast:read",
@@ -237,6 +244,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRole, readonly Permission[]>
     "notification:read_own",
     "feed:read",
     "feed:create_post",
+    "feed:delete_post",
     "messaging:send",
     "messaging:read_own",
     "profile:read_own",
@@ -253,6 +261,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRole, readonly Permission[]>
     "notification:read_own",
     "feed:read",
     "feed:create_post",
+    "feed:delete_post",
     "messaging:send",
     "messaging:read_own",
     "profile:read_own",

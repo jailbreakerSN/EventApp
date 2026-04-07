@@ -20,6 +20,7 @@ export async function sessionRoutes(app: FastifyInstance) {
     {
       preHandler: [
         authenticate,
+        requirePermission("event:read"),
         validate({ params: EventIdParams, query: SessionScheduleQuerySchema }),
       ],
     },
@@ -37,6 +38,7 @@ export async function sessionRoutes(app: FastifyInstance) {
     {
       preHandler: [
         authenticate,
+        requirePermission("event:read"),
         validate({ params: SessionIdParams }),
       ],
     },
@@ -106,6 +108,7 @@ export async function sessionRoutes(app: FastifyInstance) {
     {
       preHandler: [
         authenticate,
+        requirePermission("event:read"),
         validate({ params: SessionIdParams }),
       ],
     },
@@ -122,6 +125,7 @@ export async function sessionRoutes(app: FastifyInstance) {
     {
       preHandler: [
         authenticate,
+        requirePermission("event:read"),
         validate({ params: SessionIdParams }),
       ],
     },
@@ -138,6 +142,7 @@ export async function sessionRoutes(app: FastifyInstance) {
     {
       preHandler: [
         authenticate,
+        requirePermission("event:read"),
         validate({ params: EventIdParams }),
       ],
     },

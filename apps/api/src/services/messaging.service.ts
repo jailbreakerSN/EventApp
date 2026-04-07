@@ -13,6 +13,7 @@ import { eventBus } from "@/events/event-bus";
 import { getRequestId } from "@/context/request-context";
 import { type PaginatedResult } from "@/repositories/base.repository";
 import { db, COLLECTIONS } from "@/config/firebase";
+import { registrationRepository } from "@/repositories/registration.repository";
 
 export class MessagingService extends BaseService {
   // ─── Create or get conversation ───────────────────────────────────────────
@@ -26,6 +27,22 @@ export class MessagingService extends BaseService {
     // Check for existing conversation
     const existing = await conversationRepository.findByParticipants(user.uid, dto.participantId);
     if (existing) return existing;
+
+    // IDOR fix: verify both users share at least one common event registration
+    // This prevents cross-org messaging between strangers
+    const [senderRegs, recipientRegs] = await Promise.all([
+      registrationRepository.findByUser(user.uid, { page: 1, limit: 1000 }),
+      registrationRepository.findByUser(dto.participantId, { page: 1, limit: 1000 }),
+    ]);
+
+    const senderEventIds = new Set(senderRegs.data.map((r) => r.eventId));
+    const hasCommonEvent = recipientRegs.data.some((r) => senderEventIds.has(r.eventId));
+
+    if (!hasCommonEvent) {
+      throw new ForbiddenError(
+        "Vous ne pouvez envoyer un message qu'aux participants partageant un événement commun",
+      );
+    }
 
     const conversation = await conversationRepository.create({
       participantIds: [user.uid, dto.participantId].sort(), // sorted for consistency

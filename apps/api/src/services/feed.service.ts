@@ -87,24 +87,36 @@ export class FeedService extends BaseService {
       throw new ForbiddenError("Cette publication n'appartient pas à cet événement");
     }
 
-    const isLiked = post.likedByIds.includes(user.uid);
-    const postRef = db.collection(COLLECTIONS.FEED_POSTS).doc(postId);
-
-    if (isLiked) {
-      await postRef.update({
-        likedByIds: FieldValue.arrayRemove(user.uid),
-        likeCount: FieldValue.increment(-1),
-        updatedAt: new Date().toISOString(),
-      });
-      return { liked: false };
-    } else {
-      await postRef.update({
-        likedByIds: FieldValue.arrayUnion(user.uid),
-        likeCount: FieldValue.increment(1),
-        updatedAt: new Date().toISOString(),
-      });
-      return { liked: true };
+    // IDOR fix: verify org access for non-public events
+    const event = await eventRepository.findByIdOrThrow(eventId);
+    if (event.status !== "published") {
+      this.requireOrganizationAccess(user, event.organizationId);
     }
+
+    // Use transaction to prevent race conditions on read-then-write
+    const postRef = db.collection(COLLECTIONS.FEED_POSTS).doc(postId);
+    return db.runTransaction(async (tx) => {
+      const postSnap = await tx.get(postRef);
+      const postData = postSnap.data();
+      const likedByIds: string[] = postData?.likedByIds ?? [];
+      const isLiked = likedByIds.includes(user.uid);
+
+      if (isLiked) {
+        tx.update(postRef, {
+          likedByIds: FieldValue.arrayRemove(user.uid),
+          likeCount: FieldValue.increment(-1),
+          updatedAt: new Date().toISOString(),
+        });
+        return { liked: false };
+      } else {
+        tx.update(postRef, {
+          likedByIds: FieldValue.arrayUnion(user.uid),
+          likeCount: FieldValue.increment(1),
+          updatedAt: new Date().toISOString(),
+        });
+        return { liked: true };
+      }
+    });
   }
 
   // ─── Pin / Unpin ──────────────────────────────────────────────────────────
@@ -176,18 +188,37 @@ export class FeedService extends BaseService {
       throw new ForbiddenError("Cette publication n'appartient pas à cet événement");
     }
 
-    const comment = await feedCommentRepository.create({
+    // IDOR fix: verify org access for non-public events
+    const event = await eventRepository.findByIdOrThrow(eventId);
+    if (event.status !== "published") {
+      this.requireOrganizationAccess(user, event.organizationId);
+    }
+
+    // Use transaction to atomically create comment and increment count
+    const postRef = db.collection(COLLECTIONS.FEED_POSTS).doc(postId);
+    const commentRef = db.collection(COLLECTIONS.FEED_COMMENTS).doc();
+
+    const now = new Date().toISOString();
+    const commentData = {
+      id: commentRef.id,
       postId,
       authorId: user.uid,
       authorName: user.email?.split("@")[0] ?? "User",
       content: dto.content,
       deletedAt: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    await db.runTransaction(async (tx) => {
+      tx.create(commentRef, commentData);
+      tx.update(postRef, {
+        commentCount: FieldValue.increment(1),
+        updatedAt: now,
+      });
     });
 
-    // Increment comment count
-    await feedPostRepository.increment(postId, "commentCount", 1);
-
-    return comment;
+    return commentData as FeedComment;
   }
 
   async listComments(
@@ -201,6 +232,12 @@ export class FeedService extends BaseService {
     const post = await feedPostRepository.findByIdOrThrow(postId);
     if (post.eventId !== eventId) {
       throw new ForbiddenError("Cette publication n'appartient pas à cet événement");
+    }
+
+    // IDOR fix: verify org access for non-public events
+    const event = await eventRepository.findByIdOrThrow(eventId);
+    if (event.status !== "published") {
+      this.requireOrganizationAccess(user, event.organizationId);
     }
 
     return feedCommentRepository.findByPost(postId, {
@@ -217,11 +254,17 @@ export class FeedService extends BaseService {
   ): Promise<void> {
     const comment = await feedCommentRepository.findByIdOrThrow(commentId);
 
+    // IDOR fix: verify the comment's post belongs to an event in the user's org
+    const post = await feedPostRepository.findByIdOrThrow(postId);
+    if (post.eventId !== eventId) {
+      throw new ForbiddenError("Cette publication n'appartient pas à cet événement");
+    }
+    const event = await eventRepository.findByIdOrThrow(eventId);
+    this.requireOrganizationAccess(user, event.organizationId);
+
     // Author can delete own, or moderators
     if (comment.authorId !== user.uid) {
       this.requirePermission(user, "feed:moderate");
-      const event = await eventRepository.findByIdOrThrow(eventId);
-      this.requireOrganizationAccess(user, event.organizationId);
     }
 
     await feedCommentRepository.update(commentId, { deletedAt: new Date().toISOString() });

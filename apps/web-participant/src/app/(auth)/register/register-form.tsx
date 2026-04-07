@@ -7,6 +7,13 @@ import { useAuth } from "@/hooks/use-auth";
 import { getAndClearRedirectUrl } from "@/components/auth-guard";
 import { Button, Input, Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@teranga/shared-ui";
 
+function safeRedirect(url: string | null): string {
+  if (!url) return "/events";
+  // Only allow relative paths starting with / (block protocol-relative URLs like //evil.com)
+  if (url.startsWith("/") && !url.startsWith("//")) return url;
+  return "/events";
+}
+
 export function RegisterForm() {
   const { register, loginWithGoogle } = useAuth();
   const router = useRouter();
@@ -17,7 +24,7 @@ export function RegisterForm() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  const redirectTo = searchParams.get("redirect") ?? "/events";
+  const redirectTo = safeRedirect(searchParams.get("redirect"));
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -31,8 +38,8 @@ export function RegisterForm() {
     setLoading(true);
     try {
       await register(email, password, displayName);
-      const savedUrl = getAndClearRedirectUrl();
-      router.push(savedUrl ?? redirectTo);
+      const savedUrl = safeRedirect(getAndClearRedirectUrl());
+      router.push(savedUrl !== "/events" ? savedUrl : redirectTo);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Erreur lors de l'inscription";
       if (message.includes("email-already-in-use")) {
@@ -52,8 +59,8 @@ export function RegisterForm() {
     setLoading(true);
     try {
       await loginWithGoogle();
-      const savedUrl = getAndClearRedirectUrl();
-      router.push(savedUrl ?? redirectTo);
+      const savedUrl = safeRedirect(getAndClearRedirectUrl());
+      router.push(savedUrl !== "/events" ? savedUrl : redirectTo);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Erreur de connexion Google");
     } finally {

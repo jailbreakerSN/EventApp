@@ -43,6 +43,11 @@ service cloud.firestore {
       return request.resource.data.diff(resource.data).affectedKeys().hasOnly(fields);
     }
 
+    // Validates that specific fields have NOT been changed (immutable on update)
+    function immutableOnUpdate(fields) {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(fields);
+    }
+
     // ─── Deny all by default ───────────────────────────────────────────────
     match /{document=**} {
       allow read, write: if false;
@@ -50,7 +55,8 @@ service cloud.firestore {
 
     // ─── Users ─────────────────────────────────────────────────────────────
     match /users/{userId} {
-      allow read: if isAuthenticated();
+      allow read: if isOwnerOf(userId) || isSuperAdmin()
+                  || (isOrganizer() && belongsToOrg(resource.data.organizationId));
 
       // Owner can update own profile fields; cannot change roles/uid/isActive
       allow update: if isOwnerOf(userId)
@@ -67,7 +73,7 @@ service cloud.firestore {
 
     // ─── Organizations ──────────────────────────────────────────────────────
     match /organizations/{orgId} {
-      allow read: if isAuthenticated();
+      allow read: if isAuthenticated() && (belongsToOrg(orgId) || isSuperAdmin());
       allow create: if isAuthenticated()
                     && request.resource.data.ownerId == currentUid();
       allow update: if (belongsToOrg(orgId) && isOrganizer()) || isSuperAdmin();
@@ -89,8 +95,9 @@ service cloud.firestore {
 
       allow update: if ((isOrganizer() && belongsToOrg(resource.data.organizationId))
                     || isSuperAdmin())
-                    // Prevent cross-tenant migration: organizationId is immutable
-                    && request.resource.data.organizationId == resource.data.organizationId;
+                    // Prevent cross-tenant migration: organizationId and createdBy are immutable
+                    && request.resource.data.organizationId == resource.data.organizationId
+                    && immutableOnUpdate(['createdBy', 'organizationId']);
 
       // Soft-delete only — set status to 'archived'
       allow delete: if false;
@@ -143,7 +150,8 @@ service cloud.firestore {
       // Participant can only cancel their own registration
       allow update: if isOwnerOf(resource.data.userId)
                     && onlyChanges(['status', 'updatedAt'])
-                    && request.resource.data.status == 'cancelled';
+                    && request.resource.data.status == 'cancelled'
+                    && immutableOnUpdate(['userId', 'eventId', 'ticketTypeId', 'createdAt']);
 
       // Staff and organizer can update status and check-in fields — org-scoped
       allow update: if (isOrganizer() || isStaff())
@@ -151,7 +159,8 @@ service cloud.firestore {
                         get(/databases/$(database)/documents/events/$(resource.data.eventId)).data.organizationId
                     )
                     && onlyChanges(['status', 'checkedInAt', 'checkedInBy',
-                                    'accessZoneId', 'updatedAt']);
+                                    'accessZoneId', 'updatedAt'])
+                    && immutableOnUpdate(['userId', 'eventId', 'ticketTypeId', 'createdAt']);
 
       // Super admin can update any field
       allow update: if isSuperAdmin();
@@ -179,8 +188,9 @@ service cloud.firestore {
                   || isSuperAdmin();
       allow create: if (isOrganizer() && belongsToOrg(request.resource.data.organizationId))
                     || isSuperAdmin();
-      allow update: if (isOrganizer() && belongsToOrg(resource.data.organizationId))
-                    || isSuperAdmin();
+      allow update: if ((isOrganizer() && belongsToOrg(resource.data.organizationId))
+                    || isSuperAdmin())
+                    && immutableOnUpdate(['organizationId', 'createdBy']);
       allow delete: if isSuperAdmin();
     }
 
@@ -221,7 +231,9 @@ service cloud.firestore {
                     && request.resource.data.authorId == currentUid();
 
       allow update: if isOwnerOf(resource.data.authorId)
-                    || isOrganizer()
+                    || (isOrganizer() && belongsToOrg(
+                        get(/databases/$(database)/documents/events/$(resource.data.eventId)).data.organizationId
+                    ))
                     || isSuperAdmin();
 
       // Soft-delete — set deletedAt
@@ -249,6 +261,18 @@ service cloud.firestore {
       // Created only by Cloud Functions (Admin SDK)
       allow create: if false;
       allow delete: if false;
+    }
+
+    // ─── Payments ────────────────────────────────────────────────────────────
+    // Written exclusively by API / Cloud Functions via Admin SDK.
+    // Participants can read their own; organizers can read for their org's events.
+    match /payments/{paymentId} {
+      allow read: if isOwnerOf(resource.data.userId)
+                  || (isOrganizer() && belongsToOrg(
+                      get(/databases/$(database)/documents/events/$(resource.data.eventId)).data.organizationId
+                  ))
+                  || isSuperAdmin();
+      allow create, update, delete: if false;  // Only Admin SDK (API + Cloud Functions)
     }
 
     // ─── Audit Logs ─────────────────────────────────────────────────────────

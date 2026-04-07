@@ -20,6 +20,10 @@ service firebase.storage {
       return isAuthenticated() && request.auth.token.organizationId != null;
     }
 
+    function belongsToOrg(orgId) {
+      return isAuthenticated() && request.auth.token.organizationId == orgId;
+    }
+
     function maxSize(mb) {
       return request.resource.size < mb * 1024 * 1024;
     }
@@ -47,14 +51,18 @@ service firebase.storage {
     // Readable by authenticated users only (not public to prevent asset scraping)
     match /events/{eventId}/{filename} {
       allow read: if isAuthenticated();
-      allow write: if hasRole('organizer') && isImage() && maxSize(10);
+      allow write: if hasRole('organizer') && isImage() && maxSize(10)
+                   && belongsToOrg(
+                       firestore.get(/databases/(default)/documents/events/$(eventId)).data.organizationId
+                   );
     }
 
     // ─── Organization Logos ────────────────────────────────────────────────
     // Logos are semi-public (needed for event listings) — require auth
     match /organizations/{orgId}/{filename} {
       allow read: if isAuthenticated();
-      allow write: if hasRole('organizer') && isImage() && maxSize(5);
+      allow write: if hasRole('organizer') && isImage() && maxSize(5)
+                   && belongsToOrg(orgId);
     }
 
     // ─── Badges (PDF) — written by Cloud Functions only ───────────────────
@@ -70,7 +78,8 @@ service firebase.storage {
     // Photos and presentation slides/documents
     match /speakers/{speakerId}/{purpose}/{filename} {
       allow read: if isAuthenticated();
-      allow write: if (hasRole('organizer') || hasRole('speaker'))
+      allow write: if ((currentUid() == speakerId && hasRole('speaker'))
+                   || hasRole('organizer'))
                    && (isImage() || isPdf())
                    && maxSize(20); // slides can be larger
     }
@@ -79,7 +88,8 @@ service firebase.storage {
     // Logos, booth banners, marketing materials
     match /sponsors/{sponsorId}/{purpose}/{filename} {
       allow read: if isAuthenticated();
-      allow write: if (hasRole('organizer') || hasRole('sponsor'))
+      allow write: if ((currentUid() == sponsorId && hasRole('sponsor'))
+                   || hasRole('organizer'))
                    && isImage()
                    && maxSize(10);
     }
@@ -94,8 +104,10 @@ service firebase.storage {
 
     // ─── Message Attachments ───────────────────────────────────────────────
     match /messages/{conversationId}/{filename} {
-      allow read: if isAuthenticated();
+      allow read: if isAuthenticated()
+                  && currentUid() in firestore.get(/databases/(default)/documents/conversations/$(conversationId)).data.participantIds;
       allow write: if isAuthenticated()
+                   && currentUid() in firestore.get(/databases/(default)/documents/conversations/$(conversationId)).data.participantIds
                    && (isImage() || isPdf())
                    && maxSize(15);
     }

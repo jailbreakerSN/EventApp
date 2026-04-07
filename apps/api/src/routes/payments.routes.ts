@@ -212,6 +212,8 @@ export const paymentRoutes: FastifyPluginAsync = async (fastify) => {
     },
   );
 
+  // ─── Mock Checkout Routes (dev/test only) ─────────────────────────────────
+  if (process.env.NODE_ENV !== "production") {
   // ─── Mock Checkout Page (dev/test only) ───────────────────────────────────
   fastify.get(
     "/mock-checkout/:txId",
@@ -348,4 +350,5 @@ export const paymentRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.send({ success: true, data: { status: state.status } });
     },
   );
+  } // end if (NODE_ENV !== "production")
 };

@@ -82,6 +82,7 @@ export const sponsorRoutes: FastifyPluginAsync = async (fastify) => {
     {
       preHandler: [
         authenticate,
+        requirePermission("sponsor:manage_booth"),
         validate({ params: ParamsWithSponsorId, body: UpdateSponsorSchema }),
       ],
       schema: {
@@ -126,6 +127,7 @@ export const sponsorRoutes: FastifyPluginAsync = async (fastify) => {
     {
       preHandler: [
         authenticate,
+        requirePermission("sponsor:manage_booth"),
         validate({ params: ParamsWithSponsorId, body: UploadUrlRequestSchema }),
       ],
       schema: {

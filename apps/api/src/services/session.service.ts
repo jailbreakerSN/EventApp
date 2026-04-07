@@ -124,8 +124,11 @@ export class SessionService extends BaseService {
   ): Promise<PaginatedResult<Session>> {
     this.requirePermission(user, "event:read");
 
-    // Verify event exists
-    await eventRepository.findByIdOrThrow(eventId);
+    // Verify event exists and check org access for non-published events
+    const event = await eventRepository.findByIdOrThrow(eventId);
+    if (event.status !== "published") {
+      this.requireOrganizationAccess(user, event.organizationId);
+    }
 
     if (query.date) {
       return sessionRepository.findByEventAndDate(eventId, query.date, {
@@ -163,6 +166,12 @@ export class SessionService extends BaseService {
       throw new ValidationError("Cette session n'appartient pas à cet événement");
     }
 
+    // IDOR fix: verify org access for non-published events
+    const event = await eventRepository.findByIdOrThrow(eventId);
+    if (event.status !== "published") {
+      this.requireOrganizationAccess(user, event.organizationId);
+    }
+
     // Check if already bookmarked
     const existing = await sessionBookmarkRepository.findByUserAndSession(user.uid, sessionId);
     if (existing) return existing;
@@ -185,6 +194,13 @@ export class SessionService extends BaseService {
 
   async getUserBookmarks(eventId: string, user: AuthUser): Promise<SessionBookmark[]> {
     this.requirePermission(user, "event:read");
+
+    // IDOR fix: verify org access for non-published events
+    const event = await eventRepository.findByIdOrThrow(eventId);
+    if (event.status !== "published") {
+      this.requireOrganizationAccess(user, event.organizationId);
+    }
+
     return sessionBookmarkRepository.findByUserAndEvent(user.uid, eventId);
   }
 }

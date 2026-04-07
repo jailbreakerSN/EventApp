@@ -117,6 +117,10 @@ export class SponsorService extends BaseService {
 
     const sponsor = await sponsorRepository.findByIdOrThrow(sponsorId);
 
+    // IDOR fix: verify org access via sponsor's event
+    const event = await eventRepository.findByIdOrThrow(sponsor.eventId);
+    this.requireOrganizationAccess(user, event.organizationId);
+
     // Parse QR code to get registrationId and verify signature
     const qrParts = dto.qrCodeValue.split(":");
     if (qrParts.length < 4) {

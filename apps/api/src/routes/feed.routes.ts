@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { authenticate } from "@/middlewares/auth.middleware";
 import { validate } from "@/middlewares/validate.middleware";
+import { requirePermission } from "@/middlewares/permission.middleware";
 import { feedService } from "@/services/feed.service";
 import {
   CreateFeedPostSchema,
@@ -20,6 +21,7 @@ export async function feedRoutes(app: FastifyInstance) {
     {
       preHandler: [
         authenticate,
+        requirePermission("feed:read"),
         validate({ params: EventIdParams, query: FeedQuerySchema }),
       ],
     },
@@ -37,6 +39,7 @@ export async function feedRoutes(app: FastifyInstance) {
     {
       preHandler: [
         authenticate,
+        requirePermission("feed:create_post"),
         validate({ params: EventIdParams, body: CreateFeedPostSchema }),
       ],
     },
@@ -54,6 +57,7 @@ export async function feedRoutes(app: FastifyInstance) {
     {
       preHandler: [
         authenticate,
+        requirePermission("feed:read"),
         validate({ params: PostIdParams }),
       ],
     },
@@ -70,6 +74,7 @@ export async function feedRoutes(app: FastifyInstance) {
     {
       preHandler: [
         authenticate,
+        requirePermission("feed:manage_content"),
         validate({ params: PostIdParams }),
       ],
     },
@@ -86,6 +91,7 @@ export async function feedRoutes(app: FastifyInstance) {
     {
       preHandler: [
         authenticate,
+        requirePermission("feed:delete_post"),
         validate({ params: PostIdParams }),
       ],
     },
@@ -102,6 +108,7 @@ export async function feedRoutes(app: FastifyInstance) {
     {
       preHandler: [
         authenticate,
+        requirePermission("feed:read"),
         validate({ params: PostIdParams, query: FeedQuerySchema }),
       ],
     },
@@ -119,6 +126,7 @@ export async function feedRoutes(app: FastifyInstance) {
     {
       preHandler: [
         authenticate,
+        requirePermission("feed:create_post"),
         validate({ params: PostIdParams, body: CreateFeedCommentSchema }),
       ],
     },
@@ -136,6 +144,7 @@ export async function feedRoutes(app: FastifyInstance) {
     {
       preHandler: [
         authenticate,
+        requirePermission("feed:delete_post"),
         validate({ params: CommentIdParams }),
       ],
     },

@@ -74,6 +74,7 @@ export const speakerRoutes: FastifyPluginAsync = async (fastify) => {
     {
       preHandler: [
         authenticate,
+        requirePermission("profile:update_own"),
         validate({ params: ParamsWithSpeakerId, body: UpdateSpeakerSchema }),
       ],
       schema: {
@@ -118,6 +119,7 @@ export const speakerRoutes: FastifyPluginAsync = async (fastify) => {
     {
       preHandler: [
         authenticate,
+        requirePermission("profile:update_own"),
         validate({ params: ParamsWithSpeakerId, body: UploadUrlRequestSchema }),
       ],
       schema: {

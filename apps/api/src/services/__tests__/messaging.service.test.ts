@@ -27,6 +27,16 @@ vi.mock("@/repositories/messaging.repository", () => ({
   }),
 }));
 
+const mockRegistrationRepo = {
+  findByUser: vi.fn(),
+};
+
+vi.mock("@/repositories/registration.repository", () => ({
+  registrationRepository: new Proxy({}, {
+    get: (_target: unknown, prop: string) => (mockRegistrationRepo as Record<string, unknown>)[prop],
+  }),
+}));
+
 vi.mock("@/events/event-bus", () => ({
   eventBus: { emit: vi.fn() },
 }));
@@ -77,11 +87,16 @@ describe("MessagingService", () => {
       expect(mockConversationRepo.create).not.toHaveBeenCalled();
     });
 
-    it("creates a new conversation if none exists", async () => {
+    it("creates a new conversation if none exists and users share an event", async () => {
       mockConversationRepo.findByParticipants.mockResolvedValue(null);
       mockConversationRepo.create.mockResolvedValue({
         id: "conv-new", participantIds: ["user-1", "user-2"],
       });
+      // Both users registered for the same event
+      mockRegistrationRepo.findByUser.mockImplementation(async (userId: string) => ({
+        data: [{ eventId: "shared-event", userId }],
+        meta: { total: 1, page: 1, limit: 1000, totalPages: 1 },
+      }));
 
       const result = await service.getOrCreateConversation(
         { participantId: "user-2" },
@@ -94,6 +109,18 @@ describe("MessagingService", () => {
           participantIds: ["user-1", "user-2"],
         }),
       );
+    });
+
+    it("denies conversation creation when users share no common event", async () => {
+      mockConversationRepo.findByParticipants.mockResolvedValue(null);
+      mockRegistrationRepo.findByUser.mockImplementation(async (userId: string) => ({
+        data: [{ eventId: userId === "user-1" ? "event-A" : "event-B", userId }],
+        meta: { total: 1, page: 1, limit: 1000, totalPages: 1 },
+      }));
+
+      await expect(
+        service.getOrCreateConversation({ participantId: "user-2" }, user),
+      ).rejects.toThrow("événement commun");
     });
 
     it("denies user without messaging:send permission", async () => {

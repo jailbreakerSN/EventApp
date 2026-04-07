@@ -109,11 +109,13 @@ describe("SponsorService.createSponsor", () => {
 
 describe("SponsorService.scanLead", () => {
   const orgId = "org-1";
+  const event = buildEvent({ id: "ev-1", organizationId: orgId });
   const sponsor = buildSponsor({ id: "sp-1", eventId: "ev-1", organizationId: orgId });
-  const sponsorUser = buildAuthUser({ roles: ["sponsor"] });
+  const sponsorUser = buildAuthUser({ roles: ["sponsor"], organizationId: orgId });
 
   beforeEach(() => {
     mockSponsorRepo.findByIdOrThrow.mockResolvedValue(sponsor);
+    mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
     mockSponsorLeadRepo.findByParticipant.mockResolvedValue(null);
     mockUserRepo.findById.mockResolvedValue({ uid: "user-p", displayName: "Test User", email: "test@test.com", phone: null });
     mockSponsorLeadRepo.create.mockImplementation(async (data: unknown) => ({
