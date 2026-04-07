@@ -200,7 +200,8 @@ export type UpdateEventDto = z.infer<typeof UpdateEventSchema>;
 // ─── Registration ─────────────────────────────────────────────────────────────
 
 export const RegistrationStatusSchema = z.enum([
-  "pending",    // awaiting approval (requiresApproval = true)
+  "pending",           // awaiting approval (requiresApproval = true)
+  "pending_payment",   // awaiting payment for paid tickets
   "confirmed",
   "waitlisted",
   "cancelled",

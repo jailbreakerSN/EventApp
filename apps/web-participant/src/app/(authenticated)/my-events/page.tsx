@@ -11,6 +11,7 @@ import type { Registration } from "@teranga/shared-types";
 const STATUS_LABELS: Record<string, { label: string; variant: "default" | "success" | "warning" | "destructive" | "outline" }> = {
   confirmed: { label: "Confirmé", variant: "success" },
   pending: { label: "En attente", variant: "warning" },
+  pending_payment: { label: "Paiement en attente", variant: "warning" },
   waitlisted: { label: "Liste d'attente", variant: "outline" },
   checked_in: { label: "Enregistré", variant: "default" },
   cancelled: { label: "Annulé", variant: "destructive" },

@@ -4,11 +4,12 @@ import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { CheckCircle, ArrowLeft, Ticket, CalendarCheck } from "lucide-react";
+import { CheckCircle, ArrowLeft, Ticket, CalendarCheck, CreditCard, Loader2 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { toast } from "sonner";
 import { eventsApi, registrationsApi } from "@/lib/api-client";
 import { useRegister } from "@/hooks/use-registrations";
+import { useInitiatePayment } from "@/hooks/use-payments";
 import { Button, Card, CardHeader, CardTitle, CardContent, Spinner, Badge, formatCurrency, getErrorMessage } from "@teranga/shared-ui";
 import type { Event, TicketType, Registration } from "@teranga/shared-types";
 
@@ -33,6 +34,7 @@ export default function RegisterPage() {
   });
 
   const registerMutation = useRegister();
+  const paymentMutation = useInitiatePayment();
 
   const event = (eventData as { data?: Event })?.data as Event | undefined;
   const myRegs = (myRegsData as { data?: Registration[] })?.data as Registration[] | undefined;
@@ -40,20 +42,44 @@ export default function RegisterPage() {
     (r) => r.eventId === eventId && r.status !== "cancelled",
   );
 
+  const isPaidTicket = selectedTicket && selectedTicket.price > 0;
+  const isSubmitting = registerMutation.isPending || paymentMutation.isPending;
+
   const handleConfirm = async () => {
     if (!selectedTicket) return;
-    try {
-      const result = await registerMutation.mutateAsync({
-        eventId,
-        ticketTypeId: selectedTicket.id,
-      });
-      setRegistration((result as { data?: Registration })?.data as Registration);
-      setStep("success");
-      toast.success("Inscription confirmée !");
-    } catch (err: unknown) {
-      const code = (err as { code?: string })?.code;
-      const message = (err as { message?: string })?.message;
-      toast.error(getErrorMessage(code, message));
+
+    if (isPaidTicket) {
+      // Paid ticket → initiate payment flow
+      try {
+        const result = await paymentMutation.mutateAsync({
+          eventId,
+          ticketTypeId: selectedTicket.id,
+        });
+        const data = (result as { data?: { paymentId: string; redirectUrl: string } })?.data;
+        if (data?.redirectUrl) {
+          // Redirect to payment provider (mock checkout in dev)
+          window.location.href = data.redirectUrl;
+        }
+      } catch (err: unknown) {
+        const code = (err as { code?: string })?.code;
+        const message = (err as { message?: string })?.message;
+        toast.error(getErrorMessage(code, message));
+      }
+    } else {
+      // Free ticket → direct registration
+      try {
+        const result = await registerMutation.mutateAsync({
+          eventId,
+          ticketTypeId: selectedTicket.id,
+        });
+        setRegistration((result as { data?: Registration })?.data as Registration);
+        setStep("success");
+        toast.success("Inscription confirmée !");
+      } catch (err: unknown) {
+        const code = (err as { code?: string })?.code;
+        const message = (err as { message?: string })?.message;
+        toast.error(getErrorMessage(code, message));
+      }
     }
   };
 
@@ -81,6 +107,7 @@ export default function RegisterPage() {
     const statusLabels: Record<string, string> = {
       confirmed: "confirmée",
       pending: "en attente d'approbation",
+      pending_payment: "en attente de paiement",
       waitlisted: "en liste d'attente",
       checked_in: "enregistrée (check-in effectué)",
     };
@@ -206,25 +233,45 @@ export default function RegisterPage() {
               </div>
             </div>
 
-            {event.requiresApproval && (
+            {isPaidTicket && (
+              <div className="flex items-start gap-3 rounded-md border border-amber-200 bg-amber-50 p-3">
+                <CreditCard className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-600" />
+                <p className="text-sm text-amber-800">
+                  Vous serez redirigé(e) vers la page de paiement pour finaliser votre inscription.
+                </p>
+              </div>
+            )}
+
+            {event.requiresApproval && !isPaidTicket && (
               <p className="text-sm text-amber-600">
                 Cette inscription est soumise à l&apos;approbation de l&apos;organisateur.
               </p>
             )}
 
             <div className="flex gap-3">
-              <Button variant="outline" className="flex-1" onClick={() => setStep("select")} disabled={registerMutation.isPending}>
+              <Button variant="outline" className="flex-1" onClick={() => setStep("select")} disabled={isSubmitting}>
                 Retour
               </Button>
-              <Button className="flex-1 bg-teranga-gold hover:bg-teranga-gold/90" onClick={handleConfirm} disabled={registerMutation.isPending}>
-                {registerMutation.isPending ? "Inscription..." : "Confirmer"}
+              <Button
+                className="flex-1 bg-teranga-gold hover:bg-teranga-gold/90"
+                onClick={handleConfirm}
+                disabled={isSubmitting}
+              >
+                {isSubmitting ? (
+                  <span className="flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    {isPaidTicket ? "Redirection..." : "Inscription..."}
+                  </span>
+                ) : (
+                  isPaidTicket ? `Payer ${formatCurrency(selectedTicket.price, selectedTicket.currency)}` : "Confirmer"
+                )}
               </Button>
             </div>
           </CardContent>
         </Card>
       )}
 
-      {/* Step 3: Success */}
+      {/* Step 3: Success (free tickets only) */}
       {step === "success" && registration && (
         <div className="mt-6 text-center">
           <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-teranga-green/10">

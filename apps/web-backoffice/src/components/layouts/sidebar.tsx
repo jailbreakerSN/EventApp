@@ -11,6 +11,8 @@ import {
   Building2,
   QrCode,
   BarChart3,
+  Wallet,
+  Megaphone,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -30,6 +32,8 @@ const navItems: NavItem[] = [
   { href: "/participants", icon: Users, label: "Participants", roles: ["organizer", "super_admin"] },
   { href: "/badges", icon: QrCode, label: "Badges & QR", roles: ["organizer", "super_admin"] },
   { href: "/analytics", icon: BarChart3, label: "Analytiques", roles: ["organizer", "super_admin"] },
+  { href: "/finance", icon: Wallet, label: "Finances", roles: ["organizer", "super_admin"] },
+  { href: "/communications", icon: Megaphone, label: "Communications", roles: ["organizer", "co_organizer", "super_admin"] },
   { href: "/notifications", icon: Bell, label: "Notifications", roles: ["organizer", "co_organizer", "super_admin"] },
   { href: "/organization", icon: Building2, label: "Organisation", roles: ["organizer", "super_admin"] },
   { href: "/settings", icon: Settings, label: "Paramètres", roles: ["organizer", "super_admin"] },

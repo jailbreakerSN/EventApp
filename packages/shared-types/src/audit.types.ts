@@ -36,6 +36,10 @@ export const AuditActionSchema = z.enum([
   "feed_post.deleted",
   "feed_post.pinned",
   "message.sent",
+  "payment.initiated",
+  "payment.succeeded",
+  "payment.failed",
+  "payment.refunded",
 ]);
 
 export type AuditAction = z.infer<typeof AuditActionSchema>;

@@ -5,6 +5,11 @@ import {
   type Registration,
   type Organization,
   type OrganizationInvite,
+  type Payment,
+  type SpeakerProfile,
+  type SponsorProfile,
+  type SponsorLead,
+  type Broadcast,
 } from "@teranga/shared-types";
 
 function uid(): string {
@@ -176,6 +181,119 @@ export function buildInvite(overrides: Partial<OrganizationInvite> = {}): Organi
     expiresAt: expires,
     createdAt: now,
     updatedAt: now,
+    ...overrides,
+  };
+}
+
+// ─── Payment Factory ─────────────────────────────────────────────────────────
+
+export function buildPayment(overrides: Partial<Payment> = {}): Payment {
+  const id = uid();
+  const now = new Date().toISOString();
+
+  return {
+    id,
+    registrationId: uid(),
+    eventId: uid(),
+    organizationId: uid(),
+    userId: uid(),
+    amount: 5000,
+    currency: "XOF",
+    method: "mock",
+    providerTransactionId: `mock_${crypto.randomBytes(12).toString("hex")}`,
+    status: "processing",
+    redirectUrl: "http://localhost:3000/mock-checkout/test",
+    callbackUrl: "http://localhost:3000/v1/payments/webhook",
+    returnUrl: "http://localhost:3002/register/ev/payment-status",
+    providerMetadata: null,
+    failureReason: null,
+    refundedAmount: 0,
+    initiatedAt: now,
+    completedAt: null,
+    createdAt: now,
+    updatedAt: now,
+    ...overrides,
+  } as Payment;
+}
+
+// ─── Speaker Factory ────────────────────────────────────────────────────────
+
+export function buildSpeaker(overrides: Partial<SpeakerProfile> = {}): SpeakerProfile {
+  const id = uid();
+  const now = new Date().toISOString();
+
+  return {
+    id,
+    userId: uid(),
+    eventId: uid(),
+    organizationId: uid(),
+    name: `Speaker ${uid()}`,
+    title: "CTO",
+    company: "TechCorp",
+    bio: "An expert in their field",
+    photoURL: null,
+    socialLinks: null,
+    topics: ["tech", "innovation"],
+    sessionIds: [],
+    isConfirmed: true,
+    createdAt: now,
+    updatedAt: now,
+    ...overrides,
+  };
+}
+
+// ─── Sponsor Factory ────────────────────────────────────────────────────────
+
+export function buildSponsor(overrides: Partial<SponsorProfile> = {}): SponsorProfile {
+  const id = uid();
+  const now = new Date().toISOString();
+
+  return {
+    id,
+    userId: uid(),
+    eventId: uid(),
+    organizationId: uid(),
+    companyName: `Sponsor Corp ${uid()}`,
+    logoURL: null,
+    description: "A great sponsor",
+    website: null,
+    tier: "gold",
+    boothTitle: null,
+    boothDescription: null,
+    boothBannerURL: null,
+    ctaLabel: null,
+    ctaUrl: null,
+    contactName: null,
+    contactEmail: null,
+    contactPhone: null,
+    isActive: true,
+    createdAt: now,
+    updatedAt: now,
+    ...overrides,
+  };
+}
+
+// ─── Broadcast Factory ──────────────────────────────────────────────────────
+
+export function buildBroadcast(overrides: Partial<Broadcast> = {}): Broadcast {
+  const id = uid();
+  const now = new Date().toISOString();
+
+  return {
+    id,
+    eventId: uid(),
+    organizationId: uid(),
+    title: "Test Broadcast",
+    body: "Hello participants!",
+    channels: ["push", "in_app"],
+    recipientFilter: "all",
+    recipientCount: 10,
+    sentCount: 10,
+    failedCount: 0,
+    status: "sent",
+    createdBy: uid(),
+    createdAt: now,
+    sentAt: now,
     ...overrides,
   };
 }

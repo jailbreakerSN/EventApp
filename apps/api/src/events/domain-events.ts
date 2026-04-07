@@ -158,6 +158,41 @@ export interface TicketTypeRemovedEvent extends BaseEventPayload {
   ticketTypeName: string;
 }
 
+// ── Payment ─────────────────────────────────────────────────────────────────
+
+export interface PaymentInitiatedEvent extends BaseEventPayload {
+  paymentId: string;
+  registrationId: string;
+  eventId: string;
+  organizationId: string;
+  amount: number;
+  method: string;
+}
+
+export interface PaymentSucceededEvent extends BaseEventPayload {
+  paymentId: string;
+  registrationId: string;
+  eventId: string;
+  organizationId: string;
+  amount: number;
+}
+
+export interface PaymentFailedEvent extends BaseEventPayload {
+  paymentId: string;
+  registrationId: string;
+  eventId: string;
+  organizationId: string;
+}
+
+export interface PaymentRefundedEvent extends BaseEventPayload {
+  paymentId: string;
+  registrationId: string;
+  eventId: string;
+  organizationId: string;
+  amount: number;
+  reason?: string;
+}
+
 // ── Badge ────────────────────────────────────────────────────────────────────
 
 export interface BadgeGeneratedEvent extends BaseEventPayload {
@@ -165,6 +200,48 @@ export interface BadgeGeneratedEvent extends BaseEventPayload {
   registrationId: string;
   eventId: string;
   userId: string;
+}
+
+// ── Broadcast ──────────────────────────────────────────────────────────────
+
+export interface BroadcastSentEvent extends BaseEventPayload {
+  broadcastId: string;
+  eventId: string;
+  organizationId: string;
+  channels: string[];
+  recipientCount: number;
+}
+
+// ── Speaker ───────────────────────────────────────────────────────────────
+
+export interface SpeakerAddedEvent extends BaseEventPayload {
+  speakerId: string;
+  eventId: string;
+  organizationId: string;
+  name: string;
+}
+
+export interface SpeakerRemovedEvent extends BaseEventPayload {
+  speakerId: string;
+  eventId: string;
+  organizationId: string;
+}
+
+// ── Sponsor ───────────────────────────────────────────────────────────────
+
+export interface SponsorAddedEvent extends BaseEventPayload {
+  sponsorId: string;
+  eventId: string;
+  organizationId: string;
+  companyName: string;
+  tier: string;
+}
+
+export interface SponsorLeadCapturedEvent extends BaseEventPayload {
+  leadId: string;
+  sponsorId: string;
+  eventId: string;
+  participantId: string;
 }
 
 // ─── Domain Event Map ────────────────────────────────────────────────────────
@@ -194,6 +271,15 @@ export interface DomainEventMap {
   "member.added": MemberAddedEvent;
   "member.removed": MemberRemovedEvent;
   "badge.generated": BadgeGeneratedEvent;
+  "payment.initiated": PaymentInitiatedEvent;
+  "payment.succeeded": PaymentSucceededEvent;
+  "payment.failed": PaymentFailedEvent;
+  "payment.refunded": PaymentRefundedEvent;
+  "broadcast.sent": BroadcastSentEvent;
+  "speaker.added": SpeakerAddedEvent;
+  "speaker.removed": SpeakerRemovedEvent;
+  "sponsor.added": SponsorAddedEvent;
+  "sponsor.lead_captured": SponsorLeadCapturedEvent;
 }
 
 export type DomainEventName = keyof DomainEventMap;
