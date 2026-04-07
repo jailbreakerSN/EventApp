@@ -23,14 +23,14 @@ After completing Waves 1-8 (backend + web frontends), the **MVP Launch Sprint** 
 
 | Component | Completion | Notes |
 |-----------|-----------|-------|
-| Shared Types | ~99% | Zod schemas: all entities including payments, speakers, sponsors, leads |
-| API (Fastify) | ~95% | Waves 1-8 endpoints, 277 tests across 22 files. Missing: real providers, Cloud Function triggers |
-| Cloud Functions | ~70% | Auth, badge gen, check-in feed triggers. Missing: payment lifecycle, scheduled reminders |
-| Web Backoffice | ~85% | Core pages done. Missing: file upload UI, speaker/sponsor invitation flow, bulk actions |
-| Web Participant | ~80% | Discovery, registration, badges work. Missing: public homepage, share buttons, upload UI, speaker/sponsor portals |
+| Shared Types | ~99% | Zod schemas: all entities, promo codes, phone validation |
+| API (Fastify) | ~98% | Waves 1-8 + MVP Sprint, 327 tests across 26 files. Real providers ready (Wave/OM/AT/SendGrid) |
+| Cloud Functions | ~95% | Auth, badge, check-in, payment lifecycle, scheduled reminders |
+| Web Backoffice | ~92% | All tabs, promo codes, bulk approve, file upload component |
+| Web Participant | ~92% | Discovery, registration, badges, share buttons, SEO, speaker/sponsor portals |
 | Mobile (Flutter) | ~35% | Wave 1 basics; full app deferred to Wave 9 |
 | Shared UI | ~70% | Button, Card, Input, Badge, Spinner + utility functions |
-| Infrastructure | ~95% | Firestore rules, indexes, hosting, emulators, seed script. Missing: speaker/sponsor storage rules (added) |
+| Infrastructure | ~97% | Firestore rules, indexes, hosting, emulators, comprehensive seed script |
 
 ### Honest Wave Assessment (Post-Audit)
 
@@ -42,10 +42,10 @@ After completing Waves 1-8 (backend + web frontends), the **MVP Launch Sprint** 
 | Wave 3 | Participant Web App | `completed` | ✅ 95% | Lighthouse perf verification pending |
 | Wave 4 | Organizer Productivity | `completed` | ✅ 90% | Co-organizer roles, CSV export deferred |
 | Wave 5 | Feed, Messaging, Sessions | `completed` | ✅ 92% | Mobile screens → Wave 9 |
-| Wave 6 | Payments | `completed` | ⚠️ 65% | Mock provider only, Cloud Functions incomplete |
-| Wave 7 | Communications | `completed` | ⚠️ 55% | Mock SMS/email only, no scheduling, no reminders |
-| Wave 8 | Portals | `completed` | ⚠️ 60% | Backend CRUD done, self-service portals incomplete |
-| **MVP Sprint** | **Dakar Launch** | `in_progress` | 🔄 0% | **NEW — bridges gaps for market launch** |
+| Wave 6 | Payments | `completed` | ✅ 90% | Wave + OM providers ready, payment lifecycle Cloud Functions |
+| Wave 7 | Communications | `completed` | ✅ 85% | AT SMS + SendGrid email providers, templates, reminders |
+| Wave 8 | Portals | `completed` | ✅ 85% | Speaker + sponsor self-service portals, file upload |
+| **MVP Sprint** | **Dakar Launch** | `completed` | ✅ 95% | Real providers, SEO, promo codes, Cloud Functions |
 | Wave 9 | Mobile App | `not_started` | ❌ 0% | Post-MVP validation |
 | Wave 10 | Production Hardening | `not_started` | ❌ 0% | Merged into MVP Sprint + post-launch |
 

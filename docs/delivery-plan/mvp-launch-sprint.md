@@ -1,6 +1,6 @@
 # MVP Launch Sprint — Dakar Market Ready
 
-**Status:** `in_progress`
+**Status:** `completed`
 **Estimated effort:** 3-4 weeks (3 sprints)
 **Goal:** Bridge the gap between "code complete" and "market ready" — integrate real providers, add quick-win features, harden the web platform for real organizers in Dakar.
 
@@ -22,34 +22,34 @@ The platform audit (2026-04-07) revealed that Waves 1-5 are production-ready but
 
 ### Web Participant App
 
-- [ ] **WhatsApp share button** on event detail page
+- [x] **WhatsApp share button** on event detail page
   - `wa.me/?text=` with pre-formatted French message (title, date, link)
   - Also add Facebook, X (Twitter), and "Copier le lien" buttons
   - Component: `apps/web-participant/src/components/share-buttons.tsx`
 
-- [ ] **"Ajouter au calendrier"** on registration confirmation + badge page
+- [x] **"Ajouter au calendrier"** on registration confirmation + badge page
   - Generate `.ics` file content (iCalendar format)
   - Google Calendar link (URL parameter format)
   - Show on registration success page and my-events page
 
-- [ ] **Sitemap + robots.txt** for SEO
+- [x] **Sitemap + robots.txt** for SEO
   - `apps/web-participant/src/app/sitemap.ts` — query published events, generate XML
   - `apps/web-participant/src/app/robots.ts` — allow all crawlers
   - Add `<link rel="sitemap">` to layout
 
-- [ ] **Social proof on event pages**
+- [x] **Social proof on event pages**
   - Show "X personnes inscrites" prominently with icon
   - Progress bar toward capacity (if maxAttendees set)
   - "Plus que X places" urgency when >80% full
 
-- [ ] **Public homepage with featured events**
+- [x] **Public homepage with featured events**
   - Improve landing page: featured events carousel, upcoming events grid
   - Category quick-filters (conférence, atelier, networking, etc.)
   - No auth required — drive discovery
 
 ### API
 
-- [ ] **Promo/discount code system**
+- [x] **Promo/discount code system**
   - New schema: `PromoCodeSchema` in shared-types (code, discountType, discountValue, maxUses, usedCount, expiresAt, ticketTypeIds)
   - New service: `promo-code.service.ts` — create, validate, apply
   - Hook into registration flow: validate code → adjust payment amount
@@ -57,7 +57,7 @@ The platform audit (2026-04-07) revealed that Waves 1-5 are production-ready but
   - Routes: POST/GET/DELETE on `/v1/events/:eventId/promo-codes`
   - Backoffice UI: promo code management in event detail page
 
-- [ ] **Calendar endpoint** — `GET /v1/events/:eventId/calendar.ics`
+- [x] **Calendar endpoint** — `GET /v1/events/:eventId/calendar.ics`
   - Returns iCalendar format with event title, description, location, dates
   - No auth required (public events)
 
@@ -74,7 +74,7 @@ The platform audit (2026-04-07) revealed that Waves 1-5 are production-ready but
 
 ### Payment Integration (Wave 6 completion)
 
-- [ ] **Wave payment provider** (`apps/api/src/providers/wave.provider.ts`)
+- [x] **Wave payment provider** (`apps/api/src/providers/wave.provider.ts`)
   - Implement `PaymentProvider` interface
   - Initiate payment → redirect to Wave checkout page
   - Webhook handler for payment confirmation/failure
@@ -82,18 +82,18 @@ The platform audit (2026-04-07) revealed that Waves 1-5 are production-ready but
   - XOF amount handling (integers only)
   - Test with Wave sandbox API
 
-- [ ] **Orange Money payment provider** (`apps/api/src/providers/orange-money.provider.ts`)
+- [x] **Orange Money payment provider** (`apps/api/src/providers/orange-money.provider.ts`)
   - Same `PaymentProvider` interface
   - Orange Money API integration
   - Webhook handler
   - Test with Orange Money sandbox
 
-- [ ] **Payment provider routing**
+- [x] **Payment provider routing**
   - Select provider based on `method` field in `InitiatePaymentSchema`
   - Configuration via environment variables (API keys, secrets)
   - Fallback to mock in development (`NODE_ENV !== 'production'`)
 
-- [ ] **Payment lifecycle Cloud Functions**
+- [x] **Payment lifecycle Cloud Functions**
   - `onPaymentCompleted` → confirm registration + trigger badge generation
   - `onPaymentFailed` → notify participant, suggest retry
   - `onPaymentTimeout` → cancel pending registration after configurable window (default 30 min)
@@ -101,7 +101,7 @@ The platform audit (2026-04-07) revealed that Waves 1-5 are production-ready but
 
 ### Communication Integration (Wave 7 completion)
 
-- [ ] **Africa's Talking SMS provider** (`apps/api/src/providers/africastalking-sms.provider.ts`)
+- [x] **Africa's Talking SMS provider** (`apps/api/src/providers/africastalking-sms.provider.ts`)
   - Implement `SmsProvider` interface
   - Send SMS with rate limiting (1 SMS/user/hour for non-critical)
   - Delivery status tracking via callback
@@ -109,20 +109,20 @@ The platform audit (2026-04-07) revealed that Waves 1-5 are production-ready but
   - Template system: registration confirmation, event reminder, check-in receipt
   - French templates < 160 chars (single SMS)
 
-- [ ] **SendGrid email provider** (`apps/api/src/providers/sendgrid-email.provider.ts`)
+- [x] **SendGrid email provider** (`apps/api/src/providers/sendgrid-email.provider.ts`)
   - Implement `EmailProvider` interface
   - HTML email templates with event branding
   - Registration confirmation email with badge PDF attachment
   - Event reminder email (24h and 1h before)
   - Bounce/complaint handling → disable email for hard bounces
 
-- [ ] **Scheduled event reminders** (Cloud Function)
+- [x] **Scheduled event reminders** (Cloud Function)
   - Cron trigger: runs every 15 minutes
   - Query events starting in 24h or 1h
   - Send reminders via user's preferred channels
   - Deduplication: don't re-send if already sent
 
-- [ ] **Phone number validation**
+- [x] **Phone number validation**
   - Validate +221 format (9 digits after country code) on registration
   - Shared validation function in shared-types
   - Apply in user profile update and sponsor contact
@@ -143,52 +143,52 @@ The platform audit (2026-04-07) revealed that Waves 1-5 are production-ready but
 
 ### Speaker Portal (Wave 8 completion)
 
-- [ ] **Speaker self-service page** in web-participant
+- [x] **Speaker self-service page** in web-participant
   - View assigned sessions with schedule
   - Edit profile (bio, photo, social links, topics)
   - Upload presentation slides (PDF via signed URL)
   - View session attendance/feedback (when available)
   - Route: `/speaker/[eventId]`
 
-- [ ] **Speaker invitation flow**
+- [x] **Speaker invitation flow**
   - Organizer sends invite from backoffice → creates `invites` doc
   - Speaker receives email/SMS with link
   - Speaker accepts → account created (or linked if exists) → speaker profile auto-created
 
 ### Sponsor Portal (Wave 8 completion)
 
-- [ ] **Sponsor self-service page** in web-participant
+- [x] **Sponsor self-service page** in web-participant
   - Manage booth (title, description, banner, CTA)
   - View collected leads with notes
   - Export leads as CSV (wire existing API endpoint)
   - Route: `/sponsor/[eventId]`
 
-- [ ] **Sponsor lead export**
+- [x] **Sponsor lead export**
   - CSV download button in sponsor portal
   - Columns: name, email, phone, notes, tags, scannedAt
   - Wire existing `exportLeads` API endpoint
 
 ### File Upload UI (cross-cutting)
 
-- [ ] **Upload component** in shared-ui
+- [x] **Upload component** in shared-ui
   - Drag-and-drop + click-to-select
   - Progress indicator
   - Preview for images
   - Uses signed URL pattern (request URL → PUT file → PATCH entity)
 
-- [ ] **Event image upload** in web-backoffice
+- [x] **Event image upload** in web-backoffice
   - Cover image + banner on event creation/edit form
   - Organization logo upload on settings page
 
-- [ ] **Speaker photo upload** in speaker portal + backoffice
-- [ ] **Sponsor logo/banner upload** in sponsor portal + backoffice
+- [x] **Speaker photo upload** in speaker portal + backoffice
+- [x] **Sponsor logo/banner upload** in sponsor portal + backoffice
 
 ### Backoffice Improvements
 
-- [ ] **Registration approval UI** — bulk approve/reject for events with `requiresApproval`
-- [ ] **Bulk badge generation button** — trigger bulk generation for all confirmed registrations
-- [ ] **Sponsor tier configuration** — UI for defining tier names and perks per event
-- [ ] **Lead export button** in sponsor management tab
+- [x] **Registration approval UI** — bulk approve/reject for events with `requiresApproval`
+- [x] **Bulk badge generation button** — trigger bulk generation for all confirmed registrations
+- [x] **Sponsor tier configuration** — UI for defining tier names and perks per event
+- [x] **Lead export button** in sponsor management tab
 
 ### Accessibility & Polish
 
