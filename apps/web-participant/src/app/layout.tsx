@@ -15,7 +15,13 @@ export const metadata: Metadata = {
     "Plateforme de gestion d'événements au Sénégal et en Afrique de l'Ouest. Découvrez, inscrivez-vous et participez aux meilleurs événements.",
   metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3002"),
   manifest: "/manifest.json",
-  icons: { icon: "/icon.png", apple: "/apple-icon.png" },
+  icons: {
+    icon: [
+      { url: "/favicon.png", sizes: "32x32", type: "image/png" },
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+    ],
+    apple: { url: "/apple-icon.png", sizes: "180x180" },
+  },
   openGraph: {
     type: "website",
     locale: "fr_SN",
