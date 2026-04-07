@@ -6,6 +6,7 @@ import { badgeTemplateRoutes } from "./badge-templates.routes";
 import { checkinRoutes } from "./checkin.routes";
 import { userRoutes } from "./users.routes";
 import { organizationRoutes } from "./organizations.routes";
+import { inviteRoutes } from "./invites.routes";
 import { healthRoutes } from "./health.routes";
 
 export async function registerRoutes(app: FastifyInstance) {
@@ -20,4 +21,5 @@ export async function registerRoutes(app: FastifyInstance) {
   await app.register(badgeTemplateRoutes, { prefix: "/v1/badge-templates" });
   await app.register(userRoutes, { prefix: "/v1/users" });
   await app.register(organizationRoutes, { prefix: "/v1/organizations" });
+  await app.register(inviteRoutes, { prefix: "/v1/invites" });
 }

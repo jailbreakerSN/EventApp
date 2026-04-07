@@ -3,6 +3,7 @@ import type {
   Event,
   CreateEventDto,
   UpdateEventDto,
+  CloneEventDto,
   Registration,
   EventSearchQuery,
   CreateTicketTypeDto,
@@ -12,6 +13,12 @@ import type {
   CheckinHistoryQuery,
   CreateAccessZoneDto,
   UpdateAccessZoneDto,
+  Organization,
+  UpdateOrganizationDto,
+  OrganizationInvite,
+  CreateInviteDto,
+  OrgAnalytics,
+  AnalyticsQuery,
 } from "@teranga/shared-types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
@@ -162,6 +169,9 @@ export const eventsApi = {
   archive: (id: string) =>
     api.delete(`/v1/events/${id}`),
 
+  clone: (id: string, dto: CloneEventDto) =>
+    api.post<ApiResponse<Event>>(`/v1/events/${id}/clone`, dto),
+
   addTicketType: (eventId: string, dto: CreateTicketTypeDto) =>
     api.post<ApiResponse<Event>>(`/v1/events/${eventId}/ticket-types`, dto),
 
@@ -200,6 +210,43 @@ export const accessZonesApi = {
 
   remove: (eventId: string, zoneId: string) =>
     api.delete(`/v1/events/${eventId}/access-zones/${zoneId}`),
+};
+
+export const organizationsApi = {
+  getById: (id: string) =>
+    api.get<ApiResponse<Organization>>(`/v1/organizations/${id}`),
+
+  update: (id: string, dto: Partial<UpdateOrganizationDto>) =>
+    api.patch<ApiResponse<{ id: string }>>(`/v1/organizations/${id}`, dto),
+
+  addMember: (orgId: string, userId: string) =>
+    api.post<ApiResponse<{ orgId: string; userId: string }>>(`/v1/organizations/${orgId}/members`, { userId }),
+
+  removeMember: (orgId: string, userId: string) =>
+    request(`/v1/organizations/${orgId}/members`, {
+      method: "DELETE",
+      body: JSON.stringify({ userId }),
+    }),
+
+  getAnalytics: (orgId: string, query: Partial<AnalyticsQuery> = {}) =>
+    api.get<ApiResponse<OrgAnalytics>>(`/v1/organizations/${orgId}/analytics${buildQuery(query)}`),
+};
+
+export const invitesApi = {
+  list: (orgId: string) =>
+    api.get<ApiResponse<OrganizationInvite[]>>(`/v1/organizations/${orgId}/invites`),
+
+  create: (orgId: string, dto: CreateInviteDto) =>
+    api.post<ApiResponse<OrganizationInvite>>(`/v1/organizations/${orgId}/invites`, dto),
+
+  revoke: (orgId: string, inviteId: string) =>
+    api.delete(`/v1/organizations/${orgId}/invites/${inviteId}`),
+
+  accept: (token: string) =>
+    api.post<ApiResponse<null>>("/v1/invites/accept", { token }),
+
+  decline: (token: string) =>
+    api.post<ApiResponse<null>>("/v1/invites/decline", { token }),
 };
 
 export { ApiError };

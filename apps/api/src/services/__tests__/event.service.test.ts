@@ -559,3 +559,129 @@ describe("EventService.search", () => {
     expect(result.data[0].title).toBe("Teranga Fest");
   });
 });
+
+describe("EventService.clone", () => {
+  const freeOrg = buildOrganization({ id: "org-1", plan: "free" });
+
+  beforeEach(() => {
+    mockOrgRepo.findByIdOrThrow.mockResolvedValue(freeOrg);
+    mockEventRepo.findByOrganization.mockResolvedValue({ data: [], meta: { total: 0, page: 1, limit: 1, totalPages: 0 } });
+  });
+
+  it("clones an event with new dates", async () => {
+    const user = buildOrganizerUser("org-1");
+    const source = buildEvent({
+      organizationId: "org-1",
+      title: "Original Event",
+      ticketTypes: [
+        { id: "tt-1", name: "Standard", price: 0, currency: "XOF", totalQuantity: 100, soldCount: 50, accessZoneIds: [], isVisible: true },
+      ],
+      accessZones: [
+        { id: "zone-1", name: "VIP", color: "#FF0000", allowedTicketTypes: ["tt-1"], capacity: 20 },
+      ],
+    });
+    mockEventRepo.findByIdOrThrow.mockResolvedValue(source);
+
+    const clonedEvent = buildEvent({ id: "cloned-1", title: "Original Event (copie)", organizationId: "org-1" });
+    mockEventRepo.create.mockResolvedValue(clonedEvent);
+
+    const newStart = new Date(Date.now() + 30 * 86400000).toISOString();
+    const newEnd = new Date(Date.now() + 31 * 86400000).toISOString();
+
+    const result = await service.clone(source.id, {
+      newStartDate: newStart,
+      newEndDate: newEnd,
+    }, user);
+
+    expect(mockEventRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "draft",
+        registeredCount: 0,
+        checkedInCount: 0,
+        startDate: newStart,
+        endDate: newEnd,
+        publishedAt: null,
+        isFeatured: false,
+      }),
+    );
+
+    // Verify ticket types have new IDs and reset counts
+    const createCall = mockEventRepo.create.mock.calls[0][0];
+    expect(createCall.ticketTypes).toHaveLength(1);
+    expect(createCall.ticketTypes[0].id).not.toBe("tt-1");
+    expect(createCall.ticketTypes[0].id).toMatch(/^tt-/);
+    expect(createCall.ticketTypes[0].soldCount).toBe(0);
+    expect(createCall.ticketTypes[0].name).toBe("Standard");
+
+    // Verify access zones have new IDs
+    expect(createCall.accessZones).toHaveLength(1);
+    expect(createCall.accessZones[0].id).not.toBe("zone-1");
+    expect(createCall.accessZones[0].id).toMatch(/^zone-/);
+    expect(createCall.accessZones[0].name).toBe("VIP");
+  });
+
+  it("uses custom title when provided", async () => {
+    const user = buildOrganizerUser("org-1");
+    const source = buildEvent({ organizationId: "org-1", title: "Original" });
+    mockEventRepo.findByIdOrThrow.mockResolvedValue(source);
+    mockEventRepo.create.mockResolvedValue(buildEvent());
+
+    await service.clone(source.id, {
+      newTitle: "Custom Clone",
+      newStartDate: new Date(Date.now() + 86400000).toISOString(),
+      newEndDate: new Date(Date.now() + 2 * 86400000).toISOString(),
+    }, user);
+
+    expect(mockEventRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "Custom Clone" }),
+    );
+  });
+
+  it("rejects clone if end date is before start date", async () => {
+    const user = buildOrganizerUser("org-1");
+    const source = buildEvent({ organizationId: "org-1" });
+    mockEventRepo.findByIdOrThrow.mockResolvedValue(source);
+
+    await expect(
+      service.clone(source.id, {
+        newStartDate: "2026-06-01T00:00:00.000Z",
+        newEndDate: "2026-05-01T00:00:00.000Z",
+      }, user),
+    ).rejects.toThrow("End date must be after start date");
+  });
+
+  it("rejects clone for user without org access", async () => {
+    const user = buildOrganizerUser("other-org");
+    const source = buildEvent({ organizationId: "org-1" });
+    mockEventRepo.findByIdOrThrow.mockResolvedValue(source);
+
+    await expect(
+      service.clone(source.id, {
+        newStartDate: new Date(Date.now() + 86400000).toISOString(),
+        newEndDate: new Date(Date.now() + 2 * 86400000).toISOString(),
+      }, user),
+    ).rejects.toThrow("Access denied");
+  });
+
+  it("skips ticket types and zones when options are false", async () => {
+    const user = buildOrganizerUser("org-1");
+    const source = buildEvent({
+      organizationId: "org-1",
+      ticketTypes: [{ id: "tt-1", name: "Standard", price: 0, currency: "XOF", totalQuantity: 100, soldCount: 0, accessZoneIds: [], isVisible: true }],
+      accessZones: [{ id: "zone-1", name: "VIP", color: "#FF0000", allowedTicketTypes: [], capacity: null }],
+    });
+    mockEventRepo.findByIdOrThrow.mockResolvedValue(source);
+    mockEventRepo.create.mockResolvedValue(buildEvent());
+
+    await service.clone(source.id, {
+      newStartDate: new Date(Date.now() + 86400000).toISOString(),
+      newEndDate: new Date(Date.now() + 2 * 86400000).toISOString(),
+      copyTicketTypes: false,
+      copyAccessZones: false,
+    }, user);
+
+    const createCall = mockEventRepo.create.mock.calls[0][0];
+    expect(createCall.ticketTypes).toHaveLength(0);
+    expect(createCall.accessZones).toHaveLength(0);
+  });
+});

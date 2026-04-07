@@ -4,6 +4,7 @@ import {
   type Event,
   type Registration,
   type Organization,
+  type OrganizationInvite,
 } from "@teranga/shared-types";
 
 function uid(): string {
@@ -149,6 +150,30 @@ export function buildOrganization(overrides: Partial<Organization> = {}): Organi
     memberIds: [],
     isVerified: false,
     isActive: true,
+    createdAt: now,
+    updatedAt: now,
+    ...overrides,
+  };
+}
+
+// ─── Invite Factory ─────────────────────────────────────────────────────────
+
+export function buildInvite(overrides: Partial<OrganizationInvite> = {}): OrganizationInvite {
+  const id = uid();
+  const now = new Date().toISOString();
+  const expires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
+  return {
+    id,
+    organizationId: uid(),
+    organizationName: "Test Org",
+    email: `invite-${uid()}@test.teranga.events`,
+    role: "member",
+    status: "pending",
+    invitedBy: uid(),
+    invitedByName: null,
+    token: crypto.randomBytes(32).toString("hex"),
+    expiresAt: expires,
     createdAt: now,
     updatedAt: now,
     ...overrides,

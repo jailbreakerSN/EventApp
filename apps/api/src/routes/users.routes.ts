@@ -17,7 +17,7 @@ export const userRoutes: FastifyPluginAsync = async (fastify) => {
       schema: { tags: ["Users"], summary: "Get current user profile", security: [{ BearerAuth: [] }] },
     },
     async (request, reply) => {
-      const user = await userRepository.findByIdOrThrow(request.user!.uid);
+      const user = await userRepository.findOrCreateFromAuth(request.user!.uid);
       return reply.send({ success: true, data: user });
     },
   );

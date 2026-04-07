@@ -4,9 +4,13 @@ import { authenticate } from "@/middlewares/auth.middleware";
 import { validate } from "@/middlewares/validate.middleware";
 import { requirePermission } from "@/middlewares/permission.middleware";
 import { organizationService } from "@/services/organization.service";
+import { inviteService } from "@/services/invite.service";
+import { analyticsService } from "@/services/analytics.service";
 import {
   CreateOrganizationSchema,
   UpdateOrganizationSchema,
+  CreateInviteSchema,
+  AnalyticsQuerySchema,
 } from "@teranga/shared-types";
 
 const ParamsWithOrgId = z.object({ orgId: z.string() });
@@ -100,6 +104,82 @@ export const organizationRoutes: FastifyPluginAsync = async (fastify) => {
       const { userId } = request.body as z.infer<typeof RemoveMemberBody>;
       await organizationService.removeMember(orgId, userId, request.user!);
       return reply.status(204).send();
+    },
+  );
+
+  // ─── Invitations ────────────────────────────────────────────────────────
+
+  fastify.post(
+    "/:orgId/invites",
+    {
+      preHandler: [
+        authenticate,
+        requirePermission("organization:manage_members"),
+        validate({ params: ParamsWithOrgId, body: CreateInviteSchema }),
+      ],
+      schema: { tags: ["Organizations"], summary: "Create organization invite", security: [{ BearerAuth: [] }] },
+    },
+    async (request, reply) => {
+      const { orgId } = request.params as z.infer<typeof ParamsWithOrgId>;
+      const invite = await inviteService.createInvite(orgId, request.body as any, request.user!);
+      // Strip secret token from response — token should only be sent via email
+      const { token: _token, ...safeInvite } = invite;
+      return reply.status(201).send({ success: true, data: safeInvite });
+    },
+  );
+
+  fastify.get(
+    "/:orgId/invites",
+    {
+      preHandler: [
+        authenticate,
+        requirePermission("organization:read"),
+        validate({ params: ParamsWithOrgId }),
+      ],
+      schema: { tags: ["Organizations"], summary: "List organization invites", security: [{ BearerAuth: [] }] },
+    },
+    async (request, reply) => {
+      const { orgId } = request.params as z.infer<typeof ParamsWithOrgId>;
+      const invites = await inviteService.listByOrganization(orgId, request.user!);
+      // Strip tokens from list response
+      const safeInvites = invites.map(({ token: _t, ...rest }) => rest);
+      return reply.send({ success: true, data: safeInvites });
+    },
+  );
+
+  fastify.delete(
+    "/:orgId/invites/:inviteId",
+    {
+      preHandler: [
+        authenticate,
+        requirePermission("organization:manage_members"),
+        validate({ params: z.object({ orgId: z.string(), inviteId: z.string() }) }),
+      ],
+      schema: { tags: ["Organizations"], summary: "Revoke an invitation", security: [{ BearerAuth: [] }] },
+    },
+    async (request, reply) => {
+      const { inviteId } = request.params as { inviteId: string };
+      await inviteService.revokeInvite(inviteId, request.user!);
+      return reply.status(204).send();
+    },
+  );
+
+  // ──��� Analytics ────────��─────────────────────────────────────────────────
+
+  fastify.get(
+    "/:orgId/analytics",
+    {
+      preHandler: [
+        authenticate,
+        requirePermission("event:read"),
+        validate({ params: ParamsWithOrgId, query: AnalyticsQuerySchema }),
+      ],
+      schema: { tags: ["Organizations"], summary: "Get organization analytics", security: [{ BearerAuth: [] }] },
+    },
+    async (request, reply) => {
+      const { orgId } = request.params as z.infer<typeof ParamsWithOrgId>;
+      const analytics = await analyticsService.getOrgAnalytics(orgId, request.query as any, request.user!);
+      return reply.send({ success: true, data: analytics });
     },
   );
 };

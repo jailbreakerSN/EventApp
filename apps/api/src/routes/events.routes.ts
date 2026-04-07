@@ -12,6 +12,7 @@ import {
   type UpdateTicketTypeDto,
   type CreateAccessZoneDto,
   type UpdateAccessZoneDto,
+  type CloneEventDto,
   type UploadUrlRequest,
   type EventSearchQuery,
   CreateEventSchema,
@@ -21,6 +22,7 @@ import {
   UpdateTicketTypeSchema,
   CreateAccessZoneSchema,
   UpdateAccessZoneSchema,
+  CloneEventSchema,
   UploadUrlRequestSchema,
   PaginationSchema,
 } from "@teranga/shared-types";
@@ -284,6 +286,24 @@ export const eventRoutes: FastifyPluginAsync = async (fastify) => {
       const { eventId, zoneId } = request.params as z.infer<typeof AccessZoneParams>;
       await eventService.removeAccessZone(eventId, zoneId, request.user!);
       return reply.status(204).send();
+    },
+  );
+
+  // ─── Clone Event ─────────────────────────────────────────────────────────
+  fastify.post(
+    "/:eventId/clone",
+    {
+      preHandler: [
+        authenticate,
+        requirePermission("event:create"),
+        validate({ params: ParamsWithEventId, body: CloneEventSchema }),
+      ],
+      schema: { tags: ["Events"], summary: "Clone an event with new dates", security: [{ BearerAuth: [] }] },
+    },
+    async (request, reply) => {
+      const { eventId } = request.params as z.infer<typeof ParamsWithEventId>;
+      const cloned = await eventService.clone(eventId, request.body as CloneEventDto, request.user!);
+      return reply.status(201).send({ success: true, data: cloned });
     },
   );
 

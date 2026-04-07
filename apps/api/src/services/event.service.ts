@@ -6,9 +6,11 @@ import {
   type UpdateTicketTypeDto,
   type CreateAccessZoneDto,
   type UpdateAccessZoneDto,
+  type CloneEventDto,
   type Event,
   type EventStatus,
   type EventSearchQuery,
+  PLAN_LIMITS,
 } from "@teranga/shared-types";
 import { eventRepository, type EventFilters, type EventSearchFilters } from "@/repositories/event.repository";
 import { organizationRepository } from "@/repositories/organization.repository";
@@ -17,6 +19,7 @@ import { type AuthUser } from "@/middlewares/auth.middleware";
 import {
   ForbiddenError,
   ValidationError,
+  PlanLimitError,
 } from "@/errors/app-error";
 import { db } from "@/config/firebase";
 import { COLLECTIONS } from "@/config/firebase";
@@ -489,6 +492,94 @@ export class EventService extends BaseService {
       requestId: getRequestId(),
       timestamp: new Date().toISOString(),
     });
+  }
+
+  // ─── Clone Event ─────────────────────────────────────────────────────────
+
+  async clone(eventId: string, dto: CloneEventDto, user: AuthUser): Promise<Event> {
+    this.requirePermission(user, "event:create");
+
+    const source = await eventRepository.findByIdOrThrow(eventId);
+    this.requireOrganizationAccess(user, source.organizationId);
+
+    // Check plan limits for event count
+    const org = await organizationRepository.findByIdOrThrow(source.organizationId);
+    const limits = PLAN_LIMITS[org.plan];
+    if (isFinite(limits.maxEvents)) {
+      const existingEvents = await eventRepository.findByOrganization(source.organizationId, {
+        page: 1, limit: 1, orderBy: "createdAt", orderDir: "desc",
+      });
+      if (existingEvents.meta.total >= limits.maxEvents) {
+        throw new PlanLimitError(
+          `Maximum ${limits.maxEvents} events on the ${org.plan} plan`,
+        );
+      }
+    }
+
+    // Validate new dates
+    if (new Date(dto.newEndDate) <= new Date(dto.newStartDate)) {
+      throw new ValidationError("End date must be after start date");
+    }
+
+    const title = dto.newTitle ?? `${source.title} (copie)`;
+    const slug = generateSlug(title);
+
+    // Reset ticket type counters and generate new IDs
+    const ticketTypes = dto.copyTicketTypes !== false
+      ? source.ticketTypes.map((t) => ({
+          ...t,
+          id: `tt-${crypto.randomBytes(4).toString("hex")}`,
+          soldCount: 0,
+        }))
+      : [];
+
+    const accessZones = dto.copyAccessZones !== false
+      ? source.accessZones.map((z) => ({
+          ...z,
+          id: `zone-${crypto.randomBytes(4).toString("hex")}`,
+        }))
+      : [];
+
+    const cloned = await eventRepository.create({
+      organizationId: source.organizationId,
+      title,
+      slug,
+      description: source.description,
+      shortDescription: source.shortDescription ?? null,
+      coverImageURL: source.coverImageURL ?? null,
+      bannerImageURL: source.bannerImageURL ?? null,
+      category: source.category,
+      tags: source.tags,
+      format: source.format,
+      status: "draft" as EventStatus,
+      location: source.location,
+      startDate: dto.newStartDate,
+      endDate: dto.newEndDate,
+      timezone: source.timezone,
+      ticketTypes,
+      accessZones,
+      maxAttendees: source.maxAttendees ?? null,
+      registeredCount: 0,
+      checkedInCount: 0,
+      isPublic: source.isPublic,
+      isFeatured: false,
+      requiresApproval: source.requiresApproval,
+      templateId: source.templateId ?? null,
+      createdBy: user.uid,
+      updatedBy: user.uid,
+      publishedAt: null,
+    } as Omit<Event, "id" | "createdAt" | "updatedAt">);
+
+    eventBus.emit("event.cloned", {
+      sourceEventId: eventId,
+      newEventId: cloned.id,
+      organizationId: source.organizationId,
+      actorId: user.uid,
+      requestId: getRequestId(),
+      timestamp: new Date().toISOString(),
+    });
+
+    return cloned;
   }
 
   // ─── Search ──────────────────────────────────────────────────────────────
