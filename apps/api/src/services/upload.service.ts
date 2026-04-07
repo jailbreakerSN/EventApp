@@ -4,6 +4,8 @@ import { type UploadUrlRequest } from "@teranga/shared-types";
 import { type AuthUser } from "@/middlewares/auth.middleware";
 import { eventRepository } from "@/repositories/event.repository";
 import { organizationRepository } from "@/repositories/organization.repository";
+import { speakerRepository } from "@/repositories/speaker.repository";
+import { sponsorRepository } from "@/repositories/sponsor.repository";
 import { ValidationError } from "@/errors/app-error";
 import { BaseService } from "./base.service";
 
@@ -15,28 +17,21 @@ const ALLOWED_CONTENT_TYPES = new Set([
   "application/pdf",
 ]);
 
+type EntityType = "event" | "organization" | "speaker" | "sponsor";
+
 export class UploadService extends BaseService {
   /**
    * Generate a signed upload URL for direct client upload to Cloud Storage.
-   * Flow: API returns signed URL → client PUTs file → client PATCHes event with publicUrl.
+   * Flow: API returns signed URL → client PUTs file → client PATCHes entity with publicUrl.
    */
   async generateUploadUrl(
-    entityType: "event" | "organization",
+    entityType: EntityType,
     entityId: string,
     dto: UploadUrlRequest,
     user: AuthUser,
   ): Promise<{ uploadUrl: string; publicUrl: string }> {
-    const permission = entityType === "event" ? "event:update" : "organization:update";
-    this.requirePermission(user, permission);
-
-    // Validate entity exists and user has org access
-    if (entityType === "event") {
-      const event = await eventRepository.findByIdOrThrow(entityId);
-      this.requireOrganizationAccess(user, event.organizationId);
-    } else {
-      await organizationRepository.findByIdOrThrow(entityId);
-      this.requireOrganizationAccess(user, entityId);
-    }
+    // Resolve permission and validate entity access
+    await this.validateEntityAccess(entityType, entityId, user);
 
     if (!ALLOWED_CONTENT_TYPES.has(dto.contentType)) {
       throw new ValidationError(
@@ -61,6 +56,49 @@ export class UploadService extends BaseService {
     const publicUrl = `https://storage.googleapis.com/${bucket.name}/${storagePath}`;
 
     return { uploadUrl, publicUrl };
+  }
+
+  private async validateEntityAccess(
+    entityType: EntityType,
+    entityId: string,
+    user: AuthUser,
+  ): Promise<void> {
+    switch (entityType) {
+      case "event": {
+        this.requirePermission(user, "event:update");
+        const event = await eventRepository.findByIdOrThrow(entityId);
+        this.requireOrganizationAccess(user, event.organizationId);
+        break;
+      }
+      case "organization": {
+        this.requirePermission(user, "organization:update");
+        await organizationRepository.findByIdOrThrow(entityId);
+        this.requireOrganizationAccess(user, entityId);
+        break;
+      }
+      case "speaker": {
+        // Organizers can upload for any speaker; speakers can upload for themselves
+        const speaker = await speakerRepository.findByIdOrThrow(entityId);
+        if (speaker.userId === user.uid) {
+          this.requirePermission(user, "speaker:update_own");
+        } else {
+          this.requirePermission(user, "event:update");
+          this.requireOrganizationAccess(user, speaker.organizationId);
+        }
+        break;
+      }
+      case "sponsor": {
+        // Organizers can upload for any sponsor; sponsors can upload for themselves
+        const sponsor = await sponsorRepository.findByIdOrThrow(entityId);
+        if (sponsor.userId === user.uid) {
+          this.requirePermission(user, "sponsor:manage_booth");
+        } else {
+          this.requirePermission(user, "event:update");
+          this.requireOrganizationAccess(user, sponsor.organizationId);
+        }
+        break;
+      }
+    }
   }
 }
 

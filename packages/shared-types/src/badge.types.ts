@@ -119,8 +119,8 @@ export type BulkBadgeGenerateRequest = z.infer<typeof BulkBadgeGenerateRequestSc
 
 export const UploadUrlRequestSchema = z.object({
   fileName: z.string().min(1).max(255),
-  contentType: z.enum(["image/jpeg", "image/png", "image/webp"]),
-  purpose: z.enum(["cover", "banner", "logo"]),
+  contentType: z.enum(["image/jpeg", "image/png", "image/webp", "image/gif", "application/pdf"]),
+  purpose: z.enum(["cover", "banner", "logo", "photo", "slides", "document"]),
 });
 
 export type UploadUrlRequest = z.infer<typeof UploadUrlRequestSchema>;

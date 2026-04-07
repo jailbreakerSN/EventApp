@@ -4,7 +4,8 @@ import { authenticate } from "@/middlewares/auth.middleware";
 import { validate } from "@/middlewares/validate.middleware";
 import { requirePermission } from "@/middlewares/permission.middleware";
 import { speakerService } from "@/services/speaker.service";
-import { CreateSpeakerSchema, UpdateSpeakerSchema, SpeakerQuerySchema } from "@teranga/shared-types";
+import { uploadService } from "@/services/upload.service";
+import { CreateSpeakerSchema, UpdateSpeakerSchema, SpeakerQuerySchema, UploadUrlRequestSchema, type UploadUrlRequest } from "@teranga/shared-types";
 
 const ParamsWithEventId = z.object({ eventId: z.string() });
 const ParamsWithSpeakerId = z.object({ speakerId: z.string() });
@@ -108,6 +109,27 @@ export const speakerRoutes: FastifyPluginAsync = async (fastify) => {
       const { speakerId } = request.params as z.infer<typeof ParamsWithSpeakerId>;
       await speakerService.deleteSpeaker(speakerId, request.user!);
       return reply.send({ success: true });
+    },
+  );
+
+  // ─── Upload URL for Speaker Assets ────────────────────────────────────
+  fastify.post(
+    "/speakers/:speakerId/upload-url",
+    {
+      preHandler: [
+        authenticate,
+        validate({ params: ParamsWithSpeakerId, body: UploadUrlRequestSchema }),
+      ],
+      schema: {
+        tags: ["Speakers"],
+        summary: "Get a signed upload URL for speaker photo or slides",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const { speakerId } = request.params as z.infer<typeof ParamsWithSpeakerId>;
+      const result = await uploadService.generateUploadUrl("speaker", speakerId, request.body as UploadUrlRequest, request.user!);
+      return reply.send({ success: true, data: result });
     },
   );
 

@@ -4,12 +4,15 @@ import { authenticate } from "@/middlewares/auth.middleware";
 import { validate } from "@/middlewares/validate.middleware";
 import { requirePermission } from "@/middlewares/permission.middleware";
 import { sponsorService } from "@/services/sponsor.service";
+import { uploadService } from "@/services/upload.service";
 import {
   CreateSponsorSchema,
   UpdateSponsorSchema,
   SponsorQuerySchema,
   CreateLeadSchema,
   LeadQuerySchema,
+  UploadUrlRequestSchema,
+  type UploadUrlRequest,
 } from "@teranga/shared-types";
 
 const ParamsWithEventId = z.object({ eventId: z.string() });
@@ -114,6 +117,27 @@ export const sponsorRoutes: FastifyPluginAsync = async (fastify) => {
       const { sponsorId } = request.params as z.infer<typeof ParamsWithSponsorId>;
       await sponsorService.deleteSponsor(sponsorId, request.user!);
       return reply.send({ success: true });
+    },
+  );
+
+  // ─── Upload URL for Sponsor Assets ────────────────────────────────────
+  fastify.post(
+    "/sponsors/:sponsorId/upload-url",
+    {
+      preHandler: [
+        authenticate,
+        validate({ params: ParamsWithSponsorId, body: UploadUrlRequestSchema }),
+      ],
+      schema: {
+        tags: ["Sponsors"],
+        summary: "Get a signed upload URL for sponsor logo or banner",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const { sponsorId } = request.params as z.infer<typeof ParamsWithSponsorId>;
+      const result = await uploadService.generateUploadUrl("sponsor", sponsorId, request.body as UploadUrlRequest, request.user!);
+      return reply.send({ success: true, data: result });
     },
   );
 

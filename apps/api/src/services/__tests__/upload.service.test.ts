@@ -1,18 +1,24 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { UploadService } from "../upload.service";
-import { buildOrganizerUser, buildAuthUser, buildEvent, buildOrganization } from "@/__tests__/factories";
+import { buildOrganizerUser, buildAuthUser, buildEvent, buildOrganization, buildSpeaker, buildSponsor } from "@/__tests__/factories";
 
 // ─── Mocks ─────────────────────────────────────────────────────────────────
 
-const mockEventRepo = {
-  findByIdOrThrow: vi.fn(),
-};
-
-const mockOrgRepo = {
-  findByIdOrThrow: vi.fn(),
-};
-
-const mockGetSignedUrl = vi.fn().mockResolvedValue(["https://storage.googleapis.com/signed-url"]);
+const { mockEventRepo, mockOrgRepo, mockSpeakerRepo, mockSponsorRepo, mockGetSignedUrl } = vi.hoisted(() => ({
+  mockEventRepo: {
+    findByIdOrThrow: vi.fn(),
+  },
+  mockOrgRepo: {
+    findByIdOrThrow: vi.fn(),
+  },
+  mockSpeakerRepo: {
+    findByIdOrThrow: vi.fn(),
+  },
+  mockSponsorRepo: {
+    findByIdOrThrow: vi.fn(),
+  },
+  mockGetSignedUrl: vi.fn().mockResolvedValue(["https://storage.googleapis.com/signed-url"]),
+}));
 
 vi.mock("@/repositories/event.repository", () => ({
   eventRepository: new Proxy({}, {
@@ -26,6 +32,18 @@ vi.mock("@/repositories/organization.repository", () => ({
   }),
 }));
 
+vi.mock("@/repositories/speaker.repository", () => ({
+  speakerRepository: new Proxy({}, {
+    get: (_target, prop) => (mockSpeakerRepo as Record<string, unknown>)[prop as string],
+  }),
+}));
+
+vi.mock("@/repositories/sponsor.repository", () => ({
+  sponsorRepository: new Proxy({}, {
+    get: (_target, prop) => (mockSponsorRepo as Record<string, unknown>)[prop as string],
+  }),
+}));
+
 vi.mock("@/config/firebase", () => ({
   storage: {
     bucket: () => ({
@@ -35,9 +53,17 @@ vi.mock("@/config/firebase", () => ({
       }),
     }),
   },
+  db: {},
+  COLLECTIONS: {
+    SPEAKERS: "speakers",
+    SPONSORS: "sponsors",
+    SPONSOR_LEADS: "sponsorLeads",
+    EVENTS: "events",
+    ORGANIZATIONS: "organizations",
+  },
 }));
 
-// ─── Tests ──────────────────────────��───────────────────────���──────────────
+// ─── Tests ─────────────────────────────────────────────────────────────────
 
 const service = new UploadService();
 
@@ -101,5 +127,47 @@ describe("UploadService.generateUploadUrl", () => {
     await expect(
       service.generateUploadUrl("organization", "org-1", dto, user),
     ).rejects.toThrow("Accès refusé");
+  });
+
+  it("generates signed URL for speaker photo when speaker owns profile", async () => {
+    const user = buildAuthUser({ uid: "speaker-uid", roles: ["speaker"] });
+    const speaker = buildSpeaker({ id: "sp-1", userId: "speaker-uid", organizationId: "org-1" });
+    mockSpeakerRepo.findByIdOrThrow.mockResolvedValue(speaker);
+
+    const result = await service.generateUploadUrl("speaker", "sp-1", { ...dto, purpose: "photo" as const }, user);
+
+    expect(result.uploadUrl).toBeDefined();
+    expect(result.publicUrl).toContain("speakers/sp-1/photo");
+  });
+
+  it("allows organizer to upload for any speaker in their org", async () => {
+    const user = buildOrganizerUser("org-1");
+    const speaker = buildSpeaker({ id: "sp-1", userId: "other-user", organizationId: "org-1" });
+    mockSpeakerRepo.findByIdOrThrow.mockResolvedValue(speaker);
+
+    const result = await service.generateUploadUrl("speaker", "sp-1", dto, user);
+
+    expect(result.uploadUrl).toBeDefined();
+  });
+
+  it("generates signed URL for sponsor logo when sponsor owns profile", async () => {
+    const user = buildAuthUser({ uid: "sponsor-uid", roles: ["sponsor"] });
+    const sponsor = buildSponsor({ id: "sp-1", userId: "sponsor-uid", organizationId: "org-1" });
+    mockSponsorRepo.findByIdOrThrow.mockResolvedValue(sponsor);
+
+    const result = await service.generateUploadUrl("sponsor", "sp-1", { ...dto, purpose: "logo" as const }, user);
+
+    expect(result.uploadUrl).toBeDefined();
+    expect(result.publicUrl).toContain("sponsors/sp-1/logo");
+  });
+
+  it("rejects disallowed content type", async () => {
+    const user = buildOrganizerUser("org-1");
+    const event = buildEvent({ id: "ev-1", organizationId: "org-1" });
+    mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
+
+    await expect(
+      service.generateUploadUrl("event", "ev-1", { fileName: "test.svg", contentType: "image/svg+xml" as any, purpose: "cover" as const }, user),
+    ).rejects.toThrow("not allowed");
   });
 });

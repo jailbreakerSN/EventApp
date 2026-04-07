@@ -66,6 +66,24 @@ service firebase.storage {
       allow write: if false; // Admin SDK only via Cloud Functions
     }
 
+    // ─── Speaker Assets ─────────────────────────────────────────────────
+    // Photos and presentation slides/documents
+    match /speakers/{speakerId}/{purpose}/{filename} {
+      allow read: if isAuthenticated();
+      allow write: if (hasRole('organizer') || hasRole('speaker'))
+                   && (isImage() || isPdf())
+                   && maxSize(20); // slides can be larger
+    }
+
+    // ─── Sponsor Assets ──────────────────────────────────────────────────
+    // Logos, booth banners, marketing materials
+    match /sponsors/{sponsorId}/{purpose}/{filename} {
+      allow read: if isAuthenticated();
+      allow write: if (hasRole('organizer') || hasRole('sponsor'))
+                   && isImage()
+                   && maxSize(10);
+    }
+
     // ─── Feed Media ────────────────────────────────────────────────────────
     match /feed/{postId}/{filename} {
       allow read: if isAuthenticated();
