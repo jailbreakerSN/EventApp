@@ -17,7 +17,7 @@ function formatDate(iso: string) {
 }
 
 export default function FeedPage() {
-  const { eventId } = useParams<{ eventId: string }>();
+  const { slug: eventId } = useParams<{ slug: string }>();
   const qc = useQueryClient();
   const [newPost, setNewPost] = useState("");
   const [commentingOn, setCommentingOn] = useState<string | null>(null);

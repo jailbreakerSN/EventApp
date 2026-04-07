@@ -17,7 +17,7 @@ function formatTime(iso: string) {
 }
 
 export default function SchedulePage() {
-  const { eventId } = useParams<{ eventId: string }>();
+  const { slug: eventId } = useParams<{ slug: string }>();
   const qc = useQueryClient();
 
   const { data: eventData } = useQuery({
