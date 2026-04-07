@@ -56,7 +56,7 @@ export default function CheckinDashboardPage() {
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
-          <button onClick={() => router.push(`/events/${eventId}`)} className="p-2 rounded-lg hover:bg-gray-100">
+          <button onClick={() => router.push(`/events/${eventId}`)} className="p-2 rounded-lg hover:bg-gray-100" aria-label="Retour à l'événement">
             <ArrowLeft className="h-5 w-5" />
           </button>
           <div>

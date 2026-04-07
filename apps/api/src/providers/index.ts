@@ -10,6 +10,7 @@ import { type EmailProvider } from "./email-provider.interface";
 import { mockSmsProvider } from "./mock-sms.provider";
 import { mockEmailProvider } from "./mock-email.provider";
 import { africasTalkingSmsProvider } from "./africastalking-sms.provider";
+import { resendEmailProvider } from "./resend-email.provider";
 import { sendGridEmailProvider } from "./sendgrid-email.provider";
 
 // ─── SMS Provider ───────────────────────────────────────────────────────────
@@ -21,11 +22,15 @@ export function getSmsProvider(): SmsProvider {
 }
 
 // ─── Email Provider ─────────────────────────────────────────────────────────
+// Priority: Resend (default) > SendGrid (fallback) > Mock (dev)
 
+const HAS_RESEND = !!process.env.RESEND_API_KEY;
 const HAS_SENDGRID = !!process.env.SENDGRID_API_KEY;
 
 export function getEmailProvider(): EmailProvider {
-  return HAS_SENDGRID ? sendGridEmailProvider : mockEmailProvider;
+  if (HAS_RESEND) return resendEmailProvider;
+  if (HAS_SENDGRID) return sendGridEmailProvider;
+  return mockEmailProvider;
 }
 
 // ─── SMS Templates ──────────────────────────────────────────────────────────

@@ -428,6 +428,9 @@ export class PaymentService extends BaseService {
     }
 
     const refundAmount = amount ?? payment.amount;
+    if (!Number.isInteger(refundAmount)) {
+      throw new ValidationError("Le montant du remboursement doit être un entier (XOF sans décimales)");
+    }
     if (refundAmount <= 0) {
       throw new ValidationError("Le montant du remboursement doit être positif");
     }

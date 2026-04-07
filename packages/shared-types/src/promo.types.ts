@@ -22,7 +22,10 @@ export const PromoCodeSchema = z.object({
   createdBy: z.string(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
-});
+}).refine(
+  (data) => data.discountType !== "fixed" || Number.isInteger(data.discountValue),
+  { path: ["discountValue"], message: "Le montant de réduction fixe doit être un entier (XOF sans décimales)" },
+);
 
 export type PromoCode = z.infer<typeof PromoCodeSchema>;
 
@@ -36,7 +39,10 @@ export const CreatePromoCodeSchema = z.object({
   maxUses: z.number().int().positive().nullable().optional(),
   expiresAt: z.string().datetime().nullable().optional(),
   ticketTypeIds: z.array(z.string()).optional(),
-});
+}).refine(
+  (data) => data.discountType !== "fixed" || Number.isInteger(data.discountValue),
+  { path: ["discountValue"], message: "Le montant de réduction fixe doit être un entier (XOF sans décimales)" },
+);
 
 export type CreatePromoCodeDto = z.infer<typeof CreatePromoCodeSchema>;
 

@@ -109,12 +109,14 @@ The platform audit (2026-04-07) revealed that Waves 1-5 are production-ready but
   - Template system: registration confirmation, event reminder, check-in receipt
   - French templates < 160 chars (single SMS)
 
-- [x] **SendGrid email provider** (`apps/api/src/providers/sendgrid-email.provider.ts`)
-  - Implement `EmailProvider` interface
-  - HTML email templates with event branding
-  - Registration confirmation email with badge PDF attachment
-  - Event reminder email (24h and 1h before)
-  - Bounce/complaint handling → disable email for hard bounces
+- [x] **Resend email provider** (`apps/api/src/providers/resend-email.provider.ts`) — **default**
+  - Implement `EmailProvider` interface (replaces SendGrid as default)
+  - Batch sending via `/emails/batch` (up to 100 per request)
+  - Tags for analytics (category, event_id tracking)
+  - Idempotency keys to prevent duplicate sends on retry
+  - Scheduled sends (`scheduled_at` for event reminders)
+  - HTML email templates with event branding + badge PDF attachments
+  - SendGrid kept as fallback (`apps/api/src/providers/sendgrid-email.provider.ts`)
 
 - [x] **Scheduled event reminders** (Cloud Function)
   - Cron trigger: runs every 15 minutes

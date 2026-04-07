@@ -124,6 +124,7 @@ export default function SchedulePage() {
                       onClick={() => toggleBookmark.mutate({ sessionId: session.id, isBookmarked })}
                       className={`p-2 rounded-lg transition-colors ${isBookmarked ? "text-[#1A1A2E] bg-[#1A1A2E]/10" : "text-gray-300 hover:text-gray-500 hover:bg-gray-50"}`}
                       title={isBookmarked ? "Retirer du programme perso" : "Ajouter au programme perso"}
+                      aria-label={isBookmarked ? "Retirer du programme personnel" : "Ajouter au programme personnel"}
                     >
                       <Bookmark className={`h-5 w-5 ${isBookmarked ? "fill-current" : ""}`} />
                     </button>

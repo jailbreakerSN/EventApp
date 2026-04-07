@@ -153,6 +153,7 @@ export default function MessagesPage() {
                     onClick={() => messageText.trim() && sendMessage.mutate(messageText.trim())}
                     disabled={sendMessage.isPending || !messageText.trim()}
                     className="bg-[#1A1A2E] text-white rounded-lg px-4 py-2 text-sm disabled:opacity-50"
+                    aria-label="Envoyer le message"
                   >
                     <Send className="h-4 w-4" />
                   </button>

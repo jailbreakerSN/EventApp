@@ -128,7 +128,7 @@ export const TicketTypeSchema = z.object({
   id: z.string(),
   name: z.string(),                        // e.g. "VIP", "Standard", "Press"
   description: z.string().optional(),
-  price: z.number().min(0).default(0),     // 0 = free
+  price: z.number().int().min(0).default(0), // XOF — no decimals, 0 = free
   currency: z.enum(["XOF", "EUR", "USD"]).default("XOF"), // XOF = CFA Franc
   totalQuantity: z.number().int().positive().nullable(), // null = unlimited
   soldCount: z.number().int().default(0),

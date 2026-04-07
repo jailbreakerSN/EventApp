@@ -37,7 +37,7 @@ export default function CheckinHistoryPage() {
     <div>
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
-        <button onClick={() => router.push(`/events/${eventId}/checkin`)} className="p-2 rounded-lg hover:bg-gray-100">
+        <button onClick={() => router.push(`/events/${eventId}/checkin`)} className="p-2 rounded-lg hover:bg-gray-100" aria-label="Retour au check-in">
           <ArrowLeft className="h-5 w-5" />
         </button>
         <div>
@@ -134,6 +134,7 @@ export default function CheckinHistoryPage() {
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
                 disabled={page <= 1}
                 className="p-1 rounded hover:bg-gray-200 disabled:opacity-30"
+                aria-label="Page précédente"
               >
                 <ChevronLeft className="h-4 w-4" />
               </button>
@@ -141,6 +142,7 @@ export default function CheckinHistoryPage() {
                 onClick={() => setPage((p) => p + 1)}
                 disabled={page >= meta.totalPages}
                 className="p-1 rounded hover:bg-gray-200 disabled:opacity-30"
+                aria-label="Page suivante"
               >
                 <ChevronRight className="h-4 w-4" />
               </button>

@@ -24,7 +24,7 @@ After completing Waves 1-8 (backend + web frontends), the **MVP Launch Sprint** 
 | Component | Completion | Notes |
 |-----------|-----------|-------|
 | Shared Types | ~99% | Zod schemas: all entities, promo codes, phone validation |
-| API (Fastify) | ~98% | Waves 1-8 + MVP Sprint, 327 tests across 26 files. Real providers ready (Wave/OM/AT/SendGrid) |
+| API (Fastify) | ~98% | Waves 1-8 + MVP Sprint, 337 tests across 27 files. Real providers ready (Wave/OM/AT/Resend+SendGrid) |
 | Cloud Functions | ~95% | Auth, badge, check-in, payment lifecycle, scheduled reminders |
 | Web Backoffice | ~92% | All tabs, promo codes, bulk approve, file upload component |
 | Web Participant | ~92% | Discovery, registration, badges, share buttons, SEO, speaker/sponsor portals |

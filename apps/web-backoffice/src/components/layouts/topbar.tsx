@@ -22,7 +22,7 @@ export function TopBar() {
     <header className="h-14 bg-white border-b border-gray-200 flex items-center justify-between px-6 shrink-0">
       <div />
       <div className="flex items-center gap-3">
-        <button className="relative p-2 rounded-lg hover:bg-gray-100 transition-colors">
+        <button className="relative p-2 rounded-lg hover:bg-gray-100 transition-colors" aria-label="Notifications">
           <Bell size={18} className="text-gray-600" />
         </button>
 
@@ -54,6 +54,7 @@ export function TopBar() {
           onClick={() => logout()}
           className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
           title="Déconnexion"
+          aria-label="Déconnexion"
         >
           <LogOut size={17} className="text-gray-500" />
         </button>

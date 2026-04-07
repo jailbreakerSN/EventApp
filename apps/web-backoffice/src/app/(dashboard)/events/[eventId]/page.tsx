@@ -65,6 +65,7 @@ const REG_STATUS: Record<string, { label: string; className: string }> = {
   pending_payment: { label: "Paiement en attente", className: "bg-amber-100 text-amber-700" },
   waitlisted: { label: "Liste d'attente", className: "bg-blue-100 text-blue-700" },
   cancelled: { label: "Annulé", className: "bg-red-100 text-red-700" },
+  payment_failed: { label: "Paiement échoué", className: "bg-red-100 text-red-600" },
   checked_in: { label: "Entré", className: "bg-purple-100 text-purple-700" },
 };
 
@@ -464,6 +465,7 @@ function TicketsTab({ event }: { event: Event }) {
                 <button
                   onClick={() => setRemoveTarget({ id: tt.id, name: tt.name })}
                   className="text-red-400 hover:text-red-600 p-1"
+                  aria-label="Supprimer le billet"
                 >
                   <Trash2 className="h-4 w-4" />
                 </button>
@@ -607,6 +609,7 @@ function RegistrationsTab({ eventId }: { eventId: string }) {
                               disabled={approve.isPending}
                               className="text-green-600 hover:text-green-800 p-1"
                               title="Approuver"
+                              aria-label="Approuver l'inscription"
                             >
                               <CheckCircle className="h-4 w-4" />
                             </button>
@@ -624,6 +627,7 @@ function RegistrationsTab({ eventId }: { eventId: string }) {
                               disabled={cancelReg.isPending}
                               className="text-red-400 hover:text-red-600 p-1"
                               title="Annuler"
+                              aria-label="Annuler l'inscription"
                             >
                               <XCircle className="h-4 w-4" />
                             </button>
@@ -645,6 +649,7 @@ function RegistrationsTab({ eventId }: { eventId: string }) {
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
                   disabled={page <= 1}
                   className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                  aria-label="Page précédente"
                 >
                   <ChevronLeft className="h-4 w-4" />
                 </button>
@@ -652,6 +657,7 @@ function RegistrationsTab({ eventId }: { eventId: string }) {
                   onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                   disabled={page >= totalPages}
                   className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                  aria-label="Page suivante"
                 >
                   <ChevronRight className="h-4 w-4" />
                 </button>
@@ -781,6 +787,7 @@ function AccessZonesTab({ event }: { event: Event }) {
                   onClick={() => removeZone.mutate(zone.id)}
                   disabled={removeZone.isPending}
                   className="p-2 rounded-lg text-red-500 hover:bg-red-50"
+                  aria-label="Supprimer la zone"
                 >
                   <Trash2 className="h-4 w-4" />
                 </button>
@@ -924,7 +931,8 @@ function SessionsTab({ eventId, eventStatus }: { eventId: string; eventStatus: s
               </div>
               <button
                 onClick={() => setDeleteTarget({ id: session.id, title: session.title })}
-                className="text-red-400 hover:text-red-600 p-1 ml-3">
+                className="text-red-400 hover:text-red-600 p-1 ml-3"
+                aria-label="Supprimer la session">
                 <Trash2 className="h-4 w-4" />
               </button>
             </div>
@@ -1038,7 +1046,8 @@ function FeedTab({ eventId }: { eventId: string }) {
                     Pin
                   </button>
                   <button onClick={() => setDeletePostTarget(post.id)}
-                    className="text-red-400 hover:text-red-600 p-1.5">
+                    className="text-red-400 hover:text-red-600 p-1.5"
+                    aria-label="Supprimer la publication">
                     <Trash2 className="h-4 w-4" />
                   </button>
                 </div>
@@ -1149,6 +1158,12 @@ function PaymentsTab({ eventId }: { eventId: string }) {
             <p className="text-xs text-gray-500 uppercase tracking-wide">Paiements</p>
             <p className="mt-1 text-2xl font-bold text-gray-900">{summary.paymentCount}</p>
           </div>
+          {summary.byStatus?.failed != null && summary.byStatus.failed > 0 && (
+            <div className="rounded-lg border border-red-200 bg-red-50 p-4">
+              <p className="text-xs text-red-500 uppercase tracking-wide">Échoués</p>
+              <p className="mt-1 text-2xl font-bold text-red-600">{summary.byStatus.failed}</p>
+            </div>
+          )}
         </div>
       )}
 
@@ -1162,8 +1177,10 @@ function PaymentsTab({ eventId }: { eventId: string }) {
           <option value="">Tous les statuts</option>
           <option value="succeeded">Confirmé</option>
           <option value="processing">En cours</option>
+          <option value="pending">En attente</option>
           <option value="failed">Échoué</option>
           <option value="refunded">Remboursé</option>
+          <option value="expired">Expiré</option>
         </select>
         {meta && (
           <span className="text-sm text-gray-500">
@@ -1206,7 +1223,7 @@ function PaymentsTab({ eventId }: { eventId: string }) {
                 const canRefund = p.status === "succeeded" && p.refundedAmount < p.amount;
 
                 return (
-                  <tr key={p.id} className="hover:bg-gray-50">
+                  <tr key={p.id} className={`hover:bg-gray-50 ${p.status === "failed" ? "bg-red-50/50" : ""}`}>
                     <td className="px-4 py-3 whitespace-nowrap">{formatDate(p.createdAt)}</td>
                     <td className="px-4 py-3 font-medium">{formatCurrency(p.amount, p.currency)}</td>
                     <td className="px-4 py-3">{methodLabel}</td>
@@ -1214,6 +1231,11 @@ function PaymentsTab({ eventId }: { eventId: string }) {
                       <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${st.className}`}>
                         {st.label}
                       </span>
+                      {p.status === "failed" && (p as Record<string, unknown>).failureReason && (
+                        <p className="mt-1 text-xs text-red-500 max-w-[200px] truncate" title={String((p as Record<string, unknown>).failureReason)}>
+                          {String((p as Record<string, unknown>).failureReason)}
+                        </p>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       {p.refundedAmount > 0 ? formatCurrency(p.refundedAmount, p.currency) : "—"}
@@ -1243,6 +1265,7 @@ function PaymentsTab({ eventId }: { eventId: string }) {
             onClick={() => setPage(page - 1)}
             disabled={page <= 1}
             className="p-1.5 rounded-lg hover:bg-gray-100 disabled:opacity-30"
+            aria-label="Page précédente"
           >
             <ChevronLeft className="h-4 w-4" />
           </button>
@@ -1253,6 +1276,7 @@ function PaymentsTab({ eventId }: { eventId: string }) {
             onClick={() => setPage(page + 1)}
             disabled={page >= meta.totalPages}
             className="p-1.5 rounded-lg hover:bg-gray-100 disabled:opacity-30"
+            aria-label="Page suivante"
           >
             <ChevronRight className="h-4 w-4" />
           </button>
@@ -1359,6 +1383,7 @@ function SpeakersTab({ eventId }: { eventId: string }) {
                 <button
                   onClick={() => { if (confirm("Retirer cet intervenant ?")) deleteSpeaker.mutate(s.id); }}
                   className="text-gray-400 hover:text-red-500"
+                  aria-label="Supprimer l'intervenant"
                 >
                   <Trash2 className="h-4 w-4" />
                 </button>
@@ -1476,6 +1501,7 @@ function SponsorsTab({ eventId }: { eventId: string }) {
                   <button
                     onClick={() => { if (confirm("Retirer ce sponsor ?")) deleteSponsor.mutate(s.id); }}
                     className="text-gray-400 hover:text-red-500"
+                    aria-label="Supprimer le sponsor"
                   >
                     <Trash2 className="h-4 w-4" />
                   </button>

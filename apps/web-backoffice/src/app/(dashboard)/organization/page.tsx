@@ -334,6 +334,7 @@ export default function OrganizationPage() {
                       onClick={() => revokeInvite.mutate(invite.id)}
                       className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
                       title="Révoquer"
+                      aria-label="Révoquer l'invitation"
                     >
                       <X className="h-4 w-4" />
                     </button>

@@ -38,7 +38,7 @@ export function Header() {
                 <User className="h-4 w-4" />
                 {user.displayName ?? user.email}
               </Link>
-              <Button variant="ghost" size="sm" onClick={logout}>
+              <Button variant="ghost" size="sm" onClick={logout} aria-label="Déconnexion">
                 <LogOut className="h-4 w-4" />
               </Button>
             </div>

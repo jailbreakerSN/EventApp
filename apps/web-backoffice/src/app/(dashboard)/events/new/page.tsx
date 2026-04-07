@@ -466,6 +466,9 @@ export default function NewEventPage() {
               </div>
               <button
                 onClick={() => setIsPublic(!isPublic)}
+                role="switch"
+                aria-checked={isPublic}
+                aria-label="Événement public"
                 className={`relative w-11 h-6 rounded-full transition-colors ${isPublic ? "bg-[#1A1A2E]" : "bg-gray-200"}`}
               >
                 <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform ${isPublic ? "translate-x-5" : ""}`} />
@@ -478,6 +481,9 @@ export default function NewEventPage() {
               </div>
               <button
                 onClick={() => setRequiresApproval(!requiresApproval)}
+                role="switch"
+                aria-checked={requiresApproval}
+                aria-label="Approbation requise"
                 className={`relative w-11 h-6 rounded-full transition-colors ${requiresApproval ? "bg-[#1A1A2E]" : "bg-gray-200"}`}
               >
                 <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform ${requiresApproval ? "translate-x-5" : ""}`} />

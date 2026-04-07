@@ -144,6 +144,7 @@ export default function FeedPage() {
                 <button
                   onClick={() => toggleLike.mutate(post.id)}
                   className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-red-500 transition-colors"
+                  aria-label="J'aime"
                 >
                   <Heart className="h-4 w-4" />
                   {post.likeCount}
@@ -151,6 +152,7 @@ export default function FeedPage() {
                 <button
                   onClick={() => setCommentingOn(commentingOn === post.id ? null : post.id)}
                   className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-[#1A1A2E] transition-colors"
+                  aria-label="Commenter"
                 >
                   <MessageCircle className="h-4 w-4" />
                   {post.commentCount}
@@ -175,6 +177,7 @@ export default function FeedPage() {
                     onClick={() => commentText.trim() && addComment.mutate({ postId: post.id, content: commentText.trim() })}
                     disabled={!commentText.trim()}
                     className="bg-[#1A1A2E] text-white rounded-lg px-3 py-2 text-sm disabled:opacity-50"
+                    aria-label="Envoyer le commentaire"
                   >
                     <Send className="h-4 w-4" />
                   </button>
