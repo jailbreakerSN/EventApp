@@ -12,8 +12,12 @@ const config: Config = {
       colors: {
         teranga: {
           navy: "#1A1A2E",
-          gold: "#F5A623",
-          green: "#0F9B58",  // for success/confirmed states
+          gold: "#c59e4b",            // aligned with logo muted gold
+          "gold-light": "#d1b372",    // light sand accent
+          "gold-dark": "#a78336",     // darker gold for text on white (WCAG AA)
+          green: "#0F9B58",           // for success/confirmed states
+          forest: "#2a473c",          // deep teal green from logo
+          "forest-dark": "#172721",   // near-black, dark backgrounds
         },
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",

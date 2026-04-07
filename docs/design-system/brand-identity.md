@@ -13,7 +13,7 @@
 ## Logo
 
 - **Wordmark**: "Teranga" in Inter Bold, navy (#1A1A2E)
-- **Accent**: "Back-office" or "Events" subtitle in gold (#F5A623), smaller size
+- **Accent**: "Back-office" or "Events" subtitle in gold (#c59e4b), smaller size
 - **Minimum size**: 120px wide (web), 32dp (mobile)
 - **Clear space**: Minimum 1x the height of the "T" on all sides
 - **Backgrounds**: Use on white or light gray only. On dark backgrounds, wordmark is white with gold accent.

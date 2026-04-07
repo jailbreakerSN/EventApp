@@ -52,7 +52,7 @@ export function Sidebar() {
       {/* Logo */}
       <div className="px-6 py-5 border-b border-white/10">
         <span className="text-white text-xl font-bold tracking-tight">Teranga</span>
-        <span className="text-[#F5A623] text-xs block -mt-0.5">Back-office</span>
+        <span className="text-[#c59e4b] text-xs block -mt-0.5">Back-office</span>
       </div>
 
       {/* Navigation */}
@@ -76,8 +76,8 @@ export function Sidebar() {
 
       {/* Plan badge */}
       <div className="px-4 py-4 border-t border-white/10">
-        <div className="bg-[#F5A623]/15 rounded-lg p-3">
-          <p className="text-[#F5A623] text-xs font-semibold">Plan Gratuit</p>
+        <div className="bg-[#c59e4b]/15 rounded-lg p-3">
+          <p className="text-[#c59e4b] text-xs font-semibold">Plan Gratuit</p>
           <p className="text-white/50 text-xs mt-0.5">2 événements / mois</p>
         </div>
       </div>

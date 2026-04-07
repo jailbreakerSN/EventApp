@@ -14,8 +14,12 @@ Design tokens are the atomic values that define the visual language of Teranga. 
 |-------|-----|-----|-------|----------------|
 | `teranga-navy` | `#1A1A2E` | `240 28% 14%` | Primary brand, sidebar, buttons, headings | `bg-teranga-navy` / `text-teranga-navy` |
 | `teranga-navy-light` | `#16213E` | `222 47% 16%` | Hover state for navy, gradient end | `bg-[#16213E]` |
-| `teranga-gold` | `#F5A623` | `38 92% 55%` | Accent, CTAs, highlights, badges | `bg-teranga-gold` / `text-teranga-gold` |
+| `teranga-gold` | `#c59e4b` | `38 46% 53%` | Accent, CTAs, highlights, badges | `bg-teranga-gold` / `text-teranga-gold` |
+| `teranga-gold-light` | `#d1b372` | `38 50% 63%` | Light sand accent, hover states | `bg-teranga-gold-light` |
+| `teranga-gold-dark` | `#a78336` | `38 52% 43%` | Gold text on white (WCAG AA) | `text-teranga-gold-dark` |
 | `teranga-green` | `#0F9B58` | `151 82% 33%` | Success, confirmed status, positive actions | `bg-teranga-green` |
+| `teranga-forest` | `#2a473c` | `160 27% 22%` | Deep teal green from logo palette | `bg-teranga-forest` |
+| `teranga-forest-dark` | `#172721` | `153 27% 12%` | Near-black, dark backgrounds | `bg-teranga-forest-dark` |
 
 ### Semantic Colors
 
@@ -68,13 +72,13 @@ indigo-300: #77779A    indigo-800: #1E1E3D
 indigo-400: #595984
 ```
 
-**Teranga Gold (Amber scale)**
+**Teranga Gold (Muted gold scale — aligned with logo)**
 ```
-gold-50:  #FFF8EB      gold-500: #E8930A      gold-900: #6E3810
-gold-100: #FEECC1      gold-600: #CC7406      gold-950: #401C05
-gold-200: #FDDA86      gold-700: #A35509 (text-safe on white)
-gold-300: #FCC84B      gold-800: #854310
-gold-400: #F5A623 (brand)
+gold-50:  #FAF6EE      gold-500: #c59e4b (brand)   gold-900: #5a4520
+gold-100: #F0E6CE      gold-600: #a78336 (gold-dark) gold-950: #3a2c14
+gold-200: #E3D0A5      gold-700: #8a6b2b (text-safe on white)
+gold-300: #d1b372 (gold-light)  gold-800: #6e5522
+gold-400: #c59e4b (brand)
 ```
 
 **Warm Grays** (warmer than Tailwind defaults, matches hospitality theme)
@@ -93,13 +97,16 @@ All text/background combinations must meet WCAG AA (4.5:1 for normal text, 3:1 f
 | Combination | Ratio | Passes |
 |-------------|-------|--------|
 | Navy on white | 15.4:1 | AA/AAA |
-| Gold on navy | 5.8:1 | AA |
-| Gold on white | 2.7:1 | **FAIL** — use only for decorative, not text |
+| Gold (#c59e4b) on navy | 4.4:1 | AA (large text) |
+| Gold (#c59e4b) on white | 3.5:1 | AA (large text only) |
+| Gold-dark (#a78336) on white | 4.6:1 | AA |
+| Forest (#2a473c) on white | 9.8:1 | AA/AAA |
+| Forest-dark (#172721) on white | 15.1:1 | AA/AAA |
 | White on navy | 15.4:1 | AA/AAA |
 | Gray-700 on white | 8.6:1 | AA/AAA |
 | Gray-500 on white | 4.6:1 | AA (normal text) |
 
-> **Important**: Gold (#F5A623) on white does NOT pass contrast. Use gold only on navy backgrounds, as decorative accents, or with a darker gold variant (#B8860B) for text on white.
+> **Important**: Gold (#c59e4b) on white passes AA only for large text (3.5:1). For normal-sized gold text on white, use `teranga-gold-dark` (#a78336, 4.6:1). Gold on navy passes AA for large text (4.4:1).
 
 ---
 

@@ -1,8 +1,8 @@
 {
-  "name": "Teranga Backoffice",
+  "name": "Teranga Event",
   "short_name": "Teranga",
-  "description": "Plateforme de gestion d'événements pour l'Afrique de l'Ouest",
-  "start_url": "/login",
+  "description": "Découvrez et participez aux meilleurs événements au Sénégal et en Afrique de l'Ouest",
+  "start_url": "/",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#172721",

@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 class AppTheme {
   // ─── Teranga Brand Colors ──────────────────────────────────────────────────
   static const Color navy = Color(0xFF1A1A2E);
-  static const Color gold = Color(0xFFF5A623);
+  static const Color gold = Color(0xFFC59E4B);
   static const Color green = Color(0xFF0F9B58);
   static const Color lightNavy = Color(0xFF16213E);
 

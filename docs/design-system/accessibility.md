@@ -15,9 +15,9 @@ Teranga targets **WCAG 2.1 Level AA** compliance across all web applications.
 
 ### Known Issues
 
-- **Gold (#F5A623) on white** has only 2.7:1 contrast — **do not use for text on white backgrounds**
-- Use gold only on navy backgrounds (5.8:1 — passes AA) or as decorative elements
-- For gold text on white, use darker variant `#B8860B` (Goldenrod, 4.5:1 — passes AA)
+- **Gold (#c59e4b) on white** has 3.5:1 contrast — passes AA for large text only, not normal text
+- Use gold on navy backgrounds (4.4:1 — passes AA for large text) or as decorative elements
+- For gold text on white, use the darker variant `teranga-gold-dark` (#a78336, 4.6:1 — passes AA)
 
 ---
 

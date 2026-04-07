@@ -14,10 +14,13 @@ export const metadata: Metadata = {
   description:
     "Plateforme de gestion d'événements au Sénégal et en Afrique de l'Ouest. Découvrez, inscrivez-vous et participez aux meilleurs événements.",
   metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3002"),
+  manifest: "/manifest.json",
+  icons: { icon: "/icon.png", apple: "/apple-icon.png" },
   openGraph: {
     type: "website",
     locale: "fr_SN",
     siteName: "Teranga",
+    images: [{ url: "/og-default.png", width: 1200, height: 630, alt: "Teranga Event" }],
   },
 };
 

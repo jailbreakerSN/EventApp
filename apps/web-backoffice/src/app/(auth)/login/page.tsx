@@ -9,7 +9,7 @@ export default function LoginPage() {
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-white tracking-tight">Teranga</h1>
-          <p className="text-[#F5A623] mt-1 text-sm">
+          <p className="text-[#c59e4b] mt-1 text-sm">
             L&apos;Événementiel Africain, Connecté et Mémorable
           </p>
         </div>
