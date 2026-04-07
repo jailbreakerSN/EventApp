@@ -11,6 +11,13 @@ import { sessionRoutes } from "./sessions.routes";
 import { feedRoutes } from "./feed.routes";
 import { messagingRoutes } from "./messaging.routes";
 import { healthRoutes } from "./health.routes";
+import { paymentRoutes } from "./payments.routes";
+import { receiptRoutes } from "./receipts.routes";
+import { payoutRoutes } from "./payouts.routes";
+import { communicationRoutes } from "./communications.routes";
+import { notificationRoutes } from "./notifications.routes";
+import { speakerRoutes } from "./speakers.routes";
+import { sponsorRoutes } from "./sponsors.routes";
 
 export async function registerRoutes(app: FastifyInstance) {
   // ── Health & Readiness (no auth, no rate limit) ──────────────────────────
@@ -28,4 +35,11 @@ export async function registerRoutes(app: FastifyInstance) {
   await app.register(sessionRoutes, { prefix: "/v1/events" });
   await app.register(feedRoutes, { prefix: "/v1/events" });
   await app.register(messagingRoutes, { prefix: "/v1/conversations" });
+  await app.register(paymentRoutes, { prefix: "/v1/payments" });
+  await app.register(receiptRoutes, { prefix: "/v1/receipts" });
+  await app.register(payoutRoutes, { prefix: "/v1/payouts" });
+  await app.register(communicationRoutes, { prefix: "/v1/events" });
+  await app.register(notificationRoutes, { prefix: "/v1/notifications" });
+  await app.register(speakerRoutes, { prefix: "/v1/events" });
+  await app.register(sponsorRoutes, { prefix: "/v1/events" });
 }

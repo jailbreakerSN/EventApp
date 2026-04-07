@@ -17,6 +17,14 @@ import type {
   CreateConversationDto,
   SendMessageDto,
   MessageQuery,
+  Payment,
+  PaymentMethod,
+  Receipt,
+  Notification,
+  NotificationPreference,
+  UpdateNotificationPreferenceDto,
+  SpeakerProfile,
+  SponsorProfile,
 } from "@teranga/shared-types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
@@ -213,6 +221,60 @@ export const messagingApi = {
 
   markAsRead: (conversationId: string) =>
     api.post<ApiResponse<void>>(`/v1/conversations/${conversationId}/read`, {}),
+};
+
+export const paymentsApi = {
+  initiate: (eventId: string, ticketTypeId: string, method: PaymentMethod = "mock", returnUrl?: string) =>
+    api.post<ApiResponse<{ paymentId: string; redirectUrl: string }>>("/v1/payments/initiate", {
+      eventId,
+      ticketTypeId,
+      method,
+      returnUrl,
+    }),
+
+  getStatus: (paymentId: string) =>
+    api.get<ApiResponse<Payment>>(`/v1/payments/${paymentId}/status`),
+};
+
+export const receiptsApi = {
+  generate: (paymentId: string) =>
+    api.post<ApiResponse<Receipt>>(`/v1/receipts/${paymentId}/generate`, {}),
+
+  getById: (receiptId: string) =>
+    api.get<ApiResponse<Receipt>>(`/v1/receipts/${receiptId}`),
+
+  listMy: (params: { page?: number; limit?: number } = {}) =>
+    api.get<PaginatedResponse<Receipt>>(`/v1/receipts/my${buildQuery(params)}`),
+};
+
+export const notificationsApi = {
+  list: (params: { page?: number; limit?: number; unreadOnly?: boolean } = {}) =>
+    api.get<{ success: boolean; data: Notification[]; meta: { total: number } }>(`/v1/notifications${buildQuery(params)}`),
+
+  unreadCount: () =>
+    api.get<ApiResponse<{ count: number }>>("/v1/notifications/unread-count"),
+
+  markAsRead: (notificationId: string) =>
+    api.patch<{ success: boolean }>(`/v1/notifications/${notificationId}/read`, {}),
+
+  markAllAsRead: () =>
+    api.patch<{ success: boolean }>("/v1/notifications/read-all", {}),
+
+  getPreferences: () =>
+    api.get<ApiResponse<NotificationPreference>>("/v1/notifications/preferences"),
+
+  updatePreferences: (dto: UpdateNotificationPreferenceDto) =>
+    api.patch<ApiResponse<NotificationPreference>>("/v1/notifications/preferences", dto),
+};
+
+export const speakersApi = {
+  list: (eventId: string) =>
+    api.get<PaginatedResponse<SpeakerProfile>>(`/v1/events/${eventId}/speakers`, false),
+};
+
+export const sponsorsApi = {
+  list: (eventId: string) =>
+    api.get<PaginatedResponse<SponsorProfile>>(`/v1/events/${eventId}/sponsors`, false),
 };
 
 export { api, ApiError };

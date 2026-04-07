@@ -34,6 +34,23 @@ import type {
   CreateConversationDto,
   SendMessageDto,
   MessageQuery,
+  Payment,
+  PaymentSummary,
+  PaymentQuery,
+  Payout,
+  PayoutQuery,
+  Receipt,
+  Broadcast,
+  CreateBroadcastDto,
+  BroadcastQuery,
+  Notification,
+  SpeakerProfile,
+  CreateSpeakerDto,
+  UpdateSpeakerDto,
+  SponsorProfile,
+  CreateSponsorDto,
+  UpdateSponsorDto,
+  SponsorLead,
 } from "@teranga/shared-types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
@@ -331,6 +348,104 @@ export const messagingApi = {
 
   markAsRead: (conversationId: string) =>
     api.post<ApiResponse<void>>(`/v1/conversations/${conversationId}/read`, {}),
+};
+
+export const paymentsApi = {
+  listByEvent: (eventId: string, query: Partial<PaymentQuery> = {}) =>
+    api.get<PaginatedResponse<Payment>>(`/v1/payments/event/${eventId}${buildQuery(query)}`),
+
+  getSummary: (eventId: string) =>
+    api.get<ApiResponse<PaymentSummary>>(`/v1/payments/event/${eventId}/summary`),
+
+  refund: (paymentId: string, body: { amount?: number; reason?: string } = {}) =>
+    api.post<ApiResponse<Payment>>(`/v1/payments/${paymentId}/refund`, body),
+};
+
+export const payoutsApi = {
+  calculate: (eventId: string, periodFrom: string, periodTo: string) =>
+    api.get<ApiResponse<{ totalAmount: number; platformFee: number; netAmount: number; paymentCount: number }>>(`/v1/payouts/event/${eventId}/calculate${buildQuery({ periodFrom, periodTo })}`),
+
+  create: (eventId: string, body: { eventId: string; periodFrom: string; periodTo: string }) =>
+    api.post<ApiResponse<Payout>>(`/v1/payouts/event/${eventId}`, body),
+
+  listByOrg: (orgId: string, query: Partial<PayoutQuery> = {}) =>
+    api.get<PaginatedResponse<Payout>>(`/v1/payouts/organization/${orgId}${buildQuery(query)}`),
+
+  getById: (payoutId: string) =>
+    api.get<ApiResponse<Payout>>(`/v1/payouts/${payoutId}`),
+};
+
+export const receiptsApi = {
+  generate: (paymentId: string) =>
+    api.post<ApiResponse<Receipt>>(`/v1/receipts/${paymentId}/generate`, {}),
+
+  getById: (receiptId: string) =>
+    api.get<ApiResponse<Receipt>>(`/v1/receipts/${receiptId}`),
+
+  listMy: (params: { page?: number; limit?: number } = {}) =>
+    api.get<PaginatedResponse<Receipt>>(`/v1/receipts/my${buildQuery(params)}`),
+};
+
+export const broadcastsApi = {
+  send: (dto: CreateBroadcastDto) =>
+    api.post<ApiResponse<Broadcast>>(`/v1/events/${dto.eventId}/broadcast`, dto),
+
+  list: (eventId: string, query: Partial<BroadcastQuery> = {}) =>
+    api.get<PaginatedResponse<Broadcast>>(`/v1/events/${eventId}/broadcasts${buildQuery(query)}`),
+};
+
+export const notificationsApi = {
+  list: (params: { page?: number; limit?: number; unreadOnly?: boolean } = {}) =>
+    api.get<{ success: boolean; data: Notification[]; meta: { total: number } }>(`/v1/notifications${buildQuery(params)}`),
+
+  unreadCount: () =>
+    api.get<ApiResponse<{ count: number }>>("/v1/notifications/unread-count"),
+
+  markAsRead: (notificationId: string) =>
+    api.patch<{ success: boolean }>(`/v1/notifications/${notificationId}/read`, {}),
+
+  markAllAsRead: () =>
+    api.patch<{ success: boolean }>("/v1/notifications/read-all", {}),
+};
+
+export const speakersApi = {
+  list: (eventId: string, params: { page?: number; limit?: number } = {}) =>
+    api.get<PaginatedResponse<SpeakerProfile>>(`/v1/events/${eventId}/speakers${buildQuery(params)}`),
+
+  getById: (speakerId: string) =>
+    api.get<ApiResponse<SpeakerProfile>>(`/v1/events/speakers/${speakerId}`),
+
+  create: (eventId: string, dto: CreateSpeakerDto) =>
+    api.post<ApiResponse<SpeakerProfile>>(`/v1/events/${eventId}/speakers`, dto),
+
+  update: (speakerId: string, dto: Partial<UpdateSpeakerDto>) =>
+    api.patch<ApiResponse<SpeakerProfile>>(`/v1/events/speakers/${speakerId}`, dto),
+
+  remove: (speakerId: string) =>
+    api.delete(`/v1/events/speakers/${speakerId}`),
+};
+
+export const sponsorsApi = {
+  list: (eventId: string, params: { page?: number; limit?: number; tier?: string } = {}) =>
+    api.get<PaginatedResponse<SponsorProfile>>(`/v1/events/${eventId}/sponsors${buildQuery(params)}`),
+
+  getById: (sponsorId: string) =>
+    api.get<ApiResponse<SponsorProfile>>(`/v1/events/sponsors/${sponsorId}`),
+
+  create: (eventId: string, dto: CreateSponsorDto) =>
+    api.post<ApiResponse<SponsorProfile>>(`/v1/events/${eventId}/sponsors`, dto),
+
+  update: (sponsorId: string, dto: Partial<UpdateSponsorDto>) =>
+    api.patch<ApiResponse<SponsorProfile>>(`/v1/events/sponsors/${sponsorId}`, dto),
+
+  remove: (sponsorId: string) =>
+    api.delete(`/v1/events/sponsors/${sponsorId}`),
+
+  listLeads: (sponsorId: string, params: { page?: number; limit?: number } = {}) =>
+    api.get<PaginatedResponse<SponsorLead>>(`/v1/events/sponsors/${sponsorId}/leads${buildQuery(params)}`),
+
+  exportLeads: (sponsorId: string) =>
+    api.get<ApiResponse<SponsorLead[]>>(`/v1/events/sponsors/${sponsorId}/leads/export`),
 };
 
 export { ApiError };

@@ -39,12 +39,15 @@ import {
 import Link from "next/link";
 import { useAddAccessZone, useRemoveAccessZone } from "@/hooks/use-access-zones";
 import { useSessions, useCreateSession, useDeleteSession } from "@/hooks/use-sessions";
+import { useEventPayments, usePaymentSummary, useRefundPayment } from "@/hooks/use-payments";
 import { useFeedPosts, useCreateFeedPost, useDeleteFeedPost, useTogglePin } from "@/hooks/use-feed";
+import { useEventSpeakers, useCreateSpeaker, useDeleteSpeaker } from "@/hooks/use-speakers";
+import { useEventSponsors, useCreateSponsor, useDeleteSponsor } from "@/hooks/use-sponsors";
 import { eventsApi } from "@/lib/api-client";
-import type { Event, CreateTicketTypeDto, CreateAccessZoneDto, Session as SessionType, CreateSessionDto } from "@teranga/shared-types";
-import { Calendar, MessageSquare, Clock, Mic } from "lucide-react";
+import type { Event, CreateTicketTypeDto, CreateAccessZoneDto, Session as SessionType, CreateSessionDto, Payment, PaymentSummary, SpeakerProfile, SponsorProfile, CreateSpeakerDto, CreateSponsorDto, SponsorTier } from "@teranga/shared-types";
+import { Calendar, MessageSquare, Clock, Mic, UserRound, Building } from "lucide-react";
 
-const TABS = ["Infos", "Billets", "Inscriptions", "Sessions", "Feed", "Zones"] as const;
+const TABS = ["Infos", "Billets", "Inscriptions", "Paiements", "Sessions", "Feed", "Zones", "Intervenants", "Sponsors"] as const;
 type Tab = (typeof TABS)[number];
 
 const STATUS_LABELS: Record<string, { label: string; className: string }> = {
@@ -58,6 +61,7 @@ const STATUS_LABELS: Record<string, { label: string; className: string }> = {
 const REG_STATUS: Record<string, { label: string; className: string }> = {
   confirmed: { label: "Confirmé", className: "bg-green-100 text-green-700" },
   pending: { label: "En attente", className: "bg-yellow-100 text-yellow-700" },
+  pending_payment: { label: "Paiement en attente", className: "bg-amber-100 text-amber-700" },
   waitlisted: { label: "Liste d'attente", className: "bg-blue-100 text-blue-700" },
   cancelled: { label: "Annulé", className: "bg-red-100 text-red-700" },
   checked_in: { label: "Entré", className: "bg-purple-100 text-purple-700" },
@@ -144,9 +148,12 @@ export default function EventDetailPage() {
       {tab === "Infos" && <InfoTab event={event} />}
       {tab === "Billets" && <TicketsTab event={event} />}
       {tab === "Inscriptions" && <RegistrationsTab eventId={eventId} />}
+      {tab === "Paiements" && <PaymentsTab eventId={eventId} />}
       {tab === "Sessions" && <SessionsTab eventId={eventId} eventStatus={event.status} />}
       {tab === "Feed" && <FeedTab eventId={eventId} />}
       {tab === "Zones" && <AccessZonesTab event={event} />}
+      {tab === "Intervenants" && <SpeakersTab eventId={eventId} />}
+      {tab === "Sponsors" && <SponsorsTab eventId={eventId} />}
     </div>
   );
 }
@@ -1041,6 +1048,427 @@ function FeedTab({ eventId }: { eventId: string }) {
         cancelLabel="Annuler"
         variant="danger"
       />
+    </div>
+  );
+}
+
+// ─── Payments Tab ──────────────────────────────────────────────────────────────
+
+const PAYMENT_STATUS: Record<string, { label: string; className: string }> = {
+  pending: { label: "En attente", className: "bg-gray-100 text-gray-700" },
+  processing: { label: "En cours", className: "bg-yellow-100 text-yellow-700" },
+  succeeded: { label: "Confirmé", className: "bg-green-100 text-green-700" },
+  failed: { label: "Échoué", className: "bg-red-100 text-red-700" },
+  refunded: { label: "Remboursé", className: "bg-purple-100 text-purple-700" },
+  expired: { label: "Expiré", className: "bg-gray-100 text-gray-500" },
+};
+
+const PAYMENT_METHOD: Record<string, string> = {
+  wave: "Wave",
+  orange_money: "Orange Money",
+  free_money: "Free Money",
+  card: "Carte bancaire",
+  mock: "Test",
+};
+
+function PaymentsTab({ eventId }: { eventId: string }) {
+  const [page, setPage] = useState(1);
+  const [statusFilter, setStatusFilter] = useState("");
+  const [refundTarget, setRefundTarget] = useState<Payment | null>(null);
+
+  const { data: paymentsData, isLoading: paymentsLoading } = useEventPayments(eventId, {
+    status: statusFilter || undefined,
+    page,
+    limit: 20,
+  });
+  const { data: summaryData, isLoading: summaryLoading } = usePaymentSummary(eventId);
+  const refundMutation = useRefundPayment();
+
+  const payments = (paymentsData as { data?: Payment[] })?.data as Payment[] | undefined;
+  const meta = (paymentsData as { meta?: { total: number; totalPages: number; page: number } })?.meta;
+  const summary = (summaryData as { data?: PaymentSummary })?.data as PaymentSummary | undefined;
+
+  const handleRefund = () => {
+    if (!refundTarget) return;
+    refundMutation.mutate(
+      { paymentId: refundTarget.id },
+      {
+        onSuccess: () => {
+          toast.success("Remboursement effectué.");
+          setRefundTarget(null);
+        },
+        onError: (err: unknown) => {
+          const code = (err as { code?: string })?.code;
+          const message = (err as { message?: string })?.message;
+          toast.error(getErrorMessage(code, message));
+        },
+      },
+    );
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Revenue Summary */}
+      {!summaryLoading && summary && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="rounded-lg border p-4">
+            <p className="text-xs text-gray-500 uppercase tracking-wide">Revenus totaux</p>
+            <p className="mt-1 text-2xl font-bold text-green-600">{formatCurrency(summary.totalRevenue, "XOF")}</p>
+          </div>
+          <div className="rounded-lg border p-4">
+            <p className="text-xs text-gray-500 uppercase tracking-wide">Remboursements</p>
+            <p className="mt-1 text-2xl font-bold text-red-500">{formatCurrency(summary.totalRefunded, "XOF")}</p>
+          </div>
+          <div className="rounded-lg border p-4">
+            <p className="text-xs text-gray-500 uppercase tracking-wide">Revenus nets</p>
+            <p className="mt-1 text-2xl font-bold text-gray-900">{formatCurrency(summary.netRevenue, "XOF")}</p>
+          </div>
+          <div className="rounded-lg border p-4">
+            <p className="text-xs text-gray-500 uppercase tracking-wide">Paiements</p>
+            <p className="mt-1 text-2xl font-bold text-gray-900">{summary.paymentCount}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Filters */}
+      <div className="flex items-center gap-3">
+        <select
+          value={statusFilter}
+          onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
+          className="rounded-lg border px-3 py-2 text-sm"
+        >
+          <option value="">Tous les statuts</option>
+          <option value="succeeded">Confirmé</option>
+          <option value="processing">En cours</option>
+          <option value="failed">Échoué</option>
+          <option value="refunded">Remboursé</option>
+        </select>
+        {meta && (
+          <span className="text-sm text-gray-500">
+            {meta.total} paiement{meta.total > 1 ? "s" : ""}
+          </span>
+        )}
+      </div>
+
+      {/* Payments Table */}
+      {paymentsLoading && (
+        <div className="flex justify-center py-12">
+          <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+        </div>
+      )}
+
+      {payments && payments.length === 0 && (
+        <div className="text-center py-12 text-gray-400">
+          <Ticket className="mx-auto h-10 w-10 mb-3 opacity-50" />
+          <p>Aucun paiement pour cet événement.</p>
+        </div>
+      )}
+
+      {payments && payments.length > 0 && (
+        <div className="overflow-x-auto rounded-lg border">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 text-left text-xs text-gray-500 uppercase">
+              <tr>
+                <th className="px-4 py-3">Date</th>
+                <th className="px-4 py-3">Montant</th>
+                <th className="px-4 py-3">Méthode</th>
+                <th className="px-4 py-3">Statut</th>
+                <th className="px-4 py-3">Remboursé</th>
+                <th className="px-4 py-3">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {payments.map((p) => {
+                const st = PAYMENT_STATUS[p.status] ?? PAYMENT_STATUS.pending;
+                const methodLabel = PAYMENT_METHOD[p.method] ?? p.method;
+                const canRefund = p.status === "succeeded" && p.refundedAmount < p.amount;
+
+                return (
+                  <tr key={p.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-3 whitespace-nowrap">{formatDate(p.createdAt)}</td>
+                    <td className="px-4 py-3 font-medium">{formatCurrency(p.amount, p.currency)}</td>
+                    <td className="px-4 py-3">{methodLabel}</td>
+                    <td className="px-4 py-3">
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${st.className}`}>
+                        {st.label}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      {p.refundedAmount > 0 ? formatCurrency(p.refundedAmount, p.currency) : "—"}
+                    </td>
+                    <td className="px-4 py-3">
+                      {canRefund && (
+                        <button
+                          onClick={() => setRefundTarget(p)}
+                          className="text-xs text-red-600 hover:text-red-800 font-medium"
+                        >
+                          Rembourser
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Pagination */}
+      {meta && meta.totalPages > 1 && (
+        <div className="flex items-center justify-center gap-2 pt-2">
+          <button
+            onClick={() => setPage(page - 1)}
+            disabled={page <= 1}
+            className="p-1.5 rounded-lg hover:bg-gray-100 disabled:opacity-30"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </button>
+          <span className="text-sm text-gray-500">
+            Page {page} / {meta.totalPages}
+          </span>
+          <button
+            onClick={() => setPage(page + 1)}
+            disabled={page >= meta.totalPages}
+            className="p-1.5 rounded-lg hover:bg-gray-100 disabled:opacity-30"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
+      {/* Refund Confirmation */}
+      <ConfirmDialog
+        open={refundTarget !== null}
+        onConfirm={handleRefund}
+        onCancel={() => setRefundTarget(null)}
+        title="Rembourser le paiement"
+        description={
+          refundTarget
+            ? `Rembourser ${formatCurrency(refundTarget.amount - refundTarget.refundedAmount, refundTarget.currency)} ? L'inscription sera annulée.`
+            : ""
+        }
+        confirmLabel="Rembourser"
+        cancelLabel="Annuler"
+        variant="danger"
+      />
+    </div>
+  );
+}
+
+// ─── Speakers Tab ─────────────────────────────────────────────────────────
+
+function SpeakersTab({ eventId }: { eventId: string }) {
+  const { data, isLoading } = useEventSpeakers(eventId);
+  const speakers = (data?.data ?? []) as SpeakerProfile[];
+  const createSpeaker = useCreateSpeaker();
+  const deleteSpeaker = useDeleteSpeaker();
+
+  const [showForm, setShowForm] = useState(false);
+  const [name, setName] = useState("");
+  const [title, setTitle] = useState("");
+  const [company, setCompany] = useState("");
+  const [bio, setBio] = useState("");
+
+  const handleCreate = async () => {
+    if (!name) return;
+    try {
+      await createSpeaker.mutateAsync({
+        eventId,
+        dto: { eventId, name, title: title || undefined, company: company || undefined, bio: bio || undefined },
+      });
+      setShowForm(false);
+      setName(""); setTitle(""); setCompany(""); setBio("");
+      toast.success("Intervenant ajoute");
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-semibold">Intervenants ({speakers.length})</h2>
+        <button
+          onClick={() => setShowForm(!showForm)}
+          className="inline-flex items-center gap-1.5 px-3 py-2 bg-[#1A1A2E] text-white rounded-lg text-sm"
+        >
+          <Plus className="h-4 w-4" /> Ajouter
+        </button>
+      </div>
+
+      {showForm && (
+        <div className="rounded-lg border p-4 space-y-3 bg-gray-50">
+          <input className="w-full rounded border px-3 py-2 text-sm" placeholder="Nom *" value={name} onChange={(e) => setName(e.target.value)} />
+          <input className="w-full rounded border px-3 py-2 text-sm" placeholder="Titre (ex: CTO)" value={title} onChange={(e) => setTitle(e.target.value)} />
+          <input className="w-full rounded border px-3 py-2 text-sm" placeholder="Entreprise" value={company} onChange={(e) => setCompany(e.target.value)} />
+          <textarea className="w-full rounded border px-3 py-2 text-sm" rows={3} placeholder="Biographie" value={bio} onChange={(e) => setBio(e.target.value)} />
+          <div className="flex gap-2">
+            <button onClick={handleCreate} disabled={createSpeaker.isPending || !name} className="px-4 py-2 bg-[#1A1A2E] text-white rounded text-sm disabled:opacity-50">
+              {createSpeaker.isPending ? "Ajout..." : "Ajouter"}
+            </button>
+            <button onClick={() => setShowForm(false)} className="px-4 py-2 border rounded text-sm">Annuler</button>
+          </div>
+        </div>
+      )}
+
+      {isLoading ? (
+        <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-gray-400" /></div>
+      ) : speakers.length === 0 ? (
+        <p className="py-8 text-center text-gray-400">Aucun intervenant</p>
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {speakers.map((s) => (
+            <div key={s.id} className="rounded-lg border p-4 space-y-2">
+              <div className="flex items-start justify-between">
+                <div className="flex items-center gap-3">
+                  {s.photoURL ? (
+                    <img src={s.photoURL} alt={s.name} className="h-10 w-10 rounded-full object-cover" />
+                  ) : (
+                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-200">
+                      <UserRound className="h-5 w-5 text-gray-500" />
+                    </div>
+                  )}
+                  <div>
+                    <p className="font-medium">{s.name}</p>
+                    {s.title && <p className="text-xs text-gray-500">{s.title}{s.company ? ` — ${s.company}` : ""}</p>}
+                  </div>
+                </div>
+                <button
+                  onClick={() => { if (confirm("Retirer cet intervenant ?")) deleteSpeaker.mutate(s.id); }}
+                  className="text-gray-400 hover:text-red-500"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
+              {s.bio && <p className="text-sm text-gray-600 line-clamp-2">{s.bio}</p>}
+              {s.topics.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {s.topics.map((t) => (
+                    <span key={t} className="rounded bg-blue-50 px-2 py-0.5 text-xs text-blue-600">{t}</span>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Sponsors Tab ─────────────────────────────────────────────────────────
+
+const TIER_LABELS: Record<string, { label: string; className: string }> = {
+  platinum: { label: "Platine", className: "bg-gray-200 text-gray-800" },
+  gold: { label: "Or", className: "bg-amber-100 text-amber-700" },
+  silver: { label: "Argent", className: "bg-gray-100 text-gray-600" },
+  bronze: { label: "Bronze", className: "bg-orange-100 text-orange-700" },
+  partner: { label: "Partenaire", className: "bg-blue-100 text-blue-700" },
+};
+
+function SponsorsTab({ eventId }: { eventId: string }) {
+  const { data, isLoading } = useEventSponsors(eventId);
+  const sponsors = (data?.data ?? []) as SponsorProfile[];
+  const createSponsor = useCreateSponsor();
+  const deleteSponsor = useDeleteSponsor();
+
+  const [showForm, setShowForm] = useState(false);
+  const [companyName, setCompanyName] = useState("");
+  const [tier, setTier] = useState<SponsorTier>("gold");
+  const [website, setWebsite] = useState("");
+  const [description, setDescription] = useState("");
+
+  const handleCreate = async () => {
+    if (!companyName) return;
+    try {
+      await createSponsor.mutateAsync({
+        eventId,
+        dto: { eventId, companyName, tier, website: website || undefined, description: description || undefined },
+      });
+      setShowForm(false);
+      setCompanyName(""); setWebsite(""); setDescription("");
+      toast.success("Sponsor ajoute");
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-semibold">Sponsors ({sponsors.length})</h2>
+        <button
+          onClick={() => setShowForm(!showForm)}
+          className="inline-flex items-center gap-1.5 px-3 py-2 bg-[#1A1A2E] text-white rounded-lg text-sm"
+        >
+          <Plus className="h-4 w-4" /> Ajouter
+        </button>
+      </div>
+
+      {showForm && (
+        <div className="rounded-lg border p-4 space-y-3 bg-gray-50">
+          <input className="w-full rounded border px-3 py-2 text-sm" placeholder="Nom de l'entreprise *" value={companyName} onChange={(e) => setCompanyName(e.target.value)} />
+          <select className="w-full rounded border px-3 py-2 text-sm" value={tier} onChange={(e) => setTier(e.target.value as SponsorTier)}>
+            {Object.entries(TIER_LABELS).map(([k, v]) => (
+              <option key={k} value={k}>{v.label}</option>
+            ))}
+          </select>
+          <input className="w-full rounded border px-3 py-2 text-sm" placeholder="Site web" value={website} onChange={(e) => setWebsite(e.target.value)} />
+          <textarea className="w-full rounded border px-3 py-2 text-sm" rows={3} placeholder="Description" value={description} onChange={(e) => setDescription(e.target.value)} />
+          <div className="flex gap-2">
+            <button onClick={handleCreate} disabled={createSponsor.isPending || !companyName} className="px-4 py-2 bg-[#1A1A2E] text-white rounded text-sm disabled:opacity-50">
+              {createSponsor.isPending ? "Ajout..." : "Ajouter"}
+            </button>
+            <button onClick={() => setShowForm(false)} className="px-4 py-2 border rounded text-sm">Annuler</button>
+          </div>
+        </div>
+      )}
+
+      {isLoading ? (
+        <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-gray-400" /></div>
+      ) : sponsors.length === 0 ? (
+        <p className="py-8 text-center text-gray-400">Aucun sponsor</p>
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {sponsors.map((s) => {
+            const tierInfo = TIER_LABELS[s.tier] ?? TIER_LABELS.partner;
+            return (
+              <div key={s.id} className="rounded-lg border p-4 space-y-2">
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-3">
+                    {s.logoURL ? (
+                      <img src={s.logoURL} alt={s.companyName} className="h-10 w-10 rounded object-contain" />
+                    ) : (
+                      <div className="flex h-10 w-10 items-center justify-center rounded bg-gray-200">
+                        <Building className="h-5 w-5 text-gray-500" />
+                      </div>
+                    )}
+                    <div>
+                      <p className="font-medium">{s.companyName}</p>
+                      <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${tierInfo.className}`}>
+                        {tierInfo.label}
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => { if (confirm("Retirer ce sponsor ?")) deleteSponsor.mutate(s.id); }}
+                    className="text-gray-400 hover:text-red-500"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+                {s.description && <p className="text-sm text-gray-600 line-clamp-2">{s.description}</p>}
+                {s.website && (
+                  <a href={s.website} target="_blank" rel="noreferrer" className="text-xs text-blue-500 hover:underline">
+                    {s.website}
+                  </a>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

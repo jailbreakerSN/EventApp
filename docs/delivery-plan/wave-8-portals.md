@@ -1,6 +1,6 @@
 # Wave 8: Sponsor & Speaker Portals
 
-**Status:** `not_started`
+**Status:** `completed`
 **Estimated effort:** 1.5 weeks
 **Goal:** Self-service portals for sponsors and speakers — two key stakeholder groups that drive event revenue and content quality.
 

@@ -65,10 +65,29 @@ export const PermissionSchema = z.enum([
   "profile:update_own",
   "profile:read_any",          // view any user's public profile (for networking)
 
+  // ── Payment ────────────────────────────────────────────────────────────────
+  "payment:initiate",          // initiate payment for registration
+  "payment:read_own",          // view own payment history
+  "payment:read_all",          // view all payments for an event (organizer)
+  "payment:refund",            // issue refunds
+  "payment:view_reports",      // view financial reports
+
   // ── Sponsor ───────────────────────────────────────────────────────────────
   "sponsor:manage_booth",      // manage exhibition page
   "sponsor:collect_leads",     // scan participant QR for lead capture
   "sponsor:view_leads",
+
+  // ── Payout ────────────────────────────────────────────────────────────────
+  "payout:read",               // view payout history for organization
+  "payout:create",             // create a payout request
+
+  // ── Broadcast ─────────────────────────────────────────────────────────────
+  "broadcast:send",            // send broadcast to event participants
+  "broadcast:read",            // view broadcast history
+
+  // ── Speaker ───────────────────────────────────────────────────────────────
+  "speaker:read",              // view speaker profiles
+  "speaker:update_own",        // speaker edits own profile
 ]);
 
 export type Permission = z.infer<typeof PermissionSchema>;
@@ -106,6 +125,8 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRole, readonly Permission[]>
     "profile:read_own",
     "profile:update_own",
     "profile:read_any",
+    "payment:initiate",
+    "payment:read_own",
   ],
 
   organizer: [
@@ -155,6 +176,16 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRole, readonly Permission[]>
     "notification:send",
     "feed:create_announcement",
     "feed:moderate",
+    "payment:initiate",
+    "payment:read_own",
+    "payment:read_all",
+    "payment:refund",
+    "payment:view_reports",
+    "payout:read",
+    "payout:create",
+    "broadcast:send",
+    "broadcast:read",
+    "speaker:read",
   ],
 
   co_organizer: [
@@ -195,6 +226,9 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRole, readonly Permission[]>
     "notification:send",
     "feed:create_announcement",
     "feed:moderate",
+    "broadcast:send",
+    "broadcast:read",
+    "speaker:read",
   ],
 
   speaker: [
@@ -209,6 +243,8 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRole, readonly Permission[]>
     "profile:update_own",
     "profile:read_any",
     "event:read",
+    "speaker:read",
+    "speaker:update_own",
   ],
 
   sponsor: [
