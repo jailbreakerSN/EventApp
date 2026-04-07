@@ -29,6 +29,13 @@ export const AuditActionSchema = z.enum([
   "invite.declined",
   "member.role_changed",
   "organization.updated",
+  "session.created",
+  "session.updated",
+  "session.deleted",
+  "feed_post.created",
+  "feed_post.deleted",
+  "feed_post.pinned",
+  "message.sent",
 ]);
 
 export type AuditAction = z.infer<typeof AuditActionSchema>;

@@ -1,0 +1,220 @@
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { SessionService } from "../session.service";
+import { buildOrganizerUser, buildAuthUser, buildEvent } from "@/__tests__/factories";
+
+// ─── Mocks ─────────────────────────────────────────────────────────────────
+
+const mockSessionRepo = {
+  create: vi.fn(),
+  findByIdOrThrow: vi.fn(),
+  findByEvent: vi.fn(),
+  findByEventAndDate: vi.fn(),
+  update: vi.fn(),
+};
+
+const mockBookmarkRepo = {
+  create: vi.fn(),
+  findByUserAndSession: vi.fn(),
+  findByUserAndEvent: vi.fn(),
+  deleteBookmark: vi.fn(),
+};
+
+const mockEventRepo = {
+  findByIdOrThrow: vi.fn(),
+};
+
+vi.mock("@/repositories/session.repository", () => ({
+  sessionRepository: new Proxy({}, {
+    get: (_target, prop) => (mockSessionRepo as Record<string, unknown>)[prop as string],
+  }),
+  sessionBookmarkRepository: new Proxy({}, {
+    get: (_target, prop) => (mockBookmarkRepo as Record<string, unknown>)[prop as string],
+  }),
+}));
+
+vi.mock("@/repositories/event.repository", () => ({
+  eventRepository: new Proxy({}, {
+    get: (_target, prop) => (mockEventRepo as Record<string, unknown>)[prop as string],
+  }),
+}));
+
+vi.mock("@/events/event-bus", () => ({
+  eventBus: { emit: vi.fn() },
+}));
+
+vi.mock("@/context/request-context", () => ({
+  getRequestId: () => "test-request-id",
+}));
+
+// ─── Tests ─────────────────────────────────────────────────────────────────
+
+describe("SessionService", () => {
+  const service = new SessionService();
+  const orgId = "org-1";
+  const eventId = "ev-1";
+  const event = buildEvent({ id: eventId, organizationId: orgId });
+  const user = buildOrganizerUser(orgId);
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
+  });
+
+  describe("create", () => {
+    it("creates a session with valid data", async () => {
+      const dto = {
+        eventId,
+        title: "Keynote",
+        startTime: "2026-06-01T09:00:00.000Z",
+        endTime: "2026-06-01T10:00:00.000Z",
+        speakerIds: [],
+        tags: [],
+        isBookmarkable: true,
+      };
+      const expected = { id: "sess-1", ...dto, createdAt: "now", updatedAt: "now" };
+      mockSessionRepo.create.mockResolvedValue(expected);
+
+      const result = await service.create(eventId, dto, user);
+
+      expect(result.id).toBe("sess-1");
+      expect(mockSessionRepo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ title: "Keynote", eventId }),
+      );
+    });
+
+    it("rejects if end time is before start time", async () => {
+      const dto = {
+        eventId,
+        title: "Bad Session",
+        startTime: "2026-06-01T10:00:00.000Z",
+        endTime: "2026-06-01T09:00:00.000Z",
+        speakerIds: [],
+        tags: [],
+        isBookmarkable: true,
+      };
+
+      await expect(service.create(eventId, dto, user)).rejects.toThrow(
+        "End time must be after start time",
+      );
+    });
+
+    it("rejects user without event:create permission", async () => {
+      const participant = buildAuthUser({ roles: ["participant"] });
+      const dto = {
+        eventId,
+        title: "Test",
+        startTime: "2026-06-01T09:00:00.000Z",
+        endTime: "2026-06-01T10:00:00.000Z",
+        speakerIds: [],
+        tags: [],
+        isBookmarkable: true,
+      };
+
+      await expect(service.create(eventId, dto, participant)).rejects.toThrow(
+        "Missing permission",
+      );
+    });
+
+    it("rejects user from different org", async () => {
+      const otherUser = buildOrganizerUser("other-org");
+      const dto = {
+        eventId,
+        title: "Test",
+        startTime: "2026-06-01T09:00:00.000Z",
+        endTime: "2026-06-01T10:00:00.000Z",
+        speakerIds: [],
+        tags: [],
+        isBookmarkable: true,
+      };
+
+      await expect(service.create(eventId, dto, otherUser)).rejects.toThrow("Access denied");
+    });
+  });
+
+  describe("update", () => {
+    it("updates a session", async () => {
+      const session = { id: "sess-1", eventId, title: "Old", startTime: "2026-06-01T09:00:00.000Z", endTime: "2026-06-01T10:00:00.000Z" };
+      mockSessionRepo.findByIdOrThrow.mockResolvedValue(session);
+
+      await service.update(eventId, "sess-1", { title: "New Title" }, user);
+
+      expect(mockSessionRepo.update).toHaveBeenCalledWith("sess-1", { title: "New Title" });
+    });
+
+    it("rejects if session does not belong to event", async () => {
+      mockSessionRepo.findByIdOrThrow.mockResolvedValue({ id: "sess-1", eventId: "other-event" });
+
+      await expect(
+        service.update(eventId, "sess-1", { title: "New" }, user),
+      ).rejects.toThrow("does not belong");
+    });
+  });
+
+  describe("delete", () => {
+    it("soft-deletes a session", async () => {
+      mockSessionRepo.findByIdOrThrow.mockResolvedValue({ id: "sess-1", eventId, title: "Talk" });
+
+      await service.delete(eventId, "sess-1", user);
+
+      expect(mockSessionRepo.update).toHaveBeenCalledWith(
+        "sess-1",
+        expect.objectContaining({ deletedAt: expect.any(String) }),
+      );
+    });
+  });
+
+  describe("listByEvent", () => {
+    it("returns sessions for the event", async () => {
+      const sessions = { data: [{ id: "s1" }, { id: "s2" }], meta: { total: 2, page: 1, limit: 50, totalPages: 1 } };
+      mockSessionRepo.findByEvent.mockResolvedValue(sessions);
+
+      const result = await service.listByEvent(eventId, { page: 1, limit: 50 }, user);
+
+      expect(result.data).toHaveLength(2);
+    });
+
+    it("filters by date when provided", async () => {
+      const sessions = { data: [], meta: { total: 0, page: 1, limit: 50, totalPages: 0 } };
+      mockSessionRepo.findByEventAndDate.mockResolvedValue(sessions);
+
+      await service.listByEvent(eventId, { date: "2026-06-01", page: 1, limit: 50 }, user);
+
+      expect(mockSessionRepo.findByEventAndDate).toHaveBeenCalledWith(
+        eventId, "2026-06-01", expect.any(Object),
+      );
+    });
+  });
+
+  describe("bookmark", () => {
+    it("bookmarks a session", async () => {
+      mockSessionRepo.findByIdOrThrow.mockResolvedValue({ id: "sess-1", eventId });
+      mockBookmarkRepo.findByUserAndSession.mockResolvedValue(null);
+      mockBookmarkRepo.create.mockResolvedValue({ id: "bm-1", sessionId: "sess-1", userId: user.uid });
+
+      const result = await service.bookmark(eventId, "sess-1", user);
+
+      expect(result.id).toBe("bm-1");
+    });
+
+    it("returns existing bookmark if already bookmarked", async () => {
+      mockSessionRepo.findByIdOrThrow.mockResolvedValue({ id: "sess-1", eventId });
+      const existing = { id: "bm-1", sessionId: "sess-1", userId: user.uid };
+      mockBookmarkRepo.findByUserAndSession.mockResolvedValue(existing);
+
+      const result = await service.bookmark(eventId, "sess-1", user);
+
+      expect(result.id).toBe("bm-1");
+      expect(mockBookmarkRepo.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("removeBookmark", () => {
+    it("removes a bookmark", async () => {
+      mockBookmarkRepo.findByUserAndSession.mockResolvedValue({ id: "bm-1" });
+
+      await service.removeBookmark(eventId, "sess-1", user);
+
+      expect(mockBookmarkRepo.deleteBookmark).toHaveBeenCalledWith("bm-1");
+    });
+  });
+});

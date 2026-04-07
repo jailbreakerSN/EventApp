@@ -4,6 +4,19 @@ import type {
   Registration,
   EventSearchQuery,
   GeneratedBadge,
+  Session,
+  SessionBookmark,
+  SessionScheduleQuery,
+  FeedPost,
+  FeedComment,
+  CreateFeedPostDto,
+  CreateFeedCommentDto,
+  FeedQuery,
+  Conversation,
+  Message,
+  CreateConversationDto,
+  SendMessageDto,
+  MessageQuery,
 } from "@teranga/shared-types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
@@ -149,6 +162,57 @@ export const usersApi = {
 
   updateMe: (data: { displayName?: string; phone?: string; bio?: string; preferredLanguage?: string }) =>
     api.patch<ApiResponse<void>>("/v1/users/me", data),
+};
+
+export const sessionsApi = {
+  list: (eventId: string, query: Partial<SessionScheduleQuery> = {}) =>
+    api.get<PaginatedResponse<Session>>(`/v1/events/${eventId}/sessions${buildQuery(query)}`),
+
+  getById: (eventId: string, sessionId: string) =>
+    api.get<ApiResponse<Session>>(`/v1/events/${eventId}/sessions/${sessionId}`),
+
+  bookmark: (eventId: string, sessionId: string) =>
+    api.post<ApiResponse<SessionBookmark>>(`/v1/events/${eventId}/sessions/${sessionId}/bookmark`, {}),
+
+  removeBookmark: (eventId: string, sessionId: string) =>
+    api.delete(`/v1/events/${eventId}/sessions/${sessionId}/bookmark`),
+
+  getBookmarks: (eventId: string) =>
+    api.get<ApiResponse<SessionBookmark[]>>(`/v1/events/${eventId}/sessions-bookmarks`),
+};
+
+export const feedApi = {
+  list: (eventId: string, query: Partial<FeedQuery> = {}) =>
+    api.get<PaginatedResponse<FeedPost>>(`/v1/events/${eventId}/feed${buildQuery(query)}`),
+
+  create: (eventId: string, dto: CreateFeedPostDto) =>
+    api.post<ApiResponse<FeedPost>>(`/v1/events/${eventId}/feed`, dto),
+
+  toggleLike: (eventId: string, postId: string) =>
+    api.post<ApiResponse<{ liked: boolean }>>(`/v1/events/${eventId}/feed/${postId}/like`, {}),
+
+  listComments: (eventId: string, postId: string, query: Partial<FeedQuery> = {}) =>
+    api.get<PaginatedResponse<FeedComment>>(`/v1/events/${eventId}/feed/${postId}/comments${buildQuery(query)}`),
+
+  addComment: (eventId: string, postId: string, dto: CreateFeedCommentDto) =>
+    api.post<ApiResponse<FeedComment>>(`/v1/events/${eventId}/feed/${postId}/comments`, dto),
+};
+
+export const messagingApi = {
+  listConversations: (query: Partial<MessageQuery> = {}) =>
+    api.get<PaginatedResponse<Conversation>>(`/v1/conversations${buildQuery(query)}`),
+
+  getOrCreate: (dto: CreateConversationDto) =>
+    api.post<ApiResponse<Conversation>>("/v1/conversations", dto),
+
+  listMessages: (conversationId: string, query: Partial<MessageQuery> = {}) =>
+    api.get<PaginatedResponse<Message>>(`/v1/conversations/${conversationId}/messages${buildQuery(query)}`),
+
+  sendMessage: (conversationId: string, dto: SendMessageDto) =>
+    api.post<ApiResponse<Message>>(`/v1/conversations/${conversationId}/messages`, dto),
+
+  markAsRead: (conversationId: string) =>
+    api.post<ApiResponse<void>>(`/v1/conversations/${conversationId}/read`, {}),
 };
 
 export { api, ApiError };

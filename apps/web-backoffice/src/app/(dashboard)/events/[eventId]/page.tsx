@@ -36,10 +36,13 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useAddAccessZone, useRemoveAccessZone } from "@/hooks/use-access-zones";
+import { useSessions, useCreateSession, useDeleteSession } from "@/hooks/use-sessions";
+import { useFeedPosts, useCreateFeedPost, useDeleteFeedPost, useTogglePin } from "@/hooks/use-feed";
 import { eventsApi } from "@/lib/api-client";
-import type { Event, CreateTicketTypeDto, CreateAccessZoneDto } from "@teranga/shared-types";
+import type { Event, CreateTicketTypeDto, CreateAccessZoneDto, Session as SessionType, CreateSessionDto } from "@teranga/shared-types";
+import { Calendar, MessageSquare, Clock, Mic } from "lucide-react";
 
-const TABS = ["Infos", "Billets", "Inscriptions", "Zones"] as const;
+const TABS = ["Infos", "Billets", "Inscriptions", "Sessions", "Feed", "Zones"] as const;
 type Tab = (typeof TABS)[number];
 
 const STATUS_LABELS: Record<string, { label: string; className: string }> = {
@@ -139,6 +142,8 @@ export default function EventDetailPage() {
       {tab === "Infos" && <InfoTab event={event} />}
       {tab === "Billets" && <TicketsTab event={event} />}
       {tab === "Inscriptions" && <RegistrationsTab eventId={eventId} />}
+      {tab === "Sessions" && <SessionsTab eventId={eventId} eventStatus={event.status} />}
+      {tab === "Feed" && <FeedTab eventId={eventId} />}
       {tab === "Zones" && <AccessZonesTab event={event} />}
     </div>
   );
@@ -666,6 +671,224 @@ function AccessZonesTab({ event }: { event: Event }) {
                   <Trash2 className="h-4 w-4" />
                 </button>
               )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Sessions Tab ────────────────────────────────────────────────────────────
+
+function SessionsTab({ eventId, eventStatus }: { eventId: string; eventStatus: string }) {
+  const { data, isLoading } = useSessions(eventId);
+  const createSession = useCreateSession(eventId);
+  const deleteSession = useDeleteSession(eventId);
+  const [showForm, setShowForm] = useState(false);
+  const [title, setTitle] = useState("");
+  const [desc, setDesc] = useState("");
+  const [sessionLoc, setSessionLoc] = useState("");
+  const [startTime, setStartTime] = useState("");
+  const [endTime, setEndTime] = useState("");
+
+  const sessions = data?.data ?? [];
+
+  const handleAdd = async () => {
+    if (!title.trim() || !startTime || !endTime) return;
+    const dto: CreateSessionDto = {
+      eventId,
+      title: title.trim(),
+      description: desc || null,
+      location: sessionLoc || null,
+      startTime: new Date(startTime).toISOString(),
+      endTime: new Date(endTime).toISOString(),
+      speakerIds: [],
+      tags: [],
+      isBookmarkable: true,
+    };
+    await createSession.mutateAsync(dto);
+    setTitle(""); setDesc(""); setSessionLoc(""); setStartTime(""); setEndTime("");
+    setShowForm(false);
+  };
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-sm font-medium text-gray-500 flex items-center gap-2">
+          <Calendar className="h-4 w-4" /> {sessions.length} session(s)
+        </h3>
+        {(eventStatus === "draft" || eventStatus === "published") && (
+          <button
+            onClick={() => setShowForm(!showForm)}
+            className="inline-flex items-center gap-1.5 text-sm text-[#1A1A2E] hover:underline font-medium"
+          >
+            <Plus className="h-4 w-4" /> Ajouter
+          </button>
+        )}
+      </div>
+
+      {showForm && (
+        <div className="bg-gray-50 rounded-lg p-4 mb-4 space-y-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="md:col-span-2">
+              <label className="block text-xs font-medium text-gray-600 mb-1">Titre</label>
+              <input type="text" value={title} onChange={(e) => setTitle(e.target.value)}
+                placeholder="Ex: Keynote d'ouverture"
+                className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#1A1A2E]/20" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Début</label>
+              <input type="datetime-local" value={startTime} onChange={(e) => setStartTime(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#1A1A2E]/20" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Fin</label>
+              <input type="datetime-local" value={endTime} onChange={(e) => setEndTime(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#1A1A2E]/20" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Salle / Lieu</label>
+              <input type="text" value={sessionLoc} onChange={(e) => setSessionLoc(e.target.value)}
+                placeholder="Ex: Salle A"
+                className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#1A1A2E]/20" />
+            </div>
+            <div className="md:col-span-2">
+              <label className="block text-xs font-medium text-gray-600 mb-1">Description</label>
+              <textarea value={desc} onChange={(e) => setDesc(e.target.value)} rows={2}
+                className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#1A1A2E]/20" />
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={handleAdd}
+              disabled={createSession.isPending || !title.trim() || !startTime || !endTime}
+              className="bg-[#1A1A2E] text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-[#16213E] disabled:opacity-50">
+              {createSession.isPending ? "Ajout..." : "Ajouter la session"}
+            </button>
+            <button onClick={() => setShowForm(false)} className="text-sm text-gray-500 hover:text-gray-700">Annuler</button>
+          </div>
+        </div>
+      )}
+
+      {isLoading ? (
+        <div className="bg-white rounded-xl border border-gray-100 p-8 text-center text-gray-400">Chargement...</div>
+      ) : sessions.length === 0 ? (
+        <div className="bg-white rounded-xl border border-gray-100 p-8 text-center text-gray-400">
+          <Calendar className="h-10 w-10 mx-auto mb-3 opacity-30" />
+          <p>Aucune session programmée</p>
+          <p className="text-sm mt-1">Ajoutez des sessions pour construire l&apos;agenda</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {sessions.map((session) => (
+            <div key={session.id} className="bg-white rounded-xl border border-gray-100 p-5 flex items-start justify-between">
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-1">
+                  <p className="font-medium text-gray-900">{session.title}</p>
+                  {session.location && (
+                    <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">{session.location}</span>
+                  )}
+                </div>
+                <div className="flex items-center gap-3 text-xs text-gray-500">
+                  <span className="flex items-center gap-1">
+                    <Clock className="h-3 w-3" /> {formatDate(session.startTime)} — {formatDate(session.endTime)}
+                  </span>
+                  {session.speakerIds.length > 0 && (
+                    <span className="flex items-center gap-1"><Mic className="h-3 w-3" /> {session.speakerIds.length} intervenant(s)</span>
+                  )}
+                </div>
+                {session.description && <p className="text-sm text-gray-500 mt-2 line-clamp-2">{session.description}</p>}
+              </div>
+              <button
+                onClick={() => { if (confirm(`Supprimer la session "${session.title}" ?`)) deleteSession.mutate(session.id); }}
+                className="text-red-400 hover:text-red-600 p-1 ml-3">
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Feed Tab ────────────────────────────────────────────────────────────────
+
+function FeedTab({ eventId }: { eventId: string }) {
+  const { data, isLoading } = useFeedPosts(eventId);
+  const createPost = useCreateFeedPost(eventId);
+  const deletePost = useDeleteFeedPost(eventId);
+  const togglePin = useTogglePin(eventId);
+  const [content, setContent] = useState("");
+  const [isAnnouncement, setIsAnnouncement] = useState(false);
+
+  const posts = data?.data ?? [];
+
+  const handlePost = async () => {
+    if (!content.trim()) return;
+    await createPost.mutateAsync({ content: content.trim(), isAnnouncement });
+    setContent(""); setIsAnnouncement(false);
+  };
+
+  return (
+    <div>
+      <h3 className="text-sm font-medium text-gray-500 flex items-center gap-2 mb-4">
+        <MessageSquare className="h-4 w-4" /> Feed de l&apos;événement
+      </h3>
+
+      <div className="bg-white rounded-xl border border-gray-100 p-4 mb-4">
+        <textarea value={content} onChange={(e) => setContent(e.target.value)}
+          placeholder="Publier une mise à jour..." rows={3}
+          className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1A1A2E]/20 mb-3" />
+        <div className="flex items-center justify-between">
+          <label className="inline-flex items-center gap-2 text-sm text-gray-600">
+            <input type="checkbox" checked={isAnnouncement} onChange={(e) => setIsAnnouncement(e.target.checked)} className="rounded border-gray-300" />
+            Annonce (notification à tous)
+          </label>
+          <button onClick={handlePost} disabled={createPost.isPending || !content.trim()}
+            className="bg-[#1A1A2E] text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-[#16213E] disabled:opacity-50">
+            {createPost.isPending ? "Publication..." : "Publier"}
+          </button>
+        </div>
+      </div>
+
+      {isLoading ? (
+        <div className="text-center py-8 text-gray-400">Chargement...</div>
+      ) : posts.length === 0 ? (
+        <div className="bg-white rounded-xl border border-gray-100 p-8 text-center text-gray-400">
+          <MessageSquare className="h-10 w-10 mx-auto mb-3 opacity-30" />
+          <p>Aucune publication</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {posts.map((post) => (
+            <div key={post.id} className={`bg-white rounded-xl border p-5 ${post.isPinned ? "border-amber-200 bg-amber-50/30" : "border-gray-100"}`}>
+              <div className="flex items-start justify-between">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-sm font-medium text-gray-900">{post.authorName}</span>
+                    <span className="text-xs text-gray-400">{formatDate(post.createdAt)}</span>
+                    {post.isAnnouncement && <span className="bg-blue-100 text-blue-700 text-xs px-2 py-0.5 rounded-full">Annonce</span>}
+                    {post.isPinned && <span className="bg-amber-100 text-amber-700 text-xs px-2 py-0.5 rounded-full">Épinglé</span>}
+                  </div>
+                  <p className="text-sm text-gray-700 whitespace-pre-wrap">{post.content}</p>
+                  <div className="flex items-center gap-4 mt-3 text-xs text-gray-400">
+                    <span>{post.likeCount} j&apos;aime</span>
+                    <span>{post.commentCount} commentaire(s)</span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1 ml-3">
+                  <button onClick={() => togglePin.mutate(post.id)}
+                    className={`p-1.5 rounded-lg text-xs ${post.isPinned ? "text-amber-600 hover:bg-amber-50" : "text-gray-400 hover:text-gray-600 hover:bg-gray-50"}`}
+                    title={post.isPinned ? "Désépingler" : "Épingler"}>
+                    Pin
+                  </button>
+                  <button onClick={() => { if (confirm("Supprimer cette publication ?")) deletePost.mutate(post.id); }}
+                    className="text-red-400 hover:text-red-600 p-1.5">
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
             </div>
           ))}
         </div>
