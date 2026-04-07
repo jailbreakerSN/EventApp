@@ -84,7 +84,7 @@ export class FeedService extends BaseService {
 
     const post = await feedPostRepository.findByIdOrThrow(postId);
     if (post.eventId !== eventId) {
-      throw new ForbiddenError("Post does not belong to this event");
+      throw new ForbiddenError("Cette publication n'appartient pas à cet événement");
     }
 
     const isLiked = post.likedByIds.includes(user.uid);
@@ -114,7 +114,7 @@ export class FeedService extends BaseService {
 
     const post = await feedPostRepository.findByIdOrThrow(postId);
     if (post.eventId !== eventId) {
-      throw new ForbiddenError("Post does not belong to this event");
+      throw new ForbiddenError("Cette publication n'appartient pas à cet événement");
     }
 
     const event = await eventRepository.findByIdOrThrow(eventId);
@@ -140,7 +140,7 @@ export class FeedService extends BaseService {
   async deletePost(eventId: string, postId: string, user: AuthUser): Promise<void> {
     const post = await feedPostRepository.findByIdOrThrow(postId);
     if (post.eventId !== eventId) {
-      throw new ForbiddenError("Post does not belong to this event");
+      throw new ForbiddenError("Cette publication n'appartient pas à cet événement");
     }
 
     // Author can delete own post, or moderators
@@ -173,7 +173,7 @@ export class FeedService extends BaseService {
 
     const post = await feedPostRepository.findByIdOrThrow(postId);
     if (post.eventId !== eventId) {
-      throw new ForbiddenError("Post does not belong to this event");
+      throw new ForbiddenError("Cette publication n'appartient pas à cet événement");
     }
 
     const comment = await feedCommentRepository.create({
@@ -200,7 +200,7 @@ export class FeedService extends BaseService {
 
     const post = await feedPostRepository.findByIdOrThrow(postId);
     if (post.eventId !== eventId) {
-      throw new ForbiddenError("Post does not belong to this event");
+      throw new ForbiddenError("Cette publication n'appartient pas à cet événement");
     }
 
     return feedCommentRepository.findByPost(postId, {

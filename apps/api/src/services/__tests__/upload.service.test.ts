@@ -71,7 +71,7 @@ describe("UploadService.generateUploadUrl", () => {
 
     await expect(
       service.generateUploadUrl("event", "ev-1", dto, user),
-    ).rejects.toThrow("Access denied");
+    ).rejects.toThrow("Accès refusé");
   });
 
   it("rejects participant without event:update permission", async () => {
@@ -79,7 +79,7 @@ describe("UploadService.generateUploadUrl", () => {
 
     await expect(
       service.generateUploadUrl("event", "ev-1", dto, user),
-    ).rejects.toThrow("Missing permission");
+    ).rejects.toThrow("Permission manquante");
   });
 
   it("validates org access for organization uploads", async () => {
@@ -100,6 +100,6 @@ describe("UploadService.generateUploadUrl", () => {
 
     await expect(
       service.generateUploadUrl("organization", "org-1", dto, user),
-    ).rejects.toThrow("Access denied");
+    ).rejects.toThrow("Accès refusé");
   });
 });

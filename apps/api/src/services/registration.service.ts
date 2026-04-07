@@ -68,13 +68,13 @@ export class RegistrationService extends BaseService {
         .limit(1);
       const duplicateSnap = await tx.get(duplicateQuery);
       if (!duplicateSnap.empty) {
-        throw new ConflictError("You are already registered for this event");
+        throw new ConflictError("Vous êtes déjà inscrit(e) à cet événement");
       }
 
       // ── Validate ticket type ──
       const ticketType = event.ticketTypes.find((t) => t.id === ticketTypeId);
       if (!ticketType) {
-        throw new ValidationError(`Ticket type '${ticketTypeId}' not found for this event`);
+        throw new ValidationError(`Type de billet « ${ticketTypeId} » introuvable pour cet événement`);
       }
 
       // Check ticket availability
@@ -108,6 +108,8 @@ export class RegistrationService extends BaseService {
         eventId,
         userId: user.uid,
         ticketTypeId,
+        eventTitle: event.title,
+        ticketTypeName: ticketType.name,
         status,
         qrCodeValue,
         checkedInAt: null,
@@ -189,10 +191,10 @@ export class RegistrationService extends BaseService {
       const current = { id: regSnap.id, ...regSnap.data() } as Registration;
 
       if (current.status === "cancelled") {
-        throw new ValidationError("Registration is already cancelled");
+        throw new ValidationError("L'inscription est déjà annulée");
       }
       if (current.status === "checked_in") {
-        throw new ValidationError("Cannot cancel a checked-in registration");
+        throw new ValidationError("Impossible d'annuler une inscription déjà vérifiée");
       }
 
       const now = new Date().toISOString();
@@ -309,13 +311,13 @@ export class RegistrationService extends BaseService {
     // Verify QR signature (stateless, no DB needed)
     const parsed = verifyQrPayload(qrCodeValue);
     if (!parsed) {
-      throw new QrInvalidError("Invalid signature");
+      throw new QrInvalidError("Signature invalide");
     }
 
     // Look up registration by QR to get the document ID (outside tx — query not supported in tx on non-ref)
     const registration = await registrationRepository.findByQrCode(qrCodeValue);
     if (!registration) {
-      throw new QrInvalidError("Registration not found");
+      throw new QrInvalidError("Inscription introuvable");
     }
 
     // Pre-fetch participant info (read-only, no consistency concern)
@@ -326,7 +328,7 @@ export class RegistrationService extends BaseService {
       const regRef = registrationRepository.ref.doc(registration.id);
       const regSnap = await tx.get(regRef);
       if (!regSnap.exists) {
-        throw new QrInvalidError("Registration not found");
+        throw new QrInvalidError("Inscription introuvable");
       }
       const current = { id: regSnap.id, ...regSnap.data() } as Registration;
 

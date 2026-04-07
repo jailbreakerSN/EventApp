@@ -103,7 +103,7 @@ describe("InviteService", () => {
       const dto = { email: "existing@test.com", role: "member" as const };
 
       await expect(service.createInvite(orgId, dto, user)).rejects.toThrow(
-        "already a member",
+        "déjà membre",
       );
     });
 
@@ -113,7 +113,7 @@ describe("InviteService", () => {
       const dto = { email: "dupe@test.com", role: "member" as const };
 
       await expect(service.createInvite(orgId, dto, user)).rejects.toThrow(
-        "pending invitation already exists",
+        "invitation en attente",
       );
     });
 
@@ -137,7 +137,7 @@ describe("InviteService", () => {
       const dto = { email: "new@test.com", role: "member" as const };
 
       await expect(service.createInvite(orgId, dto, otherUser)).rejects.toThrow(
-        "Access denied",
+        "Accès refusé",
       );
     });
 
@@ -146,7 +146,7 @@ describe("InviteService", () => {
       const dto = { email: "new@test.com", role: "member" as const };
 
       await expect(service.createInvite(orgId, dto, participant)).rejects.toThrow(
-        "Missing permission",
+        "Permission manquante",
       );
     });
   });
@@ -166,7 +166,7 @@ describe("InviteService", () => {
       const otherUser = buildOrganizerUser("other-org");
 
       await expect(service.listByOrganization(orgId, otherUser)).rejects.toThrow(
-        "Access denied",
+        "Accès refusé",
       );
     });
 
@@ -174,7 +174,7 @@ describe("InviteService", () => {
       const participant = buildAuthUser({ roles: ["participant"] });
 
       await expect(service.listByOrganization(orgId, participant)).rejects.toThrow(
-        "Missing permission",
+        "Permission manquante",
       );
     });
   });
@@ -212,7 +212,7 @@ describe("InviteService", () => {
       const wrongUser = buildAuthUser({ email: "wrong@test.com" });
 
       await expect(service.acceptInvite(invite.token, wrongUser)).rejects.toThrow(
-        "different email",
+        "autre adresse email",
       );
     });
 
@@ -223,7 +223,7 @@ describe("InviteService", () => {
       });
       mockInviteRepo.findByToken.mockResolvedValue(expired);
 
-      await expect(service.acceptInvite(expired.token, user)).rejects.toThrow("expired");
+      await expect(service.acceptInvite(expired.token, user)).rejects.toThrow("expiré");
     });
 
     it("rejects if invite is not pending", async () => {
@@ -231,14 +231,14 @@ describe("InviteService", () => {
       mockInviteRepo.findByToken.mockResolvedValue(accepted);
 
       await expect(service.acceptInvite(accepted.token, user)).rejects.toThrow(
-        "already been accepted",
+        "déjà été traitée",
       );
     });
 
     it("rejects if token not found", async () => {
       mockInviteRepo.findByToken.mockResolvedValue(null);
 
-      await expect(service.acceptInvite("fake-token", user)).rejects.toThrow("not found");
+      await expect(service.acceptInvite("fake-token", user)).rejects.toThrow("introuvable");
     });
   });
 
@@ -263,7 +263,7 @@ describe("InviteService", () => {
       mockInviteRepo.findByToken.mockResolvedValue(invite);
 
       await expect(service.declineInvite(invite.token, user)).rejects.toThrow(
-        "different email",
+        "autre adresse email",
       );
     });
 
@@ -275,7 +275,7 @@ describe("InviteService", () => {
       });
       mockInviteRepo.findByToken.mockResolvedValue(expired);
 
-      await expect(service.declineInvite(expired.token, user)).rejects.toThrow("expired");
+      await expect(service.declineInvite(expired.token, user)).rejects.toThrow("expiré");
     });
 
     it("rejects if not pending", async () => {
@@ -283,7 +283,7 @@ describe("InviteService", () => {
       mockInviteRepo.findByToken.mockResolvedValue(accepted);
 
       await expect(service.declineInvite(accepted.token, user)).rejects.toThrow(
-        "already been accepted",
+        "déjà été traitée",
       );
     });
   });
@@ -310,7 +310,7 @@ describe("InviteService", () => {
       });
       mockInviteRepo.findByIdOrThrow.mockResolvedValue(invite);
 
-      await expect(service.revokeInvite("inv-1", user)).rejects.toThrow("pending");
+      await expect(service.revokeInvite("inv-1", user)).rejects.toThrow("en attente");
     });
   });
 });

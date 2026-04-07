@@ -42,20 +42,20 @@ export class InviteService extends BaseService {
 
     if (currentMembers + pendingCount >= limits.maxMembers) {
       throw new PlanLimitError(
-        `Maximum ${limits.maxMembers} members (including pending invites) on the ${org.plan} plan`,
+        `Maximum ${limits.maxMembers} membres (invitations en attente incluses) sur le plan ${org.plan}`,
       );
     }
 
     // Check if already a member
     const existingUser = await userRepository.findByEmail(dto.email);
     if (existingUser && org.memberIds?.includes(existingUser.uid)) {
-      throw new ConflictError("This user is already a member of the organization");
+      throw new ConflictError("Cet utilisateur est déjà membre de l'organisation");
     }
 
     // Check if there's already a pending invite
     const existingInvite = await inviteRepository.findByEmailAndOrg(dto.email, orgId);
     if (existingInvite) {
-      throw new ConflictError("A pending invitation already exists for this email");
+      throw new ConflictError("Une invitation en attente existe déjà pour cet email");
     }
 
     const token = crypto.randomBytes(32).toString("hex");
@@ -105,16 +105,16 @@ export class InviteService extends BaseService {
     const invite = await inviteRepository.findByToken(token);
     if (!invite) throw new NotFoundError("Invite");
     if (invite.status !== "pending") {
-      throw new ValidationError(`This invitation has already been ${invite.status}`);
+      throw new ValidationError(`Cette invitation a déjà été traitée (${invite.status})`);
     }
     if (new Date(invite.expiresAt) < new Date()) {
       await inviteRepository.update(invite.id, { status: "expired" } as Partial<OrganizationInvite>);
-      throw new ValidationError("This invitation has expired");
+      throw new ValidationError("Cette invitation a expiré");
     }
 
     // Verify the accepting user's email matches
     if (user.email?.toLowerCase() !== invite.email.toLowerCase()) {
-      throw new ValidationError("This invitation was sent to a different email address");
+      throw new ValidationError("Cette invitation a été envoyée à une autre adresse email");
     }
 
     // Add user to organization (transactional)
@@ -174,14 +174,14 @@ export class InviteService extends BaseService {
     const invite = await inviteRepository.findByToken(token);
     if (!invite) throw new NotFoundError("Invite");
     if (invite.status !== "pending") {
-      throw new ValidationError(`This invitation has already been ${invite.status}`);
+      throw new ValidationError(`Cette invitation a déjà été traitée (${invite.status})`);
     }
     if (new Date(invite.expiresAt) < new Date()) {
       await inviteRepository.update(invite.id, { status: "expired" } as Partial<OrganizationInvite>);
-      throw new ValidationError("This invitation has expired");
+      throw new ValidationError("Cette invitation a expiré");
     }
     if (user.email?.toLowerCase() !== invite.email.toLowerCase()) {
-      throw new ValidationError("This invitation was sent to a different email address");
+      throw new ValidationError("Cette invitation a été envoyée à une autre adresse email");
     }
 
     await inviteRepository.update(invite.id, { status: "declined" } as Partial<OrganizationInvite>);
@@ -204,7 +204,7 @@ export class InviteService extends BaseService {
     this.requireOrganizationAccess(user, invite.organizationId);
 
     if (invite.status !== "pending") {
-      throw new ValidationError("Can only revoke pending invitations");
+      throw new ValidationError("Seules les invitations en attente peuvent être révoquées");
     }
 
     await inviteRepository.update(inviteId, { status: "expired" } as Partial<OrganizationInvite>);

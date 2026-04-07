@@ -175,7 +175,7 @@ export async function buildApp() {
         success: false,
         error: {
           code: "VALIDATION_ERROR",
-          message: "Request validation failed",
+          message: "La validation de la requête a échoué",
           details: error.validation,
         },
       });
@@ -187,7 +187,7 @@ export async function buildApp() {
         success: false,
         error: {
           code: "RATE_LIMIT_EXCEEDED",
-          message: "Too many requests. Please try again later.",
+          message: "Trop de requêtes. Veuillez réessayer plus tard.",
         },
       });
     }
@@ -205,7 +205,7 @@ export async function buildApp() {
         code: statusCode >= 500 ? "INTERNAL_ERROR" : "REQUEST_ERROR",
         message:
           config.NODE_ENV === "production" && statusCode >= 500
-            ? "An unexpected error occurred"
+            ? "Une erreur inattendue s'est produite"
             : error.message,
       },
     });
@@ -215,7 +215,7 @@ export async function buildApp() {
   app.setNotFoundHandler((_request, reply) => {
     reply.status(404).send({
       success: false,
-      error: { code: "NOT_FOUND", message: "Route not found" },
+      error: { code: "NOT_FOUND", message: "Route introuvable" },
     });
   });
 

@@ -118,7 +118,7 @@ describe("EventService.create", () => {
     const user = buildAuthUser({ roles: ["participant"] });
     const dto = { organizationId: "org-1", title: "Test" } as any;
 
-    await expect(service.create(dto, user)).rejects.toThrow("Missing permission");
+    await expect(service.create(dto, user)).rejects.toThrow("Permission manquante");
   });
 
   it("rejects if user does not belong to the organization", async () => {
@@ -132,7 +132,7 @@ describe("EventService.create", () => {
 
     mockOrgRepo.findByIdOrThrow.mockResolvedValue(org);
 
-    await expect(service.create(dto, user)).rejects.toThrow("do not belong");
+    await expect(service.create(dto, user)).rejects.toThrow("ne faites pas partie");
   });
 
   it("allows super_admin to create event for any org", async () => {
@@ -162,7 +162,7 @@ describe("EventService.create", () => {
 
     mockOrgRepo.findByIdOrThrow.mockResolvedValue(org);
 
-    await expect(service.create(dto, user)).rejects.toThrow("End date must be after start date");
+    await expect(service.create(dto, user)).rejects.toThrow("La date de fin");
   });
 });
 
@@ -179,7 +179,7 @@ describe("EventService.getById", () => {
     const event = buildEvent({ status: "draft", isPublic: false });
     mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
 
-    await expect(service.getById(event.id)).rejects.toThrow("Authentication required");
+    await expect(service.getById(event.id)).rejects.toThrow("Authentification requise");
   });
 
   it("allows organizer to view draft event in their org", async () => {
@@ -196,7 +196,7 @@ describe("EventService.getById", () => {
     const user = buildOrganizerUser("org-1");
     mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
 
-    await expect(service.getById(event.id, user)).rejects.toThrow("Access denied");
+    await expect(service.getById(event.id, user)).rejects.toThrow("Accès refusé");
   });
 });
 
@@ -247,7 +247,7 @@ describe("EventService.update", () => {
 
     await expect(
       service.update(event.id, { endDate: "2026-05-01T00:00:00Z" } as any, user),
-    ).rejects.toThrow("End date must be after start date");
+    ).rejects.toThrow("La date de fin");
   });
 
   it("rejects if user doesn't belong to event's org", async () => {
@@ -257,7 +257,7 @@ describe("EventService.update", () => {
 
     await expect(
       service.update(event.id, { title: "Nope" } as any, user),
-    ).rejects.toThrow("Access denied");
+    ).rejects.toThrow("Accès refusé");
   });
 });
 
@@ -295,7 +295,7 @@ describe("EventService.publish", () => {
     });
     mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
 
-    await expect(service.publish(event.id, user)).rejects.toThrow("must have title, dates, and location");
+    await expect(service.publish(event.id, user)).rejects.toThrow("titre, des dates et un lieu");
   });
 });
 
@@ -340,7 +340,7 @@ describe("EventService.archive", () => {
     const event = buildEvent();
     mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
 
-    await expect(service.archive(event.id, user)).rejects.toThrow("Missing permission");
+    await expect(service.archive(event.id, user)).rejects.toThrow("Permission manquante");
   });
 });
 
@@ -367,7 +367,7 @@ describe("EventService.unpublish", () => {
   it("requires event:publish permission", async () => {
     const user = buildAuthUser({ roles: ["participant"] });
 
-    await expect(service.unpublish("ev-1", user)).rejects.toThrow("Missing permission");
+    await expect(service.unpublish("ev-1", user)).rejects.toThrow("Permission manquante");
   });
 });
 
@@ -430,7 +430,7 @@ describe("EventService.updateTicketType", () => {
 
     await expect(
       service.updateTicketType(event.id, "tt-999", { name: "Nope" }, user),
-    ).rejects.toThrow("not found");
+    ).rejects.toThrow("introuvable");
   });
 
   it("rejects if user doesn't belong to event's org", async () => {
@@ -443,7 +443,7 @@ describe("EventService.updateTicketType", () => {
 
     await expect(
       service.updateTicketType(event.id, "tt-1", { name: "VIP" }, user),
-    ).rejects.toThrow("Access denied");
+    ).rejects.toThrow("Accès refusé");
   });
 });
 
@@ -474,7 +474,7 @@ describe("EventService.removeTicketType", () => {
 
     await expect(
       service.removeTicketType(event.id, "tt-1", user),
-    ).rejects.toThrow("existing sales");
+    ).rejects.toThrow("ventes existantes");
   });
 
   it("rejects removing a non-existent ticket type", async () => {
@@ -484,7 +484,7 @@ describe("EventService.removeTicketType", () => {
 
     await expect(
       service.removeTicketType(event.id, "tt-999", user),
-    ).rejects.toThrow("not found");
+    ).rejects.toThrow("introuvable");
   });
 });
 
@@ -647,7 +647,7 @@ describe("EventService.clone", () => {
         newStartDate: "2026-06-01T00:00:00.000Z",
         newEndDate: "2026-05-01T00:00:00.000Z",
       }, user),
-    ).rejects.toThrow("End date must be after start date");
+    ).rejects.toThrow("La date de fin");
   });
 
   it("rejects clone for user without org access", async () => {
@@ -660,7 +660,7 @@ describe("EventService.clone", () => {
         newStartDate: new Date(Date.now() + 86400000).toISOString(),
         newEndDate: new Date(Date.now() + 2 * 86400000).toISOString(),
       }, user),
-    ).rejects.toThrow("Access denied");
+    ).rejects.toThrow("Accès refusé");
   });
 
   it("skips ticket types and zones when options are false", async () => {

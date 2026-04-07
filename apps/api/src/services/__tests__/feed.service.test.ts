@@ -93,7 +93,7 @@ describe("FeedService", () => {
       const dto = { content: "Important!", isAnnouncement: true };
 
       await expect(service.createPost(eventId, dto, participant)).rejects.toThrow(
-        "Missing permission",
+        "Permission manquante",
       );
     });
 
@@ -123,7 +123,7 @@ describe("FeedService", () => {
 
       await expect(
         service.listPosts(eventId, { page: 1, limit: 20 }, noPerms),
-      ).rejects.toThrow("Missing permission");
+      ).rejects.toThrow("Permission manquante");
     });
   });
 
@@ -155,7 +155,7 @@ describe("FeedService", () => {
 
       await expect(
         service.toggleLike(eventId, "post-1", user),
-      ).rejects.toThrow("does not belong");
+      ).rejects.toThrow("appartient pas");
     });
   });
 
@@ -191,7 +191,7 @@ describe("FeedService", () => {
 
       await expect(
         service.deletePost(eventId, "post-1", participant),
-      ).rejects.toThrow("Missing permission");
+      ).rejects.toThrow("Permission manquante");
     });
   });
 
@@ -224,7 +224,7 @@ describe("FeedService", () => {
 
       await expect(
         service.togglePin(eventId, "post-1", participant),
-      ).rejects.toThrow("Missing permission");
+      ).rejects.toThrow("Permission manquante");
     });
   });
 });

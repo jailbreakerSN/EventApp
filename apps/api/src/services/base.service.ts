@@ -18,7 +18,7 @@ export abstract class BaseService {
   protected requirePermission(user: AuthUser, permission: Permission): void {
     const perms = this.resolveUserPermissions(user);
     if (!hasPermission(perms, permission)) {
-      throw new ForbiddenError(`Missing permission: ${permission}`);
+      throw new ForbiddenError(`Permission manquante : ${permission}`);
     }
   }
 
@@ -29,7 +29,7 @@ export abstract class BaseService {
   protected requireOrganizationAccess(user: AuthUser, organizationId: string): void {
     if (user.roles.includes("super_admin")) return;
     if (user.organizationId !== organizationId) {
-      throw new ForbiddenError("Access denied to this organization's resources");
+      throw new ForbiddenError("Accès refusé aux ressources de cette organisation");
     }
   }
 

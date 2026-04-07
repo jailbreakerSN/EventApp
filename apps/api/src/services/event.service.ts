@@ -53,12 +53,12 @@ export class EventService extends BaseService {
     // Verify organization exists and user belongs to it
     const org = await organizationRepository.findByIdOrThrow(dto.organizationId);
     if (user.organizationId !== org.id && !user.roles.includes("super_admin")) {
-      throw new ForbiddenError("You do not belong to this organization");
+      throw new ForbiddenError("Vous ne faites pas partie de cette organisation");
     }
 
     // Validate dates
     if (new Date(dto.endDate) <= new Date(dto.startDate)) {
-      throw new ValidationError("End date must be after start date");
+      throw new ValidationError("La date de fin doit être postérieure à la date de début");
     }
 
     const slug = generateSlug(dto.title);
@@ -91,7 +91,7 @@ export class EventService extends BaseService {
     if (event.status === "published" && event.isPublic) return event;
 
     // Non-public or draft events require authentication + org membership
-    if (!user) throw new ForbiddenError("Authentication required to view this event");
+    if (!user) throw new ForbiddenError("Authentification requise pour voir cet événement");
     this.requirePermission(user, "event:read");
     this.requireOrganizationAccess(user, event.organizationId);
 
@@ -108,7 +108,7 @@ export class EventService extends BaseService {
     // Same visibility logic as getById
     if (event.status === "published" && event.isPublic) return event;
 
-    if (!user) throw new ForbiddenError("Authentication required to view this event");
+    if (!user) throw new ForbiddenError("Authentification requise pour voir cet événement");
     this.requirePermission(user, "event:read");
     this.requireOrganizationAccess(user, event.organizationId);
 
@@ -130,7 +130,7 @@ export class EventService extends BaseService {
     this.requirePermission(user, "event:read");
 
     if (user.organizationId !== organizationId && !user.roles.includes("super_admin")) {
-      throw new ForbiddenError("Access denied to this organization's events");
+      throw new ForbiddenError("Accès refusé aux événements de cette organisation");
     }
 
     return eventRepository.findByOrganization(organizationId, pagination);
@@ -151,7 +151,7 @@ export class EventService extends BaseService {
     const startDate = dto.startDate ?? event.startDate;
     const endDate = dto.endDate ?? event.endDate;
     if (new Date(endDate) <= new Date(startDate)) {
-      throw new ValidationError("End date must be after start date");
+      throw new ValidationError("La date de fin doit être postérieure à la date de début");
     }
 
     await eventRepository.update(eventId, {
@@ -181,7 +181,7 @@ export class EventService extends BaseService {
 
     // Validate event is ready for publishing
     if (!event.title || !event.startDate || !event.endDate || !event.location) {
-      throw new ValidationError("Event must have title, dates, and location before publishing");
+      throw new ValidationError("L'événement doit avoir un titre, des dates et un lieu avant publication");
     }
 
     await eventRepository.publish(eventId, user.uid);
@@ -319,7 +319,7 @@ export class EventService extends BaseService {
 
       const index = event.ticketTypes.findIndex((t) => t.id === ticketTypeId);
       if (index === -1) {
-        throw new ValidationError(`Ticket type '${ticketTypeId}' not found`);
+        throw new ValidationError(`Type de billet « ${ticketTypeId} » introuvable`);
       }
 
       const updatedTicketTypes = [...event.ticketTypes];
@@ -356,10 +356,10 @@ export class EventService extends BaseService {
 
       const ticketType = event.ticketTypes.find((t) => t.id === ticketTypeId);
       if (!ticketType) {
-        throw new ValidationError(`Ticket type '${ticketTypeId}' not found`);
+        throw new ValidationError(`Type de billet « ${ticketTypeId} » introuvable`);
       }
       if (ticketType.soldCount > 0) {
-        throw new ValidationError("Cannot remove a ticket type with existing sales");
+        throw new ValidationError("Impossible de supprimer un type de billet avec des ventes existantes");
       }
 
       const updatedTicketTypes = event.ticketTypes.filter((t) => t.id !== ticketTypeId);
@@ -518,7 +518,7 @@ export class EventService extends BaseService {
 
     // Validate new dates
     if (new Date(dto.newEndDate) <= new Date(dto.newStartDate)) {
-      throw new ValidationError("End date must be after start date");
+      throw new ValidationError("La date de fin doit être postérieure à la date de début");
     }
 
     const title = dto.newTitle ?? `${source.title} (copie)`;

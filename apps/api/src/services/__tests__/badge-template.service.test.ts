@@ -96,7 +96,7 @@ describe("BadgeTemplateService.create", () => {
 
     await expect(
       service.create({ organizationId: "org-1", name: "Test" } as any, user),
-    ).rejects.toThrow("Missing permission");
+    ).rejects.toThrow("Permission manquante");
   });
 
   it("rejects when user doesn't belong to the org", async () => {
@@ -106,7 +106,7 @@ describe("BadgeTemplateService.create", () => {
 
     await expect(
       service.create({ organizationId: "org-1", name: "Test" } as any, user),
-    ).rejects.toThrow("Access denied");
+    ).rejects.toThrow("Accès refusé");
   });
 });
 
@@ -125,7 +125,7 @@ describe("BadgeTemplateService.getById", () => {
     const template = buildTemplate({ organizationId: "org-1" });
     mockTemplateRepo.findByIdOrThrow.mockResolvedValue(template);
 
-    await expect(service.getById("tpl-1", user)).rejects.toThrow("Access denied");
+    await expect(service.getById("tpl-1", user)).rejects.toThrow("Accès refusé");
   });
 });
 

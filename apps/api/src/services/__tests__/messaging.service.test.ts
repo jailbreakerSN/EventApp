@@ -101,7 +101,7 @@ describe("MessagingService", () => {
 
       await expect(
         service.getOrCreateConversation({ participantId: "user-2" }, noPerms),
-      ).rejects.toThrow("Missing permission");
+      ).rejects.toThrow("Permission manquante");
     });
   });
 
@@ -141,7 +141,7 @@ describe("MessagingService", () => {
 
       await expect(
         service.sendMessage("conv-1", { content: "Hi" }, user),
-      ).rejects.toThrow("Not a participant");
+      ).rejects.toThrow("pas participant");
     });
   });
 
@@ -165,7 +165,7 @@ describe("MessagingService", () => {
 
       await expect(
         service.listMessages("conv-1", { page: 1, limit: 50 }, user),
-      ).rejects.toThrow("Not a participant");
+      ).rejects.toThrow("pas participant");
     });
   });
 
@@ -204,7 +204,7 @@ describe("MessagingService", () => {
         id: "conv-1", participantIds: ["other-1", "other-2"],
       });
 
-      await expect(service.markAsRead("conv-1", user)).rejects.toThrow("Not a participant");
+      await expect(service.markAsRead("conv-1", user)).rejects.toThrow("pas participant");
     });
   });
 });

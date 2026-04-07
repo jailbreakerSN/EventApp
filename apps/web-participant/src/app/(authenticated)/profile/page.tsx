@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { toast } from "sonner";
 import { useProfile, useUpdateProfile } from "@/hooks/use-profile";
-import { Button, Input, Card, CardHeader, CardTitle, CardContent, Spinner } from "@teranga/shared-ui";
+import { Button, Input, Card, CardHeader, CardTitle, CardContent, Spinner, getErrorMessage } from "@teranga/shared-ui";
 
 export default function ProfilePage() {
   const { data: profileData, isLoading } = useProfile();
@@ -14,7 +15,6 @@ export default function ProfilePage() {
   const [phone, setPhone] = useState("");
   const [bio, setBio] = useState("");
   const [language, setLanguage] = useState("fr");
-  const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     if (profile) {
@@ -27,10 +27,14 @@ export default function ProfilePage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSaved(false);
-    await updateMutation.mutateAsync({ displayName, phone, bio, preferredLanguage: language });
-    setSaved(true);
-    setTimeout(() => setSaved(false), 3000);
+    try {
+      await updateMutation.mutateAsync({ displayName, phone, bio, preferredLanguage: language });
+      toast.success("Profil mis à jour avec succès.");
+    } catch (err: unknown) {
+      const code = (err as { code?: string })?.code;
+      const message = (err as { message?: string })?.message;
+      toast.error(getErrorMessage(code, message));
+    }
   };
 
   if (isLoading) {
@@ -102,18 +106,6 @@ export default function ProfilePage() {
                 <option value="wo">Wolof</option>
               </select>
             </div>
-
-            {updateMutation.isError && (
-              <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
-                Erreur lors de la mise à jour. Veuillez réessayer.
-              </div>
-            )}
-
-            {saved && (
-              <div className="rounded-md bg-teranga-green/10 p-3 text-sm text-teranga-green">
-                Profil mis à jour avec succès.
-              </div>
-            )}
 
             <Button type="submit" disabled={updateMutation.isPending}>
               {updateMutation.isPending ? "Enregistrement..." : "Enregistrer"}

@@ -94,7 +94,7 @@ describe("SessionService", () => {
       };
 
       await expect(service.create(eventId, dto, user)).rejects.toThrow(
-        "End time must be after start time",
+        "heure de fin",
       );
     });
 
@@ -111,7 +111,7 @@ describe("SessionService", () => {
       };
 
       await expect(service.create(eventId, dto, participant)).rejects.toThrow(
-        "Missing permission",
+        "Permission manquante",
       );
     });
 
@@ -127,7 +127,7 @@ describe("SessionService", () => {
         isBookmarkable: true,
       };
 
-      await expect(service.create(eventId, dto, otherUser)).rejects.toThrow("Access denied");
+      await expect(service.create(eventId, dto, otherUser)).rejects.toThrow("Accès refusé");
     });
   });
 
@@ -146,7 +146,7 @@ describe("SessionService", () => {
 
       await expect(
         service.update(eventId, "sess-1", { title: "New" }, user),
-      ).rejects.toThrow("does not belong");
+      ).rejects.toThrow("appartient pas");
     });
   });
 

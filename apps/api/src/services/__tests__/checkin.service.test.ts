@@ -102,7 +102,7 @@ describe("CheckinService.getOfflineSyncData", () => {
   it("rejects if user lacks permission", async () => {
     const user = buildAuthUser({ roles: ["participant"] });
 
-    await expect(service.getOfflineSyncData("ev-1", user)).rejects.toThrow("Missing permission");
+    await expect(service.getOfflineSyncData("ev-1", user)).rejects.toThrow("Permission manquante");
   });
 
   it("rejects if user is not in the event's org", async () => {
@@ -111,7 +111,7 @@ describe("CheckinService.getOfflineSyncData", () => {
     const event = buildEvent({ organizationId: "org-1" });
     mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
 
-    await expect(service.getOfflineSyncData(event.id, user)).rejects.toThrow("Access denied");
+    await expect(service.getOfflineSyncData(event.id, user)).rejects.toThrow("Accès refusé");
   });
 });
 
@@ -197,7 +197,7 @@ describe("CheckinService.bulkSync", () => {
 
     await expect(
       service.bulkSync("ev-1", [{ localId: "l1", qrCodeValue: "qr", scannedAt: new Date().toISOString() }], user),
-    ).rejects.toThrow("Missing permission");
+    ).rejects.toThrow("Permission manquante");
   });
 });
 
@@ -231,7 +231,7 @@ describe("CheckinService.getStats", () => {
   it("rejects if user lacks checkin:view_log permission", async () => {
     const user = buildAuthUser({ roles: ["participant"] });
 
-    await expect(service.getStats("ev-1", user)).rejects.toThrow("Missing permission");
+    await expect(service.getStats("ev-1", user)).rejects.toThrow("Permission manquante");
   });
 
   it("rejects if user is not in the event's org", async () => {
@@ -239,6 +239,6 @@ describe("CheckinService.getStats", () => {
     const event = buildEvent({ organizationId: "org-1" });
     mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
 
-    await expect(service.getStats(event.id, user)).rejects.toThrow("Access denied");
+    await expect(service.getStats(event.id, user)).rejects.toThrow("Accès refusé");
   });
 });
