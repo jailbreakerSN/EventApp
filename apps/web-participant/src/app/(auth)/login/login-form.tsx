@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/hooks/use-auth";
 import { getAndClearRedirectUrl } from "@/components/auth-guard";
-import Image from "next/image";
+import { ThemeLogo } from "@/components/theme-logo";
 import { Button, Input, Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@teranga/shared-ui";
 
 function safeRedirect(url: string | null): string {
@@ -65,7 +65,7 @@ export function LoginForm() {
     <Card>
       <CardHeader className="text-center">
         <Link href="/" className="mx-auto mb-2 block">
-          <Image src="/logo-color.svg" alt="Teranga Event" width={140} height={83} className="h-14 w-auto mx-auto sm:h-16 md:h-20" priority />
+          <ThemeLogo width={140} height={83} className="h-14 w-auto mx-auto sm:h-16 md:h-20" priority />
         </Link>
         <CardTitle className="text-2xl">Connexion</CardTitle>
         <CardDescription>Connectez-vous pour accéder à vos événements</CardDescription>

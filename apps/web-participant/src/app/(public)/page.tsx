@@ -32,7 +32,7 @@ export default async function HomePage() {
             Découvrez les événements au{" "}
             <span className="text-teranga-gold">Sénégal</span>
           </h1>
-          <p className="mx-auto mt-4 max-w-2xl text-lg text-gray-300">
+          <p className="mx-auto mt-4 max-w-2xl text-lg text-white/70">
             Conférences, concerts, ateliers et plus encore. Inscrivez-vous en quelques clics et recevez votre badge QR.
           </p>
           <div className="mt-8">

@@ -288,8 +288,8 @@ export default function SpeakerPortalPage() {
           Vous pouvez téléverser vos supports de présentation (PDF) ici.
           Ils seront disponibles pour les participants après votre session.
         </p>
-        <div className="mt-4 rounded-md border-2 border-dashed border-gray-200 p-8 text-center">
-          <FileText className="mx-auto h-8 w-8 text-gray-400" />
+        <div className="mt-4 rounded-md border-2 border-dashed border-border p-8 text-center">
+          <FileText className="mx-auto h-8 w-8 text-muted-foreground" />
           <p className="mt-2 text-sm text-muted-foreground">
             Glissez-déposez vos fichiers PDF ici ou cliquez pour sélectionner
           </p>

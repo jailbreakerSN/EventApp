@@ -45,16 +45,16 @@ export default function AnalyticsPage() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Analytiques</h1>
-        <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
+        <h1 className="text-2xl font-bold text-foreground">Analytiques</h1>
+        <div className="flex gap-1 bg-muted rounded-lg p-1">
           {TIMEFRAME_OPTIONS.map((opt) => (
             <button
               key={opt.value}
               onClick={() => setTimeframe(opt.value)}
               className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
                 timeframe === opt.value
-                  ? "bg-white text-[#1A1A2E] shadow-sm"
-                  : "text-gray-500 hover:text-gray-700"
+                  ? "bg-card text-primary shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
               }`}
             >
               {opt.label}
@@ -65,11 +65,11 @@ export default function AnalyticsPage() {
 
       {isLoading ? (
         <div className="flex items-center justify-center py-20">
-          <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </div>
       ) : !analytics ? (
-        <div className="bg-white rounded-xl border border-gray-100 p-8 text-center text-gray-400">
-          <BarChart3 className="h-10 w-10 mx-auto mb-3 text-gray-300" />
+        <div className="bg-card rounded-xl border border-border p-8 text-center text-muted-foreground">
+          <BarChart3 className="h-10 w-10 mx-auto mb-3 text-muted-foreground/50" />
           <p>Aucune donnée analytique disponible.</p>
         </div>
       ) : (
@@ -105,8 +105,8 @@ export default function AnalyticsPage() {
           {/* Charts row */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
             {/* Registrations over time */}
-            <div className="bg-white rounded-xl border border-gray-100 p-5">
-              <h3 className="text-sm font-semibold text-gray-900 mb-4">Inscriptions</h3>
+            <div className="bg-card rounded-xl border border-border p-5">
+              <h3 className="text-sm font-semibold text-foreground mb-4">Inscriptions</h3>
               {analytics.registrationsOverTime.length > 0 ? (
                 <ResponsiveContainer width="100%" height={250}>
                   <AreaChart data={analytics.registrationsOverTime}>
@@ -128,13 +128,13 @@ export default function AnalyticsPage() {
                   </AreaChart>
                 </ResponsiveContainer>
               ) : (
-                <p className="text-sm text-gray-400 py-10 text-center">Aucune inscription sur cette période</p>
+                <p className="text-sm text-muted-foreground py-10 text-center">Aucune inscription sur cette période</p>
               )}
             </div>
 
             {/* Check-ins over time */}
-            <div className="bg-white rounded-xl border border-gray-100 p-5">
-              <h3 className="text-sm font-semibold text-gray-900 mb-4">Check-ins</h3>
+            <div className="bg-card rounded-xl border border-border p-5">
+              <h3 className="text-sm font-semibold text-foreground mb-4">Check-ins</h3>
               {analytics.checkinsOverTime.length > 0 ? (
                 <ResponsiveContainer width="100%" height={250}>
                   <AreaChart data={analytics.checkinsOverTime}>
@@ -156,7 +156,7 @@ export default function AnalyticsPage() {
                   </AreaChart>
                 </ResponsiveContainer>
               ) : (
-                <p className="text-sm text-gray-400 py-10 text-center">Aucun check-in sur cette période</p>
+                <p className="text-sm text-muted-foreground py-10 text-center">Aucun check-in sur cette période</p>
               )}
             </div>
           </div>
@@ -164,8 +164,8 @@ export default function AnalyticsPage() {
           {/* Bottom row: Category breakdown + Top events */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
             {/* By category */}
-            <div className="bg-white rounded-xl border border-gray-100 p-5">
-              <h3 className="text-sm font-semibold text-gray-900 mb-4">Par catégorie</h3>
+            <div className="bg-card rounded-xl border border-border p-5">
+              <h3 className="text-sm font-semibold text-foreground mb-4">Par catégorie</h3>
               {analytics.byCategory.length > 0 ? (
                 <ResponsiveContainer width="100%" height={250}>
                   <PieChart>
@@ -187,13 +187,13 @@ export default function AnalyticsPage() {
                   </PieChart>
                 </ResponsiveContainer>
               ) : (
-                <p className="text-sm text-gray-400 py-10 text-center">Aucune donnée</p>
+                <p className="text-sm text-muted-foreground py-10 text-center">Aucune donnée</p>
               )}
             </div>
 
             {/* By ticket type */}
-            <div className="bg-white rounded-xl border border-gray-100 p-5">
-              <h3 className="text-sm font-semibold text-gray-900 mb-4">Par type de billet</h3>
+            <div className="bg-card rounded-xl border border-border p-5">
+              <h3 className="text-sm font-semibold text-foreground mb-4">Par type de billet</h3>
               {analytics.byTicketType.length > 0 ? (
                 <ResponsiveContainer width="100%" height={250}>
                   <BarChart data={analytics.byTicketType}>
@@ -206,18 +206,18 @@ export default function AnalyticsPage() {
                   </BarChart>
                 </ResponsiveContainer>
               ) : (
-                <p className="text-sm text-gray-400 py-10 text-center">Aucune donnée</p>
+                <p className="text-sm text-muted-foreground py-10 text-center">Aucune donnée</p>
               )}
             </div>
           </div>
 
           {/* Top events */}
           {analytics.topEvents.length > 0 && (
-            <div className="bg-white rounded-xl border border-gray-100 p-5">
-              <h3 className="text-sm font-semibold text-gray-900 mb-4">Top événements</h3>
+            <div className="bg-card rounded-xl border border-border p-5">
+              <h3 className="text-sm font-semibold text-foreground mb-4">Top événements</h3>
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="text-xs text-gray-500 border-b border-gray-100">
+                  <tr className="text-xs text-muted-foreground border-b border-border">
                     <th className="text-left pb-2 font-medium">Événement</th>
                     <th className="text-right pb-2 font-medium">Inscrits</th>
                     <th className="text-right pb-2 font-medium">Check-ins</th>
@@ -230,12 +230,12 @@ export default function AnalyticsPage() {
                       ? Math.round((event.checkedInCount / event.registeredCount) * 100)
                       : 0;
                     return (
-                      <tr key={event.eventId} className="border-b border-gray-50 last:border-0">
-                        <td className="py-2.5 font-medium text-gray-900">{event.title}</td>
-                        <td className="py-2.5 text-right text-gray-600">{event.registeredCount}</td>
-                        <td className="py-2.5 text-right text-gray-600">{event.checkedInCount}</td>
+                      <tr key={event.eventId} className="border-b border-border last:border-0">
+                        <td className="py-2.5 font-medium text-foreground">{event.title}</td>
+                        <td className="py-2.5 text-right text-muted-foreground">{event.registeredCount}</td>
+                        <td className="py-2.5 text-right text-muted-foreground">{event.checkedInCount}</td>
                         <td className="py-2.5 text-right">
-                          <span className={`text-xs font-medium ${rate >= 70 ? "text-green-600" : rate >= 40 ? "text-yellow-600" : "text-gray-400"}`}>
+                          <span className={`text-xs font-medium ${rate >= 70 ? "text-green-600" : rate >= 40 ? "text-yellow-600" : "text-muted-foreground"}`}>
                             {rate}%
                           </span>
                         </td>
@@ -264,12 +264,12 @@ function StatCard({
   bgColor: string;
 }) {
   return (
-    <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+    <div className="bg-card rounded-xl p-5 shadow-sm border border-border">
       <div className="flex items-center gap-3 mb-3">
         <div className={`${bgColor} p-2 rounded-lg`}>{icon}</div>
-        <p className="text-sm text-gray-500">{label}</p>
+        <p className="text-sm text-muted-foreground">{label}</p>
       </div>
-      <p className="text-3xl font-bold text-[#1A1A2E]">{value}</p>
+      <p className="text-3xl font-bold text-primary">{value}</p>
     </div>
   );
 }

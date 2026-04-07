@@ -120,7 +120,7 @@ export default async function EventDetailPage({ params }: PageProps) {
         <div className="relative -mt-16 grid gap-8 lg:grid-cols-3">
           {/* Main content */}
           <div className="lg:col-span-2">
-            <div className="rounded-lg bg-white p-6 shadow-lg">
+            <div className="rounded-lg bg-card p-6 shadow-lg">
               <div className="flex flex-wrap items-center gap-2">
                 <Badge variant="secondary">{CATEGORY_LABELS[event.category] ?? event.category}</Badge>
                 <Badge variant="outline">{FORMAT_LABELS[event.format] ?? event.format}</Badge>
@@ -238,7 +238,7 @@ export default async function EventDetailPage({ params }: PageProps) {
           {/* Sidebar — Tickets & CTA */}
           <div className="lg:col-span-1">
             <div className="sticky top-20 space-y-4">
-              <div className="rounded-lg bg-white p-6 shadow-lg">
+              <div className="rounded-lg bg-card p-6 shadow-lg">
                 <h2 className="text-lg font-semibold">Billets</h2>
 
                 {visibleTickets.length === 0 ? (
@@ -292,7 +292,7 @@ export default async function EventDetailPage({ params }: PageProps) {
               </div>
 
               {/* Add to Calendar */}
-              <div className="rounded-lg bg-white p-6 shadow-lg">
+              <div className="rounded-lg bg-card p-6 shadow-lg">
                 <h3 className="text-sm font-semibold mb-3">Ajouter au calendrier</h3>
                 <AddToCalendar
                   title={event.title}
@@ -305,7 +305,7 @@ export default async function EventDetailPage({ params }: PageProps) {
 
               {/* Online event link */}
               {event.location.streamUrl && (
-                <div className="rounded-lg bg-white p-6 shadow-lg">
+                <div className="rounded-lg bg-card p-6 shadow-lg">
                   <h3 className="text-sm font-semibold">Événement en ligne</h3>
                   <p className="mt-2 text-sm text-muted-foreground">
                     Le lien d&apos;accès sera partagé après inscription.

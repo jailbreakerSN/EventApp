@@ -305,7 +305,7 @@ export default function SponsorPortalPage() {
             {leads.length > 0 && (
               <button
                 onClick={handleExportCSV}
-                className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm font-medium hover:bg-gray-50"
+                className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm font-medium hover:bg-muted"
               >
                 <Download className="h-4 w-4" /> Exporter CSV
               </button>
@@ -314,7 +314,7 @@ export default function SponsorPortalPage() {
 
           {leads.length === 0 ? (
             <div className="rounded-lg border bg-card p-8 text-center shadow-sm">
-              <Users className="mx-auto h-10 w-10 text-gray-300" />
+              <Users className="mx-auto h-10 w-10 text-muted-foreground" />
               <p className="mt-3 text-sm text-muted-foreground">
                 Aucun lead collecté pour le moment.
               </p>

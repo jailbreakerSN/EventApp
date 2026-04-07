@@ -1,21 +1,23 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
 import { useAuth } from "@/hooks/use-auth";
-import { Button } from "@teranga/shared-ui";
+import { useTheme } from "next-themes";
+import { Button, ThemeToggle } from "@teranga/shared-ui";
+import { ThemeLogo } from "@/components/theme-logo";
 import { Menu, X, User, LogOut } from "lucide-react";
 import { useState } from "react";
 
 export function Header() {
   const { user, loading, logout } = useAuth();
+  const { theme, setTheme } = useTheme();
   const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
-    <header className="sticky top-0 z-50 border-b bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/60">
+    <header className="sticky top-0 z-50 border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
         <Link href="/" className="flex items-center gap-2">
-          <Image src="/logo-color.svg" alt="Teranga Event" width={140} height={83} className="h-8 w-auto" priority />
+          <ThemeLogo width={140} height={83} className="h-8 w-auto" priority />
         </Link>
 
         {/* Desktop nav */}
@@ -31,6 +33,7 @@ export function Header() {
         </nav>
 
         <div className="hidden items-center gap-3 md:flex">
+          <ThemeToggle theme={theme} setTheme={setTheme} />
           {loading ? (
             <div className="h-9 w-20 animate-pulse rounded-md bg-muted" />
           ) : user ? (
@@ -69,7 +72,7 @@ export function Header() {
 
       {/* Mobile nav */}
       {mobileOpen && (
-        <div className="border-t bg-white px-4 py-4 md:hidden">
+        <div className="border-t bg-card px-4 py-4 md:hidden">
           <nav className="flex flex-col gap-3">
             <Link href="/events" className="text-sm font-medium" onClick={() => setMobileOpen(false)}>
               Événements
@@ -100,6 +103,9 @@ export function Header() {
                 </Link>
               </div>
             )}
+            <div className="pt-3 border-t mt-3">
+              <ThemeToggle theme={theme} setTheme={setTheme} />
+            </div>
           </nav>
         </div>
       )}

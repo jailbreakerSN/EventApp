@@ -74,14 +74,85 @@ class AppTheme {
         ),
       );
 
+  // ─── Dark Mode Colors (Teranga Forest palette) ─────────────────────────────
+  static const Color forestDark = Color(0xFF172721);
+  static const Color forestBg = Color(0xFF0E1A14);
+  static const Color forestCard = Color(0xFF152A20);
+  static const Color forestBorder = Color(0xFF2B3F34);
+  static const Color forestMuted = Color(0xFF7A9488);
+  static const Color warmWhite = Color(0xFFE8E2D6);
+
   static ThemeData get darkTheme => ThemeData(
         useMaterial3: true,
         colorScheme: ColorScheme.fromSeed(
-          seedColor: gold,
+          seedColor: forestDark,
           primary: gold,
-          secondary: navy,
+          secondary: const Color(0xFF2A473C),
+          tertiary: green,
+          surface: forestBg,
           brightness: Brightness.dark,
         ),
         fontFamily: 'Inter',
+        scaffoldBackgroundColor: forestBg,
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Color(0xFF0E1A14),
+          foregroundColor: Color(0xFFE8E2D6),
+          elevation: 0,
+          centerTitle: false,
+          titleTextStyle: TextStyle(
+            color: Color(0xFFE8E2D6),
+            fontSize: 18,
+            fontWeight: FontWeight.w600,
+            fontFamily: 'Inter',
+          ),
+        ),
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: gold,
+            foregroundColor: forestBg,
+            minimumSize: const Size(double.infinity, 48),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            textStyle: const TextStyle(
+              fontFamily: 'Inter',
+              fontWeight: FontWeight.w600,
+              fontSize: 15,
+            ),
+          ),
+        ),
+        inputDecorationTheme: InputDecorationTheme(
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: forestBorder),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: forestBorder),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(color: gold, width: 2),
+          ),
+          filled: true,
+          fillColor: forestCard,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        ),
+        cardTheme: CardTheme(
+          elevation: 0,
+          color: forestCard,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: const BorderSide(color: forestBorder),
+          ),
+        ),
+        bottomNavigationBarTheme: const BottomNavigationBarThemeData(
+          selectedItemColor: Color(0xFFC59E4B),
+          unselectedItemColor: forestMuted,
+          backgroundColor: Color(0xFF0E1A14),
+          showUnselectedLabels: true,
+          type: BottomNavigationBarType.fixed,
+        ),
+        dividerTheme: const DividerThemeData(
+          color: forestBorder,
+        ),
       );
 }

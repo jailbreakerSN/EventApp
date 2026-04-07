@@ -37,19 +37,19 @@ export default function CheckinHistoryPage() {
     <div>
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
-        <button onClick={() => router.push(`/events/${eventId}/checkin`)} className="p-2 rounded-lg hover:bg-gray-100" aria-label="Retour au check-in">
+        <button onClick={() => router.push(`/events/${eventId}/checkin`)} className="p-2 rounded-lg hover:bg-accent" aria-label="Retour au check-in">
           <ArrowLeft className="h-5 w-5" />
         </button>
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Historique des check-ins</h1>
-          <p className="text-sm text-gray-500">{(event?.title as string) ?? ""}</p>
+          <h1 className="text-2xl font-bold text-foreground">Historique des check-ins</h1>
+          <p className="text-sm text-muted-foreground">{(event?.title as string) ?? ""}</p>
         </div>
       </div>
 
       {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-3 mb-4">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <input
             type="text"
             placeholder="Rechercher par nom ou email..."
@@ -73,17 +73,17 @@ export default function CheckinHistoryPage() {
       </div>
 
       {/* Table */}
-      <div className="bg-white rounded-lg border overflow-hidden">
+      <div className="bg-card rounded-lg border overflow-hidden">
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
-            <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
           </div>
         ) : entries.length === 0 ? (
-          <p className="text-gray-400 text-center py-12">Aucun check-in trouve</p>
+          <p className="text-muted-foreground text-center py-12">Aucun check-in trouve</p>
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-left text-gray-500 bg-gray-50 border-b">
+              <tr className="text-left text-muted-foreground bg-muted border-b">
                 <th className="px-4 py-3">Participant</th>
                 <th className="px-4 py-3">Billet</th>
                 <th className="px-4 py-3">Zone</th>
@@ -93,10 +93,10 @@ export default function CheckinHistoryPage() {
             </thead>
             <tbody>
               {entries.map((entry, i) => (
-                <tr key={i} className="border-b last:border-0 hover:bg-gray-50">
+                <tr key={i} className="border-b last:border-0 hover:bg-muted">
                   <td className="px-4 py-3">
-                    <div className="font-medium text-gray-900">{(entry.participantName as string) ?? "—"}</div>
-                    <div className="text-xs text-gray-400">{(entry.participantEmail as string) ?? ""}</div>
+                    <div className="font-medium text-foreground">{(entry.participantName as string) ?? "—"}</div>
+                    <div className="text-xs text-muted-foreground">{(entry.participantEmail as string) ?? ""}</div>
                   </td>
                   <td className="px-4 py-3">{entry.ticketTypeName as string}</td>
                   <td className="px-4 py-3">
@@ -105,10 +105,10 @@ export default function CheckinHistoryPage() {
                         {entry.accessZoneName as string}
                       </span>
                     ) : (
-                      <span className="text-gray-300">—</span>
+                      <span className="text-muted-foreground">—</span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-gray-500">
+                  <td className="px-4 py-3 text-muted-foreground">
                     {new Date(entry.checkedInAt as string).toLocaleString("fr-FR", {
                       hour: "2-digit",
                       minute: "2-digit",
@@ -116,7 +116,7 @@ export default function CheckinHistoryPage() {
                       month: "short",
                     })}
                   </td>
-                  <td className="px-4 py-3 text-gray-500">{(entry.staffName as string) ?? "—"}</td>
+                  <td className="px-4 py-3 text-muted-foreground">{(entry.staffName as string) ?? "—"}</td>
                 </tr>
               ))}
             </tbody>
@@ -125,15 +125,15 @@ export default function CheckinHistoryPage() {
 
         {/* Pagination */}
         {meta && meta.totalPages > 1 && (
-          <div className="flex items-center justify-between px-4 py-3 border-t bg-gray-50">
-            <span className="text-sm text-gray-500">
+          <div className="flex items-center justify-between px-4 py-3 border-t bg-muted">
+            <span className="text-sm text-muted-foreground">
               Page {meta.page} / {meta.totalPages} ({meta.total} resultats)
             </span>
             <div className="flex gap-2">
               <button
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
                 disabled={page <= 1}
-                className="p-1 rounded hover:bg-gray-200 disabled:opacity-30"
+                className="p-1 rounded hover:bg-accent disabled:opacity-30"
                 aria-label="Page précédente"
               >
                 <ChevronLeft className="h-4 w-4" />
@@ -141,7 +141,7 @@ export default function CheckinHistoryPage() {
               <button
                 onClick={() => setPage((p) => p + 1)}
                 disabled={page >= meta.totalPages}
-                className="p-1 rounded hover:bg-gray-200 disabled:opacity-30"
+                className="p-1 rounded hover:bg-accent disabled:opacity-30"
                 aria-label="Page suivante"
               >
                 <ChevronRight className="h-4 w-4" />

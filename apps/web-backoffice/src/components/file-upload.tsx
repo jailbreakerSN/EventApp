@@ -156,12 +156,12 @@ export function FileUpload({
         onClick={() => state !== "uploading" && inputRef.current?.click()}
         className={`relative cursor-pointer rounded-lg border-2 border-dashed p-6 text-center transition-colors ${
           dragOver
-            ? "border-[#D4A843] bg-[#D4A843]/5"
+            ? "border-secondary bg-secondary/5"
             : state === "error"
               ? "border-red-300 bg-red-50"
               : state === "success"
                 ? "border-green-300 bg-green-50"
-                : "border-gray-200 hover:border-gray-300 hover:bg-gray-50"
+                : "border-border hover:border-border/80 hover:bg-muted"
         }`}
         role="button"
         tabIndex={0}
@@ -199,31 +199,31 @@ export function FileUpload({
         ) : (
           <>
             {state === "uploading" ? (
-              <Loader2 className="mx-auto h-8 w-8 animate-spin text-[#D4A843]" />
+              <Loader2 className="mx-auto h-8 w-8 animate-spin text-secondary" />
             ) : state === "success" ? (
               <CheckCircle className="mx-auto h-8 w-8 text-green-500" />
             ) : state === "error" ? (
               <AlertCircle className="mx-auto h-8 w-8 text-red-500" />
             ) : (
-              <Upload className="mx-auto h-8 w-8 text-gray-400" />
+              <Upload className="mx-auto h-8 w-8 text-muted-foreground" />
             )}
           </>
         )}
 
         {state === "uploading" && (
           <div className="mt-3">
-            <div className="mx-auto h-1.5 w-48 rounded-full bg-gray-200">
+            <div className="mx-auto h-1.5 w-48 rounded-full bg-muted">
               <div
-                className="h-1.5 rounded-full bg-[#D4A843] transition-all duration-300"
+                className="h-1.5 rounded-full bg-secondary transition-all duration-300"
                 style={{ width: `${progress}%` }}
               />
             </div>
-            <p className="mt-2 text-xs text-gray-500">Téléversement en cours...</p>
+            <p className="mt-2 text-xs text-muted-foreground">Téléversement en cours...</p>
           </div>
         )}
 
         {state === "idle" && (
-          <p className="mt-2 text-sm text-gray-500">{helpText}</p>
+          <p className="mt-2 text-sm text-muted-foreground">{helpText}</p>
         )}
 
         {state === "success" && (

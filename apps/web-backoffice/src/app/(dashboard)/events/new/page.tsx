@@ -185,12 +185,12 @@ export default function NewEventPage() {
     <div className="max-w-3xl mx-auto">
       <button
         onClick={() => router.push("/events")}
-        className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 mb-4"
+        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground mb-4"
       >
         <ArrowLeft className="h-4 w-4" /> Retour aux événements
       </button>
 
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">Créer un événement</h1>
+      <h1 className="text-2xl font-bold text-foreground mb-6">Créer un événement</h1>
 
       {/* Step indicator */}
       <div className="flex items-center gap-2 mb-8">
@@ -200,16 +200,16 @@ export default function NewEventPage() {
               onClick={() => { if (i < step) setStep(i); }}
               className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
                 i === step
-                  ? "bg-[#1A1A2E] text-white"
+                  ? "bg-primary text-white"
                   : i < step
                   ? "bg-green-100 text-green-700 cursor-pointer"
-                  : "bg-gray-100 text-gray-400"
+                  : "bg-accent text-muted-foreground"
               }`}
             >
               {i < step ? <Check className="h-3.5 w-3.5" /> : <span>{i + 1}</span>}
               {label}
             </button>
-            {i < STEPS.length - 1 && <div className="w-8 h-px bg-gray-200" />}
+            {i < STEPS.length - 1 && <div className="w-8 h-px bg-border" />}
           </div>
         ))}
       </div>
@@ -218,48 +218,48 @@ export default function NewEventPage() {
         <div className="bg-red-50 text-red-700 text-sm px-4 py-3 rounded-lg mb-4">{error}</div>
       )}
 
-      <div className="bg-white rounded-xl border border-gray-100 p-6">
+      <div className="bg-card rounded-xl border border-border p-6">
         {/* Step 0: Details */}
         {step === 0 && (
           <div className="space-y-5">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Titre *</label>
+              <label className="block text-sm font-medium text-foreground mb-1">Titre *</label>
               <input
                 type="text"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="Ex: Dakar Tech Summit 2026"
-                className="w-full px-4 py-2.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#1A1A2E]/20 focus:border-[#1A1A2E]"
+                className="w-full px-4 py-2.5 rounded-lg border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Description *</label>
+              <label className="block text-sm font-medium text-foreground mb-1">Description *</label>
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 rows={4}
                 placeholder="Décrivez votre événement..."
-                className="w-full px-4 py-2.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#1A1A2E]/20 focus:border-[#1A1A2E] resize-none"
+                className="w-full px-4 py-2.5 rounded-lg border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Description courte</label>
+              <label className="block text-sm font-medium text-foreground mb-1">Description courte</label>
               <input
                 type="text"
                 value={shortDescription}
                 onChange={(e) => setShortDescription(e.target.value)}
                 maxLength={300}
                 placeholder="Résumé en une phrase (optionnel)"
-                className="w-full px-4 py-2.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#1A1A2E]/20 focus:border-[#1A1A2E]"
+                className="w-full px-4 py-2.5 rounded-lg border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
               />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Catégorie *</label>
+                <label className="block text-sm font-medium text-foreground mb-1">Catégorie *</label>
                 <select
                   value={category}
                   onChange={(e) => setCategory(e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-lg border border-gray-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#1A1A2E]/20 focus:border-[#1A1A2E]"
+                  className="w-full px-4 py-2.5 rounded-lg border border-border text-sm bg-card focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
                 >
                   {CATEGORY_OPTIONS.map((opt) => (
                     <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -267,11 +267,11 @@ export default function NewEventPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Format *</label>
+                <label className="block text-sm font-medium text-foreground mb-1">Format *</label>
                 <select
                   value={format}
                   onChange={(e) => setFormat(e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-lg border border-gray-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#1A1A2E]/20 focus:border-[#1A1A2E]"
+                  className="w-full px-4 py-2.5 rounded-lg border border-border text-sm bg-card focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
                 >
                   {FORMAT_OPTIONS.map((opt) => (
                     <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -281,32 +281,32 @@ export default function NewEventPage() {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Date de début *</label>
+                <label className="block text-sm font-medium text-foreground mb-1">Date de début *</label>
                 <input
                   type="datetime-local"
                   value={startDate}
                   onChange={(e) => setStartDate(e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#1A1A2E]/20 focus:border-[#1A1A2E]"
+                  className="w-full px-4 py-2.5 rounded-lg border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Date de fin *</label>
+                <label className="block text-sm font-medium text-foreground mb-1">Date de fin *</label>
                 <input
                   type="datetime-local"
                   value={endDate}
                   onChange={(e) => setEndDate(e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#1A1A2E]/20 focus:border-[#1A1A2E]"
+                  className="w-full px-4 py-2.5 rounded-lg border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
                 />
               </div>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Tags</label>
+              <label className="block text-sm font-medium text-foreground mb-1">Tags</label>
               <input
                 type="text"
                 value={tags}
                 onChange={(e) => setTags(e.target.value)}
                 placeholder="tech, dakar, startup (séparés par des virgules)"
-                className="w-full px-4 py-2.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#1A1A2E]/20 focus:border-[#1A1A2E]"
+                className="w-full px-4 py-2.5 rounded-lg border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
               />
             </div>
           </div>
@@ -318,41 +318,41 @@ export default function NewEventPage() {
             {format !== "online" && (
               <>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Nom du lieu *</label>
+                  <label className="block text-sm font-medium text-foreground mb-1">Nom du lieu *</label>
                   <input
                     type="text"
                     value={locationName}
                     onChange={(e) => setLocationName(e.target.value)}
                     placeholder="Ex: Centre International de Conférences de Dakar"
-                    className="w-full px-4 py-2.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#1A1A2E]/20 focus:border-[#1A1A2E]"
+                    className="w-full px-4 py-2.5 rounded-lg border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Adresse *</label>
+                  <label className="block text-sm font-medium text-foreground mb-1">Adresse *</label>
                   <input
                     type="text"
                     value={address}
                     onChange={(e) => setAddress(e.target.value)}
                     placeholder="Ex: Route de King Fahd, Almadies"
-                    className="w-full px-4 py-2.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#1A1A2E]/20 focus:border-[#1A1A2E]"
+                    className="w-full px-4 py-2.5 rounded-lg border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Ville *</label>
+                    <label className="block text-sm font-medium text-foreground mb-1">Ville *</label>
                     <input
                       type="text"
                       value={city}
                       onChange={(e) => setCity(e.target.value)}
-                      className="w-full px-4 py-2.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#1A1A2E]/20 focus:border-[#1A1A2E]"
+                      className="w-full px-4 py-2.5 rounded-lg border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Pays</label>
+                    <label className="block text-sm font-medium text-foreground mb-1">Pays</label>
                     <select
                       value={country}
                       onChange={(e) => setCountry(e.target.value)}
-                      className="w-full px-4 py-2.5 rounded-lg border border-gray-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#1A1A2E]/20 focus:border-[#1A1A2E]"
+                      className="w-full px-4 py-2.5 rounded-lg border border-border text-sm bg-card focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
                     >
                       <option value="SN">Sénégal</option>
                       <option value="CI">Côte d&apos;Ivoire</option>
@@ -371,13 +371,13 @@ export default function NewEventPage() {
             )}
             {(format === "online" || format === "hybrid") && (
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Lien du stream *</label>
+                <label className="block text-sm font-medium text-foreground mb-1">Lien du stream *</label>
                 <input
                   type="url"
                   value={streamUrl}
                   onChange={(e) => setStreamUrl(e.target.value)}
                   placeholder="https://zoom.us/j/..."
-                  className="w-full px-4 py-2.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#1A1A2E]/20 focus:border-[#1A1A2E]"
+                  className="w-full px-4 py-2.5 rounded-lg border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
                 />
               </div>
             )}
@@ -388,9 +388,9 @@ export default function NewEventPage() {
         {step === 2 && (
           <div className="space-y-4">
             {tickets.map((ticket, i) => (
-              <div key={i} className="border border-gray-200 rounded-lg p-4 space-y-3">
+              <div key={i} className="border border-border rounded-lg p-4 space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium text-gray-700">Billet #{i + 1}</span>
+                  <span className="text-sm font-medium text-foreground">Billet #{i + 1}</span>
                   {tickets.length > 1 && (
                     <button
                       onClick={() => removeTicket(i)}
@@ -402,46 +402,46 @@ export default function NewEventPage() {
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">Nom *</label>
+                    <label className="block text-xs text-muted-foreground mb-1">Nom *</label>
                     <input
                       type="text"
                       value={ticket.name}
                       onChange={(e) => updateTicket(i, "name", e.target.value)}
                       placeholder="Ex: VIP, Standard"
-                      className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#1A1A2E]/20 focus:border-[#1A1A2E]"
+                      className="w-full px-3 py-2 rounded-lg border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">Prix (XOF)</label>
+                    <label className="block text-xs text-muted-foreground mb-1">Prix (XOF)</label>
                     <input
                       type="number"
                       min={0}
                       value={ticket.price}
                       onChange={(e) => updateTicket(i, "price", Number(e.target.value))}
-                      className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#1A1A2E]/20 focus:border-[#1A1A2E]"
+                      className="w-full px-3 py-2 rounded-lg border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
                     />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">Quantité (vide = illimité)</label>
+                    <label className="block text-xs text-muted-foreground mb-1">Quantité (vide = illimité)</label>
                     <input
                       type="number"
                       min={1}
                       value={ticket.totalQuantity ?? ""}
                       onChange={(e) => updateTicket(i, "totalQuantity", e.target.value ? Number(e.target.value) : null)}
                       placeholder="Illimité"
-                      className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#1A1A2E]/20 focus:border-[#1A1A2E]"
+                      className="w-full px-3 py-2 rounded-lg border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs text-gray-500 mb-1">Description</label>
+                    <label className="block text-xs text-muted-foreground mb-1">Description</label>
                     <input
                       type="text"
                       value={ticket.description}
                       onChange={(e) => updateTicket(i, "description", e.target.value)}
                       placeholder="Optionnel"
-                      className="w-full px-3 py-2 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#1A1A2E]/20 focus:border-[#1A1A2E]"
+                      className="w-full px-3 py-2 rounded-lg border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
                     />
                   </div>
                 </div>
@@ -449,7 +449,7 @@ export default function NewEventPage() {
             ))}
             <button
               onClick={addTicket}
-              className="w-full py-2.5 border-2 border-dashed border-gray-200 rounded-lg text-sm text-gray-500 hover:border-gray-400 hover:text-gray-700 transition-colors"
+              className="w-full py-2.5 border-2 border-dashed border-border rounded-lg text-sm text-muted-foreground hover:border-muted-foreground hover:text-foreground transition-colors"
             >
               + Ajouter un type de billet
             </button>
@@ -461,69 +461,69 @@ export default function NewEventPage() {
           <div className="space-y-5">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-700">Événement public</p>
-                <p className="text-xs text-gray-400">Visible dans la recherche publique</p>
+                <p className="text-sm font-medium text-foreground">Événement public</p>
+                <p className="text-xs text-muted-foreground">Visible dans la recherche publique</p>
               </div>
               <button
                 onClick={() => setIsPublic(!isPublic)}
                 role="switch"
                 aria-checked={isPublic}
                 aria-label="Événement public"
-                className={`relative w-11 h-6 rounded-full transition-colors ${isPublic ? "bg-[#1A1A2E]" : "bg-gray-200"}`}
+                className={`relative w-11 h-6 rounded-full transition-colors ${isPublic ? "bg-primary" : "bg-muted"}`}
               >
                 <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform ${isPublic ? "translate-x-5" : ""}`} />
               </button>
             </div>
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-700">Approbation requise</p>
-                <p className="text-xs text-gray-400">Les inscriptions doivent être approuvées manuellement</p>
+                <p className="text-sm font-medium text-foreground">Approbation requise</p>
+                <p className="text-xs text-muted-foreground">Les inscriptions doivent être approuvées manuellement</p>
               </div>
               <button
                 onClick={() => setRequiresApproval(!requiresApproval)}
                 role="switch"
                 aria-checked={requiresApproval}
                 aria-label="Approbation requise"
-                className={`relative w-11 h-6 rounded-full transition-colors ${requiresApproval ? "bg-[#1A1A2E]" : "bg-gray-200"}`}
+                className={`relative w-11 h-6 rounded-full transition-colors ${requiresApproval ? "bg-primary" : "bg-muted"}`}
               >
                 <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform ${requiresApproval ? "translate-x-5" : ""}`} />
               </button>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Nombre max de participants</label>
+              <label className="block text-sm font-medium text-foreground mb-1">Nombre max de participants</label>
               <input
                 type="number"
                 min={1}
                 value={maxAttendees}
                 onChange={(e) => setMaxAttendees(e.target.value)}
                 placeholder="Illimité"
-                className="w-full px-4 py-2.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#1A1A2E]/20 focus:border-[#1A1A2E]"
+                className="w-full px-4 py-2.5 rounded-lg border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
               />
             </div>
 
             {/* Review summary */}
-            <div className="mt-6 border-t border-gray-100 pt-5">
-              <h3 className="text-sm font-medium text-gray-700 mb-3">Récapitulatif</h3>
+            <div className="mt-6 border-t border-border pt-5">
+              <h3 className="text-sm font-medium text-foreground mb-3">Récapitulatif</h3>
               <dl className="text-sm space-y-2">
                 <div className="flex justify-between">
-                  <dt className="text-gray-500">Titre</dt>
-                  <dd className="font-medium text-gray-900">{title || "—"}</dd>
+                  <dt className="text-muted-foreground">Titre</dt>
+                  <dd className="font-medium text-foreground">{title || "—"}</dd>
                 </div>
                 <div className="flex justify-between">
-                  <dt className="text-gray-500">Catégorie</dt>
-                  <dd className="text-gray-900 capitalize">{CATEGORY_OPTIONS.find((o) => o.value === category)?.label}</dd>
+                  <dt className="text-muted-foreground">Catégorie</dt>
+                  <dd className="text-foreground capitalize">{CATEGORY_OPTIONS.find((o) => o.value === category)?.label}</dd>
                 </div>
                 <div className="flex justify-between">
-                  <dt className="text-gray-500">Format</dt>
-                  <dd className="text-gray-900">{FORMAT_OPTIONS.find((o) => o.value === format)?.label}</dd>
+                  <dt className="text-muted-foreground">Format</dt>
+                  <dd className="text-foreground">{FORMAT_OPTIONS.find((o) => o.value === format)?.label}</dd>
                 </div>
                 <div className="flex justify-between">
-                  <dt className="text-gray-500">Lieu</dt>
-                  <dd className="text-gray-900">{city || "—"}</dd>
+                  <dt className="text-muted-foreground">Lieu</dt>
+                  <dd className="text-foreground">{city || "—"}</dd>
                 </div>
                 <div className="flex justify-between">
-                  <dt className="text-gray-500">Billets</dt>
-                  <dd className="text-gray-900">{tickets.length} type{tickets.length > 1 ? "s" : ""}</dd>
+                  <dt className="text-muted-foreground">Billets</dt>
+                  <dd className="text-foreground">{tickets.length} type{tickets.length > 1 ? "s" : ""}</dd>
                 </div>
               </dl>
             </div>
@@ -535,7 +535,7 @@ export default function NewEventPage() {
       <div className="flex justify-between mt-6">
         <button
           onClick={step === 0 ? () => router.push("/events") : prevStep}
-          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-gray-200 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors"
+          className="inline-flex items-center gap-2 px-4 py-2.5 rounded-lg border border-border text-sm font-medium text-muted-foreground hover:bg-muted transition-colors"
         >
           <ArrowLeft className="h-4 w-4" />
           {step === 0 ? "Annuler" : "Précédent"}
@@ -543,7 +543,7 @@ export default function NewEventPage() {
         {step < STEPS.length - 1 ? (
           <button
             onClick={nextStep}
-            className="inline-flex items-center gap-2 bg-[#1A1A2E] text-white rounded-lg px-6 py-2.5 text-sm font-semibold hover:bg-[#16213E] transition-colors"
+            className="inline-flex items-center gap-2 bg-primary text-white rounded-lg px-6 py-2.5 text-sm font-semibold hover:bg-primary/90 transition-colors"
           >
             Suivant <ArrowRight className="h-4 w-4" />
           </button>
@@ -551,7 +551,7 @@ export default function NewEventPage() {
           <button
             onClick={handleSubmit}
             disabled={createEvent.isPending}
-            className="inline-flex items-center gap-2 bg-[#1A1A2E] text-white rounded-lg px-6 py-2.5 text-sm font-semibold hover:bg-[#16213E] transition-colors disabled:opacity-50"
+            className="inline-flex items-center gap-2 bg-primary text-white rounded-lg px-6 py-2.5 text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-50"
           >
             {createEvent.isPending ? (
               <><Loader2 className="h-4 w-4 animate-spin" /> Création en cours...</>

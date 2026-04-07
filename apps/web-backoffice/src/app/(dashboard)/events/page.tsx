@@ -8,7 +8,7 @@ import { Search, Plus, ChevronLeft, ChevronRight, Calendar, MapPin, Users } from
 import type { EventSearchQuery } from "@teranga/shared-types";
 
 const STATUS_LABELS: Record<string, { label: string; className: string }> = {
-  draft: { label: "Brouillon", className: "bg-gray-100 text-gray-700" },
+  draft: { label: "Brouillon", className: "bg-accent text-foreground" },
   published: { label: "Publié", className: "bg-green-100 text-green-700" },
   cancelled: { label: "Annulé", className: "bg-red-100 text-red-700" },
   archived: { label: "Archivé", className: "bg-yellow-100 text-yellow-700" },
@@ -45,10 +45,10 @@ export default function EventsPage() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Événements</h1>
+        <h1 className="text-2xl font-bold text-foreground">Événements</h1>
         <Link
           href="/events/new"
-          className="inline-flex items-center gap-2 bg-[#1A1A2E] text-white rounded-lg px-4 py-2.5 text-sm font-semibold hover:bg-[#16213E] transition-colors"
+          className="inline-flex items-center gap-2 bg-primary text-white rounded-lg px-4 py-2.5 text-sm font-semibold hover:bg-primary/90 transition-colors"
         >
           <Plus className="h-4 w-4" />
           Créer un événement
@@ -58,19 +58,19 @@ export default function EventsPage() {
       {/* Filters */}
       <div className="flex flex-col sm:flex-row gap-3 mb-6">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <input
             type="text"
             placeholder="Rechercher un événement..."
             value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-            className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#1A1A2E]/20 focus:border-[#1A1A2E]"
+            className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
           />
         </div>
         <select
           value={category}
           onChange={(e) => { setCategory(e.target.value); setPage(1); }}
-          className="px-4 py-2.5 rounded-lg border border-gray-200 text-sm focus:outline-none focus:ring-2 focus:ring-[#1A1A2E]/20 focus:border-[#1A1A2E] bg-white"
+          className="px-4 py-2.5 rounded-lg border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary bg-card"
         >
           {CATEGORY_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -80,15 +80,15 @@ export default function EventsPage() {
 
       {/* Content */}
       {isLoading ? (
-        <div className="bg-white rounded-xl border border-gray-100 p-12 text-center text-gray-400">
+        <div className="bg-card rounded-xl border border-border p-12 text-center text-muted-foreground">
           Chargement des événements...
         </div>
       ) : isError ? (
-        <div className="bg-white rounded-xl border border-gray-100 p-12 text-center text-red-500">
+        <div className="bg-card rounded-xl border border-border p-12 text-center text-red-500">
           Erreur lors du chargement. Veuillez réessayer.
         </div>
       ) : events.length === 0 ? (
-        <div className="bg-white rounded-xl border border-gray-100 p-12 text-center text-gray-400">
+        <div className="bg-card rounded-xl border border-border p-12 text-center text-muted-foreground">
           {search || category
             ? "Aucun événement ne correspond à vos filtres."
             : "Aucun événement pour le moment. Créez votre premier événement."}
@@ -96,11 +96,11 @@ export default function EventsPage() {
       ) : (
         <>
           {/* Table */}
-          <div className="bg-white rounded-xl border border-gray-100 overflow-hidden">
+          <div className="bg-card rounded-xl border border-border overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-gray-100 text-left text-gray-500 font-medium">
+                  <tr className="border-b border-border text-left text-muted-foreground font-medium">
                     <th className="px-6 py-3">Événement</th>
                     <th className="px-6 py-3">Date</th>
                     <th className="px-6 py-3">Lieu</th>
@@ -114,27 +114,27 @@ export default function EventsPage() {
                   {events.map((event) => {
                     const status = STATUS_LABELS[event.status] ?? STATUS_LABELS.draft;
                     return (
-                      <tr key={event.id} className="border-b border-gray-50 hover:bg-gray-50/50 transition-colors">
-                        <td className="px-6 py-4 font-medium text-gray-900 max-w-[250px] truncate">
+                      <tr key={event.id} className="border-b border-border/50 hover:bg-muted/50 transition-colors">
+                        <td className="px-6 py-4 font-medium text-foreground max-w-[250px] truncate">
                           {event.title}
                         </td>
-                        <td className="px-6 py-4 text-gray-600 whitespace-nowrap">
+                        <td className="px-6 py-4 text-muted-foreground whitespace-nowrap">
                           <span className="inline-flex items-center gap-1.5">
                             <Calendar className="h-3.5 w-3.5" />
                             {formatDate(event.startDate)}
                           </span>
                         </td>
-                        <td className="px-6 py-4 text-gray-600 whitespace-nowrap">
+                        <td className="px-6 py-4 text-muted-foreground whitespace-nowrap">
                           {event.location?.city ? (
                             <span className="inline-flex items-center gap-1.5">
                               <MapPin className="h-3.5 w-3.5" />
                               {event.location.city}
                             </span>
                           ) : (
-                            <span className="text-gray-300">—</span>
+                            <span className="text-muted-foreground">—</span>
                           )}
                         </td>
-                        <td className="px-6 py-4 text-gray-600 capitalize">
+                        <td className="px-6 py-4 text-muted-foreground capitalize">
                           {event.category ?? "—"}
                         </td>
                         <td className="px-6 py-4">
@@ -142,7 +142,7 @@ export default function EventsPage() {
                             {status.label}
                           </span>
                         </td>
-                        <td className="px-6 py-4 text-right text-gray-600">
+                        <td className="px-6 py-4 text-right text-muted-foreground">
                           <span className="inline-flex items-center gap-1.5">
                             <Users className="h-3.5 w-3.5" />
                             {event.registeredCount ?? 0}
@@ -151,7 +151,7 @@ export default function EventsPage() {
                         <td className="px-6 py-4 text-right">
                           <Link
                             href={`/events/${event.id}`}
-                            className="text-[#1A1A2E] hover:underline font-medium text-sm"
+                            className="text-primary hover:underline font-medium text-sm"
                           >
                             Voir
                           </Link>
@@ -166,7 +166,7 @@ export default function EventsPage() {
 
           {/* Pagination */}
           {totalPages > 1 && (
-            <div className="flex items-center justify-between mt-4 text-sm text-gray-600">
+            <div className="flex items-center justify-between mt-4 text-sm text-muted-foreground">
               <span>
                 Page {page} sur {totalPages} ({meta?.total ?? 0} résultat{(meta?.total ?? 0) > 1 ? "s" : ""})
               </span>
@@ -174,14 +174,14 @@ export default function EventsPage() {
                 <button
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
                   disabled={page <= 1}
-                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-border hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   <ChevronLeft className="h-4 w-4" /> Précédent
                 </button>
                 <button
                   onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                   disabled={page >= totalPages}
-                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-gray-200 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                  className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-border hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   Suivant <ChevronRight className="h-4 w-4" />
                 </button>

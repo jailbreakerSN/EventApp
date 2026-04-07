@@ -16,7 +16,7 @@ function Toggle({ checked, onChange, label, icon: Icon }: { checked: boolean; on
         aria-checked={checked}
         onClick={() => onChange(!checked)}
         className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-          checked ? "bg-teranga-gold" : "bg-gray-200"
+          checked ? "bg-teranga-gold" : "bg-muted"
         }`}
       >
         <span

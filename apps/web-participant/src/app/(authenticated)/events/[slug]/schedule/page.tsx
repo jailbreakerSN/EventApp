@@ -58,7 +58,7 @@ export default function SchedulePage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-20">
-        <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
       </div>
     );
   }
@@ -67,21 +67,21 @@ export default function SchedulePage() {
     <div className="max-w-3xl mx-auto px-4 py-8">
       <Link
         href={event ? `/events/${event.slug}` : "/events"}
-        className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 mb-6"
+        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground mb-6"
       >
         <ArrowLeft className="h-4 w-4" /> Retour
       </Link>
 
       <div className="flex items-center gap-3 mb-6">
-        <Calendar className="h-6 w-6 text-[#1A1A2E]" />
+        <Calendar className="h-6 w-6 text-primary" />
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Programme</h1>
-          {event && <p className="text-sm text-gray-500">{event.title}</p>}
+          <h1 className="text-2xl font-bold text-foreground">Programme</h1>
+          {event && <p className="text-sm text-muted-foreground">{event.title}</p>}
         </div>
       </div>
 
       {sessions.length === 0 ? (
-        <div className="text-center py-16 text-gray-400">
+        <div className="text-center py-16 text-muted-foreground">
           <Calendar className="h-12 w-12 mx-auto mb-4 opacity-30" />
           <p className="text-lg">Aucune session programmée</p>
           <p className="text-sm mt-1">Le programme sera disponible prochainement</p>
@@ -93,18 +93,18 @@ export default function SchedulePage() {
             return (
               <div
                 key={session.id}
-                className={`bg-white rounded-xl border p-5 transition-colors ${isBookmarked ? "border-[#1A1A2E]/30 bg-[#1A1A2E]/5" : "border-gray-100"}`}
+                className={`bg-card rounded-xl border p-5 transition-colors ${isBookmarked ? "border-primary/30 bg-primary/5" : "border-border"}`}
               >
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
-                    <h3 className="font-semibold text-gray-900 mb-1">{session.title}</h3>
-                    <div className="flex flex-wrap items-center gap-3 text-sm text-gray-500 mb-2">
+                    <h3 className="font-semibold text-foreground mb-1">{session.title}</h3>
+                    <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground mb-2">
                       <span className="flex items-center gap-1">
                         <Clock className="h-3.5 w-3.5" />
                         {formatTime(session.startTime)} — {formatTime(session.endTime)}
                       </span>
                       {session.location && (
-                        <span className="bg-gray-100 text-gray-600 text-xs px-2 py-0.5 rounded-full">
+                        <span className="bg-accent text-muted-foreground text-xs px-2 py-0.5 rounded-full">
                           {session.location}
                         </span>
                       )}
@@ -116,13 +116,13 @@ export default function SchedulePage() {
                       )}
                     </div>
                     {session.description && (
-                      <p className="text-sm text-gray-600 line-clamp-3">{session.description}</p>
+                      <p className="text-sm text-muted-foreground line-clamp-3">{session.description}</p>
                     )}
                   </div>
                   {session.isBookmarkable && (
                     <button
                       onClick={() => toggleBookmark.mutate({ sessionId: session.id, isBookmarked })}
-                      className={`p-2 rounded-lg transition-colors ${isBookmarked ? "text-[#1A1A2E] bg-[#1A1A2E]/10" : "text-gray-300 hover:text-gray-500 hover:bg-gray-50"}`}
+                      className={`p-2 rounded-lg transition-colors ${isBookmarked ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-foreground hover:bg-muted"}`}
                       title={isBookmarked ? "Retirer du programme perso" : "Ajouter au programme perso"}
                       aria-label={isBookmarked ? "Retirer du programme personnel" : "Ajouter au programme personnel"}
                     >

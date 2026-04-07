@@ -49,7 +49,7 @@ export function Sidebar() {
   );
 
   return (
-    <aside className="w-60 bg-[#1A1A2E] flex flex-col h-full shrink-0">
+    <aside className="w-60 bg-sidebar text-sidebar-foreground flex flex-col h-full shrink-0">
       {/* Logo */}
       <div className="px-6 py-4 border-b border-white/10">
         <Image src="/logo-white.svg" alt="Teranga Event" width={140} height={83} className="h-10 w-auto" priority />
@@ -77,8 +77,8 @@ export function Sidebar() {
 
       {/* Plan badge */}
       <div className="px-4 py-4 border-t border-white/10">
-        <div className="bg-[#c59e4b]/15 rounded-lg p-3">
-          <p className="text-[#c59e4b] text-xs font-semibold">Plan Gratuit</p>
+        <div className="bg-secondary/15 rounded-lg p-3">
+          <p className="text-secondary text-xs font-semibold">Plan Gratuit</p>
           <p className="text-white/50 text-xs mt-0.5">2 événements / mois</p>
         </div>
       </div>

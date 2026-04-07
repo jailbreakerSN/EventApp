@@ -62,7 +62,7 @@ export default function NotificationsPage() {
               key={n.id}
               onClick={() => { if (!n.isRead) markAsRead.mutate(n.id); }}
               className={`w-full rounded-lg border p-4 text-left transition-colors ${
-                n.isRead ? "bg-white" : "border-teranga-gold/30 bg-teranga-gold/5"
+                n.isRead ? "bg-card" : "border-teranga-gold/30 bg-teranga-gold/5"
               }`}
             >
               <div className="flex items-start gap-3">

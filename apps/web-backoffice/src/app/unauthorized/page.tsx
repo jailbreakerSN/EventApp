@@ -20,30 +20,30 @@ export default function UnauthorizedPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#1A1A2E] to-[#16213E] px-4">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary to-primary/80 dark:from-background dark:to-muted px-4">
       <div className="w-full max-w-md text-center">
-        <div className="bg-white rounded-2xl shadow-2xl p-8">
+        <div className="bg-card rounded-2xl shadow-2xl p-8">
           <div className="flex justify-center mb-4">
-            <div className="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center">
-              <ShieldX size={32} className="text-red-500" />
+            <div className="w-16 h-16 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
+              <ShieldX size={32} className="text-red-500 dark:text-red-400" />
             </div>
           </div>
 
-          <h1 className="text-xl font-bold text-gray-800 mb-2">
+          <h1 className="text-xl font-bold text-card-foreground mb-2">
             Accès non autorisé
           </h1>
 
-          <p className="text-gray-600 text-sm mb-6">
+          <p className="text-muted-foreground text-sm mb-6">
             Le back-office Teranga est réservé aux <strong>organisateurs</strong> et{" "}
             <strong>administrateurs</strong>. Votre compte{" "}
             {user?.email && (
-              <span className="text-gray-800 font-medium">({user.email})</span>
+              <span className="text-card-foreground font-medium">({user.email})</span>
             )}{" "}
-            a le rôle <strong className="text-red-600">{user?.roles?.[0] ?? "participant"}</strong>,
+            a le rôle <strong className="text-destructive">{user?.roles?.[0] ?? "participant"}</strong>,
             qui n&apos;a pas accès à cette interface.
           </p>
 
-          <p className="text-gray-500 text-xs mb-6">
+          <p className="text-muted-foreground text-xs mb-6">
             Si vous êtes organisateur, contactez votre administrateur pour mettre
             à jour vos droits d&apos;accès.
           </p>
@@ -51,7 +51,7 @@ export default function UnauthorizedPage() {
           <div className="flex flex-col gap-3">
             <button
               onClick={handleLogout}
-              className="w-full flex items-center justify-center gap-2 bg-[#1A1A2E] text-white rounded-lg py-2.5 text-sm font-semibold hover:bg-[#16213E] transition-colors"
+              className="w-full flex items-center justify-center gap-2 bg-primary text-primary-foreground rounded-lg py-2.5 text-sm font-semibold hover:bg-primary/90 transition-colors"
             >
               <LogOut size={16} />
               Se déconnecter
@@ -59,7 +59,7 @@ export default function UnauthorizedPage() {
 
             <button
               onClick={() => router.push("/login")}
-              className="w-full flex items-center justify-center gap-2 text-gray-600 text-sm hover:text-gray-800 transition-colors"
+              className="w-full flex items-center justify-center gap-2 text-muted-foreground text-sm hover:text-foreground transition-colors"
             >
               <ArrowLeft size={16} />
               Retour à la connexion

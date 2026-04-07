@@ -6,7 +6,7 @@ import { formatDate } from "@/lib/utils";
 import { Calendar, Users, Ticket, TrendingUp, ArrowRight, Loader2 } from "lucide-react";
 
 const STATUS_LABELS: Record<string, { label: string; className: string }> = {
-  draft: { label: "Brouillon", className: "bg-gray-100 text-gray-700" },
+  draft: { label: "Brouillon", className: "bg-muted text-muted-foreground" },
   published: { label: "Publié", className: "bg-green-100 text-green-700" },
   cancelled: { label: "Annulé", className: "bg-red-100 text-red-700" },
 };
@@ -22,7 +22,7 @@ export default function DashboardPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-gray-900 mb-6">Tableau de bord</h1>
+      <h1 className="text-2xl font-bold text-foreground mb-6">Tableau de bord</h1>
 
       {/* Stats cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
@@ -53,21 +53,21 @@ export default function DashboardPage() {
       </div>
 
       {/* Recent events */}
-      <div className="bg-white rounded-xl border border-gray-100">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-          <h2 className="text-sm font-semibold text-gray-900">Événements récents</h2>
-          <Link href="/events" className="text-sm text-[#1A1A2E] hover:underline inline-flex items-center gap-1">
+      <div className="bg-card rounded-xl border border-border">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+          <h2 className="text-sm font-semibold text-foreground">Événements récents</h2>
+          <Link href="/events" className="text-sm text-primary hover:underline inline-flex items-center gap-1">
             Tout voir <ArrowRight className="h-3.5 w-3.5" />
           </Link>
         </div>
 
         {isLoading ? (
-          <div className="p-8 text-center text-gray-400">
+          <div className="p-8 text-center text-muted-foreground">
             <Loader2 className="h-5 w-5 animate-spin mx-auto" />
           </div>
         ) : events.length === 0 ? (
-          <div className="p-8 text-center text-gray-400">
-            Aucun événement. <Link href="/events/new" className="text-[#1A1A2E] hover:underline">Créer votre premier</Link>
+          <div className="p-8 text-center text-muted-foreground">
+            Aucun événement. <Link href="/events/new" className="text-primary hover:underline">Créer votre premier</Link>
           </div>
         ) : (
           <table className="w-full text-sm">
@@ -75,13 +75,13 @@ export default function DashboardPage() {
               {events.map((event) => {
                 const status = STATUS_LABELS[event.status] ?? STATUS_LABELS.draft;
                 return (
-                  <tr key={event.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50/50 transition-colors">
+                  <tr key={event.id} className="border-b border-border last:border-0 hover:bg-accent transition-colors">
                     <td className="px-6 py-3.5">
-                      <Link href={`/events/${event.id}`} className="font-medium text-gray-900 hover:text-[#1A1A2E]">
+                      <Link href={`/events/${event.id}`} className="font-medium text-foreground hover:text-primary">
                         {event.title}
                       </Link>
                     </td>
-                    <td className="px-6 py-3.5 text-gray-500 text-xs whitespace-nowrap">
+                    <td className="px-6 py-3.5 text-muted-foreground text-xs whitespace-nowrap">
                       {formatDate(event.startDate)}
                     </td>
                     <td className="px-6 py-3.5">
@@ -89,7 +89,7 @@ export default function DashboardPage() {
                         {status.label}
                       </span>
                     </td>
-                    <td className="px-6 py-3.5 text-right text-gray-500">
+                    <td className="px-6 py-3.5 text-right text-muted-foreground">
                       {event.registeredCount ?? 0} inscrits
                     </td>
                   </tr>
@@ -115,12 +115,12 @@ function StatCard({
   bgColor: string;
 }) {
   return (
-    <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+    <div className="bg-card rounded-xl p-5 shadow-sm border border-border">
       <div className="flex items-center gap-3 mb-3">
         <div className={`${bgColor} p-2 rounded-lg`}>{icon}</div>
-        <p className="text-sm text-gray-500">{label}</p>
+        <p className="text-sm text-muted-foreground">{label}</p>
       </div>
-      <p className="text-3xl font-bold text-[#1A1A2E]">{value}</p>
+      <p className="text-3xl font-bold text-primary">{value}</p>
     </div>
   );
 }

@@ -10,9 +10,9 @@
     --card-foreground: 222.2 84% 4.9%;
     --popover: 0 0% 100%;
     --popover-foreground: 222.2 84% 4.9%;
-    --primary: 240 28% 14%;       /* Teranga navy #1A1A2E */
+    --primary: 240 28% 14%;           /* Teranga navy #1A1A2E */
     --primary-foreground: 0 0% 98%;
-    --secondary: 38 46% 53%;      /* Teranga gold #c59e4b */
+    --secondary: 38 46% 53%;          /* Teranga gold #c59e4b */
     --secondary-foreground: 0 0% 9%;
     --muted: 210 40% 96.1%;
     --muted-foreground: 215.4 16.3% 46.9%;
@@ -24,10 +24,37 @@
     --input: 214.3 31.8% 91.4%;
     --ring: 236 100% 15%;
     --radius: 0.5rem;
+    --sidebar: 240 28% 14%;           /* navy */
+    --sidebar-foreground: 0 0% 100%;
+  }
+
+  .dark {
+    --background: 150 20% 7%;         /* #0e1a14 — near-black forest */
+    --foreground: 40 15% 90%;         /* #e8e2d6 — warm off-white */
+    --card: 150 18% 10%;              /* #152a20 — slightly lighter forest */
+    --card-foreground: 40 15% 90%;
+    --popover: 150 18% 10%;
+    --popover-foreground: 40 15% 90%;
+    --primary: 38 46% 53%;            /* gold becomes primary in dark */
+    --primary-foreground: 150 20% 7%;
+    --secondary: 150 25% 18%;         /* #233d31 — muted forest green */
+    --secondary-foreground: 40 15% 90%;
+    --muted: 150 15% 14%;             /* #1e3028 — subtle forest */
+    --muted-foreground: 150 10% 55%;  /* #7a9488 — muted green-gray */
+    --accent: 150 20% 16%;            /* #213529 — brighter forest */
+    --accent-foreground: 40 15% 90%;
+    --destructive: 0 63% 50%;         /* softer red for dark bg */
+    --destructive-foreground: 40 15% 90%;
+    --border: 150 12% 20%;            /* #2b3f34 — subtle forest border */
+    --input: 150 12% 20%;
+    --ring: 38 46% 53%;               /* gold ring for focus */
+    --sidebar: 150 20% 5%;            /* deeper forest than background */
+    --sidebar-foreground: 0 0% 100%;
   }
 }
 
 @layer base {
   * { @apply border-border; }
   body { @apply bg-background text-foreground antialiased; }
+  html.dark { color-scheme: dark; }
 }

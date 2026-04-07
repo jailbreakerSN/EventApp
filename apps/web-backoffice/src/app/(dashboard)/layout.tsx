@@ -28,8 +28,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   if (loading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-gray-50">
-        <div className="text-gray-500">Chargement...</div>
+      <div className="flex h-screen items-center justify-center bg-muted">
+        <div className="text-muted-foreground">Chargement...</div>
       </div>
     );
   }
@@ -37,7 +37,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   if (!user || !hasRole(...BACKOFFICE_ROLES)) return null;
 
   return (
-    <div className="flex h-screen bg-gray-50 overflow-hidden">
+    <div className="flex h-screen bg-muted overflow-hidden">
       <Sidebar />
       <div className="flex-1 flex flex-col min-w-0">
         <TopBar />

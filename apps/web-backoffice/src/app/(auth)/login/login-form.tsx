@@ -47,7 +47,7 @@ export function LoginForm() {
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
+        <label className="block text-sm font-medium text-card-foreground mb-1">
           Adresse email
         </label>
         <input
@@ -55,36 +55,36 @@ export function LoginForm() {
           type="email"
           autoComplete="email"
           placeholder="vous@organisation.sn"
-          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1A1A2E]"
+          className="w-full border border-input bg-background rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
         />
         {errors.email && (
-          <p className="text-red-500 text-xs mt-1">{errors.email.message}</p>
+          <p className="text-destructive text-xs mt-1">{errors.email.message}</p>
         )}
       </div>
 
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
+        <label className="block text-sm font-medium text-card-foreground mb-1">
           Mot de passe
         </label>
         <input
           {...register("password")}
           type="password"
           autoComplete="current-password"
-          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#1A1A2E]"
+          className="w-full border border-input bg-background rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
         />
         {errors.password && (
-          <p className="text-red-500 text-xs mt-1">{errors.password.message}</p>
+          <p className="text-destructive text-xs mt-1">{errors.password.message}</p>
         )}
       </div>
 
       {error && (
-        <p className="text-red-500 text-sm bg-red-50 rounded-lg p-3">{error}</p>
+        <p className="text-destructive text-sm bg-destructive/10 rounded-lg p-3">{error}</p>
       )}
 
       <button
         type="submit"
         disabled={isSubmitting}
-        className="w-full bg-[#1A1A2E] text-white rounded-lg py-2.5 text-sm font-semibold hover:bg-[#16213E] transition-colors disabled:opacity-60"
+        className="w-full bg-primary text-primary-foreground rounded-lg py-2.5 text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60"
       >
         {isSubmitting ? "Connexion..." : "Se connecter"}
       </button>

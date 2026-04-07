@@ -7,3 +7,4 @@ export { Toaster } from "./components/toaster";
 export { ConfirmDialog } from "./components/confirm-dialog";
 export { cn, formatDate, formatDateTime, formatCurrency } from "./lib/utils";
 export { getErrorMessage } from "./lib/error-messages";
+export { ThemeToggle } from "./components/theme-toggle";
