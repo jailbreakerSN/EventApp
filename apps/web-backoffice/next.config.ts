@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  transpilePackages: ["@teranga/shared-ui"],
   images: {
     remotePatterns: [
       { protocol: "https", hostname: "storage.googleapis.com" },
