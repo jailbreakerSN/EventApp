@@ -1,6 +1,6 @@
 # Wave 6: Payments
 
-**Status:** `completed`
+**Status:** `partial` — backend services done, mock provider only, Cloud Functions incomplete
 **Estimated effort:** 2 weeks
 **Goal:** Enable paid events with mobile money integration targeting the West African market.
 

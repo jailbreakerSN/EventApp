@@ -1,6 +1,6 @@
 # Wave 7: SMS, Email, Communication Channels
 
-**Status:** `completed`
+**Status:** `partial` — broadcast system works, mock SMS/email only, no scheduling or reminders
 **Estimated effort:** 1.5 weeks
 **Goal:** Multi-channel notifications — push, email, and SMS — critical for the African market where SMS reaches users that push notifications miss.
 
