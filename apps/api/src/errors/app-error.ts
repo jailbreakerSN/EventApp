@@ -43,7 +43,7 @@ export class AppError extends Error {
 export class NotFoundError extends AppError {
   constructor(resource: string, id?: string) {
     super({
-      message: id ? `${resource} '${id}' not found` : `${resource} not found`,
+      message: id ? `${resource} « ${id} » introuvable` : `${resource} introuvable`,
       code: ERROR_CODES.NOT_FOUND,
       statusCode: 404,
     });
@@ -51,7 +51,7 @@ export class NotFoundError extends AppError {
 }
 
 export class UnauthorizedError extends AppError {
-  constructor(message = "Authentication required") {
+  constructor(message = "Authentification requise") {
     super({
       message,
       code: ERROR_CODES.UNAUTHORIZED,
@@ -61,7 +61,7 @@ export class UnauthorizedError extends AppError {
 }
 
 export class ForbiddenError extends AppError {
-  constructor(message = "Insufficient permissions") {
+  constructor(message = "Permissions insuffisantes") {
     super({
       message,
       code: ERROR_CODES.FORBIDDEN,
@@ -105,7 +105,7 @@ export class QuotaExceededError extends AppError {
 export class EventFullError extends AppError {
   constructor(eventId: string) {
     super({
-      message: "This event has reached maximum capacity",
+      message: "Cet événement a atteint sa capacité maximale",
       code: ERROR_CODES.EVENT_FULL,
       statusCode: 409,
       details: { eventId },
@@ -116,7 +116,7 @@ export class EventFullError extends AppError {
 export class RegistrationClosedError extends AppError {
   constructor(eventId: string) {
     super({
-      message: "Registration is not open for this event",
+      message: "Les inscriptions ne sont pas ouvertes pour cet événement",
       code: ERROR_CODES.REGISTRATION_CLOSED,
       statusCode: 400,
       details: { eventId },
@@ -127,7 +127,7 @@ export class RegistrationClosedError extends AppError {
 export class QrInvalidError extends AppError {
   constructor(reason: string) {
     super({
-      message: `Invalid QR code: ${reason}`,
+      message: `Code QR invalide : ${reason}`,
       code: ERROR_CODES.QR_INVALID,
       statusCode: 400,
     });
@@ -137,7 +137,7 @@ export class QrInvalidError extends AppError {
 export class QrAlreadyUsedError extends AppError {
   constructor(checkedInAt?: string) {
     super({
-      message: "This badge has already been scanned",
+      message: "Ce badge a déjà été scanné",
       code: ERROR_CODES.QR_ALREADY_USED,
       statusCode: 409,
       details: checkedInAt ? { checkedInAt } : undefined,
@@ -148,7 +148,7 @@ export class QrAlreadyUsedError extends AppError {
 export class PlanLimitError extends AppError {
   constructor(limit: string) {
     super({
-      message: `Organization plan limit reached: ${limit}`,
+      message: `Limite du plan atteinte : ${limit}`,
       code: ERROR_CODES.ORGANIZATION_PLAN_LIMIT,
       statusCode: 403,
     });

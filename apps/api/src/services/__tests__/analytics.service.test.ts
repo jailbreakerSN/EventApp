@@ -222,7 +222,7 @@ describe("AnalyticsService", () => {
 
     await expect(
       service.getOrgAnalytics(orgId, { timeframe: "30d" }, participant),
-    ).rejects.toThrow("Missing permission");
+    ).rejects.toThrow("Permission manquante");
   });
 
   it("denies access for user from different organization", async () => {
@@ -230,7 +230,7 @@ describe("AnalyticsService", () => {
 
     await expect(
       service.getOrgAnalytics(orgId, { timeframe: "30d" }, otherUser),
-    ).rejects.toThrow("Access denied");
+    ).rejects.toThrow("Accès refusé");
   });
 
   it("generates time series for registrations and checkins", async () => {

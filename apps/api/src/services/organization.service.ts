@@ -33,7 +33,7 @@ export class OrganizationService extends BaseService {
     if (!user.roles.includes("super_admin")) {
       const existingOwned = await organizationRepository.findByOwner(user.uid);
       if (existingOwned) {
-        throw new ConflictError("You already own an organization");
+        throw new ConflictError("Vous possédez déjà une organisation");
       }
     }
 
@@ -141,7 +141,7 @@ export class OrganizationService extends BaseService {
 
     // Cannot remove the owner
     if (userId === org.ownerId) {
-      throw new ValidationError("Cannot remove the organization owner");
+      throw new ValidationError("Impossible de retirer le propriétaire de l'organisation");
     }
 
     await organizationRepository.removeMember(orgId, userId);

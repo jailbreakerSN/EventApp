@@ -3,4 +3,7 @@ export { Card, CardHeader, CardFooter, CardTitle, CardDescription, CardContent }
 export { Input, type InputProps } from "./components/input";
 export { Badge, badgeVariants, type BadgeProps } from "./components/badge";
 export { Spinner } from "./components/spinner";
+export { Toaster } from "./components/toaster";
+export { ConfirmDialog } from "./components/confirm-dialog";
 export { cn, formatDate, formatDateTime, formatCurrency } from "./lib/utils";
+export { getErrorMessage } from "./lib/error-messages";

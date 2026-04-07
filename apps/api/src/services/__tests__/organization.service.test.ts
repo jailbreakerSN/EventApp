@@ -120,7 +120,7 @@ describe("OrganizationService.create", () => {
   it("rejects participant without permission", async () => {
     const user = buildAuthUser({ roles: ["participant"] });
 
-    await expect(service.create(dto, user)).rejects.toThrow("Missing permission");
+    await expect(service.create(dto, user)).rejects.toThrow("Permission manquante");
   });
 });
 
@@ -139,7 +139,7 @@ describe("OrganizationService.getById", () => {
     // Actually, let's check: participant has basic permissions only
     const user = buildAuthUser({ roles: ["participant"] });
 
-    await expect(service.getById("org-1", user)).rejects.toThrow("Missing permission");
+    await expect(service.getById("org-1", user)).rejects.toThrow("Permission manquante");
   });
 });
 
@@ -160,7 +160,7 @@ describe("OrganizationService.update", () => {
     const user = buildOrganizerUser("org-other");
     mockOrgRepo.findByIdOrThrow.mockResolvedValue(org);
 
-    await expect(service.update("org-1", { name: "Nope" } as any, user)).rejects.toThrow("Access denied");
+    await expect(service.update("org-1", { name: "Nope" } as any, user)).rejects.toThrow("Accès refusé");
   });
 });
 
@@ -194,7 +194,7 @@ describe("OrganizationService.addMember", () => {
   it("rejects if user doesn't belong to org", async () => {
     const user = buildOrganizerUser("org-other");
 
-    await expect(service.addMember("org-1", "new-member", user)).rejects.toThrow("Access denied");
+    await expect(service.addMember("org-1", "new-member", user)).rejects.toThrow("Accès refusé");
   });
 });
 
@@ -223,6 +223,6 @@ describe("OrganizationService.removeMember", () => {
     const user = buildOrganizerUser("org-1");
     mockOrgRepo.findByIdOrThrow.mockResolvedValue(org);
 
-    await expect(service.removeMember("org-1", "owner-1", user)).rejects.toThrow("Cannot remove the organization owner");
+    await expect(service.removeMember("org-1", "owner-1", user)).rejects.toThrow("propriétaire");
   });
 });

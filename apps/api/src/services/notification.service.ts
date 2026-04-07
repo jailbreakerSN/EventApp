@@ -173,7 +173,7 @@ export class NotificationService extends BaseService {
 
     const notification = doc.data() as Notification;
     if (notification.userId !== user.uid) {
-      throw new ForbiddenError("Cannot mark another user's notification as read");
+      throw new ForbiddenError("Impossible de marquer les notifications d'un autre utilisateur comme lues");
     }
 
     await this.notificationsCollection.doc(notificationId).update({

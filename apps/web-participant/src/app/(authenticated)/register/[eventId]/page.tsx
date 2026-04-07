@@ -4,11 +4,12 @@ import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { CheckCircle, ArrowLeft, Ticket } from "lucide-react";
+import { CheckCircle, ArrowLeft, Ticket, CalendarCheck } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
-import { eventsApi } from "@/lib/api-client";
+import { toast } from "sonner";
+import { eventsApi, registrationsApi } from "@/lib/api-client";
 import { useRegister } from "@/hooks/use-registrations";
-import { Button, Card, CardHeader, CardTitle, CardContent, Spinner, Badge, formatCurrency } from "@teranga/shared-ui";
+import { Button, Card, CardHeader, CardTitle, CardContent, Spinner, Badge, formatCurrency, getErrorMessage } from "@teranga/shared-ui";
 import type { Event, TicketType, Registration } from "@teranga/shared-types";
 
 type Step = "select" | "confirm" | "success";
@@ -25,9 +26,19 @@ export default function RegisterPage() {
     queryFn: () => eventsApi.getById(eventId),
   });
 
+  // Check if already registered for this event
+  const { data: myRegsData, isLoading: regsLoading } = useQuery({
+    queryKey: ["my-registrations-check", eventId],
+    queryFn: () => registrationsApi.getMyRegistrations({ limit: 100 }),
+  });
+
   const registerMutation = useRegister();
 
   const event = (eventData as { data?: Event })?.data as Event | undefined;
+  const myRegs = (myRegsData as { data?: Registration[] })?.data as Registration[] | undefined;
+  const existingRegistration = myRegs?.find(
+    (r) => r.eventId === eventId && r.status !== "cancelled",
+  );
 
   const handleConfirm = async () => {
     if (!selectedTicket) return;
@@ -38,12 +49,15 @@ export default function RegisterPage() {
       });
       setRegistration((result as { data?: Registration })?.data as Registration);
       setStep("success");
-    } catch {
-      // Error handled by mutation state
+      toast.success("Inscription confirmée !");
+    } catch (err: unknown) {
+      const code = (err as { code?: string })?.code;
+      const message = (err as { message?: string })?.message;
+      toast.error(getErrorMessage(code, message));
     }
   };
 
-  if (eventLoading) {
+  if (eventLoading || regsLoading) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
         <Spinner size="lg" />
@@ -58,6 +72,63 @@ export default function RegisterPage() {
         <Link href="/events" className="mt-4 inline-block text-teranga-gold hover:underline">
           Retour aux événements
         </Link>
+      </div>
+    );
+  }
+
+  // Already registered — show status instead of form
+  if (existingRegistration) {
+    const statusLabels: Record<string, string> = {
+      confirmed: "confirmée",
+      pending: "en attente d'approbation",
+      waitlisted: "en liste d'attente",
+      checked_in: "enregistrée (check-in effectué)",
+    };
+    const statusLabel = statusLabels[existingRegistration.status] ?? existingRegistration.status;
+
+    return (
+      <div className="mx-auto max-w-lg px-4 py-8">
+        <button
+          onClick={() => router.back()}
+          className="mb-6 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Retour à l&apos;événement
+        </button>
+
+        <h1 className="text-2xl font-bold">{event.title}</h1>
+
+        <Card className="mt-6">
+          <CardContent className="flex flex-col items-center py-8">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-teranga-green/10">
+              <CalendarCheck className="h-10 w-10 text-teranga-green" />
+            </div>
+            <h2 className="mt-4 text-xl font-bold">Vous êtes déjà inscrit(e)</h2>
+            <p className="mt-2 text-center text-muted-foreground">
+              Votre inscription est {statusLabel}.
+            </p>
+
+            {existingRegistration.qrCodeValue && (
+              <div className="mt-6 inline-block rounded-lg bg-white p-4 shadow-md">
+                <QRCodeSVG
+                  value={existingRegistration.qrCodeValue}
+                  size={180}
+                  level="M"
+                  includeMargin
+                />
+              </div>
+            )}
+
+            <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+              <Link href={`/my-events/${existingRegistration.id}/badge`}>
+                <Button variant="outline">Voir mon badge</Button>
+              </Link>
+              <Link href="/my-events">
+                <Button className="bg-teranga-gold hover:bg-teranga-gold/90">Mes inscriptions</Button>
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     );
   }
@@ -139,14 +210,6 @@ export default function RegisterPage() {
               <p className="text-sm text-amber-600">
                 Cette inscription est soumise à l&apos;approbation de l&apos;organisateur.
               </p>
-            )}
-
-            {registerMutation.isError && (
-              <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
-                {registerMutation.error instanceof Error
-                  ? registerMutation.error.message
-                  : "Une erreur est survenue. Veuillez réessayer."}
-              </div>
             )}
 
             <div className="flex gap-3">

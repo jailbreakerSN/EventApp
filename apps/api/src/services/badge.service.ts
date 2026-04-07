@@ -39,7 +39,7 @@ export class BadgeService extends BaseService {
     const registration = await registrationRepository.findByIdOrThrow(registrationId);
 
     if (registration.status !== "confirmed" && registration.status !== "checked_in") {
-      throw new ValidationError("Badge can only be generated for confirmed or checked-in registrations");
+      throw new ValidationError("Le badge ne peut être généré que pour les inscriptions confirmées");
     }
 
     // Verify template exists
@@ -208,7 +208,7 @@ export class BadgeService extends BaseService {
     }
 
     if (!badge.pdfURL) {
-      throw new ValidationError("Badge PDF has not been generated yet");
+      throw new ValidationError("Le PDF du badge n'a pas encore été généré");
     }
 
     // Generate fresh signed URL from the known storage path

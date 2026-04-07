@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { toast } from "sonner";
+import { ConfirmDialog, getErrorMessage } from "@teranga/shared-ui";
 import {
   useEvent,
   usePublishEvent,
@@ -164,11 +166,11 @@ function EventActions({ event }: { event: Event }) {
   const unpublish = useUnpublishEvent();
   const cancel = useCancelEvent();
   const [cloning, setCloning] = useState(false);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
 
   const handleClone = async () => {
     setCloning(true);
     try {
-      // Set new dates 1 month from now
       const now = new Date();
       const newStart = new Date(now.getFullYear(), now.getMonth() + 1, now.getDate(), 9, 0);
       const newEnd = new Date(newStart.getTime() + (new Date(event.endDate).getTime() - new Date(event.startDate).getTime()));
@@ -178,57 +180,98 @@ function EventActions({ event }: { event: Event }) {
         copyTicketTypes: true,
         copyAccessZones: true,
       });
+      toast.success("Événement dupliqué avec succès.");
       router.push(`/events/${result.data.id}`);
+    } catch (err: unknown) {
+      const code = (err as { code?: string })?.code;
+      const message = (err as { message?: string })?.message;
+      toast.error(getErrorMessage(code, message));
     } finally {
       setCloning(false);
     }
   };
 
   return (
-    <div className="flex gap-2">
-      <button
-        onClick={handleClone}
-        disabled={cloning}
-        className="inline-flex items-center gap-1.5 border border-gray-200 text-gray-600 rounded-lg px-4 py-2 text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
-      >
-        <Copy className="h-4 w-4" />
-        {cloning ? "Duplication..." : "Dupliquer"}
-      </button>
-      {event.status === "draft" && (
+    <>
+      <div className="flex gap-2">
         <button
-          onClick={() => publish.mutate(event.id)}
-          disabled={publish.isPending}
-          className="inline-flex items-center gap-1.5 bg-green-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-green-700 disabled:opacity-50"
+          onClick={handleClone}
+          disabled={cloning}
+          className="inline-flex items-center gap-1.5 border border-gray-200 text-gray-600 rounded-lg px-4 py-2 text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
         >
-          <Globe className="h-4 w-4" />
-          {publish.isPending ? "Publication..." : "Publier"}
+          <Copy className="h-4 w-4" />
+          {cloning ? "Duplication..." : "Dupliquer"}
         </button>
-      )}
-      {event.status === "published" && (
-        <button
-          onClick={() => unpublish.mutate(event.id)}
-          disabled={unpublish.isPending}
-          className="inline-flex items-center gap-1.5 bg-yellow-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-yellow-700 disabled:opacity-50"
-        >
-          <GlobeLock className="h-4 w-4" />
-          {unpublish.isPending ? "..." : "Dépublier"}
-        </button>
-      )}
-      {(event.status === "draft" || event.status === "published") && (
-        <button
-          onClick={() => {
-            if (confirm("Êtes-vous sûr de vouloir annuler cet événement ?")) {
-              cancel.mutate(event.id);
-            }
-          }}
-          disabled={cancel.isPending}
-          className="inline-flex items-center gap-1.5 border border-red-200 text-red-600 rounded-lg px-4 py-2 text-sm font-medium hover:bg-red-50 disabled:opacity-50"
-        >
-          <XCircle className="h-4 w-4" />
-          Annuler
-        </button>
-      )}
-    </div>
+        {event.status === "draft" && (
+          <button
+            onClick={() => {
+              publish.mutate(event.id, {
+                onSuccess: () => toast.success("Événement publié."),
+                onError: (err: unknown) => {
+                  const code = (err as { code?: string })?.code;
+                  const message = (err as { message?: string })?.message;
+                  toast.error(getErrorMessage(code, message));
+                },
+              });
+            }}
+            disabled={publish.isPending}
+            className="inline-flex items-center gap-1.5 bg-green-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-green-700 disabled:opacity-50"
+          >
+            <Globe className="h-4 w-4" />
+            {publish.isPending ? "Publication..." : "Publier"}
+          </button>
+        )}
+        {event.status === "published" && (
+          <button
+            onClick={() => {
+              unpublish.mutate(event.id, {
+                onSuccess: () => toast.success("Événement dépublié."),
+                onError: (err: unknown) => {
+                  const code = (err as { code?: string })?.code;
+                  const message = (err as { message?: string })?.message;
+                  toast.error(getErrorMessage(code, message));
+                },
+              });
+            }}
+            disabled={unpublish.isPending}
+            className="inline-flex items-center gap-1.5 bg-yellow-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-yellow-700 disabled:opacity-50"
+          >
+            <GlobeLock className="h-4 w-4" />
+            {unpublish.isPending ? "..." : "D��publier"}
+          </button>
+        )}
+        {(event.status === "draft" || event.status === "published") && (
+          <button
+            onClick={() => setShowCancelConfirm(true)}
+            disabled={cancel.isPending}
+            className="inline-flex items-center gap-1.5 border border-red-200 text-red-600 rounded-lg px-4 py-2 text-sm font-medium hover:bg-red-50 disabled:opacity-50"
+          >
+            <XCircle className="h-4 w-4" />
+            Annuler
+          </button>
+        )}
+      </div>
+      <ConfirmDialog
+        open={showCancelConfirm}
+        onConfirm={() => {
+          cancel.mutate(event.id, {
+            onSuccess: () => toast.success("Événement annulé."),
+            onError: (err: unknown) => {
+              const code = (err as { code?: string })?.code;
+              const message = (err as { message?: string })?.message;
+              toast.error(getErrorMessage(code, message));
+            },
+          });
+          setShowCancelConfirm(false);
+        }}
+        onCancel={() => setShowCancelConfirm(false)}
+        title="Annuler l'événement"
+        description="Êtes-vous sûr(e) de vouloir annuler cet événement ? Les participants seront notifiés. Cette action est irréversible."
+        confirmLabel="Oui, annuler"
+        cancelLabel="Non, garder"
+        variant="danger"
+      />
+    </>
   );
 }
 
@@ -308,6 +351,7 @@ function TicketsTab({ event }: { event: Event }) {
   const [newName, setNewName] = useState("");
   const [newPrice, setNewPrice] = useState(0);
   const [newQty, setNewQty] = useState("");
+  const [removeTarget, setRemoveTarget] = useState<{ id: string; name: string } | null>(null);
   const addTicket = useAddTicketType(event.id);
   const removeTicket = useRemoveTicketType(event.id);
 
@@ -322,7 +366,15 @@ function TicketsTab({ event }: { event: Event }) {
       accessZoneIds: [],
     };
     addTicket.mutate(dto, {
-      onSuccess: () => { setShowAdd(false); setNewName(""); setNewPrice(0); setNewQty(""); },
+      onSuccess: () => {
+        setShowAdd(false); setNewName(""); setNewPrice(0); setNewQty("");
+        toast.success("Type de billet ajouté.");
+      },
+      onError: (err: unknown) => {
+        const code = (err as { code?: string })?.code;
+        const message = (err as { message?: string })?.message;
+        toast.error(getErrorMessage(code, message));
+      },
     });
   }
 
@@ -401,11 +453,7 @@ function TicketsTab({ event }: { event: Event }) {
               </div>
               {event.status === "draft" && (
                 <button
-                  onClick={() => {
-                    if (confirm(`Supprimer le billet "${tt.name}" ?`)) {
-                      removeTicket.mutate(tt.id);
-                    }
-                  }}
+                  onClick={() => setRemoveTarget({ id: tt.id, name: tt.name })}
                   className="text-red-400 hover:text-red-600 p-1"
                 >
                   <Trash2 className="h-4 w-4" />
@@ -415,6 +463,29 @@ function TicketsTab({ event }: { event: Event }) {
           ))}
         </div>
       )}
+
+      <ConfirmDialog
+        open={removeTarget !== null}
+        onConfirm={() => {
+          if (removeTarget) {
+            removeTicket.mutate(removeTarget.id, {
+              onSuccess: () => toast.success("Type de billet supprimé."),
+              onError: (err: unknown) => {
+                const code = (err as { code?: string })?.code;
+                const message = (err as { message?: string })?.message;
+                toast.error(getErrorMessage(code, message));
+              },
+            });
+          }
+          setRemoveTarget(null);
+        }}
+        onCancel={() => setRemoveTarget(null)}
+        title="Supprimer le billet"
+        description={`Êtes-vous sûr(e) de vouloir supprimer le billet « ${removeTarget?.name} » ?`}
+        confirmLabel="Supprimer"
+        cancelLabel="Annuler"
+        variant="danger"
+      />
     </div>
   );
 }
@@ -496,7 +567,14 @@ function RegistrationsTab({ eventId }: { eventId: string }) {
                         <div className="flex items-center justify-end gap-1">
                           {reg.status === "pending" && (
                             <button
-                              onClick={() => approve.mutate(reg.id)}
+                              onClick={() => approve.mutate(reg.id, {
+                                onSuccess: () => toast.success("Inscription approuvée."),
+                                onError: (err: unknown) => {
+                                  const code = (err as { code?: string })?.code;
+                                  const message = (err as { message?: string })?.message;
+                                  toast.error(getErrorMessage(code, message));
+                                },
+                              })}
                               disabled={approve.isPending}
                               className="text-green-600 hover:text-green-800 p-1"
                               title="Approuver"
@@ -506,7 +584,14 @@ function RegistrationsTab({ eventId }: { eventId: string }) {
                           )}
                           {(reg.status === "pending" || reg.status === "confirmed") && (
                             <button
-                              onClick={() => cancelReg.mutate(reg.id)}
+                              onClick={() => cancelReg.mutate(reg.id, {
+                                onSuccess: () => toast.success("Inscription annulée."),
+                                onError: (err: unknown) => {
+                                  const code = (err as { code?: string })?.code;
+                                  const message = (err as { message?: string })?.message;
+                                  toast.error(getErrorMessage(code, message));
+                                },
+                              })}
                               disabled={cancelReg.isPending}
                               className="text-red-400 hover:text-red-600 p-1"
                               title="Annuler"
@@ -694,6 +779,8 @@ function SessionsTab({ eventId, eventStatus }: { eventId: string; eventStatus: s
 
   const sessions = data?.data ?? [];
 
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; title: string } | null>(null);
+
   const handleAdd = async () => {
     if (!title.trim() || !startTime || !endTime) return;
     const dto: CreateSessionDto = {
@@ -707,9 +794,16 @@ function SessionsTab({ eventId, eventStatus }: { eventId: string; eventStatus: s
       tags: [],
       isBookmarkable: true,
     };
-    await createSession.mutateAsync(dto);
-    setTitle(""); setDesc(""); setSessionLoc(""); setStartTime(""); setEndTime("");
-    setShowForm(false);
+    try {
+      await createSession.mutateAsync(dto);
+      setTitle(""); setDesc(""); setSessionLoc(""); setStartTime(""); setEndTime("");
+      setShowForm(false);
+      toast.success("Session ajoutée.");
+    } catch (err: unknown) {
+      const code = (err as { code?: string })?.code;
+      const message = (err as { message?: string })?.message;
+      toast.error(getErrorMessage(code, message));
+    }
   };
 
   return (
@@ -800,7 +894,7 @@ function SessionsTab({ eventId, eventStatus }: { eventId: string; eventStatus: s
                 {session.description && <p className="text-sm text-gray-500 mt-2 line-clamp-2">{session.description}</p>}
               </div>
               <button
-                onClick={() => { if (confirm(`Supprimer la session "${session.title}" ?`)) deleteSession.mutate(session.id); }}
+                onClick={() => setDeleteTarget({ id: session.id, title: session.title })}
                 className="text-red-400 hover:text-red-600 p-1 ml-3">
                 <Trash2 className="h-4 w-4" />
               </button>
@@ -808,6 +902,29 @@ function SessionsTab({ eventId, eventStatus }: { eventId: string; eventStatus: s
           ))}
         </div>
       )}
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        onConfirm={() => {
+          if (deleteTarget) {
+            deleteSession.mutate(deleteTarget.id, {
+              onSuccess: () => toast.success("Session supprimée."),
+              onError: (err: unknown) => {
+                const code = (err as { code?: string })?.code;
+                const message = (err as { message?: string })?.message;
+                toast.error(getErrorMessage(code, message));
+              },
+            });
+          }
+          setDeleteTarget(null);
+        }}
+        onCancel={() => setDeleteTarget(null)}
+        title="Supprimer la session"
+        description={`Êtes-vous sûr(e) de vouloir supprimer « ${deleteTarget?.title} » ?`}
+        confirmLabel="Supprimer"
+        cancelLabel="Annuler"
+        variant="danger"
+      />
     </div>
   );
 }
@@ -821,13 +938,21 @@ function FeedTab({ eventId }: { eventId: string }) {
   const togglePin = useTogglePin(eventId);
   const [content, setContent] = useState("");
   const [isAnnouncement, setIsAnnouncement] = useState(false);
+  const [deletePostTarget, setDeletePostTarget] = useState<string | null>(null);
 
   const posts = data?.data ?? [];
 
   const handlePost = async () => {
     if (!content.trim()) return;
-    await createPost.mutateAsync({ content: content.trim(), isAnnouncement });
-    setContent(""); setIsAnnouncement(false);
+    try {
+      await createPost.mutateAsync({ content: content.trim(), isAnnouncement });
+      setContent(""); setIsAnnouncement(false);
+      toast.success("Publication créée.");
+    } catch (err: unknown) {
+      const code = (err as { code?: string })?.code;
+      const message = (err as { message?: string })?.message;
+      toast.error(getErrorMessage(code, message));
+    }
   };
 
   return (
@@ -883,7 +1008,7 @@ function FeedTab({ eventId }: { eventId: string }) {
                     title={post.isPinned ? "Désépingler" : "Épingler"}>
                     Pin
                   </button>
-                  <button onClick={() => { if (confirm("Supprimer cette publication ?")) deletePost.mutate(post.id); }}
+                  <button onClick={() => setDeletePostTarget(post.id)}
                     className="text-red-400 hover:text-red-600 p-1.5">
                     <Trash2 className="h-4 w-4" />
                   </button>
@@ -893,6 +1018,29 @@ function FeedTab({ eventId }: { eventId: string }) {
           ))}
         </div>
       )}
+
+      <ConfirmDialog
+        open={deletePostTarget !== null}
+        onConfirm={() => {
+          if (deletePostTarget) {
+            deletePost.mutate(deletePostTarget, {
+              onSuccess: () => toast.success("Publication supprimée."),
+              onError: (err: unknown) => {
+                const code = (err as { code?: string })?.code;
+                const message = (err as { message?: string })?.message;
+                toast.error(getErrorMessage(code, message));
+              },
+            });
+          }
+          setDeletePostTarget(null);
+        }}
+        onCancel={() => setDeletePostTarget(null)}
+        title="Supprimer la publication"
+        description="Êtes-vous sûr(e) de vouloir supprimer cette publication ?"
+        confirmLabel="Supprimer"
+        cancelLabel="Annuler"
+        variant="danger"
+      />
     </div>
   );
 }

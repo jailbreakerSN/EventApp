@@ -65,7 +65,7 @@ export class MessagingService extends BaseService {
 
     // Only participants can send messages
     if (!conversation.participantIds.includes(user.uid)) {
-      throw new ForbiddenError("Not a participant in this conversation");
+      throw new ForbiddenError("Vous n'êtes pas participant(e) de cette conversation");
     }
 
     const message = await messageRepository.create({
@@ -114,7 +114,7 @@ export class MessagingService extends BaseService {
     const conversation = await conversationRepository.findByIdOrThrow(conversationId);
 
     if (!conversation.participantIds.includes(user.uid)) {
-      throw new ForbiddenError("Not a participant in this conversation");
+      throw new ForbiddenError("Vous n'êtes pas participant(e) de cette conversation");
     }
 
     return messageRepository.findByConversation(conversationId, {
@@ -131,7 +131,7 @@ export class MessagingService extends BaseService {
     const conversation = await conversationRepository.findByIdOrThrow(conversationId);
 
     if (!conversation.participantIds.includes(user.uid)) {
-      throw new ForbiddenError("Not a participant in this conversation");
+      throw new ForbiddenError("Vous n'êtes pas participant(e) de cette conversation");
     }
 
     const unreadCounts = { ...conversation.unreadCounts };

@@ -24,7 +24,7 @@ export class SessionService extends BaseService {
     this.requireOrganizationAccess(user, event.organizationId);
 
     if (new Date(dto.endTime) <= new Date(dto.startTime)) {
-      throw new ValidationError("End time must be after start time");
+      throw new ValidationError("L'heure de fin doit être postérieure à l'heure de début");
     }
 
     const session = await sessionRepository.create({
@@ -59,20 +59,20 @@ export class SessionService extends BaseService {
 
     const session = await sessionRepository.findByIdOrThrow(sessionId);
     if (session.eventId !== eventId) {
-      throw new ValidationError("Session does not belong to this event");
+      throw new ValidationError("Cette session n'appartient pas à cet événement");
     }
 
     if (dto.startTime && dto.endTime) {
       if (new Date(dto.endTime) <= new Date(dto.startTime)) {
-        throw new ValidationError("End time must be after start time");
+        throw new ValidationError("L'heure de fin doit être postérieure à l'heure de début");
       }
     } else if (dto.endTime && !dto.startTime) {
       if (new Date(dto.endTime) <= new Date(session.startTime)) {
-        throw new ValidationError("End time must be after start time");
+        throw new ValidationError("L'heure de fin doit être postérieure à l'heure de début");
       }
     } else if (dto.startTime && !dto.endTime) {
       if (new Date(session.endTime) <= new Date(dto.startTime)) {
-        throw new ValidationError("End time must be after start time");
+        throw new ValidationError("L'heure de fin doit être postérieure à l'heure de début");
       }
     }
 
@@ -98,7 +98,7 @@ export class SessionService extends BaseService {
 
     const session = await sessionRepository.findByIdOrThrow(sessionId);
     if (session.eventId !== eventId) {
-      throw new ValidationError("Session does not belong to this event");
+      throw new ValidationError("Cette session n'appartient pas à cet événement");
     }
 
     // Soft-delete by removing the document (sessions don't have status)
@@ -147,7 +147,7 @@ export class SessionService extends BaseService {
 
     const session = await sessionRepository.findByIdOrThrow(sessionId);
     if (session.eventId !== eventId) {
-      throw new ValidationError("Session does not belong to this event");
+      throw new ValidationError("Cette session n'appartient pas à cet événement");
     }
 
     return session;
@@ -160,7 +160,7 @@ export class SessionService extends BaseService {
 
     const session = await sessionRepository.findByIdOrThrow(sessionId);
     if (session.eventId !== eventId) {
-      throw new ValidationError("Session does not belong to this event");
+      throw new ValidationError("Cette session n'appartient pas à cet événement");
     }
 
     // Check if already bookmarked
