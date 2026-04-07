@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   useOrganization,
   useUpdateOrganization,
@@ -61,18 +61,18 @@ export default function OrganizationPage() {
   const [phone, setPhone] = useState("");
   const [website, setWebsite] = useState("");
   const [city, setCity] = useState("");
-  const [formInitialized, setFormInitialized] = useState(false);
 
   // Initialize form when org data loads
-  if (org && !formInitialized) {
-    setName(org.name ?? "");
-    setDescription(org.description ?? "");
-    setEmail(org.email ?? "");
-    setPhone(org.phone ?? "");
-    setWebsite(org.website ?? "");
-    setCity(org.city ?? "");
-    setFormInitialized(true);
-  }
+  useEffect(() => {
+    if (org) {
+      setName(org.name ?? "");
+      setDescription(org.description ?? "");
+      setEmail(org.email ?? "");
+      setPhone(org.phone ?? "");
+      setWebsite(org.website ?? "");
+      setCity(org.city ?? "");
+    }
+  }, [org]);
 
   const handleSaveSettings = async () => {
     if (!org) return;

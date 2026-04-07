@@ -122,7 +122,9 @@ export const organizationRoutes: FastifyPluginAsync = async (fastify) => {
     async (request, reply) => {
       const { orgId } = request.params as z.infer<typeof ParamsWithOrgId>;
       const invite = await inviteService.createInvite(orgId, request.body as any, request.user!);
-      return reply.status(201).send({ success: true, data: invite });
+      // Strip secret token from response — token should only be sent via email
+      const { token: _token, ...safeInvite } = invite;
+      return reply.status(201).send({ success: true, data: safeInvite });
     },
   );
 
@@ -139,7 +141,9 @@ export const organizationRoutes: FastifyPluginAsync = async (fastify) => {
     async (request, reply) => {
       const { orgId } = request.params as z.infer<typeof ParamsWithOrgId>;
       const invites = await inviteService.listByOrganization(orgId, request.user!);
-      return reply.send({ success: true, data: invites });
+      // Strip tokens from list response
+      const safeInvites = invites.map(({ token: _t, ...rest }) => rest);
+      return reply.send({ success: true, data: safeInvites });
     },
   );
 

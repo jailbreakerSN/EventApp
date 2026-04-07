@@ -10,6 +10,7 @@ import {
   type Event,
   type EventStatus,
   type EventSearchQuery,
+  PLAN_LIMITS,
 } from "@teranga/shared-types";
 import { eventRepository, type EventFilters, type EventSearchFilters } from "@/repositories/event.repository";
 import { organizationRepository } from "@/repositories/organization.repository";
@@ -18,6 +19,7 @@ import { type AuthUser } from "@/middlewares/auth.middleware";
 import {
   ForbiddenError,
   ValidationError,
+  PlanLimitError,
 } from "@/errors/app-error";
 import { db } from "@/config/firebase";
 import { COLLECTIONS } from "@/config/firebase";
@@ -499,6 +501,20 @@ export class EventService extends BaseService {
 
     const source = await eventRepository.findByIdOrThrow(eventId);
     this.requireOrganizationAccess(user, source.organizationId);
+
+    // Check plan limits for event count
+    const org = await organizationRepository.findByIdOrThrow(source.organizationId);
+    const limits = PLAN_LIMITS[org.plan];
+    if (isFinite(limits.maxEvents)) {
+      const existingEvents = await eventRepository.findByOrganization(source.organizationId, {
+        page: 1, limit: 1, orderBy: "createdAt", orderDir: "desc",
+      });
+      if (existingEvents.meta.total >= limits.maxEvents) {
+        throw new PlanLimitError(
+          `Maximum ${limits.maxEvents} events on the ${org.plan} plan`,
+        );
+      }
+    }
 
     // Validate new dates
     if (new Date(dto.newEndDate) <= new Date(dto.newStartDate)) {

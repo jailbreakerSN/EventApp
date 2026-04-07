@@ -95,7 +95,7 @@ export type OrganizationInvite = z.infer<typeof OrganizationInviteSchema>;
 
 export const CreateInviteSchema = z.object({
   email: z.string().email(),
-  role: OrgMemberRoleSchema.default("member"),
+  role: z.enum(["admin", "member", "viewer"]).default("member"), // owner cannot be assigned via invite
 });
 
 export type CreateInviteDto = z.infer<typeof CreateInviteSchema>;
@@ -149,18 +149,6 @@ export const OrgAnalyticsSchema = z.object({
 });
 
 export type OrgAnalytics = z.infer<typeof OrgAnalyticsSchema>;
-
-// ─── Event Clone ────────────────────────────────────────────────────────────
-
-export const CloneEventSchema = z.object({
-  newTitle: z.string().min(3).max(200).optional(),
-  newStartDate: z.string().datetime(),
-  newEndDate: z.string().datetime(),
-  copyTicketTypes: z.boolean().default(true),
-  copyAccessZones: z.boolean().default(true),
-});
-
-export type CloneEventDto = z.infer<typeof CloneEventSchema>;
 
 // ─── Plan Limits (single source of truth) ────────────────────────────────────
 // Used by API for enforcement and by frontends for plan feature display.

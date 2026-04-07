@@ -561,6 +561,13 @@ describe("EventService.search", () => {
 });
 
 describe("EventService.clone", () => {
+  const freeOrg = buildOrganization({ id: "org-1", plan: "free" });
+
+  beforeEach(() => {
+    mockOrgRepo.findByIdOrThrow.mockResolvedValue(freeOrg);
+    mockEventRepo.findByOrganization.mockResolvedValue({ data: [], meta: { total: 0, page: 1, limit: 1, totalPages: 0 } });
+  });
+
   it("clones an event with new dates", async () => {
     const user = buildOrganizerUser("org-1");
     const source = buildEvent({

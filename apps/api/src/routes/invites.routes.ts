@@ -4,18 +4,18 @@ import { authenticate } from "@/middlewares/auth.middleware";
 import { validate } from "@/middlewares/validate.middleware";
 import { inviteService } from "@/services/invite.service";
 
-const TokenParams = z.object({ token: z.string() });
+const TokenBody = z.object({ token: z.string().min(1) });
 
 export const inviteRoutes: FastifyPluginAsync = async (fastify) => {
   // ─── Accept Invite ──────────────────────────────────────────────────────
   fastify.post(
-    "/:token/accept",
+    "/accept",
     {
-      preHandler: [authenticate, validate({ params: TokenParams })],
+      preHandler: [authenticate, validate({ body: TokenBody })],
       schema: { tags: ["Invites"], summary: "Accept organization invite", security: [{ BearerAuth: [] }] },
     },
     async (request, reply) => {
-      const { token } = request.params as z.infer<typeof TokenParams>;
+      const { token } = request.body as z.infer<typeof TokenBody>;
       await inviteService.acceptInvite(token, request.user!);
       return reply.send({ success: true, data: null });
     },
@@ -23,13 +23,13 @@ export const inviteRoutes: FastifyPluginAsync = async (fastify) => {
 
   // ─── Decline Invite ─────────────────────────────────────────────────────
   fastify.post(
-    "/:token/decline",
+    "/decline",
     {
-      preHandler: [authenticate, validate({ params: TokenParams })],
+      preHandler: [authenticate, validate({ body: TokenBody })],
       schema: { tags: ["Invites"], summary: "Decline organization invite", security: [{ BearerAuth: [] }] },
     },
     async (request, reply) => {
-      const { token } = request.params as z.infer<typeof TokenParams>;
+      const { token } = request.body as z.infer<typeof TokenBody>;
       await inviteService.declineInvite(token, request.user!);
       return reply.send({ success: true, data: null });
     },

@@ -236,3 +236,15 @@ export type CreateTicketTypeDto = z.infer<typeof CreateTicketTypeSchema>;
 export const UpdateTicketTypeSchema = CreateTicketTypeSchema.partial();
 
 export type UpdateTicketTypeDto = z.infer<typeof UpdateTicketTypeSchema>;
+
+// ─── Event Clone ────────────────────────────────────────────────────────────
+
+export const CloneEventSchema = z.object({
+  newTitle: z.string().min(3).max(200).optional(),
+  newStartDate: z.string().datetime(),
+  newEndDate: z.string().datetime(),
+  copyTicketTypes: z.boolean().default(true),
+  copyAccessZones: z.boolean().default(true),
+});
+
+export type CloneEventDto = z.infer<typeof CloneEventSchema>;

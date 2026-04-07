@@ -176,6 +176,13 @@ export class InviteService extends BaseService {
     if (invite.status !== "pending") {
       throw new ValidationError(`This invitation has already been ${invite.status}`);
     }
+    if (new Date(invite.expiresAt) < new Date()) {
+      await inviteRepository.update(invite.id, { status: "expired" } as Partial<OrganizationInvite>);
+      throw new ValidationError("This invitation has expired");
+    }
+    if (user.email?.toLowerCase() !== invite.email.toLowerCase()) {
+      throw new ValidationError("This invitation was sent to a different email address");
+    }
 
     await inviteRepository.update(invite.id, { status: "declined" } as Partial<OrganizationInvite>);
 
@@ -201,6 +208,15 @@ export class InviteService extends BaseService {
     }
 
     await inviteRepository.update(inviteId, { status: "expired" } as Partial<OrganizationInvite>);
+
+    eventBus.emit("invite.revoked", {
+      inviteId,
+      organizationId: invite.organizationId,
+      email: invite.email,
+      actorId: user.uid,
+      requestId: getRequestId(),
+      timestamp: new Date().toISOString(),
+    });
   }
 }
 

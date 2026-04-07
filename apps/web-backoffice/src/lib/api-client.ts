@@ -223,7 +223,10 @@ export const organizationsApi = {
     api.post<ApiResponse<{ orgId: string; userId: string }>>(`/v1/organizations/${orgId}/members`, { userId }),
 
   removeMember: (orgId: string, userId: string) =>
-    api.delete(`/v1/organizations/${orgId}/members`),
+    request(`/v1/organizations/${orgId}/members`, {
+      method: "DELETE",
+      body: JSON.stringify({ userId }),
+    }),
 
   getAnalytics: (orgId: string, query: Partial<AnalyticsQuery> = {}) =>
     api.get<ApiResponse<OrgAnalytics>>(`/v1/organizations/${orgId}/analytics${buildQuery(query)}`),
@@ -240,10 +243,10 @@ export const invitesApi = {
     api.delete(`/v1/organizations/${orgId}/invites/${inviteId}`),
 
   accept: (token: string) =>
-    api.post<ApiResponse<null>>(`/v1/invites/${token}/accept`, {}),
+    api.post<ApiResponse<null>>("/v1/invites/accept", { token }),
 
   decline: (token: string) =>
-    api.post<ApiResponse<null>>(`/v1/invites/${token}/decline`, {}),
+    api.post<ApiResponse<null>>("/v1/invites/decline", { token }),
 };
 
 export { ApiError };

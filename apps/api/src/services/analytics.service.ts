@@ -44,19 +44,31 @@ export class AnalyticsService extends BaseService {
     const timeframe = query.timeframe ?? "30d";
     const startDate = getTimeframeStartDate(timeframe);
 
-    // Fetch all org events
+    // Fetch org events (capped at 500 to prevent unbounded reads)
+    const MAX_EVENTS = 500;
+    const MAX_REGISTRATIONS = 10_000;
+
     let eventsQuery = db.collection(COLLECTIONS.EVENTS)
-      .where("organizationId", "==", orgId);
+      .where("organizationId", "==", orgId)
+      .limit(MAX_EVENTS);
 
     if (query.eventId) {
-      eventsQuery = eventsQuery.where("__name__", "==", query.eventId);
+      eventsQuery = db.collection(COLLECTIONS.EVENTS)
+        .where("organizationId", "==", orgId)
+        .where("__name__", "==", query.eventId);
     }
 
     const eventsSnap = await eventsQuery.get();
     const events = eventsSnap.docs.map((doc) => ({ id: doc.id, ...doc.data() }) as Event);
     const eventIds = events.map((e) => e.id);
 
-    // Fetch registrations for these events
+    // Build event lookup map for O(1) access in aggregation
+    const eventMap = new Map<string, Event>();
+    for (const event of events) {
+      eventMap.set(event.id, event);
+    }
+
+    // Fetch registrations for these events (capped)
     let registrations: Registration[] = [];
     if (eventIds.length > 0) {
       // Firestore "in" operator max 30 items — batch if needed
@@ -66,8 +78,11 @@ export class AnalyticsService extends BaseService {
       }
 
       for (const batch of batches) {
+        if (registrations.length >= MAX_REGISTRATIONS) break;
+
         let regQuery = db.collection(COLLECTIONS.REGISTRATIONS)
-          .where("eventId", "in", batch);
+          .where("eventId", "in", batch)
+          .limit(MAX_REGISTRATIONS - registrations.length);
 
         if (startDate) {
           regQuery = regQuery.where("createdAt", ">=", startDate.toISOString());
@@ -116,11 +131,10 @@ export class AnalyticsService extends BaseService {
       .map(([category, count]) => ({ category, count }))
       .sort((a, b) => b.count - a.count);
 
-    // By ticket type
+    // By ticket type (using eventMap for O(1) lookup)
     const ticketMap = new Map<string, { registered: number; checkedIn: number }>();
     for (const reg of registrations) {
-      // Find ticket type name from the event
-      const event = events.find((e) => e.id === reg.eventId);
+      const event = eventMap.get(reg.eventId);
       const ticketType = event?.ticketTypes.find((t) => t.id === reg.ticketTypeId);
       const name = ticketType?.name ?? "Unknown";
 
