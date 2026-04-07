@@ -11,3 +11,4 @@ export * from "./speaker.types";
 export * from "./sponsor.types";
 export * from "./api.types";
 export * from "./audit.types";
+export * from "./promo.types";

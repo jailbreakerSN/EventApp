@@ -244,6 +244,19 @@ export interface SponsorLeadCapturedEvent extends BaseEventPayload {
   participantId: string;
 }
 
+// ── Promo Code ──────────────────────────────────────────────────────────────
+
+export interface PromoCodeCreatedEvent extends BaseEventPayload {
+  promoCodeId: string;
+  eventId: string;
+  organizationId: string;
+  code: string;
+}
+
+export interface PromoCodeUsedEvent extends BaseEventPayload {
+  promoCodeId: string;
+}
+
 // ─── Domain Event Map ────────────────────────────────────────────────────────
 // Type-safe mapping of event names to their payloads.
 // Adding a new event here gives compile-time safety across all emitters/listeners.
@@ -280,6 +293,8 @@ export interface DomainEventMap {
   "speaker.removed": SpeakerRemovedEvent;
   "sponsor.added": SponsorAddedEvent;
   "sponsor.lead_captured": SponsorLeadCapturedEvent;
+  "promo_code.created": PromoCodeCreatedEvent;
+  "promo_code.used": PromoCodeUsedEvent;
 }
 
 export type DomainEventName = keyof DomainEventMap;

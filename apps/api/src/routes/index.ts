@@ -18,6 +18,7 @@ import { communicationRoutes } from "./communications.routes";
 import { notificationRoutes } from "./notifications.routes";
 import { speakerRoutes } from "./speakers.routes";
 import { sponsorRoutes } from "./sponsors.routes";
+import { promoCodeRoutes } from "./promo-codes.routes";
 
 export async function registerRoutes(app: FastifyInstance) {
   // ── Health & Readiness (no auth, no rate limit) ──────────────────────────
@@ -42,4 +43,5 @@ export async function registerRoutes(app: FastifyInstance) {
   await app.register(notificationRoutes, { prefix: "/v1/notifications" });
   await app.register(speakerRoutes, { prefix: "/v1/events" });
   await app.register(sponsorRoutes, { prefix: "/v1/events" });
+  await app.register(promoCodeRoutes, { prefix: "/v1/events" });
 }

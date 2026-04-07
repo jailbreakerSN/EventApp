@@ -307,6 +307,62 @@ export const eventRoutes: FastifyPluginAsync = async (fastify) => {
     },
   );
 
+  // ─── Calendar (.ics) Export (public for published events) ───────────────
+  fastify.get(
+    "/:eventId/calendar.ics",
+    {
+      preHandler: [validate({ params: ParamsWithEventId })],
+      schema: { tags: ["Events"], summary: "Download event as .ics calendar file (public)" },
+    },
+    async (request, reply) => {
+      const { eventId } = request.params as z.infer<typeof ParamsWithEventId>;
+      const event = await eventService.getById(eventId);
+
+      // Format dates to iCalendar format (YYYYMMDDTHHMMSSZ)
+      const formatIcsDate = (iso: string): string => {
+        return new Date(iso).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+      };
+
+      const dtStart = formatIcsDate(event.startDate);
+      const dtEnd = formatIcsDate(event.endDate);
+      const description = event.description
+        ? event.description.substring(0, 500).replace(/\n/g, "\\n").replace(/,/g, "\\,").replace(/;/g, "\\;")
+        : "";
+      const locationParts = [
+        event.location?.name,
+        event.location?.address,
+        event.location?.city,
+      ].filter(Boolean);
+      const location = locationParts.join(", ").replace(/,/g, "\\,");
+      const summary = event.title.replace(/,/g, "\\,").replace(/;/g, "\\;");
+      const now = formatIcsDate(new Date().toISOString());
+
+      const ics = [
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        "PRODID:-//Teranga Events//FR",
+        "CALSCALE:GREGORIAN",
+        "METHOD:PUBLISH",
+        "BEGIN:VEVENT",
+        `DTSTART:${dtStart}`,
+        `DTEND:${dtEnd}`,
+        `DTSTAMP:${now}`,
+        `SUMMARY:${summary}`,
+        `DESCRIPTION:${description}`,
+        `LOCATION:${location}`,
+        `URL:https://teranga.sn/events/${event.slug}`,
+        `UID:${event.id}@teranga.events`,
+        "END:VEVENT",
+        "END:VCALENDAR",
+      ].join("\r\n");
+
+      return reply
+        .header("Content-Type", "text/calendar; charset=utf-8")
+        .header("Content-Disposition", `attachment; filename="${event.slug || event.id}.ics"`)
+        .send(ics);
+    },
+  );
+
   // ─── Upload URL for Event Images ────────────────────────────────────────
   fastify.post(
     "/:eventId/upload-url",

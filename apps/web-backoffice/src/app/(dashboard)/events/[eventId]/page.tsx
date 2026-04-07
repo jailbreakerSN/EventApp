@@ -43,11 +43,12 @@ import { useEventPayments, usePaymentSummary, useRefundPayment } from "@/hooks/u
 import { useFeedPosts, useCreateFeedPost, useDeleteFeedPost, useTogglePin } from "@/hooks/use-feed";
 import { useEventSpeakers, useCreateSpeaker, useDeleteSpeaker } from "@/hooks/use-speakers";
 import { useEventSponsors, useCreateSponsor, useDeleteSponsor } from "@/hooks/use-sponsors";
+import { useEventPromoCodes, useCreatePromoCode, useDeactivatePromoCode } from "@/hooks/use-promo-codes";
 import { eventsApi } from "@/lib/api-client";
 import type { Event, CreateTicketTypeDto, CreateAccessZoneDto, Session as SessionType, CreateSessionDto, Payment, PaymentSummary, SpeakerProfile, SponsorProfile, CreateSpeakerDto, CreateSponsorDto, SponsorTier } from "@teranga/shared-types";
 import { Calendar, MessageSquare, Clock, Mic, UserRound, Building } from "lucide-react";
 
-const TABS = ["Infos", "Billets", "Inscriptions", "Paiements", "Sessions", "Feed", "Zones", "Intervenants", "Sponsors"] as const;
+const TABS = ["Infos", "Billets", "Inscriptions", "Paiements", "Sessions", "Feed", "Zones", "Intervenants", "Sponsors", "Promos"] as const;
 type Tab = (typeof TABS)[number];
 
 const STATUS_LABELS: Record<string, { label: string; className: string }> = {
@@ -154,6 +155,7 @@ export default function EventDetailPage() {
       {tab === "Zones" && <AccessZonesTab event={event} />}
       {tab === "Intervenants" && <SpeakersTab eventId={eventId} />}
       {tab === "Sponsors" && <SponsorsTab eventId={eventId} />}
+      {tab === "Promos" && <PromosTab eventId={eventId} />}
     </div>
   );
 }
@@ -1467,6 +1469,198 @@ function SponsorsTab({ eventId }: { eventId: string }) {
               </div>
             );
           })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─── Promos Tab ──────────────────────────────────────────────────────── */
+
+function PromosTab({ eventId }: { eventId: string }) {
+  const { data, isLoading } = useEventPromoCodes(eventId);
+  const promoCodes = (data?.data ?? []) as Array<{
+    id: string;
+    code: string;
+    discountType: "percentage" | "fixed";
+    discountValue: number;
+    maxUses: number | null;
+    usedCount: number;
+    expiresAt: string | null;
+    isActive: boolean;
+    ticketTypeIds: string[];
+    createdAt: string;
+  }>;
+  const createPromo = useCreatePromoCode(eventId);
+  const deactivatePromo = useDeactivatePromoCode();
+
+  const [showForm, setShowForm] = useState(false);
+  const [code, setCode] = useState("");
+  const [discountType, setDiscountType] = useState<"percentage" | "fixed">("percentage");
+  const [discountValue, setDiscountValue] = useState("");
+  const [maxUses, setMaxUses] = useState("");
+  const [expiresAt, setExpiresAt] = useState("");
+
+  const handleCreate = async () => {
+    if (!code || !discountValue) return;
+    try {
+      await createPromo.mutateAsync({
+        code: code.toUpperCase(),
+        discountType,
+        discountValue: Number(discountValue),
+        ...(maxUses ? { maxUses: Number(maxUses) } : {}),
+        ...(expiresAt ? { expiresAt: new Date(expiresAt).toISOString() } : {}),
+      });
+      setShowForm(false);
+      setCode(""); setDiscountValue(""); setMaxUses(""); setExpiresAt("");
+      toast.success("Code promo créé");
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+    }
+  };
+
+  const handleDeactivate = async (promoCodeId: string) => {
+    if (!confirm("Désactiver ce code promo ?")) return;
+    try {
+      await deactivatePromo.mutateAsync(promoCodeId);
+      toast.success("Code promo désactivé");
+    } catch (err) {
+      toast.error(getErrorMessage(err));
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h2 className="text-lg font-semibold">Codes promo ({promoCodes.length})</h2>
+        <button
+          onClick={() => setShowForm(!showForm)}
+          className="inline-flex items-center gap-1.5 px-3 py-2 bg-[#1A1A2E] text-white rounded-lg text-sm"
+        >
+          <Plus className="h-4 w-4" /> Créer un code
+        </button>
+      </div>
+
+      {showForm && (
+        <div className="rounded-lg border p-4 space-y-3 bg-gray-50">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <input
+              className="w-full rounded border px-3 py-2 text-sm uppercase"
+              placeholder="Code (ex: DAKAR2026) *"
+              value={code}
+              onChange={(e) => setCode(e.target.value)}
+            />
+            <select
+              className="w-full rounded border px-3 py-2 text-sm"
+              value={discountType}
+              onChange={(e) => setDiscountType(e.target.value as "percentage" | "fixed")}
+            >
+              <option value="percentage">Pourcentage (%)</option>
+              <option value="fixed">Montant fixe (XOF)</option>
+            </select>
+            <input
+              className="w-full rounded border px-3 py-2 text-sm"
+              type="number"
+              placeholder={discountType === "percentage" ? "Réduction (%) *" : "Montant (XOF) *"}
+              value={discountValue}
+              onChange={(e) => setDiscountValue(e.target.value)}
+              min="1"
+              max={discountType === "percentage" ? "100" : undefined}
+            />
+            <input
+              className="w-full rounded border px-3 py-2 text-sm"
+              type="number"
+              placeholder="Utilisations max (optionnel)"
+              value={maxUses}
+              onChange={(e) => setMaxUses(e.target.value)}
+              min="1"
+            />
+            <input
+              className="w-full rounded border px-3 py-2 text-sm"
+              type="datetime-local"
+              value={expiresAt}
+              onChange={(e) => setExpiresAt(e.target.value)}
+            />
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={handleCreate}
+              disabled={createPromo.isPending || !code || !discountValue}
+              className="px-4 py-2 bg-[#1A1A2E] text-white rounded text-sm disabled:opacity-50"
+            >
+              {createPromo.isPending ? "Création..." : "Créer"}
+            </button>
+            <button onClick={() => setShowForm(false)} className="px-4 py-2 border rounded text-sm">
+              Annuler
+            </button>
+          </div>
+        </div>
+      )}
+
+      {isLoading ? (
+        <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-gray-400" /></div>
+      ) : promoCodes.length === 0 ? (
+        <p className="py-8 text-center text-gray-400">Aucun code promo</p>
+      ) : (
+        <div className="overflow-x-auto rounded-lg border">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-4 py-3 text-left font-medium text-gray-500">Code</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-500">Réduction</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-500">Utilisations</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-500">Expiration</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-500">Statut</th>
+                <th className="px-4 py-3 text-right font-medium text-gray-500">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {promoCodes.map((p) => {
+                const expired = p.expiresAt && new Date(p.expiresAt) < new Date();
+                const maxedOut = p.maxUses !== null && p.usedCount >= p.maxUses;
+                const active = p.isActive && !expired && !maxedOut;
+
+                return (
+                  <tr key={p.id} className={!active ? "opacity-60" : ""}>
+                    <td className="px-4 py-3 font-mono font-medium">{p.code}</td>
+                    <td className="px-4 py-3">
+                      {p.discountType === "percentage"
+                        ? `${p.discountValue}%`
+                        : formatCurrency(p.discountValue)}
+                    </td>
+                    <td className="px-4 py-3">
+                      {p.usedCount}{p.maxUses !== null ? ` / ${p.maxUses}` : ""}
+                    </td>
+                    <td className="px-4 py-3 text-xs">
+                      {p.expiresAt ? formatDate(p.expiresAt) : "—"}
+                    </td>
+                    <td className="px-4 py-3">
+                      {!p.isActive ? (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600">Désactivé</span>
+                      ) : expired ? (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-600">Expiré</span>
+                      ) : maxedOut ? (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">Épuisé</span>
+                      ) : (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">Actif</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      {p.isActive && (
+                        <button
+                          onClick={() => handleDeactivate(p.id)}
+                          className="text-xs text-red-500 hover:underline"
+                          disabled={deactivatePromo.isPending}
+                        >
+                          Désactiver
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       )}
     </div>
