@@ -7,6 +7,9 @@ import { checkinRoutes } from "./checkin.routes";
 import { userRoutes } from "./users.routes";
 import { organizationRoutes } from "./organizations.routes";
 import { inviteRoutes } from "./invites.routes";
+import { sessionRoutes } from "./sessions.routes";
+import { feedRoutes } from "./feed.routes";
+import { messagingRoutes } from "./messaging.routes";
 import { healthRoutes } from "./health.routes";
 
 export async function registerRoutes(app: FastifyInstance) {
@@ -22,4 +25,7 @@ export async function registerRoutes(app: FastifyInstance) {
   await app.register(userRoutes, { prefix: "/v1/users" });
   await app.register(organizationRoutes, { prefix: "/v1/organizations" });
   await app.register(inviteRoutes, { prefix: "/v1/invites" });
+  await app.register(sessionRoutes, { prefix: "/v1/events" });
+  await app.register(feedRoutes, { prefix: "/v1/events" });
+  await app.register(messagingRoutes, { prefix: "/v1/conversations" });
 }

@@ -19,11 +19,11 @@ The MVP prioritizes the **web platform** (participant web app + organizer backof
 
 | Component | Completion | Notes |
 |-----------|-----------|-------|
-| Shared Types | ~99% | Zod schemas, permissions, invites, analytics, clone, member roles |
-| API (Fastify) | ~98% | Waves 1-4 endpoints, invite/analytics/clone services, 170+ tests |
+| Shared Types | ~99% | Zod schemas, permissions, invites, analytics, clone, sessions, feed, messaging DTOs |
+| API (Fastify) | ~99% | Waves 1-5 endpoints, session/feed/messaging services, 224 tests |
 | Cloud Functions | ~80% | Auth triggers, badge generation, registration triggers, check-in feed trigger |
-| Web Backoffice | ~97% | Full event CRUD, registrations, check-in, org settings, team, analytics, clone |
-| Web Participant | ~90% | SSG/ISR event pages, auth, registration, badges, profile — Wave 3 complete |
+| Web Backoffice | ~98% | Full event CRUD, registrations, check-in, org settings, sessions, feed, analytics |
+| Web Participant | ~95% | SSG/ISR events, auth, registration, badges, profile, schedule, feed, messages |
 | Mobile (Flutter) | ~35% | Wave 1 basics done; full app deferred to Wave 9 after web validation |
 | Shared UI | ~70% | Button, Card, Input, Badge, Spinner + utility functions (cn, format) |
 | Infrastructure | 100% | Firestore rules, indexes, Firebase multi-site hosting, emulators, seed script |
@@ -46,7 +46,7 @@ The MVP prioritizes the **web platform** (participant web app + organizer backof
 | Wave 2 | Check-in API & Web Dashboard | API + Web | `completed` | [wave-2-offline-checkin.md](wave-2-offline-checkin.md) |
 | Wave 3 | Participant Web App | Web | `completed` | [wave-3-participant-web.md](wave-3-participant-web.md) |
 | **Wave 4** | **Organizer Productivity** | **API + Web** | `completed` | [wave-4-organizer-tools.md](wave-4-organizer-tools.md) |
-| Wave 5 | Feed, Messaging, Sessions | API + Web | `not_started` | [wave-5-social-sessions.md](wave-5-social-sessions.md) |
+| **Wave 5** | **Feed, Messaging, Sessions** | **API + Web** | `completed` | [wave-5-social-sessions.md](wave-5-social-sessions.md) |
 | Wave 6 | Payments | API + Web | `not_started` | [wave-6-payments.md](wave-6-payments.md) |
 | Wave 7 | SMS, Email, Communication | API + Web | `not_started` | [wave-7-communications.md](wave-7-communications.md) |
 | Wave 8 | Sponsor & Speaker Portals | API + Web | `not_started` | [wave-8-portals.md](wave-8-portals.md) |

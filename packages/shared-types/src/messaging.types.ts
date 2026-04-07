@@ -66,6 +66,53 @@ export const FeedCommentSchema = z.object({
 
 export type FeedComment = z.infer<typeof FeedCommentSchema>;
 
+// ─── Feed DTOs ───────────────────────────────────────────────────────────────
+
+export const CreateFeedPostSchema = z.object({
+  content: z.string().min(1).max(2000),
+  mediaURLs: z.array(z.string().url()).max(10).default([]),
+  isAnnouncement: z.boolean().default(false),
+});
+
+export type CreateFeedPostDto = z.infer<typeof CreateFeedPostSchema>;
+
+export const CreateFeedCommentSchema = z.object({
+  content: z.string().min(1).max(1000),
+});
+
+export type CreateFeedCommentDto = z.infer<typeof CreateFeedCommentSchema>;
+
+export const FeedQuerySchema = z.object({
+  page: z.coerce.number().int().positive().default(1),
+  limit: z.coerce.number().int().positive().max(50).default(20),
+});
+
+export type FeedQuery = z.infer<typeof FeedQuerySchema>;
+
+// ─── Messaging DTOs ──────────────────────────────────────────────────────────
+
+export const CreateConversationSchema = z.object({
+  participantId: z.string(),               // the other user
+  eventId: z.string().nullable().optional(), // optionally scope to event
+});
+
+export type CreateConversationDto = z.infer<typeof CreateConversationSchema>;
+
+export const SendMessageSchema = z.object({
+  content: z.string().min(1).max(4000),
+  type: z.enum(["text", "image", "file"]).default("text"),
+  mediaURL: z.string().url().nullable().optional(),
+});
+
+export type SendMessageDto = z.infer<typeof SendMessageSchema>;
+
+export const MessageQuerySchema = z.object({
+  page: z.coerce.number().int().positive().default(1),
+  limit: z.coerce.number().int().positive().max(100).default(50),
+});
+
+export type MessageQuery = z.infer<typeof MessageQuerySchema>;
+
 // ─── Notifications ────────────────────────────────────────────────────────────
 
 export const NotificationTypeSchema = z.enum([

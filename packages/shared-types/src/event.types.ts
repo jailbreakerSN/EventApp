@@ -84,6 +84,44 @@ export const SessionSchema = z.object({
 
 export type Session = z.infer<typeof SessionSchema>;
 
+export const CreateSessionSchema = SessionSchema.omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type CreateSessionDto = z.infer<typeof CreateSessionSchema>;
+
+export const UpdateSessionSchema = CreateSessionSchema.partial().omit({
+  eventId: true,
+});
+
+export type UpdateSessionDto = z.infer<typeof UpdateSessionSchema>;
+
+// ─── Session Bookmark ────────────────────────────────────────────────────────
+
+export const SessionBookmarkSchema = z.object({
+  id: z.string(),
+  sessionId: z.string(),
+  eventId: z.string(),
+  userId: z.string(),
+  createdAt: z.string().datetime(),
+});
+
+export type SessionBookmark = z.infer<typeof SessionBookmarkSchema>;
+
+// ─── Session Schedule Query ──────────────────────────────────────────────────
+
+export const SessionScheduleQuerySchema = z.object({
+  date: z.string().optional(),               // YYYY-MM-DD filter
+  speakerId: z.string().optional(),
+  location: z.string().optional(),           // room/stage filter
+  page: z.coerce.number().int().positive().default(1),
+  limit: z.coerce.number().int().positive().max(100).default(50),
+});
+
+export type SessionScheduleQuery = z.infer<typeof SessionScheduleQuerySchema>;
+
 // ─── Ticket Type ──────────────────────────────────────────────────────────────
 
 export const TicketTypeSchema = z.object({

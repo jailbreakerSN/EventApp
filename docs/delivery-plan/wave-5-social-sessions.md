@@ -1,6 +1,6 @@
 # Wave 5: Feed, Messaging, Sessions
 
-**Status:** `not_started`
+**Status:** `completed`
 **Estimated effort:** 2 weeks
 **Goal:** Add social and scheduling features — event feed, direct messaging, and session/agenda management.
 
@@ -15,48 +15,48 @@ Events are social. Participants want to see updates, message each other, and pla
 ### API (Fastify)
 
 #### Event Feed
-- [ ] Create feed post endpoint (text, image, poll)
-- [ ] List feed posts with pagination (by event)
-- [ ] Like/react to feed post
-- [ ] Comment on feed post
-- [ ] Delete/hide feed post (organizer moderation)
-- [ ] Pin post to top of feed
+- [x] Create feed post endpoint (text, image, poll)
+- [x] List feed posts with pagination (by event)
+- [x] Like/react to feed post
+- [x] Comment on feed post
+- [x] Delete/hide feed post (organizer moderation)
+- [x] Pin post to top of feed
 
 #### Messaging
-- [ ] Create conversation (1-to-1 or group)
-- [ ] Send message endpoint
-- [ ] List conversations for user
-- [ ] List messages in conversation with pagination
-- [ ] Mark conversation as read
-- [ ] Message moderation tools for organizers
+- [x] Create conversation (1-to-1 or group)
+- [x] Send message endpoint
+- [x] List conversations for user
+- [x] List messages in conversation with pagination
+- [x] Mark conversation as read
+- [x] Message moderation tools for organizers
 
 #### Sessions/Agenda
-- [ ] Session CRUD endpoints (within event)
-- [ ] Session schedule: list sessions by day/time
-- [ ] Session speaker assignment
-- [ ] Session room/location assignment
-- [ ] Participant session bookmarking (add to personal agenda)
-- [ ] Session capacity and RSVP (optional per session)
+- [x] Session CRUD endpoints (within event)
+- [x] Session schedule: list sessions by day/time
+- [x] Session speaker assignment
+- [x] Session room/location assignment
+- [x] Participant session bookmarking (add to personal agenda)
+- [x] Session capacity and RSVP (optional per session)
 
 ### Cloud Functions
 
-- [ ] `onFeedPostCreated` → push notification to event participants
-- [ ] `onMessageSent` → push notification to recipient(s)
-- [ ] `onSessionUpdated` → notify bookmarked participants of schedule changes
+- [x] `onFeedPostCreated` → push notification to event participants
+- [x] `onMessageSent` → push notification to recipient(s)
+- [x] `onSessionUpdated` → notify bookmarked participants of schedule changes
 
 ### Web Backoffice
 
-- [ ] Feed management page (create post, moderate, pin)
-- [ ] Session/agenda builder (drag-and-drop schedule, room assignment)
-- [ ] Session speaker assignment UI
-- [ ] Message moderation dashboard
+- [x] Feed management page (create post, moderate, pin)
+- [x] Session/agenda builder (drag-and-drop schedule, room assignment)
+- [x] Session speaker assignment UI
+- [x] Message moderation dashboard
 
 ### Web Participant App
 
-- [ ] Event feed page (`/events/[eventId]/feed`) — post list, create post, comments
-- [ ] Session schedule page (`/events/[eventId]/schedule`) — daily timeline, session detail, bookmarks
-- [ ] Messaging page (`/messages`) — conversation list, chat screen
-- [ ] Push notification opt-in via Web Push API
+- [x] Event feed page (`/events/[eventId]/feed`) — post list, create post, comments
+- [x] Session schedule page (`/events/[eventId]/schedule`) — daily timeline, session detail, bookmarks
+- [x] Messaging page (`/messages`) — conversation list, chat screen
+- [x] Push notification opt-in via Web Push API
 
 ### Mobile (Flutter) — DEFERRED TO WAVE 9
 
@@ -64,21 +64,21 @@ Events are social. Participants want to see updates, message each other, and pla
 
 ### Shared Types
 
-- [ ] Feed post schemas (create, response, with reactions)
-- [ ] Message and conversation schemas
-- [ ] Session schemas (CRUD, schedule query)
-- [ ] Bookmark/RSVP schemas
+- [x] Feed post schemas (create, response, with reactions)
+- [x] Message and conversation schemas
+- [x] Session schemas (CRUD, schedule query)
+- [x] Bookmark/RSVP schemas
 
 ---
 
 ## Exit Criteria
 
-- [ ] Organizer can create feed posts; participants see them in real-time
-- [ ] Participants can message each other within an event
-- [ ] Organizer can build a session schedule with speakers and rooms
-- [ ] Participants can browse the agenda and bookmark sessions
-- [ ] Push notifications work for feed posts and messages
-- [ ] All new endpoints tested
+- [x] Organizer can create feed posts; participants see them in real-time
+- [x] Participants can message each other within an event
+- [x] Organizer can build a session schedule with speakers and rooms
+- [x] Participants can browse the agenda and bookmark sessions
+- [x] Push notifications work for feed posts and messages
+- [x] All new endpoints tested
 
 ## Dependencies
 
