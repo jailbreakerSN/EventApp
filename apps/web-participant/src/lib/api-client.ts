@@ -270,11 +270,37 @@ export const notificationsApi = {
 export const speakersApi = {
   list: (eventId: string) =>
     api.get<PaginatedResponse<SpeakerProfile>>(`/v1/events/${eventId}/speakers`, false),
+
+  getById: (speakerId: string) =>
+    api.get<ApiResponse<SpeakerProfile>>(`/v1/speakers/${speakerId}`),
+
+  update: (speakerId: string, data: Partial<SpeakerProfile>) =>
+    api.put<ApiResponse<SpeakerProfile>>(`/v1/speakers/${speakerId}`, data),
+
+  getSessions: (eventId: string, speakerId: string) =>
+    api.get<PaginatedResponse<import("@teranga/shared-types").Session>>(
+      `/v1/events/${eventId}/sessions?speakerId=${speakerId}`,
+      false,
+    ),
 };
 
 export const sponsorsApi = {
   list: (eventId: string) =>
     api.get<PaginatedResponse<SponsorProfile>>(`/v1/events/${eventId}/sponsors`, false),
+
+  getById: (sponsorId: string) =>
+    api.get<ApiResponse<SponsorProfile>>(`/v1/sponsors/${sponsorId}`),
+
+  update: (sponsorId: string, data: Partial<SponsorProfile>) =>
+    api.put<ApiResponse<SponsorProfile>>(`/v1/sponsors/${sponsorId}`, data),
+
+  getLeads: (sponsorId: string) =>
+    api.get<PaginatedResponse<{ id: string; name: string; email: string; phone?: string; notes?: string; tags: string[]; scannedAt: string }>>(
+      `/v1/sponsors/${sponsorId}/leads`,
+    ),
+
+  exportLeads: (sponsorId: string) =>
+    api.get<{ data: string }>(`/v1/sponsors/${sponsorId}/leads/export`),
 };
 
 export { api, ApiError };

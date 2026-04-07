@@ -522,18 +522,38 @@ function RegistrationsTab({ eventId }: { eventId: string }) {
         <h3 className="text-sm font-medium text-gray-500 flex items-center gap-2">
           <Users className="h-4 w-4" /> {meta?.total ?? 0} inscription(s)
         </h3>
-        <select
-          value={statusFilter}
-          onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
-          className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm bg-white focus:outline-none"
-        >
-          <option value="">Tous les statuts</option>
-          <option value="confirmed">Confirmé</option>
-          <option value="pending">En attente</option>
-          <option value="waitlisted">Liste d&apos;attente</option>
-          <option value="cancelled">Annulé</option>
-          <option value="checked_in">Entré</option>
-        </select>
+        <div className="flex items-center gap-2">
+          {/* Bulk approve pending */}
+          {registrations.some((r) => r.status === "pending") && (
+            <button
+              onClick={async () => {
+                const pendingIds = registrations.filter((r) => r.status === "pending").map((r) => r.id);
+                for (const id of pendingIds) {
+                  try { await approve.mutateAsync(id); } catch { /* skip errors */ }
+                }
+                toast.success(`${pendingIds.length} inscription(s) approuvée(s)`);
+              }}
+              disabled={approve.isPending}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-medium hover:bg-green-700 disabled:opacity-50"
+            >
+              <CheckCircle className="h-3.5 w-3.5" />
+              Approuver tout ({registrations.filter((r) => r.status === "pending").length})
+            </button>
+          )}
+          <select
+            value={statusFilter}
+            onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
+            className="px-3 py-1.5 rounded-lg border border-gray-200 text-sm bg-white focus:outline-none"
+          >
+            <option value="">Tous les statuts</option>
+            <option value="confirmed">Confirmé</option>
+            <option value="pending">En attente</option>
+            <option value="pending_payment">Paiement en attente</option>
+            <option value="waitlisted">Liste d&apos;attente</option>
+            <option value="cancelled">Annulé</option>
+            <option value="checked_in">Entré</option>
+          </select>
+        </div>
       </div>
 
       {isLoading ? (
