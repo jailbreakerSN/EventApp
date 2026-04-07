@@ -1,6 +1,6 @@
 import Link from "next/link";
 import Image from "next/image";
-import { Calendar, MapPin } from "lucide-react";
+import { Calendar, MapPin, Users } from "lucide-react";
 import { Badge } from "@teranga/shared-ui";
 import { formatDate, formatCurrency } from "@teranga/shared-ui";
 import type { Event } from "@teranga/shared-types";
@@ -63,6 +63,12 @@ export function EventCard({ event }: EventCardProps) {
           <span className="text-sm font-semibold text-teranga-gold">
             {isFree ? "Gratuit" : `À partir de ${formatCurrency(minPrice!)}`}
           </span>
+          {event.registeredCount > 0 && (
+            <span className="flex items-center gap-1 text-xs text-muted-foreground">
+              <Users className="h-3 w-3" />
+              {event.registeredCount}
+            </span>
+          )}
         </div>
       </div>
     </Link>

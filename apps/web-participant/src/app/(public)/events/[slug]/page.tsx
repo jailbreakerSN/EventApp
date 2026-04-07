@@ -6,6 +6,8 @@ import { Calendar, MapPin, Clock, Users, Tag, ExternalLink } from "lucide-react"
 import { serverEventsApi } from "@/lib/server-api";
 import { formatDate, formatDateTime, formatCurrency, Badge } from "@teranga/shared-ui";
 import { EventJsonLd } from "@/components/event-detail/event-jsonld";
+import { ShareButtons } from "@/components/share-buttons";
+import { AddToCalendar } from "@/components/add-to-calendar";
 import type { Event } from "@teranga/shared-types";
 
 export const revalidate = 60;
@@ -186,6 +188,43 @@ export default async function EventDetailPage({ params }: PageProps) {
                 )}
               </div>
 
+              {/* Social proof */}
+              {event.registeredCount > 0 && (
+                <div className="mt-6 rounded-md bg-muted/50 p-4">
+                  <div className="flex items-center gap-2">
+                    <Users className="h-5 w-5 text-teranga-gold" />
+                    <span className="font-semibold">
+                      {event.registeredCount} personne{event.registeredCount > 1 ? "s" : ""} inscrite{event.registeredCount > 1 ? "s" : ""}
+                    </span>
+                  </div>
+                  {event.maxAttendees && (
+                    <div className="mt-2">
+                      <div className="h-2 w-full rounded-full bg-muted">
+                        <div
+                          className="h-2 rounded-full bg-teranga-gold transition-all"
+                          style={{ width: `${Math.min(100, (event.registeredCount / event.maxAttendees) * 100)}%` }}
+                        />
+                      </div>
+                      {spotsLeft !== null && spotsLeft > 0 && spotsLeft <= event.maxAttendees * 0.2 && (
+                        <p className="mt-1 text-xs font-medium text-orange-600">
+                          Plus que {spotsLeft} place{spotsLeft > 1 ? "s" : ""} !
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Share buttons */}
+              <div className="mt-6">
+                <ShareButtons
+                  title={event.title}
+                  date={formatDate(event.startDate)}
+                  url={`${process.env.NEXT_PUBLIC_APP_URL || "https://teranga.sn"}/events/${event.slug}`}
+                  description={event.shortDescription ?? undefined}
+                />
+              </div>
+
               {/* Description */}
               <div className="mt-8">
                 <h2 className="text-xl font-semibold">À propos</h2>
@@ -250,6 +289,18 @@ export default async function EventDetailPage({ params }: PageProps) {
                     </p>
                   )}
                 </div>
+              </div>
+
+              {/* Add to Calendar */}
+              <div className="rounded-lg bg-white p-6 shadow-lg">
+                <h3 className="text-sm font-semibold mb-3">Ajouter au calendrier</h3>
+                <AddToCalendar
+                  title={event.title}
+                  description={event.shortDescription ?? event.description.slice(0, 300)}
+                  location={`${event.location.name}, ${event.location.address}, ${event.location.city}`}
+                  startDate={event.startDate}
+                  endDate={event.endDate}
+                />
               </div>
 
               {/* Online event link */}

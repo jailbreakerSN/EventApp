@@ -80,6 +80,30 @@ export default async function HomePage() {
         </div>
       </section>
 
+      {/* Category quick filters */}
+      <section className="mx-auto max-w-7xl px-4 pb-8 sm:px-6 lg:px-8">
+        <h2 className="text-xl font-bold">Explorer par catégorie</h2>
+        <div className="mt-4 flex flex-wrap gap-2">
+          {[
+            { slug: "conference", label: "Conférences", emoji: "🎤" },
+            { slug: "workshop", label: "Ateliers", emoji: "🛠️" },
+            { slug: "networking", label: "Networking", emoji: "🤝" },
+            { slug: "concert", label: "Concerts", emoji: "🎵" },
+            { slug: "festival", label: "Festivals", emoji: "🎪" },
+            { slug: "training", label: "Formations", emoji: "📚" },
+            { slug: "sport", label: "Sport", emoji: "⚽" },
+          ].map(({ slug, label, emoji }) => (
+            <Link
+              key={slug}
+              href={`/events?category=${slug}`}
+              className="inline-flex items-center gap-1.5 rounded-full border px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-teranga-gold/10 hover:border-teranga-gold"
+            >
+              <span>{emoji}</span> {label}
+            </Link>
+          ))}
+        </div>
+      </section>
+
       {/* Featured Events */}
       {featuredEvents.length > 0 && (
         <section className="mx-auto max-w-7xl px-4 pb-16 sm:px-6 lg:px-8">
