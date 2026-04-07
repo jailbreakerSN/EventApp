@@ -16,6 +16,8 @@ import {
 import { BaseService } from "./base.service";
 import { eventBus } from "@/events/event-bus";
 import { getRequestId } from "@/context/request-context";
+import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
+import QRCode from "qrcode";
 
 // ─── Service ─────────────────────────────────────────────────────────────────
 
@@ -168,22 +170,168 @@ export class BadgeService extends BaseService {
 
   /**
    * Get a user's own badge for an event.
+   * If no badge exists yet, generates the PDF on-demand (no pre-storage needed).
    */
   async getMyBadge(eventId: string, user: AuthUser): Promise<GeneratedBadge> {
     this.requirePermission(user, "badge:view_own");
 
+    // Check for existing badge first
     const snap = await this.badgesCollection
       .where("eventId", "==", eventId)
       .where("userId", "==", user.uid)
       .limit(1)
       .get();
 
-    if (snap.empty) {
-      throw new NotFoundError("Badge");
+    if (!snap.empty) {
+      const doc = snap.docs[0];
+      const badge = { id: doc.id, ...doc.data() } as GeneratedBadge;
+      // If badge exists but PDF failed or is pending, try regenerating
+      if (badge.pdfURL) return badge;
     }
 
-    const doc = snap.docs[0];
-    return { id: doc.id, ...doc.data() } as GeneratedBadge;
+    // No badge or no PDF — generate on demand
+    const registration = await this.findUserRegistration(eventId, user.uid);
+    if (!registration) {
+      throw new NotFoundError("Registration");
+    }
+    if (registration.status !== "confirmed" && registration.status !== "checked_in") {
+      throw new ValidationError("Le badge n'est disponible que pour les inscriptions confirmées");
+    }
+
+    return this.generateOnDemand(registration, eventId, user.uid);
+  }
+
+  /**
+   * Find a user's active registration for an event.
+   */
+  private async findUserRegistration(eventId: string, userId: string): Promise<Registration | null> {
+    const regSnap = await db.collection(COLLECTIONS.REGISTRATIONS)
+      .where("eventId", "==", eventId)
+      .where("userId", "==", userId)
+      .where("status", "in", ["confirmed", "checked_in", "pending", "waitlisted"])
+      .limit(1)
+      .get();
+
+    if (regSnap.empty) return null;
+    return { id: regSnap.docs[0].id, ...regSnap.docs[0].data() } as Registration;
+  }
+
+  /**
+   * Generate a badge PDF on-demand — no pre-storage, no Cloud Function needed.
+   * Creates badge doc + PDF in one shot, returns immediately.
+   */
+  private async generateOnDemand(registration: Registration, eventId: string, userId: string): Promise<GeneratedBadge> {
+    const now = new Date().toISOString();
+
+    // Fetch event + user data for the PDF
+    const [event, userData] = await Promise.all([
+      eventRepository.findByIdOrThrow(eventId),
+      userRepository.findById(userId),
+    ]);
+
+    const participantName = userData?.displayName ?? "Participant";
+    const ticketType = event.ticketTypes.find((t) => t.id === registration.ticketTypeId);
+    const ticketName = ticketType?.name ?? "Participant";
+
+    // Look up org default template for styling
+    let template = { backgroundColor: "#FFFFFF", primaryColor: "#1A1A2E", width: 85.6, height: 54.0 };
+    try {
+      const tplSnap = await this.templatesCollection
+        .where("organizationId", "==", event.organizationId)
+        .where("isDefault", "==", true)
+        .limit(1)
+        .get();
+      if (!tplSnap.empty) {
+        template = { ...template, ...tplSnap.docs[0].data() as typeof template };
+      }
+    } catch { /* use defaults */ }
+
+    // Generate QR code as PNG bytes
+    const qrPngBase64 = await QRCode.toDataURL(registration.qrCodeValue, {
+      errorCorrectionLevel: "H",
+      margin: 1,
+      width: 200,
+    });
+    const qrImageBytes = Buffer.from(qrPngBase64.split(",")[1], "base64");
+
+    // Build PDF
+    const pdfDoc = await PDFDocument.create();
+    const mmToPoints = (mm: number) => mm * 2.83465;
+    const page = pdfDoc.addPage([mmToPoints(template.width), mmToPoints(template.height)]);
+
+    const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+    const fontRegular = await pdfDoc.embedFont(StandardFonts.Helvetica);
+
+    const hexToRgb = (hex: string) => {
+      const r = parseInt(hex.slice(1, 3), 16) / 255;
+      const g = parseInt(hex.slice(3, 5), 16) / 255;
+      const b = parseInt(hex.slice(5, 7), 16) / 255;
+      return rgb(r, g, b);
+    };
+
+    const { width, height } = page.getSize();
+    const primaryRgb = hexToRgb(template.primaryColor);
+    const bgRgb = hexToRgb(template.backgroundColor);
+
+    // Background
+    page.drawRectangle({ x: 0, y: 0, width, height, color: bgRgb });
+    // Header bar
+    page.drawRectangle({ x: 0, y: height - 30, width, height: 30, color: primaryRgb });
+    // Event name in header
+    page.drawText((event.title ?? "Event").slice(0, 40), {
+      x: 8, y: height - 20, size: 9, font: fontBold, color: rgb(1, 1, 1),
+    });
+    // Participant name
+    page.drawText(participantName, {
+      x: 8, y: height - 55, size: 13, font: fontBold, color: primaryRgb,
+    });
+    // Ticket type
+    page.drawText(ticketName, {
+      x: 8, y: height - 70, size: 9, font: fontRegular, color: primaryRgb,
+    });
+    // QR code
+    const qrImage = await pdfDoc.embedPng(qrImageBytes);
+    page.drawImage(qrImage, { x: width - 80, y: 10, width: 65, height: 65 });
+
+    const pdfBytes = await pdfDoc.save();
+
+    // Upload to Cloud Storage
+    const bucket = storage.bucket();
+    const docRef = this.badgesCollection.doc();
+    const filePath = `badges/${eventId}/${userId}/${docRef.id}.pdf`;
+    const file = bucket.file(filePath);
+
+    await file.save(Buffer.from(pdfBytes), {
+      metadata: {
+        contentType: "application/pdf",
+        cacheControl: "public, max-age=604800",
+      },
+    });
+
+    const [signedUrl] = await file.getSignedUrl({
+      version: "v4",
+      action: "read",
+      expires: Date.now() + 60 * 60 * 1000, // 1 hour
+    });
+
+    // Save badge doc for caching (subsequent calls return this directly)
+    const badge: GeneratedBadge = {
+      id: docRef.id,
+      registrationId: registration.id,
+      eventId,
+      userId,
+      templateId: "",
+      status: "generated",
+      pdfURL: signedUrl,
+      qrCodeValue: registration.qrCodeValue,
+      error: null,
+      generatedAt: now,
+      downloadCount: 0,
+    };
+
+    await docRef.set(badge);
+
+    return badge;
   }
 
   /**

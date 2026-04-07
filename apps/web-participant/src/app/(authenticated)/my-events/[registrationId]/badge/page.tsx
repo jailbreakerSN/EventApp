@@ -2,7 +2,8 @@
 
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Download } from "lucide-react";
+import { useState } from "react";
+import { ArrowLeft, Download, Loader2 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { useQuery } from "@tanstack/react-query";
 import { registrationsApi, badgesApi } from "@/lib/api-client";
@@ -11,9 +12,9 @@ import type { Registration, GeneratedBadge } from "@teranga/shared-types";
 
 export default function BadgePage() {
   const { registrationId } = useParams<{ registrationId: string }>();
+  const [pdfState, setPdfState] = useState<"idle" | "loading" | "error">("idle");
 
-  // We need to get the registration to find the eventId for the badge endpoint
-  const { data: regData, isLoading: regLoading } = useQuery({
+  const { data: regData, isLoading } = useQuery({
     queryKey: ["my-registrations"],
     queryFn: () => registrationsApi.getMyRegistrations({ limit: 100 }),
   });
@@ -21,15 +22,22 @@ export default function BadgePage() {
   const registrations = (regData as { data?: Registration[] })?.data as Registration[] | undefined;
   const registration = registrations?.find((r) => r.id === registrationId);
 
-  const { data: badgeData, isLoading: badgeLoading } = useQuery({
-    queryKey: ["my-badge", registration?.eventId],
-    queryFn: () => badgesApi.getMyBadge(registration!.eventId),
-    enabled: !!registration?.eventId,
-  });
-
-  const badge = (badgeData as { data?: GeneratedBadge })?.data as GeneratedBadge | undefined;
-
-  const isLoading = regLoading || badgeLoading;
+  const handleDownloadPdf = async () => {
+    if (!registration?.eventId || pdfState === "loading") return;
+    setPdfState("loading");
+    try {
+      const res = await badgesApi.getMyBadge(registration.eventId);
+      const badge = (res as { data?: GeneratedBadge })?.data as GeneratedBadge | undefined;
+      if (badge?.pdfURL) {
+        window.open(badge.pdfURL, "_blank");
+        setPdfState("idle");
+      } else {
+        setPdfState("error");
+      }
+    } catch {
+      setPdfState("error");
+    }
+  };
 
   if (isLoading) {
     return (
@@ -49,6 +57,8 @@ export default function BadgePage() {
       </div>
     );
   }
+
+  const isConfirmed = registration.status === "confirmed" || registration.status === "checked_in";
 
   return (
     <div className="mx-auto max-w-lg px-4 py-8">
@@ -81,18 +91,27 @@ export default function BadgePage() {
             </p>
           )}
 
-          {badge?.pdfURL && (
-            <a
-              href={badge.pdfURL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-4"
-            >
-              <Button variant="outline">
-                <Download className="mr-2 h-4 w-4" />
-                Télécharger le badge PDF
+          {isConfirmed && (
+            <div className="mt-6 flex flex-col items-center gap-2">
+              <Button
+                variant="outline"
+                onClick={handleDownloadPdf}
+                disabled={pdfState === "loading"}
+                aria-label="Télécharger le badge PDF"
+              >
+                {pdfState === "loading" ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Download className="mr-2 h-4 w-4" />
+                )}
+                {pdfState === "loading" ? "Génération en cours..." : "Télécharger le badge PDF"}
               </Button>
-            </a>
+              {pdfState === "error" && (
+                <p className="text-center text-sm text-muted-foreground">
+                  La génération du badge PDF a échoué. Réessayez dans quelques instants.
+                </p>
+              )}
+            </div>
           )}
         </CardContent>
       </Card>
