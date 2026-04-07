@@ -272,7 +272,7 @@ describe("PaymentService.initiatePayment", () => {
   it("rejects for unsupported payment method", async () => {
     mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
     await expect(
-      service.initiatePayment("ev-1", "vip", "wave" as never, undefined, user),
+      service.initiatePayment("ev-1", "vip", "crypto" as never, undefined, user),
     ).rejects.toThrow("non disponible");
   });
 });

@@ -26,18 +26,36 @@ import { eventBus } from "@/events/event-bus";
 import { getRequestId } from "@/context/request-context";
 import { type PaymentProvider } from "@/providers/payment-provider.interface";
 import { mockPaymentProvider } from "@/providers/mock-payment.provider";
+import { wavePaymentProvider } from "@/providers/wave-payment.provider";
+import { orangeMoneyPaymentProvider } from "@/providers/orange-money-payment.provider";
 
 // ─── Provider Registry ──────────────────────────────────────────────────────
 
+/**
+ * Provider routing:
+ * - In production (when API keys are set), routes to real providers
+ * - In development, falls back to mock provider for all methods
+ */
+const IS_PROD = process.env.NODE_ENV === "production";
+const HAS_WAVE = !!process.env.WAVE_API_KEY;
+const HAS_OM = !!process.env.ORANGE_MONEY_CLIENT_ID;
+
 const providers: Record<string, PaymentProvider> = {
   mock: mockPaymentProvider,
-  // Future: wave: wavePaymentProvider, orange_money: orangeMoneyProvider
+  wave: HAS_WAVE ? wavePaymentProvider : mockPaymentProvider,
+  orange_money: HAS_OM ? orangeMoneyPaymentProvider : mockPaymentProvider,
+  free_money: mockPaymentProvider,  // TODO: implement when Free Money API available
+  card: mockPaymentProvider,         // TODO: implement with PayDunya/Stripe
 };
 
 function getProvider(method: PaymentMethod): PaymentProvider {
   const provider = providers[method];
   if (!provider) {
     throw new ValidationError(`Méthode de paiement « ${method} » non disponible`);
+  }
+  // In production, block mock method
+  if (IS_PROD && method === "mock") {
+    throw new ValidationError("Le mode test n'est pas disponible en production");
   }
   return provider;
 }

@@ -21,6 +21,7 @@ export const COLLECTIONS = {
   REGISTRATIONS: "registrations",
   BADGES: "badges",
   BADGE_TEMPLATES: "badgeTemplates",
+  PAYMENTS: "payments",
   CONVERSATIONS: "conversations",
   MESSAGES: "messages",
   FEED_POSTS: "feedPosts",

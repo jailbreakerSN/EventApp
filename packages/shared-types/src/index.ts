@@ -12,3 +12,4 @@ export * from "./sponsor.types";
 export * from "./api.types";
 export * from "./audit.types";
 export * from "./promo.types";
+export * from "./phone.types";

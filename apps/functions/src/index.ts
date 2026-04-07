@@ -17,3 +17,9 @@ export { onCheckinCompleted } from "./triggers/checkin.triggers";
 
 // ─── Notification Triggers ────────────────────────────────────────────────────
 export { onFeedPostCreated, onRegistrationConfirmed } from "./triggers/notification.triggers";
+
+// ─── Payment Triggers ───────────────────────────────────────────────────────
+export { onPaymentTimeout, onPaymentSucceeded, onPaymentFailed } from "./triggers/payment.triggers";
+
+// ─── Scheduled Reminders ────────────────────────────────────────────────────
+export { sendEventReminders } from "./triggers/reminder.triggers";
