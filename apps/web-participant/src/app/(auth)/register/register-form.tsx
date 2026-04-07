@@ -73,7 +73,7 @@ export function RegisterForm() {
     <Card>
       <CardHeader className="text-center">
         <Link href="/" className="mx-auto mb-2 block">
-          <Image src="/logo-color.svg" alt="Teranga Event" width={140} height={83} className="h-12 w-auto mx-auto" priority />
+          <Image src="/logo-color.svg" alt="Teranga Event" width={140} height={83} className="h-14 w-auto mx-auto sm:h-16 md:h-20" priority />
         </Link>
         <CardTitle className="text-2xl">Créer un compte</CardTitle>
         <CardDescription>Inscrivez-vous pour découvrir les événements</CardDescription>
