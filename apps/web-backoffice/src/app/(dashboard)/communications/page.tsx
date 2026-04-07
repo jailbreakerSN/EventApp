@@ -85,6 +85,7 @@ export default function CommunicationsPage() {
             className="w-full rounded-md border px-3 py-2 text-sm"
             value={selectedEventId}
             onChange={(e) => setSelectedEventId(e.target.value)}
+            aria-label="Sélectionner un événement"
           >
             <option value="">Selectionnez un evenement</option>
             {events.map((ev) => (
@@ -114,6 +115,7 @@ export default function CommunicationsPage() {
                   value={body}
                   onChange={(e) => setBody(e.target.value)}
                   placeholder="Votre message..."
+                  aria-label="Corps du message"
                 />
               </div>
 
@@ -128,7 +130,8 @@ export default function CommunicationsPage() {
                         key={ch}
                         type="button"
                         onClick={() => toggleChannel(ch)}
-                        className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+                        aria-pressed={selected}
+                        className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium motion-safe:transition-colors ${
                           selected ? "border-teranga-gold bg-teranga-gold/10 text-teranga-gold" : "border-border text-muted-foreground"
                         }`}
                       >
@@ -146,6 +149,7 @@ export default function CommunicationsPage() {
                   className="w-full rounded-md border px-3 py-2 text-sm"
                   value={filter}
                   onChange={(e) => setFilter(e.target.value as BroadcastRecipientFilter)}
+                  aria-label="Filtrer les destinataires"
                 >
                   {Object.entries(FILTER_LABELS).map(([value, label]) => (
                     <option key={value} value={value}>{label}</option>

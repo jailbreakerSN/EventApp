@@ -3,7 +3,8 @@
 import { useAuth } from "@/hooks/use-auth";
 import { useTheme } from "next-themes";
 import { ThemeToggle } from "@teranga/shared-ui";
-import { Bell, LogOut } from "lucide-react";
+import { Bell, LogOut, Menu } from "lucide-react";
+import { useSidebar } from "./sidebar-context";
 import type { UserRole } from "@teranga/shared-types";
 
 const ROLE_LABELS: Record<string, { label: string; color: string }> = {
@@ -17,18 +18,32 @@ const ROLE_LABELS: Record<string, { label: string; color: string }> = {
 export function TopBar() {
   const { user, logout } = useAuth();
   const { theme, setTheme } = useTheme();
+  const { isOpen, toggle } = useSidebar();
 
   const primaryRole = user?.roles?.[0] ?? "participant";
   const roleInfo = ROLE_LABELS[primaryRole] ?? ROLE_LABELS.participant;
 
   return (
-    <header className="h-14 bg-card border-b border-border flex items-center justify-between px-6 shrink-0">
-      <div />
+    <header className="h-14 bg-card border-b border-border flex items-center justify-between px-4 sm:px-6 shrink-0">
+      {/* Left: hamburger on mobile */}
+      <div className="flex items-center">
+        <button
+          onClick={toggle}
+          className="lg:hidden p-2 -ml-1 rounded-lg hover:bg-accent motion-safe:transition-colors"
+          aria-label={isOpen ? "Fermer le menu" : "Ouvrir le menu"}
+          aria-expanded={isOpen}
+          aria-controls="mobile-sidebar"
+        >
+          <Menu size={20} className="text-foreground" aria-hidden="true" />
+        </button>
+      </div>
+
+      {/* Right: actions */}
       <div className="flex items-center gap-3">
         <ThemeToggle theme={theme} setTheme={setTheme} />
 
-        <button className="relative p-2 rounded-lg hover:bg-accent transition-colors" aria-label="Notifications">
-          <Bell size={18} className="text-muted-foreground" />
+        <button className="relative p-2 rounded-lg hover:bg-accent motion-safe:transition-colors" aria-label="Notifications">
+          <Bell size={18} className="text-muted-foreground" aria-hidden="true" />
         </button>
 
         <div className="flex items-center gap-2">
@@ -39,7 +54,7 @@ export function TopBar() {
               className="w-8 h-8 rounded-full object-cover"
             />
           ) : (
-            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center">
+            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center" aria-hidden="true">
               <span className="text-white text-xs font-bold">
                 {user?.displayName?.[0]?.toUpperCase() ?? "?"}
               </span>
@@ -57,11 +72,11 @@ export function TopBar() {
 
         <button
           onClick={() => logout()}
-          className="p-2 rounded-lg hover:bg-accent transition-colors"
+          className="p-2 rounded-lg hover:bg-accent motion-safe:transition-colors"
           title="Déconnexion"
           aria-label="Déconnexion"
         >
-          <LogOut size={17} className="text-muted-foreground" />
+          <LogOut size={17} className="text-muted-foreground" aria-hidden="true" />
         </button>
       </div>
     </header>

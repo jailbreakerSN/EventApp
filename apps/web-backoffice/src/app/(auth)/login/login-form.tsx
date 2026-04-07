@@ -3,6 +3,7 @@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { useAuth } from "@/hooks/use-auth";
 import { firebaseAuth } from "@/lib/firebase";
 import { LoginSchema, type LoginDto } from "@teranga/shared-types";
@@ -75,6 +76,12 @@ export function LoginForm() {
         {errors.password && (
           <p className="text-destructive text-xs mt-1">{errors.password.message}</p>
         )}
+      </div>
+
+      <div className="flex justify-end">
+        <Link href="/forgot-password" className="text-xs text-muted-foreground hover:text-foreground">
+          Mot de passe oubli&eacute; ?
+        </Link>
       </div>
 
       {error && (

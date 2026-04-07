@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
@@ -14,17 +15,19 @@ import {
   BarChart3,
   Wallet,
   Megaphone,
+  X,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
+import { useSidebar } from "./sidebar-context";
 import type { UserRole } from "@teranga/shared-types";
 
 interface NavItem {
   href: string;
   icon: LucideIcon;
   label: string;
-  roles: UserRole[]; // which roles can see this item
+  roles: UserRole[];
 }
 
 const navItems: NavItem[] = [
@@ -43,36 +46,74 @@ const navItems: NavItem[] = [
 export function Sidebar() {
   const pathname = usePathname();
   const { hasRole } = useAuth();
+  const { isOpen, close } = useSidebar();
 
-  const visibleItems = navItems.filter((item) =>
-    hasRole(...item.roles)
-  );
+  const visibleItems = navItems.filter((item) => hasRole(...item.roles));
 
-  return (
-    <aside className="w-60 bg-sidebar text-sidebar-foreground flex flex-col h-full shrink-0">
+  // Close sidebar on route change (mobile)
+  useEffect(() => {
+    close();
+  }, [pathname, close]);
+
+  // Close on Escape key
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") close();
+    };
+    document.addEventListener("keydown", handleKey);
+    return () => document.removeEventListener("keydown", handleKey);
+  }, [isOpen, close]);
+
+  // Lock body scroll when mobile sidebar is open
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => { document.body.style.overflow = ""; };
+  }, [isOpen]);
+
+  const sidebarContent = (
+    <>
       {/* Logo */}
-      <div className="px-6 py-4 border-b border-white/10">
-        <Image src="/logo-white.svg" alt="Teranga Event" width={140} height={83} className="h-10 w-auto" priority />
-        <span className="text-white/50 text-[10px] block mt-0.5 tracking-wider uppercase">Back-office</span>
+      <div className="px-6 py-4 border-b border-white/10 flex items-center justify-between">
+        <div>
+          <Image src="/logo-white.svg" alt="Teranga Event" width={140} height={83} className="h-10 w-auto" priority />
+          <span className="text-white/50 text-[10px] block mt-0.5 tracking-wider uppercase">Back-office</span>
+        </div>
+        {/* Close button — mobile only */}
+        <button
+          onClick={close}
+          className="lg:hidden p-1.5 rounded-lg hover:bg-white/10 motion-safe:transition-colors"
+          aria-label="Fermer le menu"
+        >
+          <X size={18} className="text-white/60" />
+        </button>
       </div>
 
       {/* Navigation */}
       <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
-        {visibleItems.map(({ href, icon: Icon, label }) => (
-          <Link
-            key={href}
-            href={href}
-            className={cn(
-              "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors",
-              pathname === href || pathname.startsWith(href + "/")
-                ? "bg-white/15 text-white font-medium"
-                : "text-white/60 hover:bg-white/10 hover:text-white"
-            )}
-          >
-            <Icon size={17} />
-            {label}
-          </Link>
-        ))}
+        {visibleItems.map(({ href, icon: Icon, label }) => {
+          const isActive = pathname === href || pathname.startsWith(href + "/");
+          return (
+            <Link
+              key={href}
+              href={href}
+              aria-current={isActive ? "page" : undefined}
+              className={cn(
+                "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm motion-safe:transition-colors",
+                isActive
+                  ? "bg-white/15 text-white font-medium"
+                  : "text-white/60 hover:bg-white/10 hover:text-white"
+              )}
+            >
+              <Icon size={17} aria-hidden="true" />
+              {label}
+            </Link>
+          );
+        })}
       </nav>
 
       {/* Plan badge */}
@@ -82,6 +123,43 @@ export function Sidebar() {
           <p className="text-white/50 text-xs mt-0.5">2 événements / mois</p>
         </div>
       </div>
-    </aside>
+    </>
+  );
+
+  return (
+    <>
+      {/* Desktop sidebar — always visible at lg+ */}
+      <aside
+        className="hidden lg:flex w-60 bg-sidebar text-sidebar-foreground flex-col h-full shrink-0"
+        role="navigation"
+        aria-label="Navigation principale"
+      >
+        {sidebarContent}
+      </aside>
+
+      {/* Mobile backdrop */}
+      <div
+        className={cn(
+          "fixed inset-0 z-40 bg-black/50 lg:hidden motion-safe:transition-opacity",
+          isOpen ? "opacity-100" : "opacity-0 pointer-events-none"
+        )}
+        onClick={close}
+        aria-hidden="true"
+      />
+
+      {/* Mobile drawer */}
+      <aside
+        className={cn(
+          "fixed inset-y-0 left-0 z-50 w-60 bg-sidebar text-sidebar-foreground flex flex-col lg:hidden",
+          "motion-safe:transition-transform motion-safe:duration-300 motion-safe:ease-in-out",
+          isOpen ? "translate-x-0" : "-translate-x-full"
+        )}
+        role="navigation"
+        aria-label="Navigation principale"
+        aria-hidden={!isOpen}
+      >
+        {sidebarContent}
+      </aside>
+    </>
   );
 }

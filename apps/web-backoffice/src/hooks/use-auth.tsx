@@ -11,6 +11,7 @@ import {
   signInWithEmailAndPassword,
   signOut,
   onAuthStateChanged,
+  sendPasswordResetEmail,
   type User,
 } from "firebase/auth";
 import { firebaseAuth } from "@/lib/firebase";
@@ -31,6 +32,7 @@ interface AuthContextValue {
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   hasRole: (...roles: UserRole[]) => boolean;
+  resetPassword: (email: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -71,8 +73,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const hasRole = (...roles: UserRole[]) =>
     roles.some((r) => user?.roles.includes(r)) ?? false;
 
+  const resetPassword = async (email: string) => {
+    await sendPasswordResetEmail(firebaseAuth, email);
+  };
+
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, hasRole }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, hasRole, resetPassword }}>
       {children}
     </AuthContext.Provider>
   );

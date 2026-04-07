@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useId } from "react";
+import { Button } from "./button";
+import { cn } from "../lib/utils";
 
 interface ConfirmDialogProps {
   open: boolean;
@@ -11,6 +13,7 @@ interface ConfirmDialogProps {
   confirmLabel?: string;
   cancelLabel?: string;
   variant?: "danger" | "default";
+  className?: string;
 }
 
 export function ConfirmDialog({
@@ -22,52 +25,64 @@ export function ConfirmDialog({
   confirmLabel = "Confirmer",
   cancelLabel = "Annuler",
   variant = "default",
+  className,
 }: ConfirmDialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const confirmRef = useRef<HTMLButtonElement>(null);
+  const titleId = useId();
 
   useEffect(() => {
     const dialog = dialogRef.current;
     if (!dialog) return;
     if (open && !dialog.open) {
       dialog.showModal();
+      // Auto-focus confirm button when dialog opens
+      requestAnimationFrame(() => confirmRef.current?.focus());
     } else if (!open && dialog.open) {
       dialog.close();
     }
   }, [open]);
 
-  const confirmClass =
-    variant === "danger"
-      ? "bg-red-600 text-white hover:bg-red-700 focus:ring-red-500"
-      : "bg-[#1A1A2E] text-white hover:bg-[#16213E] focus:ring-[#1A1A2E]";
+  // Handle backdrop click
+  const handleClick = (e: React.MouseEvent<HTMLDialogElement>) => {
+    if (e.target === dialogRef.current) {
+      onCancel();
+    }
+  };
 
   return (
     <dialog
       ref={dialogRef}
       onClose={onCancel}
-      className="rounded-xl border border-gray-200 p-0 shadow-xl backdrop:bg-black/40 max-w-md w-full"
+      onClick={handleClick}
+      className={cn(
+        "rounded-xl border border-border bg-card p-0 text-foreground shadow-xl backdrop:bg-black/40 max-w-md w-full",
+        className,
+      )}
       aria-modal="true"
+      aria-labelledby={titleId}
     >
       <div className="p-6">
-        <h3 className="text-lg font-semibold text-gray-900 mb-2">{title}</h3>
+        <h3 id={titleId} className="text-lg font-semibold text-foreground mb-2">
+          {title}
+        </h3>
         {description && (
-          <p className="text-sm text-gray-500 mb-6">{description}</p>
+          <p className="text-sm text-muted-foreground mb-6">{description}</p>
         )}
         <div className="flex justify-end gap-3">
-          <button
-            onClick={onCancel}
-            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-gray-300"
-          >
+          <Button variant="outline" onClick={onCancel}>
             {cancelLabel}
-          </button>
-          <button
+          </Button>
+          <Button
+            ref={confirmRef}
+            variant={variant === "danger" ? "destructive" : "default"}
             onClick={() => {
               onConfirm();
               onCancel();
             }}
-            className={`px-4 py-2 text-sm font-medium rounded-lg focus:outline-none focus:ring-2 ${confirmClass}`}
           >
             {confirmLabel}
-          </button>
+          </Button>
         </div>
       </div>
     </dialog>

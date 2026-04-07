@@ -64,12 +64,14 @@ export default function EventsPage() {
             placeholder="Rechercher un événement..."
             value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+            aria-label="Rechercher un événement"
             className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
           />
         </div>
         <select
           value={category}
           onChange={(e) => { setCategory(e.target.value); setPage(1); }}
+          aria-label="Filtrer par catégorie"
           className="px-4 py-2.5 rounded-lg border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary bg-card"
         >
           {CATEGORY_OPTIONS.map((opt) => (
@@ -166,27 +168,29 @@ export default function EventsPage() {
 
           {/* Pagination */}
           {totalPages > 1 && (
-            <div className="flex items-center justify-between mt-4 text-sm text-muted-foreground">
-              <span>
+            <nav className="flex items-center justify-between mt-4 text-sm text-muted-foreground" aria-label="Pagination">
+              <span aria-current="page">
                 Page {page} sur {totalPages} ({meta?.total ?? 0} résultat{(meta?.total ?? 0) > 1 ? "s" : ""})
               </span>
               <div className="flex gap-2">
                 <button
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
                   disabled={page <= 1}
+                  aria-label="Page précédente"
                   className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-border hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed"
                 >
-                  <ChevronLeft className="h-4 w-4" /> Précédent
+                  <ChevronLeft className="h-4 w-4" aria-hidden="true" /> Précédent
                 </button>
                 <button
                   onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                   disabled={page >= totalPages}
+                  aria-label="Page suivante"
                   className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-border hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed"
                 >
-                  Suivant <ChevronRight className="h-4 w-4" />
+                  Suivant <ChevronRight className="h-4 w-4" aria-hidden="true" />
                 </button>
               </div>
-            </div>
+            </nav>
           )}
         </>
       )}

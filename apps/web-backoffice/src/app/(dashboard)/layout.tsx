@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/layouts/sidebar";
 import { TopBar } from "@/components/layouts/topbar";
+import { SidebarProvider } from "@/components/layouts/sidebar-context";
 import { useAuth } from "@/hooks/use-auth";
 
 const BACKOFFICE_ROLES = ["organizer", "co_organizer", "super_admin"] as const;
@@ -28,7 +29,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   if (loading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-muted">
+      <div className="flex h-screen items-center justify-center bg-muted" role="status">
         <div className="text-muted-foreground">Chargement...</div>
       </div>
     );
@@ -37,12 +38,24 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   if (!user || !hasRole(...BACKOFFICE_ROLES)) return null;
 
   return (
-    <div className="flex h-screen bg-muted overflow-hidden">
-      <Sidebar />
-      <div className="flex-1 flex flex-col min-w-0">
-        <TopBar />
-        <main className="flex-1 overflow-y-auto p-6">{children}</main>
+    <SidebarProvider>
+      {/* Skip to content link */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[100] focus:bg-primary focus:text-white focus:px-4 focus:py-2 focus:rounded-lg focus:text-sm focus:font-medium"
+      >
+        Aller au contenu principal
+      </a>
+
+      <div className="flex h-screen bg-muted overflow-hidden">
+        <Sidebar />
+        <div className="flex-1 flex flex-col min-w-0">
+          <TopBar />
+          <main id="main-content" className="flex-1 overflow-y-auto p-4 sm:p-6" tabIndex={-1}>
+            {children}
+          </main>
+        </div>
       </div>
-    </div>
+    </SidebarProvider>
   );
 }
