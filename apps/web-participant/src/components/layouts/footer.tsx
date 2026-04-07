@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 
 export function Footer() {
   return (
@@ -6,7 +7,7 @@ export function Footer() {
       <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
         <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
           <div>
-            <h3 className="text-lg font-bold text-teranga-gold">Teranga</h3>
+            <Image src="/logo-white.svg" alt="Teranga Event" width={120} height={71} className="h-9 w-auto" />
             <p className="mt-2 text-sm text-gray-300">
               La plateforme de gestion d&apos;événements pour le Sénégal et l&apos;Afrique de l&apos;Ouest.
             </p>

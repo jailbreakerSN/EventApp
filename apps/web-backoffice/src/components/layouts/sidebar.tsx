@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
@@ -50,9 +51,9 @@ export function Sidebar() {
   return (
     <aside className="w-60 bg-[#1A1A2E] flex flex-col h-full shrink-0">
       {/* Logo */}
-      <div className="px-6 py-5 border-b border-white/10">
-        <span className="text-white text-xl font-bold tracking-tight">Teranga</span>
-        <span className="text-[#c59e4b] text-xs block -mt-0.5">Back-office</span>
+      <div className="px-6 py-4 border-b border-white/10">
+        <Image src="/logo-white.svg" alt="Teranga Event" width={140} height={83} className="h-10 w-auto" priority />
+        <span className="text-white/50 text-[10px] block mt-0.5 tracking-wider uppercase">Back-office</span>
       </div>
 
       {/* Navigation */}

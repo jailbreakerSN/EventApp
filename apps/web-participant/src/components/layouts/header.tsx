@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@teranga/shared-ui";
 import { Menu, X, User, LogOut } from "lucide-react";
@@ -14,7 +15,7 @@ export function Header() {
     <header className="sticky top-0 z-50 border-b bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/60">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
         <Link href="/" className="flex items-center gap-2">
-          <span className="text-xl font-bold text-teranga-navy">Teranga</span>
+          <Image src="/logo-color.svg" alt="Teranga Event" width={140} height={83} className="h-8 w-auto" priority />
         </Link>
 
         {/* Desktop nav */}
