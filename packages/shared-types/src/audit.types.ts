@@ -40,6 +40,17 @@ export const AuditActionSchema = z.enum([
   "payment.succeeded",
   "payment.failed",
   "payment.refunded",
+  // ── Venue ─────────────────────────────────────────────────────────────────
+  "venue.created",
+  "venue.updated",
+  "venue.approved",
+  "venue.suspended",
+  // ── Admin ─────────────────────────────────────────────────────────────────
+  "user.role_changed",
+  "user.suspended",
+  "user.activated",
+  "organization.verified",
+  "organization.suspended",
 ]);
 
 export type AuditAction = z.infer<typeof AuditActionSchema>;

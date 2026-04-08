@@ -1,0 +1,199 @@
+import { z } from "zod";
+
+// ─── Venue Enums ────────────────────────────────────────────────────────────
+
+export const VenueTypeSchema = z.enum([
+  "hotel",
+  "conference_center",
+  "cultural_space",
+  "coworking",
+  "restaurant",
+  "outdoor",
+  "university",
+  "sports",
+  "other",
+]);
+
+export type VenueType = z.infer<typeof VenueTypeSchema>;
+
+export const VenueStatusSchema = z.enum([
+  "pending",
+  "approved",
+  "suspended",
+  "archived",
+]);
+
+export type VenueStatus = z.infer<typeof VenueStatusSchema>;
+
+// ─── Venue Address ──────────────────────────────────────────────────────────
+
+export const VenueAddressSchema = z.object({
+  street: z.string().min(1).max(300),
+  city: z.string().min(1).max(100),
+  region: z.string().max(100).nullable().optional(),
+  country: z.string().length(2).default("SN"),
+  coordinates: z
+    .object({
+      lat: z.number(),
+      lng: z.number(),
+    })
+    .optional(),
+});
+
+export type VenueAddress = z.infer<typeof VenueAddressSchema>;
+
+// ─── Capacity Configuration ─────────────────────────────────────────────────
+
+export const CapacityConfigurationSchema = z.object({
+  name: z.string().min(1).max(100), // e.g. "Théâtre", "Classe", "Cocktail"
+  capacity: z.number().int().positive(),
+});
+
+export type CapacityConfiguration = z.infer<typeof CapacityConfigurationSchema>;
+
+// ─── Venue ──────────────────────────────────────────────────────────────────
+
+export const VenueSchema = z.object({
+  id: z.string(),
+  name: z.string().min(2).max(200),
+  slug: z.string().regex(/^[a-z0-9-]+$/),
+  description: z.string().max(5000).nullable().optional(),
+  address: VenueAddressSchema,
+  venueType: VenueTypeSchema,
+  capacity: z
+    .object({
+      min: z.number().int().positive().nullable().optional(),
+      max: z.number().int().positive().nullable().optional(),
+      configurations: z.array(CapacityConfigurationSchema).default([]),
+    })
+    .nullable()
+    .optional(),
+  amenities: z.array(z.string()).default([]),
+  photos: z.array(z.string().url()).default([]),
+  contactName: z.string().min(1).max(200),
+  contactEmail: z.string().email(),
+  contactPhone: z.string().nullable().optional(),
+  website: z.string().url().nullable().optional(),
+  hostOrganizationId: z.string().nullable().optional(),
+  status: VenueStatusSchema.default("pending"),
+  isFeatured: z.boolean().default(false),
+  rating: z.number().min(0).max(5).nullable().optional(),
+  eventCount: z.number().int().default(0),
+  createdBy: z.string(),
+  updatedBy: z.string(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+
+export type Venue = z.infer<typeof VenueSchema>;
+
+// ─── Create / Update DTOs ───────────────────────────────────────────────────
+
+export const CreateVenueSchema = VenueSchema.omit({
+  id: true,
+  slug: true,
+  status: true,
+  isFeatured: true,
+  rating: true,
+  eventCount: true,
+  createdBy: true,
+  updatedBy: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type CreateVenueDto = z.infer<typeof CreateVenueSchema>;
+
+export const UpdateVenueSchema = CreateVenueSchema.partial().omit({
+  hostOrganizationId: true,
+});
+
+export type UpdateVenueDto = z.infer<typeof UpdateVenueSchema>;
+
+// ─── Venue Query ────────────────────────────────────────────────────────────
+
+export const VenueQuerySchema = z.object({
+  q: z.string().max(200).optional(),
+  city: z.string().optional(),
+  country: z.string().length(2).optional(),
+  venueType: VenueTypeSchema.optional(),
+  status: VenueStatusSchema.optional(),
+  isFeatured: z.coerce.boolean().optional(),
+  mine: z.coerce.boolean().optional(), // filter to host's own venues
+  page: z.coerce.number().int().positive().default(1),
+  limit: z.coerce.number().int().positive().max(100).default(20),
+  orderBy: z.enum(["name", "createdAt", "eventCount"]).default("name"),
+  orderDir: z.enum(["asc", "desc"]).default("asc"),
+});
+
+export type VenueQuery = z.infer<typeof VenueQuerySchema>;
+
+// ─── Admin Query Schemas ────────────────────────────────────────────────────
+
+export const AdminUserQuerySchema = z.object({
+  q: z.string().max(200).optional(),
+  role: z.string().optional(),
+  isActive: z.coerce.boolean().optional(),
+  page: z.coerce.number().int().positive().default(1),
+  limit: z.coerce.number().int().positive().max(100).default(20),
+});
+
+export type AdminUserQuery = z.infer<typeof AdminUserQuerySchema>;
+
+export const AdminOrgQuerySchema = z.object({
+  q: z.string().max(200).optional(),
+  plan: z.string().optional(),
+  isVerified: z.coerce.boolean().optional(),
+  isActive: z.coerce.boolean().optional(),
+  page: z.coerce.number().int().positive().default(1),
+  limit: z.coerce.number().int().positive().max(100).default(20),
+});
+
+export type AdminOrgQuery = z.infer<typeof AdminOrgQuerySchema>;
+
+export const AdminEventQuerySchema = z.object({
+  q: z.string().max(200).optional(),
+  status: z.string().optional(),
+  organizationId: z.string().optional(),
+  page: z.coerce.number().int().positive().default(1),
+  limit: z.coerce.number().int().positive().max(100).default(20),
+});
+
+export type AdminEventQuery = z.infer<typeof AdminEventQuerySchema>;
+
+export const AdminAuditQuerySchema = z.object({
+  action: z.string().optional(),
+  actorId: z.string().optional(),
+  resourceType: z.string().optional(),
+  dateFrom: z.string().datetime().optional(),
+  dateTo: z.string().datetime().optional(),
+  page: z.coerce.number().int().positive().default(1),
+  limit: z.coerce.number().int().positive().max(50).default(50),
+});
+
+export type AdminAuditQuery = z.infer<typeof AdminAuditQuerySchema>;
+
+// ─── Admin Mutation Schemas ─────────────────────────────────────────────────
+
+export const UpdateUserRolesSchema = z.object({
+  roles: z.array(z.string()).min(1),
+});
+
+export type UpdateUserRolesDto = z.infer<typeof UpdateUserRolesSchema>;
+
+export const UpdateUserStatusSchema = z.object({
+  isActive: z.boolean(),
+});
+
+export type UpdateUserStatusDto = z.infer<typeof UpdateUserStatusSchema>;
+
+// ─── Platform Stats ─────────────────────────────────────────────────────────
+
+export interface PlatformStats {
+  totalUsers: number;
+  totalOrganizations: number;
+  totalEvents: number;
+  totalRegistrations: number;
+  totalRevenue: number;
+  activeVenues: number;
+}

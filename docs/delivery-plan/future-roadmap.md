@@ -7,6 +7,26 @@ These items are ordered by estimated impact for the Senegalese/West African mark
 
 ---
 
+## Recently Shipped (Pre-Launch)
+
+### Super Admin Panel ✅
+- Platform-wide dashboard (users, orgs, events, revenue, venues)
+- User management (role changes, suspend/activate, synced Firebase Auth claims)
+- Organization management (verify, suspend)
+- Cross-org event oversight
+- Audit log viewer with filters
+- Admin sidebar + command palette entries
+
+### Venue Host Platform (Phases 1-2 ✅, Phase 3 pending)
+- Venue as first-class entity (9 types: hotel, conference center, coworking, etc.)
+- Venue lifecycle: pending → approved → suspended/archived
+- Venue API: CRUD, public listing, events at venue
+- Event-venue linking with denormalized `venueName` and `eventCount` counter
+- `venue_manager` role with organization-scoped permissions
+- **Pending (Phase 3):** Venue host backoffice dashboard, venue selector in event creation, participant venue display
+
+---
+
 ## High Priority (Post-Launch Quarter 1)
 
 ### 1. Multi-language Content

@@ -51,6 +51,17 @@ import type {
   CreateSponsorDto,
   UpdateSponsorDto,
   SponsorLead,
+  UserProfile,
+  AuditLogEntry,
+  PlatformStats,
+  AdminUserQuery,
+  AdminOrgQuery,
+  AdminEventQuery,
+  AdminAuditQuery,
+  Venue,
+  VenueQuery,
+  CreateVenueDto,
+  UpdateVenueDto,
 } from "@teranga/shared-types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
@@ -446,6 +457,68 @@ export const sponsorsApi = {
 
   exportLeads: (sponsorId: string) =>
     api.get<ApiResponse<SponsorLead[]>>(`/v1/events/sponsors/${sponsorId}/leads/export`),
+};
+
+// ─── Admin ──────────────────────────────────────────────────────────────────
+
+export const adminApi = {
+  getStats: () =>
+    api.get<ApiResponse<PlatformStats>>("/v1/admin/stats"),
+
+  listUsers: (query: Partial<AdminUserQuery> = {}) =>
+    api.get<PaginatedResponse<UserProfile>>(`/v1/admin/users${buildQuery(query)}`),
+
+  updateUserRoles: (userId: string, roles: string[]) =>
+    api.patch<void>(`/v1/admin/users/${userId}/roles`, { roles }),
+
+  updateUserStatus: (userId: string, isActive: boolean) =>
+    api.patch<void>(`/v1/admin/users/${userId}/status`, { isActive }),
+
+  listOrganizations: (query: Partial<AdminOrgQuery> = {}) =>
+    api.get<PaginatedResponse<Organization>>(`/v1/admin/organizations${buildQuery(query)}`),
+
+  verifyOrganization: (orgId: string) =>
+    api.patch<void>(`/v1/admin/organizations/${orgId}/verify`, {}),
+
+  updateOrgStatus: (orgId: string, isActive: boolean) =>
+    api.patch<void>(`/v1/admin/organizations/${orgId}/status`, { isActive }),
+
+  listEvents: (query: Partial<AdminEventQuery> = {}) =>
+    api.get<PaginatedResponse<Event>>(`/v1/admin/events${buildQuery(query)}`),
+
+  listAuditLogs: (query: Partial<AdminAuditQuery> = {}) =>
+    api.get<PaginatedResponse<AuditLogEntry>>(`/v1/admin/audit-logs${buildQuery(query)}`),
+};
+
+// ─── Venues ─────────────────────────────────────────────────────────────────
+
+export const venuesApi = {
+  listPublic: (query: Partial<VenueQuery> = {}) =>
+    api.get<PaginatedResponse<Venue>>(`/v1/venues${buildQuery(query)}`),
+
+  getById: (id: string) =>
+    api.get<ApiResponse<Venue>>(`/v1/venues/${id}`),
+
+  create: (dto: CreateVenueDto) =>
+    api.post<ApiResponse<Venue>>("/v1/venues", dto),
+
+  update: (id: string, dto: Partial<UpdateVenueDto>) =>
+    api.patch<ApiResponse<Venue>>(`/v1/venues/${id}`, dto),
+
+  approve: (venueId: string) =>
+    api.post<void>(`/v1/venues/${venueId}/approve`, {}),
+
+  suspend: (venueId: string) =>
+    api.post<void>(`/v1/venues/${venueId}/suspend`, {}),
+
+  reactivate: (venueId: string) =>
+    api.post<void>(`/v1/venues/${venueId}/reactivate`, {}),
+
+  getEvents: (venueId: string, params: { page?: number; limit?: number } = {}) =>
+    api.get<PaginatedResponse<Event>>(`/v1/venues/${venueId}/events${buildQuery(params)}`),
+
+  listMyVenues: () =>
+    api.get<PaginatedResponse<Venue>>("/v1/venues/mine"),
 };
 
 export { ApiError };

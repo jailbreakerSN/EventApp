@@ -166,6 +166,8 @@ export const EventSchema = z.object({
   checkedInCount: z.number().int().default(0),
   isPublic: z.boolean().default(true),
   isFeatured: z.boolean().default(false),
+  venueId: z.string().nullable().optional(),
+  venueName: z.string().nullable().optional(), // denormalized from Venue
   requiresApproval: z.boolean().default(false), // waitlist feature
   templateId: z.string().nullable().optional(), // created from a template
   createdBy: z.string(),  // Firebase UID

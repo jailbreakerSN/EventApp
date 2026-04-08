@@ -90,6 +90,15 @@ export const PermissionSchema = z.enum([
   // ── Speaker ───────────────────────────────────────────────────────────────
   "speaker:read",              // view speaker profiles
   "speaker:update_own",        // speaker edits own profile
+
+  // ── Venue ─────────────────────────────────────────────────────────────────
+  "venue:create",              // create a venue (admin or host org)
+  "venue:read",                // view venue info
+  "venue:update",              // host manages own venue
+  "venue:approve",             // admin approves venue applications
+  "venue:manage_all",          // admin manages any venue
+  "venue:view_events",         // host sees events at their venue
+  "venue:analytics",           // host views venue analytics
 ]);
 
 export type Permission = z.infer<typeof PermissionSchema>;
@@ -105,6 +114,7 @@ export const SystemRoleSchema = z.enum([
   "speaker",
   "sponsor",
   "staff",            // QR scanner / access control
+  "venue_manager",    // venue host — manages venue profile & sees events
   "super_admin",
 ]);
 
@@ -288,6 +298,30 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRole, readonly Permission[]>
     "checkin:manual",
     "checkin:view_log",
     "checkin:sync_offline",
+  ],
+
+  venue_manager: [
+    // Participant base
+    "registration:create",
+    "registration:read_own",
+    "registration:cancel_own",
+    "badge:view_own",
+    "notification:read_own",
+    "feed:read",
+    "feed:create_post",
+    "feed:delete_post",
+    "messaging:send",
+    "messaging:read_own",
+    "profile:read_own",
+    "profile:update_own",
+    "profile:read_any",
+    "payment:initiate",
+    "payment:read_own",
+    // Venue-specific
+    "venue:read",
+    "venue:update",
+    "venue:view_events",
+    "venue:analytics",
   ],
 
   super_admin: [

@@ -23,10 +23,10 @@ The MVP prioritizes the **web platform** (participant web app + organizer backof
 
 | Component | Completion | Notes |
 |-----------|-----------|-------|
-| Shared Types | ~99% | 16 Zod schema files: all entities, promo codes, phone validation |
-| API (Fastify) | ~98% | 23 route files, 29 services, 369 tests. Real providers (Wave/OM/AT/Resend) |
+| Shared Types | ~99% | 17 Zod schema files: all entities, venues, promo codes, phone validation |
+| API (Fastify) | ~98% | 25 route files, 31 services, 369 tests. Real providers + admin/venue APIs |
 | Cloud Functions | ~95% | Auth, badge, check-in, payment lifecycle, scheduled reminders |
-| Web Backoffice | **~97%** | All pages + command palette, keyboard shortcuts, breadcrumbs, WCAG AA |
+| Web Backoffice | **~98%** | All pages + super admin panel (6 pages) + command palette, WCAG AA |
 | Web Participant | **~97%** | Discovery + filters, registration, badges, portals, markdown, newsletter, WCAG AA |
 | Shared UI | **~95%** | 17 components (was 8): Button, Card, Input, Select, Textarea, Dialog, Tabs, Skeleton, FormField, Breadcrumb, Alert, Badge, Spinner, ConfirmDialog, ThemeToggle, LogoLoader, Toaster |
 | Mobile (Flutter) | ~35% | Wave 1 basics; full app deferred to Wave 9 |
@@ -47,6 +47,8 @@ The MVP prioritizes the **web platform** (participant web app + organizer backof
 | Wave 8 | Portals | `completed` | 85% | Speaker + sponsor self-service portals |
 | MVP Sprint | Dakar Launch | `completed` | 95% | Real providers, SEO, promo codes, Cloud Functions |
 | **UX/UI Audit** | **4-Phase Polish** | **`completed`** | **100%** | **97 files, ~4300 lines, WCAG AA, 17 shared-ui components** |
+| **Super Admin** | **Platform Administration** | **`completed`** | **95%** | **Admin dashboard, user/org/event management, audit logs, venue lifecycle** |
+| **Venue Host** | **Venue Entity + API** | **`in_progress`** | **70%** | **Venue CRUD, event-venue link, admin venues page. Phase 3 (host dashboard, event selector) pending** |
 | Wave 9 | Mobile App | `not_started` | 0% | Post-MVP validation |
 | Wave 10 | Production Hardening | `not_started` | 0% | Next priority |
 
@@ -60,11 +62,33 @@ The MVP prioritizes the **web platform** (participant web app + organizer backof
 | Phase 4 | Competitive features | `457baa6` | 29 | Command palette, keyboard shortcuts, WCAG AA, newsletter, ISR |
 | Fixes | Hydration + loading | `7d9515b`, `bfb905b` | 14 | ThemeToggle fix, branded logo loading screens |
 
+### Super Admin Panel + Venue Host Platform (2026-04-08)
+
+A two-part feature set that adds platform-wide administration and introduces venues as first-class entities linked to events. The venue host strategy is a **go-to-market lever**: ~20-30 major Dakar venues host 80% of professional events. If they recommend Teranga to organizers booking their space, it becomes an organic distribution channel.
+
+**What was built:**
+
+| Phase | Scope | Status | Key Deliverables |
+|-------|-------|--------|-----------------|
+| Phase 1 | Types + Admin API + Admin UI | `completed` | 7 venue permissions, `venue_manager` role, admin repository/service/routes, 7 admin pages (dashboard, users, orgs, events, venues, audit), sidebar admin section, command palette entries |
+| Phase 2 | Venue Entity + Venue API + Event-Venue Link | `completed` | Venue repository/service/routes (8 endpoints), `venueId`/`venueName` on Event, venue counter management, admin venues page with real data |
+| Phase 3 | Venue Host Dashboard + Event Creation | `pending` | Venue host backoffice pages, venue selector in event creation wizard, participant venue display |
+
+**Key architecture decisions:**
+- Admin routes at `/v1/admin/*` with single `requirePermission("platform:manage")` gate
+- `venue_manager` as organization-scoped role via `hostOrganizationId` on venue
+- Denormalized `venueName` on Event (same pattern as `eventTitle` on Registration)
+- Venue `eventCount` as denormalized counter using `BaseRepository.increment()`
+- Admin syncs both Firestore user doc AND Firebase Auth custom claims on role changes
+
+**Files added:** 8 new backend files (repository, service, routes, domain events, audit listeners), 10 new frontend files (hooks, 7 admin pages, layout, venue hooks)
+**Files modified:** 13 files across shared-types, API, and web-backoffice
+
 ---
 
 ## What Remains: Path to Production Launch
 
-The web platform is feature-complete at ~97%. What remains is **production hardening, legal compliance, and launch preparation** — not new features.
+The web platform is feature-complete at ~98%. What remains is **production hardening, legal compliance, launch preparation, and venue host UX** — not new core features.
 
 ### Remaining Work: 3 Phases
 
@@ -236,6 +260,7 @@ The table below maps every stage of the event lifecycle to its implementation st
 ### Organizer Journey
 | Stage | Feature | Status |
 |-------|---------|--------|
+| **Create** | Select venue from directory (auto-fill location) | 🔧 Phase 3 pending |
 | **Create** | Event creation wizard (4 steps) | ✅ Done |
 | **Create** | Ticket types (free + paid, XOF) | ✅ Done |
 | **Create** | Access zones (multi-entry) | ✅ Done |
@@ -303,6 +328,29 @@ The table below maps every stage of the event lifecycle to its implementation st
 | **Post-Event** | Export leads CSV | ✅ Done |
 | **Post-Event** | Lead analytics | ✅ Done |
 
+### Venue Host Journey
+| Stage | Feature | Status |
+|-------|---------|--------|
+| **Onboard** | Register as venue_manager | ✅ Done (role exists) |
+| **Setup** | Create venue (name, address, type, amenities, photos) | ✅ Done (API) |
+| **Setup** | Venue approval workflow (pending → approved) | ✅ Done |
+| **Manage** | Update venue details | ✅ Done (API) |
+| **Manage** | View events hosted at venue | ✅ Done (API) |
+| **Manage** | Venue host dashboard (backoffice) | 🔧 Phase 3 pending |
+| **Analytics** | Venue event count, registrations | ✅ Done (denormalized counter) |
+| **Promote** | Featured venue status | ✅ Done (admin toggle) |
+
+### Super Admin Journey
+| Stage | Feature | Status |
+|-------|---------|--------|
+| **Dashboard** | Platform KPIs (users, orgs, events, revenue, venues) | ✅ Done |
+| **Users** | List, search, filter by role | ✅ Done |
+| **Users** | Change roles, suspend/activate | ✅ Done |
+| **Organizations** | List, verify, suspend | ✅ Done |
+| **Events** | Cross-org event oversight | ✅ Done |
+| **Venues** | Approve/suspend venues, view all venues | ✅ Done |
+| **Audit** | Query audit logs by action/date | ✅ Done |
+
 ### Staff/Scanner Journey
 | Stage | Feature | Status |
 |-------|---------|--------|
@@ -338,6 +386,7 @@ See [future-roadmap.md](future-roadmap.md) for post-launch feature ideas.
 | Wave 8 | [wave-8-portals.md](wave-8-portals.md) |
 | MVP Sprint | [mvp-launch-sprint.md](mvp-launch-sprint.md) |
 | UX/UI Audit | [ux-ui-audit-results.md](../../docs/ux-ui-audit-2026-04-07.md) |
+| Super Admin + Venue Host | *(plan in `.claude/plans/compiled-strolling-backus.md`)* |
 | Wave 9 | [wave-9-mobile-app.md](wave-9-mobile-app.md) |
 | Wave 10 | [wave-10-launch.md](wave-10-launch.md) |
 

@@ -14,6 +14,7 @@ import {
 } from "@teranga/shared-types";
 import { eventRepository, type EventFilters, type EventSearchFilters } from "@/repositories/event.repository";
 import { organizationRepository } from "@/repositories/organization.repository";
+import { venueRepository } from "@/repositories/venue.repository";
 import { type PaginationParams, type PaginatedResult } from "@/repositories/base.repository";
 import { type AuthUser } from "@/middlewares/auth.middleware";
 import {
@@ -63,15 +64,31 @@ export class EventService extends BaseService {
 
     const slug = generateSlug(dto.title);
 
+    // Resolve venue if provided
+    let venueName: string | null = null;
+    if (dto.venueId) {
+      const venue = await venueRepository.findByIdOrThrow(dto.venueId);
+      if (venue.status !== "approved") {
+        throw new ValidationError("Le lieu sélectionné n'est pas approuvé");
+      }
+      venueName = venue.name;
+    }
+
     const event = await eventRepository.create({
       ...dto,
       slug,
+      venueName: venueName ?? dto.venueName ?? null,
       registeredCount: 0,
       checkedInCount: 0,
       createdBy: user.uid,
       updatedBy: user.uid,
       publishedAt: null,
     } as Omit<Event, "id" | "createdAt" | "updatedAt">);
+
+    // Increment venue event counter
+    if (dto.venueId) {
+      await venueRepository.increment(dto.venueId, "eventCount", 1);
+    }
 
     eventBus.emit("event.created", {
       event,
@@ -154,10 +171,32 @@ export class EventService extends BaseService {
       throw new ValidationError("La date de fin doit être postérieure à la date de début");
     }
 
-    await eventRepository.update(eventId, {
+    // Handle venue change
+    const updateData: Partial<Event> & Record<string, unknown> = {
       ...dto,
       updatedBy: user.uid,
-    } as Partial<Event>);
+    };
+
+    if (dto.venueId !== undefined && dto.venueId !== event.venueId) {
+      if (dto.venueId) {
+        // New venue assigned
+        const venue = await venueRepository.findByIdOrThrow(dto.venueId);
+        if (venue.status !== "approved") {
+          throw new ValidationError("Le lieu sélectionné n'est pas approuvé");
+        }
+        updateData.venueName = venue.name;
+        await venueRepository.increment(dto.venueId, "eventCount", 1);
+      } else {
+        // Venue removed
+        updateData.venueName = null;
+      }
+      // Decrement old venue counter
+      if (event.venueId) {
+        await venueRepository.increment(event.venueId, "eventCount", -1);
+      }
+    }
+
+    await eventRepository.update(eventId, updateData as Partial<Event>);
 
     eventBus.emit("event.updated", {
       eventId,

@@ -22,6 +22,9 @@ import {
   Building2,
   Settings,
   LogOut,
+  Shield,
+  MapPin,
+  FileText,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -55,6 +58,13 @@ const PAGE_COMMANDS: Omit<CommandItem, "action">[] = [
   { id: "notifications",  label: "Notifications",     category: "Pages",   icon: Bell,            href: "/notifications" },
   { id: "organization",   label: "Organisation",      category: "Pages",   icon: Building2,       href: "/organization" },
   { id: "settings",       label: "Paramètres",        category: "Pages",   icon: Settings,        href: "/settings" },
+  // Admin pages (visible to all in search, but access-gated by route layout)
+  { id: "admin",          label: "Admin Plateforme",  category: "Pages",   icon: Shield,          href: "/admin" },
+  { id: "admin-users",    label: "Admin Utilisateurs", category: "Pages",  icon: Users,           href: "/admin/users" },
+  { id: "admin-orgs",     label: "Admin Organisations", category: "Pages", icon: Building2,       href: "/admin/organizations" },
+  { id: "admin-events",   label: "Admin Événements",  category: "Pages",   icon: CalendarDays,    href: "/admin/events" },
+  { id: "admin-venues",   label: "Admin Lieux",       category: "Pages",   icon: MapPin,          href: "/admin/venues" },
+  { id: "admin-audit",    label: "Journal d'audit",   category: "Pages",   icon: FileText,        href: "/admin/audit" },
 ];
 
 // ─── Category badge colors ────────────────────────────────────────────────────

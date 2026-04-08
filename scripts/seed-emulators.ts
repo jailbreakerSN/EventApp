@@ -6,9 +6,10 @@
  *   2. Run: `npx tsx scripts/seed-emulators.ts`
  *
  * Creates:
- *   - 6 users (organizer, co-organizer, 2 participants, speaker, sponsor)
- *   - 1 organization
- *   - 4 events (published paid, published free, draft, cancelled)
+ *   - 8 users (organizer, co-organizer, 2 participants, speaker, sponsor, super_admin, venue_manager)
+ *   - 2 organizations (event org + venue host org)
+ *   - 3 venues (approved, pending, suspended) — Dakar locations
+ *   - 4 events (published paid, published free, draft, cancelled) — 2 linked to venues
  *   - 6 registrations with varied statuses
  *   - 2 badges
  *   - 4 sessions for the conference
@@ -22,6 +23,7 @@
  *   - 1 broadcast (sent)
  *   - Notification preferences
  *   - Check-in feed entries
+ *   - 10 audit logs (including admin actions)
  */
 
 process.env.FIRESTORE_EMULATOR_HOST = "localhost:8080";
@@ -54,6 +56,7 @@ const inOneMonth = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
 
 const IDS = {
   orgId: "org-001",
+  venueOrgId: "org-002",
   // Users
   organizer: "organizer-uid-001",
   coOrganizer: "coorg-uid-001",
@@ -61,6 +64,8 @@ const IDS = {
   participant2: "participant-uid-002",
   speakerUser: "speaker-uid-001",
   sponsorUser: "sponsor-uid-001",
+  superAdmin: "superadmin-uid-001",
+  venueManager: "venuemanager-uid-001",
   // Events
   conference: "event-001",
   workshop: "event-002",
@@ -98,6 +103,10 @@ const IDS = {
   conv2: "conv-002",
   // Broadcasts
   broadcast1: "broadcast-001",
+  // Venues
+  venue1: "venue-001",
+  venue2: "venue-002",
+  venue3: "venue-003",
 };
 
 /** Create or retrieve a user — idempotent (safe to re-run). */
@@ -117,7 +126,7 @@ async function ensureUser(
 }
 
 async function seed() {
-  console.log("🌱 Seeding Firebase emulators (Waves 1-8 data)...\n");
+  console.log("🌱 Seeding Firebase emulators (Waves 1-8 + Admin + Venues)...\n");
 
   // ═══════════════════════════════════════════════════════════════════════════
   // 1. USERS
@@ -161,12 +170,26 @@ async function seed() {
     { roles: ["sponsor"] },
   );
 
+  const superAdmin = await ensureUser(
+    IDS.superAdmin,
+    { email: "admin@teranga.dev", password: "password123", displayName: "Abdoulaye Sarr" },
+    { roles: ["super_admin"] },
+  );
+
+  const venueManager = await ensureUser(
+    IDS.venueManager,
+    { email: "venue@teranga.dev", password: "password123", displayName: "Khady Niang" },
+    { roles: ["venue_manager"], organizationId: IDS.venueOrgId },
+  );
+
   console.log("  ✓ organizer@teranga.dev / password123 (organizer)");
   console.log("  ✓ coorganizer@teranga.dev / password123 (co_organizer)");
   console.log("  ✓ participant@teranga.dev / password123 (participant)");
   console.log("  ✓ participant2@teranga.dev / password123 (participant)");
   console.log("  ✓ speaker@teranga.dev / password123 (speaker)");
   console.log("  ✓ sponsor@teranga.dev / password123 (sponsor)");
+  console.log("  ✓ admin@teranga.dev / password123 (super_admin)");
+  console.log("  ✓ venue@teranga.dev / password123 (venue_manager)");
 
   // ═══════════════════════════════════════════════════════════════════════════
   // 2. ORGANIZATION
@@ -188,11 +211,35 @@ async function seed() {
     plan: "pro",
     ownerId: IDS.organizer,
     memberIds: [IDS.organizer, IDS.coOrganizer],
+    isVerified: true,
+    isActive: true,
+    createdAt: twoDaysAgo,
+    updatedAt: now,
+  });
+
+  // Organization 2: Venue host org
+  await db.collection("organizations").doc(IDS.venueOrgId).set({
+    id: IDS.venueOrgId,
+    name: "Dakar Venues & Hospitality",
+    slug: "dakar-venues",
+    description: "Gestionnaire de lieux d'événements premium à Dakar",
+    logoURL: null,
+    website: "https://dakar-venues.sn",
+    contactEmail: "contact@dakar-venues.sn",
+    phone: "+221770004321",
+    country: "SN",
+    city: "Dakar",
+    plan: "starter",
+    ownerId: IDS.venueManager,
+    memberIds: [IDS.venueManager],
+    isVerified: true,
+    isActive: true,
     createdAt: twoDaysAgo,
     updatedAt: now,
   });
 
   console.log("  ✓ Teranga Events (org-001)");
+  console.log("  ✓ Dakar Venues & Hospitality (org-002)");
 
   // ═══════════════════════════════════════════════════════════════════════════
   // 3. USER PROFILES
@@ -202,37 +249,47 @@ async function seed() {
 
   const userProfiles = [
     {
-      id: IDS.organizer, email: "organizer@teranga.dev", displayName: "Moussa Diop",
+      uid: IDS.organizer, email: "organizer@teranga.dev", displayName: "Moussa Diop",
       roles: ["organizer"], organizationId: IDS.orgId,
       phone: "+221770001234", bio: "Organisateur passionné de tech events à Dakar",
     },
     {
-      id: IDS.coOrganizer, email: "coorganizer@teranga.dev", displayName: "Fatou Sall",
+      uid: IDS.coOrganizer, email: "coorganizer@teranga.dev", displayName: "Fatou Sall",
       roles: ["co_organizer"], organizationId: IDS.orgId,
       phone: "+221770001235", bio: "Coordinatrice événementielle",
     },
     {
-      id: IDS.participant1, email: "participant@teranga.dev", displayName: "Aminata Fall",
+      uid: IDS.participant1, email: "participant@teranga.dev", displayName: "Aminata Fall",
       roles: ["participant"], phone: "+221770005678", bio: "Développeuse full-stack passionnée par le mobile",
     },
     {
-      id: IDS.participant2, email: "participant2@teranga.dev", displayName: "Ousmane Ndiaye",
+      uid: IDS.participant2, email: "participant2@teranga.dev", displayName: "Ousmane Ndiaye",
       roles: ["participant"], phone: "+221770009999", bio: "Designer UX/UI — Figma addict",
     },
     {
-      id: IDS.speakerUser, email: "speaker@teranga.dev", displayName: "Ibrahima Gueye",
+      uid: IDS.speakerUser, email: "speaker@teranga.dev", displayName: "Ibrahima Gueye",
       roles: ["speaker"], phone: "+221770007777", bio: "CTO & conférencier tech, expert Flutter et Firebase",
     },
     {
-      id: IDS.sponsorUser, email: "sponsor@teranga.dev", displayName: "Aissatou Ba",
+      uid: IDS.sponsorUser, email: "sponsor@teranga.dev", displayName: "Aissatou Ba",
       roles: ["sponsor"], phone: "+221770008888", bio: "Directrice marketing chez TechCorp Dakar",
+    },
+    {
+      uid: IDS.superAdmin, email: "admin@teranga.dev", displayName: "Abdoulaye Sarr",
+      roles: ["super_admin"], phone: "+221770001111", bio: "Administrateur plateforme Teranga",
+    },
+    {
+      uid: IDS.venueManager, email: "venue@teranga.dev", displayName: "Khady Niang",
+      roles: ["venue_manager"], organizationId: IDS.venueOrgId,
+      phone: "+221770002222", bio: "Directrice de Dakar Venues & Hospitality, gestion de lieux d'événements premium",
     },
   ];
 
   for (const profile of userProfiles) {
-    await db.collection("users").doc(profile.id).set({
+    await db.collection("users").doc(profile.uid).set({
       ...profile,
       photoURL: null,
+      isActive: true,
       createdAt: twoDaysAgo,
       updatedAt: now,
     });
@@ -300,6 +357,8 @@ async function seed() {
     checkedInCount: 1,
     isPublic: true,
     isFeatured: true,
+    venueId: IDS.venue1,
+    venueName: "CICAD — Centre International de Conferences",
     requiresApproval: false,
     templateId: null,
     createdBy: IDS.organizer,
@@ -352,6 +411,8 @@ async function seed() {
     checkedInCount: 0,
     isPublic: true,
     isFeatured: false,
+    venueId: null,
+    venueName: null,
     requiresApproval: false,
     templateId: null,
     createdBy: IDS.organizer,
@@ -403,6 +464,8 @@ async function seed() {
     checkedInCount: 0,
     isPublic: true,
     isFeatured: false,
+    venueId: null,
+    venueName: null,
     requiresApproval: false,
     templateId: null,
     createdBy: IDS.organizer,
@@ -466,6 +529,8 @@ async function seed() {
     checkedInCount: 0,
     isPublic: true,
     isFeatured: true,
+    venueId: IDS.venue2,
+    venueName: "Radisson Blu Dakar Sea Plaza",
     requiresApproval: false,
     templateId: null,
     createdBy: IDS.organizer,
@@ -475,10 +540,140 @@ async function seed() {
     publishedAt: now,
   });
 
-  console.log("  ✓ Dakar Tech Summit 2026 (published, free)");
+  console.log("  ✓ Dakar Tech Summit 2026 (published, free, venue: CICAD)");
   console.log("  ✓ Atelier Flutter & Firebase (draft)");
   console.log("  ✓ Meetup Développeurs Dakar #12 (cancelled)");
-  console.log("  ✓ Masterclass IA Générative (published, paid)");
+  console.log("  ✓ Masterclass IA Générative (published, paid, venue: Radisson Blu)");
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 4b. VENUES
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  console.log("\n📍 Creating venues...");
+
+  // Venue 1: Approved — major conference center (linked to event 1)
+  await db.collection("venues").doc(IDS.venue1).set({
+    id: IDS.venue1,
+    name: "CICAD — Centre International de Conferences",
+    slug: "cicad-dakar",
+    description: "Le Centre International de Conferences Abdou Diouf est le plus grand centre de conferences d'Afrique de l'Ouest, situe sur la route de King Fahd aux Almadies.",
+    address: {
+      street: "Route de King Fahd, Almadies",
+      city: "Dakar",
+      region: "Dakar",
+      country: "SN",
+      coordinates: { lat: 14.7453, lng: -17.5131 },
+    },
+    venueType: "conference_center",
+    capacity: {
+      min: 100,
+      max: 5000,
+      configurations: [
+        { name: "Theatre", capacity: 5000 },
+        { name: "Classe", capacity: 2000 },
+        { name: "Banquet", capacity: 1500 },
+      ],
+    },
+    amenities: ["wifi", "parking", "restauration", "climatisation", "sono", "projecteur", "traduction-simultanee"],
+    photos: [],
+    contactName: "Khady Niang",
+    contactEmail: "reservation@cicad.sn",
+    contactPhone: "+221338005000",
+    website: "https://cicad.sn",
+    hostOrganizationId: IDS.venueOrgId,
+    status: "approved",
+    isFeatured: true,
+    rating: 4.5,
+    eventCount: 1,
+    createdBy: IDS.venueManager,
+    updatedBy: IDS.superAdmin,
+    createdAt: twoDaysAgo,
+    updatedAt: now,
+  });
+
+  // Venue 2: Approved — hotel (linked to event 4)
+  await db.collection("venues").doc(IDS.venue2).set({
+    id: IDS.venue2,
+    name: "Radisson Blu Dakar Sea Plaza",
+    slug: "radisson-blu-dakar",
+    description: "Hotel 5 etoiles avec salles de conference vue mer. Ideal pour conferences business, workshops et evenements corporate.",
+    address: {
+      street: "Route de la Corniche, Sea Plaza",
+      city: "Dakar",
+      region: "Dakar",
+      country: "SN",
+      coordinates: { lat: 14.7183, lng: -17.4677 },
+    },
+    venueType: "hotel",
+    capacity: {
+      min: 20,
+      max: 800,
+      configurations: [
+        { name: "Salle Teranga", capacity: 800 },
+        { name: "Salle Baobab", capacity: 200 },
+        { name: "Boardroom", capacity: 30 },
+      ],
+    },
+    amenities: ["wifi", "parking", "restauration", "climatisation", "sono", "projecteur", "hebergement", "piscine"],
+    photos: [],
+    contactName: "Mamadou Fall",
+    contactEmail: "events@radissonblu-dakar.com",
+    contactPhone: "+221338891111",
+    website: "https://radissonhotels.com/dakar",
+    hostOrganizationId: IDS.venueOrgId,
+    status: "approved",
+    isFeatured: true,
+    rating: 4.8,
+    eventCount: 1,
+    createdBy: IDS.venueManager,
+    updatedBy: IDS.venueManager,
+    createdAt: twoDaysAgo,
+    updatedAt: now,
+  });
+
+  // Venue 3: Pending — coworking space (new, awaiting approval)
+  await db.collection("venues").doc(IDS.venue3).set({
+    id: IDS.venue3,
+    name: "Jokkolabs Dakar",
+    slug: "jokkolabs-dakar",
+    description: "Espace de coworking et d'innovation au coeur de Dakar. Salles de reunion modulables, espace evenementiel, terrasse.",
+    address: {
+      street: "Sicap Liberte 6, Villa 7691",
+      city: "Dakar",
+      region: "Dakar",
+      country: "SN",
+      coordinates: { lat: 14.7167, lng: -17.4500 },
+    },
+    venueType: "coworking",
+    capacity: {
+      min: 10,
+      max: 120,
+      configurations: [
+        { name: "Open Space", capacity: 120 },
+        { name: "Salle de conference", capacity: 50 },
+        { name: "Workshop", capacity: 30 },
+      ],
+    },
+    amenities: ["wifi", "climatisation", "projecteur", "cafe", "terrasse"],
+    photos: [],
+    contactName: "Karim Sy",
+    contactEmail: "events@jokkolabs.net",
+    contactPhone: "+221776543210",
+    website: "https://jokkolabs.net",
+    hostOrganizationId: null,
+    status: "pending",
+    isFeatured: false,
+    rating: null,
+    eventCount: 0,
+    createdBy: IDS.superAdmin,
+    updatedBy: IDS.superAdmin,
+    createdAt: yesterday,
+    updatedAt: yesterday,
+  });
+
+  console.log("  ✓ CICAD (approved, featured, 1 event)");
+  console.log("  ✓ Radisson Blu Dakar (approved, featured, 1 event)");
+  console.log("  ✓ Jokkolabs Dakar (pending approval)");
 
   // ═══════════════════════════════════════════════════════════════════════════
   // 5. REGISTRATIONS
@@ -1222,11 +1417,16 @@ async function seed() {
   console.log("\n📜 Creating sample audit logs...");
 
   const auditEvents = [
-    { action: "event.created", entityType: "event", entityId: IDS.conference, actorId: IDS.organizer, details: { title: "Dakar Tech Summit 2026" } },
-    { action: "event.published", entityType: "event", entityId: IDS.conference, actorId: IDS.organizer, details: {} },
-    { action: "registration.created", entityType: "registration", entityId: IDS.reg1, actorId: IDS.participant1, details: { eventId: IDS.conference } },
-    { action: "registration.checked_in", entityType: "registration", entityId: IDS.reg1, actorId: IDS.organizer, details: { method: "qr_scan" } },
-    { action: "sponsor.added", entityType: "sponsor", entityId: IDS.sponsor1, actorId: IDS.organizer, details: { companyName: "TechCorp Dakar" } },
+    { action: "event.created", resourceType: "event", resourceId: IDS.conference, actorId: IDS.organizer, eventId: IDS.conference, details: { title: "Dakar Tech Summit 2026" } },
+    { action: "event.published", resourceType: "event", resourceId: IDS.conference, actorId: IDS.organizer, eventId: IDS.conference, details: {} },
+    { action: "registration.created", resourceType: "registration", resourceId: IDS.reg1, actorId: IDS.participant1, eventId: IDS.conference, details: { ticketType: "Standard" } },
+    { action: "registration.checked_in", resourceType: "registration", resourceId: IDS.reg1, actorId: IDS.organizer, eventId: IDS.conference, details: { method: "qr_scan" } },
+    { action: "sponsor.added", resourceType: "sponsor", resourceId: IDS.sponsor1, actorId: IDS.organizer, eventId: IDS.conference, details: { companyName: "TechCorp Dakar" } },
+    { action: "venue.created", resourceType: "venue", resourceId: IDS.venue1, actorId: IDS.venueManager, eventId: null, details: { name: "CICAD" } },
+    { action: "venue.approved", resourceType: "venue", resourceId: IDS.venue1, actorId: IDS.superAdmin, eventId: null, details: { name: "CICAD" } },
+    { action: "venue.created", resourceType: "venue", resourceId: IDS.venue2, actorId: IDS.venueManager, eventId: null, details: { name: "Radisson Blu" } },
+    { action: "organization.verified", resourceType: "organization", resourceId: IDS.venueOrgId, actorId: IDS.superAdmin, eventId: null, details: { orgName: "Dakar Venues & Hospitality" } },
+    { action: "user.role_changed", resourceType: "user", resourceId: IDS.venueManager, actorId: IDS.superAdmin, eventId: null, details: { newRoles: ["venue_manager"] } },
   ];
 
   for (let i = 0; i < auditEvents.length; i++) {
@@ -1235,22 +1435,23 @@ async function seed() {
       ...auditEvents[i],
       organizationId: IDS.orgId,
       requestId: `seed-req-${i + 1}`,
-      createdAt: yesterday,
+      timestamp: yesterday,
     });
   }
 
-  console.log(`  ✓ ${auditEvents.length} audit log entries`);
+  console.log(`  ✓ ${auditEvents.length} audit log entries (including venue & admin actions)`);
 
   // ═══════════════════════════════════════════════════════════════════════════
   // DONE
   // ═══════════════════════════════════════════════════════════════════════════
 
   console.log("\n" + "═".repeat(60));
-  console.log("✅ Seed complete! Data covers Waves 1-8.\n");
+  console.log("✅ Seed complete! Data covers Waves 1-8 + Admin + Venues.\n");
   console.log("📊 Summary:");
-  console.log("   Users:          6 (organizer, co-organizer, 2 participants, speaker, sponsor)");
-  console.log("   Organization:   1");
-  console.log("   Events:         4 (2 published, 1 draft, 1 cancelled)");
+  console.log("   Users:          8 (organizer, co-organizer, 2 participants, speaker, sponsor, super_admin, venue_manager)");
+  console.log("   Organizations:  2 (event org + venue host org)");
+  console.log("   Venues:         3 (2 approved, 1 pending)");
+  console.log("   Events:         4 (2 published, 1 draft, 1 cancelled) — 2 linked to venues");
   console.log("   Registrations:  6 (4 confirmed, 1 pending_payment, 1 checked-in)");
   console.log("   Badges:         2");
   console.log("   Sessions:       4 (keynote, workshop, panel, networking)");
@@ -1261,7 +1462,7 @@ async function seed() {
   console.log("   Conversations:  2 + 3 messages");
   console.log("   Notifications:  5 (2 read, 3 unread)");
   console.log("   Broadcasts:     1 (sent)");
-  console.log("   Audit logs:     5");
+  console.log("   Audit logs:     10 (including venue & admin actions)");
   console.log("");
   console.log("🔑 Login credentials:");
   console.log("   organizer@teranga.dev    / password123  (organizer)");
@@ -1270,6 +1471,8 @@ async function seed() {
   console.log("   participant2@teranga.dev / password123  (participant)");
   console.log("   speaker@teranga.dev      / password123  (speaker)");
   console.log("   sponsor@teranga.dev      / password123  (sponsor)");
+  console.log("   admin@teranga.dev        / password123  (super_admin)");
+  console.log("   venue@teranga.dev        / password123  (venue_manager)");
   console.log("");
   console.log("🌐 URLs:");
   console.log("   API:              http://localhost:3000");

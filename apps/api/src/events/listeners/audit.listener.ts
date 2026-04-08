@@ -308,4 +308,120 @@ export function registerAuditListeners(): void {
       },
     });
   });
+
+  // ── Venue Events ───────────────────────────────────────────────────────
+
+  eventBus.on("venue.created", async (payload) => {
+    await auditService.log({
+      action: "venue.created",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "venue",
+      resourceId: payload.venueId,
+      eventId: null,
+      organizationId: payload.hostOrganizationId ?? null,
+      details: { name: payload.name },
+    });
+  });
+
+  eventBus.on("venue.updated", async (payload) => {
+    await auditService.log({
+      action: "venue.updated",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "venue",
+      resourceId: payload.venueId,
+      eventId: null,
+      organizationId: null,
+      details: { changes: payload.changes },
+    });
+  });
+
+  eventBus.on("venue.approved", async (payload) => {
+    await auditService.log({
+      action: "venue.approved",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "venue",
+      resourceId: payload.venueId,
+      eventId: null,
+      organizationId: null,
+      details: { name: payload.name },
+    });
+  });
+
+  eventBus.on("venue.suspended", async (payload) => {
+    await auditService.log({
+      action: "venue.suspended",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "venue",
+      resourceId: payload.venueId,
+      eventId: null,
+      organizationId: null,
+      details: { name: payload.name },
+    });
+  });
+
+  // ── Admin Events ───────────────────────────────────────────────────────
+
+  eventBus.on("user.role_changed", async (payload) => {
+    await auditService.log({
+      action: "user.role_changed",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "user",
+      resourceId: payload.targetUserId,
+      eventId: null,
+      organizationId: null,
+      details: { oldRoles: payload.oldRoles, newRoles: payload.newRoles },
+    });
+  });
+
+  eventBus.on("user.status_changed", async (payload) => {
+    await auditService.log({
+      action: payload.isActive ? "user.activated" : "user.suspended",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "user",
+      resourceId: payload.targetUserId,
+      eventId: null,
+      organizationId: null,
+      details: { isActive: payload.isActive },
+    });
+  });
+
+  eventBus.on("organization.verified", async (payload) => {
+    await auditService.log({
+      action: "organization.verified",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "organization",
+      resourceId: payload.organizationId,
+      eventId: null,
+      organizationId: payload.organizationId,
+      details: {},
+    });
+  });
+
+  eventBus.on("organization.status_changed", async (payload) => {
+    await auditService.log({
+      action: payload.isActive ? "organization.verified" : "organization.suspended",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "organization",
+      resourceId: payload.organizationId,
+      eventId: null,
+      organizationId: payload.organizationId,
+      details: { isActive: payload.isActive },
+    });
+  });
 }

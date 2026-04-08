@@ -16,6 +16,9 @@ import {
   Wallet,
   Megaphone,
   X,
+  Shield,
+  MapPin,
+  FileText,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -41,6 +44,15 @@ const navItems: NavItem[] = [
   { href: "/notifications", icon: Bell, label: "Notifications", roles: ["organizer", "co_organizer", "super_admin"] },
   { href: "/organization", icon: Building2, label: "Organisation", roles: ["organizer", "super_admin"] },
   { href: "/settings", icon: Settings, label: "Paramètres", roles: ["organizer", "super_admin"] },
+];
+
+const adminNavItems: NavItem[] = [
+  { href: "/admin", icon: Shield, label: "Admin Plateforme", roles: ["super_admin"] },
+  { href: "/admin/users", icon: Users, label: "Utilisateurs", roles: ["super_admin"] },
+  { href: "/admin/organizations", icon: Building2, label: "Organisations", roles: ["super_admin"] },
+  { href: "/admin/events", icon: CalendarDays, label: "Événements (tous)", roles: ["super_admin"] },
+  { href: "/admin/venues", icon: MapPin, label: "Lieux", roles: ["super_admin"] },
+  { href: "/admin/audit", icon: FileText, label: "Journal d'audit", roles: ["super_admin"] },
 ];
 
 export function Sidebar() {
@@ -114,6 +126,33 @@ export function Sidebar() {
             </Link>
           );
         })}
+
+        {/* Admin section — super_admin only */}
+        {hasRole("super_admin") && (
+          <>
+            <div className="my-3 mx-3 border-t border-white/10" />
+            <p className="px-3 text-[10px] text-white/40 uppercase tracking-wider mb-1">Administration</p>
+            {adminNavItems.map(({ href, icon: Icon, label }) => {
+              const isActive = pathname === href || pathname.startsWith(href + "/");
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  aria-current={isActive ? "page" : undefined}
+                  className={cn(
+                    "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm motion-safe:transition-colors",
+                    isActive
+                      ? "bg-white/15 text-white font-medium"
+                      : "text-white/60 hover:bg-white/10 hover:text-white"
+                  )}
+                >
+                  <Icon size={17} aria-hidden="true" />
+                  {label}
+                </Link>
+              );
+            })}
+          </>
+        )}
       </nav>
 
       {/* Plan badge */}

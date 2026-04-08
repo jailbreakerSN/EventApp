@@ -10,6 +10,7 @@ import {
   type SponsorProfile,
   type SponsorLead,
   type Broadcast,
+  type Venue,
 } from "@teranga/shared-types";
 
 function uid(): string {
@@ -46,6 +47,14 @@ export function buildStaffUser(overrides: Partial<AuthUser> = {}): AuthUser {
 export function buildSuperAdmin(overrides: Partial<AuthUser> = {}): AuthUser {
   return buildAuthUser({
     roles: ["super_admin"],
+    ...overrides,
+  });
+}
+
+export function buildVenueManager(organizationId: string, overrides: Partial<AuthUser> = {}): AuthUser {
+  return buildAuthUser({
+    roles: ["venue_manager"],
+    organizationId,
     ...overrides,
   });
 }
@@ -98,6 +107,8 @@ export function buildEvent(overrides: Partial<Event> = {}): Event {
     checkedInCount: 0,
     isPublic: true,
     isFeatured: false,
+    venueId: null,
+    venueName: null,
     requiresApproval: false,
     templateId: null,
     createdBy: uid(),
@@ -267,6 +278,47 @@ export function buildSponsor(overrides: Partial<SponsorProfile> = {}): SponsorPr
     contactEmail: null,
     contactPhone: null,
     isActive: true,
+    createdAt: now,
+    updatedAt: now,
+    ...overrides,
+  };
+}
+
+// ─── Venue Factory ─────────────────────────────────────────────────────────
+
+export function buildVenue(overrides: Partial<Venue> = {}): Venue {
+  const id = uid();
+  const now = new Date().toISOString();
+
+  return {
+    id,
+    name: `Test Venue ${uid()}`,
+    slug: `test-venue-${uid()}`,
+    description: "A test venue for unit testing",
+    address: {
+      street: "123 Test St",
+      city: "Dakar",
+      country: "SN",
+    },
+    venueType: "conference_center",
+    capacity: {
+      min: 50,
+      max: 500,
+      configurations: [{ name: "Theatre", capacity: 500 }],
+    },
+    amenities: ["wifi", "parking"],
+    photos: [],
+    contactName: "Test Contact",
+    contactEmail: `venue-${uid()}@test.teranga.events`,
+    contactPhone: null,
+    website: null,
+    hostOrganizationId: null,
+    status: "approved",
+    isFeatured: false,
+    rating: null,
+    eventCount: 0,
+    createdBy: uid(),
+    updatedBy: uid(),
     createdAt: now,
     updatedAt: now,
     ...overrides,

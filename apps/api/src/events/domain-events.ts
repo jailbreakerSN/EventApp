@@ -257,6 +257,51 @@ export interface PromoCodeUsedEvent extends BaseEventPayload {
   promoCodeId: string;
 }
 
+// ── Venue ────────────────────────────────────────────────────────────────────
+
+export interface VenueCreatedEvent extends BaseEventPayload {
+  venueId: string;
+  name: string;
+  hostOrganizationId?: string;
+}
+
+export interface VenueUpdatedEvent extends BaseEventPayload {
+  venueId: string;
+  changes: Record<string, unknown>;
+}
+
+export interface VenueApprovedEvent extends BaseEventPayload {
+  venueId: string;
+  name: string;
+}
+
+export interface VenueSuspendedEvent extends BaseEventPayload {
+  venueId: string;
+  name: string;
+}
+
+// ── Admin ────────────────────────────────────────────────────────────────────
+
+export interface UserRoleChangedEvent extends BaseEventPayload {
+  targetUserId: string;
+  oldRoles: string[];
+  newRoles: string[];
+}
+
+export interface UserStatusChangedEvent extends BaseEventPayload {
+  targetUserId: string;
+  isActive: boolean;
+}
+
+export interface OrgVerifiedEvent extends BaseEventPayload {
+  organizationId: string;
+}
+
+export interface OrgStatusChangedEvent extends BaseEventPayload {
+  organizationId: string;
+  isActive: boolean;
+}
+
 // ─── Domain Event Map ────────────────────────────────────────────────────────
 // Type-safe mapping of event names to their payloads.
 // Adding a new event here gives compile-time safety across all emitters/listeners.
@@ -295,6 +340,16 @@ export interface DomainEventMap {
   "sponsor.lead_captured": SponsorLeadCapturedEvent;
   "promo_code.created": PromoCodeCreatedEvent;
   "promo_code.used": PromoCodeUsedEvent;
+  // Venue
+  "venue.created": VenueCreatedEvent;
+  "venue.updated": VenueUpdatedEvent;
+  "venue.approved": VenueApprovedEvent;
+  "venue.suspended": VenueSuspendedEvent;
+  // Admin
+  "user.role_changed": UserRoleChangedEvent;
+  "user.status_changed": UserStatusChangedEvent;
+  "organization.verified": OrgVerifiedEvent;
+  "organization.status_changed": OrgStatusChangedEvent;
 }
 
 export type DomainEventName = keyof DomainEventMap;
