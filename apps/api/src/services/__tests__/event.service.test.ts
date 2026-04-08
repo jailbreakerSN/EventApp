@@ -33,6 +33,13 @@ vi.mock("@/repositories/organization.repository", () => ({
   }),
 }));
 
+vi.mock("@/repositories/venue.repository", () => ({
+  venueRepository: {
+    findByIdOrThrow: vi.fn(),
+    increment: vi.fn(),
+  },
+}));
+
 vi.mock("@/events/event-bus", () => ({
   eventBus: { emit: vi.fn() },
 }));

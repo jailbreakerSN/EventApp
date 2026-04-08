@@ -48,7 +48,19 @@ export class SpeakerService extends BaseService {
       updatedAt: now,
     };
 
-    return speakerRepository.create(speaker);
+    const created = await speakerRepository.create(speaker);
+
+    eventBus.emit("speaker.added", {
+      speakerId: created.id,
+      eventId: dto.eventId,
+      organizationId: event.organizationId,
+      name: dto.name,
+      actorId: user.uid,
+      requestId: getRequestId(),
+      timestamp: new Date().toISOString(),
+    });
+
+    return created;
   }
 
   /**
@@ -86,6 +98,15 @@ export class SpeakerService extends BaseService {
       sessionIds: [],
       updatedAt: new Date().toISOString(),
     } as Partial<SpeakerProfile>);
+
+    eventBus.emit("speaker.removed", {
+      speakerId,
+      eventId: speaker.eventId,
+      organizationId: speaker.organizationId,
+      actorId: user.uid,
+      requestId: getRequestId(),
+      timestamp: new Date().toISOString(),
+    });
   }
 
   /**

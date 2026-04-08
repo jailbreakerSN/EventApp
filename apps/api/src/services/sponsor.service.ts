@@ -51,7 +51,20 @@ export class SponsorService extends BaseService {
       updatedAt: now,
     };
 
-    return sponsorRepository.create(sponsor);
+    const created = await sponsorRepository.create(sponsor);
+
+    eventBus.emit("sponsor.added", {
+      sponsorId: created.id,
+      eventId: dto.eventId,
+      organizationId: event.organizationId,
+      companyName: dto.companyName,
+      tier: dto.tier,
+      actorId: user.uid,
+      requestId: getRequestId(),
+      timestamp: new Date().toISOString(),
+    });
+
+    return created;
   }
 
   /**
@@ -163,7 +176,19 @@ export class SponsorService extends BaseService {
       scannedBy: user.uid,
     };
 
-    return sponsorLeadRepository.create(lead);
+    const created = await sponsorLeadRepository.create(lead);
+
+    eventBus.emit("sponsor.lead_captured", {
+      leadId: created.id,
+      sponsorId,
+      eventId: sponsor.eventId,
+      participantId: userId,
+      actorId: user.uid,
+      requestId: getRequestId(),
+      timestamp: new Date().toISOString(),
+    });
+
+    return created;
   }
 
   /**

@@ -9,5 +9,5 @@
 process.env.FIREBASE_PROJECT_ID = "teranga-test";
 process.env.FIREBASE_STORAGE_BUCKET = "teranga-test.appspot.com";
 process.env.CORS_ORIGINS = "http://localhost:3000";
-process.env.QR_SECRET = "test-qr-secret-min-16-chars";
+process.env.QR_SECRET = "test-qr-secret-min-32-chars-for-security";
 process.env.NODE_ENV = "development";

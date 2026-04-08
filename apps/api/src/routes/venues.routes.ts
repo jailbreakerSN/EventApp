@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import { authenticate } from "@/middlewares/auth.middleware";
+import { requirePermission } from "@/middlewares/permission.middleware";
 import { validate } from "@/middlewares/validate.middleware";
 import { venueService } from "@/services/venue.service";
 import {
@@ -140,7 +141,7 @@ export const venueRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post(
     "/:venueId/approve",
     {
-      preHandler: [authenticate, validate({ params: ParamsVenueId })],
+      preHandler: [authenticate, requirePermission("venue:approve"), validate({ params: ParamsVenueId })],
       schema: {
         tags: ["Venues"],
         summary: "Approve a pending venue",
@@ -159,7 +160,7 @@ export const venueRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post(
     "/:venueId/suspend",
     {
-      preHandler: [authenticate, validate({ params: ParamsVenueId })],
+      preHandler: [authenticate, requirePermission("venue:manage_all"), validate({ params: ParamsVenueId })],
       schema: {
         tags: ["Venues"],
         summary: "Suspend a venue",
@@ -178,7 +179,7 @@ export const venueRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post(
     "/:venueId/reactivate",
     {
-      preHandler: [authenticate, validate({ params: ParamsVenueId })],
+      preHandler: [authenticate, requirePermission("venue:manage_all"), validate({ params: ParamsVenueId })],
       schema: {
         tags: ["Venues"],
         summary: "Reactivate a suspended venue",

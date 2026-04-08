@@ -16,10 +16,18 @@ export abstract class BaseService {
    * Throw ForbiddenError if the user lacks the given permission.
    */
   protected requirePermission(user: AuthUser, permission: Permission): void {
-    const perms = this.resolveUserPermissions(user);
-    if (!hasPermission(perms, permission)) {
+    if (!this.hasPermission(user, permission)) {
       throw new ForbiddenError(`Permission manquante : ${permission}`);
     }
+  }
+
+  /**
+   * Check if user has a permission without throwing.
+   * Useful for conditional logic (e.g., auto-approve for admins).
+   */
+  protected hasPermission(user: AuthUser, permission: Permission): boolean {
+    const perms = this.resolveUserPermissions(user);
+    return hasPermission(perms, permission);
   }
 
   /**

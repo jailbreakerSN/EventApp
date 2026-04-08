@@ -125,6 +125,11 @@ export interface OrganizationCreatedEvent extends BaseEventPayload {
   organization: Organization;
 }
 
+export interface OrganizationUpdatedEvent extends BaseEventPayload {
+  organizationId: string;
+  changes: Record<string, unknown>;
+}
+
 export interface MemberAddedEvent extends BaseEventPayload {
   organizationId: string;
   memberId: string;
@@ -326,6 +331,7 @@ export interface DomainEventMap {
   "ticket_type.updated": TicketTypeUpdatedEvent;
   "ticket_type.removed": TicketTypeRemovedEvent;
   "organization.created": OrganizationCreatedEvent;
+  "organization.updated": OrganizationUpdatedEvent;
   "member.added": MemberAddedEvent;
   "member.removed": MemberRemovedEvent;
   "badge.generated": BadgeGeneratedEvent;

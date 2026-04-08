@@ -116,13 +116,13 @@ export default function AdminOrganizationsPage() {
         <BreadcrumbList>
           <BreadcrumbItem>
             <BreadcrumbLink asChild>
-              <Link href="/">Tableau de bord</Link>
+              <Link href="/admin">Tableau de bord</Link>
             </BreadcrumbLink>
           </BreadcrumbItem>
           <BreadcrumbSeparator />
           <BreadcrumbItem>
             <BreadcrumbLink asChild>
-              <Link href="/admin/organizations">Administration</Link>
+              <Link href="/admin">Administration</Link>
             </BreadcrumbLink>
           </BreadcrumbItem>
           <BreadcrumbSeparator />

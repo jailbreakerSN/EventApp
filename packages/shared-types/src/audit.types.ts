@@ -40,6 +40,11 @@ export const AuditActionSchema = z.enum([
   "payment.succeeded",
   "payment.failed",
   "payment.refunded",
+  // ── Speaker & Sponsor ──────────────────────────────────────────────────────
+  "speaker.added",
+  "speaker.removed",
+  "sponsor.added",
+  "sponsor.lead_captured",
   // ── Venue ─────────────────────────────────────────────────────────────────
   "venue.created",
   "venue.updated",

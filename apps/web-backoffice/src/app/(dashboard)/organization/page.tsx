@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { toast } from "sonner";
 import {
   useOrganization,
   useUpdateOrganization,
@@ -76,21 +77,31 @@ export default function OrganizationPage() {
 
   const handleSaveSettings = async () => {
     if (!org) return;
-    await updateOrg.mutateAsync({
-      name: name || undefined,
-      description: description || undefined,
-      email: email || undefined,
-      phone: phone || undefined,
-      website: website || undefined,
-      city: city || undefined,
-    });
+    try {
+      await updateOrg.mutateAsync({
+        name: name || undefined,
+        description: description || undefined,
+        email: email || undefined,
+        phone: phone || undefined,
+        website: website || undefined,
+        city: city || undefined,
+      });
+      toast.success("Organisation mise à jour");
+    } catch {
+      toast.error("Erreur lors de la mise à jour");
+    }
   };
 
   const handleSendInvite = async () => {
     if (!inviteEmail.trim()) return;
-    await createInvite.mutateAsync({ email: inviteEmail.trim(), role: inviteRole as "admin" | "member" | "viewer" });
-    setInviteEmail("");
-    setShowInviteForm(false);
+    try {
+      await createInvite.mutateAsync({ email: inviteEmail.trim(), role: inviteRole as "admin" | "member" | "viewer" });
+      setInviteEmail("");
+      setShowInviteForm(false);
+      toast.success("Invitation envoyée");
+    } catch {
+      toast.error("Erreur lors de l'envoi de l'invitation");
+    }
   };
 
   if (isLoading) {

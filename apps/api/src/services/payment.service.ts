@@ -62,7 +62,11 @@ function getProvider(method: PaymentMethod): PaymentProvider {
 
 // ─── Webhook Signature ──────────────────────────────────────────────────────
 
-const WEBHOOK_SECRET = process.env.PAYMENT_WEBHOOK_SECRET ?? "dev-webhook-secret-change-in-prod";
+const WEBHOOK_SECRET = process.env.PAYMENT_WEBHOOK_SECRET ?? (
+  process.env.NODE_ENV === "production"
+    ? (() => { throw new Error("PAYMENT_WEBHOOK_SECRET is required in production"); })()
+    : "dev-webhook-secret-change-in-prod"
+);
 
 /**
  * Generate HMAC-SHA256 signature for webhook payload verification.

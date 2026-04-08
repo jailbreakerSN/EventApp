@@ -119,9 +119,11 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Audit production dependencies
-        run: npm audit --audit-level=high --omit=dev || true
-        # NOTE: || true because audit may report issues in transitive deps
-        # that have no fix available yet. Review output manually.
+        run: npm audit --audit-level=critical --omit=dev
+        # Fails on critical vulnerabilities. High-severity issues are logged
+        # but don't block CI to allow for transitive deps without fixes yet.
+      - name: Audit high-severity (warn only)
+        run: npm audit --audit-level=high --omit=dev || echo "::warning::High-severity vulnerabilities found — review npm audit output"
 
   # ─── Cloud Functions ─────────────────────────────────────────────────────
   functions:

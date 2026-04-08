@@ -21,8 +21,8 @@ const envSchema = z.object({
   AT_USERNAME: z.string().default("sandbox"),
   AT_SENDER_ID: z.string().default("Teranga"),
 
-  QR_SECRET: z.string().min(16),
-  WEBHOOK_SECRET: z.string().min(16).optional(),
+  QR_SECRET: z.string().min(32, "QR_SECRET must be at least 32 characters"),
+  WEBHOOK_SECRET: z.string().min(16).default("dev-webhook-secret-change-in-prod"),
 });
 
 const parsed = envSchema.safeParse(process.env);

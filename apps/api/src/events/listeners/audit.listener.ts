@@ -309,6 +309,82 @@ export function registerAuditListeners(): void {
     });
   });
 
+  // ── Organization Updated ───────────────────────────────────────────────
+
+  eventBus.on("organization.updated", async (payload) => {
+    await auditService.log({
+      action: "organization.updated",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "organization",
+      resourceId: payload.organizationId,
+      eventId: null,
+      organizationId: payload.organizationId,
+      details: { changes: payload.changes },
+    });
+  });
+
+  // ── Speaker Events ─────────────────────────────────────────────────────
+
+  eventBus.on("speaker.added", async (payload) => {
+    await auditService.log({
+      action: "speaker.added",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "speaker",
+      resourceId: payload.speakerId,
+      eventId: payload.eventId,
+      organizationId: payload.organizationId,
+      details: { name: payload.name },
+    });
+  });
+
+  eventBus.on("speaker.removed", async (payload) => {
+    await auditService.log({
+      action: "speaker.removed",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "speaker",
+      resourceId: payload.speakerId,
+      eventId: payload.eventId,
+      organizationId: payload.organizationId,
+      details: {},
+    });
+  });
+
+  // ── Sponsor Events ────────────────────────────────────────────────────
+
+  eventBus.on("sponsor.added", async (payload) => {
+    await auditService.log({
+      action: "sponsor.added",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "sponsor",
+      resourceId: payload.sponsorId,
+      eventId: payload.eventId,
+      organizationId: payload.organizationId,
+      details: { companyName: payload.companyName, tier: payload.tier },
+    });
+  });
+
+  eventBus.on("sponsor.lead_captured", async (payload) => {
+    await auditService.log({
+      action: "sponsor.lead_captured",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "sponsor_lead",
+      resourceId: payload.leadId,
+      eventId: payload.eventId,
+      organizationId: null,
+      details: { sponsorId: payload.sponsorId, participantId: payload.participantId },
+    });
+  });
+
   // ── Venue Events ───────────────────────────────────────────────────────
 
   eventBus.on("venue.created", async (payload) => {
