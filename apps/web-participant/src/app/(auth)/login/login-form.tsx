@@ -143,7 +143,7 @@ export function LoginForm() {
       <CardFooter className="justify-center">
         <p className="text-sm text-muted-foreground">
           Pas encore de compte ?{" "}
-          <Link href={`/register?redirect=${encodeURIComponent(redirectTo)}`} className="font-medium text-teranga-gold hover:underline">
+          <Link href={`/register?redirect=${encodeURIComponent(redirectTo)}`} className="font-medium text-teranga-gold-dark hover:underline">
             Créer un compte
           </Link>
         </p>

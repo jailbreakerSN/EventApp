@@ -94,7 +94,7 @@ export function RegisterForm() {
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
           {error && (
-            <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
+            <div role="alert" className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
               {error}
             </div>
           )}
@@ -163,7 +163,7 @@ export function RegisterForm() {
       <CardFooter className="justify-center">
         <p className="text-sm text-muted-foreground">
           Déjà un compte ?{" "}
-          <Link href={`/login?redirect=${encodeURIComponent(redirectTo)}`} className="font-medium text-teranga-gold hover:underline">
+          <Link href={`/login?redirect=${encodeURIComponent(redirectTo)}`} className="font-medium text-teranga-gold-dark hover:underline">
             Se connecter
           </Link>
         </p>

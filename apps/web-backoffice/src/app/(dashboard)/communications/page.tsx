@@ -107,11 +107,11 @@ export default function CommunicationsPage() {
       {/* Event selector */}
       <Card>
         <CardContent className="py-4">
-          <label className="mb-2 block text-sm font-medium">Evenement</label>
+          <label htmlFor="comm-event-select" className="mb-2 block text-sm font-medium">Événement</label>
           <Select
+            id="comm-event-select"
             value={selectedEventId}
             onChange={(e) => setSelectedEventId(e.target.value)}
-            aria-label="Sélectionner un événement"
           >
             <option value="">Selectionnez un evenement</option>
             {events.map((ev) => (
@@ -129,24 +129,24 @@ export default function CommunicationsPage() {
               <h2 className="text-lg font-semibold">Nouveau message</h2>
 
               <div>
-                <label className="mb-1 block text-sm font-medium">Titre</label>
-                <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Rappel important" />
+                <label htmlFor="comm-title" className="mb-1 block text-sm font-medium">Titre</label>
+                <Input id="comm-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Rappel important" />
               </div>
 
               <div>
-                <label className="mb-1 block text-sm font-medium">Message</label>
+                <label htmlFor="comm-body" className="mb-1 block text-sm font-medium">Message</label>
                 <Textarea
+                  id="comm-body"
                   rows={4}
                   value={body}
                   onChange={(e) => setBody(e.target.value)}
                   placeholder="Votre message..."
-                  aria-label="Corps du message"
                 />
               </div>
 
               <div>
-                <label className="mb-2 block text-sm font-medium">Canaux</label>
-                <div className="flex flex-wrap gap-2">
+                <p id="comm-channels-label" className="mb-2 block text-sm font-medium">Canaux</p>
+                <div className="flex flex-wrap gap-2" role="group" aria-labelledby="comm-channels-label">
                   {(["push", "sms", "email", "in_app"] as CommunicationChannel[]).map((ch) => {
                     const Icon = CHANNEL_ICONS[ch] ?? Bell;
                     const selected = channels.includes(ch);
@@ -160,7 +160,7 @@ export default function CommunicationsPage() {
                           selected ? "border-teranga-gold bg-teranga-gold/10 text-teranga-gold" : "border-border text-muted-foreground"
                         }`}
                       >
-                        <Icon className="h-3.5 w-3.5" />
+                        <Icon className="h-3.5 w-3.5" aria-hidden="true" />
                         {CHANNEL_LABELS[ch]}
                       </button>
                     );
@@ -169,11 +169,11 @@ export default function CommunicationsPage() {
               </div>
 
               <div>
-                <label className="mb-1 block text-sm font-medium">Destinataires</label>
+                <label htmlFor="comm-recipients" className="mb-1 block text-sm font-medium">Destinataires</label>
                 <Select
+                  id="comm-recipients"
                   value={filter}
                   onChange={(e) => setFilter(e.target.value as BroadcastRecipientFilter)}
-                  aria-label="Filtrer les destinataires"
                 >
                   {Object.entries(FILTER_LABELS).map(([value, label]) => (
                     <option key={value} value={value}>{label}</option>

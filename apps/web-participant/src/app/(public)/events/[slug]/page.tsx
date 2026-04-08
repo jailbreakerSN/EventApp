@@ -51,10 +51,39 @@ async function getSimilarEvents(event: Event): Promise<Event[]> {
 }
 
 export async function generateStaticParams() {
+  const BATCH_SIZE = 100;
+  const MAX_EVENTS = 1000;
+
   try {
-    const result = await serverEventsApi.search({ limit: 50 });
-    return result.data.map((event) => ({ slug: event.slug }));
+    // Fetch the first page to discover total page count
+    const first = await serverEventsApi.search({ page: 1, limit: BATCH_SIZE });
+    const totalPages = Math.min(
+      first.meta.totalPages,
+      Math.ceil(MAX_EVENTS / BATCH_SIZE),
+    );
+
+    // If there is only one page, return immediately
+    if (totalPages <= 1) {
+      return first.data.map((event) => ({ slug: event.slug }));
+    }
+
+    // Fetch remaining pages in parallel
+    const remainingPages = Array.from(
+      { length: totalPages - 1 },
+      (_, i) => i + 2,
+    );
+    const rest = await Promise.all(
+      remainingPages.map((page) =>
+        serverEventsApi.search({ page, limit: BATCH_SIZE }),
+      ),
+    );
+
+    const allEvents = [first, ...rest].flatMap((r) => r.data);
+    // Enforce hard cap in case totalPages arithmetic overshoots
+    return allEvents.slice(0, MAX_EVENTS).map((event) => ({ slug: event.slug }));
   } catch {
+    // If the API is unreachable during build, fall back to on-demand generation
+    // via dynamicParams = true (already set above)
     return [];
   }
 }
@@ -183,9 +212,9 @@ export default async function EventDetailPage({ params }: PageProps) {
                         href={event.location.googleMapsUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="mt-1 inline-flex items-center gap-1 text-sm text-teranga-gold hover:underline"
+                        className="mt-1 inline-flex items-center gap-1 text-sm text-teranga-gold-dark hover:underline"
                       >
-                        Voir sur Google Maps <ExternalLink className="h-3 w-3" />
+                        Voir sur Google Maps <ExternalLink className="h-3 w-3" aria-hidden="true" />
                       </a>
                     )}
                   </div>
@@ -254,7 +283,7 @@ export default async function EventDetailPage({ params }: PageProps) {
               {/* Description */}
               <div className="mt-8">
                 <h2 className="text-xl font-semibold">À propos</h2>
-                <div className="mt-3 prose prose-sm max-w-none prose-headings:text-foreground prose-headings:font-semibold prose-p:text-muted-foreground prose-p:leading-relaxed prose-a:text-teranga-gold prose-a:underline prose-strong:text-foreground prose-ul:text-muted-foreground prose-ol:text-muted-foreground prose-li:text-muted-foreground">
+                <div className="mt-3 prose prose-sm max-w-none prose-headings:text-foreground prose-headings:font-semibold prose-p:text-muted-foreground prose-p:leading-relaxed prose-a:text-teranga-gold-dark prose-a:underline prose-strong:text-foreground prose-ul:text-muted-foreground prose-ol:text-muted-foreground prose-li:text-muted-foreground">
                   <ReactMarkdown>{event.description}</ReactMarkdown>
                 </div>
               </div>

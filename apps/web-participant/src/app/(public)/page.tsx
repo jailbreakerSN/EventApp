@@ -109,7 +109,7 @@ export default async function HomePage() {
         <section className="mx-auto max-w-7xl px-4 pb-16 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between">
             <h2 className="text-2xl font-bold">Événements à la une</h2>
-            <Link href="/events" className="text-sm font-medium text-teranga-gold hover:underline">
+            <Link href="/events" className="text-sm font-medium text-teranga-gold-dark hover:underline">
               Voir tout
             </Link>
           </div>
@@ -126,7 +126,7 @@ export default async function HomePage() {
         <section className="mx-auto max-w-7xl px-4 pb-16 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between">
             <h2 className="text-2xl font-bold">Derniers événements</h2>
-            <Link href="/events" className="text-sm font-medium text-teranga-gold hover:underline">
+            <Link href="/events" className="text-sm font-medium text-teranga-gold-dark hover:underline">
               Voir tout
             </Link>
           </div>

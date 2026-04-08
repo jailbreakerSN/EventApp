@@ -149,6 +149,7 @@ export function Sidebar() {
 
       {/* Mobile drawer */}
       <aside
+        id="mobile-sidebar"
         className={cn(
           "fixed inset-y-0 left-0 z-50 w-60 bg-sidebar text-sidebar-foreground flex flex-col lg:hidden",
           "motion-safe:transition-transform motion-safe:duration-300 motion-safe:ease-in-out",

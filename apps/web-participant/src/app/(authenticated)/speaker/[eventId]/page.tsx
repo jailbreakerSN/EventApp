@@ -82,8 +82,9 @@ export default function SpeakerPortalPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-20 text-muted-foreground">
-        <Loader2 className="h-6 w-6 animate-spin mr-2" /> Chargement...
+      <div className="flex items-center justify-center py-20 text-muted-foreground" role="status" aria-label="Chargement du portail intervenant">
+        <Loader2 className="h-6 w-6 animate-spin mr-2" aria-hidden="true" />
+        <span>Chargement...</span>
       </div>
     );
   }
@@ -155,8 +156,9 @@ export default function SpeakerPortalPage() {
         {editing ? (
           <div className="mt-4 space-y-3">
             <div>
-              <label className="text-sm font-medium text-muted-foreground">Bio</label>
+              <label htmlFor="speaker-bio" className="text-sm font-medium text-muted-foreground">Bio</label>
               <textarea
+                id="speaker-bio"
                 className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
                 rows={4}
                 value={bio}
@@ -165,8 +167,9 @@ export default function SpeakerPortalPage() {
               />
             </div>
             <div>
-              <label className="text-sm font-medium text-muted-foreground">Sujets d&apos;expertise (séparés par des virgules)</label>
+              <label htmlFor="speaker-topics" className="text-sm font-medium text-muted-foreground">Sujets d&apos;expertise (séparés par des virgules)</label>
               <input
+                id="speaker-topics"
                 className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
                 value={topics}
                 onChange={(e) => setTopics(e.target.value)}
@@ -175,8 +178,9 @@ export default function SpeakerPortalPage() {
             </div>
             <div className="grid gap-3 sm:grid-cols-3">
               <div>
-                <label className="text-sm font-medium text-muted-foreground">Twitter</label>
+                <label htmlFor="speaker-twitter" className="text-sm font-medium text-muted-foreground">Twitter</label>
                 <input
+                  id="speaker-twitter"
                   className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
                   value={twitter}
                   onChange={(e) => setTwitter(e.target.value)}
@@ -184,8 +188,9 @@ export default function SpeakerPortalPage() {
                 />
               </div>
               <div>
-                <label className="text-sm font-medium text-muted-foreground">LinkedIn</label>
+                <label htmlFor="speaker-linkedin" className="text-sm font-medium text-muted-foreground">LinkedIn</label>
                 <input
+                  id="speaker-linkedin"
                   className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
                   value={linkedin}
                   onChange={(e) => setLinkedin(e.target.value)}
@@ -193,8 +198,9 @@ export default function SpeakerPortalPage() {
                 />
               </div>
               <div>
-                <label className="text-sm font-medium text-muted-foreground">Site web</label>
+                <label htmlFor="speaker-website" className="text-sm font-medium text-muted-foreground">Site web</label>
                 <input
+                  id="speaker-website"
                   className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
                   value={website}
                   onChange={(e) => setWebsite(e.target.value)}
@@ -241,7 +247,7 @@ export default function SpeakerPortalPage() {
       {/* Sessions Section */}
       <section className="mt-6 rounded-lg border bg-card p-6 shadow-sm">
         <h2 className="text-lg font-semibold mb-4">
-          <Calendar className="inline h-5 w-5 mr-1.5 text-teranga-gold" />
+          <Calendar className="inline h-5 w-5 mr-1.5 text-teranga-gold" aria-hidden="true" />
           Mon programme ({sessions.length})
         </h2>
 
@@ -257,7 +263,7 @@ export default function SpeakerPortalPage() {
                 )}
                 <div className="mt-2 flex flex-wrap gap-4 text-xs text-muted-foreground">
                   <span className="flex items-center gap-1">
-                    <Clock className="h-3.5 w-3.5" />
+                    <Clock className="h-3.5 w-3.5" aria-hidden="true" />
                     {new Date(session.startTime).toLocaleString("fr-FR", {
                       dateStyle: "medium",
                       timeStyle: "short",
@@ -267,7 +273,7 @@ export default function SpeakerPortalPage() {
                   </span>
                   {session.location && (
                     <span className="flex items-center gap-1">
-                      <MapPin className="h-3.5 w-3.5" />
+                      <MapPin className="h-3.5 w-3.5" aria-hidden="true" />
                       {session.location}
                     </span>
                   )}
@@ -281,7 +287,7 @@ export default function SpeakerPortalPage() {
       {/* Slides Upload Section */}
       <section className="mt-6 rounded-lg border bg-card p-6 shadow-sm">
         <h2 className="text-lg font-semibold mb-4">
-          <FileText className="inline h-5 w-5 mr-1.5 text-teranga-gold" />
+          <FileText className="inline h-5 w-5 mr-1.5 text-teranga-gold" aria-hidden="true" />
           Mes présentations
         </h2>
         <p className="text-sm text-muted-foreground">

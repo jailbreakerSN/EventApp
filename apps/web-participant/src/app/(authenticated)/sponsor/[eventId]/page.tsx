@@ -116,8 +116,9 @@ export default function SponsorPortalPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-20 text-muted-foreground">
-        <Loader2 className="h-6 w-6 animate-spin mr-2" /> Chargement...
+      <div className="flex items-center justify-center py-20 text-muted-foreground" role="status" aria-label="Chargement du portail sponsor">
+        <Loader2 className="h-6 w-6 animate-spin mr-2" aria-hidden="true" />
+        <span>Chargement...</span>
       </div>
     );
   }
@@ -157,11 +158,15 @@ export default function SponsorPortalPage() {
       </div>
 
       {/* Tabs */}
-      <div className="mt-6 flex gap-1 border-b">
+      <div className="mt-6 flex gap-1 border-b" role="tablist" aria-label="Sections du portail sponsor">
         {(["booth", "leads"] as const).map((t) => (
           <button
             key={t}
+            role="tab"
             onClick={() => setTab(t)}
+            aria-selected={tab === t}
+            aria-controls={`tab-panel-${t}`}
+            id={`tab-${t}`}
             className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
               tab === t
                 ? "border-teranga-gold text-teranga-gold"
@@ -175,7 +180,12 @@ export default function SponsorPortalPage() {
 
       {/* Booth Tab */}
       {tab === "booth" && (
-        <section className="mt-6 rounded-lg border bg-card p-6 shadow-sm">
+        <section
+          id="tab-panel-booth"
+          role="tabpanel"
+          aria-labelledby="tab-booth"
+          className="mt-6 rounded-lg border bg-card p-6 shadow-sm"
+        >
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold">Informations du stand</h2>
             {!editing ? (
@@ -207,8 +217,9 @@ export default function SponsorPortalPage() {
           {editing ? (
             <div className="space-y-3">
               <div>
-                <label className="text-sm font-medium text-muted-foreground">Description</label>
+                <label htmlFor="sponsor-description" className="text-sm font-medium text-muted-foreground">Description</label>
                 <textarea
+                  id="sponsor-description"
                   className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
                   rows={4}
                   value={description}
@@ -217,8 +228,9 @@ export default function SponsorPortalPage() {
                 />
               </div>
               <div>
-                <label className="text-sm font-medium text-muted-foreground">Titre du stand</label>
+                <label htmlFor="sponsor-booth-title" className="text-sm font-medium text-muted-foreground">Titre du stand</label>
                 <input
+                  id="sponsor-booth-title"
                   className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
                   value={boothTitle}
                   onChange={(e) => setBoothTitle(e.target.value)}
@@ -227,8 +239,9 @@ export default function SponsorPortalPage() {
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
                 <div>
-                  <label className="text-sm font-medium text-muted-foreground">Label du CTA</label>
+                  <label htmlFor="sponsor-cta-label" className="text-sm font-medium text-muted-foreground">Label du CTA</label>
                   <input
+                    id="sponsor-cta-label"
                     className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
                     value={ctaLabel}
                     onChange={(e) => setCtaLabel(e.target.value)}
@@ -236,8 +249,9 @@ export default function SponsorPortalPage() {
                   />
                 </div>
                 <div>
-                  <label className="text-sm font-medium text-muted-foreground">URL du CTA</label>
+                  <label htmlFor="sponsor-cta-url" className="text-sm font-medium text-muted-foreground">URL du CTA</label>
                   <input
+                    id="sponsor-cta-url"
                     className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
                     value={ctaUrl}
                     onChange={(e) => setCtaUrl(e.target.value)}
@@ -246,8 +260,9 @@ export default function SponsorPortalPage() {
                 </div>
               </div>
               <div>
-                <label className="text-sm font-medium text-muted-foreground">Site web</label>
+                <label htmlFor="sponsor-website" className="text-sm font-medium text-muted-foreground">Site web</label>
                 <input
+                  id="sponsor-website"
                   className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
                   value={websiteEdit}
                   onChange={(e) => setWebsiteEdit(e.target.value)}
@@ -293,7 +308,7 @@ export default function SponsorPortalPage() {
 
       {/* Leads Tab */}
       {tab === "leads" && (
-        <section className="mt-6">
+        <section id="tab-panel-leads" role="tabpanel" aria-labelledby="tab-leads" className="mt-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold">
               <Users className="inline h-5 w-5 mr-1.5 text-teranga-gold" />
@@ -304,7 +319,7 @@ export default function SponsorPortalPage() {
                 onClick={handleExportCSV}
                 className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm font-medium hover:bg-muted"
               >
-                <Download className="h-4 w-4" /> Exporter CSV
+                <Download className="h-4 w-4" aria-hidden="true" /> Exporter CSV
               </button>
             )}
           </div>

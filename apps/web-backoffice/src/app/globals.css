@@ -58,3 +58,12 @@
   body { @apply bg-background text-foreground; }
   html.dark { color-scheme: dark; }
 }
+
+@layer base {
+  /* WCAG 2.1 AA — focus-visible outline for keyboard navigation */
+  *:focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+}

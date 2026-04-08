@@ -213,29 +213,34 @@ export default function NewEventPage() {
       <h1 className="text-2xl font-bold text-foreground mb-6">Créer un événement</h1>
 
       {/* Step indicator */}
-      <div className="flex items-center gap-2 mb-8">
-        {STEPS.map((label, i) => (
-          <div key={label} className="flex items-center gap-2">
-            <button
-              onClick={() => { if (i < step) setStep(i); }}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
-                i === step
-                  ? "bg-primary text-white"
-                  : i < step
-                  ? "bg-green-100 text-green-700 cursor-pointer"
-                  : "bg-accent text-muted-foreground"
-              }`}
-            >
-              {i < step ? <Check className="h-3.5 w-3.5" /> : <span>{i + 1}</span>}
-              {label}
-            </button>
-            {i < STEPS.length - 1 && <div className="w-8 h-px bg-border" />}
-          </div>
-        ))}
-      </div>
+      <nav aria-label="Étapes de création d'événement" className="flex items-center gap-2 mb-8">
+        <ol className="flex items-center gap-2 list-none p-0 m-0">
+          {STEPS.map((label, i) => (
+            <li key={label} className="flex items-center gap-2">
+              <button
+                onClick={() => { if (i < step) setStep(i); }}
+                disabled={i > step}
+                aria-current={i === step ? "step" : undefined}
+                aria-label={`${i < step ? "Terminé : " : ""}Étape ${i + 1} sur ${STEPS.length} : ${label}`}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                  i === step
+                    ? "bg-primary text-white"
+                    : i < step
+                    ? "bg-green-100 text-green-700 cursor-pointer"
+                    : "bg-accent text-muted-foreground cursor-not-allowed"
+                }`}
+              >
+                {i < step ? <Check className="h-3.5 w-3.5" aria-hidden="true" /> : <span aria-hidden="true">{i + 1}</span>}
+                {label}
+              </button>
+              {i < STEPS.length - 1 && <div className="w-8 h-px bg-border" aria-hidden="true" />}
+            </li>
+          ))}
+        </ol>
+      </nav>
 
       {error && (
-        <div className="bg-red-50 text-red-700 text-sm px-4 py-3 rounded-lg mb-4">{error}</div>
+        <div role="alert" className="bg-red-50 text-red-700 text-sm px-4 py-3 rounded-lg mb-4">{error}</div>
       )}
 
       <div className="bg-card rounded-xl border border-border p-6">
@@ -243,28 +248,39 @@ export default function NewEventPage() {
         {step === 0 && (
           <div className="space-y-5">
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">Titre *</label>
+              <label htmlFor="event-title" className="block text-sm font-medium text-foreground mb-1">
+                Titre <span aria-hidden="true">*</span><span className="sr-only">(requis)</span>
+              </label>
               <input
+                id="event-title"
                 type="text"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder="Ex: Dakar Tech Summit 2026"
+                required
+                aria-required="true"
                 className="w-full px-4 py-2.5 rounded-lg border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">Description *</label>
+              <label htmlFor="event-description" className="block text-sm font-medium text-foreground mb-1">
+                Description <span aria-hidden="true">*</span><span className="sr-only">(requis)</span>
+              </label>
               <Textarea
+                id="event-description"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 rows={4}
                 placeholder="Décrivez votre événement..."
                 className="resize-none"
+                required
+                aria-required="true"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">Description courte</label>
+              <label htmlFor="event-short-description" className="block text-sm font-medium text-foreground mb-1">Description courte</label>
               <input
+                id="event-short-description"
                 type="text"
                 value={shortDescription}
                 onChange={(e) => setShortDescription(e.target.value)}
@@ -275,11 +291,13 @@ export default function NewEventPage() {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">Catégorie *</label>
+                <label htmlFor="event-category" className="block text-sm font-medium text-foreground mb-1">
+                  Catégorie <span aria-hidden="true">*</span><span className="sr-only">(requis)</span>
+                </label>
                 <Select
+                  id="event-category"
                   value={category}
                   onChange={(e) => setCategory(e.target.value)}
-                  aria-label="Catégorie"
                 >
                   {CATEGORY_OPTIONS.map((opt) => (
                     <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -287,11 +305,13 @@ export default function NewEventPage() {
                 </Select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">Format *</label>
+                <label htmlFor="event-format" className="block text-sm font-medium text-foreground mb-1">
+                  Format <span aria-hidden="true">*</span><span className="sr-only">(requis)</span>
+                </label>
                 <Select
+                  id="event-format"
                   value={format}
                   onChange={(e) => setFormat(e.target.value)}
-                  aria-label="Format"
                 >
                   {FORMAT_OPTIONS.map((opt) => (
                     <option key={opt.value} value={opt.value}>{opt.label}</option>
@@ -301,27 +321,38 @@ export default function NewEventPage() {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">Date de début *</label>
+                <label htmlFor="event-start-date" className="block text-sm font-medium text-foreground mb-1">
+                  Date de début <span aria-hidden="true">*</span><span className="sr-only">(requis)</span>
+                </label>
                 <input
+                  id="event-start-date"
                   type="datetime-local"
                   value={startDate}
                   onChange={(e) => setStartDate(e.target.value)}
+                  required
+                  aria-required="true"
                   className="w-full px-4 py-2.5 rounded-lg border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">Date de fin *</label>
+                <label htmlFor="event-end-date" className="block text-sm font-medium text-foreground mb-1">
+                  Date de fin <span aria-hidden="true">*</span><span className="sr-only">(requis)</span>
+                </label>
                 <input
+                  id="event-end-date"
                   type="datetime-local"
                   value={endDate}
                   onChange={(e) => setEndDate(e.target.value)}
+                  required
+                  aria-required="true"
                   className="w-full px-4 py-2.5 rounded-lg border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
                 />
               </div>
             </div>
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">Tags</label>
+              <label htmlFor="event-tags" className="block text-sm font-medium text-foreground mb-1">Tags</label>
               <input
+                id="event-tags"
                 type="text"
                 value={tags}
                 onChange={(e) => setTags(e.target.value)}
@@ -338,41 +369,56 @@ export default function NewEventPage() {
             {format !== "online" && (
               <>
                 <div>
-                  <label className="block text-sm font-medium text-foreground mb-1">Nom du lieu *</label>
+                  <label htmlFor="event-location-name" className="block text-sm font-medium text-foreground mb-1">
+                    Nom du lieu <span aria-hidden="true">*</span><span className="sr-only">(requis)</span>
+                  </label>
                   <input
+                    id="event-location-name"
                     type="text"
                     value={locationName}
                     onChange={(e) => setLocationName(e.target.value)}
                     placeholder="Ex: Centre International de Conférences de Dakar"
+                    required
+                    aria-required="true"
                     className="w-full px-4 py-2.5 rounded-lg border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-foreground mb-1">Adresse *</label>
+                  <label htmlFor="event-address" className="block text-sm font-medium text-foreground mb-1">
+                    Adresse <span aria-hidden="true">*</span><span className="sr-only">(requis)</span>
+                  </label>
                   <input
+                    id="event-address"
                     type="text"
                     value={address}
                     onChange={(e) => setAddress(e.target.value)}
                     placeholder="Ex: Route de King Fahd, Almadies"
+                    required
+                    aria-required="true"
                     className="w-full px-4 py-2.5 rounded-lg border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-medium text-foreground mb-1">Ville *</label>
+                    <label htmlFor="event-city" className="block text-sm font-medium text-foreground mb-1">
+                      Ville <span aria-hidden="true">*</span><span className="sr-only">(requis)</span>
+                    </label>
                     <input
+                      id="event-city"
                       type="text"
                       value={city}
                       onChange={(e) => setCity(e.target.value)}
+                      required
+                      aria-required="true"
                       className="w-full px-4 py-2.5 rounded-lg border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-foreground mb-1">Pays</label>
+                    <label htmlFor="event-country" className="block text-sm font-medium text-foreground mb-1">Pays</label>
                     <Select
+                      id="event-country"
                       value={country}
                       onChange={(e) => setCountry(e.target.value)}
-                      aria-label="Pays"
                     >
                       <option value="SN">Sénégal</option>
                       <option value="CI">Côte d&apos;Ivoire</option>
@@ -391,12 +437,17 @@ export default function NewEventPage() {
             )}
             {(format === "online" || format === "hybrid") && (
               <div>
-                <label className="block text-sm font-medium text-foreground mb-1">Lien du stream *</label>
+                <label htmlFor="event-stream-url" className="block text-sm font-medium text-foreground mb-1">
+                  Lien du stream <span aria-hidden="true">*</span><span className="sr-only">(requis)</span>
+                </label>
                 <input
+                  id="event-stream-url"
                   type="url"
                   value={streamUrl}
                   onChange={(e) => setStreamUrl(e.target.value)}
                   placeholder="https://zoom.us/j/..."
+                  required
+                  aria-required="true"
                   className="w-full px-4 py-2.5 rounded-lg border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
                 />
               </div>
@@ -408,12 +459,13 @@ export default function NewEventPage() {
         {step === 2 && (
           <div className="space-y-4">
             {tickets.map((ticket, i) => (
-              <div key={i} className="border border-border rounded-lg p-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium text-foreground">Billet #{i + 1}</span>
+              <fieldset key={i} className="border border-border rounded-lg p-4 space-y-3">
+                <legend className="text-sm font-medium text-foreground px-1">Billet #{i + 1}</legend>
+                <div className="flex justify-end">
                   {tickets.length > 1 && (
                     <button
                       onClick={() => removeTicket(i)}
+                      aria-label={`Supprimer le billet ${i + 1}`}
                       className="text-xs text-red-500 hover:text-red-700"
                     >
                       Supprimer
@@ -422,18 +474,24 @@ export default function NewEventPage() {
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs text-muted-foreground mb-1">Nom *</label>
+                    <label htmlFor={`ticket-name-${i}`} className="block text-xs text-muted-foreground mb-1">
+                      Nom <span aria-hidden="true">*</span><span className="sr-only">(requis)</span>
+                    </label>
                     <input
+                      id={`ticket-name-${i}`}
                       type="text"
                       value={ticket.name}
                       onChange={(e) => updateTicket(i, "name", e.target.value)}
                       placeholder="Ex: VIP, Standard"
+                      required
+                      aria-required="true"
                       className="w-full px-3 py-2 rounded-lg border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs text-muted-foreground mb-1">Prix (XOF)</label>
+                    <label htmlFor={`ticket-price-${i}`} className="block text-xs text-muted-foreground mb-1">Prix (XOF)</label>
                     <input
+                      id={`ticket-price-${i}`}
                       type="number"
                       min={0}
                       value={ticket.price}
@@ -444,8 +502,9 @@ export default function NewEventPage() {
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs text-muted-foreground mb-1">Quantité (vide = illimité)</label>
+                    <label htmlFor={`ticket-quantity-${i}`} className="block text-xs text-muted-foreground mb-1">Quantité (vide = illimité)</label>
                     <input
+                      id={`ticket-quantity-${i}`}
                       type="number"
                       min={1}
                       value={ticket.totalQuantity ?? ""}
@@ -455,8 +514,9 @@ export default function NewEventPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs text-muted-foreground mb-1">Description</label>
+                    <label htmlFor={`ticket-description-${i}`} className="block text-xs text-muted-foreground mb-1">Description</label>
                     <input
+                      id={`ticket-description-${i}`}
                       type="text"
                       value={ticket.description}
                       onChange={(e) => updateTicket(i, "description", e.target.value)}
@@ -465,7 +525,7 @@ export default function NewEventPage() {
                     />
                   </div>
                 </div>
-              </div>
+              </fieldset>
             ))}
             <button
               onClick={addTicket}
@@ -510,8 +570,9 @@ export default function NewEventPage() {
               </button>
             </div>
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">Nombre max de participants</label>
+              <label htmlFor="event-max-attendees" className="block text-sm font-medium text-foreground mb-1">Nombre max de participants</label>
               <input
+                id="event-max-attendees"
                 type="number"
                 min={1}
                 value={maxAttendees}

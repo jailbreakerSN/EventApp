@@ -16,12 +16,12 @@ export function Header() {
   return (
     <header className="sticky top-0 z-50 border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-        <Link href="/" className="flex items-center gap-2">
+        <Link href="/" aria-label="Teranga Events — accueil" className="flex items-center gap-2">
           <ThemeLogo width={140} height={83} className="h-8 w-auto" priority />
         </Link>
 
         {/* Desktop nav */}
-        <nav className="hidden items-center gap-6 md:flex">
+        <nav aria-label="Navigation principale" className="hidden items-center gap-6 md:flex">
           <Link href="/events" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
             Événements
           </Link>
@@ -65,15 +65,17 @@ export function Header() {
           className="md:hidden"
           onClick={() => setMobileOpen(!mobileOpen)}
           aria-label={mobileOpen ? "Fermer le menu" : "Ouvrir le menu"}
+          aria-expanded={mobileOpen}
+          aria-controls="mobile-nav"
         >
-          {mobileOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+          {mobileOpen ? <X className="h-6 w-6" aria-hidden="true" /> : <Menu className="h-6 w-6" aria-hidden="true" />}
         </button>
       </div>
 
       {/* Mobile nav */}
       {mobileOpen && (
         <div className="border-t bg-card px-4 py-4 md:hidden">
-          <nav className="flex flex-col gap-3">
+          <nav id="mobile-nav" aria-label="Navigation mobile" className="flex flex-col gap-3">
             <Link href="/events" className="text-sm font-medium" onClick={() => setMobileOpen(false)}>
               Événements
             </Link>

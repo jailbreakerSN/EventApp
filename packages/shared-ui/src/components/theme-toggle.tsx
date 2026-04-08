@@ -23,24 +23,31 @@ export function ThemeToggle({ theme, setTheme, className }: ThemeToggleProps) {
   useEffect(() => setMounted(true), []);
 
   return (
-    <div className={cn("inline-flex items-center gap-1 rounded-lg bg-muted p-1", className)}>
-      {options.map(({ value, icon: Icon, label }) => (
-        <button
-          key={value}
-          onClick={() => setTheme(value)}
-          className={cn(
-            "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors",
-            mounted && theme === value
-              ? "bg-background text-foreground shadow-sm"
-              : "text-muted-foreground hover:text-foreground"
-          )}
-          title={label}
-          aria-label={label}
-        >
-          <Icon size={14} />
-          <span className="hidden sm:inline">{label}</span>
-        </button>
-      ))}
+    <div
+      className={cn("inline-flex items-center gap-1 rounded-lg bg-muted p-1", className)}
+      role="group"
+      aria-label="Thème de l'interface"
+    >
+      {options.map(({ value, icon: Icon, label }) => {
+        const isActive = mounted && theme === value;
+        return (
+          <button
+            key={value}
+            onClick={() => setTheme(value)}
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors",
+              isActive
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+            aria-label={label}
+            aria-pressed={isActive}
+          >
+            <Icon size={14} aria-hidden="true" />
+            <span className="hidden sm:inline">{label}</span>
+          </button>
+        );
+      })}
     </div>
   );
 }

@@ -82,28 +82,33 @@ export default function FeedPage() {
 
       {/* New post */}
       <div className="bg-card rounded-xl border border-border p-4 mb-6">
+        <label htmlFor="new-post-content" className="sr-only">Nouveau message</label>
         <textarea
+          id="new-post-content"
           value={newPost}
           onChange={(e) => setNewPost(e.target.value)}
           placeholder="Partagez quelque chose..."
           rows={3}
+          aria-label="Nouveau message"
           className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 mb-3"
         />
         <div className="flex justify-end">
           <button
             onClick={() => newPost.trim() && createPost.mutate(newPost.trim())}
             disabled={createPost.isPending || !newPost.trim()}
+            aria-label={createPost.isPending ? "Publication en cours..." : "Publier le message"}
             className="bg-primary text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-primary/90 disabled:opacity-50 inline-flex items-center gap-2"
           >
-            <Send className="h-4 w-4" />
+            <Send className="h-4 w-4" aria-hidden="true" />
             {createPost.isPending ? "..." : "Publier"}
           </button>
         </div>
       </div>
 
       {isLoading ? (
-        <div className="flex items-center justify-center py-16">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        <div className="flex items-center justify-center py-16" role="status" aria-label="Chargement du feed...">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" aria-hidden="true" />
+          <span className="sr-only">Chargement du feed...</span>
         </div>
       ) : posts.length === 0 ? (
         <div className="text-center py-16 text-muted-foreground">
@@ -161,7 +166,9 @@ export default function FeedPage() {
 
               {commentingOn === post.id && (
                 <div className="mt-3 flex gap-2">
+                  <label htmlFor={`comment-input-${post.id}`} className="sr-only">Écrire un commentaire</label>
                   <input
+                    id={`comment-input-${post.id}`}
                     type="text"
                     value={commentText}
                     onChange={(e) => setCommentText(e.target.value)}
@@ -179,7 +186,7 @@ export default function FeedPage() {
                     className="bg-primary text-white rounded-lg px-3 py-2 text-sm disabled:opacity-50"
                     aria-label="Envoyer le commentaire"
                   >
-                    <Send className="h-4 w-4" />
+                    <Send className="h-4 w-4" aria-hidden="true" />
                   </button>
                 </div>
               )}

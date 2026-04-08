@@ -3,7 +3,7 @@
 import { useAuth } from "@/hooks/use-auth";
 import { useTheme } from "next-themes";
 import { ThemeToggle } from "@teranga/shared-ui";
-import { Bell, LogOut, Menu } from "lucide-react";
+import { Bell, Keyboard, LogOut, Menu, Search } from "lucide-react";
 import { useSidebar } from "./sidebar-context";
 
 const ROLE_LABELS: Record<string, { label: string; color: string }> = {
@@ -14,7 +14,11 @@ const ROLE_LABELS: Record<string, { label: string; color: string }> = {
   participant: { label: "Participant", color: "bg-accent text-muted-foreground" },
 };
 
-export function TopBar() {
+interface TopBarProps {
+  onShowShortcuts?: () => void;
+}
+
+export function TopBar({ onShowShortcuts }: TopBarProps) {
   const { user, logout } = useAuth();
   const { theme, setTheme } = useTheme();
   const { isOpen, toggle } = useSidebar();
@@ -37,9 +41,38 @@ export function TopBar() {
         </button>
       </div>
 
+      {/* Centre / Left-of-right: Cmd+K trigger */}
+      <button
+        onClick={() => {
+          // Dispatch a synthetic Ctrl+K event to let the CommandPalette's global listener handle it
+          document.dispatchEvent(
+            new KeyboardEvent("keydown", { key: "k", ctrlKey: true, metaKey: true, bubbles: true })
+          );
+        }}
+        className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border bg-muted hover:bg-accent text-muted-foreground motion-safe:transition-colors text-xs"
+        aria-label="Ouvrir la palette de commandes (Ctrl+K)"
+        title="Palette de commandes"
+      >
+        <Search size={13} aria-hidden="true" />
+        <span>Rechercher…</span>
+        <kbd className="ml-1 font-mono text-[10px] bg-background border border-border rounded px-1 py-0.5 leading-none">
+          ⌘K
+        </kbd>
+      </button>
+
       {/* Right: actions */}
       <div className="flex items-center gap-3">
         <ThemeToggle theme={theme} setTheme={setTheme} />
+
+        {/* Keyboard shortcuts hint */}
+        <button
+          onClick={onShowShortcuts}
+          className="hidden sm:flex items-center gap-1 p-2 rounded-lg hover:bg-accent motion-safe:transition-colors"
+          aria-label="Raccourcis clavier (?)"
+          title="Raccourcis clavier (?)"
+        >
+          <Keyboard size={17} className="text-muted-foreground" aria-hidden="true" />
+        </button>
 
         <button className="relative p-2 rounded-lg hover:bg-accent motion-safe:transition-colors" aria-label="Notifications">
           <Bell size={18} className="text-muted-foreground" aria-hidden="true" />
@@ -49,11 +82,14 @@ export function TopBar() {
           {user?.photoURL ? (
             <img
               src={user.photoURL}
-              alt={user.displayName ?? ""}
+              alt={user.displayName ? `Photo de profil de ${user.displayName}` : "Photo de profil"}
               className="w-8 h-8 rounded-full object-cover"
             />
           ) : (
-            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center" aria-hidden="true">
+            <div
+              className="w-8 h-8 rounded-full bg-primary flex items-center justify-center"
+              aria-hidden="true"
+            >
               <span className="text-white text-xs font-bold">
                 {user?.displayName?.[0]?.toUpperCase() ?? "?"}
               </span>

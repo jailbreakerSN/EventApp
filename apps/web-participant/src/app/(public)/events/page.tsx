@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { serverEventsApi } from "@/lib/server-api";
 import { EventCard } from "@/components/event-card";
 import { EventFilters } from "@/components/event-filters";
+import { NewsletterSignup } from "@/components/newsletter-signup";
 import { getDateRange } from "@/lib/date-utils";
 import { Pagination } from "@/components/pagination";
 
@@ -60,7 +61,8 @@ export default async function EventsPage({ searchParams }: EventsPageProps) {
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
       <div className="mb-8">
         <h1 className="text-3xl font-bold">Événements</h1>
-        <p className="mt-2 text-muted-foreground">
+        {/* aria-live announces count updates to screen readers when filters change */}
+        <p className="mt-2 text-muted-foreground" role="status" aria-live="polite" aria-atomic="true">
           {meta.total > 0
             ? `${meta.total} événement${meta.total > 1 ? "s" : ""} trouvé${meta.total > 1 ? "s" : ""}`
             : "Aucun événement trouvé"}
@@ -87,11 +89,15 @@ export default async function EventsPage({ searchParams }: EventsPageProps) {
           <p className="text-lg text-muted-foreground">
             Aucun événement ne correspond à vos critères.
           </p>
-          <a href="/events" className="mt-4 inline-block text-sm font-medium text-teranga-gold hover:underline">
+          <a href="/events" className="mt-4 inline-block text-sm font-medium text-teranga-gold-dark hover:underline">
             Réinitialiser les filtres
           </a>
         </div>
       )}
+
+      <div className="mt-16">
+        <NewsletterSignup />
+      </div>
     </div>
   );
 }

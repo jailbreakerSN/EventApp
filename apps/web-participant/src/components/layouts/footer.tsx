@@ -55,7 +55,7 @@ const legalLinks = [
 
 export function Footer() {
   return (
-    <footer className="border-t bg-card text-foreground">
+    <footer className="border-t bg-card text-foreground" aria-label="Pied de page">
       <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
         {/* Main grid */}
         <div className="grid grid-cols-1 gap-10 sm:grid-cols-2 lg:grid-cols-4">
@@ -67,6 +67,7 @@ export function Footer() {
               width={120}
               height={71}
               className="h-9 w-auto"
+              aria-hidden="false"
             />
             <p className="text-sm text-muted-foreground leading-relaxed">
               La plateforme événementielle du Sénégal.
@@ -89,10 +90,10 @@ export function Footer() {
           </div>
 
           {/* Découvrir */}
-          <div>
-            <h4 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+          <nav aria-label="Découvrir">
+            <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
               Découvrir
-            </h4>
+            </h2>
             <ul className="mt-4 space-y-2">
               {discoverLinks.map(({ label, href }) => (
                 <li key={href}>
@@ -105,13 +106,13 @@ export function Footer() {
                 </li>
               ))}
             </ul>
-          </div>
+          </nav>
 
           {/* Organisateurs */}
-          <div>
-            <h4 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+          <nav aria-label="Organisateurs">
+            <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
               Organisateurs
-            </h4>
+            </h2>
             <ul className="mt-4 space-y-2">
               {organizerLinks.map(({ label, href, internal }) => (
                 <li key={href}>
@@ -135,13 +136,13 @@ export function Footer() {
                 </li>
               ))}
             </ul>
-          </div>
+          </nav>
 
           {/* Légal */}
-          <div>
-            <h4 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+          <nav aria-label="Légal">
+            <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
               Légal
-            </h4>
+            </h2>
             <ul className="mt-4 space-y-2">
               {legalLinks.map(({ label, href }) => (
                 <li key={href}>
@@ -154,7 +155,7 @@ export function Footer() {
                 </li>
               ))}
             </ul>
-          </div>
+          </nav>
         </div>
 
         {/* Bottom bar */}
@@ -163,7 +164,7 @@ export function Footer() {
             © 2026 Teranga Events. Tous droits réservés.
           </p>
           <p className="text-xs text-muted-foreground">
-            Fait avec ❤️ au Sénégal
+            Fait avec <span aria-hidden="true">❤️</span><span className="sr-only">amour</span> au Sénégal
           </p>
         </div>
       </div>

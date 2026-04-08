@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useEffect, useRef, useCallback } from "react";
+import { useEffect, useRef, useCallback, useId } from "react";
 import { X } from "lucide-react";
 import { cn } from "../lib/utils";
 
@@ -16,8 +16,10 @@ interface DialogProps {
 }
 
 function Dialog({ open, onOpenChange, children }: DialogProps) {
+  const titleId = useId();
+  const descId = useId();
   return (
-    <DialogContext.Provider value={{ open, onOpenChange }}>
+    <DialogContext.Provider value={{ open, onOpenChange, titleId, descId }}>
       {children}
     </DialogContext.Provider>
   );
@@ -26,7 +28,9 @@ function Dialog({ open, onOpenChange, children }: DialogProps) {
 const DialogContext = React.createContext<{
   open: boolean;
   onOpenChange: (open: boolean) => void;
-}>({ open: false, onOpenChange: () => {} });
+  titleId: string;
+  descId: string;
+}>({ open: false, onOpenChange: () => {}, titleId: "", descId: "" });
 
 function useDialogContext() {
   return React.useContext(DialogContext);
@@ -42,7 +46,7 @@ interface DialogContentProps {
 }
 
 function DialogContent({ className, children }: DialogContentProps) {
-  const { open, onOpenChange } = useDialogContext();
+  const { open, onOpenChange, titleId, descId } = useDialogContext();
   const dialogRef = useRef<HTMLDialogElement>(null);
 
   useEffect(() => {
@@ -79,6 +83,8 @@ function DialogContent({ className, children }: DialogContentProps) {
         className,
       )}
       aria-modal="true"
+      aria-labelledby={titleId}
+      aria-describedby={descId}
     >
       <div className="relative p-6">
         {children}
@@ -88,7 +94,7 @@ function DialogContent({ className, children }: DialogContentProps) {
           className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
           aria-label="Fermer"
         >
-          <X className="h-4 w-4" />
+          <X className="h-4 w-4" aria-hidden="true" />
         </button>
       </div>
     </dialog>
@@ -118,8 +124,10 @@ function DialogFooter({ className, ...props }: React.HTMLAttributes<HTMLDivEleme
 }
 
 function DialogTitle({ className, ...props }: React.HTMLAttributes<HTMLHeadingElement>) {
+  const { titleId } = useDialogContext();
   return (
     <h2
+      id={titleId}
       className={cn("text-lg font-semibold leading-none tracking-tight text-foreground", className)}
       {...props}
     />
@@ -127,8 +135,10 @@ function DialogTitle({ className, ...props }: React.HTMLAttributes<HTMLHeadingEl
 }
 
 function DialogDescription({ className, ...props }: React.HTMLAttributes<HTMLParagraphElement>) {
+  const { descId } = useDialogContext();
   return (
     <p
+      id={descId}
       className={cn("text-sm text-muted-foreground", className)}
       {...props}
     />
