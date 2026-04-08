@@ -14,7 +14,7 @@ export function usePayoutCalculation(eventId: string | undefined, periodFrom: st
 export function useOrgPayouts(orgId: string | undefined, params: { status?: string; page?: number; limit?: number } = {}) {
   return useQuery({
     queryKey: ["payouts", orgId, params],
-    queryFn: () => payoutsApi.listByOrg(orgId!, params),
+    queryFn: () => payoutsApi.listByOrg(orgId!, params as Parameters<typeof payoutsApi.listByOrg>[1]),
     enabled: !!orgId,
   });
 }

@@ -59,9 +59,9 @@ export default function SponsorPortalPage() {
       }
       setSponsor(mySponsor);
       setDescription(mySponsor.description ?? "");
-      setBoothTitle(mySponsor.boothInfo?.title ?? "");
-      setCtaLabel(mySponsor.boothInfo?.ctaLabel ?? "");
-      setCtaUrl(mySponsor.boothInfo?.ctaUrl ?? "");
+      setBoothTitle(mySponsor.boothTitle ?? "");
+      setCtaLabel(mySponsor.ctaLabel ?? "");
+      setCtaUrl(mySponsor.ctaUrl ?? "");
       setWebsiteEdit(mySponsor.website ?? "");
 
       // Load leads
@@ -71,7 +71,7 @@ export default function SponsorPortalPage() {
       } catch {
         // Leads may not be available
       }
-    } catch (err) {
+    } catch {
       setError("Erreur de chargement. Vérifiez que vous avez accès à cet événement.");
     } finally {
       setLoading(false);
@@ -85,13 +85,10 @@ export default function SponsorPortalPage() {
       await sponsorsApi.update(sponsor.id, {
         description,
         website: websiteEdit || undefined,
-        boothInfo: {
-          ...(sponsor.boothInfo ?? {}),
-          title: boothTitle || undefined,
-          ctaLabel: ctaLabel || undefined,
-          ctaUrl: ctaUrl || undefined,
-        },
-      } as Partial<SponsorProfile>);
+        boothTitle: boothTitle || null,
+        ctaLabel: ctaLabel || null,
+        ctaUrl: ctaUrl || null,
+      });
       setEditing(false);
       await loadData();
     } catch {
@@ -263,20 +260,20 @@ export default function SponsorPortalPage() {
               {sponsor.description && (
                 <p className="text-sm text-muted-foreground whitespace-pre-line">{sponsor.description}</p>
               )}
-              {sponsor.boothInfo?.title && (
+              {sponsor.boothTitle && (
                 <div>
                   <p className="text-xs font-medium uppercase text-muted-foreground">Stand</p>
-                  <p className="font-medium">{sponsor.boothInfo.title}</p>
+                  <p className="font-medium">{sponsor.boothTitle}</p>
                 </div>
               )}
-              {sponsor.boothInfo?.ctaLabel && sponsor.boothInfo?.ctaUrl && (
+              {sponsor.ctaLabel && sponsor.ctaUrl && (
                 <a
-                  href={sponsor.boothInfo.ctaUrl}
+                  href={sponsor.ctaUrl}
                   target="_blank"
                   rel="noreferrer"
                   className="inline-flex items-center gap-1.5 rounded-md bg-teranga-gold px-4 py-2 text-sm font-medium text-white hover:bg-teranga-gold/90"
                 >
-                  {sponsor.boothInfo.ctaLabel} <ExternalLink className="h-3.5 w-3.5" />
+                  {sponsor.ctaLabel} <ExternalLink className="h-3.5 w-3.5" />
                 </a>
               )}
               {sponsor.website && (

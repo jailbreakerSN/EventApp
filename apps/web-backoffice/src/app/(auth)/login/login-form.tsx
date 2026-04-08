@@ -22,7 +22,7 @@ export function LoginForm() {
     register,
     handleSubmit,
     formState: { errors, isSubmitting },
-  } = useForm<LoginDto>({ resolver: zodResolver(LoginSchema) });
+  } = useForm<LoginDto>({ resolver: zodResolver(LoginSchema), mode: "onBlur" });
 
   const onSubmit = async (data: LoginDto) => {
     setError(null);

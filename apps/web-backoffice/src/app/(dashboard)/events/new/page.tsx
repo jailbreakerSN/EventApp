@@ -5,7 +5,17 @@ import { useRouter } from "next/navigation";
 import { useCreateEvent } from "@/hooks/use-events";
 import { useAuth } from "@/hooks/use-auth";
 import { ArrowLeft, ArrowRight, Check, Loader2 } from "lucide-react";
-import { Select, Textarea } from "@teranga/shared-ui";
+import Link from "next/link";
+import {
+  Select,
+  Textarea,
+  Breadcrumb,
+  BreadcrumbList,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@teranga/shared-ui";
 import type { CreateEventDto } from "@teranga/shared-types";
 
 const STEPS = ["Détails", "Lieu", "Billets", "Paramètres"] as const;
@@ -184,12 +194,21 @@ export default function NewEventPage() {
 
   return (
     <div className="max-w-3xl mx-auto">
-      <button
-        onClick={() => router.push("/events")}
-        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground mb-4"
-      >
-        <ArrowLeft className="h-4 w-4" /> Retour aux événements
-      </button>
+      <Breadcrumb className="mb-4">
+        <BreadcrumbList>
+          <BreadcrumbItem>
+            <BreadcrumbLink asChild><Link href="/">Tableau de bord</Link></BreadcrumbLink>
+          </BreadcrumbItem>
+          <BreadcrumbSeparator />
+          <BreadcrumbItem>
+            <BreadcrumbLink asChild><Link href="/events">Événements</Link></BreadcrumbLink>
+          </BreadcrumbItem>
+          <BreadcrumbSeparator />
+          <BreadcrumbItem>
+            <BreadcrumbPage>Nouvel événement</BreadcrumbPage>
+          </BreadcrumbItem>
+        </BreadcrumbList>
+      </Breadcrumb>
 
       <h1 className="text-2xl font-bold text-foreground mb-6">Créer un événement</h1>
 

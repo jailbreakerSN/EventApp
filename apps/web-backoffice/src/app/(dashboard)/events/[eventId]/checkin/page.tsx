@@ -20,7 +20,7 @@ export default function CheckinDashboardPage() {
   const router = useRouter();
 
   const { data: eventData, isLoading: eventLoading } = useEvent(eventId);
-  const { data: statsData, isLoading: statsLoading, dataUpdatedAt } = useCheckinStats(eventId);
+  const { data: statsData, isLoading: statsLoading } = useCheckinStats(eventId);
   const { data: recentData } = useCheckinHistory(eventId, { limit: 10, page: 1 });
 
   const event = (eventData as { data?: Record<string, unknown> })?.data as Record<string, unknown> | undefined;
@@ -203,11 +203,11 @@ export default function CheckinDashboardPage() {
                   </span>
                   <span className="text-muted-foreground mx-2">-</span>
                   <span className="text-sm text-muted-foreground">{entry.ticketTypeName as string}</span>
-                  {entry.accessZoneName && (
+                  {entry.accessZoneName ? (
                     <span className="ml-2 text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">
                       {entry.accessZoneName as string}
                     </span>
-                  )}
+                  ) : null}
                 </div>
                 <span className="text-xs text-muted-foreground">{formatTime(entry.checkedInAt as string)}</span>
               </div>

@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { CheckCircle, XCircle, Loader2, ArrowLeft } from "lucide-react";

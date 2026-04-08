@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Wallet, ArrowDownRight, ArrowUpRight, TrendingUp, Clock } from "lucide-react";
+import { ArrowDownRight, TrendingUp, Clock } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useOrgPayouts } from "@/hooks/use-payouts";
 import { Button, Card, CardContent, Spinner, Badge } from "@teranga/shared-ui";

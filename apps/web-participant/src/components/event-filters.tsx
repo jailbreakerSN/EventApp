@@ -50,8 +50,9 @@ const PRICES = [
   { value: "paid", label: "Payant" },
 ];
 
-// Re-export getDateRange so existing imports from this file still work
-export { getDateRange } from "@/lib/date-utils";
+// Import for local use + re-export so existing imports from this file still work
+import { getDateRange } from "@/lib/date-utils";
+export { getDateRange };
 
 export function EventFilters() {
   const router = useRouter();

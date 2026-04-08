@@ -1,11 +1,27 @@
 "use client";
 
 import { useState } from "react";
-import { Megaphone, Send, Mail, Smartphone, Bell } from "lucide-react";
+import Link from "next/link";
+import { Send, Mail, Smartphone, Bell } from "lucide-react";
 import { useEventBroadcasts, useSendBroadcast } from "@/hooks/use-broadcasts";
 import { useEvents } from "@/hooks/use-events";
 import { useAuth } from "@/hooks/use-auth";
-import { Button, Card, CardContent, Input, Select, Textarea, Spinner, Badge } from "@teranga/shared-ui";
+import {
+  Button,
+  Card,
+  CardContent,
+  Input,
+  Select,
+  Textarea,
+  Spinner,
+  Badge,
+  Breadcrumb,
+  BreadcrumbList,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@teranga/shared-ui";
 import type { CommunicationChannel, BroadcastRecipientFilter } from "@teranga/shared-types";
 
 const CHANNEL_ICONS: Record<string, typeof Mail> = {
@@ -36,7 +52,7 @@ const STATUS_LABELS: Record<string, { label: string; variant: "default" | "succe
 };
 
 export default function CommunicationsPage() {
-  const { user } = useAuth();
+  useAuth();
   const { data: eventsData } = useEvents();
   const events = eventsData?.data ?? [];
 
@@ -73,6 +89,17 @@ export default function CommunicationsPage() {
   return (
     <div className="space-y-6">
       <div>
+        <Breadcrumb className="mb-4">
+          <BreadcrumbList>
+            <BreadcrumbItem>
+              <BreadcrumbLink asChild><Link href="/">Tableau de bord</Link></BreadcrumbLink>
+            </BreadcrumbItem>
+            <BreadcrumbSeparator />
+            <BreadcrumbItem>
+              <BreadcrumbPage>Communications</BreadcrumbPage>
+            </BreadcrumbItem>
+          </BreadcrumbList>
+        </Breadcrumb>
         <h1 className="text-2xl font-bold">Communications</h1>
         <p className="text-muted-foreground">Envoyez des messages aux participants de vos evenements</p>
       </div>

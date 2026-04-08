@@ -8,7 +8,9 @@ import { formatDate, formatDateTime, formatCurrency, Badge } from "@teranga/shar
 import { EventJsonLd } from "@/components/event-detail/event-jsonld";
 import { ShareButtons } from "@/components/share-buttons";
 import { AddToCalendar } from "@/components/add-to-calendar";
+import { EventCard } from "@/components/event-card";
 import type { Event } from "@teranga/shared-types";
+import ReactMarkdown from "react-markdown";
 
 export const revalidate = 60;
 export const dynamicParams = true;
@@ -23,6 +25,28 @@ async function getEvent(slug: string): Promise<Event | null> {
     return result.data;
   } catch {
     return null;
+  }
+}
+
+async function getSimilarEvents(event: Event): Promise<Event[]> {
+  try {
+    // First try: same category + same city
+    const result = await serverEventsApi.search({
+      category: event.category,
+      city: event.location.city,
+      limit: 4,
+    });
+    const filtered = result.data.filter((e) => e.id !== event.id);
+    if (filtered.length > 0) return filtered;
+
+    // Fallback: same category only, no city filter
+    const broader = await serverEventsApi.search({
+      category: event.category,
+      limit: 4,
+    });
+    return broader.data.filter((e) => e.id !== event.id);
+  } catch {
+    return [];
   }
 }
 
@@ -84,6 +108,8 @@ export default async function EventDetailPage({ params }: PageProps) {
   const { slug } = await params;
   const event = await getEvent(slug);
   if (!event) notFound();
+
+  const similarEvents = await getSimilarEvents(event);
 
   const visibleTickets = event.ticketTypes.filter((t) => t.isVisible);
   const minPrice = visibleTickets.length > 0 ? Math.min(...visibleTickets.map((t) => t.price)) : null;
@@ -228,8 +254,8 @@ export default async function EventDetailPage({ params }: PageProps) {
               {/* Description */}
               <div className="mt-8">
                 <h2 className="text-xl font-semibold">À propos</h2>
-                <div className="mt-3 whitespace-pre-line text-muted-foreground leading-relaxed">
-                  {event.description}
+                <div className="mt-3 prose prose-sm max-w-none prose-headings:text-foreground prose-headings:font-semibold prose-p:text-muted-foreground prose-p:leading-relaxed prose-a:text-teranga-gold prose-a:underline prose-strong:text-foreground prose-ul:text-muted-foreground prose-ol:text-muted-foreground prose-li:text-muted-foreground">
+                  <ReactMarkdown>{event.description}</ReactMarkdown>
                 </div>
               </div>
             </div>
@@ -316,6 +342,17 @@ export default async function EventDetailPage({ params }: PageProps) {
           </div>
         </div>
       </div>
+
+      {similarEvents.length > 0 && (
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 mt-16">
+          <h2 className="text-2xl font-bold text-foreground mb-6">Événements similaires</h2>
+          <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+            {similarEvents.map((similar) => (
+              <EventCard key={similar.id} event={similar} />
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="h-16" />
     </>

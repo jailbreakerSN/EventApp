@@ -275,7 +275,7 @@ export const speakersApi = {
     api.get<ApiResponse<SpeakerProfile>>(`/v1/speakers/${speakerId}`),
 
   update: (speakerId: string, data: Partial<SpeakerProfile>) =>
-    api.put<ApiResponse<SpeakerProfile>>(`/v1/speakers/${speakerId}`, data),
+    api.patch<ApiResponse<SpeakerProfile>>(`/v1/speakers/${speakerId}`, data),
 
   getSessions: (eventId: string, speakerId: string) =>
     api.get<PaginatedResponse<import("@teranga/shared-types").Session>>(
@@ -292,7 +292,7 @@ export const sponsorsApi = {
     api.get<ApiResponse<SponsorProfile>>(`/v1/sponsors/${sponsorId}`),
 
   update: (sponsorId: string, data: Partial<SponsorProfile>) =>
-    api.put<ApiResponse<SponsorProfile>>(`/v1/sponsors/${sponsorId}`, data),
+    api.patch<ApiResponse<SponsorProfile>>(`/v1/sponsors/${sponsorId}`, data),
 
   getLeads: (sponsorId: string) =>
     api.get<PaginatedResponse<{ id: string; name: string; email: string; phone?: string; notes?: string; tags: string[]; scannedAt: string }>>(

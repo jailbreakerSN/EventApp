@@ -5,7 +5,6 @@ import { useTheme } from "next-themes";
 import { ThemeToggle } from "@teranga/shared-ui";
 import { Bell, LogOut, Menu } from "lucide-react";
 import { useSidebar } from "./sidebar-context";
-import type { UserRole } from "@teranga/shared-types";
 
 const ROLE_LABELS: Record<string, { label: string; color: string }> = {
   super_admin: { label: "Super Admin", color: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300" },

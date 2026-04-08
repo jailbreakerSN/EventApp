@@ -24,6 +24,19 @@ export function RegisterForm() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+
+  const validateField = (name: string, value: string) => {
+    let message = "";
+    if (name === "displayName") {
+      if (!value.trim()) message = "Ce champ est requis";
+    } else if (name === "email") {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) message = "Adresse email invalide";
+    } else if (name === "password") {
+      if (value.length < 6) message = "Le mot de passe doit contenir au moins 6 caractères";
+    }
+    setFieldErrors((prev) => ({ ...prev, [name]: message }));
+  };
 
   const redirectTo = safeRedirect(searchParams.get("redirect"));
 
@@ -86,40 +99,46 @@ export function RegisterForm() {
             </div>
           )}
 
-          <FormField label="Nom complet" required htmlFor="displayName">
+          <FormField label="Nom complet" required htmlFor="displayName" error={fieldErrors.displayName}>
             <Input
               id="displayName"
               type="text"
               placeholder="Prénom Nom"
               value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
+              onChange={(e) => { setDisplayName(e.target.value); setFieldErrors((p) => ({ ...p, displayName: "" })); }}
+              onBlur={(e) => validateField("displayName", e.target.value)}
               required
               autoComplete="name"
+              aria-invalid={!!fieldErrors.displayName}
             />
           </FormField>
 
-          <FormField label="Email" required htmlFor="email">
+          <FormField label="Email" required htmlFor="email" error={fieldErrors.email}>
             <Input
               id="email"
               type="email"
               placeholder="votre@email.com"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => { setEmail(e.target.value); setFieldErrors((p) => ({ ...p, email: "" })); }}
+              onBlur={(e) => validateField("email", e.target.value)}
               required
               autoComplete="email"
+              aria-invalid={!!fieldErrors.email}
             />
           </FormField>
 
-          <FormField label="Mot de passe" required htmlFor="password">
+          <FormField label="Mot de passe" required htmlFor="password" error={fieldErrors.password}>
             <Input
               id="password"
               type="password"
               placeholder="Au moins 6 caractères"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(e) => { setPassword(e.target.value); setFieldErrors((p) => ({ ...p, password: "" })); }}
+              onBlur={(e) => validateField("password", e.target.value)}
               required
               autoComplete="new-password"
               minLength={6}
+              aria-invalid={!!fieldErrors.password}
             />
           </FormField>
 

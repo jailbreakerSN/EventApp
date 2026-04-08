@@ -88,7 +88,7 @@ export default function OrganizationPage() {
 
   const handleSendInvite = async () => {
     if (!inviteEmail.trim()) return;
-    await createInvite.mutateAsync({ email: inviteEmail.trim(), role: inviteRole });
+    await createInvite.mutateAsync({ email: inviteEmail.trim(), role: inviteRole as "admin" | "member" | "viewer" });
     setInviteEmail("");
     setShowInviteForm(false);
   };

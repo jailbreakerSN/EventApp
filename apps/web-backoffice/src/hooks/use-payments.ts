@@ -6,7 +6,7 @@ import { paymentsApi } from "@/lib/api-client";
 export function useEventPayments(eventId: string, params: { status?: string; method?: string; page?: number; limit?: number } = {}) {
   return useQuery({
     queryKey: ["event-payments", eventId, params],
-    queryFn: () => paymentsApi.listByEvent(eventId, params),
+    queryFn: () => paymentsApi.listByEvent(eventId, params as Parameters<typeof paymentsApi.listByEvent>[1]),
     enabled: !!eventId,
   });
 }

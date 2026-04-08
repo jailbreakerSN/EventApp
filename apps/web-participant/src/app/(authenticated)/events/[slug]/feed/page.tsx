@@ -36,7 +36,7 @@ export default function FeedPage() {
   });
 
   const createPost = useMutation({
-    mutationFn: (content: string) => feedApi.create(eventId, { content, isAnnouncement: false }),
+    mutationFn: (content: string) => feedApi.create(eventId, { content, mediaURLs: [], isAnnouncement: false }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["feed", eventId] });
       setNewPost("");

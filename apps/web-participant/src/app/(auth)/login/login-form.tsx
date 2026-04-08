@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useAuth } from "@/hooks/use-auth";
 import { getAndClearRedirectUrl } from "@/components/auth-guard";
 import { ThemeLogo } from "@/components/theme-logo";
-import { Button, Input, Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@teranga/shared-ui";
+import { Button, Input, Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter, FormField } from "@teranga/shared-ui";
 
 function safeRedirect(url: string | null): string {
   if (!url) return "/events";
@@ -23,6 +23,17 @@ export function LoginForm() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+
+  const validateField = (name: string, value: string) => {
+    let message = "";
+    if (name === "email") {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) message = "Adresse email invalide";
+    } else if (name === "password") {
+      if (value.length < 6) message = "Le mot de passe doit contenir au moins 6 caractères";
+    }
+    setFieldErrors((prev) => ({ ...prev, [name]: message }));
+  };
 
   const redirectTo = safeRedirect(searchParams.get("redirect"));
 
@@ -78,30 +89,32 @@ export function LoginForm() {
             </div>
           )}
 
-          <div className="space-y-2">
-            <label htmlFor="email" className="text-sm font-medium">Email</label>
+          <FormField label="Email" required htmlFor="email" error={fieldErrors.email}>
             <Input
               id="email"
               type="email"
               placeholder="votre@email.com"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => { setEmail(e.target.value); setFieldErrors((p) => ({ ...p, email: "" })); }}
+              onBlur={(e) => validateField("email", e.target.value)}
               required
               autoComplete="email"
+              aria-invalid={!!fieldErrors.email}
             />
-          </div>
+          </FormField>
 
-          <div className="space-y-2">
-            <label htmlFor="password" className="text-sm font-medium">Mot de passe</label>
+          <FormField label="Mot de passe" required htmlFor="password" error={fieldErrors.password}>
             <Input
               id="password"
               type="password"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(e) => { setPassword(e.target.value); setFieldErrors((p) => ({ ...p, password: "" })); }}
+              onBlur={(e) => validateField("password", e.target.value)}
               required
               autoComplete="current-password"
+              aria-invalid={!!fieldErrors.password}
             />
-          </div>
+          </FormField>
 
           <div className="flex justify-end">
             <Link href="/forgot-password" className="text-xs text-muted-foreground hover:text-foreground">

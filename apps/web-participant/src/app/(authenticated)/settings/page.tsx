@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, Mail, Smartphone, Moon } from "lucide-react";
+import { Bell, Mail, Smartphone } from "lucide-react";
 import { useNotificationPreferences, useUpdateNotificationPreferences } from "@/hooks/use-notifications";
 import { Card, CardContent, Spinner } from "@teranga/shared-ui";
 

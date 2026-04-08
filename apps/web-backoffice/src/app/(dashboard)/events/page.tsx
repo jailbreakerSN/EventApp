@@ -6,7 +6,6 @@ import { useEvents } from "@/hooks/use-events";
 import { formatDate } from "@/lib/utils";
 import { Search, Plus, ChevronLeft, ChevronRight, Calendar, MapPin, Users } from "lucide-react";
 import { Select, Skeleton } from "@teranga/shared-ui";
-import type { EventSearchQuery } from "@teranga/shared-types";
 
 const STATUS_LABELS: Record<string, { label: string; className: string }> = {
   draft: { label: "Brouillon", className: "bg-accent text-foreground" },
@@ -33,8 +32,6 @@ export default function EventsPage() {
   const limit = 10;
 
   const { data, isLoading, isError } = useEvents({
-    q: search || undefined,
-    category: (category || undefined) as EventSearchQuery["category"],
     page,
     limit,
   });

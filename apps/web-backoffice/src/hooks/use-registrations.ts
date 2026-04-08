@@ -9,7 +9,7 @@ export function useEventRegistrations(
 ) {
   return useQuery({
     queryKey: ["registrations", eventId, params],
-    queryFn: () => registrationsApi.getEventRegistrations(eventId, params),
+    queryFn: () => registrationsApi.getEventRegistrations(eventId, params as Parameters<typeof registrationsApi.getEventRegistrations>[1]),
     enabled: !!eventId,
   });
 }

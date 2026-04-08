@@ -50,7 +50,7 @@ export default function SpeakerPortalPage() {
       } catch {
         // Sessions may not be available
       }
-    } catch (err) {
+    } catch {
       setError("Erreur de chargement. Vérifiez que vous avez accès à cet événement.");
     } finally {
       setLoading(false);
@@ -137,16 +137,16 @@ export default function SpeakerPortalPage() {
           {speaker.photoURL ? (
             <img
               src={speaker.photoURL}
-              alt={speaker.fullName}
+              alt={speaker.name}
               className="h-20 w-20 rounded-full object-cover"
             />
           ) : (
             <div className="flex h-20 w-20 items-center justify-center rounded-full bg-teranga-navy text-2xl font-bold text-teranga-gold">
-              {speaker.fullName.charAt(0)}
+              {speaker.name.charAt(0)}
             </div>
           )}
           <div className="flex-1">
-            <h3 className="text-xl font-semibold">{speaker.fullName}</h3>
+            <h3 className="text-xl font-semibold">{speaker.name}</h3>
             {speaker.title && <p className="text-sm text-muted-foreground">{speaker.title}</p>}
             {speaker.company && <p className="text-sm text-muted-foreground">{speaker.company}</p>}
           </div>
@@ -265,10 +265,10 @@ export default function SpeakerPortalPage() {
                     {" — "}
                     {new Date(session.endTime).toLocaleString("fr-FR", { timeStyle: "short" })}
                   </span>
-                  {session.room && (
+                  {session.location && (
                     <span className="flex items-center gap-1">
                       <MapPin className="h-3.5 w-3.5" />
-                      {session.room}
+                      {session.location}
                     </span>
                   )}
                 </div>

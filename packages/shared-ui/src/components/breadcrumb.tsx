@@ -43,15 +43,26 @@ function BreadcrumbItem({ className, ...props }: React.ComponentPropsWithoutRef<
 /*  BreadcrumbLink                                                     */
 /* ------------------------------------------------------------------ */
 
-function BreadcrumbLink({ className, ...props }: React.ComponentPropsWithoutRef<"a">) {
+interface BreadcrumbLinkProps extends React.ComponentPropsWithoutRef<"a"> {
+  asChild?: boolean;
+}
+
+function BreadcrumbLink({ className, asChild, children, ...props }: BreadcrumbLinkProps) {
+  const linkClassName = cn(
+    "text-muted-foreground transition-colors hover:text-foreground",
+    className,
+  );
+
+  if (asChild && React.isValidElement(children)) {
+    return React.cloneElement(children as React.ReactElement<Record<string, unknown>>, {
+      className: cn(linkClassName, (children.props as { className?: string }).className),
+    });
+  }
+
   return (
-    <a
-      className={cn(
-        "text-muted-foreground transition-colors hover:text-foreground",
-        className,
-      )}
-      {...props}
-    />
+    <a className={linkClassName} {...props}>
+      {children}
+    </a>
   );
 }
 

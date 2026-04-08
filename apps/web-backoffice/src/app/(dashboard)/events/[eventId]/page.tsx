@@ -3,7 +3,17 @@
 import { useState, useCallback } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
-import { ConfirmDialog, getErrorMessage, Skeleton } from "@teranga/shared-ui";
+import {
+  ConfirmDialog,
+  getErrorMessage,
+  Skeleton,
+  Breadcrumb,
+  BreadcrumbList,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@teranga/shared-ui";
 import {
   useEvent,
   usePublishEvent,
@@ -19,7 +29,6 @@ import {
 } from "@/hooks/use-registrations";
 import { formatDate, formatCurrency } from "@/lib/utils";
 import {
-  ArrowLeft,
   Globe,
   GlobeLock,
   Loader2,
@@ -45,7 +54,7 @@ import { useEventSpeakers, useCreateSpeaker, useDeleteSpeaker } from "@/hooks/us
 import { useEventSponsors, useCreateSponsor, useDeleteSponsor } from "@/hooks/use-sponsors";
 import { useEventPromoCodes, useCreatePromoCode, useDeactivatePromoCode } from "@/hooks/use-promo-codes";
 import { eventsApi } from "@/lib/api-client";
-import type { Event, CreateTicketTypeDto, CreateAccessZoneDto, Session as SessionType, CreateSessionDto, Payment, PaymentSummary, SpeakerProfile, SponsorProfile, CreateSpeakerDto, CreateSponsorDto, SponsorTier } from "@teranga/shared-types";
+import type { Event, CreateTicketTypeDto, CreateAccessZoneDto, CreateSessionDto, Payment, PaymentSummary, SpeakerProfile, SponsorProfile, SponsorTier } from "@teranga/shared-types";
 import { Calendar, MessageSquare, Clock, Mic, UserRound, Building } from "lucide-react";
 
 const TABS = ["Infos", "Billets", "Inscriptions", "Paiements", "Sessions", "Feed", "Zones", "Intervenants", "Sponsors", "Promos"] as const;
@@ -122,12 +131,21 @@ export default function EventDetailPage() {
 
   return (
     <div>
-      <button
-        onClick={() => router.push("/events")}
-        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground mb-4"
-      >
-        <ArrowLeft className="h-4 w-4" /> Événements
-      </button>
+      <Breadcrumb className="mb-4">
+        <BreadcrumbList>
+          <BreadcrumbItem>
+            <BreadcrumbLink asChild><Link href="/">Tableau de bord</Link></BreadcrumbLink>
+          </BreadcrumbItem>
+          <BreadcrumbSeparator />
+          <BreadcrumbItem>
+            <BreadcrumbLink asChild><Link href="/events">Événements</Link></BreadcrumbLink>
+          </BreadcrumbItem>
+          <BreadcrumbSeparator />
+          <BreadcrumbItem>
+            <BreadcrumbPage>{event.title}</BreadcrumbPage>
+          </BreadcrumbItem>
+        </BreadcrumbList>
+      </Breadcrumb>
 
       {/* Header */}
       <div className="flex items-start justify-between mb-6">
@@ -1006,7 +1024,7 @@ function FeedTab({ eventId }: { eventId: string }) {
   const handlePost = async () => {
     if (!content.trim()) return;
     try {
-      await createPost.mutateAsync({ content: content.trim(), isAnnouncement });
+      await createPost.mutateAsync({ content: content.trim(), mediaURLs: [], isAnnouncement });
       setContent(""); setIsAnnouncement(false);
       toast.success("Publication créée.");
     } catch (err: unknown) {
@@ -1255,11 +1273,11 @@ function PaymentsTab({ eventId }: { eventId: string }) {
                       <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${st.className}`}>
                         {st.label}
                       </span>
-                      {p.status === "failed" && (p as Record<string, unknown>).failureReason && (
+                      {p.status === "failed" && (p as Record<string, unknown>).failureReason ? (
                         <p className="mt-1 text-xs text-red-500 max-w-[200px] truncate" title={String((p as Record<string, unknown>).failureReason)}>
                           {String((p as Record<string, unknown>).failureReason)}
                         </p>
-                      )}
+                      ) : null}
                     </td>
                     <td className="px-4 py-3">
                       {p.refundedAmount > 0 ? formatCurrency(p.refundedAmount, p.currency) : "—"}
@@ -1350,8 +1368,9 @@ function SpeakersTab({ eventId }: { eventId: string }) {
       setShowForm(false);
       setName(""); setTitle(""); setCompany(""); setBio("");
       toast.success("Intervenant ajoute");
-    } catch (err) {
-      toast.error(getErrorMessage(err));
+    } catch (err: unknown) {
+      const code = (err as { code?: string })?.code;
+      toast.error(getErrorMessage(code));
     }
   };
 
@@ -1461,7 +1480,7 @@ function SponsorsTab({ eventId }: { eventId: string }) {
       setCompanyName(""); setWebsite(""); setDescription("");
       toast.success("Sponsor ajoute");
     } catch (err) {
-      toast.error(getErrorMessage(err));
+      toast.error(getErrorMessage((err as { code?: string })?.code));
     }
   };
 
@@ -1585,7 +1604,7 @@ function PromosTab({ eventId }: { eventId: string }) {
       setCode(""); setDiscountValue(""); setMaxUses(""); setExpiresAt("");
       toast.success("Code promo créé");
     } catch (err) {
-      toast.error(getErrorMessage(err));
+      toast.error(getErrorMessage((err as { code?: string })?.code));
     }
   };
 
@@ -1595,7 +1614,7 @@ function PromosTab({ eventId }: { eventId: string }) {
       await deactivatePromo.mutateAsync(promoCodeId);
       toast.success("Code promo désactivé");
     } catch (err) {
-      toast.error(getErrorMessage(err));
+      toast.error(getErrorMessage((err as { code?: string })?.code));
     }
   };
 
