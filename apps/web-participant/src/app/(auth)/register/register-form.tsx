@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useAuth } from "@/hooks/use-auth";
 import { getAndClearRedirectUrl } from "@/components/auth-guard";
 import { ThemeLogo } from "@/components/theme-logo";
-import { Button, Input, Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@teranga/shared-ui";
+import { Button, Input, Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter, FormField } from "@teranga/shared-ui";
 
 function safeRedirect(url: string | null): string {
   if (!url) return "/events";
@@ -86,8 +86,7 @@ export function RegisterForm() {
             </div>
           )}
 
-          <div className="space-y-2">
-            <label htmlFor="displayName" className="text-sm font-medium">Nom complet</label>
+          <FormField label="Nom complet" required htmlFor="displayName">
             <Input
               id="displayName"
               type="text"
@@ -97,10 +96,9 @@ export function RegisterForm() {
               required
               autoComplete="name"
             />
-          </div>
+          </FormField>
 
-          <div className="space-y-2">
-            <label htmlFor="email" className="text-sm font-medium">Email</label>
+          <FormField label="Email" required htmlFor="email">
             <Input
               id="email"
               type="email"
@@ -110,10 +108,9 @@ export function RegisterForm() {
               required
               autoComplete="email"
             />
-          </div>
+          </FormField>
 
-          <div className="space-y-2">
-            <label htmlFor="password" className="text-sm font-medium">Mot de passe</label>
+          <FormField label="Mot de passe" required htmlFor="password">
             <Input
               id="password"
               type="password"
@@ -124,7 +121,7 @@ export function RegisterForm() {
               autoComplete="new-password"
               minLength={6}
             />
-          </div>
+          </FormField>
 
           <Button type="submit" className="w-full" disabled={loading}>
             {loading ? "Inscription..." : "Créer mon compte"}

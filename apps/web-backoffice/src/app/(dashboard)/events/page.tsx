@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useEvents } from "@/hooks/use-events";
 import { formatDate } from "@/lib/utils";
 import { Search, Plus, ChevronLeft, ChevronRight, Calendar, MapPin, Users } from "lucide-react";
+import { Select, Skeleton } from "@teranga/shared-ui";
 import type { EventSearchQuery } from "@teranga/shared-types";
 
 const STATUS_LABELS: Record<string, { label: string; className: string }> = {
@@ -68,22 +69,48 @@ export default function EventsPage() {
             className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
           />
         </div>
-        <select
+        <Select
           value={category}
           onChange={(e) => { setCategory(e.target.value); setPage(1); }}
           aria-label="Filtrer par catégorie"
-          className="px-4 py-2.5 rounded-lg border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary bg-card"
         >
           {CATEGORY_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>{opt.label}</option>
           ))}
-        </select>
+        </Select>
       </div>
 
       {/* Content */}
       {isLoading ? (
-        <div className="bg-card rounded-xl border border-border p-12 text-center text-muted-foreground">
-          Chargement des événements...
+        <div className="bg-card rounded-xl border border-border overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border text-left text-muted-foreground font-medium">
+                  <th className="px-6 py-3">Événement</th>
+                  <th className="px-6 py-3">Date</th>
+                  <th className="px-6 py-3">Lieu</th>
+                  <th className="px-6 py-3">Catégorie</th>
+                  <th className="px-6 py-3">Statut</th>
+                  <th className="px-6 py-3 text-right">Inscrits</th>
+                  <th className="px-6 py-3"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <tr key={i} className="border-b border-border/50">
+                    <td className="px-6 py-4"><Skeleton variant="text" className="h-4 w-40" /></td>
+                    <td className="px-6 py-4"><Skeleton variant="text" className="h-4 w-24" /></td>
+                    <td className="px-6 py-4"><Skeleton variant="text" className="h-4 w-20" /></td>
+                    <td className="px-6 py-4"><Skeleton variant="text" className="h-4 w-16" /></td>
+                    <td className="px-6 py-4"><Skeleton variant="text" className="h-5 w-16 rounded-full" /></td>
+                    <td className="px-6 py-4 text-right"><Skeleton variant="text" className="h-4 w-8 ml-auto" /></td>
+                    <td className="px-6 py-4 text-right"><Skeleton variant="text" className="h-4 w-10 ml-auto" /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       ) : isError ? (
         <div className="bg-card rounded-xl border border-border p-12 text-center text-red-500">

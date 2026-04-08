@@ -8,6 +8,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { firebaseAuth } from "@/lib/firebase";
 import { LoginSchema, type LoginDto } from "@teranga/shared-types";
 import { useState } from "react";
+import { FormField } from "@teranga/shared-ui";
 import type { UserRole } from "@teranga/shared-types";
 
 const BACKOFFICE_ROLES: UserRole[] = ["organizer", "co_organizer", "super_admin"];
@@ -47,36 +48,26 @@ export function LoginForm() {
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-      <div>
-        <label className="block text-sm font-medium text-card-foreground mb-1">
-          Adresse email
-        </label>
+      <FormField label="Adresse email" error={errors.email?.message} required htmlFor="email">
         <input
+          id="email"
           {...register("email")}
           type="email"
           autoComplete="email"
           placeholder="vous@organisation.sn"
           className="w-full border border-input bg-background rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
         />
-        {errors.email && (
-          <p className="text-destructive text-xs mt-1">{errors.email.message}</p>
-        )}
-      </div>
+      </FormField>
 
-      <div>
-        <label className="block text-sm font-medium text-card-foreground mb-1">
-          Mot de passe
-        </label>
+      <FormField label="Mot de passe" error={errors.password?.message} required htmlFor="password">
         <input
+          id="password"
           {...register("password")}
           type="password"
           autoComplete="current-password"
           className="w-full border border-input bg-background rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
         />
-        {errors.password && (
-          <p className="text-destructive text-xs mt-1">{errors.password.message}</p>
-        )}
-      </div>
+      </FormField>
 
       <div className="flex justify-end">
         <Link href="/forgot-password" className="text-xs text-muted-foreground hover:text-foreground">

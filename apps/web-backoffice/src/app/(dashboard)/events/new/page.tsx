@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCreateEvent } from "@/hooks/use-events";
 import { useAuth } from "@/hooks/use-auth";
 import { ArrowLeft, ArrowRight, Check, Loader2 } from "lucide-react";
+import { Select, Textarea } from "@teranga/shared-ui";
 import type { CreateEventDto } from "@teranga/shared-types";
 
 const STEPS = ["Détails", "Lieu", "Billets", "Paramètres"] as const;
@@ -234,12 +235,12 @@ export default function NewEventPage() {
             </div>
             <div>
               <label className="block text-sm font-medium text-foreground mb-1">Description *</label>
-              <textarea
+              <Textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 rows={4}
                 placeholder="Décrivez votre événement..."
-                className="w-full px-4 py-2.5 rounded-lg border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary resize-none"
+                className="resize-none"
               />
             </div>
             <div>
@@ -256,27 +257,27 @@ export default function NewEventPage() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-foreground mb-1">Catégorie *</label>
-                <select
+                <Select
                   value={category}
                   onChange={(e) => setCategory(e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-lg border border-border text-sm bg-card focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  aria-label="Catégorie"
                 >
                   {CATEGORY_OPTIONS.map((opt) => (
                     <option key={opt.value} value={opt.value}>{opt.label}</option>
                   ))}
-                </select>
+                </Select>
               </div>
               <div>
                 <label className="block text-sm font-medium text-foreground mb-1">Format *</label>
-                <select
+                <Select
                   value={format}
                   onChange={(e) => setFormat(e.target.value)}
-                  className="w-full px-4 py-2.5 rounded-lg border border-border text-sm bg-card focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  aria-label="Format"
                 >
                   {FORMAT_OPTIONS.map((opt) => (
                     <option key={opt.value} value={opt.value}>{opt.label}</option>
                   ))}
-                </select>
+                </Select>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
@@ -349,10 +350,10 @@ export default function NewEventPage() {
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-foreground mb-1">Pays</label>
-                    <select
+                    <Select
                       value={country}
                       onChange={(e) => setCountry(e.target.value)}
-                      className="w-full px-4 py-2.5 rounded-lg border border-border text-sm bg-card focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                      aria-label="Pays"
                     >
                       <option value="SN">Sénégal</option>
                       <option value="CI">Côte d&apos;Ivoire</option>
@@ -364,7 +365,7 @@ export default function NewEventPage() {
                       <option value="NE">Niger</option>
                       <option value="CM">Cameroun</option>
                       <option value="GA">Gabon</option>
-                    </select>
+                    </Select>
                   </div>
                 </div>
               </>

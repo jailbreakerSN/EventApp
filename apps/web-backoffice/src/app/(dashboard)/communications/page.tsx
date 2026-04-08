@@ -5,7 +5,7 @@ import { Megaphone, Send, Mail, Smartphone, Bell } from "lucide-react";
 import { useEventBroadcasts, useSendBroadcast } from "@/hooks/use-broadcasts";
 import { useEvents } from "@/hooks/use-events";
 import { useAuth } from "@/hooks/use-auth";
-import { Button, Card, CardContent, Input, Spinner, Badge } from "@teranga/shared-ui";
+import { Button, Card, CardContent, Input, Select, Textarea, Spinner, Badge } from "@teranga/shared-ui";
 import type { CommunicationChannel, BroadcastRecipientFilter } from "@teranga/shared-types";
 
 const CHANNEL_ICONS: Record<string, typeof Mail> = {
@@ -81,8 +81,7 @@ export default function CommunicationsPage() {
       <Card>
         <CardContent className="py-4">
           <label className="mb-2 block text-sm font-medium">Evenement</label>
-          <select
-            className="w-full rounded-md border px-3 py-2 text-sm"
+          <Select
             value={selectedEventId}
             onChange={(e) => setSelectedEventId(e.target.value)}
             aria-label="Sélectionner un événement"
@@ -91,7 +90,7 @@ export default function CommunicationsPage() {
             {events.map((ev) => (
               <option key={ev.id} value={ev.id}>{ev.title}</option>
             ))}
-          </select>
+          </Select>
         </CardContent>
       </Card>
 
@@ -109,8 +108,7 @@ export default function CommunicationsPage() {
 
               <div>
                 <label className="mb-1 block text-sm font-medium">Message</label>
-                <textarea
-                  className="w-full rounded-md border px-3 py-2 text-sm"
+                <Textarea
                   rows={4}
                   value={body}
                   onChange={(e) => setBody(e.target.value)}
@@ -145,8 +143,7 @@ export default function CommunicationsPage() {
 
               <div>
                 <label className="mb-1 block text-sm font-medium">Destinataires</label>
-                <select
-                  className="w-full rounded-md border px-3 py-2 text-sm"
+                <Select
                   value={filter}
                   onChange={(e) => setFilter(e.target.value as BroadcastRecipientFilter)}
                   aria-label="Filtrer les destinataires"
@@ -154,7 +151,7 @@ export default function CommunicationsPage() {
                   {Object.entries(FILTER_LABELS).map(([value, label]) => (
                     <option key={value} value={value}>{label}</option>
                   ))}
-                </select>
+                </Select>
               </div>
 
               <Button

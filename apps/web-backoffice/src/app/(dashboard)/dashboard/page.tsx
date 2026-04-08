@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useEvents } from "@/hooks/use-events";
 import { formatDate } from "@/lib/utils";
-import { Calendar, Users, Ticket, TrendingUp, ArrowRight, Loader2 } from "lucide-react";
+import { Calendar, Users, Ticket, TrendingUp, ArrowRight } from "lucide-react";
+import { Skeleton } from "@teranga/shared-ui";
 
 const STATUS_LABELS: Record<string, { label: string; className: string }> = {
   draft: { label: "Brouillon", className: "bg-muted text-muted-foreground" },
@@ -29,26 +30,34 @@ export default function DashboardPage() {
         <StatCard
           icon={<Calendar className="h-5 w-5 text-blue-600" />}
           label="Total événements"
-          value={isLoading ? "..." : String(total)}
-          bgColor="bg-blue-50"
+          value={isLoading ? undefined : String(total)}
+          bgColor="bg-blue-50 dark:bg-blue-900/20"
+          isLoading={isLoading}
         />
         <StatCard
           icon={<TrendingUp className="h-5 w-5 text-green-600" />}
           label="Publiés"
-          value={isLoading ? "..." : String(publishedCount)}
-          bgColor="bg-green-50"
+          value={isLoading ? undefined : String(publishedCount)}
+          bgColor="bg-green-50 dark:bg-green-900/20"
+          isLoading={isLoading}
         />
         <StatCard
           icon={<Users className="h-5 w-5 text-purple-600" />}
           label="Inscrits récents"
-          value={isLoading ? "..." : String(totalRegistered)}
-          bgColor="bg-purple-50"
+          value={isLoading ? undefined : String(totalRegistered)}
+          bgColor="bg-purple-50 dark:bg-purple-900/20"
+          isLoading={isLoading}
+          trend="up"
+          trendLabel="vs dernier mois"
         />
         <StatCard
           icon={<Ticket className="h-5 w-5 text-orange-600" />}
           label="Check-ins"
-          value={isLoading ? "..." : String(totalCheckedIn)}
-          bgColor="bg-orange-50"
+          value={isLoading ? undefined : String(totalCheckedIn)}
+          bgColor="bg-orange-50 dark:bg-orange-900/20"
+          isLoading={isLoading}
+          trend="up"
+          trendLabel="vs dernier mois"
         />
       </div>
 
@@ -62,9 +71,18 @@ export default function DashboardPage() {
         </div>
 
         {isLoading ? (
-          <div className="p-8 text-center text-muted-foreground">
-            <Loader2 className="h-5 w-5 animate-spin mx-auto" />
-          </div>
+          <table className="w-full text-sm">
+            <tbody>
+              {Array.from({ length: 5 }).map((_, i) => (
+                <tr key={i} className="border-b border-border last:border-0">
+                  <td className="px-6 py-3.5"><Skeleton variant="text" className="h-4 w-36" /></td>
+                  <td className="px-6 py-3.5"><Skeleton variant="text" className="h-4 w-20" /></td>
+                  <td className="px-6 py-3.5"><Skeleton variant="text" className="h-5 w-16 rounded-full" /></td>
+                  <td className="px-6 py-3.5 text-right"><Skeleton variant="text" className="h-4 w-16 ml-auto" /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         ) : events.length === 0 ? (
           <div className="p-8 text-center text-muted-foreground">
             Aucun événement. <Link href="/events/new" className="text-primary hover:underline">Créer votre premier</Link>
@@ -108,19 +126,44 @@ function StatCard({
   label,
   value,
   bgColor,
+  isLoading,
+  trend,
+  trendLabel,
 }: {
   icon: React.ReactNode;
   label: string;
-  value: string;
+  value?: string;
   bgColor: string;
+  isLoading?: boolean;
+  trend?: "up" | "down" | "neutral";
+  trendLabel?: string;
 }) {
+  const trendDisplay = trend
+    ? {
+        up: { arrow: "\u2191", className: "text-emerald-600" },
+        down: { arrow: "\u2193", className: "text-red-500" },
+        neutral: { arrow: "\u2192", className: "text-muted-foreground" },
+      }[trend]
+    : null;
+
   return (
     <div className="bg-card rounded-xl p-5 shadow-sm border border-border">
       <div className="flex items-center gap-3 mb-3">
         <div className={`${bgColor} p-2 rounded-lg`}>{icon}</div>
         <p className="text-sm text-muted-foreground">{label}</p>
       </div>
-      <p className="text-3xl font-bold text-primary">{value}</p>
+      {isLoading ? (
+        <Skeleton variant="text" className="h-8 w-16" />
+      ) : (
+        <div className="flex items-baseline gap-2">
+          <p className="text-3xl font-bold text-primary">{value}</p>
+          {trendDisplay && (
+            <span className={`text-xs font-medium ${trendDisplay.className}`}>
+              {trendDisplay.arrow} {trendLabel}
+            </span>
+          )}
+        </div>
+      )}
     </div>
   );
 }

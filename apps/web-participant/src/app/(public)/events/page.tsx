@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { serverEventsApi } from "@/lib/server-api";
 import { EventCard } from "@/components/event-card";
 import { EventFilters } from "@/components/event-filters";
+import { getDateRange } from "@/lib/date-utils";
 import { Pagination } from "@/components/pagination";
 
 export const revalidate = 60;
@@ -17,6 +18,10 @@ interface EventsPageProps {
     category?: string;
     format?: string;
     city?: string;
+    date?: string;
+    dateFrom?: string;
+    dateTo?: string;
+    price?: string;
     page?: string;
   }>;
 }
@@ -25,6 +30,11 @@ export default async function EventsPage({ searchParams }: EventsPageProps) {
   const params = await searchParams;
   const page = Number(params.page) || 1;
 
+  // Resolve date range from shortcut or explicit params
+  const dateRange = params.dateFrom
+    ? { dateFrom: params.dateFrom, dateTo: params.dateTo }
+    : getDateRange(params.date);
+
   let result;
   try {
     result = await serverEventsApi.search({
@@ -32,6 +42,8 @@ export default async function EventsPage({ searchParams }: EventsPageProps) {
       category: params.category as never,
       format: params.format as never,
       city: params.city,
+      dateFrom: dateRange.dateFrom,
+      dateTo: dateRange.dateTo,
       page,
       limit: 12,
       orderBy: "startDate",
