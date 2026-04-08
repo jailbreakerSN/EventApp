@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
-import { Spinner } from "@teranga/shared-ui";
+import { BrandedLoader } from "@/components/branded-loader";
 
 const REDIRECT_KEY = "teranga_redirect_after_login";
 
@@ -33,11 +33,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   }, [user, loading, router, pathname]);
 
   if (loading) {
-    return (
-      <div className="flex min-h-[60vh] items-center justify-center">
-        <Spinner size="lg" />
-      </div>
-    );
+    return <BrandedLoader label="Vérification..." className="min-h-[60vh]" />;
   }
 
   if (!user) return null;

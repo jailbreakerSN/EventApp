@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/layouts/sidebar";
 import { TopBar } from "@/components/layouts/topbar";
 import { SidebarProvider } from "@/components/layouts/sidebar-context";
+import { BrandedLoader } from "@/components/branded-loader";
 import { useAuth } from "@/hooks/use-auth";
 
 const BACKOFFICE_ROLES = ["organizer", "co_organizer", "super_admin"] as const;
@@ -28,11 +29,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }, [user, loading, hasRole, router]);
 
   if (loading) {
-    return (
-      <div className="flex h-screen items-center justify-center bg-muted" role="status">
-        <div className="text-muted-foreground">Chargement...</div>
-      </div>
-    );
+    return <BrandedLoader label="Chargement du tableau de bord..." />;
   }
 
   if (!user || !hasRole(...BACKOFFICE_ROLES)) return null;

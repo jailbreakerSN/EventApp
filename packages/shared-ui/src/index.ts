@@ -16,3 +16,4 @@ export { Alert, AlertTitle, AlertDescription, alertVariants, type AlertProps } f
 export { cn, formatDate, formatDateTime, formatCurrency } from "./lib/utils";
 export { getErrorMessage } from "./lib/error-messages";
 export { ThemeToggle } from "./components/theme-toggle";
+export { LogoLoader } from "./components/logo-loader";
