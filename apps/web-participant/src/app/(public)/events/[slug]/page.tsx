@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Calendar, MapPin, Clock, Users, Tag, ExternalLink } from "lucide-react";
+import { Calendar, MapPin, Clock, Users, Tag, ExternalLink, Building2 } from "lucide-react";
 import { serverEventsApi } from "@/lib/server-api";
 import { formatDate, formatDateTime, formatCurrency, Badge } from "@teranga/shared-ui";
 import { EventJsonLd } from "@/components/event-detail/event-jsonld";
@@ -205,7 +205,18 @@ export default async function EventDetailPage({ params }: PageProps) {
                 <div className="flex items-start gap-3 text-muted-foreground">
                   <MapPin className="mt-0.5 h-5 w-5 flex-shrink-0 text-teranga-gold" />
                   <div>
-                    <p className="font-medium text-foreground">{event.location.name}</p>
+                    <div className="flex items-center gap-2">
+                      <p className="font-medium text-foreground">{event.location.name}</p>
+                      {event.venueId && (
+                        <Badge variant="outline" className="gap-1 text-[10px] px-1.5 py-0.5">
+                          <Building2 className="h-3 w-3" aria-hidden="true" />
+                          Lieu référencé
+                        </Badge>
+                      )}
+                    </div>
+                    {event.venueName && event.venueName !== event.location.name && (
+                      <p className="text-sm text-foreground/80">{event.venueName}</p>
+                    )}
                     <p className="text-sm">{event.location.address}, {event.location.city}</p>
                     {event.location.googleMapsUrl && (
                       <a

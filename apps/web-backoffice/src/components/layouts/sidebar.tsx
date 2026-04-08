@@ -46,6 +46,10 @@ const navItems: NavItem[] = [
   { href: "/settings", icon: Settings, label: "Paramètres", roles: ["organizer", "super_admin"] },
 ];
 
+const venueNavItems: NavItem[] = [
+  { href: "/venues", icon: MapPin, label: "Mes Lieux", roles: ["venue_manager", "super_admin"] },
+];
+
 const adminNavItems: NavItem[] = [
   { href: "/admin", icon: Shield, label: "Admin Plateforme", roles: ["super_admin"] },
   { href: "/admin/users", icon: Users, label: "Utilisateurs", roles: ["super_admin"] },
@@ -126,6 +130,33 @@ export function Sidebar() {
             </Link>
           );
         })}
+
+        {/* Venue section — venue_manager + super_admin */}
+        {hasRole("venue_manager", "super_admin") && (
+          <>
+            <div className="my-3 mx-3 border-t border-white/10" />
+            <p className="px-3 text-[10px] text-white/40 uppercase tracking-wider mb-1">Lieux</p>
+            {venueNavItems.filter((item) => hasRole(...item.roles)).map(({ href, icon: Icon, label }) => {
+              const isActive = pathname === href || pathname.startsWith(href + "/");
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  aria-current={isActive ? "page" : undefined}
+                  className={cn(
+                    "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm motion-safe:transition-colors",
+                    isActive
+                      ? "bg-white/15 text-white font-medium"
+                      : "text-white/60 hover:bg-white/10 hover:text-white"
+                  )}
+                >
+                  <Icon size={17} aria-hidden="true" />
+                  {label}
+                </Link>
+              );
+            })}
+          </>
+        )}
 
         {/* Admin section — super_admin only */}
         {hasRole("super_admin") && (

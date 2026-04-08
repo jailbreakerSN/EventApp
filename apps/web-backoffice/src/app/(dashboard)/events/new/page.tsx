@@ -17,6 +17,7 @@ import {
   BreadcrumbSeparator,
 } from "@teranga/shared-ui";
 import type { CreateEventDto } from "@teranga/shared-types";
+import { VenueSelector } from "@/components/venue-selector";
 
 const STEPS = ["Détails", "Lieu", "Billets", "Paramètres"] as const;
 
@@ -75,6 +76,8 @@ export default function NewEventPage() {
   const [tags, setTags] = useState("");
 
   // Step 2: Location
+  const [venueId, setVenueId] = useState<string | null>(null);
+  const [venueName, setVenueName] = useState<string | null>(null);
   const [locationName, setLocationName] = useState("");
   const [address, setAddress] = useState("");
   const [city, setCity] = useState("Dakar");
@@ -166,6 +169,7 @@ export default function NewEventPage() {
         country,
         streamUrl: streamUrl.trim() || undefined,
       },
+      venueId: venueId ?? undefined,
       accessZones: [],
       isFeatured: false,
       ticketTypes: tickets.map((t) => ({
@@ -368,6 +372,33 @@ export default function NewEventPage() {
           <div className="space-y-5">
             {format !== "online" && (
               <>
+                {/* Venue selector */}
+                <div>
+                  <label className="block text-sm font-medium text-foreground mb-1">
+                    S\u00e9lectionner un lieu r\u00e9f\u00e9renc\u00e9
+                  </label>
+                  <VenueSelector
+                    selectedVenueId={venueId}
+                    selectedVenueName={venueName}
+                    onSelect={(venue) => {
+                      if (venue) {
+                        setVenueId(venue.id);
+                        setVenueName(venue.name);
+                        setLocationName(venue.name);
+                        setAddress(venue.address.street);
+                        setCity(venue.address.city);
+                        setCountry(venue.address.country);
+                      } else {
+                        setVenueId(null);
+                        setVenueName(null);
+                      }
+                    }}
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Choisissez un lieu existant ou saisissez manuellement ci-dessous
+                  </p>
+                </div>
+
                 <div>
                   <label htmlFor="event-location-name" className="block text-sm font-medium text-foreground mb-1">
                     Nom du lieu <span aria-hidden="true">*</span><span className="sr-only">(requis)</span>

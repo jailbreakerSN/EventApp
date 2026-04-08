@@ -58,6 +58,8 @@ const PAGE_COMMANDS: Omit<CommandItem, "action">[] = [
   { id: "notifications",  label: "Notifications",     category: "Pages",   icon: Bell,            href: "/notifications" },
   { id: "organization",   label: "Organisation",      category: "Pages",   icon: Building2,       href: "/organization" },
   { id: "settings",       label: "Paramètres",        category: "Pages",   icon: Settings,        href: "/settings" },
+  // Venue host pages
+  { id: "venues",         label: "Mes Lieux",         category: "Pages",   icon: MapPin,          href: "/venues" },
   // Admin pages (visible to all in search, but access-gated by route layout)
   { id: "admin",          label: "Admin Plateforme",  category: "Pages",   icon: Shield,          href: "/admin" },
   { id: "admin-users",    label: "Admin Utilisateurs", category: "Pages",  icon: Users,           href: "/admin/users" },
