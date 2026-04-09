@@ -13,9 +13,14 @@ import {
   BreadcrumbLink,
   BreadcrumbPage,
   BreadcrumbSeparator,
+  Input,
+  Select,
+  Textarea,
+  Button,
 } from "@teranga/shared-ui";
 import {
   useEvent,
+  useUpdateEvent,
   usePublishEvent,
   useUnpublishEvent,
   useCancelEvent,
@@ -45,6 +50,9 @@ import {
   MapPin,
   Copy,
   Download,
+  Pencil,
+  Save,
+  X,
 } from "lucide-react";
 import Link from "next/link";
 import { useAddAccessZone, useRemoveAccessZone } from "@/hooks/use-access-zones";
@@ -56,7 +64,7 @@ import { useEventSponsors, useCreateSponsor, useDeleteSponsor } from "@/hooks/us
 import { useEventPromoCodes, useCreatePromoCode, useDeactivatePromoCode } from "@/hooks/use-promo-codes";
 import { eventsApi, registrationsApi } from "@/lib/api-client";
 import { registrationsToCSV, downloadCSV } from "@/lib/csv-export";
-import type { Event, CreateTicketTypeDto, CreateAccessZoneDto, CreateSessionDto, Payment, PaymentSummary, SpeakerProfile, SponsorProfile, SponsorTier } from "@teranga/shared-types";
+import type { Event, CreateTicketTypeDto, CreateAccessZoneDto, CreateSessionDto, Payment, PaymentSummary, SpeakerProfile, SponsorProfile, SponsorTier, UpdateEventDto } from "@teranga/shared-types";
 import { Calendar, MessageSquare, Clock, Mic, UserRound, Building } from "lucide-react";
 
 const TABS = ["Infos", "Billets", "Inscriptions", "Paiements", "Sessions", "Feed", "Zones", "Intervenants", "Sponsors", "Promos"] as const;
@@ -329,63 +337,281 @@ function EventActions({ event }: { event: Event }) {
   );
 }
 
+const CATEGORY_OPTIONS = [
+  { value: "conference", label: "Conférence" },
+  { value: "workshop", label: "Atelier" },
+  { value: "concert", label: "Concert" },
+  { value: "festival", label: "Festival" },
+  { value: "networking", label: "Networking" },
+  { value: "sport", label: "Sport" },
+  { value: "exhibition", label: "Exposition" },
+  { value: "ceremony", label: "Cérémonie" },
+  { value: "training", label: "Formation" },
+  { value: "other", label: "Autre" },
+];
+
+const FORMAT_OPTIONS = [
+  { value: "in_person", label: "En présentiel" },
+  { value: "online", label: "En ligne" },
+  { value: "hybrid", label: "Hybride" },
+];
+
 function InfoTab({ event }: { event: Event }) {
-  return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-      <div className="lg:col-span-2 space-y-6">
-        <div className="bg-card rounded-xl border border-border p-6">
-          <h3 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-2">
-            <Info className="h-4 w-4" /> Description
-          </h3>
-          <p className="text-sm text-foreground whitespace-pre-wrap">{event.description}</p>
-        </div>
-        {event.shortDescription && (
-          <div className="bg-card rounded-xl border border-border p-6">
-            <h3 className="text-sm font-medium text-muted-foreground mb-2">Description courte</h3>
-            <p className="text-sm text-foreground">{event.shortDescription}</p>
+  const [editing, setEditing] = useState(false);
+  const updateEvent = useUpdateEvent(event.id);
+
+  // Editable fields
+  const [title, setTitle] = useState(event.title);
+  const [description, setDescription] = useState(event.description);
+  const [shortDescription, setShortDescription] = useState(event.shortDescription ?? "");
+  const [category, setCategory] = useState<string>(event.category);
+  const [format, setFormat] = useState<string>(event.format);
+  const [startDate, setStartDate] = useState(event.startDate.slice(0, 16));
+  const [endDate, setEndDate] = useState(event.endDate.slice(0, 16));
+  const [maxAttendees, setMaxAttendees] = useState(event.maxAttendees ? String(event.maxAttendees) : "");
+  const [tags, setTags] = useState((event.tags ?? []).join(", "));
+  const [locationName, setLocationName] = useState(event.location?.name ?? "");
+  const [locationAddress, setLocationAddress] = useState(event.location?.address ?? "");
+  const [locationCity, setLocationCity] = useState(event.location?.city ?? "");
+  const [locationCountry, setLocationCountry] = useState(event.location?.country ?? "SN");
+
+  const canEdit = event.status === "draft" || event.status === "published";
+
+  const handleStartEdit = () => {
+    // Reset form values from current event data
+    setTitle(event.title);
+    setDescription(event.description);
+    setShortDescription(event.shortDescription ?? "");
+    setCategory(event.category);
+    setFormat(event.format);
+    setStartDate(event.startDate.slice(0, 16));
+    setEndDate(event.endDate.slice(0, 16));
+    setMaxAttendees(event.maxAttendees ? String(event.maxAttendees) : "");
+    setTags((event.tags ?? []).join(", "));
+    setLocationName(event.location?.name ?? "");
+    setLocationAddress(event.location?.address ?? "");
+    setLocationCity(event.location?.city ?? "");
+    setLocationCountry(event.location?.country ?? "SN");
+    setEditing(true);
+  };
+
+  const handleCancel = () => {
+    setEditing(false);
+  };
+
+  const handleSave = () => {
+    const dto: Partial<UpdateEventDto> = {
+      title: title.trim(),
+      description: description.trim(),
+      shortDescription: shortDescription.trim() || null,
+      category: category as UpdateEventDto["category"],
+      format: format as UpdateEventDto["format"],
+      startDate: new Date(startDate).toISOString(),
+      endDate: new Date(endDate).toISOString(),
+      maxAttendees: maxAttendees ? parseInt(maxAttendees, 10) : null,
+      tags: tags.split(",").map((t) => t.trim()).filter(Boolean),
+      location: {
+        name: locationName.trim(),
+        address: locationAddress.trim(),
+        city: locationCity.trim(),
+        country: locationCountry.trim() || "SN",
+      },
+    };
+
+    updateEvent.mutate(dto, {
+      onSuccess: () => {
+        toast.success("Événement mis à jour avec succès.");
+        setEditing(false);
+      },
+      onError: (err: unknown) => {
+        const code = (err as { code?: string })?.code;
+        const message = (err as { message?: string })?.message;
+        toast.error(getErrorMessage(code, message));
+      },
+    });
+  };
+
+  if (editing) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold flex items-center gap-2">
+            <Pencil className="h-4 w-4" /> Modifier l&apos;événement
+          </h2>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={handleCancel} disabled={updateEvent.isPending}>
+              <X className="h-4 w-4 mr-1.5" />
+              Annuler
+            </Button>
+            <Button onClick={handleSave} disabled={updateEvent.isPending} className="bg-green-600 hover:bg-green-700 text-white">
+              {updateEvent.isPending ? (
+                <span className="flex items-center gap-2">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Enregistrement...
+                </span>
+              ) : (
+                <span className="flex items-center gap-1.5">
+                  <Save className="h-4 w-4" />
+                  Enregistrer
+                </span>
+              )}
+            </Button>
           </div>
-        )}
-      </div>
-      <div className="space-y-4">
-        <div className="bg-card rounded-xl border border-border p-5">
-          <h3 className="text-sm font-medium text-muted-foreground mb-3">Détails</h3>
-          <dl className="text-sm space-y-3">
-            <Field label="Catégorie" value={event.category} />
-            <Field label="Format" value={event.format === "in_person" ? "Présentiel" : event.format === "online" ? "En ligne" : "Hybride"} />
-            <Field label="Début" value={formatDate(event.startDate)} />
-            <Field label="Fin" value={formatDate(event.endDate)} />
-            <Field label="Fuseau" value={event.timezone} />
-            {event.isPublic !== undefined && <Field label="Public" value={event.isPublic ? "Oui" : "Non"} />}
-            {event.requiresApproval && <Field label="Approbation" value="Requise" />}
-          </dl>
         </div>
-        <div className="bg-card rounded-xl border border-border p-5">
-          <h3 className="text-sm font-medium text-muted-foreground mb-3">Lieu</h3>
-          <dl className="text-sm space-y-2">
-            <Field label="Nom" value={event.location?.name} />
-            <Field label="Adresse" value={event.location?.address} />
-            <Field label="Ville" value={event.location?.city} />
-            <Field label="Pays" value={event.location?.country} />
-          </dl>
-        </div>
-        <div className="bg-card rounded-xl border border-border p-5">
-          <h3 className="text-sm font-medium text-muted-foreground mb-3">Statistiques</h3>
-          <dl className="text-sm space-y-3">
-            <Field label="Inscrits" value={String(event.registeredCount ?? 0)} />
-            <Field label="Check-ins" value={String(event.checkedInCount ?? 0)} />
-            {event.maxAttendees && <Field label="Capacité max" value={String(event.maxAttendees)} />}
-          </dl>
-        </div>
-        {event.tags && event.tags.length > 0 && (
-          <div className="bg-card rounded-xl border border-border p-5">
-            <h3 className="text-sm font-medium text-muted-foreground mb-3">Tags</h3>
-            <div className="flex flex-wrap gap-2">
-              {event.tags.map((tag) => (
-                <span key={tag} className="bg-accent text-muted-foreground text-xs px-2.5 py-1 rounded-full">{tag}</span>
-              ))}
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Left column */}
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1">Titre</label>
+              <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Titre de l'événement" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1">Description</label>
+              <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={5} placeholder="Description de l'événement" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1">Description courte</label>
+              <Input value={shortDescription} onChange={(e) => setShortDescription(e.target.value)} placeholder="Résumé court (max 300 car.)" maxLength={300} />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">Catégorie</label>
+                <Select value={category} onChange={(e) => setCategory(e.target.value)}>
+                  {CATEGORY_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </Select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">Format</label>
+                <Select value={format} onChange={(e) => setFormat(e.target.value)}>
+                  {FORMAT_OPTIONS.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">Début</label>
+                <Input type="datetime-local" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">Fin</label>
+                <Input type="datetime-local" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1">Capacité maximum</label>
+              <Input type="number" value={maxAttendees} onChange={(e) => setMaxAttendees(e.target.value)} placeholder="Illimité" min={1} />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1">Tags (séparés par des virgules)</label>
+              <Input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="tech, conférence, dakar" />
             </div>
           </div>
-        )}
+
+          {/* Right column - Location */}
+          <div className="space-y-4">
+            <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+              <MapPin className="h-4 w-4" /> Lieu
+            </h3>
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1">Nom du lieu</label>
+              <Input value={locationName} onChange={(e) => setLocationName(e.target.value)} placeholder="Centre de conférence" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-1">Adresse</label>
+              <Input value={locationAddress} onChange={(e) => setLocationAddress(e.target.value)} placeholder="123 Rue..." />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">Ville</label>
+                <Input value={locationCity} onChange={(e) => setLocationCity(e.target.value)} placeholder="Dakar" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">Pays (code ISO)</label>
+                <Input value={locationCountry} onChange={(e) => setLocationCountry(e.target.value)} placeholder="SN" maxLength={2} />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      {/* Edit button */}
+      {canEdit && (
+        <div className="flex justify-end mb-4">
+          <button
+            onClick={handleStartEdit}
+            className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline font-medium"
+          >
+            <Pencil className="h-4 w-4" />
+            Éditer
+          </button>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2 space-y-6">
+          <div className="bg-card rounded-xl border border-border p-6">
+            <h3 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-2">
+              <Info className="h-4 w-4" /> Description
+            </h3>
+            <p className="text-sm text-foreground whitespace-pre-wrap">{event.description}</p>
+          </div>
+          {event.shortDescription && (
+            <div className="bg-card rounded-xl border border-border p-6">
+              <h3 className="text-sm font-medium text-muted-foreground mb-2">Description courte</h3>
+              <p className="text-sm text-foreground">{event.shortDescription}</p>
+            </div>
+          )}
+        </div>
+        <div className="space-y-4">
+          <div className="bg-card rounded-xl border border-border p-5">
+            <h3 className="text-sm font-medium text-muted-foreground mb-3">Détails</h3>
+            <dl className="text-sm space-y-3">
+              <Field label="Catégorie" value={event.category} />
+              <Field label="Format" value={event.format === "in_person" ? "Présentiel" : event.format === "online" ? "En ligne" : "Hybride"} />
+              <Field label="Début" value={formatDate(event.startDate)} />
+              <Field label="Fin" value={formatDate(event.endDate)} />
+              <Field label="Fuseau" value={event.timezone} />
+              {event.isPublic !== undefined && <Field label="Public" value={event.isPublic ? "Oui" : "Non"} />}
+              {event.requiresApproval && <Field label="Approbation" value="Requise" />}
+            </dl>
+          </div>
+          <div className="bg-card rounded-xl border border-border p-5">
+            <h3 className="text-sm font-medium text-muted-foreground mb-3">Lieu</h3>
+            <dl className="text-sm space-y-2">
+              <Field label="Nom" value={event.location?.name} />
+              <Field label="Adresse" value={event.location?.address} />
+              <Field label="Ville" value={event.location?.city} />
+              <Field label="Pays" value={event.location?.country} />
+            </dl>
+          </div>
+          <div className="bg-card rounded-xl border border-border p-5">
+            <h3 className="text-sm font-medium text-muted-foreground mb-3">Statistiques</h3>
+            <dl className="text-sm space-y-3">
+              <Field label="Inscrits" value={String(event.registeredCount ?? 0)} />
+              <Field label="Check-ins" value={String(event.checkedInCount ?? 0)} />
+              {event.maxAttendees && <Field label="Capacité max" value={String(event.maxAttendees)} />}
+            </dl>
+          </div>
+          {event.tags && event.tags.length > 0 && (
+            <div className="bg-card rounded-xl border border-border p-5">
+              <h3 className="text-sm font-medium text-muted-foreground mb-3">Tags</h3>
+              <div className="flex flex-wrap gap-2">
+                {event.tags.map((tag) => (
+                  <span key={tag} className="bg-accent text-muted-foreground text-xs px-2.5 py-1 rounded-full">{tag}</span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

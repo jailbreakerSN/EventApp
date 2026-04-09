@@ -62,6 +62,10 @@ import type {
   VenueQuery,
   CreateVenueDto,
   UpdateVenueDto,
+  BadgeTemplate,
+  CreateBadgeTemplateDto,
+  UpdateBadgeTemplateDto,
+  GeneratedBadge,
 } from "@teranga/shared-types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
@@ -242,6 +246,18 @@ export const checkinApi = {
 
   getHistory: (eventId: string, params: Partial<CheckinHistoryQuery> = {}) =>
     api.get<PaginatedResponse<CheckinLogEntry>>(`/v1/events/${eventId}/checkin/history${buildQuery(params)}`),
+
+  performCheckin: (qrCodeValue: string, accessZoneId?: string) =>
+    api.post<ApiResponse<{
+      valid: boolean;
+      registrationId: string | null;
+      participantName: string | null;
+      ticketType: string | null;
+      accessZone: string | null;
+      alreadyCheckedIn: boolean;
+      checkedInAt: string | null;
+      reason: string | null;
+    }>>("/v1/registrations/checkin", { qrCodeValue, accessZoneId }),
 };
 
 export const accessZonesApi = {
@@ -519,6 +535,38 @@ export const venuesApi = {
 
   listMyVenues: () =>
     api.get<PaginatedResponse<Venue>>("/v1/venues/mine"),
+};
+
+// ─── Badge Templates ───────────────────────────────────────────────────────
+
+export const badgeTemplatesApi = {
+  list: (organizationId: string, params: { page?: number; limit?: number } = {}) =>
+    api.get<PaginatedResponse<BadgeTemplate>>(`/v1/badge-templates${buildQuery({ organizationId, ...params })}`),
+
+  getById: (templateId: string) =>
+    api.get<ApiResponse<BadgeTemplate>>(`/v1/badge-templates/${templateId}`),
+
+  create: (dto: CreateBadgeTemplateDto) =>
+    api.post<ApiResponse<BadgeTemplate>>("/v1/badge-templates", dto),
+
+  update: (templateId: string, dto: Partial<UpdateBadgeTemplateDto>) =>
+    api.patch<ApiResponse<{ id: string }>>(`/v1/badge-templates/${templateId}`, dto),
+
+  remove: (templateId: string) =>
+    api.delete(`/v1/badge-templates/${templateId}`),
+};
+
+// ─── Badges ────────────────────────────────────────────────────────────────
+
+export const badgesApi = {
+  generate: (registrationId: string, templateId: string) =>
+    api.post<ApiResponse<GeneratedBadge>>("/v1/badges/generate", { registrationId, templateId }),
+
+  bulkGenerate: (eventId: string, templateId: string) =>
+    api.post<ApiResponse<{ queued: number }>>("/v1/badges/bulk-generate", { eventId, templateId }),
+
+  download: (badgeId: string) =>
+    api.get<ApiResponse<{ downloadUrl: string }>>(`/v1/badges/${badgeId}/download`),
 };
 
 export { ApiError };

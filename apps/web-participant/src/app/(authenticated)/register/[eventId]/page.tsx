@@ -4,13 +4,13 @@ import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { CheckCircle, ArrowLeft, Ticket, CalendarCheck, CreditCard, Loader2 } from "lucide-react";
+import { CheckCircle, ArrowLeft, Ticket, CalendarCheck, CreditCard, Loader2, Tag, ChevronDown, ChevronUp, X } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { toast } from "sonner";
 import { eventsApi, registrationsApi } from "@/lib/api-client";
 import { useRegister } from "@/hooks/use-registrations";
-import { useInitiatePayment } from "@/hooks/use-payments";
-import { Button, Card, CardHeader, CardTitle, CardContent, Spinner, Badge, formatCurrency, getErrorMessage } from "@teranga/shared-ui";
+import { useInitiatePayment, useValidatePromoCode } from "@/hooks/use-payments";
+import { Button, Card, CardHeader, CardTitle, CardContent, Input, Spinner, Badge, formatCurrency, getErrorMessage } from "@teranga/shared-ui";
 import type { Event, TicketType, Registration } from "@teranga/shared-types";
 
 type Step = "select" | "confirm" | "success";
@@ -21,6 +21,18 @@ export default function RegisterPage() {
   const [step, setStep] = useState<Step>("select");
   const [selectedTicket, setSelectedTicket] = useState<TicketType | null>(null);
   const [registration, setRegistration] = useState<Registration | null>(null);
+
+  // Promo code state
+  const [promoOpen, setPromoOpen] = useState(false);
+  const [promoInput, setPromoInput] = useState("");
+  const [promoResult, setPromoResult] = useState<{
+    promoCodeId: string;
+    discountType: "percentage" | "fixed";
+    discountValue: number;
+    code: string;
+  } | null>(null);
+  const [promoError, setPromoError] = useState<string | null>(null);
+  const validatePromo = useValidatePromoCode();
 
   const { data: eventData, isLoading: eventLoading } = useQuery({
     queryKey: ["event", eventId],
@@ -44,6 +56,45 @@ export default function RegisterPage() {
 
   const isPaidTicket = selectedTicket && selectedTicket.price > 0;
   const isSubmitting = registerMutation.isPending || paymentMutation.isPending;
+
+  // Calculate discounted price
+  const getDiscountedPrice = (originalPrice: number) => {
+    if (!promoResult || originalPrice === 0) return originalPrice;
+    if (promoResult.discountType === "percentage") {
+      return Math.max(0, Math.round(originalPrice * (1 - promoResult.discountValue / 100)));
+    }
+    return Math.max(0, originalPrice - promoResult.discountValue);
+  };
+
+  const discountedPrice = selectedTicket ? getDiscountedPrice(selectedTicket.price) : 0;
+  const hasDiscount = promoResult && selectedTicket && discountedPrice < selectedTicket.price;
+
+  const handleApplyPromo = async () => {
+    if (!promoInput.trim() || !selectedTicket) return;
+    setPromoError(null);
+    try {
+      const result = await validatePromo.mutateAsync({
+        eventId,
+        code: promoInput.trim(),
+        ticketTypeId: selectedTicket.id,
+      });
+      const data = (result as { data?: { promoCodeId: string; discountType: "percentage" | "fixed"; discountValue: number } })?.data;
+      if (data) {
+        setPromoResult({ ...data, code: promoInput.trim().toUpperCase() });
+        toast.success("Code promo appliqué !");
+      }
+    } catch (err: unknown) {
+      const message = (err as { message?: string })?.message;
+      setPromoError(message ?? "Code invalide");
+      setPromoResult(null);
+    }
+  };
+
+  const handleRemovePromo = () => {
+    setPromoResult(null);
+    setPromoInput("");
+    setPromoError(null);
+  };
 
   const handleConfirm = async () => {
     if (!selectedTicket) return;
@@ -227,13 +278,87 @@ export default function RegisterPage() {
             <div className="rounded-md bg-muted p-4">
               <div className="flex items-center justify-between">
                 <span className="font-medium">{selectedTicket.name}</span>
-                <span className="font-semibold text-teranga-gold">
-                  {selectedTicket.price === 0 ? "Gratuit" : formatCurrency(selectedTicket.price, selectedTicket.currency)}
-                </span>
+                <div className="text-right">
+                  {hasDiscount ? (
+                    <>
+                      <span className="text-sm text-muted-foreground line-through mr-2">
+                        {formatCurrency(selectedTicket.price, selectedTicket.currency)}
+                      </span>
+                      <span className="font-semibold text-teranga-green">
+                        {discountedPrice === 0 ? "Gratuit" : formatCurrency(discountedPrice, selectedTicket.currency)}
+                      </span>
+                    </>
+                  ) : (
+                    <span className="font-semibold text-teranga-gold">
+                      {selectedTicket.price === 0 ? "Gratuit" : formatCurrency(selectedTicket.price, selectedTicket.currency)}
+                    </span>
+                  )}
+                </div>
               </div>
+              {hasDiscount && promoResult && (
+                <div className="mt-2 flex items-center gap-2">
+                  <Badge variant="secondary" className="bg-teranga-green/10 text-teranga-green text-xs">
+                    <Tag className="h-3 w-3 mr-1" />
+                    {promoResult.code} : {promoResult.discountType === "percentage" ? `-${promoResult.discountValue}%` : `-${formatCurrency(promoResult.discountValue, "XOF")}`}
+                  </Badge>
+                  <button type="button" onClick={handleRemovePromo} className="text-muted-foreground hover:text-foreground">
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              )}
             </div>
 
-            {isPaidTicket && (
+            {/* Promo Code Section */}
+            {selectedTicket.price > 0 && (
+              <div className="rounded-lg border border-border">
+                <button
+                  type="button"
+                  onClick={() => setPromoOpen(!promoOpen)}
+                  className="flex w-full items-center justify-between px-4 py-3 text-sm font-medium text-muted-foreground hover:text-foreground"
+                >
+                  <span className="flex items-center gap-2">
+                    <Tag className="h-4 w-4" />
+                    Code promo
+                  </span>
+                  {promoOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                </button>
+                {promoOpen && !promoResult && (
+                  <div className="border-t border-border px-4 py-3 space-y-3">
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="Entrez votre code"
+                        value={promoInput}
+                        onChange={(e) => { setPromoInput(e.target.value); setPromoError(null); }}
+                        className="flex-1 uppercase"
+                        disabled={validatePromo.isPending}
+                      />
+                      <Button
+                        type="button"
+                        onClick={handleApplyPromo}
+                        disabled={!promoInput.trim() || validatePromo.isPending}
+                        className="bg-teranga-gold hover:bg-teranga-gold/90"
+                      >
+                        {validatePromo.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Appliquer"}
+                      </Button>
+                    </div>
+                    {promoError && (
+                      <p className="text-xs text-red-500">{promoError}</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {isPaidTicket && !hasDiscount && (
+              <div className="flex items-start gap-3 rounded-md border border-amber-200 bg-amber-50 p-3">
+                <CreditCard className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-600" />
+                <p className="text-sm text-amber-800">
+                  Vous serez redirigé(e) vers la page de paiement pour finaliser votre inscription.
+                </p>
+              </div>
+            )}
+
+            {hasDiscount && discountedPrice > 0 && (
               <div className="flex items-start gap-3 rounded-md border border-amber-200 bg-amber-50 p-3">
                 <CreditCard className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-600" />
                 <p className="text-sm text-amber-800">
@@ -249,7 +374,7 @@ export default function RegisterPage() {
             )}
 
             <div className="flex gap-3">
-              <Button variant="outline" className="flex-1" onClick={() => setStep("select")} disabled={isSubmitting}>
+              <Button variant="outline" className="flex-1" onClick={() => { setStep("select"); handleRemovePromo(); }} disabled={isSubmitting}>
                 Retour
               </Button>
               <Button
@@ -260,10 +385,14 @@ export default function RegisterPage() {
                 {isSubmitting ? (
                   <span className="flex items-center gap-2">
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    {isPaidTicket ? "Redirection..." : "Inscription..."}
+                    {isPaidTicket && (!hasDiscount || discountedPrice > 0) ? "Redirection..." : "Inscription..."}
                   </span>
                 ) : (
-                  isPaidTicket ? `Payer ${formatCurrency(selectedTicket.price, selectedTicket.currency)}` : "Confirmer"
+                  hasDiscount
+                    ? (discountedPrice === 0
+                      ? "Confirmer (gratuit)"
+                      : `Payer ${formatCurrency(discountedPrice, selectedTicket.currency)}`)
+                    : (isPaidTicket ? `Payer ${formatCurrency(selectedTicket.price, selectedTicket.currency)}` : "Confirmer")
                 )}
               </Button>
             </div>

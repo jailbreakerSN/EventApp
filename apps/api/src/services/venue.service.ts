@@ -159,6 +159,14 @@ export class VenueService extends BaseService {
       status: "approved",
       updatedBy: user.uid,
     } as Partial<Venue>);
+
+    eventBus.emit("venue.reactivated", {
+      venueId,
+      name: venue.name,
+      actorId: user.uid,
+      requestId: getRequestId(),
+      timestamp: new Date().toISOString(),
+    });
   }
 
   async getById(venueId: string): Promise<Venue> {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { paymentsApi } from "@/lib/api-client";
+import { paymentsApi, promoCodesApi } from "@/lib/api-client";
 import type { PaymentMethod } from "@teranga/shared-types";
 
 export function useInitiatePayment() {
@@ -21,6 +21,20 @@ export function useInitiatePayment() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["my-registrations"] });
     },
+  });
+}
+
+export function useValidatePromoCode() {
+  return useMutation({
+    mutationFn: ({
+      eventId,
+      code,
+      ticketTypeId,
+    }: {
+      eventId: string;
+      code: string;
+      ticketTypeId: string;
+    }) => promoCodesApi.validate(eventId, code, ticketTypeId),
   });
 }
 

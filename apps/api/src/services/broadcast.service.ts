@@ -143,6 +143,17 @@ export class BroadcastService extends BaseService {
       sentAt: new Date().toISOString(),
     } as Partial<Broadcast>);
 
+    eventBus.emit("broadcast.sent", {
+      broadcastId,
+      eventId: dto.eventId,
+      organizationId: event.organizationId,
+      channels: dto.channels,
+      recipientCount: totalRecipients,
+      actorId: user.uid,
+      requestId: getRequestId(),
+      timestamp: new Date().toISOString(),
+    });
+
     return broadcastRepository.findByIdOrThrow(broadcastId);
   }
 

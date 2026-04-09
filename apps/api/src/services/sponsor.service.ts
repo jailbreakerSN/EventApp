@@ -100,6 +100,15 @@ export class SponsorService extends BaseService {
       isActive: false,
       updatedAt: new Date().toISOString(),
     } as Partial<SponsorProfile>);
+
+    eventBus.emit("sponsor.removed", {
+      sponsorId,
+      eventId: sponsor.eventId,
+      organizationId: sponsor.organizationId,
+      actorId: user.uid,
+      requestId: getRequestId(),
+      timestamp: new Date().toISOString(),
+    });
   }
 
   /**

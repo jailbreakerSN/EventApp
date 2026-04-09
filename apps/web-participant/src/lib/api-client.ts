@@ -223,6 +223,15 @@ export const messagingApi = {
     api.post<ApiResponse<void>>(`/v1/conversations/${conversationId}/read`, {}),
 };
 
+export const promoCodesApi = {
+  validate: (eventId: string, code: string, ticketTypeId: string) =>
+    api.post<ApiResponse<{ valid: boolean; promoCodeId: string; discountType: "percentage" | "fixed"; discountValue: number }>>(
+      `/v1/events/${eventId}/promo-codes/validate`,
+      { code, ticketTypeId },
+      false,
+    ),
+};
+
 export const paymentsApi = {
   initiate: (eventId: string, ticketTypeId: string, method: PaymentMethod = "mock", returnUrl?: string) =>
     api.post<ApiResponse<{ paymentId: string; redirectUrl: string }>>("/v1/payments/initiate", {

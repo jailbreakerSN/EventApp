@@ -95,6 +95,17 @@ export class PayoutService extends BaseService {
     };
 
     const created = await payoutRepository.create(payout);
+
+    eventBus.emit("payout.created", {
+      payoutId: created.id,
+      eventId,
+      organizationId: event.organizationId,
+      netAmount,
+      actorId: user.uid,
+      requestId: getRequestId(),
+      timestamp: new Date().toISOString(),
+    });
+
     return created;
   }
 

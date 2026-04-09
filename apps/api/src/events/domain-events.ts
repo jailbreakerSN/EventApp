@@ -242,6 +242,12 @@ export interface SponsorAddedEvent extends BaseEventPayload {
   tier: string;
 }
 
+export interface SponsorRemovedEvent extends BaseEventPayload {
+  sponsorId: string;
+  eventId: string;
+  organizationId: string;
+}
+
 export interface SponsorLeadCapturedEvent extends BaseEventPayload {
   leadId: string;
   sponsorId: string;
@@ -285,6 +291,11 @@ export interface VenueSuspendedEvent extends BaseEventPayload {
   name: string;
 }
 
+export interface VenueReactivatedEvent extends BaseEventPayload {
+  venueId: string;
+  name: string;
+}
+
 // ── Admin ────────────────────────────────────────────────────────────────────
 
 export interface UserRoleChangedEvent extends BaseEventPayload {
@@ -305,6 +316,90 @@ export interface OrgVerifiedEvent extends BaseEventPayload {
 export interface OrgStatusChangedEvent extends BaseEventPayload {
   organizationId: string;
   isActive: boolean;
+}
+
+// ── Feed Post ──────────────────────────────────────────────────────────────
+
+export interface FeedPostCreatedEvent extends BaseEventPayload {
+  postId: string;
+  eventId: string;
+  authorId: string;
+  isAnnouncement: boolean;
+}
+
+export interface FeedPostDeletedEvent extends BaseEventPayload {
+  postId: string;
+  eventId: string;
+}
+
+export interface FeedPostPinnedEvent extends BaseEventPayload {
+  postId: string;
+  eventId: string;
+  pinned: boolean;
+}
+
+// ── Session ────────────────────────────────────────────────────────────────
+
+export interface SessionCreatedEvent extends BaseEventPayload {
+  sessionId: string;
+  eventId: string;
+  title: string;
+}
+
+export interface SessionUpdatedEvent extends BaseEventPayload {
+  sessionId: string;
+  eventId: string;
+  changes: string[];
+}
+
+export interface SessionDeletedEvent extends BaseEventPayload {
+  sessionId: string;
+  eventId: string;
+  title: string;
+}
+
+// ── Messaging ──────────────────────────────────────────────────────────────
+
+export interface MessageSentEvent extends BaseEventPayload {
+  messageId: string;
+  conversationId: string;
+  senderId: string;
+  recipientId: string;
+}
+
+// ── Invite ─────────────────────────────────────────────────────────────────
+
+export interface InviteCreatedEvent extends BaseEventPayload {
+  inviteId: string;
+  organizationId: string;
+  email: string;
+  role: string;
+}
+
+export interface InviteAcceptedEvent extends BaseEventPayload {
+  inviteId: string;
+  organizationId: string;
+  userId: string;
+}
+
+export interface InviteDeclinedEvent extends BaseEventPayload {
+  inviteId: string;
+  organizationId: string;
+}
+
+export interface InviteRevokedEvent extends BaseEventPayload {
+  inviteId: string;
+  organizationId: string;
+  email: string;
+}
+
+// ── Payout ─────────────────────────────────────────────────────────────────
+
+export interface PayoutCreatedEvent extends BaseEventPayload {
+  payoutId: string;
+  eventId: string;
+  organizationId: string;
+  netAmount: number;
 }
 
 // ─── Domain Event Map ────────────────────────────────────────────────────────
@@ -343,6 +438,7 @@ export interface DomainEventMap {
   "speaker.added": SpeakerAddedEvent;
   "speaker.removed": SpeakerRemovedEvent;
   "sponsor.added": SponsorAddedEvent;
+  "sponsor.removed": SponsorRemovedEvent;
   "sponsor.lead_captured": SponsorLeadCapturedEvent;
   "promo_code.created": PromoCodeCreatedEvent;
   "promo_code.used": PromoCodeUsedEvent;
@@ -351,6 +447,24 @@ export interface DomainEventMap {
   "venue.updated": VenueUpdatedEvent;
   "venue.approved": VenueApprovedEvent;
   "venue.suspended": VenueSuspendedEvent;
+  "venue.reactivated": VenueReactivatedEvent;
+  // Feed Post
+  "feed_post.created": FeedPostCreatedEvent;
+  "feed_post.deleted": FeedPostDeletedEvent;
+  "feed_post.pinned": FeedPostPinnedEvent;
+  // Session
+  "session.created": SessionCreatedEvent;
+  "session.updated": SessionUpdatedEvent;
+  "session.deleted": SessionDeletedEvent;
+  // Messaging
+  "message.sent": MessageSentEvent;
+  // Invite
+  "invite.created": InviteCreatedEvent;
+  "invite.accepted": InviteAcceptedEvent;
+  "invite.declined": InviteDeclinedEvent;
+  "invite.revoked": InviteRevokedEvent;
+  // Payout
+  "payout.created": PayoutCreatedEvent;
   // Admin
   "user.role_changed": UserRoleChangedEvent;
   "user.status_changed": UserStatusChangedEvent;

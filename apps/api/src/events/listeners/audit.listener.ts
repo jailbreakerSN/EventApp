@@ -443,6 +443,230 @@ export function registerAuditListeners(): void {
     });
   });
 
+  eventBus.on("venue.reactivated", async (payload) => {
+    await auditService.log({
+      action: "venue.reactivated",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "venue",
+      resourceId: payload.venueId,
+      eventId: null,
+      organizationId: null,
+      details: { name: payload.name },
+    });
+  });
+
+  // ── Broadcast Events ──────────────────────────────────────────────────
+
+  eventBus.on("broadcast.sent", async (payload) => {
+    await auditService.log({
+      action: "broadcast.sent",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "broadcast",
+      resourceId: payload.broadcastId,
+      eventId: payload.eventId,
+      organizationId: payload.organizationId,
+      details: { channels: payload.channels, recipientCount: payload.recipientCount },
+    });
+  });
+
+  // ── Sponsor Removed ───────────────────────────────────────────────────
+
+  eventBus.on("sponsor.removed", async (payload) => {
+    await auditService.log({
+      action: "sponsor.removed",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "sponsor",
+      resourceId: payload.sponsorId,
+      eventId: payload.eventId,
+      organizationId: payload.organizationId,
+      details: {},
+    });
+  });
+
+  // ── Feed Post Events ──────────────────────────────────────────────────
+
+  eventBus.on("feed_post.created", async (payload) => {
+    await auditService.log({
+      action: "feed_post.created",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "feed_post",
+      resourceId: payload.postId,
+      eventId: payload.eventId,
+      organizationId: null,
+      details: { authorId: payload.authorId, isAnnouncement: payload.isAnnouncement },
+    });
+  });
+
+  eventBus.on("feed_post.deleted", async (payload) => {
+    await auditService.log({
+      action: "feed_post.deleted",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "feed_post",
+      resourceId: payload.postId,
+      eventId: payload.eventId,
+      organizationId: null,
+      details: {},
+    });
+  });
+
+  eventBus.on("feed_post.pinned", async (payload) => {
+    await auditService.log({
+      action: "feed_post.pinned",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "feed_post",
+      resourceId: payload.postId,
+      eventId: payload.eventId,
+      organizationId: null,
+      details: { pinned: payload.pinned },
+    });
+  });
+
+  // ── Session Events ────────────────────────────────────────────────────
+
+  eventBus.on("session.created", async (payload) => {
+    await auditService.log({
+      action: "session.created",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "session",
+      resourceId: payload.sessionId,
+      eventId: payload.eventId,
+      organizationId: null,
+      details: { title: payload.title },
+    });
+  });
+
+  eventBus.on("session.updated", async (payload) => {
+    await auditService.log({
+      action: "session.updated",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "session",
+      resourceId: payload.sessionId,
+      eventId: payload.eventId,
+      organizationId: null,
+      details: { changes: payload.changes },
+    });
+  });
+
+  eventBus.on("session.deleted", async (payload) => {
+    await auditService.log({
+      action: "session.deleted",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "session",
+      resourceId: payload.sessionId,
+      eventId: payload.eventId,
+      organizationId: null,
+      details: { title: payload.title },
+    });
+  });
+
+  // ── Message Events ────────────────────────────────────────────────────
+
+  eventBus.on("message.sent", async (payload) => {
+    await auditService.log({
+      action: "message.sent",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "message",
+      resourceId: payload.messageId,
+      eventId: null,
+      organizationId: null,
+      details: { conversationId: payload.conversationId, recipientId: payload.recipientId },
+    });
+  });
+
+  // ── Invite Events ─────────────────────────────────────────────────────
+
+  eventBus.on("invite.created", async (payload) => {
+    await auditService.log({
+      action: "invite.created",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "invite",
+      resourceId: payload.inviteId,
+      eventId: null,
+      organizationId: payload.organizationId,
+      details: { email: payload.email, role: payload.role },
+    });
+  });
+
+  eventBus.on("invite.accepted", async (payload) => {
+    await auditService.log({
+      action: "invite.accepted",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "invite",
+      resourceId: payload.inviteId,
+      eventId: null,
+      organizationId: payload.organizationId,
+      details: { userId: payload.userId },
+    });
+  });
+
+  eventBus.on("invite.declined", async (payload) => {
+    await auditService.log({
+      action: "invite.declined",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "invite",
+      resourceId: payload.inviteId,
+      eventId: null,
+      organizationId: payload.organizationId,
+      details: {},
+    });
+  });
+
+  eventBus.on("invite.revoked", async (payload) => {
+    await auditService.log({
+      action: "invite.revoked",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "invite",
+      resourceId: payload.inviteId,
+      eventId: null,
+      organizationId: payload.organizationId,
+      details: { email: payload.email },
+    });
+  });
+
+  // ── Payout Events ─────────────────────────────────────────────────────
+
+  eventBus.on("payout.created", async (payload) => {
+    await auditService.log({
+      action: "payout.created",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "payout",
+      resourceId: payload.payoutId,
+      eventId: payload.eventId,
+      organizationId: payload.organizationId,
+      details: { netAmount: payload.netAmount },
+    });
+  });
+
   // ── Admin Events ───────────────────────────────────────────────────────
 
   eventBus.on("user.role_changed", async (payload) => {
