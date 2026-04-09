@@ -5,11 +5,15 @@ import { registrationsApi } from "@/lib/api-client";
 
 export function useEventRegistrations(
   eventId: string,
-  params: { page?: number; limit?: number; status?: string } = {}
+  params: { page?: number; limit?: number; status?: string } = {},
 ) {
   return useQuery({
     queryKey: ["registrations", eventId, params],
-    queryFn: () => registrationsApi.getEventRegistrations(eventId, params as Parameters<typeof registrationsApi.getEventRegistrations>[1]),
+    queryFn: () =>
+      registrationsApi.getEventRegistrations(
+        eventId,
+        params as Parameters<typeof registrationsApi.getEventRegistrations>[1],
+      ),
     enabled: !!eventId,
   });
 }
@@ -26,6 +30,14 @@ export function useCancelRegistration() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (registrationId: string) => registrationsApi.cancel(registrationId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["registrations"] }),
+  });
+}
+
+export function usePromoteRegistration() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (registrationId: string) => registrationsApi.promote(registrationId),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["registrations"] }),
   });
 }

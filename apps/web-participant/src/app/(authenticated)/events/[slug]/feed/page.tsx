@@ -32,13 +32,7 @@ function formatDate(iso: string) {
 
 // ─── Post Menu (Edit / Delete) ──────────────────────────────────────────────
 
-function PostMenu({
-  onEdit,
-  onDelete,
-}: {
-  onEdit: () => void;
-  onDelete: () => void;
-}) {
+function PostMenu({ onEdit, onDelete }: { onEdit: () => void; onDelete: () => void }) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -52,11 +46,7 @@ function PostMenu({
       </button>
       {open && (
         <>
-          <div
-            className="fixed inset-0 z-10"
-            onClick={() => setOpen(false)}
-            aria-hidden="true"
-          />
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} aria-hidden="true" />
           <div className="absolute right-0 top-8 z-20 w-40 rounded-lg border border-border bg-card shadow-lg py-1">
             <button
               onClick={() => {
@@ -238,8 +228,7 @@ function FeedPostCard({
   });
 
   const addComment = useMutation({
-    mutationFn: (content: string) =>
-      feedApi.addComment(eventId, post.id, { content }),
+    mutationFn: (content: string) => feedApi.addComment(eventId, post.id, { content }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["feed", eventId] });
       qc.invalidateQueries({ queryKey: ["comments", eventId, post.id] });
@@ -254,7 +243,7 @@ function FeedPostCard({
 
   return (
     <div
-      className={`bg-card rounded-xl border p-5 ${post.isPinned ? "border-amber-200 bg-amber-50/30" : "border-border"}`}
+      className={`bg-card rounded-xl border p-5 ${post.isPinned ? "border-amber-200 bg-amber-50/30 dark:border-amber-800 dark:bg-amber-950/20" : "border-border"}`}
     >
       {/* Header */}
       <div className="flex items-center gap-2 mb-3">
@@ -271,7 +260,7 @@ function FeedPostCard({
           </span>
         )}
         {post.isPinned && (
-          <span className="bg-amber-100 text-amber-700 text-xs px-2 py-0.5 rounded-full">
+          <span className="bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300 text-xs px-2 py-0.5 rounded-full">
             Epingle
           </span>
         )}
@@ -289,7 +278,9 @@ function FeedPostCard({
       {/* Content or Edit mode */}
       {isEditing ? (
         <div className="mb-4">
-          <label htmlFor={`edit-${post.id}`} className="sr-only">Modifier le message</label>
+          <label htmlFor={`edit-${post.id}`} className="sr-only">
+            Modifier le message
+          </label>
           <textarea
             id={`edit-${post.id}`}
             value={editContent}
@@ -334,14 +325,12 @@ function FeedPostCard({
           onClick={() => toggleLike.mutate()}
           className={`inline-flex items-center gap-1.5 text-sm transition-colors ${
             isLiked
-              ? "text-red-500 hover:text-red-600"
-              : "text-muted-foreground hover:text-red-500"
+              ? "text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300"
+              : "text-muted-foreground hover:text-red-500 dark:hover:text-red-400"
           }`}
           aria-label={isLiked ? "Retirer le j'aime" : "J'aime"}
         >
-          <Heart
-            className={`h-4 w-4 ${isLiked ? "fill-current" : ""}`}
-          />
+          <Heart className={`h-4 w-4 ${isLiked ? "fill-current" : ""}`} />
           {post.likeCount}
         </button>
         <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
@@ -479,9 +468,7 @@ export default function FeedPage() {
           <button
             onClick={() => newPost.trim() && createPost.mutate(newPost.trim())}
             disabled={createPost.isPending || !newPost.trim()}
-            aria-label={
-              createPost.isPending ? "Publication en cours..." : "Publier le message"
-            }
+            aria-label={createPost.isPending ? "Publication en cours..." : "Publier le message"}
             className="bg-primary text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-primary/90 disabled:opacity-50 inline-flex items-center gap-2"
           >
             <Send className="h-4 w-4" aria-hidden="true" />
@@ -496,10 +483,7 @@ export default function FeedPage() {
           role="status"
           aria-label="Chargement du feed..."
         >
-          <Loader2
-            className="h-6 w-6 animate-spin text-muted-foreground"
-            aria-hidden="true"
-          />
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" aria-hidden="true" />
           <span className="sr-only">Chargement du feed...</span>
         </div>
       ) : posts.length === 0 ? (
@@ -511,12 +495,7 @@ export default function FeedPage() {
       ) : (
         <div className="space-y-4">
           {posts.map((post) => (
-            <FeedPostCard
-              key={post.id}
-              post={post}
-              eventId={eventId}
-              currentUserId={user?.uid}
-            />
+            <FeedPostCard key={post.id} post={post} eventId={eventId} currentUserId={user?.uid} />
           ))}
         </div>
       )}

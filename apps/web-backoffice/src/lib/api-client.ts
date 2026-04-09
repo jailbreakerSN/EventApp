@@ -238,6 +238,9 @@ export const registrationsApi = {
 
   cancel: (registrationId: string) =>
     api.post<ApiResponse<void>>(`/v1/registrations/${registrationId}/cancel`, {}),
+
+  promote: (registrationId: string) =>
+    api.patch<ApiResponse<Registration>>(`/v1/registrations/${registrationId}`, { status: "confirmed" }),
 };
 
 export const checkinApi = {

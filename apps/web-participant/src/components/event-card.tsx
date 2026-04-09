@@ -3,16 +3,17 @@ import Image from "next/image";
 import { Calendar, MapPin, Users } from "lucide-react";
 import { Badge } from "@teranga/shared-ui";
 import { formatDate, formatCurrency } from "@teranga/shared-ui";
+import { CompareCheckbox } from "@/components/event-card-compare";
 import type { Event } from "@teranga/shared-types";
 
 interface EventCardProps {
   event: Event;
+  showCompare?: boolean;
 }
 
-export function EventCard({ event }: EventCardProps) {
-  const minPrice = event.ticketTypes.length > 0
-    ? Math.min(...event.ticketTypes.map((t) => t.price))
-    : null;
+export function EventCard({ event, showCompare = false }: EventCardProps) {
+  const minPrice =
+    event.ticketTypes.length > 0 ? Math.min(...event.ticketTypes.map((t) => t.price)) : null;
   const isFree = minPrice === 0 || minPrice === null;
 
   const priceLabel = isFree ? "Gratuit" : `À partir de ${formatCurrency(minPrice!)}`;
@@ -26,6 +27,7 @@ export function EventCard({ event }: EventCardProps) {
       className="group overflow-hidden rounded-lg border bg-card shadow-sm transition-shadow hover:shadow-md"
     >
       <div className="relative aspect-[16/9] overflow-hidden bg-muted">
+        {showCompare && <CompareCheckbox eventId={event.id} />}
         {event.coverImageURL ? (
           <Image
             src={event.coverImageURL}
@@ -68,9 +70,7 @@ export function EventCard({ event }: EventCardProps) {
         </div>
 
         <div className="mt-3 flex items-center justify-between">
-          <span className="text-sm font-semibold text-teranga-gold">
-            {priceLabel}
-          </span>
+          <span className="text-sm font-semibold text-teranga-gold">{priceLabel}</span>
           {event.registeredCount > 0 && (
             <span className="flex items-center gap-1 text-xs text-muted-foreground">
               <Users className="h-3 w-3" aria-hidden="true" />

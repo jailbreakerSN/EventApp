@@ -4,15 +4,22 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams } from "next/navigation";
 import { speakersApi, uploadsApi } from "@/lib/api-client";
 import { toast } from "sonner";
-import { Calendar, Clock, MapPin, FileText, Edit3, Save, Loader2, ExternalLink, Upload, Trash2, Download } from "lucide-react";
+import {
+  Calendar,
+  Clock,
+  MapPin,
+  FileText,
+  Edit3,
+  Save,
+  Loader2,
+  ExternalLink,
+  Upload,
+  Trash2,
+  Download,
+} from "lucide-react";
 import type { SpeakerProfile, Session } from "@teranga/shared-types";
 
-const ALLOWED_SLIDE_TYPES = [
-  "application/pdf",
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-];
+const ALLOWED_SLIDE_TYPES = ["application/pdf", "image/jpeg", "image/png", "image/webp"];
 const MAX_SLIDE_SIZE = 20 * 1024 * 1024; // 20 Mo
 
 export default function SpeakerPortalPage() {
@@ -77,7 +84,10 @@ export default function SpeakerPortalPage() {
     try {
       await speakersApi.update(speaker.id, {
         bio,
-        topics: topics.split(",").map((t) => t.trim()).filter(Boolean),
+        topics: topics
+          .split(",")
+          .map((t) => t.trim())
+          .filter(Boolean),
         socialLinks: {
           ...(speaker.socialLinks ?? {}),
           twitter: twitter || undefined,
@@ -94,60 +104,63 @@ export default function SpeakerPortalPage() {
     }
   }
 
-  const handleSlidesSelect = useCallback(async (file: File) => {
-    if (!speaker) return;
+  const handleSlidesSelect = useCallback(
+    async (file: File) => {
+      if (!speaker) return;
 
-    if (!ALLOWED_SLIDE_TYPES.includes(file.type)) {
-      toast.error("Type de fichier non autorisé. Formats acceptés : PDF, JPG, PNG, WebP.");
-      return;
-    }
-    if (file.size > MAX_SLIDE_SIZE) {
-      toast.error("Le fichier dépasse la taille maximale de 20 Mo.");
-      return;
-    }
-
-    setUploading(true);
-    setUploadProgress(10);
-
-    try {
-      // 1. Get signed URL
-      const { data } = await uploadsApi.getSpeakerSignedUrl(speaker.id, {
-        fileName: file.name,
-        contentType: file.type,
-        purpose: "slides",
-      });
-      setUploadProgress(30);
-
-      // 2. Upload file directly to storage
-      const uploadResponse = await fetch(data.uploadUrl, {
-        method: "PUT",
-        headers: { "Content-Type": file.type },
-        body: file,
-      });
-
-      if (!uploadResponse.ok) {
-        throw new Error("Upload échoué");
+      if (!ALLOWED_SLIDE_TYPES.includes(file.type)) {
+        toast.error("Type de fichier non autorisé. Formats acceptés : PDF, JPG, PNG, WebP.");
+        return;
       }
-      setUploadProgress(70);
-
-      // 3. Update speaker profile with slides URL
-      await speakersApi.update(speaker.id, {
-        slidesUrl: data.publicUrl,
-      } as Partial<SpeakerProfile>);
-      setUploadProgress(100);
-
-      toast.success("Présentation téléversée avec succès.");
-      await loadData();
-    } catch {
-      toast.error("Erreur lors du téléversement. Veuillez réessayer.");
-    } finally {
-      setUploading(false);
-      setUploadProgress(0);
-      if (slidesInputRef.current) {
-        slidesInputRef.current.value = "";
+      if (file.size > MAX_SLIDE_SIZE) {
+        toast.error("Le fichier dépasse la taille maximale de 20 Mo.");
+        return;
       }
-    }
-  }, [speaker]);
+
+      setUploading(true);
+      setUploadProgress(10);
+
+      try {
+        // 1. Get signed URL
+        const { data } = await uploadsApi.getSpeakerSignedUrl(speaker.id, {
+          fileName: file.name,
+          contentType: file.type,
+          purpose: "slides",
+        });
+        setUploadProgress(30);
+
+        // 2. Upload file directly to storage
+        const uploadResponse = await fetch(data.uploadUrl, {
+          method: "PUT",
+          headers: { "Content-Type": file.type },
+          body: file,
+        });
+
+        if (!uploadResponse.ok) {
+          throw new Error("Upload échoué");
+        }
+        setUploadProgress(70);
+
+        // 3. Update speaker profile with slides URL
+        await speakersApi.update(speaker.id, {
+          slidesUrl: data.publicUrl,
+        } as Partial<SpeakerProfile>);
+        setUploadProgress(100);
+
+        toast.success("Présentation téléversée avec succès.");
+        await loadData();
+      } catch {
+        toast.error("Erreur lors du téléversement. Veuillez réessayer.");
+      } finally {
+        setUploading(false);
+        setUploadProgress(0);
+        if (slidesInputRef.current) {
+          slidesInputRef.current.value = "";
+        }
+      }
+    },
+    [speaker],
+  );
 
   const handleRemoveSlides = useCallback(async () => {
     if (!speaker) return;
@@ -177,7 +190,11 @@ export default function SpeakerPortalPage() {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-20 text-muted-foreground" role="status" aria-label="Chargement du portail intervenant">
+      <div
+        className="flex items-center justify-center py-20 text-muted-foreground"
+        role="status"
+        aria-label="Chargement du portail intervenant"
+      >
         <Loader2 className="h-6 w-6 animate-spin mr-2" aria-hidden="true" />
         <span>Chargement...</span>
       </div>
@@ -251,7 +268,9 @@ export default function SpeakerPortalPage() {
         {editing ? (
           <div className="mt-4 space-y-3">
             <div>
-              <label htmlFor="speaker-bio" className="text-sm font-medium text-muted-foreground">Bio</label>
+              <label htmlFor="speaker-bio" className="text-sm font-medium text-muted-foreground">
+                Bio
+              </label>
               <textarea
                 id="speaker-bio"
                 className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
@@ -262,7 +281,9 @@ export default function SpeakerPortalPage() {
               />
             </div>
             <div>
-              <label htmlFor="speaker-topics" className="text-sm font-medium text-muted-foreground">Sujets d&apos;expertise (séparés par des virgules)</label>
+              <label htmlFor="speaker-topics" className="text-sm font-medium text-muted-foreground">
+                Sujets d&apos;expertise (séparés par des virgules)
+              </label>
               <input
                 id="speaker-topics"
                 className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
@@ -273,7 +294,12 @@ export default function SpeakerPortalPage() {
             </div>
             <div className="grid gap-3 sm:grid-cols-3">
               <div>
-                <label htmlFor="speaker-twitter" className="text-sm font-medium text-muted-foreground">Twitter</label>
+                <label
+                  htmlFor="speaker-twitter"
+                  className="text-sm font-medium text-muted-foreground"
+                >
+                  Twitter
+                </label>
                 <input
                   id="speaker-twitter"
                   className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
@@ -283,7 +309,12 @@ export default function SpeakerPortalPage() {
                 />
               </div>
               <div>
-                <label htmlFor="speaker-linkedin" className="text-sm font-medium text-muted-foreground">LinkedIn</label>
+                <label
+                  htmlFor="speaker-linkedin"
+                  className="text-sm font-medium text-muted-foreground"
+                >
+                  LinkedIn
+                </label>
                 <input
                   id="speaker-linkedin"
                   className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
@@ -293,7 +324,12 @@ export default function SpeakerPortalPage() {
                 />
               </div>
               <div>
-                <label htmlFor="speaker-website" className="text-sm font-medium text-muted-foreground">Site web</label>
+                <label
+                  htmlFor="speaker-website"
+                  className="text-sm font-medium text-muted-foreground"
+                >
+                  Site web
+                </label>
                 <input
                   id="speaker-website"
                   className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
@@ -306,11 +342,16 @@ export default function SpeakerPortalPage() {
           </div>
         ) : (
           <div className="mt-4">
-            {speaker.bio && <p className="text-sm text-muted-foreground whitespace-pre-line">{speaker.bio}</p>}
+            {speaker.bio && (
+              <p className="text-sm text-muted-foreground whitespace-pre-line">{speaker.bio}</p>
+            )}
             {speaker.topics && speaker.topics.length > 0 && (
               <div className="mt-3 flex flex-wrap gap-1.5">
                 {speaker.topics.map((topic) => (
-                  <span key={topic} className="rounded-full border px-2.5 py-0.5 text-xs font-medium">
+                  <span
+                    key={topic}
+                    className="rounded-full border px-2.5 py-0.5 text-xs font-medium"
+                  >
                     {topic}
                   </span>
                 ))}
@@ -319,17 +360,32 @@ export default function SpeakerPortalPage() {
             {speaker.socialLinks && (
               <div className="mt-3 flex gap-4 text-sm text-muted-foreground">
                 {speaker.socialLinks.twitter && (
-                  <a href={`https://twitter.com/${speaker.socialLinks.twitter}`} target="_blank" rel="noreferrer" className="hover:text-teranga-gold">
+                  <a
+                    href={`https://twitter.com/${speaker.socialLinks.twitter}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="hover:text-teranga-gold"
+                  >
                     Twitter
                   </a>
                 )}
                 {speaker.socialLinks.linkedin && (
-                  <a href={speaker.socialLinks.linkedin} target="_blank" rel="noreferrer" className="hover:text-teranga-gold">
+                  <a
+                    href={speaker.socialLinks.linkedin}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="hover:text-teranga-gold"
+                  >
                     LinkedIn
                   </a>
                 )}
                 {speaker.socialLinks.website && (
-                  <a href={speaker.socialLinks.website} target="_blank" rel="noreferrer" className="hover:text-teranga-gold">
+                  <a
+                    href={speaker.socialLinks.website}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="hover:text-teranga-gold"
+                  >
                     Site web <ExternalLink className="inline h-3 w-3" />
                   </a>
                 )}
@@ -347,14 +403,18 @@ export default function SpeakerPortalPage() {
         </h2>
 
         {sessions.length === 0 ? (
-          <p className="text-sm text-muted-foreground py-4">Aucune session assignée pour le moment.</p>
+          <p className="text-sm text-muted-foreground py-4">
+            Aucune session assignée pour le moment.
+          </p>
         ) : (
           <div className="space-y-3">
             {sessions.map((session) => (
               <div key={session.id} className="rounded-md border p-4">
                 <h3 className="font-medium">{session.title}</h3>
                 {session.description && (
-                  <p className="mt-1 text-sm text-muted-foreground line-clamp-2">{session.description}</p>
+                  <p className="mt-1 text-sm text-muted-foreground line-clamp-2">
+                    {session.description}
+                  </p>
                 )}
                 <div className="mt-2 flex flex-wrap gap-4 text-xs text-muted-foreground">
                   <span className="flex items-center gap-1">
@@ -386,8 +446,8 @@ export default function SpeakerPortalPage() {
           Mes présentations
         </h2>
         <p className="text-sm text-muted-foreground">
-          Vous pouvez téléverser vos supports de présentation ici.
-          Ils seront disponibles pour les participants après votre session.
+          Vous pouvez téléverser vos supports de présentation ici. Ils seront disponibles pour les
+          participants après votre session.
         </p>
 
         {/* Uploaded file display */}
@@ -409,7 +469,7 @@ export default function SpeakerPortalPage() {
             </div>
             <button
               onClick={handleRemoveSlides}
-              className="inline-flex items-center gap-1.5 rounded-md border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-100"
+              className="inline-flex items-center gap-1.5 rounded-md border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-100 dark:border-red-800 dark:bg-red-950/50 dark:text-red-400 dark:hover:bg-red-900/50"
               aria-label="Supprimer la présentation"
             >
               <Trash2 className="h-3.5 w-3.5" /> Supprimer
@@ -445,11 +505,15 @@ export default function SpeakerPortalPage() {
             role="button"
             tabIndex={0}
             aria-label="Téléverser une présentation"
-            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") slidesInputRef.current?.click(); }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") slidesInputRef.current?.click();
+            }}
           >
             <Upload className="mx-auto h-8 w-8 text-muted-foreground" />
             <p className="mt-2 text-sm text-muted-foreground">
-              {speaker.slidesUrl ? "Remplacer la présentation" : "Glissez-déposez vos fichiers ici ou cliquez pour sélectionner"}
+              {speaker.slidesUrl
+                ? "Remplacer la présentation"
+                : "Glissez-déposez vos fichiers ici ou cliquez pour sélectionner"}
             </p>
             <p className="mt-1 text-xs text-muted-foreground">PDF, JPG, PNG, WebP - max 20 Mo</p>
             <input

@@ -2,19 +2,29 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Calendar, QrCode, XCircle, RotateCcw } from "lucide-react";
+import { Calendar, QrCode, XCircle, RotateCcw, ListOrdered, LogOut } from "lucide-react";
 import { toast } from "sonner";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useMyRegistrations, useCancelRegistration } from "@/hooks/use-registrations";
 import { paymentsApi } from "@/lib/api-client";
-import { Button, Badge, Card, formatDate, ConfirmDialog, getErrorMessage } from "@teranga/shared-ui";
+import {
+  Button,
+  Badge,
+  Card,
+  formatDate,
+  ConfirmDialog,
+  getErrorMessage,
+} from "@teranga/shared-ui";
 import type { Registration } from "@teranga/shared-types";
 
-const STATUS_LABELS: Record<string, { label: string; variant: "default" | "success" | "warning" | "destructive" | "outline" }> = {
+const STATUS_LABELS: Record<
+  string,
+  { label: string; variant: "default" | "success" | "warning" | "destructive" | "outline" }
+> = {
   confirmed: { label: "Confirm\u00e9", variant: "success" },
   pending: { label: "En attente", variant: "warning" },
   pending_payment: { label: "Paiement en attente", variant: "warning" },
-  waitlisted: { label: "Liste d'attente", variant: "outline" },
+  waitlisted: { label: "En liste d'attente", variant: "warning" },
   checked_in: { label: "Enregistr\u00e9", variant: "default" },
   cancelled: { label: "Annul\u00e9", variant: "destructive" },
   refund_requested: { label: "Remboursement demand\u00e9", variant: "warning" },
@@ -27,7 +37,10 @@ export default function MyEventsPage() {
   const cancelMutation = useCancelRegistration();
   const queryClient = useQueryClient();
   const [cancelTarget, setCancelTarget] = useState<string | null>(null);
-  const [refundTarget, setRefundTarget] = useState<{ registrationId: string; paymentId: string } | null>(null);
+  const [refundTarget, setRefundTarget] = useState<{
+    registrationId: string;
+    paymentId: string;
+  } | null>(null);
 
   const registrations = (data as { data?: Registration[] })?.data as Registration[] | undefined;
   const meta = (data as { meta?: { total: number; totalPages: number } })?.meta;
@@ -73,7 +86,14 @@ export default function MyEventsPage() {
   function canRequestRefund(reg: Registration): boolean {
     // Only confirmed registrations with a paid ticket can request refund
     // Exclude cancelled, refunded, or refund_requested statuses
-    const nonRefundableStatuses = ["cancelled", "refunded", "refund_requested", "pending", "pending_payment", "waitlisted"];
+    const nonRefundableStatuses = [
+      "cancelled",
+      "refunded",
+      "refund_requested",
+      "pending",
+      "pending_payment",
+      "waitlisted",
+    ];
     if (nonRefundableStatuses.includes(reg.status)) return false;
     // Registration must have a payment associated (non-free ticket)
     const regRecord = reg as Record<string, unknown>;
@@ -136,15 +156,27 @@ export default function MyEventsPage() {
       {registrations && registrations.length > 0 && (
         <div className="mt-6 space-y-4">
           {registrations.map((reg) => {
-            const status = STATUS_LABELS[reg.status] ?? { label: reg.status, variant: "outline" as const };
-            const canCancel = ["confirmed", "pending", "waitlisted"].includes(reg.status);
+            const status = STATUS_LABELS[reg.status] ?? {
+              label: reg.status,
+              variant: "outline" as const,
+            };
+            const canCancel = ["confirmed", "pending"].includes(reg.status);
+            const isWaitlisted = reg.status === "waitlisted";
             const eventTitle = (reg as Record<string, unknown>).eventTitle as string | undefined;
-            const ticketTypeName = (reg as Record<string, unknown>).ticketTypeName as string | undefined;
+            const ticketTypeName = (reg as Record<string, unknown>).ticketTypeName as
+              | string
+              | undefined;
+            const waitlistPosition = (reg as Record<string, unknown>).waitlistPosition as
+              | number
+              | undefined;
             const showRefund = canRequestRefund(reg);
             const paymentId = getPaymentId(reg);
 
             return (
-              <Card key={reg.id} className="p-4">
+              <Card
+                key={reg.id}
+                className={`p-4 ${isWaitlisted ? "border-amber-300 dark:border-amber-600" : ""}`}
+              >
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex-1">
                     <div className="flex items-center gap-2">
@@ -152,8 +184,15 @@ export default function MyEventsPage() {
                       <Badge variant={status.variant}>{status.label}</Badge>
                     </div>
                     <p className="mt-1 text-sm text-muted-foreground">
-                      Billet : {ticketTypeName ?? reg.ticketTypeId} · Inscrit le {formatDate(reg.createdAt)}
+                      Billet : {ticketTypeName ?? reg.ticketTypeId} · Inscrit le{" "}
+                      {formatDate(reg.createdAt)}
                     </p>
+                    {isWaitlisted && waitlistPosition && (
+                      <p className="mt-1 flex items-center gap-1 text-sm font-medium text-amber-600 dark:text-amber-400">
+                        <ListOrdered className="h-4 w-4" />
+                        Position #{waitlistPosition}
+                      </p>
+                    )}
                   </div>
 
                   <div className="flex gap-2 flex-wrap">
@@ -169,12 +208,24 @@ export default function MyEventsPage() {
                       <Button
                         variant="outline"
                         size="sm"
-                        className="text-amber-600 hover:text-amber-700 border-amber-300 hover:border-amber-400"
+                        className="text-amber-600 hover:text-amber-700 border-amber-300 hover:border-amber-400 dark:text-amber-400 dark:hover:text-amber-300 dark:border-amber-700 dark:hover:border-amber-600"
                         onClick={() => setRefundTarget({ registrationId: reg.id, paymentId })}
                         disabled={refundMutation.isPending}
                       >
                         <RotateCcw className="mr-1 h-4 w-4" />
                         Remboursement
+                      </Button>
+                    )}
+                    {isWaitlisted && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-amber-600 hover:text-amber-700 border-amber-300 hover:border-amber-400 dark:text-amber-400 dark:hover:text-amber-300 dark:border-amber-700 dark:hover:border-amber-600"
+                        onClick={() => setCancelTarget(reg.id)}
+                        disabled={cancelMutation.isPending}
+                      >
+                        <LogOut className="mr-1 h-4 w-4" />
+                        Quitter la liste d&apos;attente
                       </Button>
                     )}
                     {canCancel && (
@@ -200,13 +251,23 @@ export default function MyEventsPage() {
 
           {meta && meta.totalPages > 1 && (
             <div className="flex justify-center gap-2 pt-4">
-              <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={page <= 1}
+                onClick={() => setPage(page - 1)}
+              >
                 Pr\u00e9c\u00e9dent
               </Button>
               <span className="flex items-center text-sm text-muted-foreground">
                 Page {page} / {meta.totalPages}
               </span>
-              <Button variant="outline" size="sm" disabled={page >= meta.totalPages} onClick={() => setPage(page + 1)}>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={page >= meta.totalPages}
+                onClick={() => setPage(page + 1)}
+              >
                 Suivant
               </Button>
             </div>

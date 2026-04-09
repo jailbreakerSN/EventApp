@@ -2,7 +2,19 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Calendar, MapPin, Clock, Users, Tag, ExternalLink, Building2, Mic2, Globe, Linkedin, Twitter } from "lucide-react";
+import {
+  Calendar,
+  MapPin,
+  Clock,
+  Users,
+  Tag,
+  ExternalLink,
+  Building2,
+  Mic2,
+  Globe,
+  Linkedin,
+  Twitter,
+} from "lucide-react";
 import { serverEventsApi, serverSpeakersApi, serverSessionsApi } from "@/lib/server-api";
 import { formatDate, formatDateTime, formatCurrency, Badge } from "@teranga/shared-ui";
 import { EventJsonLd } from "@/components/event-detail/event-jsonld";
@@ -106,10 +118,7 @@ export async function generateStaticParams() {
   try {
     // Fetch the first page to discover total page count
     const first = await serverEventsApi.search({ page: 1, limit: BATCH_SIZE });
-    const totalPages = Math.min(
-      first.meta.totalPages,
-      Math.ceil(MAX_EVENTS / BATCH_SIZE),
-    );
+    const totalPages = Math.min(first.meta.totalPages, Math.ceil(MAX_EVENTS / BATCH_SIZE));
 
     // If there is only one page, return immediately
     if (totalPages <= 1) {
@@ -117,14 +126,9 @@ export async function generateStaticParams() {
     }
 
     // Fetch remaining pages in parallel
-    const remainingPages = Array.from(
-      { length: totalPages - 1 },
-      (_, i) => i + 2,
-    );
+    const remainingPages = Array.from({ length: totalPages - 1 }, (_, i) => i + 2);
     const rest = await Promise.all(
-      remainingPages.map((page) =>
-        serverEventsApi.search({ page, limit: BATCH_SIZE }),
-      ),
+      remainingPages.map((page) => serverEventsApi.search({ page, limit: BATCH_SIZE })),
     );
 
     const allEvents = [first, ...rest].flatMap((r) => r.data);
@@ -152,7 +156,9 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
       description,
       type: "website",
       locale: "fr_SN",
-      ...(event.coverImageURL ? { images: [{ url: event.coverImageURL, width: 1200, height: 630, alt: event.title }] } : {}),
+      ...(event.coverImageURL
+        ? { images: [{ url: event.coverImageURL, width: 1200, height: 630, alt: event.title }] }
+        : {}),
     },
     twitter: {
       card: "summary_large_image",
@@ -197,7 +203,8 @@ export default async function EventDetailPage({ params }: PageProps) {
   const sessionsByDate = groupSessionsByDate(sessions);
 
   const visibleTickets = event.ticketTypes.filter((t) => t.isVisible);
-  const minPrice = visibleTickets.length > 0 ? Math.min(...visibleTickets.map((t) => t.price)) : null;
+  const minPrice =
+    visibleTickets.length > 0 ? Math.min(...visibleTickets.map((t) => t.price)) : null;
   const isFree = minPrice === 0 || minPrice === null;
 
   const spotsLeft = event.maxAttendees
@@ -233,7 +240,9 @@ export default async function EventDetailPage({ params }: PageProps) {
           <div className="lg:col-span-2">
             <div className="rounded-lg bg-card p-6 shadow-lg">
               <div className="flex flex-wrap items-center gap-2">
-                <Badge variant="secondary">{CATEGORY_LABELS[event.category] ?? event.category}</Badge>
+                <Badge variant="secondary">
+                  {CATEGORY_LABELS[event.category] ?? event.category}
+                </Badge>
                 <Badge variant="outline">{FORMAT_LABELS[event.format] ?? event.format}</Badge>
                 {event.isFeatured && <Badge variant="warning">À la une</Badge>}
               </div>
@@ -247,7 +256,8 @@ export default async function EventDetailPage({ params }: PageProps) {
                   <div>
                     <p className="font-medium text-foreground">{formatDate(event.startDate)}</p>
                     <p className="text-sm">
-                      {formatDateTime(event.startDate).split(" ").pop()} — {formatDateTime(event.endDate).split(" ").pop()}
+                      {formatDateTime(event.startDate).split(" ").pop()} —{" "}
+                      {formatDateTime(event.endDate).split(" ").pop()}
                     </p>
                   </div>
                 </div>
@@ -273,7 +283,9 @@ export default async function EventDetailPage({ params }: PageProps) {
                     {event.venueName && event.venueName !== event.location.name && (
                       <p className="text-sm text-foreground/80">{event.venueName}</p>
                     )}
-                    <p className="text-sm">{event.location.address}, {event.location.city}</p>
+                    <p className="text-sm">
+                      {event.location.address}, {event.location.city}
+                    </p>
                     {event.location.googleMapsUrl && (
                       <a
                         href={event.location.googleMapsUrl}
@@ -303,7 +315,9 @@ export default async function EventDetailPage({ params }: PageProps) {
                     <Tag className="h-5 w-5 flex-shrink-0 text-teranga-gold" />
                     <div className="flex flex-wrap gap-1">
                       {event.tags.map((tag) => (
-                        <Badge key={tag} variant="outline" className="text-xs">{tag}</Badge>
+                        <Badge key={tag} variant="outline" className="text-xs">
+                          {tag}
+                        </Badge>
                       ))}
                     </div>
                   </div>
@@ -316,24 +330,53 @@ export default async function EventDetailPage({ params }: PageProps) {
                   <div className="flex items-center gap-2">
                     <Users className="h-5 w-5 text-teranga-gold" />
                     <span className="font-semibold">
-                      {event.registeredCount} personne{event.registeredCount > 1 ? "s" : ""} inscrite{event.registeredCount > 1 ? "s" : ""}
+                      {event.registeredCount} personne{event.registeredCount > 1 ? "s" : ""}{" "}
+                      inscrite{event.registeredCount > 1 ? "s" : ""}
                     </span>
                   </div>
-                  {event.maxAttendees && (
-                    <div className="mt-2">
-                      <div className="h-2 w-full rounded-full bg-muted">
-                        <div
-                          className="h-2 rounded-full bg-teranga-gold transition-all"
-                          style={{ width: `${Math.min(100, (event.registeredCount / event.maxAttendees) * 100)}%` }}
-                        />
-                      </div>
-                      {spotsLeft !== null && spotsLeft > 0 && spotsLeft <= event.maxAttendees * 0.2 && (
-                        <p className="mt-1 text-xs font-medium text-orange-600">
-                          Plus que {spotsLeft} place{spotsLeft > 1 ? "s" : ""} !
-                        </p>
-                      )}
-                    </div>
-                  )}
+                  {event.maxAttendees &&
+                    (() => {
+                      const pct = Math.min(100, (event.registeredCount / event.maxAttendees) * 100);
+                      const isFull = pct >= 100;
+                      const barColor = isFull
+                        ? "bg-red-500"
+                        : pct >= 90
+                          ? "bg-red-500"
+                          : pct >= 70
+                            ? "bg-amber-500"
+                            : "bg-green-500";
+                      return (
+                        <div className="mt-2">
+                          <div className="flex items-center justify-between text-sm mb-1">
+                            <span className="text-muted-foreground">
+                              {event.registeredCount} / {event.maxAttendees} places
+                            </span>
+                            {isFull ? (
+                              <Badge variant="destructive">Complet</Badge>
+                            ) : (
+                              <span
+                                className={`text-xs font-medium ${pct >= 90 ? "text-red-600 dark:text-red-400" : pct >= 70 ? "text-amber-600 dark:text-amber-400" : "text-green-600 dark:text-green-400"}`}
+                              >
+                                {Math.round(pct)}%
+                              </span>
+                            )}
+                          </div>
+                          <div className="h-2 w-full rounded-full bg-muted">
+                            <div
+                              className={`h-2 rounded-full ${barColor} transition-all`}
+                              style={{ width: `${pct}%` }}
+                            />
+                          </div>
+                          {spotsLeft !== null &&
+                            spotsLeft > 0 &&
+                            spotsLeft <= event.maxAttendees * 0.2 && (
+                              <p className="mt-1 text-xs font-medium text-orange-600">
+                                Plus que {spotsLeft} place{spotsLeft > 1 ? "s" : ""} !
+                              </p>
+                            )}
+                        </div>
+                      );
+                    })()}
                 </div>
               )}
 
@@ -535,6 +578,19 @@ export default async function EventDetailPage({ params }: PageProps) {
                         ? ticket.totalQuantity - ticket.soldCount
                         : null;
                       const soldOut = remaining !== null && remaining <= 0;
+                      const ticketPct = ticket.totalQuantity
+                        ? Math.min(100, (ticket.soldCount / ticket.totalQuantity) * 100)
+                        : null;
+                      const ticketBarColor =
+                        ticketPct === null
+                          ? ""
+                          : ticketPct >= 100
+                            ? "bg-red-500"
+                            : ticketPct >= 90
+                              ? "bg-red-500"
+                              : ticketPct >= 70
+                                ? "bg-amber-500"
+                                : "bg-green-500";
 
                       return (
                         <div
@@ -544,17 +600,43 @@ export default async function EventDetailPage({ params }: PageProps) {
                           <div className="flex items-center justify-between">
                             <span className="font-medium">{ticket.name}</span>
                             <span className="font-semibold text-teranga-gold">
-                              {ticket.price === 0 ? "Gratuit" : formatCurrency(ticket.price, ticket.currency)}
+                              {ticket.price === 0
+                                ? "Gratuit"
+                                : formatCurrency(ticket.price, ticket.currency)}
                             </span>
                           </div>
                           {ticket.description && (
-                            <p className="mt-1 text-xs text-muted-foreground">{ticket.description}</p>
-                          )}
-                          {remaining !== null && (
-                            <p className={`mt-1 text-xs ${soldOut ? "text-destructive" : "text-muted-foreground"}`}>
-                              {soldOut ? "Épuisé" : `${remaining} restant${remaining > 1 ? "s" : ""}`}
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              {ticket.description}
                             </p>
                           )}
+                          {ticket.totalQuantity ? (
+                            <div className="mt-2">
+                              <div className="flex items-center justify-between text-xs mb-1">
+                                <span className="text-muted-foreground">
+                                  {ticket.soldCount} / {ticket.totalQuantity} places
+                                </span>
+                                {soldOut ? (
+                                  <Badge variant="destructive" className="text-[10px] px-1.5 py-0">
+                                    Complet
+                                  </Badge>
+                                ) : (
+                                  <span
+                                    className={`font-medium ${ticketPct !== null && ticketPct >= 90 ? "text-red-600 dark:text-red-400" : ticketPct !== null && ticketPct >= 70 ? "text-amber-600 dark:text-amber-400" : "text-green-600 dark:text-green-400"}`}
+                                  >
+                                    {remaining} restant
+                                    {remaining !== null && remaining > 1 ? "s" : ""}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="h-1.5 w-full rounded-full bg-muted">
+                                <div
+                                  className={`h-1.5 rounded-full ${ticketBarColor} transition-all`}
+                                  style={{ width: `${ticketPct ?? 0}%` }}
+                                />
+                              </div>
+                            </div>
+                          ) : null}
                         </div>
                       );
                     })}
@@ -566,7 +648,9 @@ export default async function EventDetailPage({ params }: PageProps) {
                     href={`/register/${event.id}`}
                     className="block w-full rounded-lg bg-teranga-gold py-3 text-center text-base font-semibold text-white transition-colors hover:bg-teranga-gold/90"
                   >
-                    {isFree ? "S'inscrire gratuitement" : `S'inscrire — à partir de ${formatCurrency(minPrice!)}`}
+                    {isFree
+                      ? "S'inscrire gratuitement"
+                      : `S'inscrire — à partir de ${formatCurrency(minPrice!)}`}
                   </Link>
                   {event.requiresApproval && (
                     <p className="mt-2 text-center text-xs text-muted-foreground">

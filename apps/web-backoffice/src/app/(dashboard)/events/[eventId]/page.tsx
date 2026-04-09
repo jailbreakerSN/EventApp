@@ -31,6 +31,7 @@ import {
   useEventRegistrations,
   useApproveRegistration,
   useCancelRegistration,
+  usePromoteRegistration,
 } from "@/hooks/use-registrations";
 import { formatDate, formatCurrency } from "@/lib/utils";
 import {
@@ -62,13 +63,47 @@ import { useEventPayments, usePaymentSummary, useRefundPayment } from "@/hooks/u
 import { useFeedPosts, useCreateFeedPost, useDeleteFeedPost, useTogglePin } from "@/hooks/use-feed";
 import { useEventSpeakers, useCreateSpeaker, useDeleteSpeaker } from "@/hooks/use-speakers";
 import { useEventSponsors, useCreateSponsor, useDeleteSponsor } from "@/hooks/use-sponsors";
-import { useEventPromoCodes, useCreatePromoCode, useDeactivatePromoCode } from "@/hooks/use-promo-codes";
+import {
+  useEventPromoCodes,
+  useCreatePromoCode,
+  useDeactivatePromoCode,
+} from "@/hooks/use-promo-codes";
 import { eventsApi, registrationsApi, uploadsApi } from "@/lib/api-client";
 import { registrationsToCSV, downloadCSV } from "@/lib/csv-export";
-import type { Event, CreateTicketTypeDto, CreateAccessZoneDto, CreateSessionDto, Payment, PaymentSummary, SpeakerProfile, SponsorProfile, SponsorTier, UpdateEventDto } from "@teranga/shared-types";
-import { Calendar, MessageSquare, Clock, Mic, UserRound, Building } from "lucide-react";
+import type {
+  Event,
+  CreateTicketTypeDto,
+  CreateAccessZoneDto,
+  CreateSessionDto,
+  Payment,
+  PaymentSummary,
+  SpeakerProfile,
+  SponsorProfile,
+  SponsorTier,
+  UpdateEventDto,
+} from "@teranga/shared-types";
+import {
+  Calendar,
+  MessageSquare,
+  Clock,
+  Mic,
+  UserRound,
+  Building,
+  ArrowUpCircle,
+} from "lucide-react";
 
-const TABS = ["Infos", "Billets", "Inscriptions", "Paiements", "Sessions", "Feed", "Zones", "Intervenants", "Sponsors", "Promos"] as const;
+const TABS = [
+  "Infos",
+  "Billets",
+  "Inscriptions",
+  "Paiements",
+  "Sessions",
+  "Feed",
+  "Zones",
+  "Intervenants",
+  "Sponsors",
+  "Promos",
+] as const;
 type Tab = (typeof TABS)[number];
 
 const STATUS_LABELS: Record<string, { label: string; className: string }> = {
@@ -133,7 +168,10 @@ export default function EventDetailPage() {
     return (
       <div className="text-center py-20">
         <p className="text-red-500 mb-4">Événement introuvable ou erreur de chargement.</p>
-        <button onClick={() => router.push("/events")} className="text-sm text-primary hover:underline">
+        <button
+          onClick={() => router.push("/events")}
+          className="text-sm text-primary hover:underline"
+        >
           Retour aux événements
         </button>
       </div>
@@ -145,11 +183,15 @@ export default function EventDetailPage() {
       <Breadcrumb className="mb-4">
         <BreadcrumbList>
           <BreadcrumbItem>
-            <BreadcrumbLink asChild><Link href="/">Tableau de bord</Link></BreadcrumbLink>
+            <BreadcrumbLink asChild>
+              <Link href="/">Tableau de bord</Link>
+            </BreadcrumbLink>
           </BreadcrumbItem>
           <BreadcrumbSeparator />
           <BreadcrumbItem>
-            <BreadcrumbLink asChild><Link href="/events">Événements</Link></BreadcrumbLink>
+            <BreadcrumbLink asChild>
+              <Link href="/events">Événements</Link>
+            </BreadcrumbLink>
           </BreadcrumbItem>
           <BreadcrumbSeparator />
           <BreadcrumbItem>
@@ -217,7 +259,9 @@ export default function EventDetailPage() {
 function StatusBadge({ status }: { status: string }) {
   const s = STATUS_LABELS[status] ?? STATUS_LABELS.draft;
   return (
-    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${s.className}`}>
+    <span
+      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${s.className}`}
+    >
       {s.label}
     </span>
   );
@@ -236,7 +280,10 @@ function EventActions({ event }: { event: Event }) {
     try {
       const now = new Date();
       const newStart = new Date(now.getFullYear(), now.getMonth() + 1, now.getDate(), 9, 0);
-      const newEnd = new Date(newStart.getTime() + (new Date(event.endDate).getTime() - new Date(event.startDate).getTime()));
+      const newEnd = new Date(
+        newStart.getTime() +
+          (new Date(event.endDate).getTime() - new Date(event.startDate).getTime()),
+      );
       const result = await eventsApi.clone(event.id, {
         newStartDate: newStart.toISOString(),
         newEndDate: newEnd.toISOString(),
@@ -369,7 +416,9 @@ function InfoTab({ event }: { event: Event }) {
   const [format, setFormat] = useState<string>(event.format);
   const [startDate, setStartDate] = useState(event.startDate.slice(0, 16));
   const [endDate, setEndDate] = useState(event.endDate.slice(0, 16));
-  const [maxAttendees, setMaxAttendees] = useState(event.maxAttendees ? String(event.maxAttendees) : "");
+  const [maxAttendees, setMaxAttendees] = useState(
+    event.maxAttendees ? String(event.maxAttendees) : "",
+  );
   const [tags, setTags] = useState((event.tags ?? []).join(", "));
   const [locationName, setLocationName] = useState(event.location?.name ?? "");
   const [locationAddress, setLocationAddress] = useState(event.location?.address ?? "");
@@ -487,7 +536,10 @@ function InfoTab({ event }: { event: Event }) {
       startDate: new Date(startDate).toISOString(),
       endDate: new Date(endDate).toISOString(),
       maxAttendees: maxAttendees ? parseInt(maxAttendees, 10) : null,
-      tags: tags.split(",").map((t) => t.trim()).filter(Boolean),
+      tags: tags
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean),
       location: {
         name: locationName.trim(),
         address: locationAddress.trim(),
@@ -518,11 +570,19 @@ function InfoTab({ event }: { event: Event }) {
             <Pencil className="h-4 w-4" /> Modifier l&apos;événement
           </h2>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={handleCancel} disabled={updateEvent.isPending || uploadingCover}>
+            <Button
+              variant="outline"
+              onClick={handleCancel}
+              disabled={updateEvent.isPending || uploadingCover}
+            >
               <X className="h-4 w-4 mr-1.5" />
               Annuler
             </Button>
-            <Button onClick={handleSave} disabled={updateEvent.isPending || uploadingCover} className="bg-green-600 hover:bg-green-700 text-white">
+            <Button
+              onClick={handleSave}
+              disabled={updateEvent.isPending || uploadingCover}
+              className="bg-green-600 hover:bg-green-700 text-white"
+            >
               {updateEvent.isPending || uploadingCover ? (
                 <span className="flex items-center gap-2">
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -540,8 +600,10 @@ function InfoTab({ event }: { event: Event }) {
 
         {/* Cover Image Upload */}
         <div>
-          <label className="block text-sm font-medium text-muted-foreground mb-2">Image de couverture</label>
-          {(coverImagePreview || event.coverImageURL) ? (
+          <label className="block text-sm font-medium text-muted-foreground mb-2">
+            Image de couverture
+          </label>
+          {coverImagePreview || event.coverImageURL ? (
             <div className="relative rounded-lg overflow-hidden border border-border">
               <img
                 src={coverImagePreview || event.coverImageURL || ""}
@@ -583,15 +645,13 @@ function InfoTab({ event }: { event: Event }) {
               role="button"
               tabIndex={0}
               aria-label="Ajouter une image de couverture"
-              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") coverInputRef.current?.click(); }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") coverInputRef.current?.click();
+              }}
             >
               <ImagePlus className="mx-auto h-8 w-8 text-muted-foreground" />
-              <p className="mt-2 text-sm text-muted-foreground">
-                Ajouter une image de couverture
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                JPG, PNG, WebP - max 10 Mo
-              </p>
+              <p className="mt-2 text-sm text-muted-foreground">Ajouter une image de couverture</p>
+              <p className="mt-1 text-xs text-muted-foreground">JPG, PNG, WebP - max 10 Mo</p>
             </div>
           )}
           <input
@@ -611,51 +671,101 @@ function InfoTab({ event }: { event: Event }) {
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-muted-foreground mb-1">Titre</label>
-              <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Titre de l'événement" />
+              <Input
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="Titre de l'événement"
+              />
             </div>
             <div>
-              <label className="block text-sm font-medium text-muted-foreground mb-1">Description</label>
-              <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={5} placeholder="Description de l'événement" />
+              <label className="block text-sm font-medium text-muted-foreground mb-1">
+                Description
+              </label>
+              <Textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                rows={5}
+                placeholder="Description de l'événement"
+              />
             </div>
             <div>
-              <label className="block text-sm font-medium text-muted-foreground mb-1">Description courte</label>
-              <Input value={shortDescription} onChange={(e) => setShortDescription(e.target.value)} placeholder="Résumé court (max 300 car.)" maxLength={300} />
+              <label className="block text-sm font-medium text-muted-foreground mb-1">
+                Description courte
+              </label>
+              <Input
+                value={shortDescription}
+                onChange={(e) => setShortDescription(e.target.value)}
+                placeholder="Résumé court (max 300 car.)"
+                maxLength={300}
+              />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-muted-foreground mb-1">Catégorie</label>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">
+                  Catégorie
+                </label>
                 <Select value={category} onChange={(e) => setCategory(e.target.value)}>
                   {CATEGORY_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
                   ))}
                 </Select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-muted-foreground mb-1">Format</label>
+                <label className="block text-sm font-medium text-muted-foreground mb-1">
+                  Format
+                </label>
                 <Select value={format} onChange={(e) => setFormat(e.target.value)}>
                   {FORMAT_OPTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>{o.label}</option>
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
                   ))}
                 </Select>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-muted-foreground mb-1">Début</label>
-                <Input type="datetime-local" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+                <label className="block text-sm font-medium text-muted-foreground mb-1">
+                  Début
+                </label>
+                <Input
+                  type="datetime-local"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                />
               </div>
               <div>
                 <label className="block text-sm font-medium text-muted-foreground mb-1">Fin</label>
-                <Input type="datetime-local" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+                <Input
+                  type="datetime-local"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                />
               </div>
             </div>
             <div>
-              <label className="block text-sm font-medium text-muted-foreground mb-1">Capacité maximum</label>
-              <Input type="number" value={maxAttendees} onChange={(e) => setMaxAttendees(e.target.value)} placeholder="Illimité" min={1} />
+              <label className="block text-sm font-medium text-muted-foreground mb-1">
+                Capacité maximum
+              </label>
+              <Input
+                type="number"
+                value={maxAttendees}
+                onChange={(e) => setMaxAttendees(e.target.value)}
+                placeholder="Illimité"
+                min={1}
+              />
             </div>
             <div>
-              <label className="block text-sm font-medium text-muted-foreground mb-1">Tags (séparés par des virgules)</label>
-              <Input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="tech, conférence, dakar" />
+              <label className="block text-sm font-medium text-muted-foreground mb-1">
+                Tags (séparés par des virgules)
+              </label>
+              <Input
+                value={tags}
+                onChange={(e) => setTags(e.target.value)}
+                placeholder="tech, conférence, dakar"
+              />
             </div>
           </div>
 
@@ -665,21 +775,46 @@ function InfoTab({ event }: { event: Event }) {
               <MapPin className="h-4 w-4" /> Lieu
             </h3>
             <div>
-              <label className="block text-sm font-medium text-muted-foreground mb-1">Nom du lieu</label>
-              <Input value={locationName} onChange={(e) => setLocationName(e.target.value)} placeholder="Centre de conférence" />
+              <label className="block text-sm font-medium text-muted-foreground mb-1">
+                Nom du lieu
+              </label>
+              <Input
+                value={locationName}
+                onChange={(e) => setLocationName(e.target.value)}
+                placeholder="Centre de conférence"
+              />
             </div>
             <div>
-              <label className="block text-sm font-medium text-muted-foreground mb-1">Adresse</label>
-              <Input value={locationAddress} onChange={(e) => setLocationAddress(e.target.value)} placeholder="123 Rue..." />
+              <label className="block text-sm font-medium text-muted-foreground mb-1">
+                Adresse
+              </label>
+              <Input
+                value={locationAddress}
+                onChange={(e) => setLocationAddress(e.target.value)}
+                placeholder="123 Rue..."
+              />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-muted-foreground mb-1">Ville</label>
-                <Input value={locationCity} onChange={(e) => setLocationCity(e.target.value)} placeholder="Dakar" />
+                <label className="block text-sm font-medium text-muted-foreground mb-1">
+                  Ville
+                </label>
+                <Input
+                  value={locationCity}
+                  onChange={(e) => setLocationCity(e.target.value)}
+                  placeholder="Dakar"
+                />
               </div>
               <div>
-                <label className="block text-sm font-medium text-muted-foreground mb-1">Pays (code ISO)</label>
-                <Input value={locationCountry} onChange={(e) => setLocationCountry(e.target.value)} placeholder="SN" maxLength={2} />
+                <label className="block text-sm font-medium text-muted-foreground mb-1">
+                  Pays (code ISO)
+                </label>
+                <Input
+                  value={locationCountry}
+                  onChange={(e) => setLocationCountry(e.target.value)}
+                  placeholder="SN"
+                  maxLength={2}
+                />
               </div>
             </div>
           </div>
@@ -734,11 +869,22 @@ function InfoTab({ event }: { event: Event }) {
             <h3 className="text-sm font-medium text-muted-foreground mb-3">Détails</h3>
             <dl className="text-sm space-y-3">
               <Field label="Catégorie" value={event.category} />
-              <Field label="Format" value={event.format === "in_person" ? "Présentiel" : event.format === "online" ? "En ligne" : "Hybride"} />
+              <Field
+                label="Format"
+                value={
+                  event.format === "in_person"
+                    ? "Présentiel"
+                    : event.format === "online"
+                      ? "En ligne"
+                      : "Hybride"
+                }
+              />
               <Field label="Début" value={formatDate(event.startDate)} />
               <Field label="Fin" value={formatDate(event.endDate)} />
               <Field label="Fuseau" value={event.timezone} />
-              {event.isPublic !== undefined && <Field label="Public" value={event.isPublic ? "Oui" : "Non"} />}
+              {event.isPublic !== undefined && (
+                <Field label="Public" value={event.isPublic ? "Oui" : "Non"} />
+              )}
               {event.requiresApproval && <Field label="Approbation" value="Requise" />}
             </dl>
           </div>
@@ -756,15 +902,61 @@ function InfoTab({ event }: { event: Event }) {
             <dl className="text-sm space-y-3">
               <Field label="Inscrits" value={String(event.registeredCount ?? 0)} />
               <Field label="Check-ins" value={String(event.checkedInCount ?? 0)} />
-              {event.maxAttendees && <Field label="Capacité max" value={String(event.maxAttendees)} />}
+              {event.maxAttendees && (
+                <Field label="Capacit\u00e9 max" value={String(event.maxAttendees)} />
+              )}
             </dl>
+            {event.maxAttendees &&
+              (() => {
+                const registered = event.registeredCount ?? 0;
+                const pct = Math.min(100, (registered / event.maxAttendees) * 100);
+                const isFull = pct >= 100;
+                const barColor = isFull
+                  ? "bg-red-500"
+                  : pct >= 90
+                    ? "bg-red-500"
+                    : pct >= 70
+                      ? "bg-amber-500"
+                      : "bg-green-500";
+                return (
+                  <div className="mt-3">
+                    <div className="flex items-center justify-between text-xs mb-1">
+                      <span className="text-muted-foreground">
+                        {registered} / {event.maxAttendees} places
+                      </span>
+                      {isFull ? (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">
+                          Complet
+                        </span>
+                      ) : (
+                        <span
+                          className={`font-medium ${pct >= 90 ? "text-red-600" : pct >= 70 ? "text-amber-600" : "text-green-600"}`}
+                        >
+                          {Math.round(pct)}%
+                        </span>
+                      )}
+                    </div>
+                    <div className="h-2 w-full rounded-full bg-muted">
+                      <div
+                        className={`h-2 rounded-full ${barColor} transition-all`}
+                        style={{ width: `${pct}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })()}
           </div>
           {event.tags && event.tags.length > 0 && (
             <div className="bg-card rounded-xl border border-border p-5">
               <h3 className="text-sm font-medium text-muted-foreground mb-3">Tags</h3>
               <div className="flex flex-wrap gap-2">
                 {event.tags.map((tag) => (
-                  <span key={tag} className="bg-accent text-muted-foreground text-xs px-2.5 py-1 rounded-full">{tag}</span>
+                  <span
+                    key={tag}
+                    className="bg-accent text-muted-foreground text-xs px-2.5 py-1 rounded-full"
+                  >
+                    {tag}
+                  </span>
                 ))}
               </div>
             </div>
@@ -805,7 +997,10 @@ function TicketsTab({ event }: { event: Event }) {
     };
     addTicket.mutate(dto, {
       onSuccess: () => {
-        setShowAdd(false); setNewName(""); setNewPrice(0); setNewQty("");
+        setShowAdd(false);
+        setNewName("");
+        setNewPrice(0);
+        setNewQty("");
         toast.success("Type de billet ajouté.");
       },
       onError: (err: unknown) => {
@@ -867,39 +1062,86 @@ function TicketsTab({ event }: { event: Event }) {
             >
               {addTicket.isPending ? "Ajout..." : "Ajouter le billet"}
             </button>
-            <button onClick={() => setShowAdd(false)} className="text-sm text-muted-foreground hover:text-foreground">
+            <button
+              onClick={() => setShowAdd(false)}
+              className="text-sm text-muted-foreground hover:text-foreground"
+            >
               Annuler
             </button>
           </div>
         </div>
       )}
 
-      {(!event.ticketTypes || event.ticketTypes.length === 0) ? (
+      {!event.ticketTypes || event.ticketTypes.length === 0 ? (
         <div className="bg-card rounded-xl border border-border p-8 text-center text-muted-foreground">
           Aucun type de billet configuré.
         </div>
       ) : (
         <div className="space-y-3">
-          {event.ticketTypes.map((tt) => (
-            <div key={tt.id} className="bg-card rounded-xl border border-border p-5 flex items-center justify-between">
-              <div>
-                <p className="font-medium text-foreground">{tt.name}</p>
-                <p className="text-sm text-muted-foreground mt-0.5">
-                  {tt.price === 0 ? "Gratuit" : formatCurrency(tt.price, tt.currency)} · {tt.soldCount}/{tt.totalQuantity ?? "∞"} vendus
-                  {!tt.isVisible && " · Masqué"}
-                </p>
+          {event.ticketTypes.map((tt) => {
+            const ttPct = tt.totalQuantity
+              ? Math.min(100, (tt.soldCount / tt.totalQuantity) * 100)
+              : null;
+            const ttFull = ttPct !== null && ttPct >= 100;
+            const ttBarColor =
+              ttPct === null
+                ? ""
+                : ttFull
+                  ? "bg-red-500"
+                  : ttPct >= 90
+                    ? "bg-red-500"
+                    : ttPct >= 70
+                      ? "bg-amber-500"
+                      : "bg-green-500";
+            return (
+              <div key={tt.id} className="bg-card rounded-xl border border-border p-5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-medium text-foreground">{tt.name}</p>
+                    <p className="text-sm text-muted-foreground mt-0.5">
+                      {tt.price === 0 ? "Gratuit" : formatCurrency(tt.price, tt.currency)} ·{" "}
+                      {tt.soldCount}/{tt.totalQuantity ?? "\u221e"} vendus
+                      {!tt.isVisible && " · Masqu\u00e9"}
+                      {ttFull && (
+                        <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">
+                          Complet
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                  {event.status === "draft" && (
+                    <button
+                      onClick={() => setRemoveTarget({ id: tt.id, name: tt.name })}
+                      className="text-red-400 hover:text-red-600 p-1"
+                      aria-label="Supprimer le billet"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+                {tt.totalQuantity && (
+                  <div className="mt-2">
+                    <div className="flex items-center justify-between text-xs mb-1">
+                      <span className="text-muted-foreground">
+                        {tt.soldCount} / {tt.totalQuantity} places
+                      </span>
+                      <span
+                        className={`font-medium ${ttPct !== null && ttPct >= 90 ? "text-red-600" : ttPct !== null && ttPct >= 70 ? "text-amber-600" : "text-green-600"}`}
+                      >
+                        {Math.round(ttPct ?? 0)}%
+                      </span>
+                    </div>
+                    <div className="h-1.5 w-full rounded-full bg-muted">
+                      <div
+                        className={`h-1.5 rounded-full ${ttBarColor} transition-all`}
+                        style={{ width: `${ttPct ?? 0}%` }}
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
-              {event.status === "draft" && (
-                <button
-                  onClick={() => setRemoveTarget({ id: tt.id, name: tt.name })}
-                  className="text-red-400 hover:text-red-600 p-1"
-                  aria-label="Supprimer le billet"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              )}
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -942,10 +1184,12 @@ function RegistrationsTab({ eventId }: { eventId: string }) {
   });
   const approve = useApproveRegistration();
   const cancelReg = useCancelRegistration();
+  const promote = usePromoteRegistration();
 
   const registrations = data?.data ?? [];
   const meta = data?.meta;
   const totalPages = meta?.totalPages ?? 1;
+  const waitlistedCount = registrations.filter((r) => r.status === "waitlisted").length;
 
   const handleExportCSV = async () => {
     setIsExporting(true);
@@ -979,9 +1223,15 @@ function RegistrationsTab({ eventId }: { eventId: string }) {
           {registrations.some((r) => r.status === "pending") && (
             <button
               onClick={async () => {
-                const pendingIds = registrations.filter((r) => r.status === "pending").map((r) => r.id);
+                const pendingIds = registrations
+                  .filter((r) => r.status === "pending")
+                  .map((r) => r.id);
                 for (const id of pendingIds) {
-                  try { await approve.mutateAsync(id); } catch { /* skip errors */ }
+                  try {
+                    await approve.mutateAsync(id);
+                  } catch {
+                    /* skip errors */
+                  }
                 }
                 toast.success(`${pendingIds.length} inscription(s) approuvée(s)`);
               }}
@@ -992,9 +1242,35 @@ function RegistrationsTab({ eventId }: { eventId: string }) {
               Approuver tout ({registrations.filter((r) => r.status === "pending").length})
             </button>
           )}
+          {/* Bulk promote waitlisted */}
+          {waitlistedCount > 0 && (
+            <button
+              onClick={async () => {
+                const waitlistedIds = registrations
+                  .filter((r) => r.status === "waitlisted")
+                  .map((r) => r.id);
+                for (const id of waitlistedIds) {
+                  try {
+                    await promote.mutateAsync(id);
+                  } catch {
+                    /* skip errors */
+                  }
+                }
+                toast.success(`${waitlistedIds.length} inscription(s) promue(s)`);
+              }}
+              disabled={promote.isPending}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 text-white rounded-lg text-xs font-medium hover:bg-amber-600 disabled:opacity-50"
+            >
+              <ArrowUpCircle className="h-3.5 w-3.5" />
+              Promouvoir tout ({waitlistedCount})
+            </button>
+          )}
           <select
             value={statusFilter}
-            onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
+            onChange={(e) => {
+              setStatusFilter(e.target.value);
+              setPage(1);
+            }}
             className="px-3 py-1.5 rounded-lg border border-border text-sm bg-card focus:outline-none"
           >
             <option value="">Tous les statuts</option>
@@ -1049,38 +1325,52 @@ function RegistrationsTab({ eventId }: { eventId: string }) {
                   const status = REG_STATUS[reg.status] ?? REG_STATUS.pending;
                   return (
                     <tr key={reg.id} className="border-b border-border/50 hover:bg-muted/50">
-                      <td className="px-6 py-3 text-muted-foreground font-mono text-xs">{reg.id.slice(0, 8)}</td>
+                      <td className="px-6 py-3 text-muted-foreground font-mono text-xs">
+                        {reg.id.slice(0, 8)}
+                      </td>
                       <td className="px-6 py-3 text-foreground">
                         {reg.participantName ? (
                           <div>
                             <span className="font-medium">{reg.participantName}</span>
                             {reg.participantEmail && (
-                              <span className="block text-xs text-muted-foreground">{reg.participantEmail}</span>
+                              <span className="block text-xs text-muted-foreground">
+                                {reg.participantEmail}
+                              </span>
                             )}
                           </div>
                         ) : (
-                          <span className="font-mono text-xs text-muted-foreground">{reg.userId.slice(0, 12)}...</span>
+                          <span className="font-mono text-xs text-muted-foreground">
+                            {reg.userId.slice(0, 12)}...
+                          </span>
                         )}
                       </td>
-                      <td className="px-6 py-3 text-muted-foreground">{reg.ticketTypeName ?? reg.ticketTypeId.slice(0, 8)}</td>
+                      <td className="px-6 py-3 text-muted-foreground">
+                        {reg.ticketTypeName ?? reg.ticketTypeId.slice(0, 8)}
+                      </td>
                       <td className="px-6 py-3">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${status.className}`}>
+                        <span
+                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${status.className}`}
+                        >
                           {status.label}
                         </span>
                       </td>
-                      <td className="px-6 py-3 text-muted-foreground text-xs">{formatDate(reg.createdAt)}</td>
+                      <td className="px-6 py-3 text-muted-foreground text-xs">
+                        {formatDate(reg.createdAt)}
+                      </td>
                       <td className="px-6 py-3 text-right">
                         <div className="flex items-center justify-end gap-1">
                           {reg.status === "pending" && (
                             <button
-                              onClick={() => approve.mutate(reg.id, {
-                                onSuccess: () => toast.success("Inscription approuvée."),
-                                onError: (err: unknown) => {
-                                  const code = (err as { code?: string })?.code;
-                                  const message = (err as { message?: string })?.message;
-                                  toast.error(getErrorMessage(code, message));
-                                },
-                              })}
+                              onClick={() =>
+                                approve.mutate(reg.id, {
+                                  onSuccess: () => toast.success("Inscription approuvée."),
+                                  onError: (err: unknown) => {
+                                    const code = (err as { code?: string })?.code;
+                                    const message = (err as { message?: string })?.message;
+                                    toast.error(getErrorMessage(code, message));
+                                  },
+                                })
+                              }
                               disabled={approve.isPending}
                               className="text-green-600 hover:text-green-800 p-1"
                               title="Approuver"
@@ -1089,16 +1379,41 @@ function RegistrationsTab({ eventId }: { eventId: string }) {
                               <CheckCircle className="h-4 w-4" />
                             </button>
                           )}
-                          {(reg.status === "pending" || reg.status === "confirmed") && (
+                          {reg.status === "waitlisted" && (
                             <button
-                              onClick={() => cancelReg.mutate(reg.id, {
-                                onSuccess: () => toast.success("Inscription annulée."),
-                                onError: (err: unknown) => {
-                                  const code = (err as { code?: string })?.code;
-                                  const message = (err as { message?: string })?.message;
-                                  toast.error(getErrorMessage(code, message));
-                                },
-                              })}
+                              onClick={() =>
+                                promote.mutate(reg.id, {
+                                  onSuccess: () =>
+                                    toast.success("Inscription promue en confirmée."),
+                                  onError: (err: unknown) => {
+                                    const code = (err as { code?: string })?.code;
+                                    const message = (err as { message?: string })?.message;
+                                    toast.error(getErrorMessage(code, message));
+                                  },
+                                })
+                              }
+                              disabled={promote.isPending}
+                              className="text-amber-500 hover:text-amber-700 p-1"
+                              title="Promouvoir"
+                              aria-label="Promouvoir l'inscription"
+                            >
+                              <ArrowUpCircle className="h-4 w-4" />
+                            </button>
+                          )}
+                          {(reg.status === "pending" ||
+                            reg.status === "confirmed" ||
+                            reg.status === "waitlisted") && (
+                            <button
+                              onClick={() =>
+                                cancelReg.mutate(reg.id, {
+                                  onSuccess: () => toast.success("Inscription annulée."),
+                                  onError: (err: unknown) => {
+                                    const code = (err as { code?: string })?.code;
+                                    const message = (err as { message?: string })?.message;
+                                    toast.error(getErrorMessage(code, message));
+                                  },
+                                })
+                              }
                               disabled={cancelReg.isPending}
                               className="text-red-400 hover:text-red-600 p-1"
                               title="Annuler"
@@ -1118,7 +1433,9 @@ function RegistrationsTab({ eventId }: { eventId: string }) {
 
           {totalPages > 1 && (
             <div className="flex items-center justify-between mt-4 text-sm text-muted-foreground">
-              <span>Page {page} sur {totalPages}</span>
+              <span>
+                Page {page} sur {totalPages}
+              </span>
               <div className="flex gap-2">
                 <button
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
@@ -1210,7 +1527,9 @@ function AccessZonesTab({ event }: { event: Event }) {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">Capacite (optionnel)</label>
+              <label className="block text-sm font-medium text-foreground mb-1">
+                Capacite (optionnel)
+              </label>
               <input
                 type="number"
                 value={capacity}
@@ -1247,13 +1566,18 @@ function AccessZonesTab({ event }: { event: Event }) {
       ) : (
         <div className="space-y-3">
           {event.accessZones.map((zone) => (
-            <div key={zone.id} className="bg-card border rounded-lg p-4 flex items-center justify-between">
+            <div
+              key={zone.id}
+              className="bg-card border rounded-lg p-4 flex items-center justify-between"
+            >
               <div className="flex items-center gap-3">
                 <div className="w-4 h-4 rounded-full" style={{ backgroundColor: zone.color }} />
                 <div>
                   <span className="font-medium text-foreground">{zone.name}</span>
                   {zone.capacity && (
-                    <span className="text-sm text-muted-foreground ml-2">Capacite: {zone.capacity}</span>
+                    <span className="text-sm text-muted-foreground ml-2">
+                      Capacite: {zone.capacity}
+                    </span>
                   )}
                 </div>
               </div>
@@ -1307,7 +1631,11 @@ function SessionsTab({ eventId, eventStatus }: { eventId: string; eventStatus: s
     };
     try {
       await createSession.mutateAsync(dto);
-      setTitle(""); setDesc(""); setSessionLoc(""); setStartTime(""); setEndTime("");
+      setTitle("");
+      setDesc("");
+      setSessionLoc("");
+      setStartTime("");
+      setEndTime("");
       setShowForm(false);
       toast.success("Session ajoutée.");
     } catch (err: unknown) {
@@ -1338,45 +1666,78 @@ function SessionsTab({ eventId, eventStatus }: { eventId: string; eventStatus: s
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div className="md:col-span-2">
               <label className="block text-xs font-medium text-muted-foreground mb-1">Titre</label>
-              <input type="text" value={title} onChange={(e) => setTitle(e.target.value)}
+              <input
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
                 placeholder="Ex: Keynote d'ouverture"
-                className="w-full px-3 py-2 rounded-lg border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20" />
+                className="w-full px-3 py-2 rounded-lg border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+              />
             </div>
             <div>
               <label className="block text-xs font-medium text-muted-foreground mb-1">Début</label>
-              <input type="datetime-local" value={startTime} onChange={(e) => setStartTime(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20" />
+              <input
+                type="datetime-local"
+                value={startTime}
+                onChange={(e) => setStartTime(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+              />
             </div>
             <div>
               <label className="block text-xs font-medium text-muted-foreground mb-1">Fin</label>
-              <input type="datetime-local" value={endTime} onChange={(e) => setEndTime(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20" />
+              <input
+                type="datetime-local"
+                value={endTime}
+                onChange={(e) => setEndTime(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+              />
             </div>
             <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1">Salle / Lieu</label>
-              <input type="text" value={sessionLoc} onChange={(e) => setSessionLoc(e.target.value)}
+              <label className="block text-xs font-medium text-muted-foreground mb-1">
+                Salle / Lieu
+              </label>
+              <input
+                type="text"
+                value={sessionLoc}
+                onChange={(e) => setSessionLoc(e.target.value)}
                 placeholder="Ex: Salle A"
-                className="w-full px-3 py-2 rounded-lg border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20" />
+                className="w-full px-3 py-2 rounded-lg border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+              />
             </div>
             <div className="md:col-span-2">
-              <label className="block text-xs font-medium text-muted-foreground mb-1">Description</label>
-              <textarea value={desc} onChange={(e) => setDesc(e.target.value)} rows={2}
-                className="w-full px-3 py-2 rounded-lg border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20" />
+              <label className="block text-xs font-medium text-muted-foreground mb-1">
+                Description
+              </label>
+              <textarea
+                value={desc}
+                onChange={(e) => setDesc(e.target.value)}
+                rows={2}
+                className="w-full px-3 py-2 rounded-lg border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+              />
             </div>
           </div>
           <div className="flex gap-2">
-            <button onClick={handleAdd}
+            <button
+              onClick={handleAdd}
               disabled={createSession.isPending || !title.trim() || !startTime || !endTime}
-              className="bg-primary text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-primary/90 disabled:opacity-50">
+              className="bg-primary text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-primary/90 disabled:opacity-50"
+            >
               {createSession.isPending ? "Ajout..." : "Ajouter la session"}
             </button>
-            <button onClick={() => setShowForm(false)} className="text-sm text-muted-foreground hover:text-foreground">Annuler</button>
+            <button
+              onClick={() => setShowForm(false)}
+              className="text-sm text-muted-foreground hover:text-foreground"
+            >
+              Annuler
+            </button>
           </div>
         </div>
       )}
 
       {isLoading ? (
-        <div className="bg-card rounded-xl border border-border p-8 text-center text-muted-foreground">Chargement...</div>
+        <div className="bg-card rounded-xl border border-border p-8 text-center text-muted-foreground">
+          Chargement...
+        </div>
       ) : sessions.length === 0 ? (
         <div className="bg-card rounded-xl border border-border p-8 text-center text-muted-foreground">
           <Calendar className="h-10 w-10 mx-auto mb-3 opacity-30" />
@@ -1386,28 +1747,41 @@ function SessionsTab({ eventId, eventStatus }: { eventId: string; eventStatus: s
       ) : (
         <div className="space-y-3">
           {sessions.map((session) => (
-            <div key={session.id} className="bg-card rounded-xl border border-border p-5 flex items-start justify-between">
+            <div
+              key={session.id}
+              className="bg-card rounded-xl border border-border p-5 flex items-start justify-between"
+            >
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-1">
                   <p className="font-medium text-foreground">{session.title}</p>
                   {session.location && (
-                    <span className="text-xs bg-accent text-muted-foreground px-2 py-0.5 rounded-full">{session.location}</span>
+                    <span className="text-xs bg-accent text-muted-foreground px-2 py-0.5 rounded-full">
+                      {session.location}
+                    </span>
                   )}
                 </div>
                 <div className="flex items-center gap-3 text-xs text-muted-foreground">
                   <span className="flex items-center gap-1">
-                    <Clock className="h-3 w-3" /> {formatDate(session.startTime)} — {formatDate(session.endTime)}
+                    <Clock className="h-3 w-3" /> {formatDate(session.startTime)} —{" "}
+                    {formatDate(session.endTime)}
                   </span>
                   {session.speakerIds.length > 0 && (
-                    <span className="flex items-center gap-1"><Mic className="h-3 w-3" /> {session.speakerIds.length} intervenant(s)</span>
+                    <span className="flex items-center gap-1">
+                      <Mic className="h-3 w-3" /> {session.speakerIds.length} intervenant(s)
+                    </span>
                   )}
                 </div>
-                {session.description && <p className="text-sm text-muted-foreground mt-2 line-clamp-2">{session.description}</p>}
+                {session.description && (
+                  <p className="text-sm text-muted-foreground mt-2 line-clamp-2">
+                    {session.description}
+                  </p>
+                )}
               </div>
               <button
                 onClick={() => setDeleteTarget({ id: session.id, title: session.title })}
                 className="text-red-400 hover:text-red-600 p-1 ml-3"
-                aria-label="Supprimer la session">
+                aria-label="Supprimer la session"
+              >
                 <Trash2 className="h-4 w-4" />
               </button>
             </div>
@@ -1458,7 +1832,8 @@ function FeedTab({ eventId }: { eventId: string }) {
     if (!content.trim()) return;
     try {
       await createPost.mutateAsync({ content: content.trim(), mediaURLs: [], isAnnouncement });
-      setContent(""); setIsAnnouncement(false);
+      setContent("");
+      setIsAnnouncement(false);
       toast.success("Publication créée.");
     } catch (err: unknown) {
       const code = (err as { code?: string })?.code;
@@ -1474,16 +1849,28 @@ function FeedTab({ eventId }: { eventId: string }) {
       </h3>
 
       <div className="bg-card rounded-xl border border-border p-4 mb-4">
-        <textarea value={content} onChange={(e) => setContent(e.target.value)}
-          placeholder="Publier une mise à jour..." rows={3}
-          className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 mb-3" />
+        <textarea
+          value={content}
+          onChange={(e) => setContent(e.target.value)}
+          placeholder="Publier une mise à jour..."
+          rows={3}
+          className="w-full rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 mb-3"
+        />
         <div className="flex items-center justify-between">
           <label className="inline-flex items-center gap-2 text-sm text-muted-foreground">
-            <input type="checkbox" checked={isAnnouncement} onChange={(e) => setIsAnnouncement(e.target.checked)} className="rounded border-border" />
+            <input
+              type="checkbox"
+              checked={isAnnouncement}
+              onChange={(e) => setIsAnnouncement(e.target.checked)}
+              className="rounded border-border"
+            />
             Annonce (notification à tous)
           </label>
-          <button onClick={handlePost} disabled={createPost.isPending || !content.trim()}
-            className="bg-primary text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-primary/90 disabled:opacity-50">
+          <button
+            onClick={handlePost}
+            disabled={createPost.isPending || !content.trim()}
+            className="bg-primary text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-primary/90 disabled:opacity-50"
+          >
             {createPost.isPending ? "Publication..." : "Publier"}
           </button>
         </div>
@@ -1499,14 +1886,27 @@ function FeedTab({ eventId }: { eventId: string }) {
       ) : (
         <div className="space-y-3">
           {posts.map((post) => (
-            <div key={post.id} className={`bg-card rounded-xl border p-5 ${post.isPinned ? "border-amber-200 bg-amber-50/30" : "border-border"}`}>
+            <div
+              key={post.id}
+              className={`bg-card rounded-xl border p-5 ${post.isPinned ? "border-amber-200 bg-amber-50/30" : "border-border"}`}
+            >
               <div className="flex items-start justify-between">
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-2">
                     <span className="text-sm font-medium text-foreground">{post.authorName}</span>
-                    <span className="text-xs text-muted-foreground">{formatDate(post.createdAt)}</span>
-                    {post.isAnnouncement && <span className="bg-blue-100 text-blue-700 text-xs px-2 py-0.5 rounded-full">Annonce</span>}
-                    {post.isPinned && <span className="bg-amber-100 text-amber-700 text-xs px-2 py-0.5 rounded-full">Épinglé</span>}
+                    <span className="text-xs text-muted-foreground">
+                      {formatDate(post.createdAt)}
+                    </span>
+                    {post.isAnnouncement && (
+                      <span className="bg-blue-100 text-blue-700 text-xs px-2 py-0.5 rounded-full">
+                        Annonce
+                      </span>
+                    )}
+                    {post.isPinned && (
+                      <span className="bg-amber-100 text-amber-700 text-xs px-2 py-0.5 rounded-full">
+                        Épinglé
+                      </span>
+                    )}
                   </div>
                   <p className="text-sm text-foreground whitespace-pre-wrap">{post.content}</p>
                   <div className="flex items-center gap-4 mt-3 text-xs text-muted-foreground">
@@ -1515,14 +1915,18 @@ function FeedTab({ eventId }: { eventId: string }) {
                   </div>
                 </div>
                 <div className="flex items-center gap-1 ml-3">
-                  <button onClick={() => togglePin.mutate(post.id)}
+                  <button
+                    onClick={() => togglePin.mutate(post.id)}
                     className={`p-1.5 rounded-lg text-xs ${post.isPinned ? "text-amber-600 hover:bg-amber-50" : "text-muted-foreground hover:text-muted-foreground hover:bg-muted"}`}
-                    title={post.isPinned ? "Désépingler" : "Épingler"}>
+                    title={post.isPinned ? "Désépingler" : "Épingler"}
+                  >
                     Pin
                   </button>
-                  <button onClick={() => setDeletePostTarget(post.id)}
+                  <button
+                    onClick={() => setDeletePostTarget(post.id)}
                     className="text-red-400 hover:text-red-600 p-1.5"
-                    aria-label="Supprimer la publication">
+                    aria-label="Supprimer la publication"
+                  >
                     <Trash2 className="h-4 w-4" />
                   </button>
                 </div>
@@ -1591,7 +1995,8 @@ function PaymentsTab({ eventId }: { eventId: string }) {
   const refundMutation = useRefundPayment();
 
   const payments = (paymentsData as { data?: Payment[] })?.data as Payment[] | undefined;
-  const meta = (paymentsData as { meta?: { total: number; totalPages: number; page: number } })?.meta;
+  const meta = (paymentsData as { meta?: { total: number; totalPages: number; page: number } })
+    ?.meta;
   const summary = (summaryData as { data?: PaymentSummary })?.data as PaymentSummary | undefined;
 
   const handleRefund = () => {
@@ -1619,15 +2024,21 @@ function PaymentsTab({ eventId }: { eventId: string }) {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <div className="rounded-lg border p-4">
             <p className="text-xs text-muted-foreground uppercase tracking-wide">Revenus totaux</p>
-            <p className="mt-1 text-2xl font-bold text-green-600">{formatCurrency(summary.totalRevenue, "XOF")}</p>
+            <p className="mt-1 text-2xl font-bold text-green-600">
+              {formatCurrency(summary.totalRevenue, "XOF")}
+            </p>
           </div>
           <div className="rounded-lg border p-4">
             <p className="text-xs text-muted-foreground uppercase tracking-wide">Remboursements</p>
-            <p className="mt-1 text-2xl font-bold text-red-500">{formatCurrency(summary.totalRefunded, "XOF")}</p>
+            <p className="mt-1 text-2xl font-bold text-red-500">
+              {formatCurrency(summary.totalRefunded, "XOF")}
+            </p>
           </div>
           <div className="rounded-lg border p-4">
             <p className="text-xs text-muted-foreground uppercase tracking-wide">Revenus nets</p>
-            <p className="mt-1 text-2xl font-bold text-foreground">{formatCurrency(summary.netRevenue, "XOF")}</p>
+            <p className="mt-1 text-2xl font-bold text-foreground">
+              {formatCurrency(summary.netRevenue, "XOF")}
+            </p>
           </div>
           <div className="rounded-lg border p-4">
             <p className="text-xs text-muted-foreground uppercase tracking-wide">Paiements</p>
@@ -1646,7 +2057,10 @@ function PaymentsTab({ eventId }: { eventId: string }) {
       <div className="flex items-center gap-3">
         <select
           value={statusFilter}
-          onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
+          onChange={(e) => {
+            setStatusFilter(e.target.value);
+            setPage(1);
+          }}
           className="rounded-lg border px-3 py-2 text-sm"
         >
           <option value="">Tous les statuts</option>
@@ -1698,16 +2112,26 @@ function PaymentsTab({ eventId }: { eventId: string }) {
                 const canRefund = p.status === "succeeded" && p.refundedAmount < p.amount;
 
                 return (
-                  <tr key={p.id} className={`hover:bg-muted ${p.status === "failed" ? "bg-red-50/50" : ""}`}>
+                  <tr
+                    key={p.id}
+                    className={`hover:bg-muted ${p.status === "failed" ? "bg-red-50/50" : ""}`}
+                  >
                     <td className="px-4 py-3 whitespace-nowrap">{formatDate(p.createdAt)}</td>
-                    <td className="px-4 py-3 font-medium">{formatCurrency(p.amount, p.currency)}</td>
+                    <td className="px-4 py-3 font-medium">
+                      {formatCurrency(p.amount, p.currency)}
+                    </td>
                     <td className="px-4 py-3">{methodLabel}</td>
                     <td className="px-4 py-3">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${st.className}`}>
+                      <span
+                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${st.className}`}
+                      >
                         {st.label}
                       </span>
                       {p.status === "failed" && (p as Record<string, unknown>).failureReason ? (
-                        <p className="mt-1 text-xs text-red-500 max-w-[200px] truncate" title={String((p as Record<string, unknown>).failureReason)}>
+                        <p
+                          className="mt-1 text-xs text-red-500 max-w-[200px] truncate"
+                          title={String((p as Record<string, unknown>).failureReason)}
+                        >
                           {String((p as Record<string, unknown>).failureReason)}
                         </p>
                       ) : null}
@@ -1796,10 +2220,19 @@ function SpeakersTab({ eventId }: { eventId: string }) {
     try {
       await createSpeaker.mutateAsync({
         eventId,
-        dto: { eventId, name, title: title || undefined, company: company || undefined, bio: bio || undefined },
+        dto: {
+          eventId,
+          name,
+          title: title || undefined,
+          company: company || undefined,
+          bio: bio || undefined,
+        },
       });
       setShowForm(false);
-      setName(""); setTitle(""); setCompany(""); setBio("");
+      setName("");
+      setTitle("");
+      setCompany("");
+      setBio("");
       toast.success("Intervenant ajoute");
     } catch (err: unknown) {
       const code = (err as { code?: string })?.code;
@@ -1821,21 +2254,50 @@ function SpeakersTab({ eventId }: { eventId: string }) {
 
       {showForm && (
         <div className="rounded-lg border p-4 space-y-3 bg-muted">
-          <input className="w-full rounded border px-3 py-2 text-sm" placeholder="Nom *" value={name} onChange={(e) => setName(e.target.value)} />
-          <input className="w-full rounded border px-3 py-2 text-sm" placeholder="Titre (ex: CTO)" value={title} onChange={(e) => setTitle(e.target.value)} />
-          <input className="w-full rounded border px-3 py-2 text-sm" placeholder="Entreprise" value={company} onChange={(e) => setCompany(e.target.value)} />
-          <textarea className="w-full rounded border px-3 py-2 text-sm" rows={3} placeholder="Biographie" value={bio} onChange={(e) => setBio(e.target.value)} />
+          <input
+            className="w-full rounded border px-3 py-2 text-sm"
+            placeholder="Nom *"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+          <input
+            className="w-full rounded border px-3 py-2 text-sm"
+            placeholder="Titre (ex: CTO)"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+          />
+          <input
+            className="w-full rounded border px-3 py-2 text-sm"
+            placeholder="Entreprise"
+            value={company}
+            onChange={(e) => setCompany(e.target.value)}
+          />
+          <textarea
+            className="w-full rounded border px-3 py-2 text-sm"
+            rows={3}
+            placeholder="Biographie"
+            value={bio}
+            onChange={(e) => setBio(e.target.value)}
+          />
           <div className="flex gap-2">
-            <button onClick={handleCreate} disabled={createSpeaker.isPending || !name} className="px-4 py-2 bg-primary text-primary-foreground rounded text-sm disabled:opacity-50">
+            <button
+              onClick={handleCreate}
+              disabled={createSpeaker.isPending || !name}
+              className="px-4 py-2 bg-primary text-primary-foreground rounded text-sm disabled:opacity-50"
+            >
               {createSpeaker.isPending ? "Ajout..." : "Ajouter"}
             </button>
-            <button onClick={() => setShowForm(false)} className="px-4 py-2 border rounded text-sm">Annuler</button>
+            <button onClick={() => setShowForm(false)} className="px-4 py-2 border rounded text-sm">
+              Annuler
+            </button>
           </div>
         </div>
       )}
 
       {isLoading ? (
-        <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
+        <div className="flex justify-center py-8">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </div>
       ) : speakers.length === 0 ? (
         <p className="py-8 text-center text-muted-foreground">Aucun intervenant</p>
       ) : (
@@ -1845,7 +2307,11 @@ function SpeakersTab({ eventId }: { eventId: string }) {
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-3">
                   {s.photoURL ? (
-                    <img src={s.photoURL} alt={s.name} className="h-10 w-10 rounded-full object-cover" />
+                    <img
+                      src={s.photoURL}
+                      alt={s.name}
+                      className="h-10 w-10 rounded-full object-cover"
+                    />
                   ) : (
                     <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted">
                       <UserRound className="h-5 w-5 text-muted-foreground" />
@@ -1853,11 +2319,18 @@ function SpeakersTab({ eventId }: { eventId: string }) {
                   )}
                   <div>
                     <p className="font-medium">{s.name}</p>
-                    {s.title && <p className="text-xs text-muted-foreground">{s.title}{s.company ? ` — ${s.company}` : ""}</p>}
+                    {s.title && (
+                      <p className="text-xs text-muted-foreground">
+                        {s.title}
+                        {s.company ? ` — ${s.company}` : ""}
+                      </p>
+                    )}
                   </div>
                 </div>
                 <button
-                  onClick={() => { if (confirm("Retirer cet intervenant ?")) deleteSpeaker.mutate(s.id); }}
+                  onClick={() => {
+                    if (confirm("Retirer cet intervenant ?")) deleteSpeaker.mutate(s.id);
+                  }}
                   className="text-muted-foreground hover:text-red-500"
                   aria-label="Supprimer l'intervenant"
                 >
@@ -1868,7 +2341,9 @@ function SpeakersTab({ eventId }: { eventId: string }) {
               {s.topics.length > 0 && (
                 <div className="flex flex-wrap gap-1">
                   {s.topics.map((t) => (
-                    <span key={t} className="rounded bg-blue-50 px-2 py-0.5 text-xs text-blue-600">{t}</span>
+                    <span key={t} className="rounded bg-blue-50 px-2 py-0.5 text-xs text-blue-600">
+                      {t}
+                    </span>
                   ))}
                 </div>
               )}
@@ -1907,10 +2382,18 @@ function SponsorsTab({ eventId }: { eventId: string }) {
     try {
       await createSponsor.mutateAsync({
         eventId,
-        dto: { eventId, companyName, tier, website: website || undefined, description: description || undefined },
+        dto: {
+          eventId,
+          companyName,
+          tier,
+          website: website || undefined,
+          description: description || undefined,
+        },
       });
       setShowForm(false);
-      setCompanyName(""); setWebsite(""); setDescription("");
+      setCompanyName("");
+      setWebsite("");
+      setDescription("");
       toast.success("Sponsor ajoute");
     } catch (err) {
       toast.error(getErrorMessage((err as { code?: string })?.code));
@@ -1931,25 +2414,55 @@ function SponsorsTab({ eventId }: { eventId: string }) {
 
       {showForm && (
         <div className="rounded-lg border p-4 space-y-3 bg-muted">
-          <input className="w-full rounded border px-3 py-2 text-sm" placeholder="Nom de l'entreprise *" value={companyName} onChange={(e) => setCompanyName(e.target.value)} />
-          <select className="w-full rounded border px-3 py-2 text-sm" value={tier} onChange={(e) => setTier(e.target.value as SponsorTier)}>
+          <input
+            className="w-full rounded border px-3 py-2 text-sm"
+            placeholder="Nom de l'entreprise *"
+            value={companyName}
+            onChange={(e) => setCompanyName(e.target.value)}
+          />
+          <select
+            className="w-full rounded border px-3 py-2 text-sm"
+            value={tier}
+            onChange={(e) => setTier(e.target.value as SponsorTier)}
+          >
             {Object.entries(TIER_LABELS).map(([k, v]) => (
-              <option key={k} value={k}>{v.label}</option>
+              <option key={k} value={k}>
+                {v.label}
+              </option>
             ))}
           </select>
-          <input className="w-full rounded border px-3 py-2 text-sm" placeholder="Site web" value={website} onChange={(e) => setWebsite(e.target.value)} />
-          <textarea className="w-full rounded border px-3 py-2 text-sm" rows={3} placeholder="Description" value={description} onChange={(e) => setDescription(e.target.value)} />
+          <input
+            className="w-full rounded border px-3 py-2 text-sm"
+            placeholder="Site web"
+            value={website}
+            onChange={(e) => setWebsite(e.target.value)}
+          />
+          <textarea
+            className="w-full rounded border px-3 py-2 text-sm"
+            rows={3}
+            placeholder="Description"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+          />
           <div className="flex gap-2">
-            <button onClick={handleCreate} disabled={createSponsor.isPending || !companyName} className="px-4 py-2 bg-primary text-primary-foreground rounded text-sm disabled:opacity-50">
+            <button
+              onClick={handleCreate}
+              disabled={createSponsor.isPending || !companyName}
+              className="px-4 py-2 bg-primary text-primary-foreground rounded text-sm disabled:opacity-50"
+            >
               {createSponsor.isPending ? "Ajout..." : "Ajouter"}
             </button>
-            <button onClick={() => setShowForm(false)} className="px-4 py-2 border rounded text-sm">Annuler</button>
+            <button onClick={() => setShowForm(false)} className="px-4 py-2 border rounded text-sm">
+              Annuler
+            </button>
           </div>
         </div>
       )}
 
       {isLoading ? (
-        <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
+        <div className="flex justify-center py-8">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </div>
       ) : sponsors.length === 0 ? (
         <p className="py-8 text-center text-muted-foreground">Aucun sponsor</p>
       ) : (
@@ -1961,7 +2474,11 @@ function SponsorsTab({ eventId }: { eventId: string }) {
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-3">
                     {s.logoURL ? (
-                      <img src={s.logoURL} alt={s.companyName} className="h-10 w-10 rounded object-contain" />
+                      <img
+                        src={s.logoURL}
+                        alt={s.companyName}
+                        className="h-10 w-10 rounded object-contain"
+                      />
                     ) : (
                       <div className="flex h-10 w-10 items-center justify-center rounded bg-muted">
                         <Building className="h-5 w-5 text-muted-foreground" />
@@ -1969,22 +2486,33 @@ function SponsorsTab({ eventId }: { eventId: string }) {
                     )}
                     <div>
                       <p className="font-medium">{s.companyName}</p>
-                      <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${tierInfo.className}`}>
+                      <span
+                        className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${tierInfo.className}`}
+                      >
                         {tierInfo.label}
                       </span>
                     </div>
                   </div>
                   <button
-                    onClick={() => { if (confirm("Retirer ce sponsor ?")) deleteSponsor.mutate(s.id); }}
+                    onClick={() => {
+                      if (confirm("Retirer ce sponsor ?")) deleteSponsor.mutate(s.id);
+                    }}
                     className="text-muted-foreground hover:text-red-500"
                     aria-label="Supprimer le sponsor"
                   >
                     <Trash2 className="h-4 w-4" />
                   </button>
                 </div>
-                {s.description && <p className="text-sm text-muted-foreground line-clamp-2">{s.description}</p>}
+                {s.description && (
+                  <p className="text-sm text-muted-foreground line-clamp-2">{s.description}</p>
+                )}
                 {s.website && (
-                  <a href={s.website} target="_blank" rel="noreferrer" className="text-xs text-blue-500 hover:underline">
+                  <a
+                    href={s.website}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-xs text-blue-500 hover:underline"
+                  >
                     {s.website}
                   </a>
                 )}
@@ -2034,7 +2562,10 @@ function PromosTab({ eventId }: { eventId: string }) {
         ...(expiresAt ? { expiresAt: new Date(expiresAt).toISOString() } : {}),
       });
       setShowForm(false);
-      setCode(""); setDiscountValue(""); setMaxUses(""); setExpiresAt("");
+      setCode("");
+      setDiscountValue("");
+      setMaxUses("");
+      setExpiresAt("");
       toast.success("Code promo créé");
     } catch (err) {
       toast.error(getErrorMessage((err as { code?: string })?.code));
@@ -2120,7 +2651,9 @@ function PromosTab({ eventId }: { eventId: string }) {
       )}
 
       {isLoading ? (
-        <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
+        <div className="flex justify-center py-8">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </div>
       ) : promoCodes.length === 0 ? (
         <p className="py-8 text-center text-muted-foreground">Aucun code promo</p>
       ) : (
@@ -2130,8 +2663,12 @@ function PromosTab({ eventId }: { eventId: string }) {
               <tr>
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">Code</th>
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">Réduction</th>
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Utilisations</th>
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Expiration</th>
+                <th className="px-4 py-3 text-left font-medium text-muted-foreground">
+                  Utilisations
+                </th>
+                <th className="px-4 py-3 text-left font-medium text-muted-foreground">
+                  Expiration
+                </th>
                 <th className="px-4 py-3 text-left font-medium text-muted-foreground">Statut</th>
                 <th className="px-4 py-3 text-right font-medium text-muted-foreground">Actions</th>
               </tr>
@@ -2151,20 +2688,29 @@ function PromosTab({ eventId }: { eventId: string }) {
                         : formatCurrency(p.discountValue)}
                     </td>
                     <td className="px-4 py-3">
-                      {p.usedCount}{p.maxUses !== null ? ` / ${p.maxUses}` : ""}
+                      {p.usedCount}
+                      {p.maxUses !== null ? ` / ${p.maxUses}` : ""}
                     </td>
                     <td className="px-4 py-3 text-xs">
                       {p.expiresAt ? formatDate(p.expiresAt) : "—"}
                     </td>
                     <td className="px-4 py-3">
                       {!p.isActive ? (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-accent text-muted-foreground">Désactivé</span>
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-accent text-muted-foreground">
+                          Désactivé
+                        </span>
                       ) : expired ? (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-600">Expiré</span>
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-600">
+                          Expiré
+                        </span>
                       ) : maxedOut ? (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">Épuisé</span>
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">
+                          Épuisé
+                        </span>
                       ) : (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">Actif</span>
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">
+                          Actif
+                        </span>
                       )}
                     </td>
                     <td className="px-4 py-3 text-right">

@@ -30,7 +30,8 @@ export default function PaymentStatusPage() {
   const payment = (paymentData as { data?: Payment })?.data as Payment | undefined;
 
   const status = payment?.status;
-  const isTerminal = status === "succeeded" || status === "failed" || status === "refunded" || status === "expired";
+  const isTerminal =
+    status === "succeeded" || status === "failed" || status === "refunded" || status === "expired";
   const isSuccess = status === "succeeded";
   const isFailed = isTerminal && !isSuccess;
 
@@ -99,12 +100,13 @@ export default function PaymentStatusPage() {
           {/* Processing state */}
           {!isTerminal && (
             <>
-              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-amber-50">
-                <Loader2 className="h-10 w-10 animate-spin text-amber-500" />
+              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-amber-50 dark:bg-amber-950/50">
+                <Loader2 className="h-10 w-10 animate-spin text-amber-500 dark:text-amber-400" />
               </div>
               <h2 className="mt-4 text-xl font-bold">Paiement en cours\u2026</h2>
               <p className="mt-2 text-center text-muted-foreground">
-                Votre paiement est en cours de traitement. Cette page se met \u00e0 jour automatiquement.
+                Votre paiement est en cours de traitement. Cette page se met \u00e0 jour
+                automatiquement.
               </p>
               {payment && (
                 <p className="mt-3 text-lg font-semibold text-teranga-gold">
@@ -138,23 +140,23 @@ export default function PaymentStatusPage() {
               {/* Show signed QR code from the registration */}
               {registration?.qrCodeValue && (
                 <div className="mt-6 inline-block rounded-lg bg-white p-4 shadow-md">
-                  <QRCodeSVG
-                    value={registration.qrCodeValue}
-                    size={180}
-                    level="M"
-                    includeMargin
-                  />
+                  <QRCodeSVG value={registration.qrCodeValue} size={180} level="M" includeMargin />
                 </div>
               )}
 
               <div className="mt-6 flex flex-col gap-3 sm:flex-row">
                 {registration && (
                   <Link href={`/my-events/${registration.id}/badge`}>
-                    <Button className="bg-teranga-gold hover:bg-teranga-gold/90">Voir mon badge</Button>
+                    <Button className="bg-teranga-gold hover:bg-teranga-gold/90">
+                      Voir mon badge
+                    </Button>
                   </Link>
                 )}
                 <Link href="/my-events">
-                  <Button variant={registration ? "outline" : "default"} className={!registration ? "bg-teranga-gold hover:bg-teranga-gold/90" : ""}>
+                  <Button
+                    variant={registration ? "outline" : "default"}
+                    className={!registration ? "bg-teranga-gold hover:bg-teranga-gold/90" : ""}
+                  >
                     Mes inscriptions
                   </Button>
                 </Link>
@@ -168,17 +170,20 @@ export default function PaymentStatusPage() {
           {/* Failed / expired state */}
           {isFailed && payment && (
             <>
-              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-red-50">
-                <XCircle className="h-10 w-10 text-red-500" />
+              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-red-50 dark:bg-red-950/50">
+                <XCircle className="h-10 w-10 text-red-500 dark:text-red-400" />
               </div>
               <h2 className="mt-4 text-xl font-bold">Paiement \u00e9chou\u00e9</h2>
               <p className="mt-2 text-center text-muted-foreground">
-                {payment.failureReason ?? "Le paiement n'a pas pu \u00eatre trait\u00e9. Veuillez r\u00e9essayer."}
+                {payment.failureReason ??
+                  "Le paiement n'a pas pu \u00eatre trait\u00e9. Veuillez r\u00e9essayer."}
               </p>
 
               <div className="mt-6 flex flex-col gap-3 sm:flex-row">
                 <Link href={`/register/${eventId}`}>
-                  <Button className="bg-teranga-gold hover:bg-teranga-gold/90">R\u00e9essayer</Button>
+                  <Button className="bg-teranga-gold hover:bg-teranga-gold/90">
+                    R\u00e9essayer
+                  </Button>
                 </Link>
                 <Link href="/events">
                   <Button variant="outline">Retour aux \u00e9v\u00e9nements</Button>
@@ -190,8 +195,8 @@ export default function PaymentStatusPage() {
           {/* Error state */}
           {isError && (
             <>
-              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-red-50">
-                <XCircle className="h-10 w-10 text-red-500" />
+              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-red-50 dark:bg-red-950/50">
+                <XCircle className="h-10 w-10 text-red-500 dark:text-red-400" />
               </div>
               <h2 className="mt-4 text-xl font-bold">Erreur</h2>
               <p className="mt-2 text-center text-muted-foreground">

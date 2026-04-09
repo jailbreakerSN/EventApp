@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { serverEventsApi } from "@/lib/server-api";
-import { EventCard } from "@/components/event-card";
+import { EventGridWithCompare } from "@/components/event-grid-compare";
 import { EventFilters } from "@/components/event-filters";
 import { NewsletterSignup } from "@/components/newsletter-signup";
 import { getDateRange } from "@/lib/date-utils";
@@ -10,7 +10,8 @@ export const revalidate = 60;
 
 export const metadata: Metadata = {
   title: "Événements",
-  description: "Découvrez les événements au Sénégal — conférences, concerts, ateliers, festivals et plus.",
+  description:
+    "Découvrez les événements au Sénégal — conférences, concerts, ateliers, festivals et plus.",
 };
 
 interface EventsPageProps {
@@ -62,7 +63,12 @@ export default async function EventsPage({ searchParams }: EventsPageProps) {
       <div className="mb-8">
         <h1 className="text-3xl font-bold">Événements</h1>
         {/* aria-live announces count updates to screen readers when filters change */}
-        <p className="mt-2 text-muted-foreground" role="status" aria-live="polite" aria-atomic="true">
+        <p
+          className="mt-2 text-muted-foreground"
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+        >
           {meta.total > 0
             ? `${meta.total} événement${meta.total > 1 ? "s" : ""} trouvé${meta.total > 1 ? "s" : ""}`
             : "Aucun événement trouvé"}
@@ -73,11 +79,7 @@ export default async function EventsPage({ searchParams }: EventsPageProps) {
 
       {events.length > 0 ? (
         <>
-          <div className="mt-6 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {events.map((event) => (
-              <EventCard key={event.id} event={event} />
-            ))}
-          </div>
+          <EventGridWithCompare events={events} />
           {meta.totalPages > 1 && (
             <div className="mt-8">
               <Pagination currentPage={page} totalPages={meta.totalPages} />
@@ -89,7 +91,10 @@ export default async function EventsPage({ searchParams }: EventsPageProps) {
           <p className="text-lg text-muted-foreground">
             Aucun événement ne correspond à vos critères.
           </p>
-          <a href="/events" className="mt-4 inline-block text-sm font-medium text-teranga-gold-dark hover:underline">
+          <a
+            href="/events"
+            className="mt-4 inline-block text-sm font-medium text-teranga-gold-dark hover:underline"
+          >
             Réinitialiser les filtres
           </a>
         </div>
