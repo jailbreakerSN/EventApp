@@ -111,5 +111,41 @@ service firebase.storage {
                    && (isImage() || isPdf())
                    && maxSize(15);
     }
+
+    // ─── Venue Photos ──────────────────────────────────────────────────────
+    // Venues are semi-public (used in event listings) — require auth for read
+    match /venues/{venueId}/{filename} {
+      allow read: if isAuthenticated();
+      allow write: if (hasRole('organizer')
+                       && belongsToOrg(
+                           firestore.get(/databases/(default)/documents/venues/$(venueId)).data.hostOrganizationId
+                       )
+                   || hasRole('super_admin'))
+                   && isImage()
+                   && maxSize(10);
+    }
+
+    // ─── Badge Template Logos ──────────────────────────────────────────────
+    // Needed by any authenticated user to render badges
+    match /badge-templates/{templateId}/{filename} {
+      allow read: if isAuthenticated();
+      allow write: if (hasRole('organizer')
+                       && belongsToOrg(
+                           firestore.get(/databases/(default)/documents/badgeTemplates/$(templateId)).data.organizationId
+                       )
+                   || hasRole('super_admin'))
+                   && isImage()
+                   && maxSize(5);
+    }
+
+    // ─── Event Cover Images ────────────────────────────────────────────────
+    // Nested path for event cover photos (separate from general event assets)
+    match /events/{eventId}/covers/{filename} {
+      allow read: if isAuthenticated();
+      allow write: if hasRole('organizer') && isImage() && maxSize(10)
+                   && belongsToOrg(
+                       firestore.get(/databases/(default)/documents/events/$(eventId)).data.organizationId
+                   );
+    }
   }
 }

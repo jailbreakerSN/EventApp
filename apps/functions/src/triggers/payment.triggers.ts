@@ -2,7 +2,7 @@ import { onDocumentWritten } from "firebase-functions/v2/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { logger } from "firebase-functions/v2";
 import { FieldValue } from "firebase-admin/firestore";
-import { db, COLLECTIONS } from "../utils/admin";
+import { db, messaging, COLLECTIONS } from "../utils/admin";
 
 /**
  * Payment timeout: cancels pending payments that haven't completed within 30 minutes.
@@ -129,6 +129,65 @@ export const onPaymentSucceeded = onDocumentWritten(
     } catch (err) {
       logger.error("Failed to trigger badge generation after payment", err);
     }
+
+    // ── Send payment success notification ──
+    try {
+      const eventDoc = await db.collection(COLLECTIONS.EVENTS).doc(after.eventId).get();
+      const eventTitle = eventDoc.data()?.title ?? "l'événement";
+      const userId = after.userId ?? (await db.collection(COLLECTIONS.REGISTRATIONS).doc(after.registrationId).get()).data()?.userId;
+
+      if (!userId) {
+        logger.warn("No userId found for payment success notification", {
+          paymentId: event.data?.after?.id,
+        });
+        return;
+      }
+
+      // Create in-app notification
+      await db.collection(COLLECTIONS.NOTIFICATIONS).add({
+        userId,
+        type: "payment_success",
+        title: "Paiement confirmé",
+        body: `Votre paiement pour ${eventTitle} a été confirmé. Votre badge est en cours de génération.`,
+        data: {
+          eventId: after.eventId,
+          paymentId: event.data?.after?.id ?? "",
+          registrationId: after.registrationId,
+        },
+        imageURL: null,
+        isRead: false,
+        readAt: null,
+        createdAt: new Date().toISOString(),
+      });
+
+      // Send FCM push if user has tokens
+      const userDoc = await db.collection(COLLECTIONS.USERS).doc(userId).get();
+      const fcmTokens: string[] = userDoc.data()?.fcmTokens ?? [];
+
+      if (fcmTokens.length > 0) {
+        await messaging.sendEachForMulticast({
+          tokens: fcmTokens,
+          notification: {
+            title: "Paiement confirmé",
+            body: `Votre paiement pour ${eventTitle} a été confirmé.`,
+          },
+          data: {
+            type: "payment_success",
+            eventId: after.eventId,
+            paymentId: event.data?.after?.id ?? "",
+          },
+          android: { priority: "high" },
+          apns: { payload: { aps: { sound: "default" } } },
+        });
+      }
+
+      logger.info("Payment success notification sent", {
+        paymentId: event.data?.after?.id,
+        userId,
+      });
+    } catch (err) {
+      logger.error("Failed to send payment success notification", err);
+    }
   },
 );
 
@@ -168,6 +227,27 @@ export const onPaymentFailed = onDocumentWritten(
         readAt: null,
         createdAt: new Date().toISOString(),
       });
+
+      // Send FCM push if user has tokens
+      const userDoc = await db.collection(COLLECTIONS.USERS).doc(after.userId).get();
+      const fcmTokens: string[] = userDoc.data()?.fcmTokens ?? [];
+
+      if (fcmTokens.length > 0) {
+        await messaging.sendEachForMulticast({
+          tokens: fcmTokens,
+          notification: {
+            title: "Paiement échoué",
+            body: `Votre paiement pour ${eventTitle} a échoué. Vous pouvez réessayer.`,
+          },
+          data: {
+            type: "payment_failed",
+            eventId: after.eventId,
+            paymentId: event.data?.after?.id ?? "",
+          },
+          android: { priority: "high" },
+          apns: { payload: { aps: { sound: "default" } } },
+        });
+      }
 
       logger.info("Payment failure notification sent", {
         paymentId: event.data?.after?.id,

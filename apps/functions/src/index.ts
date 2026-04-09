@@ -9,8 +9,8 @@ export { onUserCreated, onUserDeleted } from "./triggers/auth.triggers";
 // ─── Badge Triggers ───────────────────────────────────────────────────────────
 export { onBadgeCreated } from "./triggers/badge.triggers";
 
-// ─── Registration Triggers (auto badge generation) ───────────────────────────
-export { onRegistrationCreated, onRegistrationApproved } from "./triggers/registration.triggers";
+// ─── Registration Triggers (auto badge generation + waitlist promotion) ──────
+export { onRegistrationCreated, onRegistrationApproved, onRegistrationCancelled } from "./triggers/registration.triggers";
 
 // ─── Check-in Triggers ───────────────────────────────────────────────────────
 export { onCheckinCompleted } from "./triggers/checkin.triggers";
@@ -22,4 +22,4 @@ export { onFeedPostCreated, onRegistrationConfirmed } from "./triggers/notificat
 export { onPaymentTimeout, onPaymentSucceeded, onPaymentFailed } from "./triggers/payment.triggers";
 
 // ─── Scheduled Reminders ────────────────────────────────────────────────────
-export { sendEventReminders } from "./triggers/reminder.triggers";
+export { sendEventReminders, sendSessionReminders } from "./triggers/reminder.triggers";

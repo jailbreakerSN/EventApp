@@ -309,5 +309,194 @@ service cloud.firestore {
       allow update: if false;
       allow delete: if false;
     }
+
+    // ─── Speakers ───────────────────────────────────────────────────────────
+    // Speaker profiles linked to events.
+    // Authenticated users can read speakers of published events.
+    // Org members and super_admin can read all speakers for their events.
+    match /speakers/{speakerId} {
+      // Anyone authenticated can read speakers of published events
+      allow read: if isAuthenticated()
+                  && get(/databases/$(database)/documents/events/$(resource.data.eventId)).data.status == 'published';
+
+      // Org members and super_admin can read all (including draft events)
+      allow read: if isAuthenticated()
+                  && (belongsToOrg(
+                      get(/databases/$(database)/documents/events/$(resource.data.eventId)).data.organizationId
+                  ) || isSuperAdmin());
+
+      // Only organizers of the event's org or super_admin can create
+      allow create: if isSuperAdmin()
+                    || (isOrganizer() && belongsToOrg(
+                        get(/databases/$(database)/documents/events/$(request.resource.data.eventId)).data.organizationId
+                    ));
+
+      // Organizers of the event's org or super_admin can update all fields
+      allow update: if (isSuperAdmin()
+                    || (isOrganizer() && belongsToOrg(
+                        get(/databases/$(database)/documents/events/$(resource.data.eventId)).data.organizationId
+                    )))
+                    && immutableOnUpdate(['eventId', 'organizationId', 'createdBy']);
+
+      // The speaker themselves can update profile fields only
+      allow update: if isOwnerOf(resource.data.userId)
+                    && onlyChanges(['bio', 'photoURL', 'slidesUrl', 'updatedAt'])
+                    && immutableOnUpdate(['eventId', 'organizationId', 'createdBy']);
+
+      // Soft-delete only
+      allow delete: if false;
+    }
+
+    // ─── Sponsors ───────────────────────────────────────────────────────────
+    // Sponsor profiles linked to events.
+    match /sponsors/{sponsorId} {
+      // Authenticated users can read sponsors of published events
+      allow read: if isAuthenticated()
+                  && get(/databases/$(database)/documents/events/$(resource.data.eventId)).data.status == 'published';
+
+      // Org members and super_admin can read all
+      allow read: if isAuthenticated()
+                  && (belongsToOrg(
+                      get(/databases/$(database)/documents/events/$(resource.data.eventId)).data.organizationId
+                  ) || isSuperAdmin());
+
+      // Only organizers of the event's org or super_admin can create
+      allow create: if isSuperAdmin()
+                    || (isOrganizer() && belongsToOrg(
+                        get(/databases/$(database)/documents/events/$(request.resource.data.eventId)).data.organizationId
+                    ));
+
+      // Organizers of the event's org or super_admin can update; eventId and organizationId are immutable
+      allow update: if (isSuperAdmin()
+                    || (isOrganizer() && belongsToOrg(
+                        get(/databases/$(database)/documents/events/$(resource.data.eventId)).data.organizationId
+                    )))
+                    && immutableOnUpdate(['eventId', 'organizationId']);
+
+      // Soft-delete only
+      allow delete: if false;
+    }
+
+    // ─── Sponsor Leads ──────────────────────────────────────────────────────
+    // Leads captured by sponsors at events.
+    // Written by authenticated sponsor users, read by sponsor owner / org organizers / super_admin.
+    match /sponsorLeads/{leadId} {
+      // The sponsor user who captured the lead can read it
+      allow read: if isOwnerOf(resource.data.sponsorUserId);
+
+      // Org organizers can read leads for their org's events
+      allow read: if isOrganizer()
+                  && belongsToOrg(
+                      get(/databases/$(database)/documents/events/$(resource.data.eventId)).data.organizationId
+                  );
+
+      // Super admin can read all
+      allow read: if isSuperAdmin();
+
+      // Authenticated sponsor captures leads at events
+      allow create: if isAuthenticated()
+                    && request.resource.data.sponsorUserId == currentUid();
+
+      // Updates and deletes via Admin SDK only
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    // ─── Venues ─────────────────────────────────────────────────────────────
+    // Venues are semi-public — any authenticated user can read (needed for event listings).
+    // Managed by organizers of the host organization or super_admin.
+    match /venues/{venueId} {
+      allow read: if isAuthenticated();
+
+      allow create: if isOrganizer() || isSuperAdmin();
+
+      // Only organizers belonging to the venue's host org or super_admin can update
+      allow update: if isSuperAdmin()
+                    || (isOrganizer() && belongsToOrg(resource.data.hostOrganizationId));
+
+      // Soft-delete only
+      allow delete: if false;
+    }
+
+    // ─── Broadcasts ─────────────────────────────────────────────────────────
+    // Event broadcasts (emails, push notifications, SMS).
+    // Created exclusively by Admin SDK (API). Org organizers can read.
+    match /broadcasts/{broadcastId} {
+      // Organizers of the event's org or super_admin can read
+      allow read: if isSuperAdmin()
+                  || (isOrganizer() && belongsToOrg(
+                      get(/databases/$(database)/documents/events/$(resource.data.eventId)).data.organizationId
+                  ));
+
+      // Admin SDK only
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    // ─── Promo Codes ────────────────────────────────────────────────────────
+    // Discount / promo codes for event tickets.
+    // Managed exclusively by Admin SDK (API). Org organizers can read.
+    match /promoCodes/{codeId} {
+      // Organizers of the event's org or super_admin can read
+      allow read: if isSuperAdmin()
+                  || (isOrganizer() && belongsToOrg(
+                      get(/databases/$(database)/documents/events/$(resource.data.eventId)).data.organizationId
+                  ));
+
+      // Admin SDK / API only
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    // ─── Invites ────────────────────────────────────────────────────────────
+    // Invitations to events or organizations.
+    // Invitees matched by email; org members and super_admin can read.
+    match /invites/{inviteId} {
+      // The invitee (matched by email) can read their own invite
+      allow read: if isAuthenticated()
+                  && resource.data.email == request.auth.token.email;
+
+      // Org members can read invites for their org
+      allow read: if isAuthenticated()
+                  && belongsToOrg(resource.data.organizationId);
+
+      // Super admin can read all
+      allow read: if isSuperAdmin();
+
+      // Organizers of the invite's org or super_admin can create invites
+      allow create: if isSuperAdmin()
+                    || (isOrganizer() && belongsToOrg(request.resource.data.organizationId));
+
+      // Invitee can accept or decline (status change only)
+      allow update: if isAuthenticated()
+                    && resource.data.email == request.auth.token.email
+                    && onlyChanges(['status', 'respondedAt', 'updatedAt'])
+                    && request.resource.data.status in ['accepted', 'declined'];
+
+      // Org organizers can revoke invites
+      allow update: if (isOrganizer() && belongsToOrg(resource.data.organizationId))
+                    && onlyChanges(['status', 'updatedAt'])
+                    && request.resource.data.status == 'revoked';
+
+      // Super admin can update any field
+      allow update: if isSuperAdmin();
+
+      // No hard deletes
+      allow delete: if false;
+    }
+
+    // ─── Newsletter Subscribers ─────────────────────────────────────────────
+    // Email subscribers managed exclusively by API.
+    // Only super_admin can read from client.
+    match /newsletterSubscribers/{subId} {
+      allow read: if isSuperAdmin();
+
+      // API only
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
+    }
   }
 }

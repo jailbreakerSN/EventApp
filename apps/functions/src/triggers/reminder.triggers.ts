@@ -155,6 +155,145 @@ async function sendReminders(
   }
 }
 
+/**
+ * Scheduled session reminder function.
+ * Runs every 5 minutes. Sends reminders for sessions starting in the next 15 minutes.
+ * Deduplication: checks for existing session reminder notifications to avoid re-sending.
+ */
+export const sendSessionReminders = onSchedule(
+  {
+    schedule: "every 5 minutes",
+    region: "europe-west1",
+    timeZone: "Africa/Dakar",
+  },
+  async () => {
+    const now = Date.now();
+    const fromTime = new Date(now).toISOString();
+    const toTime = new Date(now + 15 * 60 * 1000).toISOString();
+
+    try {
+      // Find sessions starting in the next 15 minutes
+      const sessionsSnap = await db
+        .collection(COLLECTIONS.SESSIONS)
+        .where("startTime", ">=", fromTime)
+        .where("startTime", "<=", toTime)
+        .get();
+
+      if (sessionsSnap.empty) return;
+
+      for (const sessionDoc of sessionsSnap.docs) {
+        const session = sessionDoc.data();
+        const sessionId = sessionDoc.id;
+        const sessionTitle = session.title ?? "la session";
+        const eventId = session.eventId;
+
+        if (!eventId) continue;
+
+        try {
+          // Get confirmed registrations for the parent event
+          const regsSnap = await db
+            .collection(COLLECTIONS.REGISTRATIONS)
+            .where("eventId", "==", eventId)
+            .where("status", "in", ["confirmed", "checked_in"])
+            .get();
+
+          if (regsSnap.empty) continue;
+
+          const userIds = [...new Set(regsSnap.docs.map((d) => d.data().userId))];
+
+          // Deduplication: check which users already received this session reminder
+          const reminderKey = "session_reminder";
+          const existingReminders = await db
+            .collection(COLLECTIONS.NOTIFICATIONS)
+            .where("type", "==", reminderKey)
+            .where("data.sessionId", "==", sessionId)
+            .select("userId")
+            .get();
+
+          const alreadyNotified = new Set(existingReminders.docs.map((d) => d.data().userId));
+          const usersToNotify = userIds.filter((uid) => !alreadyNotified.has(uid));
+
+          if (usersToNotify.length === 0) continue;
+
+          // Create in-app notifications in batches
+          const notifBatches = chunkArray(usersToNotify, 490);
+          const nowIso = new Date().toISOString();
+
+          for (const batch of notifBatches) {
+            const writeBatch = db.batch();
+
+            for (const userId of batch) {
+              const ref = db.collection(COLLECTIONS.NOTIFICATIONS).doc();
+              writeBatch.set(ref, {
+                userId,
+                type: reminderKey,
+                title: "Session imminente",
+                body: `La session '${sessionTitle}' commence bientôt.`,
+                data: { eventId, sessionId },
+                imageURL: null,
+                isRead: false,
+                readAt: null,
+                createdAt: nowIso,
+              });
+            }
+
+            await writeBatch.commit();
+          }
+
+          // Send FCM push notifications
+          const allTokens: string[] = [];
+          const userBatches = chunkArray(usersToNotify, 100);
+
+          for (const batch of userBatches) {
+            const userDocs = await db.getAll(
+              ...batch.map((uid) => db.collection(COLLECTIONS.USERS).doc(uid)),
+            );
+            for (const u of userDocs) {
+              if (u.exists) {
+                const tokens: string[] = u.data()!.fcmTokens ?? [];
+                allTokens.push(...tokens);
+              }
+            }
+          }
+
+          if (allTokens.length > 0) {
+            const tokenChunks = chunkArray(allTokens, 500);
+            await Promise.allSettled(
+              tokenChunks.map((chunk) =>
+                messaging.sendEachForMulticast({
+                  tokens: chunk,
+                  notification: {
+                    title: "Session imminente",
+                    body: `La session '${sessionTitle}' commence bientôt.`,
+                  },
+                  data: {
+                    type: "session_reminder",
+                    eventId,
+                    sessionId,
+                  },
+                  android: { priority: "high" },
+                  apns: { payload: { aps: { sound: "default" } } },
+                }),
+              ),
+            );
+          }
+
+          logger.info("Session reminder sent", {
+            sessionId,
+            eventId,
+            usersNotified: usersToNotify.length,
+            pushTokens: allTokens.length,
+          });
+        } catch (err) {
+          logger.error(`Failed to send session reminder for session ${sessionId}`, err);
+        }
+      }
+    } catch (err) {
+      logger.error("Failed to query sessions for reminders", err);
+    }
+  },
+);
+
 function chunkArray<T>(arr: T[], size: number): T[][] {
   const chunks: T[][] = [];
   for (let i = 0; i < arr.length; i += size) {
