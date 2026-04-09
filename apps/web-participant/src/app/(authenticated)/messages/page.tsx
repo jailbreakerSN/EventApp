@@ -145,8 +145,18 @@ export default function MessagesPage() {
             <h2 className="text-sm font-semibold text-foreground">Conversations</h2>
           </div>
           {loadingConvs ? (
-            <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            <div className="animate-pulse divide-y divide-border">
+              {[1, 2, 3, 4, 5].map((i) => (
+                <div key={i} className="p-4 space-y-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 space-y-2">
+                      <div className="h-4 bg-muted rounded w-2/3"></div>
+                      <div className="h-3 bg-muted rounded w-4/5"></div>
+                    </div>
+                    <div className="h-3 bg-muted rounded w-12"></div>
+                  </div>
+                </div>
+              ))}
             </div>
           ) : sortedConversations.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground text-sm">
@@ -223,8 +233,25 @@ export default function MessagesPage() {
 
               <div className="flex-1 overflow-y-auto p-4 space-y-4">
                 {loadingMsgs ? (
-                  <div className="flex items-center justify-center py-8">
-                    <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                  <div className="animate-pulse space-y-4 py-4">
+                    <div className="flex justify-start">
+                      <div className="space-y-1.5 max-w-[60%]">
+                        <div className="h-3 bg-muted rounded w-16"></div>
+                        <div className="h-10 bg-muted rounded-r-lg rounded-tl-lg w-48"></div>
+                      </div>
+                    </div>
+                    <div className="flex justify-end">
+                      <div className="space-y-1.5 max-w-[60%]">
+                        <div className="h-3 bg-muted rounded w-12 ml-auto"></div>
+                        <div className="h-10 bg-muted rounded-l-lg rounded-tr-lg w-56"></div>
+                      </div>
+                    </div>
+                    <div className="flex justify-start">
+                      <div className="space-y-1.5 max-w-[60%]">
+                        <div className="h-3 bg-muted rounded w-16"></div>
+                        <div className="h-10 bg-muted rounded-r-lg rounded-tl-lg w-40"></div>
+                      </div>
+                    </div>
                   </div>
                 ) : chronologicalMessages.length === 0 ? (
                   <div className="text-center py-8 text-muted-foreground text-sm">

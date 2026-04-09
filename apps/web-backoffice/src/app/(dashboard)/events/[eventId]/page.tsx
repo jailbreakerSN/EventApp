@@ -1050,8 +1050,19 @@ function RegistrationsTab({ eventId }: { eventId: string }) {
                   return (
                     <tr key={reg.id} className="border-b border-border/50 hover:bg-muted/50">
                       <td className="px-6 py-3 text-muted-foreground font-mono text-xs">{reg.id.slice(0, 8)}</td>
-                      <td className="px-6 py-3 text-foreground">{reg.userId.slice(0, 12)}...</td>
-                      <td className="px-6 py-3 text-muted-foreground">{reg.ticketTypeId.slice(0, 8)}</td>
+                      <td className="px-6 py-3 text-foreground">
+                        {reg.participantName ? (
+                          <div>
+                            <span className="font-medium">{reg.participantName}</span>
+                            {reg.participantEmail && (
+                              <span className="block text-xs text-muted-foreground">{reg.participantEmail}</span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="font-mono text-xs text-muted-foreground">{reg.userId.slice(0, 12)}...</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-3 text-muted-foreground">{reg.ticketTypeName ?? reg.ticketTypeId.slice(0, 8)}</td>
                       <td className="px-6 py-3">
                         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${status.className}`}>
                           {status.label}

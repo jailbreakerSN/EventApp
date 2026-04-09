@@ -1,6 +1,7 @@
 import {
   type Organization,
   type OrganizationPlan,
+  type OrgMemberRole,
   type CreateOrganizationDto,
   type UpdateOrganizationDto,
   PLAN_LIMITS,
@@ -160,6 +161,45 @@ export class OrganizationService extends BaseService {
     await auth.setCustomUserClaims(userId, {
       ...existingClaims,
       organizationId: null,
+    });
+  }
+
+  async updateMemberRole(orgId: string, userId: string, role: OrgMemberRole, user: AuthUser): Promise<void> {
+    this.requirePermission(user, "organization:manage_members");
+
+    const org = await organizationRepository.findByIdOrThrow(orgId);
+    this.requireOrganizationAccess(user, org.id);
+
+    // Cannot change the owner's role
+    if (userId === org.ownerId) {
+      throw new ValidationError("Impossible de modifier le rôle du propriétaire");
+    }
+
+    // Verify user is a member
+    if (!org.memberIds?.includes(userId)) {
+      throw new ValidationError("Cet utilisateur n'est pas membre de l'organisation");
+    }
+
+    // Role "owner" cannot be assigned via this endpoint
+    if (role === "owner") {
+      throw new ValidationError("Le rôle propriétaire ne peut pas être attribué de cette manière");
+    }
+
+    // Update role in custom claims
+    const existingUser = await auth.getUser(userId);
+    const existingClaims = existingUser.customClaims ?? {};
+    await auth.setCustomUserClaims(userId, {
+      ...existingClaims,
+      orgRole: role,
+    });
+
+    eventBus.emit("member.role_updated", {
+      organizationId: orgId,
+      memberId: userId,
+      newRole: role,
+      actorId: user.uid,
+      requestId: getRequestId(),
+      timestamp: new Date().toISOString(),
     });
   }
 

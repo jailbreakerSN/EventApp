@@ -8,6 +8,8 @@ import {
   useOrgInvites,
   useCreateInvite,
   useRevokeInvite,
+  useRemoveMember,
+  useUpdateMemberRole,
 } from "@/hooks/use-organization";
 import {
   Building2,
@@ -24,6 +26,7 @@ import {
   Shield,
   User,
   Eye,
+  Trash2,
 } from "lucide-react";
 import type { OrgMemberRole } from "@teranga/shared-types";
 
@@ -47,6 +50,8 @@ export default function OrganizationPage() {
   const updateOrg = useUpdateOrganization();
   const createInvite = useCreateInvite();
   const revokeInvite = useRevokeInvite();
+  const removeMember = useRemoveMember();
+  const updateMemberRole = useUpdateMemberRole();
 
   const org = orgData?.data;
   const invites = invitesData?.data ?? [];
@@ -54,6 +59,7 @@ export default function OrganizationPage() {
   const [showInviteForm, setShowInviteForm] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<OrgMemberRole>("member");
+  const [confirmRemoveMemberId, setConfirmRemoveMemberId] = useState<string | null>(null);
 
   // Settings form state
   const [name, setName] = useState("");
@@ -101,6 +107,25 @@ export default function OrganizationPage() {
       toast.success("Invitation envoyée");
     } catch {
       toast.error("Erreur lors de l'envoi de l'invitation");
+    }
+  };
+
+  const handleRemoveMember = async (userId: string) => {
+    try {
+      await removeMember.mutateAsync(userId);
+      toast.success("Membre retiré");
+      setConfirmRemoveMemberId(null);
+    } catch {
+      toast.error("Erreur lors du retrait du membre");
+    }
+  };
+
+  const handleRoleChange = async (userId: string, newRole: string) => {
+    try {
+      await updateMemberRole.mutateAsync({ userId, role: newRole });
+      toast.success("Rôle mis à jour");
+    } catch {
+      toast.error("Erreur lors de la mise à jour du rôle");
     }
   };
 
@@ -306,11 +331,61 @@ export default function OrganizationPage() {
                   </div>
                   <div>
                     <p className="text-sm font-medium text-foreground">{memberId}</p>
-                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs ${role.color}`}>
-                      {role.icon} {role.label}
-                    </span>
+                    {isOwner ? (
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs ${role.color}`}>
+                        {role.icon} {role.label}
+                      </span>
+                    ) : (
+                      <select
+                        defaultValue="member"
+                        onChange={(e) => handleRoleChange(memberId, e.target.value)}
+                        disabled={updateMemberRole.isPending}
+                        className="mt-0.5 rounded-md border border-border bg-background px-2 py-0.5 text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary disabled:opacity-50"
+                      >
+                        <option value="admin">Admin</option>
+                        <option value="member">Membre</option>
+                        <option value="viewer">Lecteur</option>
+                      </select>
+                    )}
                   </div>
                 </div>
+                {!isOwner && (
+                  <div className="flex items-center gap-2">
+                    {confirmRemoveMemberId === memberId ? (
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-muted-foreground">
+                          Êtes-vous sûr de vouloir retirer ce membre ?
+                        </span>
+                        <button
+                          onClick={() => handleRemoveMember(memberId)}
+                          disabled={removeMember.isPending}
+                          className="px-2 py-1 text-xs bg-red-600 text-white rounded-md hover:bg-red-700 disabled:opacity-50 transition-colors"
+                        >
+                          {removeMember.isPending ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : (
+                            "Confirmer"
+                          )}
+                        </button>
+                        <button
+                          onClick={() => setConfirmRemoveMemberId(null)}
+                          className="px-2 py-1 text-xs bg-accent text-muted-foreground rounded-md hover:bg-accent/80 transition-colors"
+                        >
+                          Annuler
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setConfirmRemoveMemberId(memberId)}
+                        className="p-1.5 text-muted-foreground hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950 rounded-lg transition-colors"
+                        title="Retirer le membre"
+                        aria-label="Retirer le membre"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             );
           })}

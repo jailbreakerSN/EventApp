@@ -11,9 +11,11 @@ import {
   UpdateOrganizationSchema,
   CreateInviteSchema,
   AnalyticsQuerySchema,
+  OrgMemberRoleSchema,
 } from "@teranga/shared-types";
 
 const ParamsWithOrgId = z.object({ orgId: z.string() });
+const ParamsWithOrgIdAndMemberId = z.object({ orgId: z.string(), memberId: z.string() });
 
 const AddMemberBody = z.object({
   userId: z.string(),
@@ -21,6 +23,10 @@ const AddMemberBody = z.object({
 
 const RemoveMemberBody = z.object({
   userId: z.string(),
+});
+
+const UpdateMemberRoleBody = z.object({
+  role: z.enum(["admin", "member", "viewer"]),
 });
 
 export const organizationRoutes: FastifyPluginAsync = async (fastify) => {
@@ -104,6 +110,25 @@ export const organizationRoutes: FastifyPluginAsync = async (fastify) => {
       const { userId } = request.body as z.infer<typeof RemoveMemberBody>;
       await organizationService.removeMember(orgId, userId, request.user!);
       return reply.status(204).send();
+    },
+  );
+
+  // ─── Update Member Role ──────────────────────────────────────────────────
+  fastify.patch(
+    "/:orgId/members/:memberId/role",
+    {
+      preHandler: [
+        authenticate,
+        requirePermission("organization:manage_members"),
+        validate({ params: ParamsWithOrgIdAndMemberId, body: UpdateMemberRoleBody }),
+      ],
+      schema: { tags: ["Organizations"], summary: "Update organization member role", security: [{ BearerAuth: [] }] },
+    },
+    async (request, reply) => {
+      const { orgId, memberId } = request.params as z.infer<typeof ParamsWithOrgIdAndMemberId>;
+      const { role } = request.body as z.infer<typeof UpdateMemberRoleBody>;
+      await organizationService.updateMemberRole(orgId, memberId, role, request.user!);
+      return reply.send({ success: true, data: { orgId, userId: memberId, role } });
     },
   );
 

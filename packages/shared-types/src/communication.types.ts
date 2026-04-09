@@ -15,6 +15,7 @@ export type CommunicationChannel = z.infer<typeof CommunicationChannelSchema>;
 
 export const BroadcastStatusSchema = z.enum([
   "draft",
+  "scheduled",
   "sending",
   "sent",
   "failed",
@@ -42,6 +43,7 @@ export const BroadcastSchema = z.object({
   sentCount: z.number().int().default(0),
   failedCount: z.number().int().default(0),
   status: BroadcastStatusSchema,
+  scheduledAt: z.string().datetime().nullable().optional(),
   createdBy: z.string(),
   createdAt: z.string().datetime(),
   sentAt: z.string().datetime().nullable(),
@@ -55,6 +57,7 @@ export const CreateBroadcastSchema = z.object({
   body: z.string().min(1).max(2000),
   channels: z.array(CommunicationChannelSchema).min(1),
   recipientFilter: BroadcastRecipientFilterSchema.default("all"),
+  scheduledAt: z.string().datetime().optional(),
 });
 
 export type CreateBroadcastDto = z.infer<typeof CreateBroadcastSchema>;

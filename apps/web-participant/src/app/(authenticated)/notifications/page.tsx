@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Bell, CheckCheck, Circle } from "lucide-react";
 import { useNotifications, useMarkAsRead, useMarkAllAsRead } from "@/hooks/use-notifications";
-import { Button, Card, CardContent, Spinner } from "@teranga/shared-ui";
+import { Button, Card, CardContent } from "@teranga/shared-ui";
 import type { Notification } from "@teranga/shared-types";
 
 export default function NotificationsPage() {
@@ -45,7 +45,20 @@ export default function NotificationsPage() {
       </div>
 
       {isLoading ? (
-        <div className="flex justify-center py-12"><Spinner size="lg" /></div>
+        <div className="space-y-2">
+          {[1, 2, 3, 4, 5].map((i) => (
+            <div key={i} className="animate-pulse rounded-lg border p-4">
+              <div className="flex items-start gap-3">
+                <div className="mt-1 h-2.5 w-2.5 flex-shrink-0 rounded-full bg-muted"></div>
+                <div className="flex-1 space-y-2">
+                  <div className="h-4 bg-muted rounded w-1/2"></div>
+                  <div className="h-3 bg-muted rounded w-3/4"></div>
+                  <div className="h-3 bg-muted rounded w-24"></div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
       ) : notifications.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center py-12">

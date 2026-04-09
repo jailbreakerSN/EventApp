@@ -1,21 +1,41 @@
 "use client";
 
-import { Bell, Mail, Smartphone } from "lucide-react";
+import { useState } from "react";
+import { Bell, Mail, Smartphone, Clock, Eye, MessageSquare, Trash2, Shield } from "lucide-react";
+import { toast } from "sonner";
 import { useNotificationPreferences, useUpdateNotificationPreferences } from "@/hooks/use-notifications";
-import { Card, CardContent, Spinner } from "@teranga/shared-ui";
+import { Card, CardContent } from "@teranga/shared-ui";
 
-function Toggle({ checked, onChange, label, icon: Icon }: { checked: boolean; onChange: (v: boolean) => void; label: string; icon: typeof Bell }) {
+function Toggle({
+  checked,
+  onChange,
+  label,
+  description,
+  icon: Icon,
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  label: string;
+  description?: string;
+  icon: typeof Bell;
+}) {
   return (
     <label className="flex cursor-pointer items-center justify-between rounded-lg border p-4">
       <div className="flex items-center gap-3">
         <Icon className="h-5 w-5 text-muted-foreground" />
-        <span className="text-sm font-medium">{label}</span>
+        <div>
+          <span className="text-sm font-medium">{label}</span>
+          {description && (
+            <p className="text-xs text-muted-foreground mt-0.5">{description}</p>
+          )}
+        </div>
       </div>
       <button
         role="switch"
         aria-checked={checked}
+        aria-label={label}
         onClick={() => onChange(!checked)}
-        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors flex-shrink-0 ${
           checked ? "bg-teranga-gold" : "bg-muted"
         }`}
       >
@@ -33,43 +53,179 @@ export default function SettingsPage() {
   const { data, isLoading } = useNotificationPreferences();
   const update = useUpdateNotificationPreferences();
 
-  const prefs = (data as { data?: { push?: boolean; sms?: boolean; email?: boolean; quietHoursStart?: string | null; quietHoursEnd?: string | null } })?.data;
+  const prefs = (data as {
+    data?: {
+      push?: boolean;
+      sms?: boolean;
+      email?: boolean;
+      eventReminders?: boolean;
+      quietHoursStart?: string | null;
+      quietHoursEnd?: string | null;
+    };
+  })?.data;
+
+  // Privacy state (local — no backend yet)
+  const [profileVisible, setProfileVisible] = useState(true);
+  const [allowDirectMessages, setAllowDirectMessages] = useState(true);
+
+  // Delete account confirmation
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   if (isLoading) {
     return (
-      <div className="flex min-h-[60vh] items-center justify-center"><Spinner size="lg" /></div>
+      <div className="mx-auto max-w-lg px-4 py-8">
+        <div className="animate-pulse space-y-6">
+          <div className="h-7 bg-muted rounded w-1/3"></div>
+          <div className="space-y-4">
+            <div className="h-32 bg-muted rounded-lg"></div>
+            <div className="h-32 bg-muted rounded-lg"></div>
+            <div className="h-24 bg-muted rounded-lg"></div>
+          </div>
+        </div>
+      </div>
     );
   }
 
   return (
     <div className="mx-auto max-w-lg px-4 py-8">
-      <h1 className="mb-6 text-2xl font-bold">Parametres</h1>
+      <h1 className="mb-6 text-2xl font-bold">Paramètres</h1>
 
+      {/* Notification Preferences */}
       <Card>
         <CardContent className="space-y-4 py-6">
-          <h2 className="text-lg font-semibold">Notifications</h2>
-          <p className="text-sm text-muted-foreground">Choisissez comment recevoir vos notifications</p>
+          <h2 className="text-lg font-semibold flex items-center gap-2">
+            <Bell className="h-5 w-5 text-teranga-gold" />
+            Notifications
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            Choisissez comment recevoir vos notifications
+          </p>
 
           <div className="space-y-2">
             <Toggle
               icon={Bell}
               label="Notifications push"
+              description="Recevez des alertes en temps réel sur votre appareil"
               checked={prefs?.push ?? true}
               onChange={(v) => update.mutate({ push: v })}
             />
             <Toggle
               icon={Smartphone}
               label="SMS"
+              description="Recevez des notifications par SMS"
               checked={prefs?.sms ?? true}
               onChange={(v) => update.mutate({ sms: v })}
             />
             <Toggle
               icon={Mail}
               label="Email"
+              description="Recevez des résumés et confirmations par email"
               checked={prefs?.email ?? true}
               onChange={(v) => update.mutate({ email: v })}
             />
+            <Toggle
+              icon={Clock}
+              label="Rappels d'événements"
+              description="Recevez un rappel avant le début de vos événements"
+              checked={prefs?.eventReminders ?? true}
+              onChange={(v) => update.mutate({ eventReminders: v })}
+            />
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Privacy */}
+      <Card className="mt-6">
+        <CardContent className="space-y-4 py-6">
+          <h2 className="text-lg font-semibold flex items-center gap-2">
+            <Shield className="h-5 w-5 text-teranga-gold" />
+            Confidentialité
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            Contrôlez la visibilité de votre profil et vos interactions
+          </p>
+
+          <div className="space-y-2">
+            <Toggle
+              icon={Eye}
+              label="Profil visible par les autres participants"
+              description="Les autres participants pourront voir votre nom et votre profil lors des événements"
+              checked={profileVisible}
+              onChange={(v) => {
+                setProfileVisible(v);
+                toast.success(
+                  v
+                    ? "Votre profil est maintenant visible"
+                    : "Votre profil est maintenant masqué"
+                );
+              }}
+            />
+            <Toggle
+              icon={MessageSquare}
+              label="Autoriser les messages directs"
+              description="Les autres participants pourront vous envoyer des messages"
+              checked={allowDirectMessages}
+              onChange={(v) => {
+                setAllowDirectMessages(v);
+                toast.success(
+                  v
+                    ? "Messages directs activés"
+                    : "Messages directs désactivés"
+                );
+              }}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Account / Danger Zone */}
+      <Card className="mt-6 border-destructive/30">
+        <CardContent className="space-y-4 py-6">
+          <h2 className="text-lg font-semibold flex items-center gap-2 text-destructive">
+            <Trash2 className="h-5 w-5" />
+            Compte
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            Actions irréversibles concernant votre compte
+          </p>
+
+          {!showDeleteConfirm ? (
+            <button
+              onClick={() => setShowDeleteConfirm(true)}
+              className="w-full rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm font-medium text-destructive hover:bg-destructive/10 transition-colors"
+            >
+              Supprimer mon compte
+            </button>
+          ) : (
+            <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 space-y-3">
+              <p className="text-sm text-destructive font-medium">
+                Êtes-vous sûr(e) de vouloir supprimer votre compte ?
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Cette action est irréversible. Toutes vos données, inscriptions et messages seront
+                définitivement supprimés.
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    setShowDeleteConfirm(false);
+                    toast.info(
+                      "Veuillez contacter le support pour supprimer votre compte : support@teranga-events.com"
+                    );
+                  }}
+                  className="flex-1 rounded-lg bg-destructive px-4 py-2 text-sm font-medium text-white hover:bg-destructive/90 transition-colors"
+                >
+                  Confirmer la suppression
+                </button>
+                <button
+                  onClick={() => setShowDeleteConfirm(false)}
+                  className="flex-1 rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-muted transition-colors"
+                >
+                  Annuler
+                </button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

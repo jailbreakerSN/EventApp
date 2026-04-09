@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useMyRegistrations, useCancelRegistration } from "@/hooks/use-registrations";
 import { paymentsApi } from "@/lib/api-client";
-import { Button, Badge, Spinner, Card, formatDate, ConfirmDialog, getErrorMessage } from "@teranga/shared-ui";
+import { Button, Badge, Card, formatDate, ConfirmDialog, getErrorMessage } from "@teranga/shared-ui";
 import type { Registration } from "@teranga/shared-types";
 
 const STATUS_LABELS: Record<string, { label: string; variant: "default" | "success" | "warning" | "destructive" | "outline" }> = {
@@ -94,7 +94,25 @@ export default function MyEventsPage() {
       </p>
 
       {isLoading && (
-        <div className="mt-12 flex justify-center"><Spinner size="lg" /></div>
+        <div className="mt-6 space-y-4">
+          {[1, 2, 3, 4].map((i) => (
+            <Card key={i} className="p-4">
+              <div className="animate-pulse flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex-1 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <div className="h-5 bg-muted rounded w-1/3"></div>
+                    <div className="h-5 bg-muted rounded w-16"></div>
+                  </div>
+                  <div className="h-4 bg-muted rounded w-2/3"></div>
+                </div>
+                <div className="flex gap-2">
+                  <div className="h-8 bg-muted rounded w-20"></div>
+                  <div className="h-8 bg-muted rounded w-20"></div>
+                </div>
+              </div>
+            </Card>
+          ))}
+        </div>
       )}
 
       {error && (

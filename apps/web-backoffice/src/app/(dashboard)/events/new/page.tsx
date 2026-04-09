@@ -69,6 +69,7 @@ export default function NewEventPage() {
   const createEvent = useCreateEvent();
   const [step, setStep] = useState(0);
   const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   // Step 1: Details
   const [title, setTitle] = useState("");
@@ -259,6 +260,7 @@ export default function NewEventPage() {
       maxAttendees: maxAttendees ? parseInt(maxAttendees, 10) : undefined,
     };
 
+    setSubmitting(true);
     try {
       const result = await createEvent.mutateAsync(dto);
       const eventId = result.data.id;
@@ -276,6 +278,8 @@ export default function NewEventPage() {
       router.push(`/events/${eventId}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erreur lors de la création");
+    } finally {
+      setSubmitting(false);
     }
   }
 
@@ -803,10 +807,10 @@ export default function NewEventPage() {
         ) : (
           <button
             onClick={handleSubmit}
-            disabled={createEvent.isPending}
+            disabled={submitting}
             className="inline-flex items-center gap-2 bg-primary text-white rounded-lg px-6 py-2.5 text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-50"
           >
-            {createEvent.isPending ? (
+            {submitting ? (
               <><Loader2 className="h-4 w-4 animate-spin" /> Création en cours...</>
             ) : (
               <><Check className="h-4 w-4" /> Créer l&apos;événement</>

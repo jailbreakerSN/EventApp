@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Send, Mail, Smartphone, Bell } from "lucide-react";
+import { Send, Mail, Smartphone, Bell, Clock, CalendarClock } from "lucide-react";
 import { useEventBroadcasts, useSendBroadcast } from "@/hooks/use-broadcasts";
 import { useEvents } from "@/hooks/use-events";
 import { useAuth } from "@/hooks/use-auth";
@@ -46,9 +46,10 @@ const FILTER_LABELS: Record<string, string> = {
 
 const STATUS_LABELS: Record<string, { label: string; variant: "default" | "success" | "warning" | "destructive" }> = {
   draft: { label: "Brouillon", variant: "default" },
+  scheduled: { label: "Programmé", variant: "warning" },
   sending: { label: "En cours", variant: "warning" },
-  sent: { label: "Envoye", variant: "success" },
-  failed: { label: "Echoue", variant: "destructive" },
+  sent: { label: "Envoyé", variant: "success" },
+  failed: { label: "Échoué", variant: "destructive" },
 };
 
 export default function CommunicationsPage() {
@@ -61,6 +62,8 @@ export default function CommunicationsPage() {
   const [body, setBody] = useState("");
   const [channels, setChannels] = useState<CommunicationChannel[]>(["push", "in_app"]);
   const [filter, setFilter] = useState<BroadcastRecipientFilter>("all");
+  const [scheduleMode, setScheduleMode] = useState<"now" | "scheduled">("now");
+  const [scheduledAt, setScheduledAt] = useState("");
 
   const { data: broadcastsData, isLoading } = useEventBroadcasts(selectedEventId || undefined);
   const broadcasts = broadcastsData?.data ?? [];
@@ -75,15 +78,25 @@ export default function CommunicationsPage() {
 
   const handleSend = async () => {
     if (!selectedEventId || !title || !body || channels.length === 0) return;
-    await sendBroadcast.mutateAsync({
+    if (scheduleMode === "scheduled" && !scheduledAt) return;
+
+    const payload: Parameters<typeof sendBroadcast.mutateAsync>[0] = {
       eventId: selectedEventId,
       title,
       body,
       channels,
       recipientFilter: filter,
-    });
+    };
+
+    if (scheduleMode === "scheduled" && scheduledAt) {
+      payload.scheduledAt = new Date(scheduledAt).toISOString();
+    }
+
+    await sendBroadcast.mutateAsync(payload);
     setTitle("");
     setBody("");
+    setScheduleMode("now");
+    setScheduledAt("");
   };
 
   return (
@@ -181,13 +194,67 @@ export default function CommunicationsPage() {
                 </Select>
               </div>
 
+              {/* Schedule toggle */}
+              <div>
+                <p className="mb-2 block text-sm font-medium">Planification</p>
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => { setScheduleMode("now"); setScheduledAt(""); }}
+                    className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium motion-safe:transition-colors ${
+                      scheduleMode === "now"
+                        ? "border-teranga-gold bg-teranga-gold/10 text-teranga-gold"
+                        : "border-border text-muted-foreground"
+                    }`}
+                  >
+                    <Send className="h-3.5 w-3.5" aria-hidden="true" />
+                    Envoyer maintenant
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setScheduleMode("scheduled")}
+                    className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium motion-safe:transition-colors ${
+                      scheduleMode === "scheduled"
+                        ? "border-teranga-gold bg-teranga-gold/10 text-teranga-gold"
+                        : "border-border text-muted-foreground"
+                    }`}
+                  >
+                    <CalendarClock className="h-3.5 w-3.5" aria-hidden="true" />
+                    Programmer l&apos;envoi
+                  </button>
+                </div>
+                {scheduleMode === "scheduled" && (
+                  <div className="mt-3">
+                    <label htmlFor="comm-scheduled-at" className="mb-1 block text-sm text-muted-foreground">
+                      Date et heure d&apos;envoi
+                    </label>
+                    <input
+                      id="comm-scheduled-at"
+                      type="datetime-local"
+                      value={scheduledAt}
+                      min={new Date().toISOString().slice(0, 16)}
+                      onChange={(e) => setScheduledAt(e.target.value)}
+                      className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                    />
+                  </div>
+                )}
+              </div>
+
               <Button
                 onClick={handleSend}
-                disabled={sendBroadcast.isPending || !title || !body || channels.length === 0}
+                disabled={sendBroadcast.isPending || !title || !body || channels.length === 0 || (scheduleMode === "scheduled" && !scheduledAt)}
                 className="bg-teranga-gold hover:bg-teranga-gold/90"
               >
-                <Send className="mr-2 h-4 w-4" />
-                {sendBroadcast.isPending ? "Envoi..." : "Envoyer"}
+                {scheduleMode === "scheduled" ? (
+                  <CalendarClock className="mr-2 h-4 w-4" />
+                ) : (
+                  <Send className="mr-2 h-4 w-4" />
+                )}
+                {sendBroadcast.isPending
+                  ? "Envoi..."
+                  : scheduleMode === "scheduled"
+                  ? "Programmer"
+                  : "Envoyer"}
               </Button>
             </CardContent>
           </Card>
@@ -218,9 +285,26 @@ export default function CommunicationsPage() {
                         </div>
                         <div className="flex flex-col items-end gap-1">
                           <Badge variant={status.variant}>{status.label}</Badge>
-                          <span className="text-xs text-muted-foreground">
-                            {b.sentAt ? new Date(b.sentAt).toLocaleDateString("fr-FR") : ""}
-                          </span>
+                          {b.status === "scheduled" && b.scheduledAt ? (
+                            <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                              <Clock className="h-3 w-3" aria-hidden="true" />
+                              Programmé pour le{" "}
+                              {new Date(b.scheduledAt).toLocaleDateString("fr-FR", {
+                                day: "numeric",
+                                month: "long",
+                                year: "numeric",
+                              })}{" "}
+                              à{" "}
+                              {new Date(b.scheduledAt).toLocaleTimeString("fr-FR", {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-muted-foreground">
+                              {b.sentAt ? new Date(b.sentAt).toLocaleDateString("fr-FR") : ""}
+                            </span>
+                          )}
                         </div>
                       </div>
                     );

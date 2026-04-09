@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import Link from "next/link";
 import {
   Card,
@@ -15,8 +15,8 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@teranga/shared-ui";
-import { Calendar, ChevronLeft, ChevronRight, Eye, Users } from "lucide-react";
-import { useAdminEvents } from "@/hooks/use-admin";
+import { Calendar, ChevronLeft, ChevronRight, Eye, Users, Building } from "lucide-react";
+import { useAdminEvents, useAdminOrganizations } from "@/hooks/use-admin";
 
 const STATUS_OPTIONS = [
   { value: "", label: "Tous les statuts" },
@@ -54,6 +54,16 @@ export default function AdminEventsPage() {
 
   const events = data?.data ?? [];
   const meta = data?.meta ?? { page: 1, limit: 20, total: 0, totalPages: 1 };
+
+  // Fetch organizations to display names instead of IDs
+  const { data: orgsData } = useAdminOrganizations({ limit: 100 });
+  const orgNameMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const org of orgsData?.data ?? []) {
+      map.set(org.id, org.name);
+    }
+    return map;
+  }, [orgsData]);
 
   return (
     <div className="space-y-6">
@@ -141,8 +151,19 @@ export default function AdminEventsPage() {
                         <td className="px-4 py-3 font-medium text-foreground">
                           {event.title as string}
                         </td>
-                        <td className="px-4 py-3 text-muted-foreground hidden md:table-cell font-mono text-xs">
-                          {(event.organizationId as string)?.slice(0, 12)}...
+                        <td className="px-4 py-3 text-muted-foreground hidden md:table-cell">
+                          {(() => {
+                            const orgId = event.organizationId as string;
+                            const orgName = orgNameMap.get(orgId);
+                            return orgName ? (
+                              <span className="inline-flex items-center gap-1 text-sm">
+                                <Building className="h-3.5 w-3.5 shrink-0" />
+                                <span className="truncate max-w-[200px]">{orgName}</span>
+                              </span>
+                            ) : (
+                              <span className="font-mono text-xs">{orgId?.slice(0, 12)}...</span>
+                            );
+                          })()}
                         </td>
                         <td className="px-4 py-3">
                           <Badge variant={statusInfo.variant}>{statusInfo.label}</Badge>

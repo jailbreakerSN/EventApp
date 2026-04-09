@@ -287,6 +287,9 @@ export const organizationsApi = {
       body: JSON.stringify({ userId }),
     }),
 
+  updateMemberRole: (orgId: string, userId: string, role: string) =>
+    api.patch<ApiResponse<{ orgId: string; userId: string; role: string }>>(`/v1/organizations/${orgId}/members/${userId}/role`, { role }),
+
   getAnalytics: (orgId: string, query: Partial<AnalyticsQuery> = {}) =>
     api.get<ApiResponse<OrgAnalytics>>(`/v1/organizations/${orgId}/analytics${buildQuery(query)}`),
 };

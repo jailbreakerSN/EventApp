@@ -14,6 +14,10 @@ import {
   Mail,
   Phone,
   Tag,
+  BarChart3,
+  Eye,
+  TrendingUp,
+  Info,
 } from "lucide-react";
 import type { SponsorProfile } from "@teranga/shared-types";
 
@@ -35,7 +39,7 @@ export default function SponsorPortalPage() {
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [tab, setTab] = useState<"booth" | "leads">("booth");
+  const [tab, setTab] = useState<"analytics" | "booth" | "leads">("analytics");
 
   // Edit form state
   const [description, setDescription] = useState("");
@@ -159,24 +163,36 @@ export default function SponsorPortalPage() {
 
       {/* Tabs */}
       <div className="mt-6 flex gap-1 border-b" role="tablist" aria-label="Sections du portail sponsor">
-        {(["booth", "leads"] as const).map((t) => (
-          <button
-            key={t}
-            role="tab"
-            onClick={() => setTab(t)}
-            aria-selected={tab === t}
-            aria-controls={`tab-panel-${t}`}
-            id={`tab-${t}`}
-            className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-              tab === t
-                ? "border-teranga-gold text-teranga-gold"
-                : "border-transparent text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            {t === "booth" ? "Mon stand" : `Leads (${leads.length})`}
-          </button>
-        ))}
+        {(["analytics", "booth", "leads"] as const).map((t) => {
+          const labels: Record<typeof t, string> = {
+            analytics: "Analytiques",
+            booth: "Mon stand",
+            leads: `Leads (${leads.length})`,
+          };
+          return (
+            <button
+              key={t}
+              role="tab"
+              onClick={() => setTab(t)}
+              aria-selected={tab === t}
+              aria-controls={`tab-panel-${t}`}
+              id={`tab-${t}`}
+              className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+                tab === t
+                  ? "border-teranga-gold text-teranga-gold"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {labels[t]}
+            </button>
+          );
+        })}
       </div>
+
+      {/* Analytics Tab */}
+      {tab === "analytics" && (
+        <SponsorAnalytics leads={leads} />
+      )}
 
       {/* Booth Tab */}
       {tab === "booth" && (
@@ -389,5 +405,111 @@ export default function SponsorPortalPage() {
         </section>
       )}
     </div>
+  );
+}
+
+/* ── Sponsor Analytics Component ── */
+
+function SponsorAnalytics({ leads }: { leads: Lead[] }) {
+  // Compute KPIs
+  const leadsCount = leads.length;
+  // Simulated visits: roughly 3x the leads (visitors who saw the booth but didn't scan)
+  const visitsCount = leadsCount > 0 ? leadsCount * 3 + Math.floor(leadsCount * 0.4) : 0;
+  const conversionRate = visitsCount > 0 ? ((leadsCount / visitsCount) * 100).toFixed(1) : "0.0";
+
+  // Compute leads per day for bar chart
+  const leadsPerDay: Record<string, number> = {};
+  for (const lead of leads) {
+    const day = new Date(lead.scannedAt).toLocaleDateString("fr-FR", {
+      day: "2-digit",
+      month: "short",
+    });
+    leadsPerDay[day] = (leadsPerDay[day] ?? 0) + 1;
+  }
+  const dayEntries = Object.entries(leadsPerDay);
+  const maxPerDay = Math.max(...dayEntries.map(([, count]) => count), 1);
+
+  return (
+    <section
+      id="tab-panel-analytics"
+      role="tabpanel"
+      aria-labelledby="tab-analytics"
+      className="mt-6 space-y-6"
+    >
+      {/* KPI Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="rounded-lg border bg-card p-5 shadow-sm">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="rounded-lg bg-teranga-gold/10 p-2">
+              <Users className="h-5 w-5 text-teranga-gold" />
+            </div>
+            <p className="text-sm text-muted-foreground">Leads collectés</p>
+          </div>
+          <p className="text-3xl font-bold text-foreground">{leadsCount}</p>
+        </div>
+        <div className="rounded-lg border bg-card p-5 shadow-sm">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="rounded-lg bg-blue-100 dark:bg-blue-900/20 p-2">
+              <Eye className="h-5 w-5 text-blue-600" />
+            </div>
+            <p className="text-sm text-muted-foreground">Visites stand</p>
+          </div>
+          <p className="text-3xl font-bold text-foreground">{visitsCount}</p>
+          <p className="text-xs text-muted-foreground mt-1">Estimation</p>
+        </div>
+        <div className="rounded-lg border bg-card p-5 shadow-sm">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="rounded-lg bg-green-100 dark:bg-green-900/20 p-2">
+              <TrendingUp className="h-5 w-5 text-green-600" />
+            </div>
+            <p className="text-sm text-muted-foreground">Taux de conversion</p>
+          </div>
+          <p className="text-3xl font-bold text-foreground">{conversionRate}%</p>
+        </div>
+      </div>
+
+      {/* Real-time data notice */}
+      <div className="flex items-start gap-2 rounded-lg border border-teranga-gold/30 bg-teranga-gold/5 px-4 py-3">
+        <Info className="h-4 w-4 text-teranga-gold mt-0.5 shrink-0" />
+        <p className="text-sm text-muted-foreground">
+          Données en temps réel bientôt disponibles. Les visites stand sont actuellement une estimation basée sur le nombre de leads.
+        </p>
+      </div>
+
+      {/* Leads per day bar chart */}
+      <div className="rounded-lg border bg-card p-6 shadow-sm">
+        <div className="flex items-center gap-2 mb-4">
+          <BarChart3 className="h-5 w-5 text-teranga-gold" />
+          <h3 className="text-sm font-semibold text-foreground">Leads par jour</h3>
+        </div>
+
+        {dayEntries.length === 0 ? (
+          <p className="text-sm text-muted-foreground text-center py-6">
+            Aucune donnée à afficher pour le moment.
+          </p>
+        ) : (
+          <div className="space-y-3">
+            {dayEntries.map(([day, count]) => {
+              const widthPercent = (count / maxPerDay) * 100;
+              return (
+                <div key={day} className="flex items-center gap-3">
+                  <span className="text-xs text-muted-foreground w-16 shrink-0 text-right">
+                    {day}
+                  </span>
+                  <div className="flex-1 h-7 bg-muted/50 rounded-md overflow-hidden">
+                    <div
+                      className="h-full bg-teranga-gold/80 rounded-md flex items-center justify-end px-2 transition-all duration-300"
+                      style={{ width: `${Math.max(widthPercent, 8)}%` }}
+                    >
+                      <span className="text-xs font-medium text-white">{count}</span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </section>
   );
 }

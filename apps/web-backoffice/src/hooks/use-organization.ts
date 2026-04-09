@@ -65,6 +65,29 @@ export function useRevokeInvite() {
   });
 }
 
+export function useRemoveMember() {
+  const { user } = useAuth();
+  const orgId = user?.organizationId;
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: (userId: string) => organizationsApi.removeMember(orgId!, userId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["organization", orgId] }),
+  });
+}
+
+export function useUpdateMemberRole() {
+  const { user } = useAuth();
+  const orgId = user?.organizationId;
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ userId, role }: { userId: string; role: string }) =>
+      organizationsApi.updateMemberRole(orgId!, userId, role),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["organization", orgId] }),
+  });
+}
+
 export function useOrgAnalytics(query: Partial<AnalyticsQuery> = {}) {
   const { user } = useAuth();
   const orgId = user?.organizationId;

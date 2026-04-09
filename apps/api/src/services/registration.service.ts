@@ -103,6 +103,9 @@ export class RegistrationService extends BaseService {
       const regId = regRef.id;
       const qrCodeValue = signQrPayload(regId, eventId, user.uid);
 
+      // Fetch user profile for denormalized display fields
+      const userProfile = await userRepository.findById(user.uid);
+
       const registration: Registration = {
         id: regId,
         eventId,
@@ -110,6 +113,8 @@ export class RegistrationService extends BaseService {
         ticketTypeId,
         eventTitle: event.title,
         ticketTypeName: ticketType.name,
+        participantName: userProfile?.displayName ?? null,
+        participantEmail: userProfile?.email ?? null,
         status,
         qrCodeValue,
         checkedInAt: null,
@@ -163,7 +168,28 @@ export class RegistrationService extends BaseService {
     const event = await eventRepository.findByIdOrThrow(eventId);
     this.requireOrganizationAccess(user, event.organizationId);
 
-    return registrationRepository.findByEvent(eventId, statuses, pagination);
+    const result = await registrationRepository.findByEvent(eventId, statuses, pagination);
+
+    // Enrich registrations that lack denormalized participant info (backward compat)
+    const needsEnrichment = result.data.filter((r) => !r.participantName);
+    if (needsEnrichment.length > 0) {
+      const userIds = [...new Set(needsEnrichment.map((r) => r.userId))];
+      const profiles = await Promise.all(
+        userIds.map((uid) => userRepository.findById(uid).then((p) => [uid, p] as const)),
+      );
+      const profileMap = new Map(profiles);
+      for (const reg of result.data) {
+        if (!reg.participantName) {
+          const profile = profileMap.get(reg.userId);
+          if (profile) {
+            reg.participantName = profile.displayName ?? null;
+            reg.participantEmail = profile.email ?? null;
+          }
+        }
+      }
+    }
+
+    return result;
   }
 
   /**

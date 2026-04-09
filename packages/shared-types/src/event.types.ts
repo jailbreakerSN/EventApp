@@ -217,8 +217,10 @@ export const RegistrationSchema = z.object({
   eventId: z.string(),
   userId: z.string(),
   ticketTypeId: z.string(),
-  eventTitle: z.string().optional(),       // denormalized for display
-  ticketTypeName: z.string().optional(),   // denormalized for display
+  eventTitle: z.string().optional(),             // denormalized for display
+  ticketTypeName: z.string().optional(),         // denormalized for display
+  participantName: z.string().nullable().optional(),   // denormalized for display
+  participantEmail: z.string().nullable().optional(),  // denormalized for display
   status: RegistrationStatusSchema.default("confirmed"),
   qrCodeValue: z.string(),  // unique QR payload
   checkedInAt: z.string().datetime().nullable().optional(),

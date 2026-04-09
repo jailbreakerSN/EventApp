@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEvents } from "@/hooks/use-events";
 import { formatDate } from "@/lib/utils";
-import { Calendar, Users, Ticket, TrendingUp, ArrowRight } from "lucide-react";
+import { Calendar, Users, Ticket, TrendingUp, ArrowRight, Banknote } from "lucide-react";
 import { Skeleton } from "@teranga/shared-ui";
 
 const STATUS_LABELS: Record<string, { label: string; className: string }> = {
@@ -21,12 +21,15 @@ export default function DashboardPage() {
   const totalRegistered = events.reduce((sum, e) => sum + (e.registeredCount ?? 0), 0);
   const totalCheckedIn = events.reduce((sum, e) => sum + (e.checkedInCount ?? 0), 0);
 
+  const formatXOF = (amount: number) =>
+    new Intl.NumberFormat("fr-SN", { style: "currency", currency: "XOF", minimumFractionDigits: 0 }).format(amount);
+
   return (
     <div>
       <h1 className="text-2xl font-bold text-foreground mb-6">Tableau de bord</h1>
 
       {/* Stats cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
         <StatCard
           icon={<Calendar className="h-5 w-5 text-blue-600" />}
           label="Total événements"
@@ -58,6 +61,14 @@ export default function DashboardPage() {
           isLoading={isLoading}
           trend="up"
           trendLabel="vs dernier mois"
+        />
+        <StatCard
+          icon={<Banknote className="h-5 w-5 text-amber-600" />}
+          label="Revenus"
+          value={isLoading ? undefined : formatXOF(0)}
+          bgColor="bg-amber-50 dark:bg-amber-900/20"
+          isLoading={isLoading}
+          subtitle="Paiements bientôt disponibles"
         />
       </div>
 
@@ -129,6 +140,7 @@ function StatCard({
   isLoading,
   trend,
   trendLabel,
+  subtitle,
 }: {
   icon: React.ReactNode;
   label: string;
@@ -137,6 +149,7 @@ function StatCard({
   isLoading?: boolean;
   trend?: "up" | "down" | "neutral";
   trendLabel?: string;
+  subtitle?: string;
 }) {
   const trendDisplay = trend
     ? {
@@ -155,14 +168,19 @@ function StatCard({
       {isLoading ? (
         <Skeleton variant="text" className="h-8 w-16" />
       ) : (
-        <div className="flex items-baseline gap-2">
-          <p className="text-3xl font-bold text-primary">{value}</p>
-          {trendDisplay && (
-            <span className={`text-xs font-medium ${trendDisplay.className}`}>
-              {trendDisplay.arrow} {trendLabel}
-            </span>
+        <>
+          <div className="flex items-baseline gap-2">
+            <p className="text-3xl font-bold text-primary">{value}</p>
+            {trendDisplay && (
+              <span className={`text-xs font-medium ${trendDisplay.className}`}>
+                {trendDisplay.arrow} {trendLabel}
+              </span>
+            )}
+          </div>
+          {subtitle && (
+            <p className="text-xs text-muted-foreground mt-1">{subtitle}</p>
           )}
-        </div>
+        </>
       )}
     </div>
   );
