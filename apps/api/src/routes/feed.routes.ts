@@ -85,13 +85,34 @@ export async function feedRoutes(app: FastifyInstance) {
     },
   );
 
-  // ─── Delete post ───────────────────────────────────────────────────────
+  // ─── Update post (author only) ──────────────────────────────────────────
+  app.patch(
+    "/:eventId/feed/:postId",
+    {
+      preHandler: [
+        authenticate,
+        requirePermission("feed:create_post"),
+        validate({
+          params: PostIdParams,
+          body: z.object({ content: z.string().min(1).max(2000) }),
+        }),
+      ],
+    },
+    async (request, reply) => {
+      const { eventId, postId } = request.params as z.infer<typeof PostIdParams>;
+      const { content } = request.body as { content: string };
+      const post = await feedService.updatePost(eventId, postId, content, request.user!);
+      return reply.send({ success: true, data: post });
+    },
+  );
+
+  // ─── Delete post (author or moderator) ────────────────────────────────
   app.delete(
     "/:eventId/feed/:postId",
     {
       preHandler: [
         authenticate,
-        requirePermission("feed:delete_post"),
+        requirePermission("feed:create_post"),
         validate({ params: PostIdParams }),
       ],
     },
@@ -138,13 +159,13 @@ export async function feedRoutes(app: FastifyInstance) {
     },
   );
 
-  // ─── Delete comment ────────────────────────────────────────────────────
+  // ─── Delete comment (author or moderator) ───────────────────────────────
   app.delete(
     "/:eventId/feed/:postId/comments/:commentId",
     {
       preHandler: [
         authenticate,
-        requirePermission("feed:delete_post"),
+        requirePermission("feed:create_post"),
         validate({ params: CommentIdParams }),
       ],
     },

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import {
@@ -53,6 +53,7 @@ import {
   Pencil,
   Save,
   X,
+  ImagePlus,
 } from "lucide-react";
 import Link from "next/link";
 import { useAddAccessZone, useRemoveAccessZone } from "@/hooks/use-access-zones";
@@ -62,7 +63,7 @@ import { useFeedPosts, useCreateFeedPost, useDeleteFeedPost, useTogglePin } from
 import { useEventSpeakers, useCreateSpeaker, useDeleteSpeaker } from "@/hooks/use-speakers";
 import { useEventSponsors, useCreateSponsor, useDeleteSponsor } from "@/hooks/use-sponsors";
 import { useEventPromoCodes, useCreatePromoCode, useDeactivatePromoCode } from "@/hooks/use-promo-codes";
-import { eventsApi, registrationsApi } from "@/lib/api-client";
+import { eventsApi, registrationsApi, uploadsApi } from "@/lib/api-client";
 import { registrationsToCSV, downloadCSV } from "@/lib/csv-export";
 import type { Event, CreateTicketTypeDto, CreateAccessZoneDto, CreateSessionDto, Payment, PaymentSummary, SpeakerProfile, SponsorProfile, SponsorTier, UpdateEventDto } from "@teranga/shared-types";
 import { Calendar, MessageSquare, Clock, Mic, UserRound, Building } from "lucide-react";
@@ -375,7 +376,52 @@ function InfoTab({ event }: { event: Event }) {
   const [locationCity, setLocationCity] = useState(event.location?.city ?? "");
   const [locationCountry, setLocationCountry] = useState(event.location?.country ?? "SN");
 
+  // Cover image upload
+  const [coverImageFile, setCoverImageFile] = useState<File | null>(null);
+  const [coverImagePreview, setCoverImagePreview] = useState<string | null>(null);
+  const [uploadingCover, setUploadingCover] = useState(false);
+  const coverInputRef = useRef<HTMLInputElement>(null);
+
   const canEdit = event.status === "draft" || event.status === "published";
+
+  const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
+  const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10 Mo
+
+  const handleCoverImageSelect = useCallback((file: File) => {
+    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+      toast.error("Type de fichier non autorisé. Formats acceptés : JPG, PNG, WebP.");
+      return;
+    }
+    if (file.size > MAX_IMAGE_SIZE) {
+      toast.error("Le fichier dépasse la taille maximale de 10 Mo.");
+      return;
+    }
+    setCoverImageFile(file);
+    const url = URL.createObjectURL(file);
+    setCoverImagePreview(url);
+  }, []);
+
+  const handleCoverDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      const file = e.dataTransfer.files[0];
+      if (file) handleCoverImageSelect(file);
+    },
+    [handleCoverImageSelect],
+  );
+
+  const handleCoverDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+  }, []);
+
+  const removeCoverImage = useCallback(() => {
+    setCoverImageFile(null);
+    if (coverImagePreview) {
+      URL.revokeObjectURL(coverImagePreview);
+      setCoverImagePreview(null);
+    }
+    if (coverInputRef.current) coverInputRef.current.value = "";
+  }, [coverImagePreview]);
 
   const handleStartEdit = () => {
     // Reset form values from current event data
@@ -392,18 +438,50 @@ function InfoTab({ event }: { event: Event }) {
     setLocationAddress(event.location?.address ?? "");
     setLocationCity(event.location?.city ?? "");
     setLocationCountry(event.location?.country ?? "SN");
+    setCoverImageFile(null);
+    setCoverImagePreview(null);
     setEditing(true);
   };
 
   const handleCancel = () => {
+    removeCoverImage();
     setEditing(false);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    let coverImageURL = event.coverImageURL;
+
+    // Upload new cover image if selected
+    if (coverImageFile) {
+      setUploadingCover(true);
+      try {
+        const { data } = await uploadsApi.getEventSignedUrl(event.id, {
+          fileName: coverImageFile.name,
+          contentType: coverImageFile.type,
+          purpose: "cover",
+        });
+
+        const uploadResponse = await fetch(data.uploadUrl, {
+          method: "PUT",
+          headers: { "Content-Type": coverImageFile.type },
+          body: coverImageFile,
+        });
+
+        if (!uploadResponse.ok) throw new Error("Upload échoué");
+        coverImageURL = data.publicUrl;
+      } catch {
+        toast.error("Erreur lors du téléversement de l'image.");
+        setUploadingCover(false);
+        return;
+      }
+      setUploadingCover(false);
+    }
+
     const dto: Partial<UpdateEventDto> = {
       title: title.trim(),
       description: description.trim(),
       shortDescription: shortDescription.trim() || null,
+      coverImageURL: coverImageURL ?? undefined,
       category: category as UpdateEventDto["category"],
       format: format as UpdateEventDto["format"],
       startDate: new Date(startDate).toISOString(),
@@ -421,6 +499,7 @@ function InfoTab({ event }: { event: Event }) {
     updateEvent.mutate(dto, {
       onSuccess: () => {
         toast.success("Événement mis à jour avec succès.");
+        removeCoverImage();
         setEditing(false);
       },
       onError: (err: unknown) => {
@@ -439,15 +518,15 @@ function InfoTab({ event }: { event: Event }) {
             <Pencil className="h-4 w-4" /> Modifier l&apos;événement
           </h2>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={handleCancel} disabled={updateEvent.isPending}>
+            <Button variant="outline" onClick={handleCancel} disabled={updateEvent.isPending || uploadingCover}>
               <X className="h-4 w-4 mr-1.5" />
               Annuler
             </Button>
-            <Button onClick={handleSave} disabled={updateEvent.isPending} className="bg-green-600 hover:bg-green-700 text-white">
-              {updateEvent.isPending ? (
+            <Button onClick={handleSave} disabled={updateEvent.isPending || uploadingCover} className="bg-green-600 hover:bg-green-700 text-white">
+              {updateEvent.isPending || uploadingCover ? (
                 <span className="flex items-center gap-2">
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  Enregistrement...
+                  {uploadingCover ? "Téléversement..." : "Enregistrement..."}
                 </span>
               ) : (
                 <span className="flex items-center gap-1.5">
@@ -457,6 +536,74 @@ function InfoTab({ event }: { event: Event }) {
               )}
             </Button>
           </div>
+        </div>
+
+        {/* Cover Image Upload */}
+        <div>
+          <label className="block text-sm font-medium text-muted-foreground mb-2">Image de couverture</label>
+          {(coverImagePreview || event.coverImageURL) ? (
+            <div className="relative rounded-lg overflow-hidden border border-border">
+              <img
+                src={coverImagePreview || event.coverImageURL || ""}
+                alt="Image de couverture"
+                className="w-full h-48 object-cover"
+              />
+              <div className="absolute top-2 right-2 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => coverInputRef.current?.click()}
+                  className="rounded-full bg-black/60 p-1.5 text-white hover:bg-black/80 transition-colors"
+                  aria-label="Changer l'image de couverture"
+                >
+                  <Pencil className="h-4 w-4" />
+                </button>
+                {coverImageFile && (
+                  <button
+                    type="button"
+                    onClick={removeCoverImage}
+                    className="rounded-full bg-black/60 p-1.5 text-white hover:bg-black/80 transition-colors"
+                    aria-label="Annuler le changement d'image"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+              {coverImageFile && (
+                <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-xs px-3 py-1.5">
+                  Nouvelle image : {coverImageFile.name}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div
+              onDrop={handleCoverDrop}
+              onDragOver={handleCoverDragOver}
+              onClick={() => coverInputRef.current?.click()}
+              className="rounded-lg border-2 border-dashed border-border p-8 text-center cursor-pointer hover:border-primary/50 hover:bg-muted/50 transition-colors"
+              role="button"
+              tabIndex={0}
+              aria-label="Ajouter une image de couverture"
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") coverInputRef.current?.click(); }}
+            >
+              <ImagePlus className="mx-auto h-8 w-8 text-muted-foreground" />
+              <p className="mt-2 text-sm text-muted-foreground">
+                Ajouter une image de couverture
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                JPG, PNG, WebP - max 10 Mo
+              </p>
+            </div>
+          )}
+          <input
+            ref={coverInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) handleCoverImageSelect(file);
+            }}
+          />
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -553,6 +700,17 @@ function InfoTab({ event }: { event: Event }) {
             <Pencil className="h-4 w-4" />
             Éditer
           </button>
+        </div>
+      )}
+
+      {/* Cover Image */}
+      {event.coverImageURL && (
+        <div className="mb-6 rounded-xl overflow-hidden border border-border">
+          <img
+            src={event.coverImageURL}
+            alt={`Image de couverture de ${event.title}`}
+            className="w-full h-48 object-cover"
+          />
         </div>
       )}
 

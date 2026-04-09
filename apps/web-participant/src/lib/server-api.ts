@@ -1,4 +1,4 @@
-import type { Event, EventSearchQuery } from "@teranga/shared-types";
+import type { Event, EventSearchQuery, SpeakerProfile, Session } from "@teranga/shared-types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
 
@@ -41,6 +41,16 @@ export const serverEventsApi = {
 
   getById: (id: string) =>
     serverFetch<ApiResponse<Event>>(`/v1/events/${id}`),
+};
+
+export const serverSpeakersApi = {
+  listByEvent: (eventId: string) =>
+    serverFetch<PaginatedResponse<SpeakerProfile>>(`/v1/events/${eventId}/speakers`),
+};
+
+export const serverSessionsApi = {
+  listByEvent: (eventId: string) =>
+    serverFetch<PaginatedResponse<Session>>(`/v1/events/${eventId}/sessions`),
 };
 
 export type { ApiResponse, PaginatedResponse };

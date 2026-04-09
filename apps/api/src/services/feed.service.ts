@@ -147,6 +147,35 @@ export class FeedService extends BaseService {
     return { pinned: newPinned };
   }
 
+  // ─── Update Post (author only) ─────────────────────────────────────────────
+
+  async updatePost(eventId: string, postId: string, content: string, user: AuthUser): Promise<FeedPost> {
+    this.requirePermission(user, "feed:create_post");
+
+    const post = await feedPostRepository.findByIdOrThrow(postId);
+    if (post.eventId !== eventId) {
+      throw new ForbiddenError("Cette publication n'appartient pas a cet evenement");
+    }
+
+    // Only the author can edit their own post
+    if (post.authorId !== user.uid) {
+      throw new ForbiddenError("Vous ne pouvez modifier que vos propres publications");
+    }
+
+    const now = new Date().toISOString();
+    await feedPostRepository.update(postId, { content, updatedAt: now });
+
+    eventBus.emit("feed_post.updated", {
+      postId,
+      eventId,
+      actorId: user.uid,
+      requestId: getRequestId(),
+      timestamp: now,
+    });
+
+    return { ...post, content, updatedAt: now };
+  }
+
   // ─── Delete Post (moderation) ─────────────────────────────────────────────
 
   async deletePost(eventId: string, postId: string, user: AuthUser): Promise<void> {
@@ -254,17 +283,17 @@ export class FeedService extends BaseService {
   ): Promise<void> {
     const comment = await feedCommentRepository.findByIdOrThrow(commentId);
 
-    // IDOR fix: verify the comment's post belongs to an event in the user's org
+    // IDOR fix: verify the comment's post belongs to this event
     const post = await feedPostRepository.findByIdOrThrow(postId);
     if (post.eventId !== eventId) {
-      throw new ForbiddenError("Cette publication n'appartient pas à cet événement");
+      throw new ForbiddenError("Cette publication n'appartient pas a cet evenement");
     }
-    const event = await eventRepository.findByIdOrThrow(eventId);
-    this.requireOrganizationAccess(user, event.organizationId);
 
-    // Author can delete own, or moderators
+    // Author can delete own comments; moderators can delete any
     if (comment.authorId !== user.uid) {
       this.requirePermission(user, "feed:moderate");
+      const event = await eventRepository.findByIdOrThrow(eventId);
+      this.requireOrganizationAccess(user, event.organizationId);
     }
 
     await feedCommentRepository.update(commentId, { deletedAt: new Date().toISOString() });

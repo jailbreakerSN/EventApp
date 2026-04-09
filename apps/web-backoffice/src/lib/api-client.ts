@@ -569,5 +569,12 @@ export const badgesApi = {
     api.get<ApiResponse<{ downloadUrl: string }>>(`/v1/badges/${badgeId}/download`),
 };
 
+// ─── Uploads ──────────────────────────────────────────────────────────────
+
+export const uploadsApi = {
+  getEventSignedUrl: (eventId: string, body: { fileName: string; contentType: string; purpose: string }) =>
+    api.post<ApiResponse<{ uploadUrl: string; publicUrl: string }>>(`/v1/events/${eventId}/upload-url`, body),
+};
+
 export { ApiError };
 export type { ApiResponse, PaginatedResponse };

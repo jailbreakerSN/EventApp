@@ -12,6 +12,7 @@ export const SpeakerProfileSchema = z.object({
   company: z.string().max(200).nullable(),
   bio: z.string().max(2000).nullable(),
   photoURL: z.string().url().nullable(),
+  slidesUrl: z.string().url().nullable().optional(),
   socialLinks: z.object({
     twitter: z.string().nullable(),
     linkedin: z.string().nullable(),
@@ -33,6 +34,7 @@ export const CreateSpeakerSchema = z.object({
   company: z.string().max(200).optional(),
   bio: z.string().max(2000).optional(),
   photoURL: z.string().url().optional(),
+  slidesUrl: z.string().url().optional(),
   socialLinks: z.object({
     twitter: z.string().nullable().optional(),
     linkedin: z.string().nullable().optional(),
@@ -51,6 +53,7 @@ export const UpdateSpeakerSchema = z.object({
   company: z.string().max(200).nullable().optional(),
   bio: z.string().max(2000).nullable().optional(),
   photoURL: z.string().url().nullable().optional(),
+  slidesUrl: z.string().url().nullable().optional(),
   socialLinks: z.object({
     twitter: z.string().nullable().optional(),
     linkedin: z.string().nullable().optional(),

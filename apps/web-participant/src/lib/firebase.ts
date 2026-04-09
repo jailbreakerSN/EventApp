@@ -1,5 +1,6 @@
 import { initializeApp, getApps } from "firebase/app";
 import { getAuth, connectAuthEmulator } from "firebase/auth";
+import { getStorage, connectStorageEmulator } from "firebase/storage";
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -13,6 +14,7 @@ const firebaseConfig = {
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
 
 export const firebaseAuth = getAuth(app);
+export const firebaseStorage = getStorage(app);
 
 const useEmulators =
   process.env.NODE_ENV === "development" &&
@@ -20,4 +22,5 @@ const useEmulators =
 
 if (useEmulators) {
   connectAuthEmulator(firebaseAuth, "http://localhost:9099", { disableWarnings: true });
+  connectStorageEmulator(firebaseStorage, "localhost", 9199);
 }

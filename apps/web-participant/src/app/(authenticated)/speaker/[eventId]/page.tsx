@@ -1,10 +1,19 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams } from "next/navigation";
-import { speakersApi } from "@/lib/api-client";
-import { Calendar, Clock, MapPin, FileText, Edit3, Save, Loader2, ExternalLink } from "lucide-react";
+import { speakersApi, uploadsApi } from "@/lib/api-client";
+import { toast } from "sonner";
+import { Calendar, Clock, MapPin, FileText, Edit3, Save, Loader2, ExternalLink, Upload, Trash2, Download } from "lucide-react";
 import type { SpeakerProfile, Session } from "@teranga/shared-types";
+
+const ALLOWED_SLIDE_TYPES = [
+  "application/pdf",
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+];
+const MAX_SLIDE_SIZE = 20 * 1024 * 1024; // 20 Mo
 
 export default function SpeakerPortalPage() {
   const { eventId } = useParams<{ eventId: string }>();
@@ -21,6 +30,11 @@ export default function SpeakerPortalPage() {
   const [twitter, setTwitter] = useState("");
   const [linkedin, setLinkedin] = useState("");
   const [website, setWebsite] = useState("");
+
+  // Slides upload state
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const slidesInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     loadData();
@@ -79,6 +93,87 @@ export default function SpeakerPortalPage() {
       setSaving(false);
     }
   }
+
+  const handleSlidesSelect = useCallback(async (file: File) => {
+    if (!speaker) return;
+
+    if (!ALLOWED_SLIDE_TYPES.includes(file.type)) {
+      toast.error("Type de fichier non autorisé. Formats acceptés : PDF, JPG, PNG, WebP.");
+      return;
+    }
+    if (file.size > MAX_SLIDE_SIZE) {
+      toast.error("Le fichier dépasse la taille maximale de 20 Mo.");
+      return;
+    }
+
+    setUploading(true);
+    setUploadProgress(10);
+
+    try {
+      // 1. Get signed URL
+      const { data } = await uploadsApi.getSpeakerSignedUrl(speaker.id, {
+        fileName: file.name,
+        contentType: file.type,
+        purpose: "slides",
+      });
+      setUploadProgress(30);
+
+      // 2. Upload file directly to storage
+      const uploadResponse = await fetch(data.uploadUrl, {
+        method: "PUT",
+        headers: { "Content-Type": file.type },
+        body: file,
+      });
+
+      if (!uploadResponse.ok) {
+        throw new Error("Upload échoué");
+      }
+      setUploadProgress(70);
+
+      // 3. Update speaker profile with slides URL
+      await speakersApi.update(speaker.id, {
+        slidesUrl: data.publicUrl,
+      } as Partial<SpeakerProfile>);
+      setUploadProgress(100);
+
+      toast.success("Présentation téléversée avec succès.");
+      await loadData();
+    } catch {
+      toast.error("Erreur lors du téléversement. Veuillez réessayer.");
+    } finally {
+      setUploading(false);
+      setUploadProgress(0);
+      if (slidesInputRef.current) {
+        slidesInputRef.current.value = "";
+      }
+    }
+  }, [speaker]);
+
+  const handleRemoveSlides = useCallback(async () => {
+    if (!speaker) return;
+    try {
+      await speakersApi.update(speaker.id, {
+        slidesUrl: null,
+      } as Partial<SpeakerProfile>);
+      toast.success("Présentation supprimée.");
+      await loadData();
+    } catch {
+      toast.error("Erreur lors de la suppression.");
+    }
+  }, [speaker]);
+
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      const file = e.dataTransfer.files[0];
+      if (file) handleSlidesSelect(file);
+    },
+    [handleSlidesSelect],
+  );
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+  }, []);
 
   if (loading) {
     return (
@@ -291,16 +386,84 @@ export default function SpeakerPortalPage() {
           Mes présentations
         </h2>
         <p className="text-sm text-muted-foreground">
-          Vous pouvez téléverser vos supports de présentation (PDF) ici.
+          Vous pouvez téléverser vos supports de présentation ici.
           Ils seront disponibles pour les participants après votre session.
         </p>
-        <div className="mt-4 rounded-md border-2 border-dashed border-border p-8 text-center">
-          <FileText className="mx-auto h-8 w-8 text-muted-foreground" />
-          <p className="mt-2 text-sm text-muted-foreground">
-            Glissez-déposez vos fichiers PDF ici ou cliquez pour sélectionner
-          </p>
-          <p className="mt-1 text-xs text-muted-foreground">PDF, max 20 Mo</p>
-        </div>
+
+        {/* Uploaded file display */}
+        {speaker.slidesUrl && !uploading && (
+          <div className="mt-4 flex items-center justify-between rounded-md border bg-muted/50 p-4">
+            <div className="flex items-center gap-3">
+              <FileText className="h-6 w-6 text-teranga-gold" aria-hidden="true" />
+              <div>
+                <p className="text-sm font-medium">Présentation téléversée</p>
+                <a
+                  href={speaker.slidesUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-xs text-primary hover:underline inline-flex items-center gap-1"
+                >
+                  <Download className="h-3 w-3" /> Télécharger
+                </a>
+              </div>
+            </div>
+            <button
+              onClick={handleRemoveSlides}
+              className="inline-flex items-center gap-1.5 rounded-md border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-100"
+              aria-label="Supprimer la présentation"
+            >
+              <Trash2 className="h-3.5 w-3.5" /> Supprimer
+            </button>
+          </div>
+        )}
+
+        {/* Upload progress */}
+        {uploading && (
+          <div className="mt-4 rounded-md border p-4">
+            <div className="flex items-center gap-3">
+              <Loader2 className="h-5 w-5 animate-spin text-teranga-gold" />
+              <div className="flex-1">
+                <p className="text-sm font-medium">Téléversement en cours...</p>
+                <div className="mt-2 h-2 w-full rounded-full bg-muted">
+                  <div
+                    className="h-2 rounded-full bg-teranga-gold transition-all duration-300"
+                    style={{ width: `${uploadProgress}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Drop zone */}
+        {!uploading && (
+          <div
+            onDrop={handleDrop}
+            onDragOver={handleDragOver}
+            onClick={() => slidesInputRef.current?.click()}
+            className="mt-4 rounded-md border-2 border-dashed border-border p-8 text-center cursor-pointer hover:border-teranga-gold/50 hover:bg-muted/50 transition-colors"
+            role="button"
+            tabIndex={0}
+            aria-label="Téléverser une présentation"
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") slidesInputRef.current?.click(); }}
+          >
+            <Upload className="mx-auto h-8 w-8 text-muted-foreground" />
+            <p className="mt-2 text-sm text-muted-foreground">
+              {speaker.slidesUrl ? "Remplacer la présentation" : "Glissez-déposez vos fichiers ici ou cliquez pour sélectionner"}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">PDF, JPG, PNG, WebP - max 20 Mo</p>
+            <input
+              ref={slidesInputRef}
+              type="file"
+              accept=".pdf,.jpg,.jpeg,.png,.webp"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) handleSlidesSelect(file);
+              }}
+            />
+          </div>
+        )}
       </section>
     </div>
   );

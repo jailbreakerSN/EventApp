@@ -63,4 +63,5 @@ export const COLLECTIONS = {
   SPONSOR_LEADS: "sponsorLeads",
   PROMO_CODES: "promoCodes",
   VENUES: "venues",
+  NEWSLETTER_SUBSCRIBERS: "newsletterSubscribers",
 } as const;

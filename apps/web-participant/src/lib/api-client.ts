@@ -168,7 +168,7 @@ export const badgesApi = {
 export const usersApi = {
   getMe: () => api.get<ApiResponse<{ uid: string; email: string; displayName: string | null; phone: string | null; bio: string | null; photoURL: string | null; preferredLanguage: string }>>("/v1/users/me"),
 
-  updateMe: (data: { displayName?: string; phone?: string; bio?: string; preferredLanguage?: string }) =>
+  updateMe: (data: { displayName?: string; phone?: string; bio?: string; preferredLanguage?: string; photoURL?: string }) =>
     api.patch<ApiResponse<void>>("/v1/users/me", data),
 };
 
@@ -204,6 +204,15 @@ export const feedApi = {
 
   addComment: (eventId: string, postId: string, dto: CreateFeedCommentDto) =>
     api.post<ApiResponse<FeedComment>>(`/v1/events/${eventId}/feed/${postId}/comments`, dto),
+
+  updatePost: (eventId: string, postId: string, content: string) =>
+    api.patch<ApiResponse<FeedPost>>(`/v1/events/${eventId}/feed/${postId}`, { content }),
+
+  deletePost: (eventId: string, postId: string) =>
+    api.delete<void>(`/v1/events/${eventId}/feed/${postId}`),
+
+  deleteComment: (eventId: string, postId: string, commentId: string) =>
+    api.delete<void>(`/v1/events/${eventId}/feed/${postId}/comments/${commentId}`),
 };
 
 export const messagingApi = {
@@ -243,6 +252,9 @@ export const paymentsApi = {
 
   getStatus: (paymentId: string) =>
     api.get<ApiResponse<Payment>>(`/v1/payments/${paymentId}/status`),
+
+  refund: (paymentId: string, reason?: string) =>
+    api.post<ApiResponse<Payment>>(`/v1/payments/${paymentId}/refund`, { reason }),
 };
 
 export const receiptsApi = {
@@ -274,6 +286,11 @@ export const notificationsApi = {
 
   updatePreferences: (dto: UpdateNotificationPreferenceDto) =>
     api.patch<ApiResponse<NotificationPreference>>("/v1/notifications/preferences", dto),
+};
+
+export const uploadsApi = {
+  getSpeakerSignedUrl: (speakerId: string, body: { fileName: string; contentType: string; purpose: string }) =>
+    api.post<ApiResponse<{ uploadUrl: string; publicUrl: string }>>(`/v1/speakers/${speakerId}/upload-url`, body),
 };
 
 export const speakersApi = {
@@ -310,6 +327,11 @@ export const sponsorsApi = {
 
   exportLeads: (sponsorId: string) =>
     api.get<{ data: string }>(`/v1/sponsors/${sponsorId}/leads/export`),
+};
+
+export const newsletterApi = {
+  subscribe: (email: string) =>
+    api.post<{ success: boolean; message: string }>("/v1/newsletter/subscribe", { email }, false),
 };
 
 export { api, ApiError };

@@ -21,6 +21,7 @@ import { sponsorRoutes } from "./sponsors.routes";
 import { promoCodeRoutes } from "./promo-codes.routes";
 import { adminRoutes } from "./admin.routes";
 import { venueRoutes } from "./venues.routes";
+import { newsletterRoutes } from "./newsletter.routes";
 
 export async function registerRoutes(app: FastifyInstance) {
   // ── Health & Readiness (no auth, no rate limit) ──────────────────────────
@@ -48,4 +49,5 @@ export async function registerRoutes(app: FastifyInstance) {
   await app.register(promoCodeRoutes, { prefix: "/v1/events" });
   await app.register(adminRoutes, { prefix: "/v1/admin" });
   await app.register(venueRoutes, { prefix: "/v1/venues" });
+  await app.register(newsletterRoutes, { prefix: "/v1/newsletter" });
 }

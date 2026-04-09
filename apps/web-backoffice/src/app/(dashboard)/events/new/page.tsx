@@ -1,10 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useCreateEvent } from "@/hooks/use-events";
 import { useAuth } from "@/hooks/use-auth";
-import { ArrowLeft, ArrowRight, Check, Loader2 } from "lucide-react";
+import { uploadsApi } from "@/lib/api-client";
+import { toast } from "sonner";
+import { ArrowLeft, ArrowRight, Check, Loader2, ImagePlus, X } from "lucide-react";
 import Link from "next/link";
 import {
   Select,
@@ -39,6 +41,9 @@ const FORMAT_OPTIONS = [
   { value: "online", label: "En ligne" },
   { value: "hybrid", label: "Hybride" },
 ];
+
+const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
+const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10 Mo
 
 interface TicketDraft {
   name: string;
@@ -75,6 +80,11 @@ export default function NewEventPage() {
   const [endDate, setEndDate] = useState("");
   const [tags, setTags] = useState("");
 
+  // Cover image
+  const [coverImageFile, setCoverImageFile] = useState<File | null>(null);
+  const [coverImagePreview, setCoverImagePreview] = useState<string | null>(null);
+  const coverInputRef = useRef<HTMLInputElement>(null);
+
   // Step 2: Location
   const [venueId, setVenueId] = useState<string | null>(null);
   const [venueName, setVenueName] = useState<string | null>(null);
@@ -105,6 +115,42 @@ export default function NewEventPage() {
   function removeTicket(index: number) {
     setTickets((prev) => prev.filter((_, i) => i !== index));
   }
+
+  const handleCoverImageSelect = useCallback((file: File) => {
+    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+      toast.error("Type de fichier non autorisé. Formats acceptés : JPG, PNG, WebP.");
+      return;
+    }
+    if (file.size > MAX_IMAGE_SIZE) {
+      toast.error("Le fichier dépasse la taille maximale de 10 Mo.");
+      return;
+    }
+    setCoverImageFile(file);
+    const url = URL.createObjectURL(file);
+    setCoverImagePreview(url);
+  }, []);
+
+  const handleCoverDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      const file = e.dataTransfer.files[0];
+      if (file) handleCoverImageSelect(file);
+    },
+    [handleCoverImageSelect],
+  );
+
+  const handleCoverDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+  }, []);
+
+  const removeCoverImage = useCallback(() => {
+    setCoverImageFile(null);
+    if (coverImagePreview) {
+      URL.revokeObjectURL(coverImagePreview);
+      setCoverImagePreview(null);
+    }
+    if (coverInputRef.current) coverInputRef.current.value = "";
+  }, [coverImagePreview]);
 
   function validateStep(): boolean {
     setError("");
@@ -141,6 +187,31 @@ export default function NewEventPage() {
 
   function prevStep() {
     setStep((s) => Math.max(0, s - 1));
+  }
+
+  async function uploadCoverImage(eventId: string): Promise<string | undefined> {
+    if (!coverImageFile) return undefined;
+
+    try {
+      const { data } = await uploadsApi.getEventSignedUrl(eventId, {
+        fileName: coverImageFile.name,
+        contentType: coverImageFile.type,
+        purpose: "cover",
+      });
+
+      const uploadResponse = await fetch(data.uploadUrl, {
+        method: "PUT",
+        headers: { "Content-Type": coverImageFile.type },
+        body: coverImageFile,
+      });
+
+      if (!uploadResponse.ok) throw new Error("Upload échoué");
+
+      return data.publicUrl;
+    } catch {
+      toast.error("Erreur lors du téléversement de l'image. L'événement a été créé sans image.");
+      return undefined;
+    }
   }
 
   async function handleSubmit() {
@@ -190,7 +261,19 @@ export default function NewEventPage() {
 
     try {
       const result = await createEvent.mutateAsync(dto);
-      router.push(`/events/${result.data.id}`);
+      const eventId = result.data.id;
+
+      // Upload cover image after event creation (need eventId for signed URL)
+      if (coverImageFile) {
+        const coverUrl = await uploadCoverImage(eventId);
+        if (coverUrl) {
+          // Update event with cover image URL
+          const { eventsApi } = await import("@/lib/api-client");
+          await eventsApi.update(eventId, { coverImageURL: coverUrl } as any);
+        }
+      }
+
+      router.push(`/events/${eventId}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erreur lors de la création");
     }
@@ -266,6 +349,60 @@ export default function NewEventPage() {
                 className="w-full px-4 py-2.5 rounded-lg border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
               />
             </div>
+
+            {/* Cover Image Upload */}
+            <div>
+              <label className="block text-sm font-medium text-foreground mb-1">
+                Image de couverture
+              </label>
+              {coverImagePreview ? (
+                <div className="relative rounded-lg overflow-hidden border border-border">
+                  <img
+                    src={coverImagePreview}
+                    alt="Aperçu de l'image de couverture"
+                    className="w-full h-48 object-cover"
+                  />
+                  <button
+                    type="button"
+                    onClick={removeCoverImage}
+                    className="absolute top-2 right-2 rounded-full bg-black/60 p-1.5 text-white hover:bg-black/80 transition-colors"
+                    aria-label="Supprimer l'image de couverture"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              ) : (
+                <div
+                  onDrop={handleCoverDrop}
+                  onDragOver={handleCoverDragOver}
+                  onClick={() => coverInputRef.current?.click()}
+                  className="rounded-lg border-2 border-dashed border-border p-8 text-center cursor-pointer hover:border-primary/50 hover:bg-muted/50 transition-colors"
+                  role="button"
+                  tabIndex={0}
+                  aria-label="Ajouter une image de couverture"
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") coverInputRef.current?.click(); }}
+                >
+                  <ImagePlus className="mx-auto h-8 w-8 text-muted-foreground" />
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    Ajouter une image de couverture
+                  </p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    JPG, PNG, WebP - max 10 Mo (optionnel)
+                  </p>
+                </div>
+              )}
+              <input
+                ref={coverInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleCoverImageSelect(file);
+                }}
+              />
+            </div>
+
             <div>
               <label htmlFor="event-description" className="block text-sm font-medium text-foreground mb-1">
                 Description <span aria-hidden="true">*</span><span className="sr-only">(requis)</span>
@@ -636,6 +773,10 @@ export default function NewEventPage() {
                 <div className="flex justify-between">
                   <dt className="text-muted-foreground">Billets</dt>
                   <dd className="text-foreground">{tickets.length} type{tickets.length > 1 ? "s" : ""}</dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-muted-foreground">Image de couverture</dt>
+                  <dd className="text-foreground">{coverImageFile ? coverImageFile.name : "Aucune"}</dd>
                 </div>
               </dl>
             </div>

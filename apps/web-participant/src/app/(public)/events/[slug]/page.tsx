@@ -2,14 +2,14 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Calendar, MapPin, Clock, Users, Tag, ExternalLink, Building2 } from "lucide-react";
-import { serverEventsApi } from "@/lib/server-api";
+import { Calendar, MapPin, Clock, Users, Tag, ExternalLink, Building2, Mic2, Globe, Linkedin, Twitter } from "lucide-react";
+import { serverEventsApi, serverSpeakersApi, serverSessionsApi } from "@/lib/server-api";
 import { formatDate, formatDateTime, formatCurrency, Badge } from "@teranga/shared-ui";
 import { EventJsonLd } from "@/components/event-detail/event-jsonld";
 import { ShareButtons } from "@/components/share-buttons";
 import { AddToCalendar } from "@/components/add-to-calendar";
 import { EventCard } from "@/components/event-card";
-import type { Event } from "@teranga/shared-types";
+import type { Event, SpeakerProfile, Session } from "@teranga/shared-types";
 import ReactMarkdown from "react-markdown";
 
 export const revalidate = 60;
@@ -26,6 +26,55 @@ async function getEvent(slug: string): Promise<Event | null> {
   } catch {
     return null;
   }
+}
+
+async function getSpeakers(eventId: string): Promise<SpeakerProfile[]> {
+  try {
+    const result = await serverSpeakersApi.listByEvent(eventId);
+    return result.data;
+  } catch {
+    return [];
+  }
+}
+
+async function getSessions(eventId: string): Promise<Session[]> {
+  try {
+    const result = await serverSessionsApi.listByEvent(eventId);
+    return result.data;
+  } catch {
+    return [];
+  }
+}
+
+function formatSessionTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString("fr-FR", {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "Africa/Dakar",
+  });
+}
+
+function formatSessionDate(iso: string): string {
+  return new Date(iso).toLocaleDateString("fr-FR", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    timeZone: "Africa/Dakar",
+  });
+}
+
+function groupSessionsByDate(sessions: Session[]): Map<string, Session[]> {
+  const sorted = [...sessions].sort(
+    (a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime(),
+  );
+  const groups = new Map<string, Session[]>();
+  for (const session of sorted) {
+    const dateKey = formatSessionDate(session.startTime);
+    const existing = groups.get(dateKey) ?? [];
+    existing.push(session);
+    groups.set(dateKey, existing);
+  }
+  return groups;
 }
 
 async function getSimilarEvents(event: Event): Promise<Event[]> {
@@ -138,7 +187,14 @@ export default async function EventDetailPage({ params }: PageProps) {
   const event = await getEvent(slug);
   if (!event) notFound();
 
-  const similarEvents = await getSimilarEvents(event);
+  const [speakers, sessions, similarEvents] = await Promise.all([
+    getSpeakers(event.id),
+    getSessions(event.id),
+    getSimilarEvents(event),
+  ]);
+
+  const speakerMap = new Map(speakers.map((s) => [s.id, s]));
+  const sessionsByDate = groupSessionsByDate(sessions);
 
   const visibleTickets = event.ticketTypes.filter((t) => t.isVisible);
   const minPrice = visibleTickets.length > 0 ? Math.min(...visibleTickets.map((t) => t.price)) : null;
@@ -298,6 +354,169 @@ export default async function EventDetailPage({ params }: PageProps) {
                   <ReactMarkdown>{event.description}</ReactMarkdown>
                 </div>
               </div>
+
+              {/* Speakers */}
+              {speakers.length > 0 && (
+                <div className="mt-10">
+                  <div className="flex items-center gap-2 mb-5">
+                    <Mic2 className="h-5 w-5 text-teranga-gold" aria-hidden="true" />
+                    <h2 className="text-xl font-semibold">Intervenants</h2>
+                  </div>
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    {speakers.map((speaker) => (
+                      <div
+                        key={speaker.id}
+                        className="rounded-lg border border-border bg-muted/30 p-4"
+                      >
+                        <div className="flex items-start gap-3">
+                          {speaker.photoURL ? (
+                            <Image
+                              src={speaker.photoURL}
+                              alt={speaker.name}
+                              width={48}
+                              height={48}
+                              className="h-12 w-12 rounded-full object-cover flex-shrink-0"
+                            />
+                          ) : (
+                            <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-teranga-gold/10 text-teranga-gold font-semibold text-lg">
+                              {speaker.name.charAt(0).toUpperCase()}
+                            </div>
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <p className="font-medium text-foreground truncate">{speaker.name}</p>
+                            {(speaker.title || speaker.company) && (
+                              <p className="text-sm text-muted-foreground truncate">
+                                {[speaker.title, speaker.company].filter(Boolean).join(" — ")}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                        {speaker.bio && (
+                          <p className="mt-3 text-sm text-muted-foreground line-clamp-2">
+                            {speaker.bio}
+                          </p>
+                        )}
+                        {speaker.topics.length > 0 && (
+                          <div className="mt-2 flex flex-wrap gap-1">
+                            {speaker.topics.slice(0, 3).map((topic) => (
+                              <Badge key={topic} variant="outline" className="text-xs">
+                                {topic}
+                              </Badge>
+                            ))}
+                          </div>
+                        )}
+                        {speaker.socialLinks && (
+                          <div className="mt-3 flex items-center gap-2">
+                            {speaker.socialLinks.twitter && (
+                              <a
+                                href={speaker.socialLinks.twitter}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                aria-label={`Twitter de ${speaker.name}`}
+                                className="text-muted-foreground hover:text-foreground transition-colors"
+                              >
+                                <Twitter className="h-4 w-4" />
+                              </a>
+                            )}
+                            {speaker.socialLinks.linkedin && (
+                              <a
+                                href={speaker.socialLinks.linkedin}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                aria-label={`LinkedIn de ${speaker.name}`}
+                                className="text-muted-foreground hover:text-foreground transition-colors"
+                              >
+                                <Linkedin className="h-4 w-4" />
+                              </a>
+                            )}
+                            {speaker.socialLinks.website && (
+                              <a
+                                href={speaker.socialLinks.website}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                aria-label={`Site web de ${speaker.name}`}
+                                className="text-muted-foreground hover:text-foreground transition-colors"
+                              >
+                                <Globe className="h-4 w-4" />
+                              </a>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Schedule / Sessions */}
+              {sessions.length > 0 && (
+                <div className="mt-10">
+                  <div className="flex items-center gap-2 mb-5">
+                    <Calendar className="h-5 w-5 text-teranga-gold" aria-hidden="true" />
+                    <h2 className="text-xl font-semibold">Programme</h2>
+                  </div>
+                  <div className="space-y-6">
+                    {Array.from(sessionsByDate.entries()).map(([dateLabel, daySessions]) => (
+                      <div key={dateLabel}>
+                        {sessionsByDate.size > 1 && (
+                          <h3 className="text-sm font-semibold text-teranga-gold uppercase tracking-wide mb-3">
+                            {dateLabel}
+                          </h3>
+                        )}
+                        <div className="space-y-3">
+                          {daySessions.map((session) => {
+                            const sessionSpeakers = session.speakerIds
+                              .map((id) => speakerMap.get(id))
+                              .filter(Boolean) as SpeakerProfile[];
+                            return (
+                              <div
+                                key={session.id}
+                                className="flex gap-4 rounded-lg border border-border bg-muted/30 p-4"
+                              >
+                                <div className="flex-shrink-0 text-right w-24">
+                                  <p className="text-sm font-semibold text-foreground">
+                                    {formatSessionTime(session.startTime)}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {formatSessionTime(session.endTime)}
+                                  </p>
+                                </div>
+                                <div className="h-auto w-px bg-teranga-gold/30 flex-shrink-0" />
+                                <div className="min-w-0 flex-1">
+                                  <p className="font-medium text-foreground">{session.title}</p>
+                                  {sessionSpeakers.length > 0 && (
+                                    <p className="mt-1 text-sm text-muted-foreground">
+                                      {sessionSpeakers.map((s) => s.name).join(", ")}
+                                    </p>
+                                  )}
+                                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                                    {session.location && (
+                                      <Badge variant="outline" className="text-xs gap-1">
+                                        <MapPin className="h-3 w-3" aria-hidden="true" />
+                                        {session.location}
+                                      </Badge>
+                                    )}
+                                    {session.tags.map((tag) => (
+                                      <Badge key={tag} variant="secondary" className="text-xs">
+                                        {tag}
+                                      </Badge>
+                                    ))}
+                                  </div>
+                                  {session.description && (
+                                    <p className="mt-2 text-sm text-muted-foreground line-clamp-2">
+                                      {session.description}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 

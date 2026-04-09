@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Button, Input, Spinner } from "@teranga/shared-ui";
+import { newsletterApi } from "@/lib/api-client";
 
 type FormState = "idle" | "submitting" | "success" | "error";
 
@@ -36,14 +37,7 @@ export function NewsletterSignup() {
     setFormState("submitting");
 
     try {
-      // TODO: Replace with real API call once the newsletter endpoint is implemented.
-      // Example:
-      //   await fetch("/api/newsletter", {
-      //     method: "POST",
-      //     headers: { "Content-Type": "application/json" },
-      //     body: JSON.stringify({ email }),
-      //   });
-      await new Promise((resolve) => setTimeout(resolve, 800)); // simulate network
+      await newsletterApi.subscribe(email.trim());
       setFormState("success");
       setEmail("");
     } catch {
