@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import { Providers } from "./providers";
-import { Toaster } from "@teranga/shared-ui";
+import { Toaster, OfflineBanner } from "@teranga/shared-ui";
+import { SwRegister } from "@/components/sw-register";
 import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"] });
@@ -38,8 +39,10 @@ export default function RootLayout({
   return (
     <html lang="fr" suppressHydrationWarning>
       <body className={inter.className}>
+        <OfflineBanner />
         <Providers>{children}</Providers>
         <Toaster />
+        <SwRegister />
       </body>
     </html>
   );

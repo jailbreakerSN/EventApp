@@ -44,6 +44,7 @@ import {
   ScanLine,
   MapPin,
   Copy,
+  Download,
 } from "lucide-react";
 import Link from "next/link";
 import { useAddAccessZone, useRemoveAccessZone } from "@/hooks/use-access-zones";
@@ -53,7 +54,8 @@ import { useFeedPosts, useCreateFeedPost, useDeleteFeedPost, useTogglePin } from
 import { useEventSpeakers, useCreateSpeaker, useDeleteSpeaker } from "@/hooks/use-speakers";
 import { useEventSponsors, useCreateSponsor, useDeleteSponsor } from "@/hooks/use-sponsors";
 import { useEventPromoCodes, useCreatePromoCode, useDeactivatePromoCode } from "@/hooks/use-promo-codes";
-import { eventsApi } from "@/lib/api-client";
+import { eventsApi, registrationsApi } from "@/lib/api-client";
+import { registrationsToCSV, downloadCSV } from "@/lib/csv-export";
 import type { Event, CreateTicketTypeDto, CreateAccessZoneDto, CreateSessionDto, Payment, PaymentSummary, SpeakerProfile, SponsorProfile, SponsorTier } from "@teranga/shared-types";
 import { Calendar, MessageSquare, Clock, Mic, UserRound, Building } from "lucide-react";
 
@@ -546,6 +548,7 @@ function TicketsTab({ event }: { event: Event }) {
 function RegistrationsTab({ eventId }: { eventId: string }) {
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState("");
+  const [isExporting, setIsExporting] = useState(false);
   const limit = 15;
 
   const { data, isLoading } = useEventRegistrations(eventId, {
@@ -559,6 +562,27 @@ function RegistrationsTab({ eventId }: { eventId: string }) {
   const registrations = data?.data ?? [];
   const meta = data?.meta;
   const totalPages = meta?.totalPages ?? 1;
+
+  const handleExportCSV = async () => {
+    setIsExporting(true);
+    try {
+      // Fetch all registrations (no pagination) for export
+      const allData = await registrationsApi.getEventRegistrations(eventId, {
+        page: 1,
+        limit: 10000,
+        status: statusFilter || undefined,
+      });
+      const allRegistrations = allData?.data ?? registrations;
+      const csv = registrationsToCSV(allRegistrations);
+      const date = new Date().toISOString().slice(0, 10);
+      downloadCSV(csv, `inscriptions-${eventId.slice(0, 8)}-${date}.csv`);
+      toast.success(`${allRegistrations.length} inscription(s) exportée(s)`);
+    } catch {
+      toast.error("Erreur lors de l'export CSV");
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   return (
     <div>
@@ -597,6 +621,20 @@ function RegistrationsTab({ eventId }: { eventId: string }) {
             <option value="cancelled">Annulé</option>
             <option value="checked_in">Entré</option>
           </select>
+          <button
+            onClick={handleExportCSV}
+            disabled={isExporting || isLoading || registrations.length === 0}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-lg text-xs font-medium hover:bg-primary/90 disabled:opacity-50"
+            title="Exporter les inscriptions au format CSV"
+            aria-label="Exporter CSV"
+          >
+            {isExporting ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Download className="h-3.5 w-3.5" />
+            )}
+            Exporter CSV
+          </button>
         </div>
       </div>
 

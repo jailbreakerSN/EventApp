@@ -19,7 +19,7 @@ The MVP prioritizes the **web platform** (participant web app + organizer backof
 
 ---
 
-## Current State (as of 2026-04-08)
+## Current State (as of 2026-04-09)
 
 | Component | Completion | Notes |
 |-----------|-----------|-------|
@@ -48,7 +48,7 @@ The MVP prioritizes the **web platform** (participant web app + organizer backof
 | MVP Sprint | Dakar Launch | `completed` | 95% | Real providers, SEO, promo codes, Cloud Functions |
 | **UX/UI Audit** | **4-Phase Polish** | **`completed`** | **100%** | **97 files, ~4300 lines, WCAG AA, 17 shared-ui components** |
 | **Super Admin** | **Platform Administration** | **`completed`** | **95%** | **Admin dashboard, user/org/event management, audit logs, venue lifecycle** |
-| **Venue Host** | **Venue Entity + API** | **`in_progress`** | **70%** | **Venue CRUD, event-venue link, admin venues page. Phase 3 (host dashboard, event selector) pending** |
+| **Venue Host** | **Venue Entity + Host Dashboard** | **`completed`** | **100%** | **Venue CRUD, event-venue link, admin venues, host dashboard, venue selector in event creation, participant venue display** |
 | Wave 9 | Mobile App | `not_started` | 0% | Post-MVP validation |
 | Wave 10 | Production Hardening | `not_started` | 0% | Next priority |
 
@@ -72,7 +72,7 @@ A two-part feature set that adds platform-wide administration and introduces ven
 |-------|-------|--------|-----------------|
 | Phase 1 | Types + Admin API + Admin UI | `completed` | 7 venue permissions, `venue_manager` role, admin repository/service/routes, 7 admin pages (dashboard, users, orgs, events, venues, audit), sidebar admin section, command palette entries |
 | Phase 2 | Venue Entity + Venue API + Event-Venue Link | `completed` | Venue repository/service/routes (8 endpoints), `venueId`/`venueName` on Event, venue counter management, admin venues page with real data |
-| Phase 3 | Venue Host Dashboard + Event Creation | `pending` | Venue host backoffice pages, venue selector in event creation wizard, participant venue display |
+| Phase 3 | Venue Host Dashboard + Event Creation + Participant Display | `completed` | Venue host pages (/venues, /venues/[id]), venue selector in event creation, participant "Lieu référencé" badge |
 
 **Key architecture decisions:**
 - Admin routes at `/v1/admin/*` with single `requirePermission("platform:manage")` gate
@@ -260,7 +260,7 @@ The table below maps every stage of the event lifecycle to its implementation st
 ### Organizer Journey
 | Stage | Feature | Status |
 |-------|---------|--------|
-| **Create** | Select venue from directory (auto-fill location) | 🔧 Phase 3 pending |
+| **Create** | Select venue from directory (auto-fill location) | ✅ Done |
 | **Create** | Event creation wizard (4 steps) | ✅ Done |
 | **Create** | Ticket types (free + paid, XOF) | ✅ Done |
 | **Create** | Access zones (multi-entry) | ✅ Done |
@@ -336,7 +336,7 @@ The table below maps every stage of the event lifecycle to its implementation st
 | **Setup** | Venue approval workflow (pending → approved) | ✅ Done |
 | **Manage** | Update venue details | ✅ Done (API) |
 | **Manage** | View events hosted at venue | ✅ Done (API) |
-| **Manage** | Venue host dashboard (backoffice) | 🔧 Phase 3 pending |
+| **Manage** | Venue host dashboard (backoffice) | ✅ Done |
 | **Analytics** | Venue event count, registrations | ✅ Done (denormalized counter) |
 | **Promote** | Featured venue status | ✅ Done (admin toggle) |
 

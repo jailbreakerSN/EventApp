@@ -16,6 +16,7 @@ import {
   onAuthStateChanged,
   updateProfile,
   sendPasswordResetEmail,
+  sendEmailVerification,
   type User,
 } from "firebase/auth";
 import { firebaseAuth } from "@/lib/firebase";
@@ -27,6 +28,7 @@ interface AuthUser {
   displayName: string | null;
   photoURL: string | null;
   roles: UserRole[];
+  emailVerified: boolean;
 }
 
 interface AuthContextValue {
@@ -37,6 +39,7 @@ interface AuthContextValue {
   loginWithGoogle: () => Promise<void>;
   logout: () => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
+  resendVerification: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -57,6 +60,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           displayName: firebaseUser.displayName,
           photoURL: firebaseUser.photoURL,
           roles: (tokenResult.claims.roles as UserRole[]) ?? ["participant"],
+          emailVerified: firebaseUser.emailVerified,
         });
       } else {
         setUser(null);
@@ -74,6 +78,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const register = async (email: string, password: string, displayName: string) => {
     const credential = await createUserWithEmailAndPassword(firebaseAuth, email, password);
     await updateProfile(credential.user, { displayName });
+    await sendEmailVerification(credential.user);
   };
 
   const loginWithGoogle = async () => {
@@ -84,12 +89,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await signOut(firebaseAuth);
   };
 
+  const resendVerification = async () => {
+    if (firebaseAuth.currentUser) {
+      await sendEmailVerification(firebaseAuth.currentUser);
+    }
+  };
+
   const resetPassword = async (email: string) => {
     await sendPasswordResetEmail(firebaseAuth, email);
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, loginWithGoogle, logout, resetPassword }}>
+    <AuthContext.Provider value={{ user, loading, login, register, loginWithGoogle, logout, resetPassword, resendVerification }}>
       {children}
     </AuthContext.Provider>
   );

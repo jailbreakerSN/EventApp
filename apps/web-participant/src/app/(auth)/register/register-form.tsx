@@ -52,8 +52,7 @@ export function RegisterForm() {
     setLoading(true);
     try {
       await register(email, password, displayName);
-      const savedUrl = safeRedirect(getAndClearRedirectUrl());
-      router.push(savedUrl !== "/events" ? savedUrl : redirectTo);
+      router.push("/verify-email");
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Erreur lors de l'inscription";
       if (message.includes("email-already-in-use")) {

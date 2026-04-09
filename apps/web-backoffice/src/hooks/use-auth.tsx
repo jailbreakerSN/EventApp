@@ -12,6 +12,7 @@ import {
   signOut,
   onAuthStateChanged,
   sendPasswordResetEmail,
+  sendEmailVerification,
   type User,
 } from "firebase/auth";
 import { firebaseAuth } from "@/lib/firebase";
@@ -24,6 +25,7 @@ interface AuthUser {
   photoURL: string | null;
   roles: UserRole[];
   organizationId?: string;
+  emailVerified: boolean;
 }
 
 interface AuthContextValue {
@@ -33,6 +35,7 @@ interface AuthContextValue {
   logout: () => Promise<void>;
   hasRole: (...roles: UserRole[]) => boolean;
   resetPassword: (email: string) => Promise<void>;
+  resendVerification: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -52,6 +55,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           photoURL: firebaseUser.photoURL,
           roles: (tokenResult.claims.roles as UserRole[]) ?? ["participant"],
           organizationId: tokenResult.claims.organizationId as string | undefined,
+          emailVerified: firebaseUser.emailVerified,
         });
       } else {
         setUser(null);
@@ -73,12 +77,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const hasRole = (...roles: UserRole[]) =>
     roles.some((r) => user?.roles.includes(r)) ?? false;
 
+  const resendVerification = async () => {
+    if (firebaseAuth.currentUser) {
+      await sendEmailVerification(firebaseAuth.currentUser);
+    }
+  };
+
   const resetPassword = async (email: string) => {
     await sendPasswordResetEmail(firebaseAuth, email);
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, hasRole, resetPassword }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, hasRole, resetPassword, resendVerification }}>
       {children}
     </AuthContext.Provider>
   );

@@ -1,6 +1,7 @@
 import { Header } from "@/components/layouts/header";
 import { Footer } from "@/components/layouts/footer";
 import { AuthGuard } from "@/components/auth-guard";
+import { EmailVerificationBanner } from "@/components/email-verification-banner";
 
 export default function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -13,6 +14,7 @@ export default function AuthenticatedLayout({ children }: { children: React.Reac
         Aller au contenu principal
       </a>
       <Header />
+      <EmailVerificationBanner />
       <main id="main-content" className="flex-1" tabIndex={-1}>
         <AuthGuard>{children}</AuthGuard>
       </main>

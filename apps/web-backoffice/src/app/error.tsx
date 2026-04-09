@@ -28,7 +28,7 @@ export default function GlobalError({
             Réessayer
           </button>
           <a
-            href="/events"
+            href="/dashboard"
             className="inline-flex items-center gap-2 border border-border text-foreground rounded-lg px-4 py-2 text-sm font-medium hover:bg-accent"
           >
             Tableau de bord

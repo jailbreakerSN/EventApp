@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { X } from "lucide-react";
+import { toast } from "sonner";
 import { Sidebar } from "@/components/layouts/sidebar";
 import { TopBar } from "@/components/layouts/topbar";
 import { SidebarProvider } from "@/components/layouts/sidebar-context";
@@ -15,8 +17,25 @@ const BACKOFFICE_ROLES = ["organizer", "co_organizer", "super_admin", "venue_man
 
 function DashboardShell({ children }: { children: React.ReactNode }) {
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [bannerDismissed, setBannerDismissed] = useState(false);
+  const { user, resendVerification } = useAuth();
+  const [sendingVerification, setSendingVerification] = useState(false);
 
   useKeyboardShortcuts({ onShowHelp: () => setShortcutsOpen(true) });
+
+  const handleResendVerification = async () => {
+    setSendingVerification(true);
+    try {
+      await resendVerification();
+      toast.success("Email de vérification envoyé !");
+    } catch {
+      toast.error("Impossible d'envoyer l'email. Réessayez dans quelques minutes.");
+    } finally {
+      setSendingVerification(false);
+    }
+  };
+
+  const showVerificationBanner = user && !user.emailVerified && !bannerDismissed;
 
   return (
     <SidebarProvider>
@@ -41,6 +60,30 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
         <Sidebar />
         <div className="flex-1 flex flex-col min-w-0">
           <TopBar onShowShortcuts={() => setShortcutsOpen(true)} />
+          {showVerificationBanner && (
+            <div
+              role="alert"
+              className="flex items-center justify-between gap-3 bg-amber-50 border-b border-amber-200 px-4 py-2.5 text-sm text-amber-800 dark:bg-amber-950/50 dark:border-amber-800 dark:text-amber-200"
+            >
+              <p className="flex-1">
+                Votre adresse email n&apos;est pas vérifiée.{" "}
+                <button
+                  onClick={handleResendVerification}
+                  disabled={sendingVerification}
+                  className="font-medium underline hover:no-underline disabled:opacity-50"
+                >
+                  {sendingVerification ? "Envoi..." : "Renvoyer l'email"}
+                </button>
+              </p>
+              <button
+                onClick={() => setBannerDismissed(true)}
+                className="p-0.5 text-amber-800 hover:text-amber-900 dark:text-amber-200 dark:hover:text-amber-100"
+                aria-label="Fermer"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          )}
           <main id="main-content" className="flex-1 overflow-y-auto p-4 sm:p-6" tabIndex={-1}>
             {children}
           </main>
