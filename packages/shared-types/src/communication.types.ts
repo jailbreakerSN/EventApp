@@ -2,32 +2,17 @@ import { z } from "zod";
 
 // ─── Communication Channel ──────────────────────────────────────────────────
 
-export const CommunicationChannelSchema = z.enum([
-  "sms",
-  "email",
-  "push",
-  "in_app",
-]);
+export const CommunicationChannelSchema = z.enum(["sms", "email", "push", "in_app"]);
 
 export type CommunicationChannel = z.infer<typeof CommunicationChannelSchema>;
 
 // ─── Broadcast ──────────────────────────────────────────────────────────────
 
-export const BroadcastStatusSchema = z.enum([
-  "draft",
-  "scheduled",
-  "sending",
-  "sent",
-  "failed",
-]);
+export const BroadcastStatusSchema = z.enum(["draft", "scheduled", "sending", "sent", "failed"]);
 
 export type BroadcastStatus = z.infer<typeof BroadcastStatusSchema>;
 
-export const BroadcastRecipientFilterSchema = z.enum([
-  "all",
-  "checked_in",
-  "not_checked_in",
-]);
+export const BroadcastRecipientFilterSchema = z.enum(["all", "checked_in", "not_checked_in"]);
 
 export type BroadcastRecipientFilter = z.infer<typeof BroadcastRecipientFilterSchema>;
 
@@ -78,8 +63,9 @@ export const NotificationPreferenceSchema = z.object({
   email: z.boolean().default(true),
   sms: z.boolean().default(true),
   push: z.boolean().default(true),
+  eventReminders: z.boolean().default(true),
   quietHoursStart: z.string().nullable(), // "22:00"
-  quietHoursEnd: z.string().nullable(),   // "08:00"
+  quietHoursEnd: z.string().nullable(), // "08:00"
   updatedAt: z.string().datetime(),
 });
 
@@ -89,6 +75,7 @@ export const UpdateNotificationPreferenceSchema = z.object({
   email: z.boolean().optional(),
   sms: z.boolean().optional(),
   push: z.boolean().optional(),
+  eventReminders: z.boolean().optional(),
   quietHoursStart: z.string().nullable().optional(),
   quietHoursEnd: z.string().nullable().optional(),
 });
