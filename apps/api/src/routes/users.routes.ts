@@ -14,7 +14,11 @@ export const userRoutes: FastifyPluginAsync = async (fastify) => {
     "/me",
     {
       preHandler: [authenticate],
-      schema: { tags: ["Users"], summary: "Get current user profile", security: [{ BearerAuth: [] }] },
+      schema: {
+        tags: ["Users"],
+        summary: "Get current user profile",
+        security: [{ BearerAuth: [] }],
+      },
     },
     async (request, reply) => {
       const user = await userRepository.findOrCreateFromAuth(request.user!.uid);
@@ -27,11 +31,16 @@ export const userRoutes: FastifyPluginAsync = async (fastify) => {
     "/me",
     {
       preHandler: [authenticate, validate({ body: UpdateUserProfileSchema })],
-      schema: { tags: ["Users"], summary: "Update current user profile", security: [{ BearerAuth: [] }] },
+      schema: {
+        tags: ["Users"],
+        summary: "Update current user profile",
+        security: [{ BearerAuth: [] }],
+      },
     },
     async (request, reply) => {
       const uid = request.user!.uid;
-      await userRepository.update(uid, request.body as any);
+      const dto = request.body as z.infer<typeof UpdateUserProfileSchema>;
+      await userRepository.update(uid, dto);
       return reply.send({ success: true, data: { id: uid } });
     },
   );
@@ -54,8 +63,16 @@ export const userRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get(
     "/:userId",
     {
-      preHandler: [authenticate, requirePermission("profile:read_any"), validate({ params: ParamsWithUserId })],
-      schema: { tags: ["Users"], summary: "Get user public profile", security: [{ BearerAuth: [] }] },
+      preHandler: [
+        authenticate,
+        requirePermission("profile:read_any"),
+        validate({ params: ParamsWithUserId }),
+      ],
+      schema: {
+        tags: ["Users"],
+        summary: "Get user public profile",
+        security: [{ BearerAuth: [] }],
+      },
     },
     async (request, reply) => {
       const { userId } = request.params as z.infer<typeof ParamsWithUserId>;

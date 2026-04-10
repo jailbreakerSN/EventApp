@@ -21,7 +21,7 @@ export type Message = z.infer<typeof MessageSchema>;
 export const ConversationSchema = z.object({
   id: z.string(),
   participantIds: z.array(z.string()).length(2), // 1:1 only for now
-  eventId: z.string().nullable().optional(),     // scoped to an event if set
+  eventId: z.string().nullable().optional(), // scoped to an event if set
   lastMessage: z.string().nullable().optional(),
   lastMessageAt: z.string().datetime().nullable().optional(),
   unreadCounts: z.record(z.string(), z.number()).default({}), // uid -> count
@@ -92,7 +92,7 @@ export type FeedQuery = z.infer<typeof FeedQuerySchema>;
 // ─── Messaging DTOs ──────────────────────────────────────────────────────────
 
 export const CreateConversationSchema = z.object({
-  participantId: z.string(),               // the other user
+  participantId: z.string(), // the other user
   eventId: z.string().nullable().optional(), // optionally scope to event
 });
 
@@ -126,6 +126,8 @@ export const NotificationTypeSchema = z.enum([
   "new_message",
   "new_announcement",
   "badge_ready",
+  "waitlist_promoted",
+  "payment_success",
   "system",
 ]);
 

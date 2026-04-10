@@ -30,7 +30,11 @@ export default function SchedulePage() {
   const event = eventData?.data;
   const eventId = event?.id ?? "";
 
-  const { data: sessionsData, isLoading: isLoadingSessions } = useQuery({
+  const {
+    data: sessionsData,
+    isLoading: isLoadingSessions,
+    isError: sessionsError,
+  } = useQuery({
     queryKey: ["sessions", eventId],
     queryFn: () => sessionsApi.list(eventId),
     enabled: !!eventId,
@@ -68,6 +72,20 @@ export default function SchedulePage() {
     return (
       <div className="flex items-center justify-center py-20">
         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (sessionsError) {
+    return (
+      <div className="max-w-3xl mx-auto px-4 py-16 text-center">
+        <p className="text-destructive">Impossible de charger le programme.</p>
+        <button
+          onClick={() => qc.invalidateQueries({ queryKey: ["sessions", eventId] })}
+          className="mt-3 text-sm text-primary hover:underline"
+        >
+          Réessayer
+        </button>
       </div>
     );
   }

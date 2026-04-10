@@ -16,7 +16,9 @@ import {
   Upload,
   Trash2,
   Download,
+  ArrowLeft,
 } from "lucide-react";
+import Link from "next/link";
 import type { SpeakerProfile, Session } from "@teranga/shared-types";
 
 const ALLOWED_SLIDE_TYPES = ["application/pdf", "image/jpeg", "image/png", "image/webp"];
@@ -211,6 +213,12 @@ export default function SpeakerPortalPage() {
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6">
+      <Link
+        href="/my-events"
+        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground mb-4"
+      >
+        <ArrowLeft className="h-4 w-4" /> Mes événements
+      </Link>
       <h1 className="text-2xl font-bold text-foreground">Espace Intervenant</h1>
       <p className="mt-1 text-sm text-muted-foreground">
         Gérez votre profil et consultez votre programme.

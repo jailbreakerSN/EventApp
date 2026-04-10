@@ -13,6 +13,7 @@ import { ValidationError } from "@/errors/app-error";
 import { eventBus } from "@/events/event-bus";
 import { getRequestId } from "@/context/request-context";
 import { type PaginatedResult } from "@/repositories/base.repository";
+import { db } from "@/config/firebase";
 
 export class SessionService extends BaseService {
   // ─── Create ───────────────────────────────────────────────────────────────
@@ -101,9 +102,7 @@ export class SessionService extends BaseService {
       throw new ValidationError("Cette session n'appartient pas à cet événement");
     }
 
-    // Soft-delete by removing the document (sessions don't have status)
-    // Actually let's use a deletedAt pattern
-    await sessionRepository.update(sessionId, { deletedAt: new Date().toISOString() } as never);
+    await sessionRepository.update(sessionId, { deletedAt: new Date().toISOString() });
 
     eventBus.emit("session.deleted", {
       sessionId,
@@ -177,14 +176,25 @@ export class SessionService extends BaseService {
       this.requireOrganizationAccess(user, event.organizationId);
     }
 
-    // Check if already bookmarked
-    const existing = await sessionBookmarkRepository.findByUserAndSession(user.uid, sessionId);
-    if (existing) return existing;
+    // Use deterministic ID to prevent duplicates from race conditions
+    const bookmarkId = `${user.uid}_${sessionId}`;
+    const bookmarkRef = db.collection("sessionBookmarks").doc(bookmarkId);
 
-    return sessionBookmarkRepository.create({
-      sessionId,
-      eventId,
-      userId: user.uid,
+    return db.runTransaction(async (tx) => {
+      const snap = await tx.get(bookmarkRef);
+      if (snap.exists) return { id: bookmarkId, ...snap.data() } as SessionBookmark;
+
+      const now = new Date().toISOString();
+      const bookmarkData: SessionBookmark = {
+        id: bookmarkId,
+        sessionId,
+        eventId,
+        userId: user.uid,
+        createdAt: now,
+        updatedAt: now,
+      };
+      tx.set(bookmarkRef, bookmarkData);
+      return bookmarkData;
     });
   }
 

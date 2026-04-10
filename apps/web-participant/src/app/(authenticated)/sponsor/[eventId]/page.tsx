@@ -19,7 +19,9 @@ import {
   Eye,
   TrendingUp,
   Info,
+  ArrowLeft,
 } from "lucide-react";
+import Link from "next/link";
 import type { SponsorProfile } from "@teranga/shared-types";
 
 interface Lead {
@@ -150,6 +152,12 @@ export default function SponsorPortalPage() {
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6">
+      <Link
+        href="/my-events"
+        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground mb-4"
+      >
+        <ArrowLeft className="h-4 w-4" /> Mes événements
+      </Link>
       <div className="flex items-center gap-4">
         {sponsor.logoURL ? (
           <img

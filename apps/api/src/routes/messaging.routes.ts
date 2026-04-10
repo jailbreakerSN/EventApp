@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { authenticate } from "@/middlewares/auth.middleware";
 import { validate } from "@/middlewares/validate.middleware";
+import { requirePermission } from "@/middlewares/permission.middleware";
 import { messagingService } from "@/services/messaging.service";
 import {
   CreateConversationSchema,
@@ -18,6 +19,7 @@ export async function messagingRoutes(app: FastifyInstance) {
     {
       preHandler: [
         authenticate,
+        requirePermission("messaging:send"),
         validate({ body: CreateConversationSchema }),
       ],
     },
@@ -34,6 +36,7 @@ export async function messagingRoutes(app: FastifyInstance) {
     {
       preHandler: [
         authenticate,
+        requirePermission("messaging:read_own"),
         validate({ query: MessageQuerySchema }),
       ],
     },
@@ -50,6 +53,7 @@ export async function messagingRoutes(app: FastifyInstance) {
     {
       preHandler: [
         authenticate,
+        requirePermission("messaging:send"),
         validate({ params: ConversationIdParams, body: SendMessageSchema }),
       ],
     },
@@ -67,6 +71,7 @@ export async function messagingRoutes(app: FastifyInstance) {
     {
       preHandler: [
         authenticate,
+        requirePermission("messaging:read_own"),
         validate({ params: ConversationIdParams, query: MessageQuerySchema }),
       ],
     },
@@ -84,6 +89,7 @@ export async function messagingRoutes(app: FastifyInstance) {
     {
       preHandler: [
         authenticate,
+        requirePermission("messaging:read_own"),
         validate({ params: ConversationIdParams }),
       ],
     },

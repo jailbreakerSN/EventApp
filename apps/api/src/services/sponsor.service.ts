@@ -8,10 +8,9 @@ import {
 import { sponsorRepository } from "@/repositories/sponsor.repository";
 import { sponsorLeadRepository } from "@/repositories/sponsor-lead.repository";
 import { eventRepository } from "@/repositories/event.repository";
-import { registrationRepository } from "@/repositories/registration.repository";
 import { userRepository } from "@/repositories/user.repository";
 import { type AuthUser } from "@/middlewares/auth.middleware";
-import { ConflictError, ValidationError, ForbiddenError } from "@/errors/app-error";
+import { ConflictError, ValidationError } from "@/errors/app-error";
 import { BaseService } from "./base.service";
 import { verifyQrPayload } from "./qr-signing";
 import { eventBus } from "@/events/event-bus";
@@ -71,7 +70,11 @@ export class SponsorService extends BaseService {
    * Update a sponsor profile.
    * Organizers can update any; sponsors can update their own booth.
    */
-  async updateSponsor(sponsorId: string, dto: UpdateSponsorDto, user: AuthUser): Promise<SponsorProfile> {
+  async updateSponsor(
+    sponsorId: string,
+    dto: UpdateSponsorDto,
+    user: AuthUser,
+  ): Promise<SponsorProfile> {
     const sponsor = await sponsorRepository.findByIdOrThrow(sponsorId);
 
     if (sponsor.userId === user.uid) {
@@ -139,6 +142,10 @@ export class SponsorService extends BaseService {
 
     const sponsor = await sponsorRepository.findByIdOrThrow(sponsorId);
 
+    if (!sponsor.isActive) {
+      throw new ValidationError("Ce sponsor n'est pas actif");
+    }
+
     // IDOR fix: verify org access via sponsor's event
     const event = await eventRepository.findByIdOrThrow(sponsor.eventId);
     this.requireOrganizationAccess(user, event.organizationId);
@@ -149,7 +156,7 @@ export class SponsorService extends BaseService {
       throw new ValidationError("QR code invalide");
     }
 
-    const [registrationId, eventId, userId] = qrParts;
+    const [, eventId, userId] = qrParts;
 
     // Verify QR signature
     if (!verifyQrPayload(dto.qrCodeValue)) {
@@ -203,11 +210,7 @@ export class SponsorService extends BaseService {
   /**
    * List leads for a sponsor.
    */
-  async listLeads(
-    sponsorId: string,
-    pagination: { page: number; limit: number },
-    user: AuthUser,
-  ) {
+  async listLeads(sponsorId: string, pagination: { page: number; limit: number }, user: AuthUser) {
     this.requirePermission(user, "sponsor:view_leads");
     const sponsor = await sponsorRepository.findByIdOrThrow(sponsorId);
 

@@ -24,18 +24,49 @@ const mockEventRepo = {
 };
 
 vi.mock("@/repositories/session.repository", () => ({
-  sessionRepository: new Proxy({}, {
-    get: (_target, prop) => (mockSessionRepo as Record<string, unknown>)[prop as string],
-  }),
-  sessionBookmarkRepository: new Proxy({}, {
-    get: (_target, prop) => (mockBookmarkRepo as Record<string, unknown>)[prop as string],
-  }),
+  sessionRepository: new Proxy(
+    {},
+    {
+      get: (_target, prop) => (mockSessionRepo as Record<string, unknown>)[prop as string],
+    },
+  ),
+  sessionBookmarkRepository: new Proxy(
+    {},
+    {
+      get: (_target, prop) => (mockBookmarkRepo as Record<string, unknown>)[prop as string],
+    },
+  ),
 }));
 
 vi.mock("@/repositories/event.repository", () => ({
-  eventRepository: new Proxy({}, {
-    get: (_target, prop) => (mockEventRepo as Record<string, unknown>)[prop as string],
-  }),
+  eventRepository: new Proxy(
+    {},
+    {
+      get: (_target, prop) => (mockEventRepo as Record<string, unknown>)[prop as string],
+    },
+  ),
+}));
+
+const { mockTxGet, mockTxSet, mockRunTransaction } = vi.hoisted(() => {
+  const mockTxGet = vi.fn();
+  const mockTxSet = vi.fn();
+  const mockRunTransaction = vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => {
+    return fn({ get: mockTxGet, set: mockTxSet });
+  });
+  return { mockTxGet, mockTxSet, mockRunTransaction };
+});
+
+vi.mock("@/config/firebase", () => ({
+  db: {
+    collection: () => ({
+      doc: (id?: string) => ({ id: id ?? "mock-doc-id" }),
+    }),
+    runTransaction: (...args: unknown[]) => mockRunTransaction(...(args as [never])),
+  },
+  COLLECTIONS: {
+    SESSIONS: "sessions",
+    SESSION_BOOKMARKS: "sessionBookmarks",
+  },
 }));
 
 vi.mock("@/events/event-bus", () => ({
@@ -58,6 +89,11 @@ describe("SessionService", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
+    mockTxGet.mockReset();
+    mockTxSet.mockReset();
+    mockRunTransaction.mockImplementation(async (fn: (tx: unknown) => Promise<unknown>) => {
+      return fn({ get: mockTxGet, set: mockTxSet });
+    });
   });
 
   describe("create", () => {
@@ -93,9 +129,7 @@ describe("SessionService", () => {
         isBookmarkable: true,
       };
 
-      await expect(service.create(eventId, dto, user)).rejects.toThrow(
-        "heure de fin",
-      );
+      await expect(service.create(eventId, dto, user)).rejects.toThrow("heure de fin");
     });
 
     it("rejects user without event:create permission", async () => {
@@ -133,7 +167,13 @@ describe("SessionService", () => {
 
   describe("update", () => {
     it("updates a session", async () => {
-      const session = { id: "sess-1", eventId, title: "Old", startTime: "2026-06-01T09:00:00.000Z", endTime: "2026-06-01T10:00:00.000Z" };
+      const session = {
+        id: "sess-1",
+        eventId,
+        title: "Old",
+        startTime: "2026-06-01T09:00:00.000Z",
+        endTime: "2026-06-01T10:00:00.000Z",
+      };
       mockSessionRepo.findByIdOrThrow.mockResolvedValue(session);
 
       await service.update(eventId, "sess-1", { title: "New Title" }, user);
@@ -144,9 +184,9 @@ describe("SessionService", () => {
     it("rejects if session does not belong to event", async () => {
       mockSessionRepo.findByIdOrThrow.mockResolvedValue({ id: "sess-1", eventId: "other-event" });
 
-      await expect(
-        service.update(eventId, "sess-1", { title: "New" }, user),
-      ).rejects.toThrow("appartient pas");
+      await expect(service.update(eventId, "sess-1", { title: "New" }, user)).rejects.toThrow(
+        "appartient pas",
+      );
     });
   });
 
@@ -165,7 +205,10 @@ describe("SessionService", () => {
 
   describe("listByEvent", () => {
     it("returns sessions for the event", async () => {
-      const sessions = { data: [{ id: "s1" }, { id: "s2" }], meta: { total: 2, page: 1, limit: 50, totalPages: 1 } };
+      const sessions = {
+        data: [{ id: "s1" }, { id: "s2" }],
+        meta: { total: 2, page: 1, limit: 50, totalPages: 1 },
+      };
       mockSessionRepo.findByEvent.mockResolvedValue(sessions);
 
       const result = await service.listByEvent(eventId, { page: 1, limit: 50 }, user);
@@ -180,31 +223,37 @@ describe("SessionService", () => {
       await service.listByEvent(eventId, { date: "2026-06-01", page: 1, limit: 50 }, user);
 
       expect(mockSessionRepo.findByEventAndDate).toHaveBeenCalledWith(
-        eventId, "2026-06-01", expect.any(Object),
+        eventId,
+        "2026-06-01",
+        expect.any(Object),
       );
     });
   });
 
   describe("bookmark", () => {
-    it("bookmarks a session", async () => {
+    it("bookmarks a session via transaction", async () => {
       mockSessionRepo.findByIdOrThrow.mockResolvedValue({ id: "sess-1", eventId });
-      mockBookmarkRepo.findByUserAndSession.mockResolvedValue(null);
-      mockBookmarkRepo.create.mockResolvedValue({ id: "bm-1", sessionId: "sess-1", userId: user.uid });
+      mockTxGet.mockResolvedValue({ exists: false });
 
       const result = await service.bookmark(eventId, "sess-1", user);
 
-      expect(result.id).toBe("bm-1");
+      expect(mockRunTransaction).toHaveBeenCalled();
+      expect(mockTxSet).toHaveBeenCalled();
+      expect(result.sessionId).toBe("sess-1");
+      expect(result.userId).toBe(user.uid);
     });
 
     it("returns existing bookmark if already bookmarked", async () => {
       mockSessionRepo.findByIdOrThrow.mockResolvedValue({ id: "sess-1", eventId });
-      const existing = { id: "bm-1", sessionId: "sess-1", userId: user.uid };
-      mockBookmarkRepo.findByUserAndSession.mockResolvedValue(existing);
+      mockTxGet.mockResolvedValue({
+        exists: true,
+        data: () => ({ id: `${user.uid}_sess-1`, sessionId: "sess-1", userId: user.uid, eventId }),
+      });
 
       const result = await service.bookmark(eventId, "sess-1", user);
 
-      expect(result.id).toBe("bm-1");
-      expect(mockBookmarkRepo.create).not.toHaveBeenCalled();
+      expect(result.sessionId).toBe("sess-1");
+      expect(mockTxSet).not.toHaveBeenCalled();
     });
   });
 

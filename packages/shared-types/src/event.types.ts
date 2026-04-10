@@ -12,11 +12,7 @@ export const EventStatusSchema = z.enum([
 
 export type EventStatus = z.infer<typeof EventStatusSchema>;
 
-export const EventFormatSchema = z.enum([
-  "in_person",
-  "online",
-  "hybrid",
-]);
+export const EventFormatSchema = z.enum(["in_person", "online", "hybrid"]);
 
 export type EventFormat = z.infer<typeof EventFormatSchema>;
 
@@ -42,10 +38,12 @@ export const LocationSchema = z.object({
   address: z.string(),
   city: z.string(),
   country: z.string().length(2).default("SN"),
-  coordinates: z.object({
-    lat: z.number(),
-    lng: z.number(),
-  }).optional(),
+  coordinates: z
+    .object({
+      lat: z.number(),
+      lng: z.number(),
+    })
+    .optional(),
   googleMapsUrl: z.string().url().optional(),
   streamUrl: z.string().url().optional(), // for online/hybrid events
 });
@@ -56,7 +54,7 @@ export type Location = z.infer<typeof LocationSchema>;
 
 export const AccessZoneSchema = z.object({
   id: z.string(),
-  name: z.string(),                   // e.g. "VIP", "General", "Press"
+  name: z.string(), // e.g. "VIP", "General", "Press"
   color: z.string().regex(/^#[0-9A-Fa-f]{6}$/), // hex color for badge
   allowedTicketTypes: z.array(z.string()),
   capacity: z.number().int().positive().nullable().optional(),
@@ -78,6 +76,7 @@ export const SessionSchema = z.object({
   tags: z.array(z.string()).default([]),
   streamUrl: z.string().url().nullable().optional(),
   isBookmarkable: z.boolean().default(true),
+  deletedAt: z.string().datetime().nullable().optional(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 });
@@ -113,9 +112,9 @@ export type SessionBookmark = z.infer<typeof SessionBookmarkSchema>;
 // ─── Session Schedule Query ──────────────────────────────────────────────────
 
 export const SessionScheduleQuerySchema = z.object({
-  date: z.string().optional(),               // YYYY-MM-DD filter
+  date: z.string().optional(), // YYYY-MM-DD filter
   speakerId: z.string().optional(),
-  location: z.string().optional(),           // room/stage filter
+  location: z.string().optional(), // room/stage filter
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().positive().max(100).default(50),
 });
@@ -126,7 +125,7 @@ export type SessionScheduleQuery = z.infer<typeof SessionScheduleQuerySchema>;
 
 export const TicketTypeSchema = z.object({
   id: z.string(),
-  name: z.string(),                        // e.g. "VIP", "Standard", "Press"
+  name: z.string(), // e.g. "VIP", "Standard", "Press"
   description: z.string().optional(),
   price: z.number().int().min(0).default(0), // XOF — no decimals, 0 = free
   currency: z.enum(["XOF", "EUR", "USD"]).default("XOF"), // XOF = CFA Franc
@@ -170,7 +169,7 @@ export const EventSchema = z.object({
   venueName: z.string().nullable().optional(), // denormalized from Venue
   requiresApproval: z.boolean().default(false), // waitlist feature
   templateId: z.string().nullable().optional(), // created from a template
-  createdBy: z.string(),  // Firebase UID
+  createdBy: z.string(), // Firebase UID
   updatedBy: z.string(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
@@ -202,8 +201,8 @@ export type UpdateEventDto = z.infer<typeof UpdateEventSchema>;
 // ─── Registration ─────────────────────────────────────────────────────────────
 
 export const RegistrationStatusSchema = z.enum([
-  "pending",           // awaiting approval (requiresApproval = true)
-  "pending_payment",   // awaiting payment for paid tickets
+  "pending", // awaiting approval (requiresApproval = true)
+  "pending_payment", // awaiting payment for paid tickets
   "confirmed",
   "waitlisted",
   "cancelled",
@@ -217,16 +216,17 @@ export const RegistrationSchema = z.object({
   eventId: z.string(),
   userId: z.string(),
   ticketTypeId: z.string(),
-  eventTitle: z.string().optional(),             // denormalized for display
-  ticketTypeName: z.string().optional(),         // denormalized for display
-  participantName: z.string().nullable().optional(),   // denormalized for display
-  participantEmail: z.string().nullable().optional(),  // denormalized for display
+  eventTitle: z.string().optional(), // denormalized for display
+  ticketTypeName: z.string().optional(), // denormalized for display
+  participantName: z.string().nullable().optional(), // denormalized for display
+  participantEmail: z.string().nullable().optional(), // denormalized for display
   status: RegistrationStatusSchema.default("confirmed"),
-  qrCodeValue: z.string(),  // unique QR payload
+  qrCodeValue: z.string(), // unique QR payload
   checkedInAt: z.string().datetime().nullable().optional(),
   checkedInBy: z.string().nullable().optional(), // staff uid
   accessZoneId: z.string().nullable().optional(), // zone scanned at
   notes: z.string().nullable().optional(),
+  promotedFromWaitlistAt: z.string().datetime().nullable().optional(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 });
@@ -236,14 +236,14 @@ export type Registration = z.infer<typeof RegistrationSchema>;
 // ─── Event Search Query ──────────────────────────────────────────────────────
 
 export const EventSearchQuerySchema = z.object({
-  q: z.string().max(200).optional(),                 // title prefix search
+  q: z.string().max(200).optional(), // title prefix search
   category: EventCategorySchema.optional(),
   format: EventFormatSchema.optional(),
   city: z.string().optional(),
   country: z.string().length(2).optional(),
   tags: z.union([z.string(), z.array(z.string())]).optional(), // comma-separated or array
-  dateFrom: z.string().datetime().optional(),         // events starting on or after
-  dateTo: z.string().datetime().optional(),           // events starting on or before
+  dateFrom: z.string().datetime().optional(), // events starting on or after
+  dateTo: z.string().datetime().optional(), // events starting on or before
   organizationId: z.string().optional(),
   isFeatured: z.coerce.boolean().optional(),
   page: z.coerce.number().int().positive().default(1),

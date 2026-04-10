@@ -1,9 +1,9 @@
 import { z } from "zod";
 
 export const OrganizationPlanSchema = z.enum([
-  "free",       // up to 2 events/month, 100 participants
-  "starter",    // up to 10 events/month, 500 participants
-  "pro",        // unlimited events, 5000 participants
+  "free", // up to 2 events/month, 100 participants
+  "starter", // up to 10 events/month, 500 participants
+  "pro", // unlimited events, 5000 participants
   "enterprise", // unlimited, white-label, custom branding
 ]);
 
@@ -53,10 +53,10 @@ export type UpdateOrganizationDto = z.infer<typeof UpdateOrganizationSchema>;
 // ─── Organization Member Role ────────────────────────────────────────────────
 
 export const OrgMemberRoleSchema = z.enum([
-  "owner",        // full control, can delete org
-  "admin",        // manage events, members, settings — cannot delete org
-  "member",       // create/manage own events, view analytics
-  "viewer",       // read-only access to org dashboard
+  "owner", // full control, can delete org
+  "admin", // manage events, members, settings — cannot delete org
+  "member", // create/manage own events, view analytics
+  "viewer", // read-only access to org dashboard
 ]);
 
 export type OrgMemberRole = z.infer<typeof OrgMemberRoleSchema>;
@@ -86,6 +86,7 @@ export const OrganizationInviteSchema = z.object({
   invitedBy: z.string(),
   invitedByName: z.string().nullable().optional(),
   token: z.string(), // unique invite token
+  respondedAt: z.string().datetime().nullable().optional(),
   expiresAt: z.string().datetime(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
@@ -131,21 +132,27 @@ export const OrgAnalyticsSchema = z.object({
   }),
   registrationsOverTime: z.array(TimeSeriesPointSchema),
   checkinsOverTime: z.array(TimeSeriesPointSchema),
-  byCategory: z.array(z.object({
-    category: z.string(),
-    count: z.number().int(),
-  })),
-  byTicketType: z.array(z.object({
-    ticketTypeName: z.string(),
-    registered: z.number().int(),
-    checkedIn: z.number().int(),
-  })),
-  topEvents: z.array(z.object({
-    eventId: z.string(),
-    title: z.string(),
-    registeredCount: z.number().int(),
-    checkedInCount: z.number().int(),
-  })),
+  byCategory: z.array(
+    z.object({
+      category: z.string(),
+      count: z.number().int(),
+    }),
+  ),
+  byTicketType: z.array(
+    z.object({
+      ticketTypeName: z.string(),
+      registered: z.number().int(),
+      checkedIn: z.number().int(),
+    }),
+  ),
+  topEvents: z.array(
+    z.object({
+      eventId: z.string(),
+      title: z.string(),
+      registeredCount: z.number().int(),
+      checkedInCount: z.number().int(),
+    }),
+  ),
 });
 
 export type OrgAnalytics = z.infer<typeof OrgAnalyticsSchema>;
@@ -161,8 +168,8 @@ export interface PlanLimits {
 }
 
 export const PLAN_LIMITS: Record<OrganizationPlan, PlanLimits> = {
-  free:       { maxEvents: 2,        maxParticipants: 100,   maxMembers: 3 },
-  starter:    { maxEvents: 10,       maxParticipants: 500,   maxMembers: 10 },
-  pro:        { maxEvents: Infinity, maxParticipants: 5000,  maxMembers: 50 },
+  free: { maxEvents: 2, maxParticipants: 100, maxMembers: 3 },
+  starter: { maxEvents: 10, maxParticipants: 500, maxMembers: 10 },
+  pro: { maxEvents: Infinity, maxParticipants: 5000, maxMembers: 50 },
   enterprise: { maxEvents: Infinity, maxParticipants: Infinity, maxMembers: Infinity },
 };

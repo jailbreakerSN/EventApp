@@ -382,7 +382,7 @@ service cloud.firestore {
     // Written by authenticated sponsor users, read by sponsor owner / org organizers / super_admin.
     match /sponsorLeads/{leadId} {
       // The sponsor user who captured the lead can read it
-      allow read: if isOwnerOf(resource.data.sponsorUserId);
+      allow read: if isOwnerOf(resource.data.scannedBy);
 
       // Org organizers can read leads for their org's events
       allow read: if isOrganizer()
@@ -395,7 +395,7 @@ service cloud.firestore {
 
       // Authenticated sponsor captures leads at events
       allow create: if isAuthenticated()
-                    && request.resource.data.sponsorUserId == currentUid();
+                    && request.resource.data.scannedBy == currentUid();
 
       // Updates and deletes via Admin SDK only
       allow update: if false;
