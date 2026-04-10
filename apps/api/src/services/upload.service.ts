@@ -7,6 +7,7 @@ import { organizationRepository } from "@/repositories/organization.repository";
 import { speakerRepository } from "@/repositories/speaker.repository";
 import { sponsorRepository } from "@/repositories/sponsor.repository";
 import { ValidationError } from "@/errors/app-error";
+import { registrationRepository } from "@/repositories/registration.repository";
 import { BaseService } from "./base.service";
 
 const ALLOWED_CONTENT_TYPES = new Set([
@@ -17,7 +18,7 @@ const ALLOWED_CONTENT_TYPES = new Set([
   "application/pdf",
 ]);
 
-type EntityType = "event" | "organization" | "speaker" | "sponsor";
+type EntityType = "event" | "organization" | "speaker" | "sponsor" | "feed";
 
 export class UploadService extends BaseService {
   /**
@@ -95,6 +96,15 @@ export class UploadService extends BaseService {
         } else {
           this.requirePermission(user, "event:update");
           this.requireOrganizationAccess(user, sponsor.organizationId);
+        }
+        break;
+      }
+      case "feed": {
+        // Any registered participant with feed:create_post permission can upload
+        this.requirePermission(user, "feed:create_post");
+        const registration = await registrationRepository.findExisting(entityId, user.uid);
+        if (!registration) {
+          throw new ValidationError("You must be registered for this event to upload feed images");
         }
         break;
       }

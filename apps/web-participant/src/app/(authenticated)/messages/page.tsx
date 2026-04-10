@@ -71,13 +71,28 @@ export default function MessagesPage() {
   const [selectedConv, setSelectedConv] = useState<string | null>(null);
   const [messageText, setMessageText] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [, setTick] = useState(0);
 
-  const { data: convData, isLoading: loadingConvs } = useQuery({
+  // Auto-refresh relative timestamps every 60s
+  useEffect(() => {
+    const interval = setInterval(() => setTick((t) => t + 1), 60_000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const {
+    data: convData,
+    isLoading: loadingConvs,
+    isError: convError,
+  } = useQuery({
     queryKey: ["conversations"],
     queryFn: () => messagingApi.listConversations(),
   });
 
-  const { data: messagesData, isLoading: loadingMsgs } = useQuery({
+  const {
+    data: messagesData,
+    isLoading: loadingMsgs,
+    isError: msgsError,
+  } = useQuery({
     queryKey: ["messages", selectedConv],
     queryFn: () => messagingApi.listMessages(selectedConv!),
     enabled: !!selectedConv,
@@ -106,15 +121,22 @@ export default function MessagesPage() {
   // Sort conversations by most recent message (latest first)
   const sortedConversations = useMemo(() => {
     return [...conversations].sort((a, b) => {
-      const aTime = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : new Date(a.createdAt).getTime();
-      const bTime = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : new Date(b.createdAt).getTime();
+      const aTime = a.lastMessageAt
+        ? new Date(a.lastMessageAt).getTime()
+        : new Date(a.createdAt).getTime();
+      const bTime = b.lastMessageAt
+        ? new Date(b.lastMessageAt).getTime()
+        : new Date(b.createdAt).getTime();
       return bTime - aTime;
     });
   }, [conversations]);
 
   // Reversed messages for chronological display (oldest first)
   const chronologicalMessages = useMemo(() => [...messages].reverse(), [messages]);
-  const messageGroups = useMemo(() => groupMessages(chronologicalMessages), [chronologicalMessages]);
+  const messageGroups = useMemo(
+    () => groupMessages(chronologicalMessages),
+    [chronologicalMessages],
+  );
 
   // Scroll to bottom when messages change
   useEffect(() => {
@@ -144,7 +166,17 @@ export default function MessagesPage() {
           <div className="p-4 border-b border-border">
             <h2 className="text-sm font-semibold text-foreground">Conversations</h2>
           </div>
-          {loadingConvs ? (
+          {convError ? (
+            <div className="text-center py-12 px-4">
+              <p className="text-sm text-destructive">Erreur de chargement des conversations.</p>
+              <button
+                onClick={() => qc.invalidateQueries({ queryKey: ["conversations"] })}
+                className="mt-2 text-xs text-primary hover:underline"
+              >
+                Réessayer
+              </button>
+            </div>
+          ) : loadingConvs ? (
             <div className="animate-pulse divide-y divide-border">
               {[1, 2, 3, 4, 5].map((i) => (
                 <div key={i} className="p-4 space-y-2">
@@ -182,11 +214,15 @@ export default function MessagesPage() {
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1 min-w-0">
-                        <p className={`text-sm truncate ${hasUnread ? "font-bold text-foreground" : "font-medium text-foreground"}`}>
+                        <p
+                          className={`text-sm truncate ${hasUnread ? "font-bold text-foreground" : "font-medium text-foreground"}`}
+                        >
                           {otherName}
                         </p>
                         {conv.lastMessage && (
-                          <p className={`text-xs truncate mt-0.5 ${hasUnread ? "text-foreground font-medium" : "text-muted-foreground"}`}>
+                          <p
+                            className={`text-xs truncate mt-0.5 ${hasUnread ? "text-foreground font-medium" : "text-muted-foreground"}`}
+                          >
                             {conv.lastMessage}
                           </p>
                         )}
@@ -223,7 +259,9 @@ export default function MessagesPage() {
               {selectedConvData && (
                 <div className="px-4 py-3 border-b border-border flex items-center gap-3">
                   <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-semibold text-sm">
-                    {getOtherParticipantLabel(selectedConvData, currentUserId).charAt(0).toUpperCase()}
+                    {getOtherParticipantLabel(selectedConvData, currentUserId)
+                      .charAt(0)
+                      .toUpperCase()}
                   </div>
                   <span className="font-medium text-sm text-foreground">
                     {getOtherParticipantLabel(selectedConvData, currentUserId)}
@@ -232,7 +270,17 @@ export default function MessagesPage() {
               )}
 
               <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                {loadingMsgs ? (
+                {msgsError ? (
+                  <div className="text-center py-8">
+                    <p className="text-sm text-destructive">Erreur de chargement des messages.</p>
+                    <button
+                      onClick={() => qc.invalidateQueries({ queryKey: ["messages", selectedConv] })}
+                      className="mt-2 text-xs text-primary hover:underline"
+                    >
+                      Réessayer
+                    </button>
+                  </div>
+                ) : loadingMsgs ? (
                   <div className="animate-pulse space-y-4 py-4">
                     <div className="flex justify-start">
                       <div className="space-y-1.5 max-w-[60%]">
@@ -281,9 +329,11 @@ export default function MessagesPage() {
                         )}
 
                         {/* Sender name */}
-                        <p className={`text-[11px] font-medium mb-0.5 ${
-                          isOwn ? "text-right text-primary" : "text-left text-muted-foreground"
-                        }`}>
+                        <p
+                          className={`text-[11px] font-medium mb-0.5 ${
+                            isOwn ? "text-right text-primary" : "text-left text-muted-foreground"
+                          }`}
+                        >
                           {senderLabel}
                         </p>
 
@@ -298,16 +348,21 @@ export default function MessagesPage() {
                                 isOwn
                                   ? "bg-primary text-white rounded-l-lg rounded-tr-lg"
                                   : "bg-accent text-foreground rounded-r-lg rounded-tl-lg"
-                              } ${
-                                mi === 0 ? "" : isOwn ? "rounded-tr-md" : "rounded-tl-md"
-                              }`}
+                              } ${mi === 0 ? "" : isOwn ? "rounded-tr-md" : "rounded-tl-md"}`}
                             >
-                              <p className="text-sm whitespace-pre-wrap break-words">{msg.content}</p>
+                              <p className="text-sm whitespace-pre-wrap break-words">
+                                {msg.content}
+                              </p>
                               {mi === group.messages.length - 1 && (
-                                <p className={`text-[10px] mt-1 ${
-                                  isOwn ? "text-white/70" : "text-muted-foreground"
-                                }`}>
-                                  {new Date(msg.createdAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
+                                <p
+                                  className={`text-[10px] mt-1 ${
+                                    isOwn ? "text-white/70" : "text-muted-foreground"
+                                  }`}
+                                >
+                                  {new Date(msg.createdAt).toLocaleTimeString("fr-FR", {
+                                    hour: "2-digit",
+                                    minute: "2-digit",
+                                  })}
                                 </p>
                               )}
                             </div>

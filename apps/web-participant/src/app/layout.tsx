@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import { Providers } from "./providers";
-import { Toaster, OfflineBanner } from "@teranga/shared-ui";
+import { Toaster } from "@teranga/shared-ui";
+import { OfflineIndicator } from "@/components/offline-indicator";
 import { SwRegister } from "@/components/sw-register";
 import "./globals.css";
 
@@ -31,15 +32,11 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="fr" suppressHydrationWarning>
       <body className={inter.className}>
-        <OfflineBanner />
+        <OfflineIndicator />
         <Providers>{children}</Providers>
         <Toaster />
         <SwRegister />

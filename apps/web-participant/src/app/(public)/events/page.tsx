@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { serverEventsApi } from "@/lib/server-api";
-import { EventGridWithCompare } from "@/components/event-grid-compare";
+import { EventCard } from "@/components/event-card";
 import { EventFilters } from "@/components/event-filters";
 import { NewsletterSignup } from "@/components/newsletter-signup";
 import { getDateRange } from "@/lib/date-utils";
@@ -79,7 +79,11 @@ export default async function EventsPage({ searchParams }: EventsPageProps) {
 
       {events.length > 0 ? (
         <>
-          <EventGridWithCompare events={events} />
+          <div className="mt-6 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+            {events.map((event) => (
+              <EventCard key={event.id} event={event} />
+            ))}
+          </div>
           {meta.totalPages > 1 && (
             <div className="mt-8">
               <Pagination currentPage={page} totalPages={meta.totalPages} />

@@ -16,16 +16,21 @@ function formatTime(iso: string) {
 }
 
 export default function SchedulePage() {
-  const { slug: eventId } = useParams<{ slug: string }>();
+  const { slug } = useParams<{ slug: string }>();
   const qc = useQueryClient();
 
-  const { data: eventData } = useQuery({
-    queryKey: ["event", eventId],
-    queryFn: () => eventsApi.getById(eventId),
-    enabled: !!eventId,
+  // Resolve slug → event (gets us the real eventId)
+  const { data: eventData, isLoading: isLoadingEvent } = useQuery({
+    queryKey: ["event-by-slug", slug],
+    queryFn: () => eventsApi.getBySlug(slug),
+    enabled: !!slug,
+    staleTime: 5 * 60_000,
   });
 
-  const { data: sessionsData, isLoading } = useQuery({
+  const event = eventData?.data;
+  const eventId = event?.id ?? "";
+
+  const { data: sessionsData, isLoading: isLoadingSessions } = useQuery({
     queryKey: ["sessions", eventId],
     queryFn: () => sessionsApi.list(eventId),
     enabled: !!eventId,
@@ -38,7 +43,13 @@ export default function SchedulePage() {
   });
 
   const toggleBookmark = useMutation({
-    mutationFn: async ({ sessionId, isBookmarked }: { sessionId: string; isBookmarked: boolean }) => {
+    mutationFn: async ({
+      sessionId,
+      isBookmarked,
+    }: {
+      sessionId: string;
+      isBookmarked: boolean;
+    }) => {
       if (isBookmarked) {
         await sessionsApi.removeBookmark(eventId, sessionId);
       } else {
@@ -50,11 +61,10 @@ export default function SchedulePage() {
     },
   });
 
-  const event = eventData?.data;
   const sessions = sessionsData?.data ?? [];
   const bookmarkedIds = new Set((bookmarksData?.data ?? []).map((b) => b.sessionId));
 
-  if (isLoading) {
+  if (isLoadingEvent || isLoadingSessions) {
     return (
       <div className="flex items-center justify-center py-20">
         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -115,15 +125,23 @@ export default function SchedulePage() {
                       )}
                     </div>
                     {session.description && (
-                      <p className="text-sm text-muted-foreground line-clamp-3">{session.description}</p>
+                      <p className="text-sm text-muted-foreground line-clamp-3">
+                        {session.description}
+                      </p>
                     )}
                   </div>
                   {session.isBookmarkable && (
                     <button
                       onClick={() => toggleBookmark.mutate({ sessionId: session.id, isBookmarked })}
                       className={`p-2 rounded-lg transition-colors ${isBookmarked ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-foreground hover:bg-muted"}`}
-                      title={isBookmarked ? "Retirer du programme perso" : "Ajouter au programme perso"}
-                      aria-label={isBookmarked ? "Retirer du programme personnel" : "Ajouter au programme personnel"}
+                      title={
+                        isBookmarked ? "Retirer du programme perso" : "Ajouter au programme perso"
+                      }
+                      aria-label={
+                        isBookmarked
+                          ? "Retirer du programme personnel"
+                          : "Ajouter au programme personnel"
+                      }
                     >
                       <Bookmark className={`h-5 w-5 ${isBookmarked ? "fill-current" : ""}`} />
                     </button>

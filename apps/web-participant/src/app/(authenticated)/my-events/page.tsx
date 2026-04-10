@@ -42,8 +42,8 @@ export default function MyEventsPage() {
     paymentId: string;
   } | null>(null);
 
-  const registrations = (data as { data?: Registration[] })?.data as Registration[] | undefined;
-  const meta = (data as { meta?: { total: number; totalPages: number } })?.meta;
+  const registrations = data?.data;
+  const meta = data?.meta;
 
   const refundMutation = useMutation({
     mutationFn: (paymentId: string) =>
@@ -82,10 +82,14 @@ export default function MyEventsPage() {
     }
   };
 
+  /** Registration with optional denormalized fields the API may include */
+  type RegistrationWithExtras = Registration & {
+    paymentId?: string;
+    waitlistPosition?: number;
+  };
+
   /** Determine if a registration is eligible for a refund request */
-  function canRequestRefund(reg: Registration): boolean {
-    // Only confirmed registrations with a paid ticket can request refund
-    // Exclude cancelled, refunded, or refund_requested statuses
+  function canRequestRefund(reg: RegistrationWithExtras): boolean {
     const nonRefundableStatuses = [
       "cancelled",
       "refunded",
@@ -95,15 +99,8 @@ export default function MyEventsPage() {
       "waitlisted",
     ];
     if (nonRefundableStatuses.includes(reg.status)) return false;
-    // Registration must have a payment associated (non-free ticket)
-    const regRecord = reg as Record<string, unknown>;
-    const paymentId = regRecord.paymentId as string | undefined;
-    if (!paymentId) return false;
+    if (!reg.paymentId) return false;
     return true;
-  }
-
-  function getPaymentId(reg: Registration): string | undefined {
-    return (reg as Record<string, unknown>).paymentId as string | undefined;
   }
 
   return (
@@ -155,22 +152,15 @@ export default function MyEventsPage() {
 
       {registrations && registrations.length > 0 && (
         <div className="mt-6 space-y-4">
-          {registrations.map((reg) => {
+          {registrations.map((rawReg) => {
+            const reg = rawReg as RegistrationWithExtras;
             const status = STATUS_LABELS[reg.status] ?? {
               label: reg.status,
               variant: "outline" as const,
             };
             const canCancel = ["confirmed", "pending"].includes(reg.status);
             const isWaitlisted = reg.status === "waitlisted";
-            const eventTitle = (reg as Record<string, unknown>).eventTitle as string | undefined;
-            const ticketTypeName = (reg as Record<string, unknown>).ticketTypeName as
-              | string
-              | undefined;
-            const waitlistPosition = (reg as Record<string, unknown>).waitlistPosition as
-              | number
-              | undefined;
             const showRefund = canRequestRefund(reg);
-            const paymentId = getPaymentId(reg);
 
             return (
               <Card
@@ -180,17 +170,17 @@ export default function MyEventsPage() {
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex-1">
                     <div className="flex items-center gap-2">
-                      <h3 className="font-semibold">{eventTitle ?? reg.eventId}</h3>
+                      <h3 className="font-semibold">{reg.eventTitle ?? reg.eventId}</h3>
                       <Badge variant={status.variant}>{status.label}</Badge>
                     </div>
                     <p className="mt-1 text-sm text-muted-foreground">
-                      Billet : {ticketTypeName ?? reg.ticketTypeId} · Inscrit le{" "}
+                      Billet : {reg.ticketTypeName ?? reg.ticketTypeId} · Inscrit le{" "}
                       {formatDate(reg.createdAt)}
                     </p>
-                    {isWaitlisted && waitlistPosition && (
+                    {isWaitlisted && reg.waitlistPosition && (
                       <p className="mt-1 flex items-center gap-1 text-sm font-medium text-amber-600 dark:text-amber-400">
                         <ListOrdered className="h-4 w-4" />
-                        Position #{waitlistPosition}
+                        Position #{reg.waitlistPosition}
                       </p>
                     )}
                   </div>
@@ -204,12 +194,14 @@ export default function MyEventsPage() {
                         </Button>
                       </Link>
                     )}
-                    {showRefund && paymentId && (
+                    {showRefund && reg.paymentId && (
                       <Button
                         variant="outline"
                         size="sm"
                         className="text-amber-600 hover:text-amber-700 border-amber-300 hover:border-amber-400 dark:text-amber-400 dark:hover:text-amber-300 dark:border-amber-700 dark:hover:border-amber-600"
-                        onClick={() => setRefundTarget({ registrationId: reg.id, paymentId })}
+                        onClick={() =>
+                          setRefundTarget({ registrationId: reg.id, paymentId: reg.paymentId! })
+                        }
                         disabled={refundMutation.isPending}
                       >
                         <RotateCcw className="mr-1 h-4 w-4" />

@@ -98,7 +98,7 @@ export default function SpeakerPortalPage() {
       setEditing(false);
       await loadData();
     } catch {
-      // Error handled silently
+      toast.error("Erreur lors de l'enregistrement. Veuillez réessayer.");
     } finally {
       setSaving(false);
     }

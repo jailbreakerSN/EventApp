@@ -15,7 +15,11 @@ import {
   AlertTriangle,
   Search,
 } from "lucide-react";
-import { Button, Badge, Skeleton, formatDate } from "@teranga/shared-ui";
+import { Button, Badge, formatDate } from "@teranga/shared-ui";
+
+function Skeleton({ className = "" }: { className?: string }) {
+  return <div className={`bg-muted animate-pulse rounded-md ${className}`} />;
+}
 import { eventsApi, speakersApi, sessionsApi } from "@/lib/api-client";
 import type { Event } from "@teranga/shared-types";
 

@@ -86,8 +86,14 @@ async function request<T>(
   if (response.status === 401 && !_isRetry && auth) {
     const user = firebaseAuth.currentUser;
     if (user) {
-      await user.getIdToken(true);
-      return request<T>(path, options, auth, true);
+      try {
+        await user.getIdToken(true);
+        return request<T>(path, options, auth, true);
+      } catch {
+        // Token refresh failed — session is invalid
+        await firebaseAuth.signOut();
+        throw new ApiError("AUTH_EXPIRED", "Votre session a expiré. Veuillez vous reconnecter.", 401);
+      }
     }
   }
 
@@ -95,12 +101,22 @@ async function request<T>(
     return {} as T;
   }
 
-  const data = await response.json();
+  let data: Record<string, unknown>;
+  try {
+    data = await response.json();
+  } catch {
+    // Response body is not valid JSON (e.g. empty body on error responses)
+    if (!response.ok) {
+      throw new ApiError("UNKNOWN", "La requête a échoué", response.status);
+    }
+    return {} as T;
+  }
 
   if (!response.ok || data.success === false) {
+    const error = data.error as { code?: string; message?: string } | undefined;
     throw new ApiError(
-      data.error?.code ?? "UNKNOWN",
-      data.error?.message ?? "La requête a échoué",
+      error?.code ?? "UNKNOWN",
+      error?.message ?? "La requête a échoué",
       response.status,
     );
   }
@@ -213,6 +229,12 @@ export const feedApi = {
 
   deleteComment: (eventId: string, postId: string, commentId: string) =>
     api.delete<void>(`/v1/events/${eventId}/feed/${postId}/comments/${commentId}`),
+
+  getUploadUrl: (eventId: string, body: { fileName: string; contentType: string }) =>
+    api.post<ApiResponse<{ uploadUrl: string; publicUrl: string }>>(
+      `/v1/events/${eventId}/feed/upload-url`,
+      { ...body, purpose: "feed" },
+    ),
 };
 
 export const messagingApi = {

@@ -1,12 +1,6 @@
 "use client";
 
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useState,
-  type ReactNode,
-} from "react";
+import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
@@ -51,24 +45,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let mounted = true;
+
     const unsubscribe = onAuthStateChanged(firebaseAuth, async (firebaseUser: User | null) => {
       if (firebaseUser) {
         const tokenResult = await firebaseUser.getIdTokenResult();
-        setUser({
-          uid: firebaseUser.uid,
-          email: firebaseUser.email,
-          displayName: firebaseUser.displayName,
-          photoURL: firebaseUser.photoURL,
-          roles: (tokenResult.claims.roles as UserRole[]) ?? ["participant"],
-          emailVerified: firebaseUser.emailVerified,
-        });
-      } else {
+        if (mounted) {
+          setUser({
+            uid: firebaseUser.uid,
+            email: firebaseUser.email,
+            displayName: firebaseUser.displayName,
+            photoURL: firebaseUser.photoURL,
+            roles: (tokenResult.claims.roles as UserRole[]) ?? ["participant"],
+            emailVerified: firebaseUser.emailVerified,
+          });
+        }
+      } else if (mounted) {
         setUser(null);
       }
-      setLoading(false);
+      if (mounted) setLoading(false);
     });
 
-    return unsubscribe;
+    return () => {
+      mounted = false;
+      unsubscribe();
+    };
   }, []);
 
   const login = async (email: string, password: string) => {
@@ -100,7 +101,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, loginWithGoogle, logout, resetPassword, resendVerification }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        loading,
+        login,
+        register,
+        loginWithGoogle,
+        logout,
+        resetPassword,
+        resendVerification,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

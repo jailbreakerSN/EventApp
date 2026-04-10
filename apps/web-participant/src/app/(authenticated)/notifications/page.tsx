@@ -10,7 +10,7 @@ export default function NotificationsPage() {
   const [page, setPage] = useState(1);
   const [unreadOnly, setUnreadOnly] = useState(false);
 
-  const { data, isLoading } = useNotifications({ page, limit: 20, unreadOnly });
+  const { data, isLoading, isError } = useNotifications({ page, limit: 20, unreadOnly });
   const notifications = data?.data ?? [];
   const total = data?.meta?.total ?? 0;
 
@@ -22,14 +22,12 @@ export default function NotificationsPage() {
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Notifications</h1>
-          <p className="text-sm text-muted-foreground">{total} notification{total > 1 ? "s" : ""}</p>
+          <p className="text-sm text-muted-foreground">
+            {total} notification{total > 1 ? "s" : ""}
+          </p>
         </div>
         <div className="flex gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setUnreadOnly(!unreadOnly)}
-          >
+          <Button variant="outline" size="sm" onClick={() => setUnreadOnly(!unreadOnly)}>
             {unreadOnly ? "Toutes" : "Non lues"}
           </Button>
           <Button
@@ -44,7 +42,20 @@ export default function NotificationsPage() {
         </div>
       </div>
 
-      {isLoading ? (
+      {isError ? (
+        <Card>
+          <CardContent className="flex flex-col items-center py-12">
+            <Bell className="mb-3 h-10 w-10 text-destructive" />
+            <p className="text-destructive">Erreur de chargement des notifications.</p>
+            <button
+              onClick={() => window.location.reload()}
+              className="mt-2 text-sm text-primary hover:underline"
+            >
+              Réessayer
+            </button>
+          </CardContent>
+        </Card>
+      ) : isLoading ? (
         <div className="space-y-2">
           {[1, 2, 3, 4, 5].map((i) => (
             <div key={i} className="animate-pulse rounded-lg border p-4">
@@ -73,18 +84,27 @@ export default function NotificationsPage() {
           {notifications.map((n: Notification) => (
             <button
               key={n.id}
-              onClick={() => { if (!n.isRead) markAsRead.mutate(n.id); }}
+              onClick={() => {
+                if (!n.isRead) markAsRead.mutate(n.id);
+              }}
               className={`w-full rounded-lg border p-4 text-left transition-colors ${
                 n.isRead ? "bg-card" : "border-teranga-gold/30 bg-teranga-gold/5"
               }`}
             >
               <div className="flex items-start gap-3">
-                {!n.isRead && <Circle className="mt-1 h-2.5 w-2.5 flex-shrink-0 fill-teranga-gold text-teranga-gold" />}
+                {!n.isRead && (
+                  <Circle className="mt-1 h-2.5 w-2.5 flex-shrink-0 fill-teranga-gold text-teranga-gold" />
+                )}
                 <div className="flex-1">
                   <p className="font-medium">{n.title}</p>
                   <p className="text-sm text-muted-foreground">{n.body}</p>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    {new Date(n.createdAt).toLocaleDateString("fr-FR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                    {new Date(n.createdAt).toLocaleDateString("fr-FR", {
+                      day: "numeric",
+                      month: "short",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
                   </p>
                 </div>
               </div>
@@ -94,11 +114,24 @@ export default function NotificationsPage() {
       )}
 
       {total > 20 && (
-        <div className="mt-6 flex justify-center gap-2">
-          <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>
-            Precedent
+        <div className="mt-6 flex items-center justify-center gap-3">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page <= 1}
+            onClick={() => setPage(page - 1)}
+          >
+            Précédent
           </Button>
-          <Button variant="outline" size="sm" disabled={page * 20 >= total} onClick={() => setPage(page + 1)}>
+          <span className="text-sm text-muted-foreground">
+            Page {page} sur {Math.ceil(total / 20)}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page * 20 >= total}
+            onClick={() => setPage(page + 1)}
+          >
             Suivant
           </Button>
         </div>

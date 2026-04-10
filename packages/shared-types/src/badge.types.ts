@@ -4,23 +4,33 @@ export const BadgeTemplateSchema = z.object({
   id: z.string(),
   organizationId: z.string(),
   name: z.string(),
-  width: z.number().default(85.6),   // mm — standard card size
-  height: z.number().default(54.0),  // mm
-  backgroundColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).default("#FFFFFF"),
-  primaryColor: z.string().regex(/^#[0-9A-Fa-f]{6}$/).default("#1A1A2E"),
+  width: z.number().default(85.6), // mm — standard card size
+  height: z.number().default(54.0), // mm
+  backgroundColor: z
+    .string()
+    .regex(/^#[0-9A-Fa-f]{6}$/)
+    .default("#FFFFFF"),
+  primaryColor: z
+    .string()
+    .regex(/^#[0-9A-Fa-f]{6}$/)
+    .default("#1A1A2E"),
   logoURL: z.string().url().nullable().optional(),
   showQR: z.boolean().default(true),
   showName: z.boolean().default(true),
   showOrganization: z.boolean().default(true),
   showRole: z.boolean().default(true),
   showPhoto: z.boolean().default(false),
-  customFields: z.array(z.object({
-    key: z.string(),
-    label: z.string(),
-    position: z.object({ x: z.number(), y: z.number() }),
-    fontSize: z.number().default(12),
-    color: z.string().default("#000000"),
-  })).default([]),
+  customFields: z
+    .array(
+      z.object({
+        key: z.string(),
+        label: z.string(),
+        position: z.object({ x: z.number(), y: z.number() }),
+        fontSize: z.number().default(12),
+        color: z.string().default("#000000"),
+      }),
+    )
+    .default([]),
   isDefault: z.boolean().default(false),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
@@ -38,9 +48,9 @@ export const GeneratedBadgeSchema = z.object({
   userId: z.string(),
   templateId: z.string(),
   status: BadgeStatusSchema.default("pending"),
-  pdfURL: z.string().url().nullable().optional(),   // Cloud Storage URL
-  qrCodeValue: z.string(),                          // payload encoded in QR
-  error: z.string().nullable().optional(),           // error message if generation failed
+  pdfURL: z.string().url().nullable().optional(), // Cloud Storage URL
+  qrCodeValue: z.string(), // payload encoded in QR
+  error: z.string().nullable().optional(), // error message if generation failed
   generatedAt: z.string().datetime(),
   downloadCount: z.number().int().default(0),
 });
@@ -68,17 +78,19 @@ export type QrScanResult = z.infer<typeof QrScanResultSchema>;
 export const OfflineEventDataSchema = z.object({
   eventId: z.string(),
   downloadedAt: z.string().datetime(),
-  registrations: z.array(z.object({
-    qrCodeValue: z.string(),
-    registrationId: z.string(),
-    participantName: z.string(),
-    ticketTypeId: z.string(),
-    ticketTypeName: z.string(),
-    accessZoneIds: z.array(z.string()),
-    status: z.enum(["confirmed", "waitlisted"]),
-    checkedIn: z.boolean(),
-    checkedInAt: z.string().datetime().nullable(),
-  })),
+  registrations: z.array(
+    z.object({
+      qrCodeValue: z.string(),
+      registrationId: z.string(),
+      participantName: z.string(),
+      ticketTypeId: z.string(),
+      ticketTypeName: z.string(),
+      accessZoneIds: z.array(z.string()),
+      status: z.enum(["confirmed", "waitlisted"]),
+      checkedIn: z.boolean(),
+      checkedInAt: z.string().datetime().nullable(),
+    }),
+  ),
 });
 
 export type OfflineEventData = z.infer<typeof OfflineEventDataSchema>;
@@ -120,7 +132,7 @@ export type BulkBadgeGenerateRequest = z.infer<typeof BulkBadgeGenerateRequestSc
 export const UploadUrlRequestSchema = z.object({
   fileName: z.string().min(1).max(255),
   contentType: z.enum(["image/jpeg", "image/png", "image/webp", "image/gif", "application/pdf"]),
-  purpose: z.enum(["cover", "banner", "logo", "photo", "slides", "document"]),
+  purpose: z.enum(["cover", "banner", "logo", "photo", "slides", "document", "feed"]),
 });
 
 export type UploadUrlRequest = z.infer<typeof UploadUrlRequestSchema>;

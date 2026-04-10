@@ -59,12 +59,14 @@ export default function RegisterPage() {
   const { data: eventData, isLoading: eventLoading } = useQuery({
     queryKey: ["event", eventId],
     queryFn: () => eventsApi.getById(eventId),
+    staleTime: 5 * 60_000,
   });
 
   // Check if already registered for this event
   const { data: myRegsData, isLoading: regsLoading } = useQuery({
     queryKey: ["my-registrations-check", eventId],
     queryFn: () => registrationsApi.getMyRegistrations({ limit: 100 }),
+    staleTime: 60_000,
   });
 
   const registerMutation = useRegister();

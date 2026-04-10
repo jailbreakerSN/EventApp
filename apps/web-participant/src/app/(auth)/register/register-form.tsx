@@ -6,7 +6,17 @@ import Link from "next/link";
 import { useAuth } from "@/hooks/use-auth";
 import { getAndClearRedirectUrl } from "@/components/auth-guard";
 import { ThemeLogo } from "@/components/theme-logo";
-import { Button, Input, Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter, FormField } from "@teranga/shared-ui";
+import {
+  Button,
+  Input,
+  Card,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+  CardContent,
+  CardFooter,
+  FormField,
+} from "@teranga/shared-ui";
 
 function safeRedirect(url: string | null): string {
   if (!url) return "/events";
@@ -26,6 +36,13 @@ export function RegisterForm() {
   const [loading, setLoading] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
+  const validatePassword = (value: string): string => {
+    if (value.length < 8) return "Le mot de passe doit contenir au moins 8 caractères";
+    if (!/[A-Z]/.test(value)) return "Le mot de passe doit contenir au moins une majuscule";
+    if (!/[0-9]/.test(value)) return "Le mot de passe doit contenir au moins un chiffre";
+    return "";
+  };
+
   const validateField = (name: string, value: string) => {
     let message = "";
     if (name === "displayName") {
@@ -33,7 +50,7 @@ export function RegisterForm() {
     } else if (name === "email") {
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) message = "Adresse email invalide";
     } else if (name === "password") {
-      if (value.length < 6) message = "Le mot de passe doit contenir au moins 6 caractères";
+      message = validatePassword(value);
     }
     setFieldErrors((prev) => ({ ...prev, [name]: message }));
   };
@@ -44,8 +61,9 @@ export function RegisterForm() {
     e.preventDefault();
     setError(null);
 
-    if (password.length < 6) {
-      setError("Le mot de passe doit contenir au moins 6 caractères.");
+    const pwError = validatePassword(password);
+    if (pwError) {
+      setError(pwError);
       return;
     }
 
@@ -85,7 +103,12 @@ export function RegisterForm() {
     <Card>
       <CardHeader className="text-center">
         <Link href="/" className="mx-auto mb-2 block">
-          <ThemeLogo width={140} height={83} className="h-14 w-auto mx-auto sm:h-16 md:h-20" priority />
+          <ThemeLogo
+            width={140}
+            height={83}
+            className="h-14 w-auto mx-auto sm:h-16 md:h-20"
+            priority
+          />
         </Link>
         <CardTitle className="text-2xl">Créer un compte</CardTitle>
         <CardDescription>Inscrivez-vous pour découvrir les événements</CardDescription>
@@ -98,13 +121,21 @@ export function RegisterForm() {
             </div>
           )}
 
-          <FormField label="Nom complet" required htmlFor="displayName" error={fieldErrors.displayName}>
+          <FormField
+            label="Nom complet"
+            required
+            htmlFor="displayName"
+            error={fieldErrors.displayName}
+          >
             <Input
               id="displayName"
               type="text"
               placeholder="Prénom Nom"
               value={displayName}
-              onChange={(e) => { setDisplayName(e.target.value); setFieldErrors((p) => ({ ...p, displayName: "" })); }}
+              onChange={(e) => {
+                setDisplayName(e.target.value);
+                setFieldErrors((p) => ({ ...p, displayName: "" }));
+              }}
               onBlur={(e) => validateField("displayName", e.target.value)}
               required
               autoComplete="name"
@@ -118,7 +149,10 @@ export function RegisterForm() {
               type="email"
               placeholder="votre@email.com"
               value={email}
-              onChange={(e) => { setEmail(e.target.value); setFieldErrors((p) => ({ ...p, email: "" })); }}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                setFieldErrors((p) => ({ ...p, email: "" }));
+              }}
               onBlur={(e) => validateField("email", e.target.value)}
               required
               autoComplete="email"
@@ -130,13 +164,16 @@ export function RegisterForm() {
             <Input
               id="password"
               type="password"
-              placeholder="Au moins 6 caractères"
+              placeholder="Au moins 8 caractères, 1 majuscule, 1 chiffre"
               value={password}
-              onChange={(e) => { setPassword(e.target.value); setFieldErrors((p) => ({ ...p, password: "" })); }}
+              onChange={(e) => {
+                setPassword(e.target.value);
+                setFieldErrors((p) => ({ ...p, password: "" }));
+              }}
               onBlur={(e) => validateField("password", e.target.value)}
               required
               autoComplete="new-password"
-              minLength={6}
+              minLength={8}
               aria-invalid={!!fieldErrors.password}
             />
           </FormField>
@@ -162,7 +199,10 @@ export function RegisterForm() {
       <CardFooter className="justify-center">
         <p className="text-sm text-muted-foreground">
           Déjà un compte ?{" "}
-          <Link href={`/login?redirect=${encodeURIComponent(redirectTo)}`} className="font-medium text-teranga-gold-dark hover:underline">
+          <Link
+            href={`/login?redirect=${encodeURIComponent(redirectTo)}`}
+            className="font-medium text-teranga-gold-dark hover:underline"
+          >
             Se connecter
           </Link>
         </p>

@@ -8,7 +8,16 @@ import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { updateProfile } from "firebase/auth";
 import { firebaseAuth, firebaseStorage } from "@/lib/firebase";
 import { usersApi } from "@/lib/api-client";
-import { Button, Input, Card, CardHeader, CardTitle, CardContent, Spinner, getErrorMessage } from "@teranga/shared-ui";
+import {
+  Button,
+  Input,
+  Card,
+  CardHeader,
+  CardTitle,
+  CardContent,
+  Spinner,
+  getErrorMessage,
+} from "@teranga/shared-ui";
 import { Camera, Loader2 } from "lucide-react";
 
 const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
@@ -65,7 +74,7 @@ export default function ProfilePage() {
       if (!currentUser) throw new Error("Non authentifié");
 
       // Upload to Firebase Storage
-      const storagePath = `users/${currentUser.uid}/profile-photo/${Date.now()}-${file.name}`;
+      const storagePath = `users/${currentUser.uid}/profile/${Date.now()}-${file.name}`;
       const storageRef = ref(firebaseStorage, storagePath);
       await uploadBytes(storageRef, file, { contentType: file.type });
       const downloadURL = await getDownloadURL(storageRef);
@@ -138,20 +147,20 @@ export default function ProfilePage() {
                     {initials}
                   </div>
                 )}
-                {/* Overlay */}
-                <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity">
+                {/* Overlay — shows camera icon on hover, spinner when uploading */}
+                <div
+                  className={`absolute inset-0 flex items-center justify-center transition-opacity ${
+                    uploadingPhoto
+                      ? "bg-black/50 opacity-100"
+                      : "bg-black/40 opacity-0 group-hover:opacity-100"
+                  }`}
+                >
                   {uploadingPhoto ? (
                     <Loader2 className="h-6 w-6 text-white animate-spin" />
                   ) : (
                     <Camera className="h-6 w-6 text-white" />
                   )}
                 </div>
-                {/* Loading overlay */}
-                {uploadingPhoto && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-black/50">
-                    <Loader2 className="h-6 w-6 text-white animate-spin" />
-                  </div>
-                )}
               </button>
               <input
                 ref={photoInputRef}
@@ -171,12 +180,16 @@ export default function ProfilePage() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <label htmlFor="email" className="text-sm font-medium">Email</label>
+              <label htmlFor="email" className="text-sm font-medium">
+                Email
+              </label>
               <Input id="email" value={profile?.email ?? ""} disabled className="bg-muted" />
             </div>
 
             <div className="space-y-2">
-              <label htmlFor="displayName" className="text-sm font-medium">Nom complet</label>
+              <label htmlFor="displayName" className="text-sm font-medium">
+                Nom complet
+              </label>
               <Input
                 id="displayName"
                 value={displayName}
@@ -186,7 +199,9 @@ export default function ProfilePage() {
             </div>
 
             <div className="space-y-2">
-              <label htmlFor="phone" className="text-sm font-medium">Téléphone</label>
+              <label htmlFor="phone" className="text-sm font-medium">
+                Téléphone
+              </label>
               <Input
                 id="phone"
                 type="tel"
@@ -197,7 +212,9 @@ export default function ProfilePage() {
             </div>
 
             <div className="space-y-2">
-              <label htmlFor="bio" className="text-sm font-medium">Bio</label>
+              <label htmlFor="bio" className="text-sm font-medium">
+                Bio
+              </label>
               <textarea
                 id="bio"
                 value={bio}
@@ -209,7 +226,9 @@ export default function ProfilePage() {
             </div>
 
             <div className="space-y-2">
-              <label htmlFor="language" className="text-sm font-medium">Langue préférée</label>
+              <label htmlFor="language" className="text-sm font-medium">
+                Langue préférée
+              </label>
               <select
                 id="language"
                 value={language}

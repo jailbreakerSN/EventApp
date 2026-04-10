@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import { sponsorsApi } from "@/lib/api-client";
+import { toast } from "sonner";
 import {
   Building,
   Edit3,
@@ -96,7 +97,7 @@ export default function SponsorPortalPage() {
       setEditing(false);
       await loadData();
     } catch {
-      // Error handled silently
+      toast.error("Erreur lors de l'enregistrement. Veuillez réessayer.");
     } finally {
       setSaving(false);
     }
@@ -114,13 +115,17 @@ export default function SponsorPortalPage() {
       link.click();
       URL.revokeObjectURL(link.href);
     } catch {
-      // Export error
+      toast.error("Erreur lors de l'export CSV. Veuillez réessayer.");
     }
   }
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-20 text-muted-foreground" role="status" aria-label="Chargement du portail sponsor">
+      <div
+        className="flex items-center justify-center py-20 text-muted-foreground"
+        role="status"
+        aria-label="Chargement du portail sponsor"
+      >
         <Loader2 className="h-6 w-6 animate-spin mr-2" aria-hidden="true" />
         <span>Chargement...</span>
       </div>
@@ -147,7 +152,11 @@ export default function SponsorPortalPage() {
     <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6">
       <div className="flex items-center gap-4">
         {sponsor.logoURL ? (
-          <img src={sponsor.logoURL} alt={sponsor.companyName} className="h-14 w-14 rounded-lg object-contain" />
+          <img
+            src={sponsor.logoURL}
+            alt={sponsor.companyName}
+            className="h-14 w-14 rounded-lg object-contain"
+          />
         ) : (
           <div className="flex h-14 w-14 items-center justify-center rounded-lg bg-teranga-navy">
             <Building className="h-7 w-7 text-teranga-gold" />
@@ -162,7 +171,11 @@ export default function SponsorPortalPage() {
       </div>
 
       {/* Tabs */}
-      <div className="mt-6 flex gap-1 border-b" role="tablist" aria-label="Sections du portail sponsor">
+      <div
+        className="mt-6 flex gap-1 border-b"
+        role="tablist"
+        aria-label="Sections du portail sponsor"
+      >
         {(["analytics", "booth", "leads"] as const).map((t) => {
           const labels: Record<typeof t, string> = {
             analytics: "Analytiques",
@@ -190,9 +203,7 @@ export default function SponsorPortalPage() {
       </div>
 
       {/* Analytics Tab */}
-      {tab === "analytics" && (
-        <SponsorAnalytics leads={leads} />
-      )}
+      {tab === "analytics" && <SponsorAnalytics leads={leads} />}
 
       {/* Booth Tab */}
       {tab === "booth" && (
@@ -233,7 +244,12 @@ export default function SponsorPortalPage() {
           {editing ? (
             <div className="space-y-3">
               <div>
-                <label htmlFor="sponsor-description" className="text-sm font-medium text-muted-foreground">Description</label>
+                <label
+                  htmlFor="sponsor-description"
+                  className="text-sm font-medium text-muted-foreground"
+                >
+                  Description
+                </label>
                 <textarea
                   id="sponsor-description"
                   className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
@@ -244,7 +260,12 @@ export default function SponsorPortalPage() {
                 />
               </div>
               <div>
-                <label htmlFor="sponsor-booth-title" className="text-sm font-medium text-muted-foreground">Titre du stand</label>
+                <label
+                  htmlFor="sponsor-booth-title"
+                  className="text-sm font-medium text-muted-foreground"
+                >
+                  Titre du stand
+                </label>
                 <input
                   id="sponsor-booth-title"
                   className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
@@ -255,7 +276,12 @@ export default function SponsorPortalPage() {
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
                 <div>
-                  <label htmlFor="sponsor-cta-label" className="text-sm font-medium text-muted-foreground">Label du CTA</label>
+                  <label
+                    htmlFor="sponsor-cta-label"
+                    className="text-sm font-medium text-muted-foreground"
+                  >
+                    Label du CTA
+                  </label>
                   <input
                     id="sponsor-cta-label"
                     className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
@@ -265,7 +291,12 @@ export default function SponsorPortalPage() {
                   />
                 </div>
                 <div>
-                  <label htmlFor="sponsor-cta-url" className="text-sm font-medium text-muted-foreground">URL du CTA</label>
+                  <label
+                    htmlFor="sponsor-cta-url"
+                    className="text-sm font-medium text-muted-foreground"
+                  >
+                    URL du CTA
+                  </label>
                   <input
                     id="sponsor-cta-url"
                     className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
@@ -276,7 +307,12 @@ export default function SponsorPortalPage() {
                 </div>
               </div>
               <div>
-                <label htmlFor="sponsor-website" className="text-sm font-medium text-muted-foreground">Site web</label>
+                <label
+                  htmlFor="sponsor-website"
+                  className="text-sm font-medium text-muted-foreground"
+                >
+                  Site web
+                </label>
                 <input
                   id="sponsor-website"
                   className="mt-1 w-full rounded-md border px-3 py-2 text-sm"
@@ -289,7 +325,9 @@ export default function SponsorPortalPage() {
           ) : (
             <div className="space-y-3">
               {sponsor.description && (
-                <p className="text-sm text-muted-foreground whitespace-pre-line">{sponsor.description}</p>
+                <p className="text-sm text-muted-foreground whitespace-pre-line">
+                  {sponsor.description}
+                </p>
               )}
               {sponsor.boothTitle && (
                 <div>
@@ -356,10 +394,14 @@ export default function SponsorPortalPage() {
                 <thead className="bg-muted/50">
                   <tr>
                     <th className="px-4 py-3 text-left font-medium text-muted-foreground">Nom</th>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Contact</th>
+                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">
+                      Contact
+                    </th>
                     <th className="px-4 py-3 text-left font-medium text-muted-foreground">Tags</th>
                     <th className="px-4 py-3 text-left font-medium text-muted-foreground">Notes</th>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Scanné le</th>
+                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">
+                      Scanné le
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
@@ -381,7 +423,10 @@ export default function SponsorPortalPage() {
                       <td className="px-4 py-3">
                         <div className="flex flex-wrap gap-1">
                           {lead.tags.map((tag) => (
-                            <span key={tag} className="inline-flex items-center gap-0.5 rounded-full bg-muted px-2 py-0.5 text-xs">
+                            <span
+                              key={tag}
+                              className="inline-flex items-center gap-0.5 rounded-full bg-muted px-2 py-0.5 text-xs"
+                            >
                               <Tag className="h-2.5 w-2.5" /> {tag}
                             </span>
                           ))}
@@ -472,7 +517,8 @@ function SponsorAnalytics({ leads }: { leads: Lead[] }) {
       <div className="flex items-start gap-2 rounded-lg border border-teranga-gold/30 bg-teranga-gold/5 px-4 py-3">
         <Info className="h-4 w-4 text-teranga-gold mt-0.5 shrink-0" />
         <p className="text-sm text-muted-foreground">
-          Données en temps réel bientôt disponibles. Les visites stand sont actuellement une estimation basée sur le nombre de leads.
+          Données en temps réel bientôt disponibles. Les visites stand sont actuellement une
+          estimation basée sur le nombre de leads.
         </p>
       </div>
 

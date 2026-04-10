@@ -14,6 +14,7 @@ import {
   Globe,
   Linkedin,
   Twitter,
+  MessageSquare,
 } from "lucide-react";
 import { serverEventsApi, serverSpeakersApi, serverSessionsApi } from "@/lib/server-api";
 import { formatDate, formatDateTime, formatCurrency, Badge } from "@teranga/shared-ui";
@@ -671,6 +672,22 @@ export default async function EventDetailPage({ params }: PageProps) {
                   endDate={event.endDate}
                 />
               </div>
+
+              {/* Feed communautaire */}
+              <Link
+                href={`/events/${event.slug}/feed`}
+                className="flex items-center gap-3 rounded-lg bg-card p-6 shadow-lg hover:shadow-md transition-shadow group"
+              >
+                <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-primary/10">
+                  <MessageSquare className="h-5 w-5 text-primary" aria-hidden="true" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-semibold group-hover:text-primary transition-colors">
+                    Feed communautaire
+                  </h3>
+                  <p className="text-xs text-muted-foreground">Échangez avec les participants</p>
+                </div>
+              </Link>
 
               {/* Online event link */}
               {event.location.streamUrl && (

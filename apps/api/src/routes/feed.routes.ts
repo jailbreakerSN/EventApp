@@ -3,18 +3,42 @@ import { authenticate } from "@/middlewares/auth.middleware";
 import { validate } from "@/middlewares/validate.middleware";
 import { requirePermission } from "@/middlewares/permission.middleware";
 import { feedService } from "@/services/feed.service";
+import { uploadService } from "@/services/upload.service";
 import {
   CreateFeedPostSchema,
   CreateFeedCommentSchema,
   FeedQuerySchema,
+  UploadUrlRequestSchema,
 } from "@teranga/shared-types";
 import { z } from "zod";
 
 const EventIdParams = z.object({ eventId: z.string() });
 const PostIdParams = z.object({ eventId: z.string(), postId: z.string() });
-const CommentIdParams = z.object({ eventId: z.string(), postId: z.string(), commentId: z.string() });
+const CommentIdParams = z.object({
+  eventId: z.string(),
+  postId: z.string(),
+  commentId: z.string(),
+});
 
 export async function feedRoutes(app: FastifyInstance) {
+  // ─── Upload URL for feed images (must be registered before generic POST) ──
+  app.post(
+    "/:eventId/feed/upload-url",
+    {
+      preHandler: [
+        authenticate,
+        requirePermission("feed:create_post"),
+        validate({ params: EventIdParams, body: UploadUrlRequestSchema }),
+      ],
+    },
+    async (request, reply) => {
+      const { eventId } = request.params as z.infer<typeof EventIdParams>;
+      const dto = request.body as z.infer<typeof UploadUrlRequestSchema>;
+      const result = await uploadService.generateUploadUrl("feed", eventId, dto, request.user!);
+      return reply.send({ success: true, data: result });
+    },
+  );
+
   // ─── List feed posts ────────────────────────────────────────────────────
   app.get(
     "/:eventId/feed",
@@ -74,7 +98,7 @@ export async function feedRoutes(app: FastifyInstance) {
     {
       preHandler: [
         authenticate,
-        requirePermission("feed:manage_content"),
+        requirePermission("feed:moderate"),
         validate({ params: PostIdParams }),
       ],
     },

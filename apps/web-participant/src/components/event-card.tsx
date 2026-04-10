@@ -1,19 +1,15 @@
-"use client";
-
 import Link from "next/link";
 import Image from "next/image";
 import { Calendar, MapPin, Users } from "lucide-react";
 import { Badge } from "@teranga/shared-ui";
 import { formatDate, formatCurrency } from "@teranga/shared-ui";
-import { CompareCheckbox } from "@/components/event-card-compare";
 import type { Event } from "@teranga/shared-types";
 
 interface EventCardProps {
   event: Event;
-  showCompare?: boolean;
 }
 
-export function EventCard({ event, showCompare = false }: EventCardProps) {
+export function EventCard({ event }: EventCardProps) {
   const minPrice =
     event.ticketTypes.length > 0 ? Math.min(...event.ticketTypes.map((t) => t.price)) : null;
   const isFree = minPrice === 0 || minPrice === null;
@@ -29,7 +25,6 @@ export function EventCard({ event, showCompare = false }: EventCardProps) {
       className="group overflow-hidden rounded-lg border bg-card shadow-sm transition-shadow hover:shadow-md"
     >
       <div className="relative aspect-[16/9] overflow-hidden bg-muted">
-        {showCompare && <CompareCheckbox eventId={event.id} />}
         {event.coverImageURL ? (
           <Image
             src={event.coverImageURL}

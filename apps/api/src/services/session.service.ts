@@ -148,6 +148,11 @@ export class SessionService extends BaseService {
   async getById(eventId: string, sessionId: string, user: AuthUser): Promise<Session> {
     this.requirePermission(user, "event:read");
 
+    const event = await eventRepository.findByIdOrThrow(eventId);
+    if (event.status !== "published") {
+      this.requireOrganizationAccess(user, event.organizationId);
+    }
+
     const session = await sessionRepository.findByIdOrThrow(sessionId);
     if (session.eventId !== eventId) {
       throw new ValidationError("Cette session n'appartient pas à cet événement");

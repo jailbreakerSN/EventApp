@@ -1194,17 +1194,25 @@ function RegistrationsTab({ eventId }: { eventId: string }) {
   const handleExportCSV = async () => {
     setIsExporting(true);
     try {
-      // Fetch all registrations (no pagination) for export
-      const allData = await registrationsApi.getEventRegistrations(eventId, {
-        page: 1,
-        limit: 10000,
-        status: statusFilter || undefined,
-      });
-      const allRegistrations = allData?.data ?? registrations;
-      const csv = registrationsToCSV(allRegistrations);
+      // Paginate through all registrations (API max limit is 100)
+      const allRegistrations: typeof registrations = [];
+      let page = 1;
+      let hasMore = true;
+      while (hasMore) {
+        const batch = await registrationsApi.getEventRegistrations(eventId, {
+          page,
+          limit: 100,
+          status: statusFilter || undefined,
+        });
+        allRegistrations.push(...(batch?.data ?? []));
+        hasMore = page < (batch?.meta?.totalPages ?? 1);
+        page++;
+      }
+      const exported = allRegistrations.length > 0 ? allRegistrations : registrations;
+      const csv = registrationsToCSV(exported);
       const date = new Date().toISOString().slice(0, 10);
       downloadCSV(csv, `inscriptions-${eventId.slice(0, 8)}-${date}.csv`);
-      toast.success(`${allRegistrations.length} inscription(s) exportée(s)`);
+      toast.success(`${exported.length} inscription(s) exportée(s)`);
     } catch {
       toast.error("Erreur lors de l'export CSV");
     } finally {

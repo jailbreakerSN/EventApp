@@ -1,9 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Bell, Mail, Smartphone, Clock, Eye, MessageSquare, Trash2, Shield } from "lucide-react";
 import { toast } from "sonner";
-import { useNotificationPreferences, useUpdateNotificationPreferences } from "@/hooks/use-notifications";
+import {
+  useNotificationPreferences,
+  useUpdateNotificationPreferences,
+} from "@/hooks/use-notifications";
 import { Card, CardContent } from "@teranga/shared-ui";
 
 function Toggle({
@@ -25,9 +28,7 @@ function Toggle({
         <Icon className="h-5 w-5 text-muted-foreground" />
         <div>
           <span className="text-sm font-medium">{label}</span>
-          {description && (
-            <p className="text-xs text-muted-foreground mt-0.5">{description}</p>
-          )}
+          {description && <p className="text-xs text-muted-foreground mt-0.5">{description}</p>}
         </div>
       </div>
       <button
@@ -53,20 +54,36 @@ export default function SettingsPage() {
   const { data, isLoading } = useNotificationPreferences();
   const update = useUpdateNotificationPreferences();
 
-  const prefs = (data as {
-    data?: {
-      push?: boolean;
-      sms?: boolean;
-      email?: boolean;
-      eventReminders?: boolean;
-      quietHoursStart?: string | null;
-      quietHoursEnd?: string | null;
-    };
-  })?.data;
+  const prefs = (
+    data as {
+      data?: {
+        push?: boolean;
+        sms?: boolean;
+        email?: boolean;
+        eventReminders?: boolean;
+        quietHoursStart?: string | null;
+        quietHoursEnd?: string | null;
+      };
+    }
+  )?.data;
 
-  // Privacy state (local — no backend yet)
+  // Privacy state (persisted in localStorage — no backend yet)
   const [profileVisible, setProfileVisible] = useState(true);
   const [allowDirectMessages, setAllowDirectMessages] = useState(true);
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("teranga-privacy");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (typeof parsed.profileVisible === "boolean") setProfileVisible(parsed.profileVisible);
+        if (typeof parsed.allowDirectMessages === "boolean")
+          setAllowDirectMessages(parsed.allowDirectMessages);
+      }
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   // Delete account confirmation
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -153,10 +170,16 @@ export default function SettingsPage() {
               checked={profileVisible}
               onChange={(v) => {
                 setProfileVisible(v);
+                try {
+                  localStorage.setItem(
+                    "teranga-privacy",
+                    JSON.stringify({ profileVisible: v, allowDirectMessages }),
+                  );
+                } catch {
+                  /* ignore */
+                }
                 toast.success(
-                  v
-                    ? "Votre profil est maintenant visible"
-                    : "Votre profil est maintenant masqué"
+                  v ? "Votre profil est maintenant visible" : "Votre profil est maintenant masqué",
                 );
               }}
             />
@@ -167,11 +190,15 @@ export default function SettingsPage() {
               checked={allowDirectMessages}
               onChange={(v) => {
                 setAllowDirectMessages(v);
-                toast.success(
-                  v
-                    ? "Messages directs activés"
-                    : "Messages directs désactivés"
-                );
+                try {
+                  localStorage.setItem(
+                    "teranga-privacy",
+                    JSON.stringify({ profileVisible, allowDirectMessages: v }),
+                  );
+                } catch {
+                  /* ignore */
+                }
+                toast.success(v ? "Messages directs activés" : "Messages directs désactivés");
               }}
             />
           </div>
@@ -210,7 +237,7 @@ export default function SettingsPage() {
                   onClick={() => {
                     setShowDeleteConfirm(false);
                     toast.info(
-                      "Veuillez contacter le support pour supprimer votre compte : support@teranga-events.com"
+                      "Veuillez contacter le support pour supprimer votre compte : support@teranga-events.com",
                     );
                   }}
                   className="flex-1 rounded-lg bg-destructive px-4 py-2 text-sm font-medium text-white hover:bg-destructive/90 transition-colors"
