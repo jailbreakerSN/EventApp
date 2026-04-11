@@ -7,10 +7,7 @@ import { promoCodeRepository } from "@/repositories/promo-code.repository";
 import { eventRepository } from "@/repositories/event.repository";
 import { type PaginatedResult } from "@/repositories/base.repository";
 import { type AuthUser } from "@/middlewares/auth.middleware";
-import {
-  ConflictError,
-  ValidationError,
-} from "@/errors/app-error";
+import { ConflictError, ValidationError } from "@/errors/app-error";
 import { db, COLLECTIONS } from "@/config/firebase";
 import { BaseService } from "./base.service";
 import { eventBus } from "@/events/event-bus";
@@ -182,6 +179,15 @@ export class PromoCodeService extends BaseService {
     await promoCodeRepository.update(promoCodeId, {
       isActive: false,
     } as Partial<PromoCode>);
+
+    eventBus.emit("promo_code.deactivated", {
+      promoCodeId,
+      eventId: promoCode.eventId,
+      code: promoCode.code,
+      actorId: user.uid,
+      requestId: getRequestId(),
+      timestamp: new Date().toISOString(),
+    });
   }
 }
 

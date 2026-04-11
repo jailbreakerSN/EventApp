@@ -77,6 +77,7 @@ export function useFeed({ eventId, enabled = true }: UseFeedOptions) {
   return {
     posts,
     isLoading: infiniteQuery.isLoading,
+    isError: infiniteQuery.isError,
     isFetchingNextPage: infiniteQuery.isFetchingNextPage,
     hasNextPage: infiniteQuery.hasNextPage ?? false,
     fetchNextPage: infiniteQuery.fetchNextPage,

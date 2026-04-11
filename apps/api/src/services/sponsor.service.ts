@@ -46,6 +46,7 @@ export class SponsorService extends BaseService {
       contactEmail: dto.contactEmail ?? null,
       contactPhone: dto.contactPhone ?? null,
       isActive: true,
+      createdBy: user.uid,
       createdAt: now,
       updatedAt: now,
     };

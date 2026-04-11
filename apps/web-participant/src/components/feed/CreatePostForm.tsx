@@ -94,7 +94,11 @@ export function CreatePostForm({ eventId, user }: CreatePostFormProps) {
       <div className="flex gap-3">
         <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-muted text-sm font-medium text-muted-foreground overflow-hidden">
           {user?.photoURL ? (
-            <img src={user.photoURL} alt="" className="h-full w-full object-cover" />
+            <img
+              src={user.photoURL}
+              alt={user.displayName ?? "Avatar"}
+              className="h-full w-full object-cover"
+            />
           ) : (
             <span>{user?.displayName?.[0]?.toUpperCase() ?? "?"}</span>
           )}

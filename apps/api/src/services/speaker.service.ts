@@ -6,7 +6,7 @@ import {
 import { speakerRepository } from "@/repositories/speaker.repository";
 import { eventRepository } from "@/repositories/event.repository";
 import { type AuthUser } from "@/middlewares/auth.middleware";
-import { ConflictError, ForbiddenError } from "@/errors/app-error";
+import { ConflictError } from "@/errors/app-error";
 import { BaseService } from "./base.service";
 import { eventBus } from "@/events/event-bus";
 import { getRequestId } from "@/context/request-context";
@@ -40,10 +40,12 @@ export class SpeakerService extends BaseService {
       company: dto.company ?? null,
       bio: dto.bio ?? null,
       photoURL: dto.photoURL ?? null,
+      slidesUrl: dto.slidesUrl ?? null,
       socialLinks: dto.socialLinks ?? null,
       topics: dto.topics ?? [],
       sessionIds: dto.sessionIds ?? [],
       isConfirmed: false,
+      createdBy: user.uid,
       createdAt: now,
       updatedAt: now,
     };
@@ -67,7 +69,11 @@ export class SpeakerService extends BaseService {
    * Update a speaker profile.
    * Organizers can update any speaker; speakers can update their own.
    */
-  async updateSpeaker(speakerId: string, dto: UpdateSpeakerDto, user: AuthUser): Promise<SpeakerProfile> {
+  async updateSpeaker(
+    speakerId: string,
+    dto: UpdateSpeakerDto,
+    user: AuthUser,
+  ): Promise<SpeakerProfile> {
     const speaker = await speakerRepository.findByIdOrThrow(speakerId);
 
     // Speaker updating own profile
@@ -112,10 +118,7 @@ export class SpeakerService extends BaseService {
   /**
    * List speakers for an event (public).
    */
-  async listEventSpeakers(
-    eventId: string,
-    pagination: { page: number; limit: number },
-  ) {
+  async listEventSpeakers(eventId: string, pagination: { page: number; limit: number }) {
     return speakerRepository.findByEvent(eventId, pagination);
   }
 

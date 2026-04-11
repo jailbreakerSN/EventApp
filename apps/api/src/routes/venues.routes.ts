@@ -4,11 +4,7 @@ import { authenticate } from "@/middlewares/auth.middleware";
 import { requirePermission } from "@/middlewares/permission.middleware";
 import { validate } from "@/middlewares/validate.middleware";
 import { venueService } from "@/services/venue.service";
-import {
-  VenueQuerySchema,
-  CreateVenueSchema,
-  UpdateVenueSchema,
-} from "@teranga/shared-types";
+import { VenueQuerySchema, CreateVenueSchema, UpdateVenueSchema } from "@teranga/shared-types";
 
 const ParamsVenueId = z.object({ venueId: z.string() });
 
@@ -99,7 +95,11 @@ export const venueRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post(
     "/",
     {
-      preHandler: [authenticate, validate({ body: CreateVenueSchema })],
+      preHandler: [
+        authenticate,
+        requirePermission("venue:create"),
+        validate({ body: CreateVenueSchema }),
+      ],
       schema: {
         tags: ["Venues"],
         summary: "Create a new venue",
@@ -120,6 +120,7 @@ export const venueRoutes: FastifyPluginAsync = async (fastify) => {
     {
       preHandler: [
         authenticate,
+        requirePermission("venue:update"),
         validate({ params: ParamsVenueId, body: UpdateVenueSchema }),
       ],
       schema: {
@@ -141,7 +142,11 @@ export const venueRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post(
     "/:venueId/approve",
     {
-      preHandler: [authenticate, requirePermission("venue:approve"), validate({ params: ParamsVenueId })],
+      preHandler: [
+        authenticate,
+        requirePermission("venue:approve"),
+        validate({ params: ParamsVenueId }),
+      ],
       schema: {
         tags: ["Venues"],
         summary: "Approve a pending venue",
@@ -160,7 +165,11 @@ export const venueRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post(
     "/:venueId/suspend",
     {
-      preHandler: [authenticate, requirePermission("venue:manage_all"), validate({ params: ParamsVenueId })],
+      preHandler: [
+        authenticate,
+        requirePermission("venue:manage_all"),
+        validate({ params: ParamsVenueId }),
+      ],
       schema: {
         tags: ["Venues"],
         summary: "Suspend a venue",
@@ -179,7 +188,11 @@ export const venueRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post(
     "/:venueId/reactivate",
     {
-      preHandler: [authenticate, requirePermission("venue:manage_all"), validate({ params: ParamsVenueId })],
+      preHandler: [
+        authenticate,
+        requirePermission("venue:manage_all"),
+        validate({ params: ParamsVenueId }),
+      ],
       schema: {
         tags: ["Venues"],
         summary: "Reactivate a suspended venue",
@@ -192,5 +205,4 @@ export const venueRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.status(204).send();
     },
   );
-
 };

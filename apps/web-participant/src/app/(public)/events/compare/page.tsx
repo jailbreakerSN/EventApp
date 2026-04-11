@@ -297,7 +297,7 @@ function CompareContent() {
                       {event.coverImageURL ? (
                         <Image
                           src={event.coverImageURL}
-                          alt=""
+                          alt={event.title}
                           fill
                           className="object-cover"
                           sizes="(max-width: 1024px) 50vw, 33vw"
@@ -356,7 +356,7 @@ function CompareContent() {
               {event.coverImageURL ? (
                 <Image
                   src={event.coverImageURL}
-                  alt=""
+                  alt={event.title}
                   fill
                   className="object-cover"
                   sizes="100vw"

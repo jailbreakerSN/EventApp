@@ -36,9 +36,16 @@ export default function EventsPage() {
     limit,
   });
 
-  const events = data?.data ?? [];
+  const allEvents = data?.data ?? [];
   const meta = data?.meta;
   const totalPages = meta?.totalPages ?? 1;
+
+  // Client-side search and category filter
+  const events = allEvents.filter((event) => {
+    const matchesSearch = !search || event.title.toLowerCase().includes(search.toLowerCase());
+    const matchesCategory = !category || event.category === category;
+    return matchesSearch && matchesCategory;
+  });
 
   return (
     <div>
@@ -61,18 +68,26 @@ export default function EventsPage() {
             type="text"
             placeholder="Rechercher un événement..."
             value={search}
-            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setPage(1);
+            }}
             aria-label="Rechercher un événement"
             className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
           />
         </div>
         <Select
           value={category}
-          onChange={(e) => { setCategory(e.target.value); setPage(1); }}
+          onChange={(e) => {
+            setCategory(e.target.value);
+            setPage(1);
+          }}
           aria-label="Filtrer par catégorie"
         >
           {CATEGORY_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>{opt.label}</option>
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
           ))}
         </Select>
       </div>
@@ -96,13 +111,27 @@ export default function EventsPage() {
               <tbody>
                 {Array.from({ length: 5 }).map((_, i) => (
                   <tr key={i} className="border-b border-border/50">
-                    <td className="px-6 py-4"><Skeleton variant="text" className="h-4 w-40" /></td>
-                    <td className="px-6 py-4"><Skeleton variant="text" className="h-4 w-24" /></td>
-                    <td className="px-6 py-4"><Skeleton variant="text" className="h-4 w-20" /></td>
-                    <td className="px-6 py-4"><Skeleton variant="text" className="h-4 w-16" /></td>
-                    <td className="px-6 py-4"><Skeleton variant="text" className="h-5 w-16 rounded-full" /></td>
-                    <td className="px-6 py-4 text-right"><Skeleton variant="text" className="h-4 w-8 ml-auto" /></td>
-                    <td className="px-6 py-4 text-right"><Skeleton variant="text" className="h-4 w-10 ml-auto" /></td>
+                    <td className="px-6 py-4">
+                      <Skeleton variant="text" className="h-4 w-40" />
+                    </td>
+                    <td className="px-6 py-4">
+                      <Skeleton variant="text" className="h-4 w-24" />
+                    </td>
+                    <td className="px-6 py-4">
+                      <Skeleton variant="text" className="h-4 w-20" />
+                    </td>
+                    <td className="px-6 py-4">
+                      <Skeleton variant="text" className="h-4 w-16" />
+                    </td>
+                    <td className="px-6 py-4">
+                      <Skeleton variant="text" className="h-5 w-16 rounded-full" />
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <Skeleton variant="text" className="h-4 w-8 ml-auto" />
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <Skeleton variant="text" className="h-4 w-10 ml-auto" />
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -140,7 +169,10 @@ export default function EventsPage() {
                   {events.map((event) => {
                     const status = STATUS_LABELS[event.status] ?? STATUS_LABELS.draft;
                     return (
-                      <tr key={event.id} className="border-b border-border/50 hover:bg-muted/50 transition-colors">
+                      <tr
+                        key={event.id}
+                        className="border-b border-border/50 hover:bg-muted/50 transition-colors"
+                      >
                         <td className="px-6 py-4 font-medium text-foreground max-w-[250px] truncate">
                           {event.title}
                         </td>
@@ -164,7 +196,9 @@ export default function EventsPage() {
                           {event.category ?? "—"}
                         </td>
                         <td className="px-6 py-4">
-                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${status.className}`}>
+                          <span
+                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${status.className}`}
+                          >
                             {status.label}
                           </span>
                         </td>
@@ -192,9 +226,13 @@ export default function EventsPage() {
 
           {/* Pagination */}
           {totalPages > 1 && (
-            <nav className="flex items-center justify-between mt-4 text-sm text-muted-foreground" aria-label="Pagination">
+            <nav
+              className="flex items-center justify-between mt-4 text-sm text-muted-foreground"
+              aria-label="Pagination"
+            >
               <span aria-current="page">
-                Page {page} sur {totalPages} ({meta?.total ?? 0} résultat{(meta?.total ?? 0) > 1 ? "s" : ""})
+                Page {page} sur {totalPages} ({meta?.total ?? 0} résultat
+                {(meta?.total ?? 0) > 1 ? "s" : ""})
               </span>
               <div className="flex gap-2">
                 <button

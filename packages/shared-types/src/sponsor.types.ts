@@ -2,13 +2,7 @@ import { z } from "zod";
 
 // ─── Sponsor Tier ───────────────────────────────────────────────────────────
 
-export const SponsorTierSchema = z.enum([
-  "platinum",
-  "gold",
-  "silver",
-  "bronze",
-  "partner",
-]);
+export const SponsorTierSchema = z.enum(["platinum", "gold", "silver", "bronze", "partner"]);
 
 export type SponsorTier = z.infer<typeof SponsorTierSchema>;
 
@@ -33,6 +27,7 @@ export const SponsorProfileSchema = z.object({
   contactEmail: z.string().email().nullable(),
   contactPhone: z.string().max(30).nullable(),
   isActive: z.boolean().default(true),
+  createdBy: z.string().optional(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 });

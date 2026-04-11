@@ -31,6 +31,7 @@ export default function FeedPage() {
   const {
     posts,
     isLoading: isLoadingFeed,
+    isError: feedError,
     hasNextPage,
     isFetchingNextPage,
     fetchNextPage,
@@ -87,6 +88,13 @@ export default function FeedPage() {
           <FeedPostSkeleton />
           <FeedPostSkeleton />
           <span className="sr-only">Chargement du feed...</span>
+        </div>
+      ) : feedError ? (
+        <div className="text-center py-16">
+          <p className="text-destructive mb-3">Impossible de charger le feed.</p>
+          <button onClick={refresh} className="text-sm text-primary hover:underline">
+            Réessayer
+          </button>
         </div>
       ) : posts.length === 0 ? (
         <div className="text-center py-16 text-muted-foreground">

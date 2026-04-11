@@ -1,7 +1,6 @@
 import { onDocumentWritten } from "firebase-functions/v2/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { logger } from "firebase-functions/v2";
-import { FieldValue } from "firebase-admin/firestore";
 import { db, messaging, COLLECTIONS } from "../utils/admin";
 
 /**
@@ -113,7 +112,7 @@ export const onPaymentSucceeded = onDocumentWritten(
         eventId: after.eventId,
         userId: after.userId ?? regData.userId,
         qrCodeValue: regData.qrCodeValue,
-        status: "generating",
+        status: "pending",
         templateId: null,
         pdfURL: null,
         generatedAt: null,
@@ -134,7 +133,10 @@ export const onPaymentSucceeded = onDocumentWritten(
     try {
       const eventDoc = await db.collection(COLLECTIONS.EVENTS).doc(after.eventId).get();
       const eventTitle = eventDoc.data()?.title ?? "l'événement";
-      const userId = after.userId ?? (await db.collection(COLLECTIONS.REGISTRATIONS).doc(after.registrationId).get()).data()?.userId;
+      const userId =
+        after.userId ??
+        (await db.collection(COLLECTIONS.REGISTRATIONS).doc(after.registrationId).get()).data()
+          ?.userId;
 
       if (!userId) {
         logger.warn("No userId found for payment success notification", {

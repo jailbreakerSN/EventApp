@@ -2,7 +2,7 @@ import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import { authenticate } from "@/middlewares/auth.middleware";
 import { validate } from "@/middlewares/validate.middleware";
-import { requirePermission } from "@/middlewares/permission.middleware";
+import { requirePermission, requireAnyPermission } from "@/middlewares/permission.middleware";
 import { sponsorService } from "@/services/sponsor.service";
 import { uploadService } from "@/services/upload.service";
 import {
@@ -54,7 +54,11 @@ export const sponsorRoutes: FastifyPluginAsync = async (fastify) => {
     async (request, reply) => {
       const { eventId } = request.params as z.infer<typeof ParamsWithEventId>;
       const { tier, page, limit } = request.query as z.infer<typeof SponsorQuerySchema>;
-      const result = await sponsorService.listEventSponsors(eventId, { tier }, { page: page ?? 1, limit: limit ?? 50 });
+      const result = await sponsorService.listEventSponsors(
+        eventId,
+        { tier },
+        { page: page ?? 1, limit: limit ?? 50 },
+      );
       return reply.send({ success: true, data: result.data, meta: result.meta });
     },
   );
@@ -82,7 +86,7 @@ export const sponsorRoutes: FastifyPluginAsync = async (fastify) => {
     {
       preHandler: [
         authenticate,
-        requirePermission("sponsor:manage_booth"),
+        requireAnyPermission(["sponsor:manage_booth", "event:manage_sponsors"]),
         validate({ params: ParamsWithSponsorId, body: UpdateSponsorSchema }),
       ],
       schema: {
@@ -138,7 +142,12 @@ export const sponsorRoutes: FastifyPluginAsync = async (fastify) => {
     },
     async (request, reply) => {
       const { sponsorId } = request.params as z.infer<typeof ParamsWithSponsorId>;
-      const result = await uploadService.generateUploadUrl("sponsor", sponsorId, request.body as UploadUrlRequest, request.user!);
+      const result = await uploadService.generateUploadUrl(
+        "sponsor",
+        sponsorId,
+        request.body as UploadUrlRequest,
+        request.user!,
+      );
       return reply.send({ success: true, data: result });
     },
   );
@@ -184,7 +193,11 @@ export const sponsorRoutes: FastifyPluginAsync = async (fastify) => {
     async (request, reply) => {
       const { sponsorId } = request.params as z.infer<typeof ParamsWithSponsorId>;
       const { page, limit } = request.query as z.infer<typeof LeadQuerySchema>;
-      const result = await sponsorService.listLeads(sponsorId, { page: page ?? 1, limit: limit ?? 50 }, request.user!);
+      const result = await sponsorService.listLeads(
+        sponsorId,
+        { page: page ?? 1, limit: limit ?? 50 },
+        request.user!,
+      );
       return reply.send({ success: true, data: result.data, meta: result.meta });
     },
   );

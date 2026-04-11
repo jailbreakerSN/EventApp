@@ -4,23 +4,26 @@ import { z } from "zod";
 
 export const SpeakerProfileSchema = z.object({
   id: z.string(),
-  userId: z.string().nullable(),         // nullable if speaker has no platform account
+  userId: z.string().nullable(), // nullable if speaker has no platform account
   eventId: z.string(),
   organizationId: z.string(),
   name: z.string().min(1).max(200),
-  title: z.string().max(200).nullable(),  // e.g. "CTO at TechCorp"
+  title: z.string().max(200).nullable(), // e.g. "CTO at TechCorp"
   company: z.string().max(200).nullable(),
   bio: z.string().max(2000).nullable(),
   photoURL: z.string().url().nullable(),
   slidesUrl: z.string().url().nullable().optional(),
-  socialLinks: z.object({
-    twitter: z.string().nullable(),
-    linkedin: z.string().nullable(),
-    website: z.string().nullable(),
-  }).nullable(),
+  socialLinks: z
+    .object({
+      twitter: z.string().nullable(),
+      linkedin: z.string().nullable(),
+      website: z.string().nullable(),
+    })
+    .nullable(),
   topics: z.array(z.string()).default([]),
   sessionIds: z.array(z.string()).default([]),
   isConfirmed: z.boolean().default(false),
+  createdBy: z.string().optional(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 });
@@ -35,11 +38,13 @@ export const CreateSpeakerSchema = z.object({
   bio: z.string().max(2000).optional(),
   photoURL: z.string().url().optional(),
   slidesUrl: z.string().url().optional(),
-  socialLinks: z.object({
-    twitter: z.string().nullable().optional(),
-    linkedin: z.string().nullable().optional(),
-    website: z.string().nullable().optional(),
-  }).optional(),
+  socialLinks: z
+    .object({
+      twitter: z.string().nullable().optional(),
+      linkedin: z.string().nullable().optional(),
+      website: z.string().nullable().optional(),
+    })
+    .optional(),
   topics: z.array(z.string()).optional(),
   sessionIds: z.array(z.string()).optional(),
   userId: z.string().optional(),
@@ -54,11 +59,13 @@ export const UpdateSpeakerSchema = z.object({
   bio: z.string().max(2000).nullable().optional(),
   photoURL: z.string().url().nullable().optional(),
   slidesUrl: z.string().url().nullable().optional(),
-  socialLinks: z.object({
-    twitter: z.string().nullable().optional(),
-    linkedin: z.string().nullable().optional(),
-    website: z.string().nullable().optional(),
-  }).optional(),
+  socialLinks: z
+    .object({
+      twitter: z.string().nullable().optional(),
+      linkedin: z.string().nullable().optional(),
+      website: z.string().nullable().optional(),
+    })
+    .optional(),
   topics: z.array(z.string()).optional(),
   sessionIds: z.array(z.string()).optional(),
   isConfirmed: z.boolean().optional(),

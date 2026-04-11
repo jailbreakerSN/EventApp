@@ -51,8 +51,8 @@ export const onBadgeCreated = onDocumentCreated(
       let template: Record<string, unknown> = {
         backgroundColor: "#FFFFFF",
         primaryColor: "#1A1A2E",
-        width: 85.6,   // mm — ISO 7810 ID-1 card
-        height: 54.0,  // mm
+        width: 85.6, // mm — ISO 7810 ID-1 card
+        height: 54.0, // mm
       };
 
       if (templateId) {
@@ -156,7 +156,11 @@ export const onBadgeCreated = onDocumentCreated(
       });
 
       // Update badge document with PDF URL
-      await snapshot.ref.update({ pdfURL: signedUrl });
+      await snapshot.ref.update({
+        pdfURL: signedUrl,
+        status: "generated",
+        updatedAt: new Date().toISOString(),
+      });
 
       logger.info(`Badge PDF generated for ${badgeId}`, {
         eventId,
@@ -166,7 +170,12 @@ export const onBadgeCreated = onDocumentCreated(
     } catch (err) {
       logger.error(`Badge PDF generation failed for ${badgeId}`, err);
       // Mark badge as failed so client can retry
-      await snapshot.ref.update({ pdfURL: null, error: "generation_failed" });
+      await snapshot.ref.update({
+        pdfURL: null,
+        status: "failed",
+        error: "generation_failed",
+        updatedAt: new Date().toISOString(),
+      });
     }
   },
 );

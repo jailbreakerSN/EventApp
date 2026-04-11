@@ -25,7 +25,7 @@ service firebase.storage {
     }
 
     function maxSize(mb) {
-      return request.resource.size < mb * 1024 * 1024;
+      return request.resource.size <= mb * 1024 * 1024;
     }
 
     function isImage() {

@@ -9,7 +9,6 @@ import {
 } from "@teranga/shared-types";
 import { paymentRepository } from "@/repositories/payment.repository";
 import { eventRepository } from "@/repositories/event.repository";
-import { registrationRepository } from "@/repositories/registration.repository";
 import { db, COLLECTIONS } from "@/config/firebase";
 import { FieldValue } from "@/repositories/transaction.helper";
 import { type AuthUser } from "@/middlewares/auth.middleware";
@@ -44,8 +43,8 @@ const providers: Record<string, PaymentProvider> = {
   mock: mockPaymentProvider,
   wave: HAS_WAVE ? wavePaymentProvider : mockPaymentProvider,
   orange_money: HAS_OM ? orangeMoneyPaymentProvider : mockPaymentProvider,
-  free_money: mockPaymentProvider,  // TODO: implement when Free Money API available
-  card: mockPaymentProvider,         // TODO: implement with PayDunya/Stripe
+  free_money: mockPaymentProvider, // TODO: implement when Free Money API available
+  card: mockPaymentProvider, // TODO: implement with PayDunya/Stripe
 };
 
 function getProvider(method: PaymentMethod): PaymentProvider {
@@ -62,11 +61,13 @@ function getProvider(method: PaymentMethod): PaymentProvider {
 
 // ─── Webhook Signature ──────────────────────────────────────────────────────
 
-const WEBHOOK_SECRET = process.env.PAYMENT_WEBHOOK_SECRET ?? (
-  process.env.NODE_ENV === "production"
-    ? (() => { throw new Error("PAYMENT_WEBHOOK_SECRET is required in production"); })()
-    : "dev-webhook-secret-change-in-prod"
-);
+const WEBHOOK_SECRET =
+  process.env.PAYMENT_WEBHOOK_SECRET ??
+  (process.env.NODE_ENV === "production"
+    ? (() => {
+        throw new ValidationError("PAYMENT_WEBHOOK_SECRET is required in production");
+      })()
+    : "dev-webhook-secret-change-in-prod");
 
 /**
  * Generate HMAC-SHA256 signature for webhook payload verification.
@@ -137,7 +138,9 @@ export class PaymentService extends BaseService {
     const qrCodeValue = signQrPayload(regId, eventId, user.uid);
 
     const callbackUrl = `${process.env.API_BASE_URL ?? "http://localhost:3000"}/v1/payments/webhook`;
-    const finalReturnUrl = returnUrl ?? `${process.env.PARTICIPANT_WEB_URL ?? "http://localhost:3002"}/register/${eventId}/payment-status?paymentId=${payId}`;
+    const finalReturnUrl =
+      returnUrl ??
+      `${process.env.PARTICIPANT_WEB_URL ?? "http://localhost:3002"}/register/${eventId}/payment-status?paymentId=${payId}`;
 
     // Get provider and initiate (outside transaction — provider call is idempotent)
     const provider = getProvider(method);
@@ -154,7 +157,8 @@ export class PaymentService extends BaseService {
     await db.runTransaction(async (tx) => {
       // Re-check for duplicate inside transaction to prevent race conditions
       const dupeSnap = await tx.get(
-        db.collection(COLLECTIONS.REGISTRATIONS)
+        db
+          .collection(COLLECTIONS.REGISTRATIONS)
           .where("eventId", "==", eventId)
           .where("userId", "==", user.uid)
           .where("status", "in", ["confirmed", "pending", "pending_payment", "waitlisted"])
@@ -240,7 +244,11 @@ export class PaymentService extends BaseService {
     }
 
     // Quick idempotency check (full check inside transaction below)
-    if (payment.status === "succeeded" || payment.status === "failed" || payment.status === "refunded") {
+    if (
+      payment.status === "succeeded" ||
+      payment.status === "failed" ||
+      payment.status === "refunded"
+    ) {
       return;
     }
 
@@ -256,7 +264,11 @@ export class PaymentService extends BaseService {
         const freshPayment = paySnap.data() as Payment;
 
         // Idempotency: skip if already terminal
-        if (freshPayment.status === "succeeded" || freshPayment.status === "failed" || freshPayment.status === "refunded") {
+        if (
+          freshPayment.status === "succeeded" ||
+          freshPayment.status === "failed" ||
+          freshPayment.status === "refunded"
+        ) {
           return;
         }
 
@@ -294,9 +306,7 @@ export class PaymentService extends BaseService {
         if (eventData) {
           const reg = regSnap.data() as Registration;
           const updatedTicketTypes = eventData.ticketTypes.map((tt) =>
-            tt.id === reg.ticketTypeId
-              ? { ...tt, soldCount: tt.soldCount + 1 }
-              : tt,
+            tt.id === reg.ticketTypeId ? { ...tt, soldCount: tt.soldCount + 1 } : tt,
           );
           tx.update(eventRef, { ticketTypes: updatedTicketTypes });
         }
@@ -320,7 +330,11 @@ export class PaymentService extends BaseService {
         if (!paySnap.exists) return;
         const freshPayment = paySnap.data() as Payment;
 
-        if (freshPayment.status === "succeeded" || freshPayment.status === "failed" || freshPayment.status === "refunded") {
+        if (
+          freshPayment.status === "succeeded" ||
+          freshPayment.status === "failed" ||
+          freshPayment.status === "refunded"
+        ) {
           return;
         }
 
@@ -387,7 +401,11 @@ export class PaymentService extends BaseService {
     const event = await eventRepository.findByIdOrThrow(eventId);
     this.requireOrganizationAccess(user, event.organizationId);
 
-    const { data: payments } = await paymentRepository.findByEvent(eventId, {}, { page: 1, limit: 10000 });
+    const { data: payments } = await paymentRepository.findByEvent(
+      eventId,
+      {},
+      { page: 1, limit: 10000 },
+    );
 
     const summary: PaymentSummary = {
       totalRevenue: 0,
@@ -433,7 +451,9 @@ export class PaymentService extends BaseService {
 
     const refundAmount = amount ?? payment.amount;
     if (!Number.isInteger(refundAmount)) {
-      throw new ValidationError("Le montant du remboursement doit être un entier (XOF sans décimales)");
+      throw new ValidationError(
+        "Le montant du remboursement doit être un entier (XOF sans décimales)",
+      );
     }
     if (refundAmount <= 0) {
       throw new ValidationError("Le montant du remboursement doit être positif");

@@ -5,7 +5,7 @@ import { eventRepository } from "@/repositories/event.repository";
 import { organizationRepository } from "@/repositories/organization.repository";
 import { userRepository } from "@/repositories/user.repository";
 import { type AuthUser } from "@/middlewares/auth.middleware";
-import { NotFoundError, ValidationError } from "@/errors/app-error";
+import { ValidationError } from "@/errors/app-error";
 import { BaseService } from "./base.service";
 import { eventBus } from "@/events/event-bus";
 import { getRequestId } from "@/context/request-context";
@@ -72,6 +72,18 @@ export class ReceiptService extends BaseService {
     };
 
     const created = await receiptRepository.create(receipt);
+
+    eventBus.emit("receipt.generated", {
+      receiptId: created.id,
+      paymentId: payment.id,
+      eventId: payment.eventId,
+      userId: payment.userId,
+      amount: payment.amount,
+      actorId: user.uid,
+      requestId: getRequestId(),
+      timestamp: now,
+    });
+
     return created;
   }
 
@@ -93,10 +105,7 @@ export class ReceiptService extends BaseService {
   /**
    * List receipts for the current user.
    */
-  async listMyReceipts(
-    user: AuthUser,
-    pagination: { page: number; limit: number },
-  ) {
+  async listMyReceipts(user: AuthUser, pagination: { page: number; limit: number }) {
     this.requirePermission(user, "payment:read_own");
     return receiptRepository.findByUser(user.uid, pagination);
   }
