@@ -4,12 +4,19 @@ const envSchema = z.object({
   PORT: z.coerce.number().default(3000),
   HOST: z.string().default("0.0.0.0"),
   NODE_ENV: z.enum(["development", "staging", "production"]).default("development"),
-  LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
+  LOG_LEVEL: z.enum(["silent", "fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
 
-  FIREBASE_PROJECT_ID: z.string().regex(/^[a-z][a-z0-9-]{4,28}[a-z0-9]$/, "Invalid Firebase project ID format"),
+  FIREBASE_PROJECT_ID: z
+    .string()
+    .regex(/^[a-z][a-z0-9-]{4,28}[a-z0-9]$/, "Invalid Firebase project ID format"),
   FIREBASE_STORAGE_BUCKET: z.string(),
 
-  CORS_ORIGINS: z.string().transform((v) => v.split(",").map((s) => s.trim()).filter(Boolean)),
+  CORS_ORIGINS: z.string().transform((v) =>
+    v
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean),
+  ),
 
   RATE_LIMIT_MAX: z.coerce.number().default(100),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().default(60_000),
