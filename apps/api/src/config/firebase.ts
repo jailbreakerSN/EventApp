@@ -64,4 +64,5 @@ export const COLLECTIONS = {
   PROMO_CODES: "promoCodes",
   VENUES: "venues",
   NEWSLETTER_SUBSCRIBERS: "newsletterSubscribers",
+  SUBSCRIPTIONS: "subscriptions",
 } as const;

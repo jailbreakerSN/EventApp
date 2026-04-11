@@ -66,6 +66,8 @@ import type {
   CreateBadgeTemplateDto,
   UpdateBadgeTemplateDto,
   GeneratedBadge,
+  Subscription,
+  PlanUsage,
 } from "@teranga/shared-types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
@@ -295,6 +297,21 @@ export const organizationsApi = {
 
   getAnalytics: (orgId: string, query: Partial<AnalyticsQuery> = {}) =>
     api.get<ApiResponse<OrgAnalytics>>(`/v1/organizations/${orgId}/analytics${buildQuery(query)}`),
+
+  getSubscription: (orgId: string) =>
+    api.get<ApiResponse<Subscription | null>>(`/v1/organizations/${orgId}/subscription`),
+
+  getUsage: (orgId: string) =>
+    api.get<ApiResponse<PlanUsage>>(`/v1/organizations/${orgId}/usage`),
+
+  upgradePlan: (orgId: string, plan: string) =>
+    api.post<ApiResponse<Subscription>>(`/v1/organizations/${orgId}/subscription/upgrade`, { plan }),
+
+  downgradePlan: (orgId: string, plan: string) =>
+    api.post<ApiResponse<null>>(`/v1/organizations/${orgId}/subscription/downgrade`, { plan }),
+
+  cancelSubscription: (orgId: string) =>
+    api.post<ApiResponse<null>>(`/v1/organizations/${orgId}/subscription/cancel`, {}),
 };
 
 export const invitesApi = {

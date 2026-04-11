@@ -24,7 +24,11 @@ import {
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
 import { useSidebar } from "./sidebar-context";
+import { usePlanGating } from "@/hooks/use-plan-gating";
+import { UsageMeter } from "@/components/plan/UsageMeter";
+import { PLAN_DISPLAY } from "@teranga/shared-types";
 import type { UserRole } from "@teranga/shared-types";
+import { CreditCard, ArrowUpRight } from "lucide-react";
 
 interface NavItem {
   href: string;
@@ -34,15 +38,56 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
-  { href: "/dashboard", icon: LayoutDashboard, label: "Tableau de bord", roles: ["organizer", "co_organizer", "super_admin"] },
-  { href: "/events", icon: CalendarDays, label: "Événements", roles: ["organizer", "co_organizer", "super_admin"] },
-  { href: "/participants", icon: Users, label: "Participants", roles: ["organizer", "super_admin"] },
+  {
+    href: "/dashboard",
+    icon: LayoutDashboard,
+    label: "Tableau de bord",
+    roles: ["organizer", "co_organizer", "super_admin"],
+  },
+  {
+    href: "/events",
+    icon: CalendarDays,
+    label: "Événements",
+    roles: ["organizer", "co_organizer", "super_admin"],
+  },
+  {
+    href: "/participants",
+    icon: Users,
+    label: "Participants",
+    roles: ["organizer", "super_admin"],
+  },
   { href: "/badges", icon: QrCode, label: "Badges & QR", roles: ["organizer", "super_admin"] },
-  { href: "/analytics", icon: BarChart3, label: "Analytiques", roles: ["organizer", "super_admin"] },
+  {
+    href: "/analytics",
+    icon: BarChart3,
+    label: "Analytiques",
+    roles: ["organizer", "super_admin"],
+  },
   { href: "/finance", icon: Wallet, label: "Finances", roles: ["organizer", "super_admin"] },
-  { href: "/communications", icon: Megaphone, label: "Communications", roles: ["organizer", "co_organizer", "super_admin"] },
-  { href: "/notifications", icon: Bell, label: "Notifications", roles: ["organizer", "co_organizer", "super_admin"] },
-  { href: "/organization", icon: Building2, label: "Organisation", roles: ["organizer", "super_admin"] },
+  {
+    href: "/communications",
+    icon: Megaphone,
+    label: "Communications",
+    roles: ["organizer", "co_organizer", "super_admin"],
+  },
+  {
+    href: "/notifications",
+    icon: Bell,
+    label: "Notifications",
+    roles: ["organizer", "co_organizer", "super_admin"],
+  },
+  {
+    href: "/organization",
+    icon: Building2,
+    label: "Organisation",
+    roles: ["organizer", "super_admin"],
+  },
+  {
+    href: "/organization/billing",
+    icon: CreditCard,
+    label: "Facturation",
+    roles: ["organizer", "super_admin"],
+  },
   { href: "/settings", icon: Settings, label: "Paramètres", roles: ["organizer", "super_admin"] },
 ];
 
@@ -88,7 +133,9 @@ export function Sidebar() {
     } else {
       document.body.style.overflow = "";
     }
-    return () => { document.body.style.overflow = ""; };
+    return () => {
+      document.body.style.overflow = "";
+    };
   }, [isOpen]);
 
   const sidebarContent = (
@@ -96,8 +143,17 @@ export function Sidebar() {
       {/* Logo */}
       <div className="px-6 py-4 border-b border-white/10 flex items-center justify-between">
         <div>
-          <Image src="/logo-white.svg" alt="Teranga Event" width={140} height={83} className="h-10 w-auto" priority />
-          <span className="text-white/50 text-[10px] block mt-0.5 tracking-wider uppercase">Back-office</span>
+          <Image
+            src="/logo-white.svg"
+            alt="Teranga Event"
+            width={140}
+            height={83}
+            className="h-10 w-auto"
+            priority
+          />
+          <span className="text-white/50 text-[10px] block mt-0.5 tracking-wider uppercase">
+            Back-office
+          </span>
         </div>
         {/* Close button — mobile only */}
         <button
@@ -122,7 +178,7 @@ export function Sidebar() {
                 "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm motion-safe:transition-colors",
                 isActive
                   ? "bg-white/15 text-white font-medium"
-                  : "text-white/60 hover:bg-white/10 hover:text-white"
+                  : "text-white/60 hover:bg-white/10 hover:text-white",
               )}
             >
               <Icon size={17} aria-hidden="true" />
@@ -136,25 +192,27 @@ export function Sidebar() {
           <>
             <div className="my-3 mx-3 border-t border-white/10" />
             <p className="px-3 text-[10px] text-white/40 uppercase tracking-wider mb-1">Lieux</p>
-            {venueNavItems.filter((item) => hasRole(...item.roles)).map(({ href, icon: Icon, label }) => {
-              const isActive = pathname === href || pathname.startsWith(href + "/");
-              return (
-                <Link
-                  key={href}
-                  href={href}
-                  aria-current={isActive ? "page" : undefined}
-                  className={cn(
-                    "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm motion-safe:transition-colors",
-                    isActive
-                      ? "bg-white/15 text-white font-medium"
-                      : "text-white/60 hover:bg-white/10 hover:text-white"
-                  )}
-                >
-                  <Icon size={17} aria-hidden="true" />
-                  {label}
-                </Link>
-              );
-            })}
+            {venueNavItems
+              .filter((item) => hasRole(...item.roles))
+              .map(({ href, icon: Icon, label }) => {
+                const isActive = pathname === href || pathname.startsWith(href + "/");
+                return (
+                  <Link
+                    key={href}
+                    href={href}
+                    aria-current={isActive ? "page" : undefined}
+                    className={cn(
+                      "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm motion-safe:transition-colors",
+                      isActive
+                        ? "bg-white/15 text-white font-medium"
+                        : "text-white/60 hover:bg-white/10 hover:text-white",
+                    )}
+                  >
+                    <Icon size={17} aria-hidden="true" />
+                    {label}
+                  </Link>
+                );
+              })}
           </>
         )}
 
@@ -162,7 +220,9 @@ export function Sidebar() {
         {hasRole("super_admin") && (
           <>
             <div className="my-3 mx-3 border-t border-white/10" />
-            <p className="px-3 text-[10px] text-white/40 uppercase tracking-wider mb-1">Administration</p>
+            <p className="px-3 text-[10px] text-white/40 uppercase tracking-wider mb-1">
+              Administration
+            </p>
             {adminNavItems.map(({ href, icon: Icon, label }) => {
               const isActive = pathname === href || pathname.startsWith(href + "/");
               return (
@@ -174,7 +234,7 @@ export function Sidebar() {
                     "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm motion-safe:transition-colors",
                     isActive
                       ? "bg-white/15 text-white font-medium"
-                      : "text-white/60 hover:bg-white/10 hover:text-white"
+                      : "text-white/60 hover:bg-white/10 hover:text-white",
                   )}
                 >
                   <Icon size={17} aria-hidden="true" />
@@ -186,13 +246,8 @@ export function Sidebar() {
         )}
       </nav>
 
-      {/* Plan badge */}
-      <div className="px-4 py-4 border-t border-white/10">
-        <div className="bg-secondary/15 rounded-lg p-3">
-          <p className="text-secondary text-xs font-semibold">Plan Gratuit</p>
-          <p className="text-white/50 text-xs mt-0.5">2 événements / mois</p>
-        </div>
-      </div>
+      {/* Plan widget */}
+      <SidebarPlanWidget />
     </>
   );
 
@@ -211,7 +266,7 @@ export function Sidebar() {
       <div
         className={cn(
           "fixed inset-0 z-40 bg-black/50 lg:hidden motion-safe:transition-opacity",
-          isOpen ? "opacity-100" : "opacity-0 pointer-events-none"
+          isOpen ? "opacity-100" : "opacity-0 pointer-events-none",
         )}
         onClick={close}
         aria-hidden="true"
@@ -223,7 +278,7 @@ export function Sidebar() {
         className={cn(
           "fixed inset-y-0 left-0 z-50 w-60 bg-sidebar text-sidebar-foreground flex flex-col lg:hidden",
           "motion-safe:transition-transform motion-safe:duration-300 motion-safe:ease-in-out",
-          isOpen ? "translate-x-0" : "-translate-x-full"
+          isOpen ? "translate-x-0" : "-translate-x-full",
         )}
         role="navigation"
         aria-label="Navigation principale"
@@ -232,5 +287,43 @@ export function Sidebar() {
         {sidebarContent}
       </aside>
     </>
+  );
+}
+
+function SidebarPlanWidget() {
+  const { plan, checkLimit, isNearLimit } = usePlanGating();
+  const display = PLAN_DISPLAY[plan];
+  const events = checkLimit("events");
+  const members = checkLimit("members");
+
+  return (
+    <div className="px-4 py-4 border-t border-white/10">
+      <div className="bg-white/5 rounded-lg p-3 space-y-3">
+        <div className="flex items-center justify-between">
+          <p className="text-secondary text-xs font-semibold">{display.name.fr}</p>
+          {plan === "free" && (
+            <Link
+              href="/organization/billing"
+              className="inline-flex items-center gap-0.5 text-[10px] text-secondary hover:text-secondary/80 transition-colors"
+            >
+              Upgrade <ArrowUpRight className="h-2.5 w-2.5" />
+            </Link>
+          )}
+        </div>
+        <div className="space-y-2 [&_span]:text-white/50 [&_div]:bg-white/10">
+          <UsageMeter label="Événements" current={events.current} limit={events.limit} compact />
+          <UsageMeter label="Membres" current={members.current} limit={members.limit} compact />
+        </div>
+        {(isNearLimit("events") || isNearLimit("members")) && plan !== "enterprise" && (
+          <Link
+            href="/organization/billing"
+            className="flex items-center justify-center gap-1.5 w-full px-3 py-1.5 bg-secondary/20 text-secondary text-xs font-medium rounded-md hover:bg-secondary/30 transition-colors"
+          >
+            <CreditCard className="h-3 w-3" />
+            Augmenter mes limites
+          </Link>
+        )}
+      </div>
+    </div>
   );
 }

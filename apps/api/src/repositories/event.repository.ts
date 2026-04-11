@@ -1,6 +1,11 @@
 import { COLLECTIONS } from "@/config/firebase";
 import { BaseRepository, type PaginatedResult, type PaginationParams } from "./base.repository";
-import { type Event, type EventStatus, type EventCategory, type EventFormat } from "@teranga/shared-types";
+import {
+  type Event,
+  type EventStatus,
+  type EventCategory,
+  type EventFormat,
+} from "@teranga/shared-types";
 
 export interface EventFilters {
   organizationId?: string;
@@ -40,7 +45,11 @@ export class EventRepository extends BaseRepository<Event> {
       whereFilters.push({ field: "category", op: "==" as const, value: filters.category });
     }
     if (filters.organizationId) {
-      whereFilters.push({ field: "organizationId", op: "==" as const, value: filters.organizationId });
+      whereFilters.push({
+        field: "organizationId",
+        op: "==" as const,
+        value: filters.organizationId,
+      });
     }
     if (filters.isFeatured !== undefined) {
       whereFilters.push({ field: "isFeatured", op: "==" as const, value: filters.isFeatured });
@@ -57,6 +66,21 @@ export class EventRepository extends BaseRepository<Event> {
       [{ field: "organizationId", op: "==", value: organizationId }],
       pagination,
     );
+  }
+
+  /**
+   * Count active events (draft + published) for an organization.
+   * Used for plan limit enforcement.
+   */
+  async countActiveByOrganization(organizationId: string): Promise<number> {
+    const result = await this.findMany(
+      [
+        { field: "organizationId", op: "==", value: organizationId },
+        { field: "status", op: "in", value: ["draft", "published"] },
+      ],
+      { page: 1, limit: 1, orderBy: "createdAt", orderDir: "desc" },
+    );
+    return result.meta.total;
   }
 
   async findBySlug(slug: string): Promise<Event | null> {
@@ -84,7 +108,11 @@ export class EventRepository extends BaseRepository<Event> {
     filters: EventSearchFilters,
     pagination: PaginationParams,
   ): Promise<PaginatedResult<Event>> {
-    const whereFilters: Array<{ field: string; op: "==" | ">=" | "<=" | "array-contains-any"; value: unknown }> = [
+    const whereFilters: Array<{
+      field: string;
+      op: "==" | ">=" | "<=" | "array-contains-any";
+      value: unknown;
+    }> = [
       { field: "status", op: "==", value: "published" },
       { field: "isPublic", op: "==", value: true },
     ];
@@ -115,7 +143,11 @@ export class EventRepository extends BaseRepository<Event> {
     }
     if (filters.tags && filters.tags.length > 0) {
       // Firestore array-contains-any: find events matching ANY of the tags (max 30)
-      whereFilters.push({ field: "tags", op: "array-contains-any", value: filters.tags.slice(0, 30) });
+      whereFilters.push({
+        field: "tags",
+        op: "array-contains-any",
+        value: filters.tags.slice(0, 30),
+      });
     }
 
     return this.findMany(whereFilters, {

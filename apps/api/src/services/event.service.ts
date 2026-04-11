@@ -10,18 +10,18 @@ import {
   type Event,
   type EventStatus,
   type EventSearchQuery,
-  PLAN_LIMITS,
+  type OrganizationPlan,
 } from "@teranga/shared-types";
-import { eventRepository, type EventFilters, type EventSearchFilters } from "@/repositories/event.repository";
+import {
+  eventRepository,
+  type EventFilters,
+  type EventSearchFilters,
+} from "@/repositories/event.repository";
 import { organizationRepository } from "@/repositories/organization.repository";
 import { venueRepository } from "@/repositories/venue.repository";
 import { type PaginationParams, type PaginatedResult } from "@/repositories/base.repository";
 import { type AuthUser } from "@/middlewares/auth.middleware";
-import {
-  ForbiddenError,
-  ValidationError,
-  PlanLimitError,
-} from "@/errors/app-error";
+import { ForbiddenError, ValidationError, PlanLimitError } from "@/errors/app-error";
 import { db } from "@/config/firebase";
 import { COLLECTIONS } from "@/config/firebase";
 import { BaseService } from "./base.service";
@@ -56,6 +56,9 @@ export class EventService extends BaseService {
     if (user.organizationId !== org.id && !user.roles.includes("super_admin")) {
       throw new ForbiddenError("Vous ne faites pas partie de cette organisation");
     }
+
+    // Check plan limit for active events
+    await this.checkEventLimit(dto.organizationId, org.plan);
 
     // Validate dates
     if (new Date(dto.endDate) <= new Date(dto.startDate)) {
@@ -215,12 +218,16 @@ export class EventService extends BaseService {
     this.requireOrganizationAccess(user, event.organizationId);
 
     if (event.status !== "draft") {
-      throw new ValidationError(`Cannot publish event with status '${event.status}'. Only draft events can be published.`);
+      throw new ValidationError(
+        `Cannot publish event with status '${event.status}'. Only draft events can be published.`,
+      );
     }
 
     // Validate event is ready for publishing
     if (!event.title || !event.startDate || !event.endDate || !event.location) {
-      throw new ValidationError("L'événement doit avoir un titre, des dates et un lieu avant publication");
+      throw new ValidationError(
+        "L'événement doit avoir un titre, des dates et un lieu avant publication",
+      );
     }
 
     await eventRepository.publish(eventId, user.uid);
@@ -284,7 +291,9 @@ export class EventService extends BaseService {
     this.requireOrganizationAccess(user, event.organizationId);
 
     if (event.status !== "published") {
-      throw new ValidationError(`Cannot unpublish event with status '${event.status}'. Only published events can be unpublished.`);
+      throw new ValidationError(
+        `Cannot unpublish event with status '${event.status}'. Only published events can be unpublished.`,
+      );
     }
 
     await eventRepository.unpublish(eventId, user.uid);
@@ -318,6 +327,12 @@ export class EventService extends BaseService {
 
       if (event.status === "cancelled" || event.status === "archived") {
         throw new ValidationError(`Cannot modify ticket types on a ${event.status} event`);
+      }
+
+      // Gate paid tickets behind plan feature
+      if (dto.price && dto.price > 0) {
+        const org = await organizationRepository.findByIdOrThrow(event.organizationId);
+        this.requirePlanFeature(org.plan, "paidTickets");
       }
 
       const updatedTicketTypes = [...event.ticketTypes, newTicketType];
@@ -398,7 +413,9 @@ export class EventService extends BaseService {
         throw new ValidationError(`Type de billet « ${ticketTypeId} » introuvable`);
       }
       if (ticketType.soldCount > 0) {
-        throw new ValidationError("Impossible de supprimer un type de billet avec des ventes existantes");
+        throw new ValidationError(
+          "Impossible de supprimer un type de billet avec des ventes existantes",
+        );
       }
 
       const updatedTicketTypes = event.ticketTypes.filter((t) => t.id !== ticketTypeId);
@@ -543,17 +560,7 @@ export class EventService extends BaseService {
 
     // Check plan limits for event count
     const org = await organizationRepository.findByIdOrThrow(source.organizationId);
-    const limits = PLAN_LIMITS[org.plan];
-    if (isFinite(limits.maxEvents)) {
-      const existingEvents = await eventRepository.findByOrganization(source.organizationId, {
-        page: 1, limit: 1, orderBy: "createdAt", orderDir: "desc",
-      });
-      if (existingEvents.meta.total >= limits.maxEvents) {
-        throw new PlanLimitError(
-          `Maximum ${limits.maxEvents} events on the ${org.plan} plan`,
-        );
-      }
-    }
+    await this.checkEventLimit(source.organizationId, org.plan);
 
     // Validate new dates
     if (new Date(dto.newEndDate) <= new Date(dto.newStartDate)) {
@@ -564,20 +571,22 @@ export class EventService extends BaseService {
     const slug = generateSlug(title);
 
     // Reset ticket type counters and generate new IDs
-    const ticketTypes = dto.copyTicketTypes !== false
-      ? source.ticketTypes.map((t) => ({
-          ...t,
-          id: `tt-${crypto.randomBytes(4).toString("hex")}`,
-          soldCount: 0,
-        }))
-      : [];
+    const ticketTypes =
+      dto.copyTicketTypes !== false
+        ? source.ticketTypes.map((t) => ({
+            ...t,
+            id: `tt-${crypto.randomBytes(4).toString("hex")}`,
+            soldCount: 0,
+          }))
+        : [];
 
-    const accessZones = dto.copyAccessZones !== false
-      ? source.accessZones.map((z) => ({
-          ...z,
-          id: `zone-${crypto.randomBytes(4).toString("hex")}`,
-        }))
-      : [];
+    const accessZones =
+      dto.copyAccessZones !== false
+        ? source.accessZones.map((z) => ({
+            ...z,
+            id: `zone-${crypto.randomBytes(4).toString("hex")}`,
+          }))
+        : [];
 
     const cloned = await eventRepository.create({
       organizationId: source.organizationId,
@@ -623,13 +632,12 @@ export class EventService extends BaseService {
 
   // ─── Search ──────────────────────────────────────────────────────────────
 
-  async search(
-    query: EventSearchQuery,
-    user?: AuthUser,
-  ): Promise<PaginatedResult<Event>> {
+  async search(query: EventSearchQuery, _user?: AuthUser): Promise<PaginatedResult<Event>> {
     // Normalize tags: accept comma-separated string or array
     const tags = query.tags
-      ? (Array.isArray(query.tags) ? query.tags : query.tags.split(",").map((t) => t.trim()))
+      ? Array.isArray(query.tags)
+        ? query.tags
+        : query.tags.split(",").map((t) => t.trim())
       : undefined;
 
     const filters: EventSearchFilters = {
@@ -664,6 +672,22 @@ export class EventService extends BaseService {
     return result;
   }
 
+  // ─── Plan Limit Helpers ────────────────────────────────────────────────────
+
+  private async checkEventLimit(organizationId: string, plan: OrganizationPlan): Promise<void> {
+    const { allowed, current, limit } = this.checkPlanLimit(
+      plan,
+      "events",
+      await eventRepository.countActiveByOrganization(organizationId),
+    );
+    if (!allowed) {
+      throw new PlanLimitError(`Maximum ${limit} événements actifs sur le plan ${plan}`, {
+        current,
+        max: limit,
+        plan,
+      });
+    }
+  }
 }
 
 export const eventService = new EventService();

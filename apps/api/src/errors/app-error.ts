@@ -146,11 +146,15 @@ export class QrAlreadyUsedError extends AppError {
 }
 
 export class PlanLimitError extends AppError {
-  constructor(limit: string) {
+  constructor(
+    limit: string,
+    details?: { feature?: string; current?: number; max?: number; plan?: string },
+  ) {
     super({
       message: `Limite du plan atteinte : ${limit}`,
       code: ERROR_CODES.ORGANIZATION_PLAN_LIMIT,
       statusCode: 403,
+      details,
     });
   }
 }

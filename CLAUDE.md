@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-**Teranga** is an African event management platform (mobile app + web back-office + participant web app) designed for the Senegalese and West African market. The name comes from the Wolof word for *hospitality* — the cultural foundation of every event.
+**Teranga** is an African event management platform (mobile app + web back-office + participant web app) designed for the Senegalese and West African market. The name comes from the Wolof word for _hospitality_ — the cultural foundation of every event.
 
 **Core differentiator:** Offline-first QR badge scanning that works reliably with intermittent connectivity, which is critical for the African market.
 
@@ -37,18 +37,18 @@ teranga/
 
 ### Tech Stack
 
-| Layer | Technology | Rationale |
-|-------|-----------|-----------|
-| Mobile | **Flutter 3** (Riverpod, go_router, Hive) | Best offline/Firestore SDK, cross-platform |
-| Web backoffice | **Next.js 14** App Router + TailwindCSS + shadcn/ui | PWA support, SSR, accessible components |
-| Web participant | **Next.js 14** App Router + TailwindCSS + shared-ui | SSR/SSG for SEO, fast on African networks, WhatsApp sharing |
-| REST API | **Fastify 4** + TypeScript on **Cloud Run** | Low latency, no cold starts, Swagger/OpenAPI |
-| Background jobs | **Firebase Cloud Functions v2** | Event-driven triggers (auth, Firestore, Pub/Sub) |
-| Database | **Cloud Firestore** (primary) | Real-time, offline sync, security rules |
-| Auth | **Firebase Authentication** + custom claims for roles | Role-based access, JWT tokens |
-| Storage | **Cloud Storage for Firebase** | Badge PDFs, event images, profile photos |
-| Push | **FCM** + planned SMS (Africa's Talking) | Push + SMS fallback for African market |
-| Monorepo | **npm workspaces** + **Turborepo** | Dependency graph, parallel builds |
+| Layer           | Technology                                            | Rationale                                                   |
+| --------------- | ----------------------------------------------------- | ----------------------------------------------------------- |
+| Mobile          | **Flutter 3** (Riverpod, go_router, Hive)             | Best offline/Firestore SDK, cross-platform                  |
+| Web backoffice  | **Next.js 14** App Router + TailwindCSS + shadcn/ui   | PWA support, SSR, accessible components                     |
+| Web participant | **Next.js 14** App Router + TailwindCSS + shared-ui   | SSR/SSG for SEO, fast on African networks, WhatsApp sharing |
+| REST API        | **Fastify 4** + TypeScript on **Cloud Run**           | Low latency, no cold starts, Swagger/OpenAPI                |
+| Background jobs | **Firebase Cloud Functions v2**                       | Event-driven triggers (auth, Firestore, Pub/Sub)            |
+| Database        | **Cloud Firestore** (primary)                         | Real-time, offline sync, security rules                     |
+| Auth            | **Firebase Authentication** + custom claims for roles | Role-based access, JWT tokens                               |
+| Storage         | **Cloud Storage for Firebase**                        | Badge PDFs, event images, profile photos                    |
+| Push            | **FCM** + planned SMS (Africa's Talking)              | Push + SMS fallback for African market                      |
+| Monorepo        | **npm workspaces** + **Turborepo**                    | Dependency graph, parallel builds                           |
 
 ### Key Design Decisions
 
@@ -63,15 +63,15 @@ teranga/
 
 The platform uses **granular permissions** (`resource:action` format) mapped to system roles. Defined in `packages/shared-types/src/permissions.types.ts`.
 
-| Role | Scope | Key Permissions |
-|------|-------|----------------|
-| `participant` | Global | `registration:create`, `badge:view_own`, `feed:read`, `messaging:send` |
-| `organizer` | Organization | All participant + `event:*`, `registration:read_all`, `badge:generate`, `checkin:*` |
-| `co_organizer` | Event | Same as organizer but scoped to specific events, no org management |
-| `speaker` | Event | `event:read`, `profile:*`, `feed:create_post`, `messaging:send` |
-| `sponsor` | Event | `sponsor:manage_booth`, `sponsor:collect_leads`, `event:read` |
-| `staff` | Event | `checkin:scan`, `checkin:manual`, `registration:read_all` |
-| `super_admin` | Global | `platform:manage` → implies ALL permissions |
+| Role           | Scope        | Key Permissions                                                                     |
+| -------------- | ------------ | ----------------------------------------------------------------------------------- |
+| `participant`  | Global       | `registration:create`, `badge:view_own`, `feed:read`, `messaging:send`              |
+| `organizer`    | Organization | All participant + `event:*`, `registration:read_all`, `badge:generate`, `checkin:*` |
+| `co_organizer` | Event        | Same as organizer but scoped to specific events, no org management                  |
+| `speaker`      | Event        | `event:read`, `profile:*`, `feed:create_post`, `messaging:send`                     |
+| `sponsor`      | Event        | `sponsor:manage_booth`, `sponsor:collect_leads`, `event:read`                       |
+| `staff`        | Event        | `checkin:scan`, `checkin:manual`, `registration:read_all`                           |
+| `super_admin`  | Global       | `platform:manage` → implies ALL permissions                                         |
 
 **Key functions:** `resolvePermissions()`, `hasPermission()`, `hasAllPermissions()`, `hasAnyPermission()`.
 
@@ -156,14 +156,14 @@ cd apps/mobile && flutter run
 
 ### Key npm Scripts (root)
 
-| Script | Description |
-|--------|------------|
-| `npm run api:dev` | Start API in dev mode with hot reload |
-| `npm run web:dev` | Start web backoffice in dev mode |
+| Script                | Description                                           |
+| --------------------- | ----------------------------------------------------- |
+| `npm run api:dev`     | Start API in dev mode with hot reload                 |
+| `npm run web:dev`     | Start web backoffice in dev mode                      |
 | `npm run types:build` | Build shared-types package (run after schema changes) |
-| `npm run build` | Build all packages via Turborepo |
-| `npm run lint` | Lint all TypeScript packages |
-| `npm run format` | Format all files with Prettier |
+| `npm run build`       | Build all packages via Turborepo                      |
+| `npm run lint`        | Lint all TypeScript packages                          |
+| `npm run format`      | Format all files with Prettier                        |
 
 ### After Changing Shared Types
 
@@ -279,18 +279,139 @@ Other packages import from `@teranga/shared-types` and depend on the compiled ou
 
 ---
 
+## Freemium Model
+
+The platform uses a 4-tier SaaS freemium model to monetize while keeping the free tier generous enough for adoption in the Senegalese market.
+
+### Plan Tiers
+
+|                             | Free | Starter (9 900 XOF/mo) | Pro (29 900 XOF/mo) | Enterprise (custom) |
+| --------------------------- | ---- | ---------------------- | ------------------- | ------------------- |
+| **maxEvents**               | 3    | 10                     | Infinity            | Infinity            |
+| **maxParticipantsPerEvent** | 50   | 200                    | 2,000               | Infinity            |
+| **maxMembers**              | 1    | 3                      | 50                  | Infinity            |
+| qrScanning                  | -    | ✅                     | ✅                  | ✅                  |
+| paidTickets                 | -    | -                      | ✅                  | ✅                  |
+| customBadges                | -    | ✅                     | ✅                  | ✅                  |
+| csvExport                   | -    | ✅                     | ✅                  | ✅                  |
+| smsNotifications            | -    | -                      | ✅                  | ✅                  |
+| advancedAnalytics           | -    | -                      | ✅                  | ✅                  |
+| speakerPortal               | -    | -                      | ✅                  | ✅                  |
+| sponsorPortal               | -    | -                      | ✅                  | ✅                  |
+| apiAccess                   | -    | -                      | -                   | ✅                  |
+| whiteLabel                  | -    | -                      | -                   | ✅                  |
+| promoCodes                  | -    | ✅                     | ✅                  | ✅                  |
+
+### Shared Types
+
+Plan configuration lives in `packages/shared-types/src/organization.types.ts`:
+
+- **`PlanFeatures`**: Interface with 11 boolean feature flags
+- **`PlanFeature`**: Union type (`keyof PlanFeatures`)
+- **`PlanLimits`**: `{ maxEvents, maxParticipantsPerEvent, maxMembers, features: PlanFeatures }`
+- **`PLAN_LIMITS`**: Const record mapping each `OrganizationPlan` to its `PlanLimits`
+- **`PLAN_DISPLAY`**: Const record with display info (name fr/en, priceXof, color, description)
+
+Subscription types in `packages/shared-types/src/subscription.types.ts`:
+
+- **`SubscriptionStatusSchema`**: Zod enum (active, past_due, cancelled, trialing)
+- **`SubscriptionSchema`**: Full subscription document schema
+- **`PlanUsageSchema`**: Usage response with current/limit for events and members
+
+### API Enforcement
+
+Enforcement happens at the service layer (`apps/api/src/services/`):
+
+| Check                | Location                                                      | Behavior                                                         |
+| -------------------- | ------------------------------------------------------------- | ---------------------------------------------------------------- |
+| Event creation limit | `event.service.ts` `create()` + `clone()`                     | `PlanLimitError` if `activeEvents >= maxEvents`                  |
+| Participant limit    | `registration.service.ts` `register()`                        | `PlanLimitError` if `registeredCount >= maxParticipantsPerEvent` |
+| Paid ticket gating   | `event.service.ts` ticket creation                            | `PlanLimitError` if `price > 0` and `!features.paidTickets`      |
+| Feature gating       | `base.service.ts` `requirePlanFeature()`                      | `PlanLimitError` for disabled features                           |
+| Member limit         | `organization.service.ts` `addMember()` + `invite.service.ts` | `PlanLimitError` if `members >= maxMembers`                      |
+
+**Grace period rule:** Registration participant limit is NOT enforced after an event has started (`startDate < now`). Never block during a live event.
+
+**Helper methods on `BaseService`:**
+
+- `requirePlanFeature(plan, feature)` — throws `PlanLimitError` if feature is disabled
+- `checkPlanLimit(plan, resource, current)` — returns `{ allowed, current, limit }` without throwing
+
+### Subscription Management
+
+Routes at `apps/api/src/routes/subscriptions.routes.ts`:
+
+| Endpoint                                          | Method | Description                           |
+| ------------------------------------------------- | ------ | ------------------------------------- |
+| `/v1/organizations/:orgId/subscription`           | GET    | Current subscription                  |
+| `/v1/organizations/:orgId/usage`                  | GET    | On-demand usage computation           |
+| `/v1/organizations/:orgId/subscription/upgrade`   | POST   | Upgrade plan (body: `{ plan }`)       |
+| `/v1/organizations/:orgId/subscription/downgrade` | POST   | Downgrade plan (validates usage fits) |
+| `/v1/organizations/:orgId/subscription/cancel`    | POST   | Revert to free plan                   |
+
+**Design decisions:**
+
+- Usage is computed on-demand (query active events, read memberIds.length) — no counters collection
+- Downgrade validates that current usage fits the target plan limits before allowing
+- Upgrade/downgrade/cancel emit domain events (`subscription.upgraded`, `subscription.cancelled`)
+- MVP: instant plan change without actual payment — payment integration (Wave/OM) deferred
+
+### Frontend Plan Gating (web-backoffice)
+
+**`usePlanGating` hook** (`apps/web-backoffice/src/hooks/use-plan-gating.ts`):
+
+- `plan` — current organization plan
+- `canUse(feature: PlanFeature): boolean` — feature flag check
+- `checkLimit(resource): { allowed, current, limit, percent }` — usage check
+- `isNearLimit(resource): boolean` — true at >= 80% usage
+
+**`PlanGate` component** (`apps/web-backoffice/src/components/plan/PlanGate.tsx`):
+
+- `fallback="blur"`: Renders children with blur overlay + upgrade CTA (soft wall)
+- `fallback="hidden"`: Renders nothing
+- `fallback="disabled"`: Reduced opacity, no interactions
+
+**Integration points:**
+
+- Analytics page: `<PlanGate feature="advancedAnalytics" fallback="blur">` on charts
+- Communications page: `<PlanGate feature="smsNotifications" fallback="disabled">` on SMS toggle
+- Sidebar: Plan widget with usage meters + upgrade link when near limit
+- Organization page: Plan card with usage and "Gérer mon plan" link
+
+**Billing page** (`apps/web-backoffice/src/app/(dashboard)/organization/billing/page.tsx`):
+
+- Current plan card with usage meters
+- Plan comparison table (responsive: table on desktop, cards on mobile)
+- Upgrade/downgrade flow with feature diff preview
+- Cancel subscription button
+
+### Seed Data
+
+The seed script (`scripts/seed-emulators.ts`) includes plan-diverse test data:
+
+| Organization          | Plan       | Email                    |
+| --------------------- | ---------- | ------------------------ |
+| Teranga Events SRL    | pro        | `admin@teranga.dev`      |
+| Dakar Digital Hub     | starter    | `organizer@teranga.dev`  |
+| Startup Dakar         | free       | `free@teranga.dev`       |
+| Groupe Sonatel Events | enterprise | `enterprise@teranga.dev` |
+
+3 subscription documents are seeded for the non-free organizations.
+
+---
+
 ## Firebase Emulators
 
 The project is configured for local development with Firebase emulators:
 
-| Service | Port |
-|---------|------|
-| Auth | 9099 |
-| Firestore | 8080 |
-| Storage | 9199 |
-| Functions | 5001 |
-| Hosting | 5000 |
-| Pub/Sub | 8085 |
+| Service     | Port |
+| ----------- | ---- |
+| Auth        | 9099 |
+| Firestore   | 8080 |
+| Storage     | 9199 |
+| Functions   | 5001 |
+| Hosting     | 5000 |
+| Pub/Sub     | 8085 |
 | Emulator UI | 4000 |
 
 Start all: `firebase emulators:start`
@@ -303,14 +424,14 @@ This project follows a **trunk-based development** model with short-lived featur
 
 ### Branch Naming Convention
 
-| Prefix | Purpose | Example |
-|--------|---------|---------|
-| `feature/` | New features and wave implementations | `feature/wave-1-core-loop` |
-| `fix/` | Bug fixes | `fix/qr-signature-validation` |
+| Prefix      | Purpose                                   | Example                          |
+| ----------- | ----------------------------------------- | -------------------------------- |
+| `feature/`  | New features and wave implementations     | `feature/wave-1-core-loop`       |
+| `fix/`      | Bug fixes                                 | `fix/qr-signature-validation`    |
 | `refactor/` | Code improvements with no behavior change | `refactor/extract-badge-service` |
-| `chore/` | Tooling, CI, dependencies, config | `chore/update-eslint-config` |
-| `docs/` | Documentation only | `docs/api-endpoints` |
-| `hotfix/` | Urgent production fixes | `hotfix/registration-crash` |
+| `chore/`    | Tooling, CI, dependencies, config         | `chore/update-eslint-config`     |
+| `docs/`     | Documentation only                        | `docs/api-endpoints`             |
+| `hotfix/`   | Urgent production fixes                   | `hotfix/registration-crash`      |
 
 ### Workflow Rules
 
@@ -388,11 +509,11 @@ flutter build ios --release           # iOS (requires macOS)
 
 ## Environment Aliases
 
-| Alias | Firebase Project | Usage |
-|-------|-----------------|-------|
-| default | `teranga-events-dev` | Local development |
-| staging | `teranga-events-staging` | Pre-production testing |
-| production | `teranga-events-prod` | Live production |
+| Alias      | Firebase Project         | Usage                  |
+| ---------- | ------------------------ | ---------------------- |
+| default    | `teranga-events-dev`     | Local development      |
+| staging    | `teranga-events-staging` | Pre-production testing |
+| production | `teranga-events-prod`    | Live production        |
 
 Switch with: `firebase use <alias>`
 
@@ -402,19 +523,19 @@ Switch with: `firebase use <alias>`
 
 The platform is delivered in **10 waves** with a **web-first MVP strategy**. Mobile is deferred to Wave 9 after the web platform is validated. Full details with task checklists are in `docs/delivery-plan/`.
 
-| Wave | Name | Platform | Est. Effort |
-|------|------|----------|-------------|
-| Pre-Wave | Foundation Hardening | All | 3-4 days |
-| Wave 1 | **Core Loop** | API + Web + Mobile | 2 weeks |
-| Wave 2 | **Check-in API & Dashboard** | API + Web | 1.5 weeks |
-| Wave 3 | **Participant Web App** | Web (SSR/SSG) | 1.5 weeks |
-| Wave 4 | Organizer Productivity | API + Web | 2 weeks |
-| Wave 5 | Social & Sessions | API + Web | 2 weeks |
-| Wave 6 | Payments | API + Web | 2 weeks |
-| Wave 7 | Communications | API + Web | 1.5 weeks |
-| Wave 8 | Portals | API + Web | 1.5 weeks |
-| Wave 9 | **Mobile App Completion** | Mobile (Flutter) | 3-4 weeks |
-| Wave 10 | Production Launch | All | 2 weeks |
+| Wave     | Name                         | Platform           | Est. Effort |
+| -------- | ---------------------------- | ------------------ | ----------- |
+| Pre-Wave | Foundation Hardening         | All                | 3-4 days    |
+| Wave 1   | **Core Loop**                | API + Web + Mobile | 2 weeks     |
+| Wave 2   | **Check-in API & Dashboard** | API + Web          | 1.5 weeks   |
+| Wave 3   | **Participant Web App**      | Web (SSR/SSG)      | 1.5 weeks   |
+| Wave 4   | Organizer Productivity       | API + Web          | 2 weeks     |
+| Wave 5   | Social & Sessions            | API + Web          | 2 weeks     |
+| Wave 6   | Payments                     | API + Web          | 2 weeks     |
+| Wave 7   | Communications               | API + Web          | 1.5 weeks   |
+| Wave 8   | Portals                      | API + Web          | 1.5 weeks   |
+| Wave 9   | **Mobile App Completion**    | Mobile (Flutter)   | 3-4 weeks   |
+| Wave 10  | Production Launch            | All                | 2 weeks     |
 
 **Tracking:** Each wave file contains a task checklist. Mark tasks `[x]` as they are completed. Update status in `docs/delivery-plan/README.md` as waves progress.
 
@@ -424,27 +545,30 @@ The platform is delivered in **10 waves** with a **web-first MVP strategy**. Mob
 
 ### Current Test Suite
 
-- **153 tests** across 14 test files (as of 2026-04-06)
+- **401 tests** across 29 test files (as of 2026-04-11)
 - Test runner: **Vitest** with TypeScript
 - Run: `cd apps/api && npx vitest run`
 - Test files follow `__tests__/` convention next to source files
 
 ### Test Categories
 
-| Category | Location | Examples |
-|----------|----------|---------|
-| QR signing | `src/services/__tests__/qr-signing.test.ts` | v2/v1 sign-verify, tamper detection |
-| Event service | `src/services/__tests__/event.service.test.ts` | Create, update, publish, cancel, archive |
-| Organization service | `src/services/__tests__/organization.service.test.ts` | Create, members, plan limits |
-| Auth middleware | `src/middlewares/__tests__/auth.middleware.test.ts` | Token validation, role defaults |
-| Permission middleware | `src/middlewares/__tests__/permission.middleware.test.ts` | RBAC enforcement, super_admin bypass |
-| Validation middleware | `src/middlewares/__tests__/validate.middleware.test.ts` | Zod schema validation |
-| Event bus | `src/events/__tests__/event-bus.test.ts` | Listener delivery, error isolation |
-| Audit listener | `src/events/__tests__/audit.listener.test.ts` | Domain event → audit log mapping |
-| Health routes | `src/routes/__tests__/health.routes.test.ts` | Liveness, readiness with Firestore check |
-| Event routes | `src/routes/__tests__/events.routes.test.ts` | Auth enforcement, CRUD, response shapes |
-| Upload service | `src/services/__tests__/upload.service.test.ts` | Signed URL generation, org access validation |
-| Badge template service | `src/services/__tests__/badge-template.service.test.ts` | Template CRUD, org access, permission checks |
+| Category               | Location                                                  | Examples                                                                                                             |
+| ---------------------- | --------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| QR signing             | `src/services/__tests__/qr-signing.test.ts`               | v2/v1 sign-verify, tamper detection                                                                                  |
+| Event service          | `src/services/__tests__/event.service.test.ts`            | Create, update, publish, cancel, archive                                                                             |
+| Organization service   | `src/services/__tests__/organization.service.test.ts`     | Create, members, plan limits                                                                                         |
+| Plan limits            | `src/services/__tests__/plan-limits.test.ts`              | PLAN_LIMITS/PLAN_DISPLAY structure, feature gating per tier, event creation limits, paid ticket gating, clone limits |
+| Auth middleware        | `src/middlewares/__tests__/auth.middleware.test.ts`       | Token validation, role defaults                                                                                      |
+| Permission middleware  | `src/middlewares/__tests__/permission.middleware.test.ts` | RBAC enforcement, super_admin bypass                                                                                 |
+| Validation middleware  | `src/middlewares/__tests__/validate.middleware.test.ts`   | Zod schema validation                                                                                                |
+| Event bus              | `src/events/__tests__/event-bus.test.ts`                  | Listener delivery, error isolation                                                                                   |
+| Audit listener         | `src/events/__tests__/audit.listener.test.ts`             | Domain event → audit log mapping                                                                                     |
+| Health routes          | `src/routes/__tests__/health.routes.test.ts`              | Liveness, readiness with Firestore check                                                                             |
+| Event routes           | `src/routes/__tests__/events.routes.test.ts`              | Auth enforcement, CRUD, response shapes                                                                              |
+| Check-in routes        | `src/routes/__tests__/checkin.routes.test.ts`             | Sync, scan, offline buffer                                                                                           |
+| Upload service         | `src/services/__tests__/upload.service.test.ts`           | Signed URL generation, org access validation                                                                         |
+| Badge template service | `src/services/__tests__/badge-template.service.test.ts`   | Template CRUD, org access, permission checks                                                                         |
+| Security audit         | `src/services/__tests__/security-audit.test.ts`           | Org access checks, transaction safety, permission enforcement                                                        |
 
 ### Writing Tests
 
@@ -499,18 +623,18 @@ Before writing any code, Claude MUST evaluate the task against these dimensions.
 
 These security patterns were established during the Wave 1 review and MUST be maintained in all future work:
 
-| Pattern | Rule | Applies To |
-|---------|------|-----------|
-| Org access on reads | `requireOrganizationAccess()` on every non-public data access | Services |
-| Org access on writes | `requireOrganizationAccess()` before any mutation | Services |
-| Transactional read-write | `db.runTransaction()` for any read-then-modify-then-write | Services |
-| Content-type whitelist | Validate against `ALLOWED_CONTENT_TYPES` set | Upload endpoints |
-| Immutable field guards | Firestore rules prevent mutation of `organizationId`, `userId`, `createdBy` | Firestore rules |
-| No SVG uploads | SVG removed from storage rules and upload whitelist | Storage rules, upload service |
-| API client timeout | 30s `AbortController` timeout on all fetch calls | Web API client |
-| Token refresh on 401 | Single retry with `getIdToken(true)` on authentication failure | Web API client |
-| Signed QR codes | HMAC-SHA256 with `timingSafeEqual`, never truncated | QR service |
-| No hard deletes | Soft-delete only (`status: "archived"` or `"cancelled"`) | All services |
+| Pattern                  | Rule                                                                        | Applies To                    |
+| ------------------------ | --------------------------------------------------------------------------- | ----------------------------- |
+| Org access on reads      | `requireOrganizationAccess()` on every non-public data access               | Services                      |
+| Org access on writes     | `requireOrganizationAccess()` before any mutation                           | Services                      |
+| Transactional read-write | `db.runTransaction()` for any read-then-modify-then-write                   | Services                      |
+| Content-type whitelist   | Validate against `ALLOWED_CONTENT_TYPES` set                                | Upload endpoints              |
+| Immutable field guards   | Firestore rules prevent mutation of `organizationId`, `userId`, `createdBy` | Firestore rules               |
+| No SVG uploads           | SVG removed from storage rules and upload whitelist                         | Storage rules, upload service |
+| API client timeout       | 30s `AbortController` timeout on all fetch calls                            | Web API client                |
+| Token refresh on 401     | Single retry with `getIdToken(true)` on authentication failure              | Web API client                |
+| Signed QR codes          | HMAC-SHA256 with `timingSafeEqual`, never truncated                         | QR service                    |
+| No hard deletes          | Soft-delete only (`status: "archived"` or `"cancelled"`)                    | All services                  |
 
 ---
 
@@ -520,11 +644,11 @@ When working on this project, Claude should leverage specialized agents and skil
 
 ### When to Use Agents
 
-| Scenario | Agent Type | Why |
-|----------|-----------|-----|
-| Broad codebase exploration | `Explore` | Find patterns across multiple files/directories |
-| Multi-file implementation | `general-purpose` | Complex changes spanning API + web + mobile |
-| Implementation planning | `Plan` | Architectural decisions, multi-step feature design |
+| Scenario                   | Agent Type                  | Why                                                 |
+| -------------------------- | --------------------------- | --------------------------------------------------- |
+| Broad codebase exploration | `Explore`                   | Find patterns across multiple files/directories     |
+| Multi-file implementation  | `general-purpose`           | Complex changes spanning API + web + mobile         |
+| Implementation planning    | `Plan`                      | Architectural decisions, multi-step feature design  |
 | Parallel independent tasks | Multiple agents in parallel | e.g., API fix + web fix + mobile fix simultaneously |
 
 ### Development Workflow
@@ -572,6 +696,7 @@ This project runs on WSL2. Key configuration:
 - Seed emulators: `npx tsx scripts/seed-emulators.ts` (idempotent, handles existing users)
 
 <!-- code-review-graph MCP tools -->
+
 ## MCP Tools: code-review-graph
 
 **IMPORTANT: This project has a knowledge graph. ALWAYS use the
@@ -592,16 +717,16 @@ Fall back to Grep/Glob/Read **only** when the graph doesn't cover what you need.
 
 ### Key Tools
 
-| Tool | Use when |
-|------|----------|
-| `detect_changes` | Reviewing code changes — gives risk-scored analysis |
-| `get_review_context` | Need source snippets for review — token-efficient |
-| `get_impact_radius` | Understanding blast radius of a change |
-| `get_affected_flows` | Finding which execution paths are impacted |
-| `query_graph` | Tracing callers, callees, imports, tests, dependencies |
-| `semantic_search_nodes` | Finding functions/classes by name or keyword |
-| `get_architecture_overview` | Understanding high-level codebase structure |
-| `refactor_tool` | Planning renames, finding dead code |
+| Tool                        | Use when                                               |
+| --------------------------- | ------------------------------------------------------ |
+| `detect_changes`            | Reviewing code changes — gives risk-scored analysis    |
+| `get_review_context`        | Need source snippets for review — token-efficient      |
+| `get_impact_radius`         | Understanding blast radius of a change                 |
+| `get_affected_flows`        | Finding which execution paths are impacted             |
+| `query_graph`               | Tracing callers, callees, imports, tests, dependencies |
+| `semantic_search_nodes`     | Finding functions/classes by name or keyword           |
+| `get_architecture_overview` | Understanding high-level codebase structure            |
+| `refactor_tool`             | Planning renames, finding dead code                    |
 
 ### Workflow
 

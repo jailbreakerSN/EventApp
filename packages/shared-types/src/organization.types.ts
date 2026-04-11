@@ -161,15 +161,137 @@ export type OrgAnalytics = z.infer<typeof OrgAnalyticsSchema>;
 // Used by API for enforcement and by frontends for plan feature display.
 // Infinity means unlimited — frontends should check with isFinite().
 
-export interface PlanLimits {
-  maxEvents: number;
-  maxParticipants: number;
-  maxMembers: number;
+export interface PlanFeatures {
+  qrScanning: boolean;
+  paidTickets: boolean;
+  customBadges: boolean;
+  csvExport: boolean;
+  smsNotifications: boolean;
+  advancedAnalytics: boolean;
+  speakerPortal: boolean;
+  sponsorPortal: boolean;
+  apiAccess: boolean;
+  whiteLabel: boolean;
+  promoCodes: boolean;
 }
 
+export type PlanFeature = keyof PlanFeatures;
+
+export interface PlanLimits {
+  maxEvents: number; // active events (draft + published)
+  maxParticipantsPerEvent: number; // per-event registration cap
+  maxMembers: number;
+  features: PlanFeatures;
+}
+
+const FREE_FEATURES: PlanFeatures = {
+  qrScanning: false,
+  paidTickets: false,
+  customBadges: false,
+  csvExport: false,
+  smsNotifications: false,
+  advancedAnalytics: false,
+  speakerPortal: false,
+  sponsorPortal: false,
+  apiAccess: false,
+  whiteLabel: false,
+  promoCodes: false,
+};
+
+const STARTER_FEATURES: PlanFeatures = {
+  qrScanning: true,
+  paidTickets: false,
+  customBadges: true,
+  csvExport: true,
+  smsNotifications: false,
+  advancedAnalytics: false,
+  speakerPortal: false,
+  sponsorPortal: false,
+  apiAccess: false,
+  whiteLabel: false,
+  promoCodes: true,
+};
+
+const PRO_FEATURES: PlanFeatures = {
+  qrScanning: true,
+  paidTickets: true,
+  customBadges: true,
+  csvExport: true,
+  smsNotifications: true,
+  advancedAnalytics: true,
+  speakerPortal: true,
+  sponsorPortal: true,
+  apiAccess: false,
+  whiteLabel: false,
+  promoCodes: true,
+};
+
+const ENTERPRISE_FEATURES: PlanFeatures = {
+  qrScanning: true,
+  paidTickets: true,
+  customBadges: true,
+  csvExport: true,
+  smsNotifications: true,
+  advancedAnalytics: true,
+  speakerPortal: true,
+  sponsorPortal: true,
+  apiAccess: true,
+  whiteLabel: true,
+  promoCodes: true,
+};
+
 export const PLAN_LIMITS: Record<OrganizationPlan, PlanLimits> = {
-  free: { maxEvents: 2, maxParticipants: 100, maxMembers: 3 },
-  starter: { maxEvents: 10, maxParticipants: 500, maxMembers: 10 },
-  pro: { maxEvents: Infinity, maxParticipants: 5000, maxMembers: 50 },
-  enterprise: { maxEvents: Infinity, maxParticipants: Infinity, maxMembers: Infinity },
+  free: { maxEvents: 3, maxParticipantsPerEvent: 50, maxMembers: 1, features: FREE_FEATURES },
+  starter: {
+    maxEvents: 10,
+    maxParticipantsPerEvent: 200,
+    maxMembers: 3,
+    features: STARTER_FEATURES,
+  },
+  pro: {
+    maxEvents: Infinity,
+    maxParticipantsPerEvent: 2000,
+    maxMembers: 50,
+    features: PRO_FEATURES,
+  },
+  enterprise: {
+    maxEvents: Infinity,
+    maxParticipantsPerEvent: Infinity,
+    maxMembers: Infinity,
+    features: ENTERPRISE_FEATURES,
+  },
+};
+
+export interface PlanDisplayInfo {
+  id: OrganizationPlan;
+  name: { fr: string; en: string };
+  priceXof: number;
+  limits: PlanLimits;
+}
+
+export const PLAN_DISPLAY: Record<OrganizationPlan, PlanDisplayInfo> = {
+  free: {
+    id: "free",
+    name: { fr: "Teranga Libre", en: "Teranga Free" },
+    priceXof: 0,
+    limits: PLAN_LIMITS.free,
+  },
+  starter: {
+    id: "starter",
+    name: { fr: "Teranga Starter", en: "Teranga Starter" },
+    priceXof: 9900,
+    limits: PLAN_LIMITS.starter,
+  },
+  pro: {
+    id: "pro",
+    name: { fr: "Teranga Pro", en: "Teranga Pro" },
+    priceXof: 29900,
+    limits: PLAN_LIMITS.pro,
+  },
+  enterprise: {
+    id: "enterprise",
+    name: { fr: "Teranga Enterprise", en: "Teranga Enterprise" },
+    priceXof: 0,
+    limits: PLAN_LIMITS.enterprise,
+  },
 };

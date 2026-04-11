@@ -1,6 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { EventService } from "../event.service";
-import { buildAuthUser, buildOrganizerUser, buildSuperAdmin, buildEvent, buildOrganization } from "@/__tests__/factories";
+import {
+  buildAuthUser,
+  buildOrganizerUser,
+  buildSuperAdmin,
+  buildEvent,
+  buildOrganization,
+} from "@/__tests__/factories";
 
 // ─── Mocks ─────────────────────────────────────────────────────────────────
 
@@ -10,6 +16,7 @@ const mockEventRepo = {
   findBySlug: vi.fn(),
   findPublished: vi.fn(),
   findByOrganization: vi.fn(),
+  countActiveByOrganization: vi.fn(),
   search: vi.fn(),
   update: vi.fn(),
   publish: vi.fn(),
@@ -22,15 +29,21 @@ const mockOrgRepo = {
 };
 
 vi.mock("@/repositories/event.repository", () => ({
-  eventRepository: new Proxy({}, {
-    get: (_target, prop) => (mockEventRepo as Record<string, unknown>)[prop as string],
-  }),
+  eventRepository: new Proxy(
+    {},
+    {
+      get: (_target, prop) => (mockEventRepo as Record<string, unknown>)[prop as string],
+    },
+  ),
 }));
 
 vi.mock("@/repositories/organization.repository", () => ({
-  organizationRepository: new Proxy({}, {
-    get: (_target, prop) => (mockOrgRepo as Record<string, unknown>)[prop as string],
-  }),
+  organizationRepository: new Proxy(
+    {},
+    {
+      get: (_target, prop) => (mockOrgRepo as Record<string, unknown>)[prop as string],
+    },
+  ),
 }));
 
 vi.mock("@/repositories/venue.repository", () => ({
@@ -72,6 +85,8 @@ const service = new EventService();
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Default: org has room for more events (below plan limit)
+  mockEventRepo.countActiveByOrganization.mockResolvedValue(0);
 });
 
 describe("EventService.create", () => {
@@ -227,9 +242,9 @@ describe("EventService.update", () => {
     const event = buildEvent({ organizationId: "org-1", status: "cancelled" as any });
     mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
 
-    await expect(
-      service.update(event.id, { title: "Nope" } as any, user),
-    ).rejects.toThrow("Cannot update an event with status 'cancelled'");
+    await expect(service.update(event.id, { title: "Nope" } as any, user)).rejects.toThrow(
+      "Cannot update an event with status 'cancelled'",
+    );
   });
 
   it("rejects update on archived event", async () => {
@@ -237,9 +252,9 @@ describe("EventService.update", () => {
     const event = buildEvent({ organizationId: "org-1", status: "archived" as any });
     mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
 
-    await expect(
-      service.update(event.id, { title: "Nope" } as any, user),
-    ).rejects.toThrow("Cannot update an event with status 'archived'");
+    await expect(service.update(event.id, { title: "Nope" } as any, user)).rejects.toThrow(
+      "Cannot update an event with status 'archived'",
+    );
   });
 
   it("validates date consistency on update", async () => {
@@ -262,9 +277,9 @@ describe("EventService.update", () => {
     const event = buildEvent({ organizationId: "org-1", status: "draft" });
     mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
 
-    await expect(
-      service.update(event.id, { title: "Nope" } as any, user),
-    ).rejects.toThrow("Accès refusé");
+    await expect(service.update(event.id, { title: "Nope" } as any, user)).rejects.toThrow(
+      "Accès refusé",
+    );
   });
 });
 
@@ -290,7 +305,9 @@ describe("EventService.publish", () => {
     const event = buildEvent({ organizationId: "org-1", status: "published" });
     mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
 
-    await expect(service.publish(event.id, user)).rejects.toThrow("Only draft events can be published");
+    await expect(service.publish(event.id, user)).rejects.toThrow(
+      "Only draft events can be published",
+    );
   });
 
   it("rejects publishing an incomplete event", async () => {
@@ -368,7 +385,9 @@ describe("EventService.unpublish", () => {
     const event = buildEvent({ organizationId: "org-1", status: "draft" });
     mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
 
-    await expect(service.unpublish(event.id, user)).rejects.toThrow("Only published events can be unpublished");
+    await expect(service.unpublish(event.id, user)).rejects.toThrow(
+      "Only published events can be unpublished",
+    );
   });
 
   it("requires event:publish permission", async () => {
@@ -382,16 +401,26 @@ describe("EventService.addTicketType", () => {
   it("adds a ticket type to an event", async () => {
     const user = buildOrganizerUser("org-1");
     const event = buildEvent({ organizationId: "org-1", status: "draft", ticketTypes: [] });
-    mockTxGet.mockResolvedValue({ exists: true, id: event.id, data: () => ({ ...event, id: undefined }) });
+    mockTxGet.mockResolvedValue({
+      exists: true,
+      id: event.id,
+      data: () => ({ ...event, id: undefined }),
+    });
+    // Pro plan required for paid tickets
+    mockOrgRepo.findByIdOrThrow.mockResolvedValue(buildOrganization({ id: "org-1", plan: "pro" }));
 
-    const result = await service.addTicketType(event.id, {
-      name: "VIP",
-      price: 5000,
-      currency: "XOF",
-      totalQuantity: 50,
-      accessZoneIds: [],
-      isVisible: true,
-    }, user);
+    const result = await service.addTicketType(
+      event.id,
+      {
+        name: "VIP",
+        price: 5000,
+        currency: "XOF",
+        totalQuantity: 50,
+        accessZoneIds: [],
+        isVisible: true,
+      },
+      user,
+    );
 
     expect(result.ticketTypes).toHaveLength(1);
     expect(result.ticketTypes[0].name).toBe("VIP");
@@ -403,11 +432,15 @@ describe("EventService.addTicketType", () => {
   it("rejects adding to a cancelled event", async () => {
     const user = buildOrganizerUser("org-1");
     const event = buildEvent({ organizationId: "org-1", status: "cancelled" as any });
-    mockTxGet.mockResolvedValue({ exists: true, id: event.id, data: () => ({ ...event, id: undefined }) });
+    mockTxGet.mockResolvedValue({
+      exists: true,
+      id: event.id,
+      data: () => ({ ...event, id: undefined }),
+    });
 
-    await expect(
-      service.addTicketType(event.id, { name: "VIP" } as any, user),
-    ).rejects.toThrow("Cannot modify ticket types");
+    await expect(service.addTicketType(event.id, { name: "VIP" } as any, user)).rejects.toThrow(
+      "Cannot modify ticket types",
+    );
   });
 });
 
@@ -416,11 +449,31 @@ describe("EventService.updateTicketType", () => {
     const user = buildOrganizerUser("org-1");
     const event = buildEvent({
       organizationId: "org-1",
-      ticketTypes: [{ id: "tt-1", name: "Standard", price: 0, currency: "XOF" as const, totalQuantity: 100, soldCount: 0, accessZoneIds: [], isVisible: true }],
+      ticketTypes: [
+        {
+          id: "tt-1",
+          name: "Standard",
+          price: 0,
+          currency: "XOF" as const,
+          totalQuantity: 100,
+          soldCount: 0,
+          accessZoneIds: [],
+          isVisible: true,
+        },
+      ],
     });
-    mockTxGet.mockResolvedValue({ exists: true, id: event.id, data: () => ({ ...event, id: undefined }) });
+    mockTxGet.mockResolvedValue({
+      exists: true,
+      id: event.id,
+      data: () => ({ ...event, id: undefined }),
+    });
 
-    const result = await service.updateTicketType(event.id, "tt-1", { name: "VIP", price: 5000 }, user);
+    const result = await service.updateTicketType(
+      event.id,
+      "tt-1",
+      { name: "VIP", price: 5000 },
+      user,
+    );
 
     expect(result.ticketTypes[0].name).toBe("VIP");
     expect(result.ticketTypes[0].price).toBe(5000);
@@ -433,7 +486,11 @@ describe("EventService.updateTicketType", () => {
   it("rejects updating a non-existent ticket type", async () => {
     const user = buildOrganizerUser("org-1");
     const event = buildEvent({ organizationId: "org-1", ticketTypes: [] });
-    mockTxGet.mockResolvedValue({ exists: true, id: event.id, data: () => ({ ...event, id: undefined }) });
+    mockTxGet.mockResolvedValue({
+      exists: true,
+      id: event.id,
+      data: () => ({ ...event, id: undefined }),
+    });
 
     await expect(
       service.updateTicketType(event.id, "tt-999", { name: "Nope" }, user),
@@ -444,13 +501,28 @@ describe("EventService.updateTicketType", () => {
     const user = buildOrganizerUser("org-other");
     const event = buildEvent({
       organizationId: "org-1",
-      ticketTypes: [{ id: "tt-1", name: "Standard", price: 0, currency: "XOF" as const, totalQuantity: 100, soldCount: 0, accessZoneIds: [], isVisible: true }],
+      ticketTypes: [
+        {
+          id: "tt-1",
+          name: "Standard",
+          price: 0,
+          currency: "XOF" as const,
+          totalQuantity: 100,
+          soldCount: 0,
+          accessZoneIds: [],
+          isVisible: true,
+        },
+      ],
     });
-    mockTxGet.mockResolvedValue({ exists: true, id: event.id, data: () => ({ ...event, id: undefined }) });
+    mockTxGet.mockResolvedValue({
+      exists: true,
+      id: event.id,
+      data: () => ({ ...event, id: undefined }),
+    });
 
-    await expect(
-      service.updateTicketType(event.id, "tt-1", { name: "VIP" }, user),
-    ).rejects.toThrow("Accès refusé");
+    await expect(service.updateTicketType(event.id, "tt-1", { name: "VIP" }, user)).rejects.toThrow(
+      "Accès refusé",
+    );
   });
 });
 
@@ -459,9 +531,24 @@ describe("EventService.removeTicketType", () => {
     const user = buildOrganizerUser("org-1");
     const event = buildEvent({
       organizationId: "org-1",
-      ticketTypes: [{ id: "tt-1", name: "Standard", price: 0, currency: "XOF" as const, totalQuantity: 100, soldCount: 0, accessZoneIds: [], isVisible: true }],
+      ticketTypes: [
+        {
+          id: "tt-1",
+          name: "Standard",
+          price: 0,
+          currency: "XOF" as const,
+          totalQuantity: 100,
+          soldCount: 0,
+          accessZoneIds: [],
+          isVisible: true,
+        },
+      ],
     });
-    mockTxGet.mockResolvedValue({ exists: true, id: event.id, data: () => ({ ...event, id: undefined }) });
+    mockTxGet.mockResolvedValue({
+      exists: true,
+      id: event.id,
+      data: () => ({ ...event, id: undefined }),
+    });
 
     await service.removeTicketType(event.id, "tt-1", user);
 
@@ -475,23 +562,40 @@ describe("EventService.removeTicketType", () => {
     const user = buildOrganizerUser("org-1");
     const event = buildEvent({
       organizationId: "org-1",
-      ticketTypes: [{ id: "tt-1", name: "Standard", price: 0, currency: "XOF" as const, totalQuantity: 100, soldCount: 5, accessZoneIds: [], isVisible: true }],
+      ticketTypes: [
+        {
+          id: "tt-1",
+          name: "Standard",
+          price: 0,
+          currency: "XOF" as const,
+          totalQuantity: 100,
+          soldCount: 5,
+          accessZoneIds: [],
+          isVisible: true,
+        },
+      ],
     });
-    mockTxGet.mockResolvedValue({ exists: true, id: event.id, data: () => ({ ...event, id: undefined }) });
+    mockTxGet.mockResolvedValue({
+      exists: true,
+      id: event.id,
+      data: () => ({ ...event, id: undefined }),
+    });
 
-    await expect(
-      service.removeTicketType(event.id, "tt-1", user),
-    ).rejects.toThrow("ventes existantes");
+    await expect(service.removeTicketType(event.id, "tt-1", user)).rejects.toThrow(
+      "ventes existantes",
+    );
   });
 
   it("rejects removing a non-existent ticket type", async () => {
     const user = buildOrganizerUser("org-1");
     const event = buildEvent({ organizationId: "org-1", ticketTypes: [] });
-    mockTxGet.mockResolvedValue({ exists: true, id: event.id, data: () => ({ ...event, id: undefined }) });
+    mockTxGet.mockResolvedValue({
+      exists: true,
+      id: event.id,
+      data: () => ({ ...event, id: undefined }),
+    });
 
-    await expect(
-      service.removeTicketType(event.id, "tt-999", user),
-    ).rejects.toThrow("introuvable");
+    await expect(service.removeTicketType(event.id, "tt-999", user)).rejects.toThrow("introuvable");
   });
 });
 
@@ -572,7 +676,7 @@ describe("EventService.clone", () => {
 
   beforeEach(() => {
     mockOrgRepo.findByIdOrThrow.mockResolvedValue(freeOrg);
-    mockEventRepo.findByOrganization.mockResolvedValue({ data: [], meta: { total: 0, page: 1, limit: 1, totalPages: 0 } });
+    mockEventRepo.countActiveByOrganization.mockResolvedValue(0);
   });
 
   it("clones an event with new dates", async () => {
@@ -581,7 +685,16 @@ describe("EventService.clone", () => {
       organizationId: "org-1",
       title: "Original Event",
       ticketTypes: [
-        { id: "tt-1", name: "Standard", price: 0, currency: "XOF", totalQuantity: 100, soldCount: 50, accessZoneIds: [], isVisible: true },
+        {
+          id: "tt-1",
+          name: "Standard",
+          price: 0,
+          currency: "XOF",
+          totalQuantity: 100,
+          soldCount: 50,
+          accessZoneIds: [],
+          isVisible: true,
+        },
       ],
       accessZones: [
         { id: "zone-1", name: "VIP", color: "#FF0000", allowedTicketTypes: ["tt-1"], capacity: 20 },
@@ -589,16 +702,24 @@ describe("EventService.clone", () => {
     });
     mockEventRepo.findByIdOrThrow.mockResolvedValue(source);
 
-    const clonedEvent = buildEvent({ id: "cloned-1", title: "Original Event (copie)", organizationId: "org-1" });
+    const clonedEvent = buildEvent({
+      id: "cloned-1",
+      title: "Original Event (copie)",
+      organizationId: "org-1",
+    });
     mockEventRepo.create.mockResolvedValue(clonedEvent);
 
     const newStart = new Date(Date.now() + 30 * 86400000).toISOString();
     const newEnd = new Date(Date.now() + 31 * 86400000).toISOString();
 
-    const result = await service.clone(source.id, {
-      newStartDate: newStart,
-      newEndDate: newEnd,
-    }, user);
+    await service.clone(
+      source.id,
+      {
+        newStartDate: newStart,
+        newEndDate: newEnd,
+      },
+      user,
+    );
 
     expect(mockEventRepo.create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -633,11 +754,15 @@ describe("EventService.clone", () => {
     mockEventRepo.findByIdOrThrow.mockResolvedValue(source);
     mockEventRepo.create.mockResolvedValue(buildEvent());
 
-    await service.clone(source.id, {
-      newTitle: "Custom Clone",
-      newStartDate: new Date(Date.now() + 86400000).toISOString(),
-      newEndDate: new Date(Date.now() + 2 * 86400000).toISOString(),
-    }, user);
+    await service.clone(
+      source.id,
+      {
+        newTitle: "Custom Clone",
+        newStartDate: new Date(Date.now() + 86400000).toISOString(),
+        newEndDate: new Date(Date.now() + 2 * 86400000).toISOString(),
+      },
+      user,
+    );
 
     expect(mockEventRepo.create).toHaveBeenCalledWith(
       expect.objectContaining({ title: "Custom Clone" }),
@@ -650,10 +775,14 @@ describe("EventService.clone", () => {
     mockEventRepo.findByIdOrThrow.mockResolvedValue(source);
 
     await expect(
-      service.clone(source.id, {
-        newStartDate: "2026-06-01T00:00:00.000Z",
-        newEndDate: "2026-05-01T00:00:00.000Z",
-      }, user),
+      service.clone(
+        source.id,
+        {
+          newStartDate: "2026-06-01T00:00:00.000Z",
+          newEndDate: "2026-05-01T00:00:00.000Z",
+        },
+        user,
+      ),
     ).rejects.toThrow("La date de fin");
   });
 
@@ -663,10 +792,14 @@ describe("EventService.clone", () => {
     mockEventRepo.findByIdOrThrow.mockResolvedValue(source);
 
     await expect(
-      service.clone(source.id, {
-        newStartDate: new Date(Date.now() + 86400000).toISOString(),
-        newEndDate: new Date(Date.now() + 2 * 86400000).toISOString(),
-      }, user),
+      service.clone(
+        source.id,
+        {
+          newStartDate: new Date(Date.now() + 86400000).toISOString(),
+          newEndDate: new Date(Date.now() + 2 * 86400000).toISOString(),
+        },
+        user,
+      ),
     ).rejects.toThrow("Accès refusé");
   });
 
@@ -674,18 +807,35 @@ describe("EventService.clone", () => {
     const user = buildOrganizerUser("org-1");
     const source = buildEvent({
       organizationId: "org-1",
-      ticketTypes: [{ id: "tt-1", name: "Standard", price: 0, currency: "XOF", totalQuantity: 100, soldCount: 0, accessZoneIds: [], isVisible: true }],
-      accessZones: [{ id: "zone-1", name: "VIP", color: "#FF0000", allowedTicketTypes: [], capacity: null }],
+      ticketTypes: [
+        {
+          id: "tt-1",
+          name: "Standard",
+          price: 0,
+          currency: "XOF",
+          totalQuantity: 100,
+          soldCount: 0,
+          accessZoneIds: [],
+          isVisible: true,
+        },
+      ],
+      accessZones: [
+        { id: "zone-1", name: "VIP", color: "#FF0000", allowedTicketTypes: [], capacity: null },
+      ],
     });
     mockEventRepo.findByIdOrThrow.mockResolvedValue(source);
     mockEventRepo.create.mockResolvedValue(buildEvent());
 
-    await service.clone(source.id, {
-      newStartDate: new Date(Date.now() + 86400000).toISOString(),
-      newEndDate: new Date(Date.now() + 2 * 86400000).toISOString(),
-      copyTicketTypes: false,
-      copyAccessZones: false,
-    }, user);
+    await service.clone(
+      source.id,
+      {
+        newStartDate: new Date(Date.now() + 86400000).toISOString(),
+        newEndDate: new Date(Date.now() + 2 * 86400000).toISOString(),
+        copyTicketTypes: false,
+        copyAccessZones: false,
+      },
+      user,
+    );
 
     const createCall = mockEventRepo.create.mock.calls[0][0];
     expect(createCall.ticketTypes).toHaveLength(0);

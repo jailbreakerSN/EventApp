@@ -7,6 +7,7 @@ import type {
   UpdateOrganizationDto,
   CreateInviteDto,
   AnalyticsQuery,
+  OrganizationPlan,
 } from "@teranga/shared-types";
 
 export function useOrganization() {
@@ -26,8 +27,7 @@ export function useUpdateOrganization() {
   const qc = useQueryClient();
 
   return useMutation({
-    mutationFn: (dto: Partial<UpdateOrganizationDto>) =>
-      organizationsApi.update(orgId!, dto),
+    mutationFn: (dto: Partial<UpdateOrganizationDto>) => organizationsApi.update(orgId!, dto),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["organization", orgId] }),
   });
 }
@@ -96,5 +96,73 @@ export function useOrgAnalytics(query: Partial<AnalyticsQuery> = {}) {
     queryKey: ["analytics", orgId, query],
     queryFn: () => organizationsApi.getAnalytics(orgId!, query),
     enabled: !!orgId,
+  });
+}
+
+export function useSubscription() {
+  const { user } = useAuth();
+  const orgId = user?.organizationId;
+
+  return useQuery({
+    queryKey: ["subscription", orgId],
+    queryFn: () => organizationsApi.getSubscription(orgId!),
+    enabled: !!orgId,
+  });
+}
+
+export function usePlanUsage() {
+  const { user } = useAuth();
+  const orgId = user?.organizationId;
+
+  return useQuery({
+    queryKey: ["plan-usage", orgId],
+    queryFn: () => organizationsApi.getUsage(orgId!),
+    enabled: !!orgId,
+    staleTime: 60_000,
+  });
+}
+
+export function useUpgradePlan() {
+  const { user } = useAuth();
+  const orgId = user?.organizationId;
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: (plan: OrganizationPlan) => organizationsApi.upgradePlan(orgId!, plan),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["organization", orgId] });
+      qc.invalidateQueries({ queryKey: ["subscription", orgId] });
+      qc.invalidateQueries({ queryKey: ["plan-usage", orgId] });
+    },
+  });
+}
+
+export function useDowngradePlan() {
+  const { user } = useAuth();
+  const orgId = user?.organizationId;
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: (plan: OrganizationPlan) => organizationsApi.downgradePlan(orgId!, plan),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["organization", orgId] });
+      qc.invalidateQueries({ queryKey: ["subscription", orgId] });
+      qc.invalidateQueries({ queryKey: ["plan-usage", orgId] });
+    },
+  });
+}
+
+export function useCancelSubscription() {
+  const { user } = useAuth();
+  const orgId = user?.organizationId;
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: () => organizationsApi.cancelSubscription(orgId!),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["organization", orgId] });
+      qc.invalidateQueries({ queryKey: ["subscription", orgId] });
+      qc.invalidateQueries({ queryKey: ["plan-usage", orgId] });
+    },
   });
 }

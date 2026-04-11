@@ -1,11 +1,14 @@
 import {
   type Permission,
   type RoleAssignment,
+  type OrganizationPlan,
+  type PlanFeature,
+  PLAN_LIMITS,
   hasPermission,
   resolvePermissions,
 } from "@teranga/shared-types";
 import { type AuthUser } from "@/middlewares/auth.middleware";
-import { ForbiddenError } from "@/errors/app-error";
+import { ForbiddenError, PlanLimitError } from "@/errors/app-error";
 
 /**
  * Base service providing shared permission resolution logic.
@@ -39,6 +42,43 @@ export abstract class BaseService {
     if (user.organizationId !== organizationId) {
       throw new ForbiddenError("Accès refusé aux ressources de cette organisation");
     }
+  }
+
+  /**
+   * Throw PlanLimitError if the plan does not include the given feature.
+   */
+  protected requirePlanFeature(plan: OrganizationPlan, feature: PlanFeature): void {
+    const limits = PLAN_LIMITS[plan];
+    if (!limits.features[feature]) {
+      throw new PlanLimitError(
+        `La fonctionnalité « ${feature} » n'est pas disponible sur le plan ${plan}`,
+        { feature, plan },
+      );
+    }
+  }
+
+  /**
+   * Check a numeric plan limit without throwing.
+   * Returns the comparison so the caller can decide (throw, waitlist, etc.).
+   */
+  protected checkPlanLimit(
+    plan: OrganizationPlan,
+    resource: "events" | "members" | "participantsPerEvent",
+    current: number,
+  ): { allowed: boolean; current: number; limit: number } {
+    const limits = PLAN_LIMITS[plan];
+    const limit =
+      resource === "events"
+        ? limits.maxEvents
+        : resource === "members"
+          ? limits.maxMembers
+          : limits.maxParticipantsPerEvent;
+
+    return {
+      allowed: !isFinite(limit) || current < limit,
+      current,
+      limit,
+    };
   }
 
   /**

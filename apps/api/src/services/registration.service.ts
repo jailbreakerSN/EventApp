@@ -3,9 +3,12 @@ import {
   type RegistrationStatus,
   type QrScanResult,
   type Event,
+  type Organization,
+  PLAN_LIMITS,
 } from "@teranga/shared-types";
 import { registrationRepository } from "@/repositories/registration.repository";
 import { eventRepository } from "@/repositories/event.repository";
+import { organizationRepository } from "@/repositories/organization.repository";
 import { userRepository } from "@/repositories/user.repository";
 import { type PaginationParams, type PaginatedResult } from "@/repositories/base.repository";
 import { runTransaction, FieldValue } from "@/repositories/transaction.helper";
@@ -18,6 +21,7 @@ import {
   QrInvalidError,
   QrAlreadyUsedError,
   NotFoundError,
+  PlanLimitError,
 } from "@/errors/app-error";
 import { BaseService } from "./base.service";
 import { signQrPayload, verifyQrPayload } from "./qr-signing";
@@ -34,11 +38,7 @@ export class RegistrationService extends BaseService {
    * uniqueness are guaranteed even under concurrent requests.
    * Domain event is emitted AFTER the transaction commits.
    */
-  async register(
-    eventId: string,
-    ticketTypeId: string,
-    user: AuthUser,
-  ): Promise<Registration> {
+  async register(eventId: string, ticketTypeId: string, user: AuthUser): Promise<Registration> {
     this.requirePermission(user, "registration:create");
 
     const result = await runTransaction(async (tx) => {
@@ -60,6 +60,31 @@ export class RegistrationService extends BaseService {
         throw new RegistrationClosedError(eventId);
       }
 
+      // ── Check plan participant-per-event limit ──
+      // Grace period: skip if event has already started (never block during live events)
+      const eventStarted = new Date() >= new Date(event.startDate);
+      if (!eventStarted) {
+        const orgRef = organizationRepository.ref.doc(event.organizationId);
+        const orgSnap = await tx.get(orgRef);
+        if (orgSnap.exists) {
+          const org = { id: orgSnap.id, ...orgSnap.data() } as Organization;
+          const planLimits = PLAN_LIMITS[org.plan];
+          if (
+            isFinite(planLimits.maxParticipantsPerEvent) &&
+            event.registeredCount >= planLimits.maxParticipantsPerEvent
+          ) {
+            throw new PlanLimitError(
+              `Maximum ${planLimits.maxParticipantsPerEvent} participants par événement sur le plan ${org.plan}`,
+              {
+                current: event.registeredCount,
+                max: planLimits.maxParticipantsPerEvent,
+                plan: org.plan,
+              },
+            );
+          }
+        }
+      }
+
       // ── Check for duplicate registration (inside tx) ──
       const duplicateQuery = registrationRepository.ref
         .where("eventId", "==", eventId)
@@ -74,7 +99,9 @@ export class RegistrationService extends BaseService {
       // ── Validate ticket type ──
       const ticketType = event.ticketTypes.find((t) => t.id === ticketTypeId);
       if (!ticketType) {
-        throw new ValidationError(`Type de billet « ${ticketTypeId} » introuvable pour cet événement`);
+        throw new ValidationError(
+          `Type de billet « ${ticketTypeId} » introuvable pour cet événement`,
+        );
       }
 
       // Check ticket availability
@@ -233,7 +260,7 @@ export class RegistrationService extends BaseService {
       const eventRef = eventRepository.ref.doc(current.eventId);
       const eventSnap = await tx.get(eventRef);
       const organizationId = eventSnap.exists
-        ? (eventSnap.data() as Record<string, unknown>).organizationId as string
+        ? ((eventSnap.data() as Record<string, unknown>).organizationId as string)
         : "";
 
       // Decrement counter only for statuses that were counted
@@ -264,9 +291,11 @@ export class RegistrationService extends BaseService {
     // If a confirmed registration was cancelled, promote next waitlisted
     // Fire-and-forget: promotion failure should not affect the cancel response
     if (registration.status === "confirmed") {
-      this.promoteNextWaitlisted(eventPayload.eventId, eventPayload.organizationId, user.uid).catch(() => {
-        // Swallowed — audit listener will log the cancellation regardless
-      });
+      this.promoteNextWaitlisted(eventPayload.eventId, eventPayload.organizationId, user.uid).catch(
+        () => {
+          // Swallowed — audit listener will log the cancellation regardless
+        },
+      );
     }
   }
 
@@ -385,9 +414,7 @@ export class RegistrationService extends BaseService {
 
       // Read event inside tx for ticket/zone resolution
       const eventSnap = await tx.get(eventRef);
-      const event = eventSnap.exists
-        ? ({ id: eventSnap.id, ...eventSnap.data() } as Event)
-        : null;
+      const event = eventSnap.exists ? ({ id: eventSnap.id, ...eventSnap.data() } as Event) : null;
 
       return {
         checkedInAt: now,
@@ -459,7 +486,6 @@ export class RegistrationService extends BaseService {
       timestamp: new Date().toISOString(),
     });
   }
-
 }
 
 export const registrationService = new RegistrationService();

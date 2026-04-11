@@ -1,6 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { OrganizationService } from "../organization.service";
-import { buildAuthUser, buildOrganizerUser, buildSuperAdmin, buildOrganization } from "@/__tests__/factories";
+import {
+  buildAuthUser,
+  buildOrganizerUser,
+  buildSuperAdmin,
+  buildOrganization,
+} from "@/__tests__/factories";
 
 // ─── Mocks ─────────────────────────────────────────────────────────────────
 
@@ -15,9 +20,12 @@ const mockOrgRepo = {
 };
 
 vi.mock("@/repositories/organization.repository", () => ({
-  organizationRepository: new Proxy({}, {
-    get: (_target, prop) => (mockOrgRepo as Record<string, unknown>)[prop as string],
-  }),
+  organizationRepository: new Proxy(
+    {},
+    {
+      get: (_target, prop) => (mockOrgRepo as Record<string, unknown>)[prop as string],
+    },
+  ),
 }));
 
 const mockTxUpdate = vi.fn();
@@ -160,15 +168,21 @@ describe("OrganizationService.update", () => {
     const user = buildOrganizerUser("org-other");
     mockOrgRepo.findByIdOrThrow.mockResolvedValue(org);
 
-    await expect(service.update("org-1", { name: "Nope" } as any, user)).rejects.toThrow("Accès refusé");
+    await expect(service.update("org-1", { name: "Nope" } as any, user)).rejects.toThrow(
+      "Accès refusé",
+    );
   });
 });
 
 describe("OrganizationService.addMember", () => {
   it("adds a member and sets custom claims", async () => {
-    const org = buildOrganization({ id: "org-1", plan: "free", memberIds: ["owner-1"] });
+    const org = buildOrganization({ id: "org-1", plan: "starter", memberIds: ["owner-1"] });
     const user = buildOrganizerUser("org-1");
-    mockTxGet.mockResolvedValue({ exists: true, id: org.id, data: () => ({ ...org, id: undefined }) });
+    mockTxGet.mockResolvedValue({
+      exists: true,
+      id: org.id,
+      data: () => ({ ...org, id: undefined }),
+    });
 
     await service.addMember("org-1", "new-member-1", user);
 
@@ -179,16 +193,22 @@ describe("OrganizationService.addMember", () => {
   });
 
   it("enforces plan member limit", async () => {
-    // Free plan: maxMembers = 3 (from PLAN_LIMITS)
+    // Free plan: maxMembers = 1 (from PLAN_LIMITS)
     const org = buildOrganization({
       id: "org-1",
       plan: "free",
-      memberIds: ["m1", "m2", "m3"], // already at max
+      memberIds: ["m1"], // already at max (free plan = 1 member)
     });
     const user = buildOrganizerUser("org-1");
-    mockTxGet.mockResolvedValue({ exists: true, id: org.id, data: () => ({ ...org, id: undefined }) });
+    mockTxGet.mockResolvedValue({
+      exists: true,
+      id: org.id,
+      data: () => ({ ...org, id: undefined }),
+    });
 
-    await expect(service.addMember("org-1", "new-member", user)).rejects.toThrow(/Maximum.*members/);
+    await expect(service.addMember("org-1", "new-member", user)).rejects.toThrow(
+      /Maximum.*members/,
+    );
   });
 
   it("rejects if user doesn't belong to org", async () => {

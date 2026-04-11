@@ -1,6 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { InviteService } from "../invite.service";
-import { buildOrganizerUser, buildAuthUser, buildOrganization, buildInvite } from "@/__tests__/factories";
+import {
+  buildOrganizerUser,
+  buildAuthUser,
+  buildOrganization,
+  buildInvite,
+} from "@/__tests__/factories";
 
 // ─── Mocks ─────────────────────────────────────────────────────────────────
 
@@ -23,21 +28,30 @@ const mockUserRepo = {
 };
 
 vi.mock("@/repositories/invite.repository", () => ({
-  inviteRepository: new Proxy({}, {
-    get: (_target, prop) => (mockInviteRepo as Record<string, unknown>)[prop as string],
-  }),
+  inviteRepository: new Proxy(
+    {},
+    {
+      get: (_target, prop) => (mockInviteRepo as Record<string, unknown>)[prop as string],
+    },
+  ),
 }));
 
 vi.mock("@/repositories/organization.repository", () => ({
-  organizationRepository: new Proxy({}, {
-    get: (_target, prop) => (mockOrgRepo as Record<string, unknown>)[prop as string],
-  }),
+  organizationRepository: new Proxy(
+    {},
+    {
+      get: (_target, prop) => (mockOrgRepo as Record<string, unknown>)[prop as string],
+    },
+  ),
 }));
 
 vi.mock("@/repositories/user.repository", () => ({
-  userRepository: new Proxy({}, {
-    get: (_target, prop) => (mockUserRepo as Record<string, unknown>)[prop as string],
-  }),
+  userRepository: new Proxy(
+    {},
+    {
+      get: (_target, prop) => (mockUserRepo as Record<string, unknown>)[prop as string],
+    },
+  ),
 }));
 
 vi.mock("@/events/event-bus", () => ({
@@ -75,7 +89,12 @@ vi.mock("@/config/firebase", () => ({
 describe("InviteService", () => {
   const service = new InviteService();
   const orgId = "org-1";
-  const org = buildOrganization({ id: orgId, ownerId: "owner-1", memberIds: ["owner-1"], plan: "free" });
+  const org = buildOrganization({
+    id: orgId,
+    ownerId: "owner-1",
+    memberIds: ["owner-1"],
+    plan: "starter",
+  });
   const user = buildOrganizerUser(orgId, { uid: "owner-1" });
 
   beforeEach(() => {
@@ -102,9 +121,7 @@ describe("InviteService", () => {
       mockUserRepo.findByEmail.mockResolvedValue({ uid: "owner-1" });
       const dto = { email: "existing@test.com", role: "member" as const };
 
-      await expect(service.createInvite(orgId, dto, user)).rejects.toThrow(
-        "déjà membre",
-      );
+      await expect(service.createInvite(orgId, dto, user)).rejects.toThrow("déjà membre");
     });
 
     it("rejects invite if a pending invite exists", async () => {
@@ -112,17 +129,15 @@ describe("InviteService", () => {
       mockInviteRepo.findByEmailAndOrg.mockResolvedValue(existing);
       const dto = { email: "dupe@test.com", role: "member" as const };
 
-      await expect(service.createInvite(orgId, dto, user)).rejects.toThrow(
-        "invitation en attente",
-      );
+      await expect(service.createInvite(orgId, dto, user)).rejects.toThrow("invitation en attente");
     });
 
     it("rejects when plan limit is reached", async () => {
-      // Free plan: max 3 members
+      // Free plan: max 1 member
       const fullOrg = buildOrganization({
         id: orgId,
         ownerId: "owner-1",
-        memberIds: ["owner-1", "m2", "m3"],
+        memberIds: ["owner-1"],
         plan: "free",
       });
       mockOrgRepo.findByIdOrThrow.mockResolvedValue(fullOrg);
@@ -136,9 +151,7 @@ describe("InviteService", () => {
       const otherUser = buildOrganizerUser("other-org");
       const dto = { email: "new@test.com", role: "member" as const };
 
-      await expect(service.createInvite(orgId, dto, otherUser)).rejects.toThrow(
-        "Accès refusé",
-      );
+      await expect(service.createInvite(orgId, dto, otherUser)).rejects.toThrow("Accès refusé");
     });
 
     it("denies invite for user without manage_members permission", async () => {
@@ -153,7 +166,10 @@ describe("InviteService", () => {
 
   describe("listByOrganization", () => {
     it("returns invites for the organization", async () => {
-      const invites = [buildInvite({ organizationId: orgId }), buildInvite({ organizationId: orgId })];
+      const invites = [
+        buildInvite({ organizationId: orgId }),
+        buildInvite({ organizationId: orgId }),
+      ];
       mockInviteRepo.findByOrganization.mockResolvedValue(invites);
 
       const result = await service.listByOrganization(orgId, user);
@@ -165,9 +181,7 @@ describe("InviteService", () => {
     it("denies listing for user without org access", async () => {
       const otherUser = buildOrganizerUser("other-org");
 
-      await expect(service.listByOrganization(orgId, otherUser)).rejects.toThrow(
-        "Accès refusé",
-      );
+      await expect(service.listByOrganization(orgId, otherUser)).rejects.toThrow("Accès refusé");
     });
 
     it("denies listing for user without read permission", async () => {
@@ -188,13 +202,17 @@ describe("InviteService", () => {
       });
       mockInviteRepo.findByToken.mockResolvedValue(invite);
 
-      const acceptUser = buildAuthUser({ uid: "new-user", email: "test@test.com", roles: ["participant"] });
+      const acceptUser = buildAuthUser({
+        uid: "new-user",
+        email: "test@test.com",
+        roles: ["participant"],
+      });
 
-      // Mock transaction: org has room
+      // Mock transaction: org has room (starter plan allows 3 members)
       mockTxGet.mockResolvedValue({
         exists: true,
         id: orgId,
-        data: () => ({ ...org, memberIds: ["owner-1"] }),
+        data: () => ({ ...org, plan: "starter", memberIds: ["owner-1"] }),
       });
 
       await service.acceptInvite(invite.token, acceptUser);
@@ -230,9 +248,7 @@ describe("InviteService", () => {
       const accepted = buildInvite({ status: "accepted" });
       mockInviteRepo.findByToken.mockResolvedValue(accepted);
 
-      await expect(service.acceptInvite(accepted.token, user)).rejects.toThrow(
-        "déjà été traitée",
-      );
+      await expect(service.acceptInvite(accepted.token, user)).rejects.toThrow("déjà été traitée");
     });
 
     it("rejects if token not found", async () => {
@@ -282,9 +298,7 @@ describe("InviteService", () => {
       const accepted = buildInvite({ status: "accepted" });
       mockInviteRepo.findByToken.mockResolvedValue(accepted);
 
-      await expect(service.declineInvite(accepted.token, user)).rejects.toThrow(
-        "déjà été traitée",
-      );
+      await expect(service.declineInvite(accepted.token, user)).rejects.toThrow("déjà été traitée");
     });
   });
 

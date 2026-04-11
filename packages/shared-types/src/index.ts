@@ -14,3 +14,4 @@ export * from "./audit.types";
 export * from "./promo.types";
 export * from "./phone.types";
 export * from "./venue.types";
+export * from "./subscription.types";
