@@ -4,7 +4,6 @@ import { authenticate } from "@/middlewares/auth.middleware";
 import { validate } from "@/middlewares/validate.middleware";
 import { requirePermission } from "@/middlewares/permission.middleware";
 import { receiptService } from "@/services/receipt.service";
-import { PaymentQuerySchema } from "@teranga/shared-types";
 
 const ParamsWithPaymentId = z.object({ paymentId: z.string() });
 const ParamsWithReceiptId = z.object({ receiptId: z.string() });

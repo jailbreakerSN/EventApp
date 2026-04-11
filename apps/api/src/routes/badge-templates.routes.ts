@@ -26,10 +26,17 @@ export const badgeTemplateRoutes: FastifyPluginAsync = async (fastify) => {
         requirePermission("badge:generate"),
         validate({ body: CreateBadgeTemplateSchema }),
       ],
-      schema: { tags: ["Badge Templates"], summary: "Create a badge template", security: [{ BearerAuth: [] }] },
+      schema: {
+        tags: ["Badge Templates"],
+        summary: "Create a badge template",
+        security: [{ BearerAuth: [] }],
+      },
     },
     async (request, reply) => {
-      const template = await badgeTemplateService.create(request.body as any, request.user!);
+      const template = await badgeTemplateService.create(
+        request.body as z.infer<typeof CreateBadgeTemplateSchema>,
+        request.user!,
+      );
       return reply.status(201).send({ success: true, data: template });
     },
   );
@@ -39,15 +46,22 @@ export const badgeTemplateRoutes: FastifyPluginAsync = async (fastify) => {
     "/",
     {
       preHandler: [authenticate, validate({ query: ListQuery })],
-      schema: { tags: ["Badge Templates"], summary: "List badge templates for an organization", security: [{ BearerAuth: [] }] },
+      schema: {
+        tags: ["Badge Templates"],
+        summary: "List badge templates for an organization",
+        security: [{ BearerAuth: [] }],
+      },
     },
     async (request, reply) => {
-      const { organizationId, page, limit, orderBy, orderDir } = request.query as z.infer<typeof ListQuery>;
-      const result = await badgeTemplateService.listByOrganization(
-        organizationId,
-        request.user!,
-        { page, limit, orderBy, orderDir },
-      );
+      const { organizationId, page, limit, orderBy, orderDir } = request.query as z.infer<
+        typeof ListQuery
+      >;
+      const result = await badgeTemplateService.listByOrganization(organizationId, request.user!, {
+        page,
+        limit,
+        orderBy,
+        orderDir,
+      });
       return reply.send({ success: true, data: result.data, meta: result.meta });
     },
   );
@@ -57,7 +71,11 @@ export const badgeTemplateRoutes: FastifyPluginAsync = async (fastify) => {
     "/:templateId",
     {
       preHandler: [authenticate, validate({ params: ParamsWithTemplateId })],
-      schema: { tags: ["Badge Templates"], summary: "Get a badge template", security: [{ BearerAuth: [] }] },
+      schema: {
+        tags: ["Badge Templates"],
+        summary: "Get a badge template",
+        security: [{ BearerAuth: [] }],
+      },
     },
     async (request, reply) => {
       const { templateId } = request.params as z.infer<typeof ParamsWithTemplateId>;
@@ -75,11 +93,19 @@ export const badgeTemplateRoutes: FastifyPluginAsync = async (fastify) => {
         requirePermission("badge:generate"),
         validate({ params: ParamsWithTemplateId, body: UpdateBadgeTemplateSchema }),
       ],
-      schema: { tags: ["Badge Templates"], summary: "Update a badge template", security: [{ BearerAuth: [] }] },
+      schema: {
+        tags: ["Badge Templates"],
+        summary: "Update a badge template",
+        security: [{ BearerAuth: [] }],
+      },
     },
     async (request, reply) => {
       const { templateId } = request.params as z.infer<typeof ParamsWithTemplateId>;
-      await badgeTemplateService.update(templateId, request.body as any, request.user!);
+      await badgeTemplateService.update(
+        templateId,
+        request.body as z.infer<typeof UpdateBadgeTemplateSchema>,
+        request.user!,
+      );
       return reply.send({ success: true, data: { id: templateId } });
     },
   );
@@ -93,7 +119,11 @@ export const badgeTemplateRoutes: FastifyPluginAsync = async (fastify) => {
         requirePermission("badge:generate"),
         validate({ params: ParamsWithTemplateId }),
       ],
-      schema: { tags: ["Badge Templates"], summary: "Archive a badge template", security: [{ BearerAuth: [] }] },
+      schema: {
+        tags: ["Badge Templates"],
+        summary: "Archive a badge template",
+        security: [{ BearerAuth: [] }],
+      },
     },
     async (request, reply) => {
       const { templateId } = request.params as z.infer<typeof ParamsWithTemplateId>;

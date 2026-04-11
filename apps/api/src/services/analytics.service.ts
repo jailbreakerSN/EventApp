@@ -13,11 +13,16 @@ import { BaseService } from "./base.service";
 function getTimeframeStartDate(timeframe: AnalyticsTimeframe): Date | null {
   const now = new Date();
   switch (timeframe) {
-    case "7d": return new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-    case "30d": return new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-    case "90d": return new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
-    case "12m": return new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
-    case "all": return null;
+    case "7d":
+      return new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    case "30d":
+      return new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    case "90d":
+      return new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+    case "12m":
+      return new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
+    case "all":
+      return null;
   }
 }
 
@@ -48,12 +53,14 @@ export class AnalyticsService extends BaseService {
     const MAX_EVENTS = 500;
     const MAX_REGISTRATIONS = 10_000;
 
-    let eventsQuery = db.collection(COLLECTIONS.EVENTS)
+    let eventsQuery = db
+      .collection(COLLECTIONS.EVENTS)
       .where("organizationId", "==", orgId)
       .limit(MAX_EVENTS);
 
     if (query.eventId) {
-      eventsQuery = db.collection(COLLECTIONS.EVENTS)
+      eventsQuery = db
+        .collection(COLLECTIONS.EVENTS)
         .where("organizationId", "==", orgId)
         .where("__name__", "==", query.eventId);
     }
@@ -69,7 +76,7 @@ export class AnalyticsService extends BaseService {
     }
 
     // Fetch registrations for these events (capped)
-    let registrations: Registration[] = [];
+    const registrations: Registration[] = [];
     if (eventIds.length > 0) {
       // Firestore "in" operator max 30 items — batch if needed
       const batches = [];
@@ -80,7 +87,8 @@ export class AnalyticsService extends BaseService {
       for (const batch of batches) {
         if (registrations.length >= MAX_REGISTRATIONS) break;
 
-        let regQuery = db.collection(COLLECTIONS.REGISTRATIONS)
+        let regQuery = db
+          .collection(COLLECTIONS.REGISTRATIONS)
           .where("eventId", "in", batch)
           .limit(MAX_REGISTRATIONS - registrations.length);
 
@@ -107,19 +115,14 @@ export class AnalyticsService extends BaseService {
     );
     const totalCheckedIn = registrations.filter((r) => r.status === "checked_in").length;
     const totalCancelled = registrations.filter((r) => r.status === "cancelled").length;
-    const checkinRate = confirmedOrCheckedIn.length > 0
-      ? totalCheckedIn / confirmedOrCheckedIn.length
-      : 0;
+    const checkinRate =
+      confirmedOrCheckedIn.length > 0 ? totalCheckedIn / confirmedOrCheckedIn.length : 0;
 
     // Time series
-    const registrationsOverTime = groupByDate(
-      registrations.map((r) => ({ date: r.createdAt })),
-    );
+    const registrationsOverTime = groupByDate(registrations.map((r) => ({ date: r.createdAt })));
 
     const checkinsOverTime = groupByDate(
-      registrations
-        .filter((r) => r.checkedInAt)
-        .map((r) => ({ date: r.checkedInAt! })),
+      registrations.filter((r) => r.checkedInAt).map((r) => ({ date: r.checkedInAt! })),
     );
 
     // By category

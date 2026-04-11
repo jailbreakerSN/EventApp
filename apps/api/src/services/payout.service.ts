@@ -1,8 +1,7 @@
-import { type Payout, type PaymentSummary } from "@teranga/shared-types";
+import { type Payout } from "@teranga/shared-types";
 import { payoutRepository } from "@/repositories/payout.repository";
 import { paymentRepository } from "@/repositories/payment.repository";
 import { eventRepository } from "@/repositories/event.repository";
-import { organizationRepository } from "@/repositories/organization.repository";
 import { type AuthUser } from "@/middlewares/auth.middleware";
 import { ValidationError } from "@/errors/app-error";
 import { BaseService } from "./base.service";
@@ -21,13 +20,22 @@ export class PayoutService extends BaseService {
     periodFrom: string,
     periodTo: string,
     user: AuthUser,
-  ): Promise<{ totalAmount: number; platformFee: number; netAmount: number; paymentCount: number }> {
+  ): Promise<{
+    totalAmount: number;
+    platformFee: number;
+    netAmount: number;
+    paymentCount: number;
+  }> {
     this.requirePermission(user, "payout:read");
 
     const event = await eventRepository.findByIdOrThrow(eventId);
     this.requireOrganizationAccess(user, event.organizationId);
 
-    const { data: payments } = await paymentRepository.findByEvent(eventId, { status: "succeeded" }, { page: 1, limit: 10000 });
+    const { data: payments } = await paymentRepository.findByEvent(
+      eventId,
+      { status: "succeeded" },
+      { page: 1, limit: 10000 },
+    );
 
     // Filter by period
     const filtered = payments.filter((p) => {
@@ -61,7 +69,11 @@ export class PayoutService extends BaseService {
     const event = await eventRepository.findByIdOrThrow(eventId);
     this.requireOrganizationAccess(user, event.organizationId);
 
-    const { data: payments } = await paymentRepository.findByEvent(eventId, { status: "succeeded" }, { page: 1, limit: 10000 });
+    const { data: payments } = await paymentRepository.findByEvent(
+      eventId,
+      { status: "succeeded" },
+      { page: 1, limit: 10000 },
+    );
 
     const filtered = payments.filter((p) => {
       const completedAt = p.completedAt ?? p.createdAt;

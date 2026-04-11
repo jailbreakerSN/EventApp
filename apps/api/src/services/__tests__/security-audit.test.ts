@@ -19,8 +19,6 @@ import {
   buildStaffUser,
   buildSuperAdmin,
   buildEvent,
-  buildOrganization,
-  buildRegistration,
   buildPayment,
 } from "@/__tests__/factories";
 import { EventService } from "../event.service";
@@ -68,27 +66,39 @@ const mockPaymentRepo = {
 };
 
 vi.mock("@/repositories/event.repository", () => ({
-  eventRepository: new Proxy({}, {
-    get: (_t, p) => (mockEventRepo as Record<string, unknown>)[p as string],
-  }),
+  eventRepository: new Proxy(
+    {},
+    {
+      get: (_t, p) => (mockEventRepo as Record<string, unknown>)[p as string],
+    },
+  ),
 }));
 
 vi.mock("@/repositories/organization.repository", () => ({
-  organizationRepository: new Proxy({}, {
-    get: (_t, p) => (mockOrgRepo as Record<string, unknown>)[p as string],
-  }),
+  organizationRepository: new Proxy(
+    {},
+    {
+      get: (_t, p) => (mockOrgRepo as Record<string, unknown>)[p as string],
+    },
+  ),
 }));
 
 vi.mock("@/repositories/registration.repository", () => ({
-  registrationRepository: new Proxy({}, {
-    get: (_t, p) => (mockRegistrationRepo as Record<string, unknown>)[p as string],
-  }),
+  registrationRepository: new Proxy(
+    {},
+    {
+      get: (_t, p) => (mockRegistrationRepo as Record<string, unknown>)[p as string],
+    },
+  ),
 }));
 
 vi.mock("@/repositories/payment.repository", () => ({
-  paymentRepository: new Proxy({}, {
-    get: (_t, p) => (mockPaymentRepo as Record<string, unknown>)[p as string],
-  }),
+  paymentRepository: new Proxy(
+    {},
+    {
+      get: (_t, p) => (mockPaymentRepo as Record<string, unknown>)[p as string],
+    },
+  ),
 }));
 
 vi.mock("@/events/event-bus", () => ({
@@ -139,7 +149,7 @@ const staff = buildStaffUser({ uid: "staff-1", organizationId: ORG_A });
 const superAdmin = buildSuperAdmin({ uid: "admin-1" });
 
 const eventOrgA = buildEvent({ id: "evt-a", organizationId: ORG_A });
-const eventOrgB = buildEvent({ id: "evt-b", organizationId: ORG_B });
+const _eventOrgB = buildEvent({ id: "evt-b", organizationId: ORG_B });
 const draftEvent = buildEvent({ id: "evt-draft", organizationId: ORG_A, status: "draft" });
 
 beforeEach(() => {
@@ -194,11 +204,16 @@ describe("SECURITY: Permission Enforcement", () => {
   const service = new EventService();
 
   const createDto = {
-    title: "Test", description: "Desc", category: "conference" as const,
+    title: "Test",
+    description: "Desc",
+    category: "conference" as const,
     format: "in_person" as const,
     location: { name: "V", address: "A", city: "Dakar", country: "SN" },
-    startDate: new Date().toISOString(), endDate: new Date().toISOString(),
-    timezone: "Africa/Dakar", isPublic: true, requiresApproval: false,
+    startDate: new Date().toISOString(),
+    endDate: new Date().toISOString(),
+    timezone: "Africa/Dakar",
+    isPublic: true,
+    requiresApproval: false,
   };
 
   it("denies no-role user from creating events", async () => {
@@ -215,7 +230,9 @@ describe("SECURITY: Permission Enforcement", () => {
 
   it("denies participant from updating events", async () => {
     mockEventRepo.findByIdOrThrow.mockResolvedValue(eventOrgA);
-    await expect(service.update("evt-a", { title: "X" }, participant)).rejects.toThrow("Permission manquante");
+    await expect(service.update("evt-a", { title: "X" }, participant)).rejects.toThrow(
+      "Permission manquante",
+    );
   });
 
   it("denies participant from publishing events", async () => {
@@ -237,38 +254,75 @@ describe("SECURITY: Payment State Machine", () => {
   const payService = new PaymentService();
 
   it("denies refund on failed payment", async () => {
-    const payment = buildPayment({ id: "p-1", status: "failed", organizationId: ORG_A, eventId: "evt-a" });
+    const payment = buildPayment({
+      id: "p-1",
+      status: "failed",
+      organizationId: ORG_A,
+      eventId: "evt-a",
+    });
     mockPaymentRepo.findByIdOrThrow.mockResolvedValue(payment);
     mockEventRepo.findByIdOrThrow.mockResolvedValue(eventOrgA);
     await expect(payService.refundPayment("p-1", undefined, undefined, orgAUser)).rejects.toThrow();
   });
 
   it("denies refund exceeding original amount", async () => {
-    const payment = buildPayment({ id: "p-2", status: "succeeded", amount: 5000, refundedAmount: 0, organizationId: ORG_A, eventId: "evt-a" });
+    const payment = buildPayment({
+      id: "p-2",
+      status: "succeeded",
+      amount: 5000,
+      refundedAmount: 0,
+      organizationId: ORG_A,
+      eventId: "evt-a",
+    });
     mockPaymentRepo.findByIdOrThrow.mockResolvedValue(payment);
     mockEventRepo.findByIdOrThrow.mockResolvedValue(eventOrgA);
     await expect(payService.refundPayment("p-2", 999999, undefined, orgAUser)).rejects.toThrow();
   });
 
   it("denies non-integer refund amount (XOF)", async () => {
-    const payment = buildPayment({ id: "p-3", status: "succeeded", amount: 5000, refundedAmount: 0, organizationId: ORG_A, eventId: "evt-a" });
+    const payment = buildPayment({
+      id: "p-3",
+      status: "succeeded",
+      amount: 5000,
+      refundedAmount: 0,
+      organizationId: ORG_A,
+      eventId: "evt-a",
+    });
     mockPaymentRepo.findByIdOrThrow.mockResolvedValue(payment);
     mockEventRepo.findByIdOrThrow.mockResolvedValue(eventOrgA);
-    await expect(payService.refundPayment("p-3", 1000.5, undefined, orgAUser)).rejects.toThrow("entier");
+    await expect(payService.refundPayment("p-3", 1000.5, undefined, orgAUser)).rejects.toThrow(
+      "entier",
+    );
   });
 
   it("denies cross-org refund", async () => {
-    const payment = buildPayment({ id: "p-4", status: "succeeded", amount: 5000, refundedAmount: 0, organizationId: ORG_A, eventId: "evt-a" });
+    const payment = buildPayment({
+      id: "p-4",
+      status: "succeeded",
+      amount: 5000,
+      refundedAmount: 0,
+      organizationId: ORG_A,
+      eventId: "evt-a",
+    });
     mockPaymentRepo.findByIdOrThrow.mockResolvedValue(payment);
     mockEventRepo.findByIdOrThrow.mockResolvedValue(eventOrgA);
     await expect(payService.refundPayment("p-4", undefined, undefined, orgBUser)).rejects.toThrow();
   });
 
   it("denies participant from refunding", async () => {
-    const payment = buildPayment({ id: "p-5", status: "succeeded", amount: 5000, refundedAmount: 0, organizationId: ORG_A, eventId: "evt-a" });
+    const payment = buildPayment({
+      id: "p-5",
+      status: "succeeded",
+      amount: 5000,
+      refundedAmount: 0,
+      organizationId: ORG_A,
+      eventId: "evt-a",
+    });
     mockPaymentRepo.findByIdOrThrow.mockResolvedValue(payment);
     mockEventRepo.findByIdOrThrow.mockResolvedValue(eventOrgA);
-    await expect(payService.refundPayment("p-5", undefined, undefined, participant)).rejects.toThrow("Permission manquante");
+    await expect(
+      payService.refundPayment("p-5", undefined, undefined, participant),
+    ).rejects.toThrow("Permission manquante");
   });
 });
 
@@ -277,13 +331,18 @@ describe("SECURITY: Payment State Machine", () => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe("SECURITY: Input Validation", () => {
-
   describe("XOF integer enforcement", () => {
     it("TicketType price rejects decimals", async () => {
       const { TicketTypeSchema } = await import("@teranga/shared-types");
       const result = TicketTypeSchema.safeParse({
-        id: "tt-1", name: "VIP", price: 5000.5, currency: "XOF",
-        totalQuantity: 100, soldCount: 0, accessZoneIds: [], isVisible: true,
+        id: "tt-1",
+        name: "VIP",
+        price: 5000.5,
+        currency: "XOF",
+        totalQuantity: 100,
+        soldCount: 0,
+        accessZoneIds: [],
+        isVisible: true,
       });
       expect(result.success).toBe(false);
     });
@@ -291,8 +350,14 @@ describe("SECURITY: Input Validation", () => {
     it("TicketType price accepts valid integer", async () => {
       const { TicketTypeSchema } = await import("@teranga/shared-types");
       const result = TicketTypeSchema.safeParse({
-        id: "tt-2", name: "Standard", price: 5000, currency: "XOF",
-        totalQuantity: 100, soldCount: 0, accessZoneIds: [], isVisible: true,
+        id: "tt-2",
+        name: "Standard",
+        price: 5000,
+        currency: "XOF",
+        totalQuantity: 100,
+        soldCount: 0,
+        accessZoneIds: [],
+        isVisible: true,
       });
       expect(result.success).toBe(true);
     });
@@ -300,7 +365,10 @@ describe("SECURITY: Input Validation", () => {
     it("PromoCode fixed discount rejects decimals", async () => {
       const { CreatePromoCodeSchema } = await import("@teranga/shared-types");
       const result = CreatePromoCodeSchema.safeParse({
-        code: "DAKAR50", discountType: "fixed", discountValue: 500.75, eventId: "ev-1",
+        code: "DAKAR50",
+        discountType: "fixed",
+        discountValue: 500.75,
+        eventId: "ev-1",
       });
       expect(result.success).toBe(false);
     });
@@ -308,7 +376,10 @@ describe("SECURITY: Input Validation", () => {
     it("PromoCode percentage allows decimals", async () => {
       const { CreatePromoCodeSchema } = await import("@teranga/shared-types");
       const result = CreatePromoCodeSchema.safeParse({
-        code: "DAKAR10", discountType: "percentage", discountValue: 10.5, eventId: "ev-1",
+        code: "DAKAR10",
+        discountType: "percentage",
+        discountValue: 10.5,
+        eventId: "ev-1",
       });
       expect(result.success).toBe(true);
     });
@@ -388,13 +459,23 @@ describe("SECURITY: Role Escalation Prevention", () => {
   const service = new EventService();
 
   it("staff cannot create events", async () => {
-    await expect(service.create({
-      title: "X", description: "X", category: "conference" as const,
-      format: "in_person" as const,
-      location: { name: "X", address: "X", city: "Dakar", country: "SN" },
-      startDate: new Date().toISOString(), endDate: new Date().toISOString(),
-      timezone: "Africa/Dakar", isPublic: true, requiresApproval: false,
-    }, staff)).rejects.toThrow("Permission manquante");
+    await expect(
+      service.create(
+        {
+          title: "X",
+          description: "X",
+          category: "conference" as const,
+          format: "in_person" as const,
+          location: { name: "X", address: "X", city: "Dakar", country: "SN" },
+          startDate: new Date().toISOString(),
+          endDate: new Date().toISOString(),
+          timezone: "Africa/Dakar",
+          isPublic: true,
+          requiresApproval: false,
+        },
+        staff,
+      ),
+    ).rejects.toThrow("Permission manquante");
   });
 
   it("staff cannot publish events", async () => {

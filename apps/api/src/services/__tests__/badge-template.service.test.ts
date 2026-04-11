@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { BadgeTemplateService } from "../badge-template.service";
 import { buildOrganizerUser, buildAuthUser, buildOrganization } from "@/__tests__/factories";
-import { type BadgeTemplate } from "@teranga/shared-types";
+import { type BadgeTemplate, type CreateBadgeTemplateDto } from "@teranga/shared-types";
 
 // ─── Mocks ───────────────────────────────────────────────────���─────────────
 
@@ -18,15 +18,21 @@ const mockOrgRepo = {
 };
 
 vi.mock("@/repositories/badge-template.repository", () => ({
-  badgeTemplateRepository: new Proxy({}, {
-    get: (_target, prop) => (mockTemplateRepo as Record<string, unknown>)[prop as string],
-  }),
+  badgeTemplateRepository: new Proxy(
+    {},
+    {
+      get: (_target, prop) => (mockTemplateRepo as Record<string, unknown>)[prop as string],
+    },
+  ),
 }));
 
 vi.mock("@/repositories/organization.repository", () => ({
-  organizationRepository: new Proxy({}, {
-    get: (_target, prop) => (mockOrgRepo as Record<string, unknown>)[prop as string],
-  }),
+  organizationRepository: new Proxy(
+    {},
+    {
+      get: (_target, prop) => (mockOrgRepo as Record<string, unknown>)[prop as string],
+    },
+  ),
 }));
 
 // ─── Helpers ────────��─────────────────────────────��────────────────────────
@@ -71,21 +77,24 @@ describe("BadgeTemplateService.create", () => {
     mockOrgRepo.findByIdOrThrow.mockResolvedValue(org);
     mockTemplateRepo.create.mockResolvedValue(template);
 
-    const result = await service.create({
-      organizationId: "org-1",
-      name: "Default Badge",
-      width: 85.6,
-      height: 54.0,
-      backgroundColor: "#FFFFFF",
-      primaryColor: "#1A1A2E",
-      showQR: true,
-      showName: true,
-      showOrganization: true,
-      showRole: true,
-      showPhoto: false,
-      customFields: [],
-      isDefault: false,
-    }, user);
+    const result = await service.create(
+      {
+        organizationId: "org-1",
+        name: "Default Badge",
+        width: 85.6,
+        height: 54.0,
+        backgroundColor: "#FFFFFF",
+        primaryColor: "#1A1A2E",
+        showQR: true,
+        showName: true,
+        showOrganization: true,
+        showRole: true,
+        showPhoto: false,
+        customFields: [],
+        isDefault: false,
+      },
+      user,
+    );
 
     expect(result.name).toBe("Default Badge");
     expect(mockTemplateRepo.create).toHaveBeenCalled();
@@ -95,7 +104,10 @@ describe("BadgeTemplateService.create", () => {
     const user = buildAuthUser({ roles: ["participant"] });
 
     await expect(
-      service.create({ organizationId: "org-1", name: "Test" } as any, user),
+      service.create(
+        { organizationId: "org-1", name: "Test" } as unknown as CreateBadgeTemplateDto,
+        user,
+      ),
     ).rejects.toThrow("Permission manquante");
   });
 
@@ -105,7 +117,10 @@ describe("BadgeTemplateService.create", () => {
     mockOrgRepo.findByIdOrThrow.mockResolvedValue(org);
 
     await expect(
-      service.create({ organizationId: "org-1", name: "Test" } as any, user),
+      service.create(
+        { organizationId: "org-1", name: "Test" } as unknown as CreateBadgeTemplateDto,
+        user,
+      ),
     ).rejects.toThrow("Accès refusé");
   });
 });

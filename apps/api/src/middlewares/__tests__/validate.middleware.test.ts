@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
+import { type FastifyRequest, type FastifyReply } from "fastify";
 import { z } from "zod";
 import { validate } from "../validate.middleware";
 
@@ -10,11 +11,11 @@ function mockRequest(overrides: { body?: unknown; params?: unknown; query?: unkn
     query: overrides.query ?? {},
     headers: {},
     log: { warn: vi.fn() },
-  } as any;
+  } as unknown as FastifyRequest;
 }
 
 function mockReply() {
-  const reply: any = {
+  const reply: Record<string, unknown> = {
     statusCode: 200,
     body: null,
     status(code: number) {
@@ -26,7 +27,7 @@ function mockReply() {
       return reply;
     },
   };
-  return reply;
+  return reply as unknown as FastifyReply;
 }
 
 describe("validate middleware", () => {
@@ -117,7 +118,7 @@ describe("validate middleware", () => {
     await middleware(req, reply);
 
     expect(reply.statusCode).toBe(400);
-    const sources = reply.body.error.details.map((d: any) => d.source);
+    const sources = reply.body.error.details.map((d: unknown) => (d as { source: string }).source);
     expect(sources).toContain("body");
     expect(sources).toContain("params");
     expect(sources).toContain("query");

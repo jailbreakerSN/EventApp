@@ -169,7 +169,7 @@ jobs:
           key: turbo-web-${{ runner.os }}-${{ hashFiles('apps/web-backoffice/src/**', 'apps/web-backoffice/package.json') }}
           restore-keys: turbo-web-${{ runner.os }}-
       - name: Lint
-        run: npx next lint --dir apps/web-backoffice/src
+        run: npx eslint apps/web-backoffice/src/
       - name: Type-check
         run: npm run type-check --workspace=apps/web-backoffice
       - name: Build

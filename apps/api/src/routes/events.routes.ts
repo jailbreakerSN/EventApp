@@ -14,7 +14,6 @@ import {
   type UpdateAccessZoneDto,
   type CloneEventDto,
   type UploadUrlRequest,
-  type EventSearchQuery,
   CreateEventSchema,
   UpdateEventSchema,
   EventSearchQuerySchema,
@@ -55,7 +54,11 @@ export const eventRoutes: FastifyPluginAsync = async (fastify) => {
         requirePermission("event:read"),
         validate({ params: z.object({ orgId: z.string() }), query: PaginationSchema }),
       ],
-      schema: { tags: ["Events"], summary: "List all events for an organization (requires org membership)", security: [{ BearerAuth: [] }] },
+      schema: {
+        tags: ["Events"],
+        summary: "List all events for an organization (requires org membership)",
+        security: [{ BearerAuth: [] }],
+      },
     },
     async (request, reply) => {
       const { orgId } = request.params as { orgId: string };
@@ -97,7 +100,11 @@ export const eventRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post(
     "/",
     {
-      preHandler: [authenticate, requirePermission("event:create"), validate({ body: CreateEventSchema })],
+      preHandler: [
+        authenticate,
+        requirePermission("event:create"),
+        validate({ body: CreateEventSchema }),
+      ],
       schema: { tags: ["Events"], summary: "Create a new event", security: [{ BearerAuth: [] }] },
     },
     async (request, reply) => {
@@ -129,7 +136,11 @@ export const eventRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post(
     "/:eventId/publish",
     {
-      preHandler: [authenticate, requirePermission("event:publish"), validate({ params: ParamsWithEventId })],
+      preHandler: [
+        authenticate,
+        requirePermission("event:publish"),
+        validate({ params: ParamsWithEventId }),
+      ],
       schema: { tags: ["Events"], summary: "Publish an event", security: [{ BearerAuth: [] }] },
     },
     async (request, reply) => {
@@ -143,8 +154,16 @@ export const eventRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post(
     "/:eventId/unpublish",
     {
-      preHandler: [authenticate, requirePermission("event:publish"), validate({ params: ParamsWithEventId })],
-      schema: { tags: ["Events"], summary: "Unpublish an event (revert to draft)", security: [{ BearerAuth: [] }] },
+      preHandler: [
+        authenticate,
+        requirePermission("event:publish"),
+        validate({ params: ParamsWithEventId }),
+      ],
+      schema: {
+        tags: ["Events"],
+        summary: "Unpublish an event (revert to draft)",
+        security: [{ BearerAuth: [] }],
+      },
     },
     async (request, reply) => {
       const { eventId } = request.params as z.infer<typeof ParamsWithEventId>;
@@ -157,7 +176,11 @@ export const eventRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post(
     "/:eventId/cancel",
     {
-      preHandler: [authenticate, requirePermission("event:update"), validate({ params: ParamsWithEventId })],
+      preHandler: [
+        authenticate,
+        requirePermission("event:update"),
+        validate({ params: ParamsWithEventId }),
+      ],
       schema: { tags: ["Events"], summary: "Cancel an event", security: [{ BearerAuth: [] }] },
     },
     async (request, reply) => {
@@ -171,7 +194,11 @@ export const eventRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.delete(
     "/:eventId",
     {
-      preHandler: [authenticate, requirePermission("event:delete"), validate({ params: ParamsWithEventId })],
+      preHandler: [
+        authenticate,
+        requirePermission("event:delete"),
+        validate({ params: ParamsWithEventId }),
+      ],
       schema: { tags: ["Events"], summary: "Archive an event", security: [{ BearerAuth: [] }] },
     },
     async (request, reply) => {
@@ -190,11 +217,19 @@ export const eventRoutes: FastifyPluginAsync = async (fastify) => {
         requirePermission("event:update"),
         validate({ params: ParamsWithEventId, body: CreateTicketTypeSchema }),
       ],
-      schema: { tags: ["Events"], summary: "Add a ticket type to an event", security: [{ BearerAuth: [] }] },
+      schema: {
+        tags: ["Events"],
+        summary: "Add a ticket type to an event",
+        security: [{ BearerAuth: [] }],
+      },
     },
     async (request, reply) => {
       const { eventId } = request.params as z.infer<typeof ParamsWithEventId>;
-      const event = await eventService.addTicketType(eventId, request.body as CreateTicketTypeDto, request.user!);
+      const event = await eventService.addTicketType(
+        eventId,
+        request.body as CreateTicketTypeDto,
+        request.user!,
+      );
       return reply.status(201).send({ success: true, data: event });
     },
   );
@@ -212,7 +247,12 @@ export const eventRoutes: FastifyPluginAsync = async (fastify) => {
     },
     async (request, reply) => {
       const { eventId, ticketTypeId } = request.params as z.infer<typeof TicketTypeParams>;
-      const event = await eventService.updateTicketType(eventId, ticketTypeId, request.body as UpdateTicketTypeDto, request.user!);
+      const event = await eventService.updateTicketType(
+        eventId,
+        ticketTypeId,
+        request.body as UpdateTicketTypeDto,
+        request.user!,
+      );
       return reply.send({ success: true, data: event });
     },
   );
@@ -248,7 +288,11 @@ export const eventRoutes: FastifyPluginAsync = async (fastify) => {
     },
     async (request, reply) => {
       const { eventId } = request.params as z.infer<typeof ParamsWithEventId>;
-      const event = await eventService.addAccessZone(eventId, request.body as CreateAccessZoneDto, request.user!);
+      const event = await eventService.addAccessZone(
+        eventId,
+        request.body as CreateAccessZoneDto,
+        request.user!,
+      );
       return reply.status(201).send({ success: true, data: event });
     },
   );
@@ -262,11 +306,20 @@ export const eventRoutes: FastifyPluginAsync = async (fastify) => {
         requirePermission("event:update"),
         validate({ params: AccessZoneParams, body: UpdateAccessZoneSchema }),
       ],
-      schema: { tags: ["Events"], summary: "Update an access zone", security: [{ BearerAuth: [] }] },
+      schema: {
+        tags: ["Events"],
+        summary: "Update an access zone",
+        security: [{ BearerAuth: [] }],
+      },
     },
     async (request, reply) => {
       const { eventId, zoneId } = request.params as z.infer<typeof AccessZoneParams>;
-      const event = await eventService.updateAccessZone(eventId, zoneId, request.body as UpdateAccessZoneDto, request.user!);
+      const event = await eventService.updateAccessZone(
+        eventId,
+        zoneId,
+        request.body as UpdateAccessZoneDto,
+        request.user!,
+      );
       return reply.send({ success: true, data: event });
     },
   );
@@ -280,7 +333,11 @@ export const eventRoutes: FastifyPluginAsync = async (fastify) => {
         requirePermission("event:update"),
         validate({ params: AccessZoneParams }),
       ],
-      schema: { tags: ["Events"], summary: "Remove an access zone", security: [{ BearerAuth: [] }] },
+      schema: {
+        tags: ["Events"],
+        summary: "Remove an access zone",
+        security: [{ BearerAuth: [] }],
+      },
     },
     async (request, reply) => {
       const { eventId, zoneId } = request.params as z.infer<typeof AccessZoneParams>;
@@ -298,11 +355,19 @@ export const eventRoutes: FastifyPluginAsync = async (fastify) => {
         requirePermission("event:create"),
         validate({ params: ParamsWithEventId, body: CloneEventSchema }),
       ],
-      schema: { tags: ["Events"], summary: "Clone an event with new dates", security: [{ BearerAuth: [] }] },
+      schema: {
+        tags: ["Events"],
+        summary: "Clone an event with new dates",
+        security: [{ BearerAuth: [] }],
+      },
     },
     async (request, reply) => {
       const { eventId } = request.params as z.infer<typeof ParamsWithEventId>;
-      const cloned = await eventService.clone(eventId, request.body as CloneEventDto, request.user!);
+      const cloned = await eventService.clone(
+        eventId,
+        request.body as CloneEventDto,
+        request.user!,
+      );
       return reply.status(201).send({ success: true, data: cloned });
     },
   );
@@ -320,13 +385,20 @@ export const eventRoutes: FastifyPluginAsync = async (fastify) => {
 
       // Format dates to iCalendar format (YYYYMMDDTHHMMSSZ)
       const formatIcsDate = (iso: string): string => {
-        return new Date(iso).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+        return new Date(iso)
+          .toISOString()
+          .replace(/[-:]/g, "")
+          .replace(/\.\d{3}/, "");
       };
 
       const dtStart = formatIcsDate(event.startDate);
       const dtEnd = formatIcsDate(event.endDate);
       const description = event.description
-        ? event.description.substring(0, 500).replace(/\n/g, "\\n").replace(/,/g, "\\,").replace(/;/g, "\\;")
+        ? event.description
+            .substring(0, 500)
+            .replace(/\n/g, "\\n")
+            .replace(/,/g, "\\,")
+            .replace(/;/g, "\\;")
         : "";
       const locationParts = [
         event.location?.name,
@@ -372,11 +444,20 @@ export const eventRoutes: FastifyPluginAsync = async (fastify) => {
         requirePermission("event:update"),
         validate({ params: ParamsWithEventId, body: UploadUrlRequestSchema }),
       ],
-      schema: { tags: ["Events"], summary: "Get a signed upload URL for event images", security: [{ BearerAuth: [] }] },
+      schema: {
+        tags: ["Events"],
+        summary: "Get a signed upload URL for event images",
+        security: [{ BearerAuth: [] }],
+      },
     },
     async (request, reply) => {
       const { eventId } = request.params as z.infer<typeof ParamsWithEventId>;
-      const result = await uploadService.generateUploadUrl("event", eventId, request.body as UploadUrlRequest, request.user!);
+      const result = await uploadService.generateUploadUrl(
+        "event",
+        eventId,
+        request.body as UploadUrlRequest,
+        request.user!,
+      );
       return reply.send({ success: true, data: result });
     },
   );

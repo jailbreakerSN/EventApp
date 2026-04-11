@@ -17,21 +17,14 @@ class AdminRepository {
   // ── Platform Stats ──────────────────────────────────────────────────────
 
   async getPlatformStats(): Promise<PlatformStats> {
-    const [users, orgs, events, registrations, payments, venues] =
-      await Promise.all([
-        db.collection(COLLECTIONS.USERS).count().get(),
-        db.collection(COLLECTIONS.ORGANIZATIONS).count().get(),
-        db.collection(COLLECTIONS.EVENTS).count().get(),
-        db.collection(COLLECTIONS.REGISTRATIONS).count().get(),
-        db.collection(COLLECTIONS.PAYMENTS)
-          .where("status", "==", "succeeded")
-          .count()
-          .get(),
-        db.collection(COLLECTIONS.VENUES)
-          .where("status", "==", "approved")
-          .count()
-          .get(),
-      ]);
+    const [users, orgs, events, registrations, _payments, venues] = await Promise.all([
+      db.collection(COLLECTIONS.USERS).count().get(),
+      db.collection(COLLECTIONS.ORGANIZATIONS).count().get(),
+      db.collection(COLLECTIONS.EVENTS).count().get(),
+      db.collection(COLLECTIONS.REGISTRATIONS).count().get(),
+      db.collection(COLLECTIONS.PAYMENTS).where("status", "==", "succeeded").count().get(),
+      db.collection(COLLECTIONS.VENUES).where("status", "==", "approved").count().get(),
+    ]);
 
     // Sum total revenue from succeeded payments
     let totalRevenue = 0;
@@ -110,11 +103,7 @@ class AdminRepository {
     if (filters.isActive !== undefined) {
       clauses.push({ field: "isActive", op: "==", value: filters.isActive });
     }
-    return this.paginatedQuery<Organization>(
-      COLLECTIONS.ORGANIZATIONS,
-      clauses,
-      pagination,
-    );
+    return this.paginatedQuery<Organization>(COLLECTIONS.ORGANIZATIONS, clauses, pagination);
   }
 
   // ── Events ──────────────────────────────────────────────────────────────
@@ -161,11 +150,11 @@ class AdminRepository {
     if (filters.dateTo) {
       clauses.push({ field: "timestamp", op: "<=", value: filters.dateTo });
     }
-    return this.paginatedQuery<AuditLogEntry>(
-      COLLECTIONS.AUDIT_LOGS,
-      clauses,
-      { ...pagination, orderBy: pagination.orderBy ?? "timestamp", orderDir: pagination.orderDir ?? "desc" },
-    );
+    return this.paginatedQuery<AuditLogEntry>(COLLECTIONS.AUDIT_LOGS, clauses, {
+      ...pagination,
+      orderBy: pagination.orderBy ?? "timestamp",
+      orderDir: pagination.orderDir ?? "desc",
+    });
   }
 
   // ── Shared paginated query helper ───────────────────────────────────────
@@ -185,7 +174,10 @@ class AdminRepository {
     const countSnap = await query.count().get();
     const total = countSnap.data().count;
 
-    query = query.orderBy(orderBy, orderDir).offset((page - 1) * limit).limit(limit);
+    query = query
+      .orderBy(orderBy, orderDir)
+      .offset((page - 1) * limit)
+      .limit(limit);
     const snapshot = await query.get();
     const data = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }) as T);
 

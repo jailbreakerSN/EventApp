@@ -2,7 +2,13 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { eventBus } from "../event-bus";
 import { auditService } from "@/services/audit.service";
 import { registerAuditListeners } from "../listeners/audit.listener";
-import { type RegistrationCreatedEvent, type CheckInCompletedEvent, type EventPublishedEvent, type TicketTypeAddedEvent } from "../domain-events";
+import {
+  type RegistrationCreatedEvent,
+  type CheckInCompletedEvent,
+  type EventPublishedEvent,
+  type TicketTypeAddedEvent,
+} from "../domain-events";
+import type { Registration, Event, Organization } from "@teranga/shared-types";
 
 vi.mock("@/services/audit.service", () => ({
   auditService: {
@@ -31,7 +37,7 @@ describe("Audit Listener", () => {
         userId: "u-1",
         ticketTypeId: "tt-1",
         status: "confirmed",
-      } as any,
+      } as unknown as Registration,
       eventId: "ev-1",
       organizationId: "org-1",
       actorId: "u-1",
@@ -89,7 +95,7 @@ describe("Audit Listener", () => {
 
   it("logs event.published with event title", async () => {
     const payload: EventPublishedEvent = {
-      event: { id: "ev-1", title: "Teranga Fest" } as any,
+      event: { id: "ev-1", title: "Teranga Fest" } as unknown as Event,
       organizationId: "org-1",
       actorId: "u-org",
       requestId: "req-ghi",
@@ -138,71 +144,152 @@ describe("Audit Listener", () => {
 
   it("logs all 16 event types", async () => {
     eventBus.emit("registration.created", {
-      registration: { id: "r1", userId: "u1", ticketTypeId: "t1", status: "confirmed" } as any,
-      eventId: "e1", organizationId: "o1", actorId: "a1", requestId: "req1", timestamp: "t1",
+      registration: {
+        id: "r1",
+        userId: "u1",
+        ticketTypeId: "t1",
+        status: "confirmed",
+      } as unknown as Registration,
+      eventId: "e1",
+      organizationId: "o1",
+      actorId: "a1",
+      requestId: "req1",
+      timestamp: "t1",
     });
     eventBus.emit("registration.cancelled", {
-      registrationId: "r2", eventId: "e1", userId: "u1", organizationId: "o1",
-      actorId: "a1", requestId: "req2", timestamp: "t2",
+      registrationId: "r2",
+      eventId: "e1",
+      userId: "u1",
+      organizationId: "o1",
+      actorId: "a1",
+      requestId: "req2",
+      timestamp: "t2",
     });
     eventBus.emit("registration.approved", {
-      registrationId: "r3", eventId: "e1", userId: "u1", organizationId: "o1",
-      actorId: "a1", requestId: "req3", timestamp: "t3",
+      registrationId: "r3",
+      eventId: "e1",
+      userId: "u1",
+      organizationId: "o1",
+      actorId: "a1",
+      requestId: "req3",
+      timestamp: "t3",
     });
     eventBus.emit("checkin.completed", {
-      registrationId: "r4", eventId: "e1", participantId: "u1", staffId: "s1",
-      actorId: "s1", requestId: "req4", timestamp: "t4",
+      registrationId: "r4",
+      eventId: "e1",
+      participantId: "u1",
+      staffId: "s1",
+      actorId: "s1",
+      requestId: "req4",
+      timestamp: "t4",
     });
     eventBus.emit("event.created", {
-      event: { id: "e1", title: "New Event" } as any, organizationId: "o1",
-      actorId: "a1", requestId: "req5a", timestamp: "t5a",
+      event: { id: "e1", title: "New Event" } as unknown as Event,
+      organizationId: "o1",
+      actorId: "a1",
+      requestId: "req5a",
+      timestamp: "t5a",
     });
     eventBus.emit("event.updated", {
-      eventId: "e1", organizationId: "o1", changes: { title: "Updated" },
-      actorId: "a1", requestId: "req5b", timestamp: "t5b",
+      eventId: "e1",
+      organizationId: "o1",
+      changes: { title: "Updated" },
+      actorId: "a1",
+      requestId: "req5b",
+      timestamp: "t5b",
     });
     eventBus.emit("event.published", {
-      event: { id: "e1", title: "Test" } as any, organizationId: "o1",
-      actorId: "a1", requestId: "req5", timestamp: "t5",
+      event: { id: "e1", title: "Test" } as unknown as Event,
+      organizationId: "o1",
+      actorId: "a1",
+      requestId: "req5",
+      timestamp: "t5",
     });
     eventBus.emit("event.cancelled", {
-      eventId: "e1", organizationId: "o1", actorId: "a1", requestId: "req6", timestamp: "t6",
+      eventId: "e1",
+      organizationId: "o1",
+      actorId: "a1",
+      requestId: "req6",
+      timestamp: "t6",
     });
     eventBus.emit("event.archived", {
-      eventId: "e1", organizationId: "o1", actorId: "a1", requestId: "req7", timestamp: "t7",
+      eventId: "e1",
+      organizationId: "o1",
+      actorId: "a1",
+      requestId: "req7",
+      timestamp: "t7",
     });
     eventBus.emit("organization.created", {
-      organization: { id: "o1", name: "Test Org", plan: "free" } as any,
-      actorId: "a1", requestId: "req8", timestamp: "t8",
+      organization: { id: "o1", name: "Test Org", plan: "free" } as unknown as Organization,
+      actorId: "a1",
+      requestId: "req8",
+      timestamp: "t8",
     });
     eventBus.emit("member.added", {
-      organizationId: "o1", memberId: "m1", actorId: "a1", requestId: "req9", timestamp: "t9",
+      organizationId: "o1",
+      memberId: "m1",
+      actorId: "a1",
+      requestId: "req9",
+      timestamp: "t9",
     });
     eventBus.emit("member.removed", {
-      organizationId: "o1", memberId: "m1", actorId: "a1", requestId: "req10", timestamp: "t10",
+      organizationId: "o1",
+      memberId: "m1",
+      actorId: "a1",
+      requestId: "req10",
+      timestamp: "t10",
     });
     eventBus.emit("badge.generated", {
-      badgeId: "b1", registrationId: "r1", eventId: "e1", userId: "u1",
-      actorId: "a1", requestId: "req11", timestamp: "t11",
+      badgeId: "b1",
+      registrationId: "r1",
+      eventId: "e1",
+      userId: "u1",
+      actorId: "a1",
+      requestId: "req11",
+      timestamp: "t11",
     });
     eventBus.emit("waitlist.promoted", {
-      registrationId: "r5", eventId: "e1", userId: "u1", organizationId: "o1",
-      actorId: "a1", requestId: "req12", timestamp: "t12",
+      registrationId: "r5",
+      eventId: "e1",
+      userId: "u1",
+      organizationId: "o1",
+      actorId: "a1",
+      requestId: "req12",
+      timestamp: "t12",
     });
     eventBus.emit("event.unpublished", {
-      eventId: "e1", organizationId: "o1", actorId: "a1", requestId: "req13", timestamp: "t13",
+      eventId: "e1",
+      organizationId: "o1",
+      actorId: "a1",
+      requestId: "req13",
+      timestamp: "t13",
     });
     eventBus.emit("ticket_type.added", {
-      eventId: "e1", organizationId: "o1", ticketTypeId: "tt-1", ticketTypeName: "VIP",
-      actorId: "a1", requestId: "req14", timestamp: "t14",
+      eventId: "e1",
+      organizationId: "o1",
+      ticketTypeId: "tt-1",
+      ticketTypeName: "VIP",
+      actorId: "a1",
+      requestId: "req14",
+      timestamp: "t14",
     });
     eventBus.emit("ticket_type.updated", {
-      eventId: "e1", organizationId: "o1", ticketTypeId: "tt-1", changes: { name: "VVIP" },
-      actorId: "a1", requestId: "req15", timestamp: "t15",
+      eventId: "e1",
+      organizationId: "o1",
+      ticketTypeId: "tt-1",
+      changes: { name: "VVIP" },
+      actorId: "a1",
+      requestId: "req15",
+      timestamp: "t15",
     });
     eventBus.emit("ticket_type.removed", {
-      eventId: "e1", organizationId: "o1", ticketTypeId: "tt-1", ticketTypeName: "VIP",
-      actorId: "a1", requestId: "req16", timestamp: "t16",
+      eventId: "e1",
+      organizationId: "o1",
+      ticketTypeId: "tt-1",
+      ticketTypeName: "VIP",
+      actorId: "a1",
+      requestId: "req16",
+      timestamp: "t16",
     });
 
     await flush();

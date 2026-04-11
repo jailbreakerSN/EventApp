@@ -8,7 +8,11 @@ beforeEach(() => {
 
 function makePayload(overrides: Partial<RegistrationCreatedEvent> = {}): RegistrationCreatedEvent {
   return {
-    registration: { id: "reg-1", eventId: "ev-1", userId: "u-1" } as any,
+    registration: {
+      id: "reg-1",
+      eventId: "ev-1",
+      userId: "u-1",
+    } as unknown as RegistrationCreatedEvent["registration"],
     eventId: "ev-1",
     organizationId: "org-1",
     actorId: "u-1",
@@ -48,7 +52,9 @@ describe("EventBus", () => {
   });
 
   it("isolates listener errors — other listeners still fire", async () => {
-    const failing = vi.fn(() => { throw new Error("boom"); });
+    const failing = vi.fn(() => {
+      throw new Error("boom");
+    });
     const succeeding = vi.fn();
 
     eventBus.on("registration.created", failing);
@@ -65,7 +71,9 @@ describe("EventBus", () => {
   });
 
   it("isolates async listener errors", async () => {
-    const failing = vi.fn(async () => { throw new Error("async boom"); });
+    const failing = vi.fn(async () => {
+      throw new Error("async boom");
+    });
     const succeeding = vi.fn();
 
     eventBus.on("registration.created", failing);
