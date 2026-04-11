@@ -65,7 +65,7 @@ export function CompareProvider({ children }: { children: React.ReactNode }) {
           <div className="flex items-center gap-3 rounded-full border bg-card px-5 py-3 shadow-lg">
             <GitCompareArrows className="h-5 w-5 text-teranga-gold" />
             <span className="text-sm font-medium">
-              {selected.size} evenement{selected.size > 1 ? "s" : ""} selectionne
+              {selected.size} événement{selected.size > 1 ? "s" : ""} sélectionné
               {selected.size > 1 ? "s" : ""}
             </span>
             <Button

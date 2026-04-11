@@ -1,14 +1,13 @@
 import {
   type Permission,
-  type RoleAssignment,
   type OrganizationPlan,
   type PlanFeature,
   PLAN_LIMITS,
   hasPermission,
-  resolvePermissions,
 } from "@teranga/shared-types";
 import { type AuthUser } from "@/middlewares/auth.middleware";
 import { ForbiddenError, PlanLimitError } from "@/errors/app-error";
+import { resolveUserPermissions } from "@/utils/resolve-permissions";
 
 /**
  * Base service providing shared permission resolution logic.
@@ -83,27 +82,9 @@ export abstract class BaseService {
 
   /**
    * Resolve effective permissions from the user's roles and organization context.
-   *
-   * Currently builds inline RoleAssignments from the JWT custom claims.
-   * When the full RoleAssignment Firestore collection is implemented,
-   * this method can be updated to fetch real assignments — all services
-   * benefit automatically.
+   * Delegates to the shared utility in `utils/resolve-permissions.ts`.
    */
   protected resolveUserPermissions(user: AuthUser): Set<Permission> {
-    const assignments: RoleAssignment[] = user.roles.map((role) => ({
-      id: `inline-${role}`,
-      userId: user.uid,
-      role,
-      scope: user.organizationId ? ("organization" as const) : ("global" as const),
-      organizationId: user.organizationId ?? null,
-      eventId: null,
-      grantedBy: "system",
-      grantedAt: new Date().toISOString(),
-      isActive: true,
-    }));
-
-    return resolvePermissions(assignments, {
-      organizationId: user.organizationId,
-    });
+    return resolveUserPermissions(user);
   }
 }

@@ -77,7 +77,8 @@ service cloud.firestore {
       allow create: if isAuthenticated()
                     && request.resource.data.ownerId == currentUid();
       allow update: if (belongsToOrg(orgId) && isOrganizer()) || isSuperAdmin();
-      allow delete: if isSuperAdmin();
+      // Soft-delete only — use status: "archived" via API
+      allow delete: if false;
     }
 
     // ─── Events ─────────────────────────────────────────────────────────────
@@ -496,6 +497,55 @@ service cloud.firestore {
       // API only
       allow create: if false;
       allow update: if false;
+      allow delete: if false;
+    }
+
+    // ─── Subscriptions ──────────────────────────────────────────────────────
+    // SaaS plan subscriptions — managed exclusively by API.
+    // Org members can read their own org's subscription for billing UI.
+    match /subscriptions/{subId} {
+      allow read: if isSuperAdmin()
+                  || (isAuthenticated() && belongsToOrg(resource.data.organizationId));
+      allow create, update, delete: if false;  // Only Admin SDK (API)
+    }
+
+    // ─── Receipts ───────────────────────────────────────────────────────────
+    // Payment receipts — managed exclusively by API.
+    // Owner can read their own; org organizers can read for their org.
+    match /receipts/{receiptId} {
+      allow read: if isOwnerOf(resource.data.userId)
+                  || (isOrganizer() && belongsToOrg(resource.data.organizationId))
+                  || isSuperAdmin();
+      allow create, update, delete: if false;  // Only Admin SDK (API)
+    }
+
+    // ─── Payouts ────────────────────────────────────────────────────────────
+    // Organizer payout records — managed exclusively by API.
+    // Org organizers can read their own org's payouts.
+    match /payouts/{payoutId} {
+      allow read: if (isOrganizer() && belongsToOrg(resource.data.organizationId))
+                  || isSuperAdmin();
+      allow create, update, delete: if false;  // Only Admin SDK (API)
+    }
+
+    // ─── Session Bookmarks ──────────────────────────────────────────────────
+    // Participant bookmarks for agenda sessions.
+    // Users can read/write their own bookmarks.
+    match /sessionBookmarks/{bookmarkId} {
+      allow read: if isOwnerOf(resource.data.userId) || isSuperAdmin();
+      allow create: if isAuthenticated()
+                    && request.resource.data.userId == currentUid();
+      allow update: if isOwnerOf(resource.data.userId);
+      allow delete: if isOwnerOf(resource.data.userId);
+    }
+
+    // ─── Notification Preferences ───────────────────────────────────────────
+    // User notification preferences — managed by user or API.
+    match /notificationPreferences/{prefId} {
+      allow read: if isOwnerOf(resource.data.userId) || isSuperAdmin();
+      allow create: if isAuthenticated()
+                    && request.resource.data.userId == currentUid();
+      allow update: if isOwnerOf(resource.data.userId);
       allow delete: if false;
     }
   }

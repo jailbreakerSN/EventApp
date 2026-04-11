@@ -1050,14 +1050,16 @@ function TicketsTab({ event }: { event: Event }) {
               onChange={(e) => setNewName(e.target.value)}
               className="px-3 py-2 rounded-lg border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
             />
-            <input
-              type="number"
-              min={0}
-              placeholder="Prix (XOF)"
-              value={newPrice}
-              onChange={(e) => setNewPrice(Number(e.target.value))}
-              className="px-3 py-2 rounded-lg border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
-            />
+            <PlanGate feature="paidTickets" fallback="disabled">
+              <input
+                type="number"
+                min={0}
+                placeholder="Prix (XOF)"
+                value={newPrice}
+                onChange={(e) => setNewPrice(Number(e.target.value))}
+                className="px-3 py-2 rounded-lg border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+              />
+            </PlanGate>
             <input
               type="number"
               min={1}

@@ -54,14 +54,14 @@ function getCapacityLabel(event: Event): string {
 }
 
 const CATEGORY_LABELS: Record<string, string> = {
-  conference: "Conference",
+  conference: "Conférence",
   workshop: "Atelier",
   concert: "Concert",
   festival: "Festival",
   networking: "Networking",
   sport: "Sport",
   exhibition: "Exposition",
-  ceremony: "Ceremonie",
+  ceremony: "Cérémonie",
   training: "Formation",
   other: "Autre",
 };
@@ -83,7 +83,7 @@ function CompareContent() {
   useEffect(() => {
     if (ids.length === 0) return;
     if (ids.length > 3) {
-      setError("Vous pouvez comparer 3 evenements maximum.");
+      setError("Vous pouvez comparer 3 événements maximum.");
       return;
     }
 
@@ -123,7 +123,7 @@ function CompareContent() {
       })
       .catch(() => {
         if (!cancelled) {
-          setError("Impossible de charger les evenements. Verifiez les identifiants.");
+          setError("Impossible de charger les événements. Vérifiez les identifiants.");
         }
       })
       .finally(() => {
@@ -210,14 +210,14 @@ function CompareContent() {
     return (
       <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8 text-center">
         <Search className="mx-auto h-12 w-12 text-muted-foreground/50" />
-        <h1 className="mt-4 text-2xl font-bold">Comparer des evenements</h1>
+        <h1 className="mt-4 text-2xl font-bold">Comparer des événements</h1>
         <p className="mt-2 text-muted-foreground">
-          Selectionnez des evenements a comparer depuis la liste des evenements.
+          Sélectionnez des événements à comparer depuis la liste des événements.
         </p>
         <Link href="/events">
           <Button variant="outline" className="mt-6">
             <ArrowLeft className="mr-2 h-4 w-4" />
-            Parcourir les evenements
+            Parcourir les événements
           </Button>
         </Link>
       </div>
@@ -234,7 +234,7 @@ function CompareContent() {
         <Link href="/events">
           <Button variant="outline" className="mt-6">
             <ArrowLeft className="mr-2 h-4 w-4" />
-            Retour aux evenements
+            Retour aux événements
           </Button>
         </Link>
       </div>
@@ -274,11 +274,11 @@ function CompareContent() {
           className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors mb-4"
         >
           <ArrowLeft className="h-4 w-4" />
-          Retour aux evenements
+          Retour aux événements
         </Link>
-        <h1 className="text-2xl font-bold sm:text-3xl">Comparaison d&apos;evenements</h1>
+        <h1 className="text-2xl font-bold sm:text-3xl">Comparaison d&apos;événements</h1>
         <p className="mt-1 text-muted-foreground">
-          {events.length} evenement{events.length > 1 ? "s" : ""} compare
+          {events.length} événement{events.length > 1 ? "s" : ""} comparé
           {events.length > 1 ? "s" : ""}
         </p>
       </div>
@@ -338,7 +338,7 @@ function CompareContent() {
               {events.map((event) => (
                 <td key={event.id} className="p-3">
                   <Link href={`/events/${event.slug}`}>
-                    <Button className="w-full">Voir l&apos;evenement</Button>
+                    <Button className="w-full">Voir l&apos;événement</Button>
                   </Link>
                 </td>
               ))}
@@ -386,7 +386,7 @@ function CompareContent() {
               </div>
 
               <Link href={`/events/${event.slug}`} className="mt-4 block">
-                <Button className="w-full">Voir l&apos;evenement</Button>
+                <Button className="w-full">Voir l&apos;événement</Button>
               </Link>
             </div>
           </div>

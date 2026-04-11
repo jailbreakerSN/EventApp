@@ -9,11 +9,7 @@ import {
 import { organizationRepository } from "@/repositories/organization.repository";
 import { type AuthUser } from "@/middlewares/auth.middleware";
 import { auth, db, COLLECTIONS } from "@/config/firebase";
-import {
-  ValidationError,
-  ConflictError,
-  PlanLimitError,
-} from "@/errors/app-error";
+import { ValidationError, ConflictError, PlanLimitError } from "@/errors/app-error";
 import { BaseService } from "./base.service";
 import { eventBus } from "@/events/event-bus";
 import { getRequestId } from "@/context/request-context";
@@ -136,16 +132,30 @@ export class OrganizationService extends BaseService {
 
   async removeMember(orgId: string, userId: string, user: AuthUser): Promise<void> {
     this.requirePermission(user, "organization:manage_members");
+    this.requireOrganizationAccess(user, orgId);
 
-    const org = await organizationRepository.findByIdOrThrow(orgId);
-    this.requireOrganizationAccess(user, org.id);
+    // Transactional member removal prevents race conditions
+    // when two concurrent removals target the same org
+    await db.runTransaction(async (tx) => {
+      const docRef = db.collection(COLLECTIONS.ORGANIZATIONS).doc(orgId);
+      const snap = await tx.get(docRef);
+      if (!snap.exists) {
+        const { NotFoundError } = await import("@/errors/app-error");
+        throw new NotFoundError("Organization", orgId);
+      }
+      const org = { id: snap.id, ...snap.data() } as Organization;
 
-    // Cannot remove the owner
-    if (userId === org.ownerId) {
-      throw new ValidationError("Impossible de retirer le propriétaire de l'organisation");
-    }
+      if (userId === org.ownerId) {
+        throw new ValidationError("Impossible de retirer le propriétaire de l'organisation");
+      }
 
-    await organizationRepository.removeMember(orgId, userId);
+      const members: string[] = org.memberIds ?? [];
+      if (!members.includes(userId)) {
+        throw new ValidationError("Cet utilisateur n'est pas membre de l'organisation");
+      }
+
+      tx.update(docRef, { memberIds: members.filter((id) => id !== userId) });
+    });
 
     eventBus.emit("member.removed", {
       organizationId: orgId,
@@ -164,7 +174,12 @@ export class OrganizationService extends BaseService {
     });
   }
 
-  async updateMemberRole(orgId: string, userId: string, role: OrgMemberRole, user: AuthUser): Promise<void> {
+  async updateMemberRole(
+    orgId: string,
+    userId: string,
+    role: OrgMemberRole,
+    user: AuthUser,
+  ): Promise<void> {
     this.requirePermission(user, "organization:manage_members");
 
     const org = await organizationRepository.findByIdOrThrow(orgId);
@@ -206,7 +221,6 @@ export class OrganizationService extends BaseService {
   getPlanLimits(plan: OrganizationPlan) {
     return PLAN_LIMITS[plan];
   }
-
 }
 
 export const organizationService = new OrganizationService();

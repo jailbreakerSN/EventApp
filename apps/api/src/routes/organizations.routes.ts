@@ -11,7 +11,6 @@ import {
   UpdateOrganizationSchema,
   CreateInviteSchema,
   AnalyticsQuerySchema,
-  OrgMemberRoleSchema,
 } from "@teranga/shared-types";
 
 const ParamsWithOrgId = z.object({ orgId: z.string() });
@@ -34,8 +33,17 @@ export const organizationRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post(
     "/",
     {
-      preHandler: [authenticate, requirePermission("organization:create"), validate({ body: CreateOrganizationSchema })],
-      schema: { tags: ["Organizations"], summary: "Create organization", security: [{ BearerAuth: [] }] },
+      config: { rateLimit: { max: 5, timeWindow: "1 day" } },
+      preHandler: [
+        authenticate,
+        requirePermission("organization:create"),
+        validate({ body: CreateOrganizationSchema }),
+      ],
+      schema: {
+        tags: ["Organizations"],
+        summary: "Create organization",
+        security: [{ BearerAuth: [] }],
+      },
     },
     async (request, reply) => {
       const org = await organizationService.create(request.body as any, request.user!);
@@ -47,8 +55,16 @@ export const organizationRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get(
     "/:orgId",
     {
-      preHandler: [authenticate, requirePermission("organization:read"), validate({ params: ParamsWithOrgId })],
-      schema: { tags: ["Organizations"], summary: "Get organization by ID", security: [{ BearerAuth: [] }] },
+      preHandler: [
+        authenticate,
+        requirePermission("organization:read"),
+        validate({ params: ParamsWithOrgId }),
+      ],
+      schema: {
+        tags: ["Organizations"],
+        summary: "Get organization by ID",
+        security: [{ BearerAuth: [] }],
+      },
     },
     async (request, reply) => {
       const { orgId } = request.params as z.infer<typeof ParamsWithOrgId>;
@@ -66,7 +82,11 @@ export const organizationRoutes: FastifyPluginAsync = async (fastify) => {
         requirePermission("organization:update"),
         validate({ params: ParamsWithOrgId, body: UpdateOrganizationSchema }),
       ],
-      schema: { tags: ["Organizations"], summary: "Update organization", security: [{ BearerAuth: [] }] },
+      schema: {
+        tags: ["Organizations"],
+        summary: "Update organization",
+        security: [{ BearerAuth: [] }],
+      },
     },
     async (request, reply) => {
       const { orgId } = request.params as z.infer<typeof ParamsWithOrgId>;
@@ -84,7 +104,11 @@ export const organizationRoutes: FastifyPluginAsync = async (fastify) => {
         requirePermission("organization:manage_members"),
         validate({ params: ParamsWithOrgId, body: AddMemberBody }),
       ],
-      schema: { tags: ["Organizations"], summary: "Add organization member", security: [{ BearerAuth: [] }] },
+      schema: {
+        tags: ["Organizations"],
+        summary: "Add organization member",
+        security: [{ BearerAuth: [] }],
+      },
     },
     async (request, reply) => {
       const { orgId } = request.params as z.infer<typeof ParamsWithOrgId>;
@@ -103,7 +127,11 @@ export const organizationRoutes: FastifyPluginAsync = async (fastify) => {
         requirePermission("organization:manage_members"),
         validate({ params: ParamsWithOrgId, body: RemoveMemberBody }),
       ],
-      schema: { tags: ["Organizations"], summary: "Remove organization member", security: [{ BearerAuth: [] }] },
+      schema: {
+        tags: ["Organizations"],
+        summary: "Remove organization member",
+        security: [{ BearerAuth: [] }],
+      },
     },
     async (request, reply) => {
       const { orgId } = request.params as z.infer<typeof ParamsWithOrgId>;
@@ -122,7 +150,11 @@ export const organizationRoutes: FastifyPluginAsync = async (fastify) => {
         requirePermission("organization:manage_members"),
         validate({ params: ParamsWithOrgIdAndMemberId, body: UpdateMemberRoleBody }),
       ],
-      schema: { tags: ["Organizations"], summary: "Update organization member role", security: [{ BearerAuth: [] }] },
+      schema: {
+        tags: ["Organizations"],
+        summary: "Update organization member role",
+        security: [{ BearerAuth: [] }],
+      },
     },
     async (request, reply) => {
       const { orgId, memberId } = request.params as z.infer<typeof ParamsWithOrgIdAndMemberId>;
@@ -142,7 +174,11 @@ export const organizationRoutes: FastifyPluginAsync = async (fastify) => {
         requirePermission("organization:manage_members"),
         validate({ params: ParamsWithOrgId, body: CreateInviteSchema }),
       ],
-      schema: { tags: ["Organizations"], summary: "Create organization invite", security: [{ BearerAuth: [] }] },
+      schema: {
+        tags: ["Organizations"],
+        summary: "Create organization invite",
+        security: [{ BearerAuth: [] }],
+      },
     },
     async (request, reply) => {
       const { orgId } = request.params as z.infer<typeof ParamsWithOrgId>;
@@ -161,7 +197,11 @@ export const organizationRoutes: FastifyPluginAsync = async (fastify) => {
         requirePermission("organization:read"),
         validate({ params: ParamsWithOrgId }),
       ],
-      schema: { tags: ["Organizations"], summary: "List organization invites", security: [{ BearerAuth: [] }] },
+      schema: {
+        tags: ["Organizations"],
+        summary: "List organization invites",
+        security: [{ BearerAuth: [] }],
+      },
     },
     async (request, reply) => {
       const { orgId } = request.params as z.infer<typeof ParamsWithOrgId>;
@@ -180,7 +220,11 @@ export const organizationRoutes: FastifyPluginAsync = async (fastify) => {
         requirePermission("organization:manage_members"),
         validate({ params: z.object({ orgId: z.string(), inviteId: z.string() }) }),
       ],
-      schema: { tags: ["Organizations"], summary: "Revoke an invitation", security: [{ BearerAuth: [] }] },
+      schema: {
+        tags: ["Organizations"],
+        summary: "Revoke an invitation",
+        security: [{ BearerAuth: [] }],
+      },
     },
     async (request, reply) => {
       const { inviteId } = request.params as { inviteId: string };
@@ -199,11 +243,19 @@ export const organizationRoutes: FastifyPluginAsync = async (fastify) => {
         requirePermission("event:read"),
         validate({ params: ParamsWithOrgId, query: AnalyticsQuerySchema }),
       ],
-      schema: { tags: ["Organizations"], summary: "Get organization analytics", security: [{ BearerAuth: [] }] },
+      schema: {
+        tags: ["Organizations"],
+        summary: "Get organization analytics",
+        security: [{ BearerAuth: [] }],
+      },
     },
     async (request, reply) => {
       const { orgId } = request.params as z.infer<typeof ParamsWithOrgId>;
-      const analytics = await analyticsService.getOrgAnalytics(orgId, request.query as any, request.user!);
+      const analytics = await analyticsService.getOrgAnalytics(
+        orgId,
+        request.query as any,
+        request.user!,
+      );
       return reply.send({ success: true, data: analytics });
     },
   );

@@ -146,7 +146,6 @@ export default function BadgesPage() {
 
     try {
       if (editingId) {
-         
         const { organizationId: _orgId, ...updatePayload } = payload;
         await updateTemplate.mutateAsync({ templateId: editingId, dto: updatePayload });
         toast.success("Modèle mis à jour");
@@ -172,7 +171,7 @@ export default function BadgesPage() {
 
   const handleBulkGenerate = async () => {
     if (!selectedEventId || !selectedTemplateId) {
-      toast.error("Selectionnez un evenement et un modele");
+      toast.error("Sélectionnez un événement et un modèle");
       return;
     }
     try {
@@ -380,7 +379,7 @@ export default function BadgesPage() {
                     style={{ backgroundColor: formPrimaryColor }}
                   >
                     <span className="text-white text-[10px] font-bold truncate">
-                      Nom de l&apos;evenement
+                      Nom de l&apos;événement
                     </span>
                   </div>
                   {/* Content area */}
@@ -597,7 +596,7 @@ export default function BadgesPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-foreground mb-1">
-                    Evenement
+                    Événement
                   </label>
                   <select
                     value={selectedEventId}
@@ -609,7 +608,7 @@ export default function BadgesPage() {
                     disabled={eventsLoading}
                   >
                     <option value="">
-                      {eventsLoading ? "Chargement..." : "Selectionnez un evenement"}
+                      {eventsLoading ? "Chargement..." : "Sélectionnez un événement"}
                     </option>
                     {events.map((event: { id: string; title: string }) => (
                       <option key={event.id} value={event.id}>
@@ -621,7 +620,7 @@ export default function BadgesPage() {
 
                 <div>
                   <label className="block text-sm font-medium text-foreground mb-1">
-                    Modele de badge
+                    Modèle de badge
                   </label>
                   <select
                     value={selectedTemplateId}
@@ -636,12 +635,12 @@ export default function BadgesPage() {
                       {templatesLoading
                         ? "Chargement..."
                         : templates.length === 0
-                          ? "Aucun modele disponible"
-                          : "Selectionnez un modele"}
+                          ? "Aucun modèle disponible"
+                          : "Sélectionnez un modèle"}
                     </option>
                     {templates.map((tpl) => (
                       <option key={tpl.id} value={tpl.id}>
-                        {tpl.name} {tpl.isDefault ? "(par defaut)" : ""}
+                        {tpl.name} {tpl.isDefault ? "(par défaut)" : ""}
                       </option>
                     ))}
                   </select>
@@ -652,8 +651,8 @@ export default function BadgesPage() {
               {!selectedEventId && (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/50 rounded-md p-3">
                   <AlertCircle size={16} />
-                  Selectionnez un evenement et un modele pour generer les badges de tous les
-                  participants confirmes.
+                  Sélectionnez un événement et un modèle pour générer les badges de tous les
+                  participants confirmés.
                 </div>
               )}
 
@@ -683,8 +682,8 @@ export default function BadgesPage() {
                 <div className="flex items-center gap-2 text-sm bg-green-50 dark:bg-green-950/30 text-green-700 dark:text-green-400 rounded-md p-3">
                   <CheckCircle2 size={16} />
                   {bulkResult.queued > 0
-                    ? `${bulkResult.queued} badge(s) mis en file d'attente pour generation. Les PDF seront disponibles sous peu.`
-                    : "Tous les badges ont deja ete generes pour cet evenement."}
+                    ? `${bulkResult.queued} badge(s) mis en file d'attente pour génération. Les PDF seront disponibles sous peu.`
+                    : "Tous les badges ont déjà été générés pour cet événement."}
                 </div>
               )}
             </CardContent>

@@ -17,15 +17,13 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@teranga/shared-ui";
+import { MapPin, Search, ShieldCheck, Ban, CheckCircle, CalendarDays } from "lucide-react";
 import {
-  MapPin,
-  Search,
-  ShieldCheck,
-  Ban,
-  CheckCircle,
-  CalendarDays,
-} from "lucide-react";
-import { useVenues, useApproveVenue, useSuspendVenue, useReactivateVenue } from "@/hooks/use-venues";
+  useVenues,
+  useApproveVenue,
+  useSuspendVenue,
+  useReactivateVenue,
+} from "@/hooks/use-venues";
 import type { Venue, VenueType, VenueStatus } from "@teranga/shared-types";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
@@ -223,10 +221,12 @@ export default function AdminVenuesPage() {
                   <th className="px-4 py-3 text-left font-medium text-muted-foreground">Ville</th>
                   <th className="px-4 py-3 text-left font-medium text-muted-foreground">Statut</th>
                   <th className="px-4 py-3 text-center font-medium text-muted-foreground">
-                    <CalendarDays className="inline h-4 w-4" aria-label="Nombre d'evenements" />
+                    <CalendarDays className="inline h-4 w-4" aria-label="Nombre d'événements" />
                   </th>
                   <th className="px-4 py-3 text-left font-medium text-muted-foreground">Contact</th>
-                  <th className="px-4 py-3 text-right font-medium text-muted-foreground">Actions</th>
+                  <th className="px-4 py-3 text-right font-medium text-muted-foreground">
+                    Actions
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -237,12 +237,24 @@ export default function AdminVenuesPage() {
                         <Skeleton className="h-4 w-40 mb-1" />
                         <Skeleton className="h-3 w-24" />
                       </td>
-                      <td className="px-4 py-3"><Skeleton className="h-5 w-20" /></td>
-                      <td className="px-4 py-3"><Skeleton className="h-4 w-24" /></td>
-                      <td className="px-4 py-3"><Skeleton className="h-5 w-20" /></td>
-                      <td className="px-4 py-3 text-center"><Skeleton className="mx-auto h-4 w-8" /></td>
-                      <td className="px-4 py-3"><Skeleton className="h-4 w-32" /></td>
-                      <td className="px-4 py-3"><Skeleton className="h-8 w-28 ml-auto" /></td>
+                      <td className="px-4 py-3">
+                        <Skeleton className="h-5 w-20" />
+                      </td>
+                      <td className="px-4 py-3">
+                        <Skeleton className="h-4 w-24" />
+                      </td>
+                      <td className="px-4 py-3">
+                        <Skeleton className="h-5 w-20" />
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <Skeleton className="mx-auto h-4 w-8" />
+                      </td>
+                      <td className="px-4 py-3">
+                        <Skeleton className="h-4 w-32" />
+                      </td>
+                      <td className="px-4 py-3">
+                        <Skeleton className="h-8 w-28 ml-auto" />
+                      </td>
                     </tr>
                   ))}
 
@@ -283,7 +295,11 @@ export default function AdminVenuesPage() {
 
                       {/* Status */}
                       <td className="px-4 py-3">
-                        <Badge className={STATUS_BADGE_STYLES[venue.status] ?? STATUS_BADGE_STYLES.pending}>
+                        <Badge
+                          className={
+                            STATUS_BADGE_STYLES[venue.status] ?? STATUS_BADGE_STYLES.pending
+                          }
+                        >
                           {STATUS_LABELS[venue.status] ?? venue.status}
                         </Badge>
                       </td>

@@ -488,8 +488,8 @@ export default function SettingsPage() {
             <Toggle
               checked={prefs.eventReminders}
               onChange={(v) => updatePref("eventReminders", v)}
-              label="Rappels d'evenements"
-              description="Rappels avant le debut de vos evenements"
+              label="Rappels d'événements"
+              description="Rappels avant le début de vos événements"
             />
           </div>
 

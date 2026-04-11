@@ -23,8 +23,17 @@ export const registrationRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post(
     "/",
     {
-      preHandler: [authenticate, requirePermission("registration:create"), validate({ body: RegisterBody })],
-      schema: { tags: ["Registrations"], summary: "Register for an event", security: [{ BearerAuth: [] }] },
+      config: { rateLimit: { max: 20, timeWindow: "1 hour" } },
+      preHandler: [
+        authenticate,
+        requirePermission("registration:create"),
+        validate({ body: RegisterBody }),
+      ],
+      schema: {
+        tags: ["Registrations"],
+        summary: "Register for an event",
+        security: [{ BearerAuth: [] }],
+      },
     },
     async (request, reply) => {
       const { eventId, ticketTypeId } = request.body as z.infer<typeof RegisterBody>;
@@ -38,7 +47,11 @@ export const registrationRoutes: FastifyPluginAsync = async (fastify) => {
     "/me",
     {
       preHandler: [authenticate, validate({ query: PaginationSchema })],
-      schema: { tags: ["Registrations"], summary: "Get my registrations", security: [{ BearerAuth: [] }] },
+      schema: {
+        tags: ["Registrations"],
+        summary: "Get my registrations",
+        security: [{ BearerAuth: [] }],
+      },
     },
     async (request, reply) => {
       const pagination = request.query as z.infer<typeof PaginationSchema>;
@@ -56,12 +69,21 @@ export const registrationRoutes: FastifyPluginAsync = async (fastify) => {
         requirePermission("registration:read_all"),
         validate({ params: z.object({ eventId: z.string() }), query: PaginationSchema }),
       ],
-      schema: { tags: ["Registrations"], summary: "List registrations for an event", security: [{ BearerAuth: [] }] },
+      schema: {
+        tags: ["Registrations"],
+        summary: "List registrations for an event",
+        security: [{ BearerAuth: [] }],
+      },
     },
     async (request, reply) => {
       const { eventId } = request.params as { eventId: string };
       const pagination = request.query as z.infer<typeof PaginationSchema>;
-      const result = await registrationService.getEventRegistrations(eventId, request.user!, undefined, pagination);
+      const result = await registrationService.getEventRegistrations(
+        eventId,
+        request.user!,
+        undefined,
+        pagination,
+      );
       return reply.send({ success: true, data: result.data, meta: result.meta });
     },
   );
@@ -70,8 +92,16 @@ export const registrationRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.delete(
     "/:registrationId",
     {
-      preHandler: [authenticate, requireAnyPermission(["registration:cancel_own", "registration:cancel_any"]), validate({ params: ParamsWithRegistrationId })],
-      schema: { tags: ["Registrations"], summary: "Cancel a registration", security: [{ BearerAuth: [] }] },
+      preHandler: [
+        authenticate,
+        requireAnyPermission(["registration:cancel_own", "registration:cancel_any"]),
+        validate({ params: ParamsWithRegistrationId }),
+      ],
+      schema: {
+        tags: ["Registrations"],
+        summary: "Cancel a registration",
+        security: [{ BearerAuth: [] }],
+      },
     },
     async (request, reply) => {
       const { registrationId } = request.params as z.infer<typeof ParamsWithRegistrationId>;
@@ -89,7 +119,11 @@ export const registrationRoutes: FastifyPluginAsync = async (fastify) => {
         requirePermission("registration:approve"),
         validate({ params: ParamsWithRegistrationId }),
       ],
-      schema: { tags: ["Registrations"], summary: "Approve a pending registration", security: [{ BearerAuth: [] }] },
+      schema: {
+        tags: ["Registrations"],
+        summary: "Approve a pending registration",
+        security: [{ BearerAuth: [] }],
+      },
     },
     async (request, reply) => {
       const { registrationId } = request.params as z.infer<typeof ParamsWithRegistrationId>;
@@ -102,8 +136,16 @@ export const registrationRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post(
     "/checkin",
     {
-      preHandler: [authenticate, requirePermission("checkin:scan"), validate({ body: CheckInBody })],
-      schema: { tags: ["Registrations"], summary: "Check-in via QR code", security: [{ BearerAuth: [] }] },
+      preHandler: [
+        authenticate,
+        requirePermission("checkin:scan"),
+        validate({ body: CheckInBody }),
+      ],
+      schema: {
+        tags: ["Registrations"],
+        summary: "Check-in via QR code",
+        security: [{ BearerAuth: [] }],
+      },
     },
     async (request, reply) => {
       const { qrCodeValue, accessZoneId } = request.body as z.infer<typeof CheckInBody>;

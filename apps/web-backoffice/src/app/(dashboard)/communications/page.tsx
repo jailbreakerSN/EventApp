@@ -119,7 +119,7 @@ export default function CommunicationsPage() {
         </Breadcrumb>
         <h1 className="text-2xl font-bold">Communications</h1>
         <p className="text-muted-foreground">
-          Envoyez des messages aux participants de vos evenements
+          Envoyez des messages aux participants de vos événements
         </p>
       </div>
 
@@ -134,7 +134,7 @@ export default function CommunicationsPage() {
             value={selectedEventId}
             onChange={(e) => setSelectedEventId(e.target.value)}
           >
-            <option value="">Selectionnez un evenement</option>
+            <option value="">Sélectionnez un événement</option>
             {events.map((ev) => (
               <option key={ev.id} value={ev.id}>
                 {ev.title}
@@ -320,7 +320,7 @@ export default function CommunicationsPage() {
                   <Spinner />
                 </div>
               ) : broadcasts.length === 0 ? (
-                <p className="py-8 text-center text-muted-foreground">Aucun message envoye</p>
+                <p className="py-8 text-center text-muted-foreground">Aucun message envoyé</p>
               ) : (
                 <div className="space-y-3">
                   {broadcasts.map((b) => {
@@ -335,9 +335,9 @@ export default function CommunicationsPage() {
                           <p className="text-sm text-muted-foreground line-clamp-2">{b.body}</p>
                           <div className="flex gap-2 text-xs text-muted-foreground">
                             <span>{b.recipientCount} destinataires</span>
-                            <span>{b.sentCount} envoyes</span>
+                            <span>{b.sentCount} envoyés</span>
                             {b.failedCount > 0 && (
-                              <span className="text-red-500">{b.failedCount} echecs</span>
+                              <span className="text-red-500">{b.failedCount} échecs</span>
                             )}
                           </div>
                         </div>

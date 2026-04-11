@@ -82,7 +82,7 @@ jobs:
       CORS_ORIGINS: "http://localhost:3001"
       RATE_LIMIT_MAX: "1000"
       RATE_LIMIT_WINDOW_MS: "60000"
-      QR_SECRET: ci-test-secret-minimum-16-chars
+      QR_SECRET: ci-test-secret-minimum-32-characters-long
       RESEND_API_KEY: re_test_placeholder
       EMAIL_FROM: test@teranga.events
     steps:

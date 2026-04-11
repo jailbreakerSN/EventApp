@@ -88,9 +88,15 @@ export class EventService extends BaseService {
       publishedAt: null,
     } as Omit<Event, "id" | "createdAt" | "updatedAt">);
 
-    // Increment venue event counter
+    // Increment venue event counter (best-effort — counter is denormalized)
     if (dto.venueId) {
-      await venueRepository.increment(dto.venueId, "eventCount", 1);
+      try {
+        await venueRepository.increment(dto.venueId, "eventCount", 1);
+      } catch {
+        process.stderr.write(
+          `[event.service] Failed to increment venue counter for ${dto.venueId}\n`,
+        );
+      }
     }
 
     eventBus.emit("event.created", {
@@ -188,14 +194,26 @@ export class EventService extends BaseService {
           throw new ValidationError("Le lieu sélectionné n'est pas approuvé");
         }
         updateData.venueName = venue.name;
-        await venueRepository.increment(dto.venueId, "eventCount", 1);
+        try {
+          await venueRepository.increment(dto.venueId, "eventCount", 1);
+        } catch {
+          process.stderr.write(
+            `[event.service] Failed to increment venue counter for ${dto.venueId}\n`,
+          );
+        }
       } else {
         // Venue removed
         updateData.venueName = null;
       }
-      // Decrement old venue counter
+      // Decrement old venue counter (best-effort)
       if (event.venueId) {
-        await venueRepository.increment(event.venueId, "eventCount", -1);
+        try {
+          await venueRepository.increment(event.venueId, "eventCount", -1);
+        } catch {
+          process.stderr.write(
+            `[event.service] Failed to decrement venue counter for ${event.venueId}\n`,
+          );
+        }
       }
     }
 

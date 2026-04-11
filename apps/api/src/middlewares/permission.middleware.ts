@@ -1,13 +1,11 @@
 import { type FastifyRequest, type FastifyReply } from "fastify";
 import {
   type Permission,
-  type RoleAssignment,
   hasPermission,
   hasAllPermissions,
   hasAnyPermission,
-  resolvePermissions,
 } from "@teranga/shared-types";
-import { type AuthUser } from "./auth.middleware";
+import { resolveUserPermissions } from "@/utils/resolve-permissions";
 
 /**
  * Permission-based access control middleware.
@@ -20,26 +18,6 @@ import { type AuthUser } from "./auth.middleware";
  *   preHandler: [authenticate, requireAllPermissions(["event:update", "event:publish"])]
  *   preHandler: [authenticate, requireAnyPermission(["registration:read_own", "registration:read_all"])]
  */
-
-// ─── Resolve user permissions from JWT claims ────────────────────────────────
-
-function resolveUserPermissions(user: AuthUser): Set<Permission> {
-  const assignments: RoleAssignment[] = user.roles.map((role) => ({
-    id: `inline-${role}`,
-    userId: user.uid,
-    role,
-    scope: user.organizationId ? ("organization" as const) : ("global" as const),
-    organizationId: user.organizationId ?? null,
-    eventId: null,
-    grantedBy: "system",
-    grantedAt: new Date().toISOString(),
-    isActive: true,
-  }));
-
-  return resolvePermissions(assignments, {
-    organizationId: user.organizationId,
-  });
-}
 
 // ─── Augment Fastify Request to carry resolved permissions ───────────────────
 
@@ -74,10 +52,7 @@ export function requirePermission(permission: Permission) {
     if (!perms) return; // 401 already sent
 
     if (!hasPermission(perms, permission)) {
-      request.log.warn(
-        { uid: request.user!.uid, required: permission },
-        "Permission check failed",
-      );
+      request.log.warn({ uid: request.user!.uid, required: permission }, "Permission check failed");
       return reply.status(403).send({
         success: false,
         error: { code: "FORBIDDEN", message: `Missing permission: ${permission}` },

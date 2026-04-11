@@ -256,7 +256,7 @@ Other packages import from `@teranga/shared-types` and depend on the compiled ou
 - **Never commit** `.env`, `service-account*.json`, or Firebase API keys to git
 - `.env.example` files exist for all apps — copy and fill in real values
 - In production: Use GCP Secret Manager or Cloud Run env injection
-- `QR_SECRET` must be >= 16 characters and unique per environment
+- `QR_SECRET` must be >= 32 characters and unique per environment
 
 ---
 

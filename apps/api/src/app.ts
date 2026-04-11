@@ -54,9 +54,16 @@ export async function buildApp() {
   // ─── Content-Type Enforcement ─────────────────────────────────────────────
   // Mutation endpoints must send JSON. Prevents accidental form-encoded or
   // multipart payloads from reaching handlers that expect parsed JSON bodies.
+  // Webhook routes are exempt — payment providers may use different content types.
+  const CONTENT_TYPE_EXEMPT_PATHS = ["/v1/payments/webhook"];
+
   app.addHook("onRequest", (request, reply, done) => {
     const mutationMethods = ["POST", "PATCH", "PUT"];
     if (mutationMethods.includes(request.method)) {
+      // Skip enforcement for webhook endpoints
+      if (CONTENT_TYPE_EXEMPT_PATHS.some((p) => request.url.startsWith(p))) {
+        return done();
+      }
       const contentType = request.headers["content-type"];
       if (contentType && !contentType.includes("application/json")) {
         reply.status(415).send({
@@ -118,9 +125,7 @@ export async function buildApp() {
           version: "0.1.0",
           contact: { name: "Teranga Team", email: "dev@teranga.events" },
         },
-        servers: [
-          { url: `http://localhost:${config.PORT}`, description: "Local dev" },
-        ],
+        servers: [{ url: `http://localhost:${config.PORT}`, description: "Local dev" }],
         components: {
           securitySchemes: {
             BearerAuth: {
@@ -161,7 +166,10 @@ export async function buildApp() {
       if (error.statusCode >= 500) {
         request.log.error({ err: error, method: request.method, url: request.url }, error.message);
       } else {
-        request.log.warn({ code: error.code, method: request.method, url: request.url }, error.message);
+        request.log.warn(
+          { code: error.code, method: request.method, url: request.url },
+          error.message,
+        );
       }
       return reply.status(error.statusCode).send({
         success: false,
@@ -193,10 +201,7 @@ export async function buildApp() {
     }
 
     // ── Unexpected errors ──────────────────────────────────────────────
-    request.log.error(
-      { err: error, method: request.method, url: request.url },
-      error.message,
-    );
+    request.log.error({ err: error, method: request.method, url: request.url }, error.message);
 
     const statusCode = error.statusCode ?? 500;
     return reply.status(statusCode).send({

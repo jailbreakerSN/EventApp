@@ -226,12 +226,18 @@ describe("OrganizationService.removeMember", () => {
       memberIds: ["owner-1", "member-1"],
     });
     const user = buildOrganizerUser("org-1");
-    mockOrgRepo.findByIdOrThrow.mockResolvedValue(org);
-    mockOrgRepo.removeMember.mockResolvedValue(undefined);
+
+    // removeMember now uses db.runTransaction
+    mockTxGet.mockResolvedValue({
+      exists: true,
+      data: () => ({ ...org }),
+    });
 
     await service.removeMember("org-1", "member-1", user);
 
-    expect(mockOrgRepo.removeMember).toHaveBeenCalledWith("org-1", "member-1");
+    expect(mockTxUpdate).toHaveBeenCalledWith(mockDocRef, {
+      memberIds: ["owner-1"],
+    });
   });
 
   it("prevents removing the organization owner", async () => {
@@ -241,7 +247,11 @@ describe("OrganizationService.removeMember", () => {
       memberIds: ["owner-1", "member-1"],
     });
     const user = buildOrganizerUser("org-1");
-    mockOrgRepo.findByIdOrThrow.mockResolvedValue(org);
+
+    mockTxGet.mockResolvedValue({
+      exists: true,
+      data: () => ({ ...org }),
+    });
 
     await expect(service.removeMember("org-1", "owner-1", user)).rejects.toThrow("propriétaire");
   });
