@@ -25,18 +25,27 @@ const mockEventRepo = {
 };
 
 vi.mock("@/repositories/feed.repository", () => ({
-  feedPostRepository: new Proxy({}, {
-    get: (_target, prop) => (mockFeedPostRepo as Record<string, unknown>)[prop as string],
-  }),
-  feedCommentRepository: new Proxy({}, {
-    get: (_target, prop) => (mockFeedCommentRepo as Record<string, unknown>)[prop as string],
-  }),
+  feedPostRepository: new Proxy(
+    {},
+    {
+      get: (_target, prop) => (mockFeedPostRepo as Record<string, unknown>)[prop as string],
+    },
+  ),
+  feedCommentRepository: new Proxy(
+    {},
+    {
+      get: (_target, prop) => (mockFeedCommentRepo as Record<string, unknown>)[prop as string],
+    },
+  ),
 }));
 
 vi.mock("@/repositories/event.repository", () => ({
-  eventRepository: new Proxy({}, {
-    get: (_target, prop) => (mockEventRepo as Record<string, unknown>)[prop as string],
-  }),
+  eventRepository: new Proxy(
+    {},
+    {
+      get: (_target, prop) => (mockEventRepo as Record<string, unknown>)[prop as string],
+    },
+  ),
 }));
 
 vi.mock("@/events/event-bus", () => ({
@@ -122,7 +131,10 @@ describe("FeedService", () => {
 
   describe("listPosts", () => {
     it("returns feed posts for the event", async () => {
-      const posts = { data: [{ id: "p1" }, { id: "p2" }], meta: { total: 2, page: 1, limit: 20, totalPages: 1 } };
+      const posts = {
+        data: [{ id: "p1" }, { id: "p2" }],
+        meta: { total: 2, page: 1, limit: 20, totalPages: 1 },
+      };
       mockFeedPostRepo.findByEvent.mockResolvedValue(posts);
 
       const result = await service.listPosts(eventId, { page: 1, limit: 20 }, user);
@@ -133,16 +145,18 @@ describe("FeedService", () => {
     it("denies user without feed:read permission", async () => {
       const noPerms = buildAuthUser({ roles: [] as never });
 
-      await expect(
-        service.listPosts(eventId, { page: 1, limit: 20 }, noPerms),
-      ).rejects.toThrow("Permission manquante");
+      await expect(service.listPosts(eventId, { page: 1, limit: 20 }, noPerms)).rejects.toThrow(
+        "Permission manquante",
+      );
     });
   });
 
   describe("toggleLike", () => {
     it("likes a post when not already liked", async () => {
       mockFeedPostRepo.findByIdOrThrow.mockResolvedValue({
-        id: "post-1", eventId, likedByIds: [],
+        id: "post-1",
+        eventId,
+        likedByIds: [],
       });
       (db.runTransaction as ReturnType<typeof vi.fn>).mockImplementation(
         async (fn: (tx: unknown) => Promise<unknown>) => {
@@ -161,12 +175,16 @@ describe("FeedService", () => {
 
     it("unlikes a post when already liked", async () => {
       mockFeedPostRepo.findByIdOrThrow.mockResolvedValue({
-        id: "post-1", eventId, likedByIds: [user.uid],
+        id: "post-1",
+        eventId,
+        likedByIds: [user.uid],
       });
       (db.runTransaction as ReturnType<typeof vi.fn>).mockImplementation(
         async (fn: (tx: unknown) => Promise<unknown>) => {
           const mockTx = {
-            get: vi.fn().mockResolvedValue({ data: () => ({ likedByIds: [user.uid], likeCount: 1 }) }),
+            get: vi
+              .fn()
+              .mockResolvedValue({ data: () => ({ likedByIds: [user.uid], likeCount: 1 }) }),
             update: vi.fn(),
           };
           return fn(mockTx);
@@ -180,19 +198,21 @@ describe("FeedService", () => {
 
     it("rejects if post belongs to different event", async () => {
       mockFeedPostRepo.findByIdOrThrow.mockResolvedValue({
-        id: "post-1", eventId: "other-event", likedByIds: [],
+        id: "post-1",
+        eventId: "other-event",
+        likedByIds: [],
       });
 
-      await expect(
-        service.toggleLike(eventId, "post-1", user),
-      ).rejects.toThrow("appartient pas");
+      await expect(service.toggleLike(eventId, "post-1", user)).rejects.toThrow("appartient pas");
     });
   });
 
   describe("deletePost", () => {
     it("allows author to delete own post", async () => {
       mockFeedPostRepo.findByIdOrThrow.mockResolvedValue({
-        id: "post-1", eventId, authorId: user.uid,
+        id: "post-1",
+        eventId,
+        authorId: user.uid,
       });
 
       await service.deletePost(eventId, "post-1", user);
@@ -205,7 +225,9 @@ describe("FeedService", () => {
 
     it("allows moderator to delete others' posts", async () => {
       mockFeedPostRepo.findByIdOrThrow.mockResolvedValue({
-        id: "post-1", eventId, authorId: "other-user",
+        id: "post-1",
+        eventId,
+        authorId: "other-user",
       });
 
       await service.deletePost(eventId, "post-1", user);
@@ -216,12 +238,14 @@ describe("FeedService", () => {
     it("denies non-author non-moderator", async () => {
       const participant = buildAuthUser({ roles: ["participant"] });
       mockFeedPostRepo.findByIdOrThrow.mockResolvedValue({
-        id: "post-1", eventId, authorId: "someone-else",
+        id: "post-1",
+        eventId,
+        authorId: "someone-else",
       });
 
-      await expect(
-        service.deletePost(eventId, "post-1", participant),
-      ).rejects.toThrow("Permission manquante");
+      await expect(service.deletePost(eventId, "post-1", participant)).rejects.toThrow(
+        "Permission manquante",
+      );
     });
   });
 
@@ -245,22 +269,33 @@ describe("FeedService", () => {
 
   describe("togglePin", () => {
     it("pins an unpinned post", async () => {
-      mockFeedPostRepo.findByIdOrThrow.mockResolvedValue({
-        id: "post-1", eventId, isPinned: false,
-      });
+      mockEventRepo.findByIdOrThrow.mockResolvedValue(buildEvent({ organizationId: orgId }));
+      const mockTxUpdate = vi.fn();
+      (db.runTransaction as ReturnType<typeof vi.fn>).mockImplementation(
+        async (fn: (tx: unknown) => Promise<unknown>) => {
+          const mockTx = {
+            get: vi.fn().mockResolvedValue({
+              exists: true,
+              data: () => ({ eventId, isPinned: false }),
+            }),
+            update: mockTxUpdate,
+          };
+          return fn(mockTx);
+        },
+      );
 
       const result = await service.togglePin(eventId, "post-1", user);
 
       expect(result.pinned).toBe(true);
-      expect(mockFeedPostRepo.update).toHaveBeenCalledWith("post-1", { isPinned: true });
+      expect(mockTxUpdate).toHaveBeenCalledWith(expect.anything(), { isPinned: true });
     });
 
     it("denies pin for non-moderator", async () => {
       const participant = buildAuthUser({ roles: ["participant"] });
 
-      await expect(
-        service.togglePin(eventId, "post-1", participant),
-      ).rejects.toThrow("Permission manquante");
+      await expect(service.togglePin(eventId, "post-1", participant)).rejects.toThrow(
+        "Permission manquante",
+      );
     });
   });
 });

@@ -123,14 +123,11 @@ export default function NotificationsPage() {
 
   // Filter read notifications client-side when "read" tab selected
   const filteredNotifications =
-    filter === "read"
-      ? notifications.filter((n) => n.isRead)
-      : notifications;
+    filter === "read" ? notifications.filter((n) => n.isRead) : notifications;
 
   // Mark single as read
   const markAsRead = useMutation({
-    mutationFn: (notificationId: string) =>
-      notificationsApi.markAsRead(notificationId),
+    mutationFn: (notificationId: string) => notificationsApi.markAsRead(notificationId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
     },
@@ -141,10 +138,10 @@ export default function NotificationsPage() {
     mutationFn: () => notificationsApi.markAllAsRead(),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
-      toast.success("Toutes les notifications marquees comme lues");
+      toast.success("Toutes les notifications marquées comme lues");
     },
     onError: () => {
-      toast.error("Erreur lors de la mise a jour");
+      toast.error("Erreur lors de la mise à jour");
     },
   });
 
@@ -154,7 +151,7 @@ export default function NotificationsPage() {
         markAsRead.mutate(notification.id);
       }
     },
-    [markAsRead]
+    [markAsRead],
   );
 
   const hasUnread = notifications.some((n) => !n.isRead);
@@ -244,9 +241,7 @@ export default function NotificationsPage() {
             <Card>
               <CardContent className="p-8 text-center">
                 <AlertCircle className="h-10 w-10 mx-auto mb-3 text-red-400" />
-                <p className="text-sm font-medium text-foreground mb-1">
-                  Erreur de chargement
-                </p>
+                <p className="text-sm font-medium text-foreground mb-1">Erreur de chargement</p>
                 <p className="text-xs text-muted-foreground mb-4">
                   Impossible de charger vos notifications. Veuillez reessayer.
                 </p>
@@ -263,9 +258,7 @@ export default function NotificationsPage() {
             <Card>
               <CardContent className="p-10 text-center">
                 <Bell className="h-12 w-12 mx-auto mb-3 text-muted-foreground/40" />
-                <p className="text-sm font-medium text-foreground mb-1">
-                  Aucune notification
-                </p>
+                <p className="text-sm font-medium text-foreground mb-1">Aucune notification</p>
                 <p className="text-xs text-muted-foreground">
                   {filter === "unread"
                     ? "Vous avez lu toutes vos notifications."
@@ -295,7 +288,7 @@ export default function NotificationsPage() {
                     {/* Icon */}
                     <div
                       className={`rounded-full p-2 flex-shrink-0 ${getNotificationIconBg(
-                        notification.type
+                        notification.type,
                       )}`}
                     >
                       {getNotificationIcon(notification.type)}
@@ -331,10 +324,7 @@ export default function NotificationsPage() {
               {/* Load more */}
               {hasMore && (
                 <div className="pt-4 text-center">
-                  <Button
-                    variant="outline"
-                    onClick={() => setPage((p) => p + 1)}
-                  >
+                  <Button variant="outline" onClick={() => setPage((p) => p + 1)}>
                     Charger plus
                   </Button>
                 </div>

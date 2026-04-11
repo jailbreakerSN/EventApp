@@ -9,7 +9,7 @@ import { feedPostRepository, feedCommentRepository } from "@/repositories/feed.r
 import { eventRepository } from "@/repositories/event.repository";
 import { type AuthUser } from "@/middlewares/auth.middleware";
 import { BaseService } from "./base.service";
-import { ForbiddenError } from "@/errors/app-error";
+import { ForbiddenError, ValidationError } from "@/errors/app-error";
 import { eventBus } from "@/events/event-bus";
 import { getRequestId } from "@/context/request-context";
 import { type PaginatedResult } from "@/repositories/base.repository";
@@ -124,16 +124,24 @@ export class FeedService extends BaseService {
   async togglePin(eventId: string, postId: string, user: AuthUser): Promise<{ pinned: boolean }> {
     this.requirePermission(user, "feed:moderate");
 
-    const post = await feedPostRepository.findByIdOrThrow(postId);
-    if (post.eventId !== eventId) {
-      throw new ForbiddenError("Cette publication n'appartient pas à cet événement");
-    }
-
     const event = await eventRepository.findByIdOrThrow(eventId);
     this.requireOrganizationAccess(user, event.organizationId);
 
-    const newPinned = !post.isPinned;
-    await feedPostRepository.update(postId, { isPinned: newPinned });
+    // Transactional toggle to prevent concurrent pin races
+    const newPinned = await db.runTransaction(async (tx) => {
+      const postRef = db.collection(COLLECTIONS.FEED_POSTS).doc(postId);
+      const postSnap = await tx.get(postRef);
+      if (!postSnap.exists) throw new ValidationError("Publication introuvable");
+
+      const postData = postSnap.data()!;
+      if (postData.eventId !== eventId) {
+        throw new ForbiddenError("Cette publication n'appartient pas à cet événement");
+      }
+
+      const pinned = !postData.isPinned;
+      tx.update(postRef, { isPinned: pinned });
+      return pinned;
+    });
 
     eventBus.emit("feed_post.pinned", {
       postId,
@@ -149,7 +157,12 @@ export class FeedService extends BaseService {
 
   // ─── Update Post (author only) ─────────────────────────────────────────────
 
-  async updatePost(eventId: string, postId: string, content: string, user: AuthUser): Promise<FeedPost> {
+  async updatePost(
+    eventId: string,
+    postId: string,
+    content: string,
+    user: AuthUser,
+  ): Promise<FeedPost> {
     this.requirePermission(user, "feed:create_post");
 
     const post = await feedPostRepository.findByIdOrThrow(postId);
@@ -184,12 +197,13 @@ export class FeedService extends BaseService {
       throw new ForbiddenError("Cette publication n'appartient pas à cet événement");
     }
 
-    // Author can delete own post, or moderators
+    const event = await eventRepository.findByIdOrThrow(eventId);
+
+    // Author can delete own post, or moderators (both require org context)
     if (post.authorId !== user.uid) {
       this.requirePermission(user, "feed:moderate");
-      const event = await eventRepository.findByIdOrThrow(eventId);
-      this.requireOrganizationAccess(user, event.organizationId);
     }
+    this.requireOrganizationAccess(user, event.organizationId);
 
     await feedPostRepository.update(postId, { deletedAt: new Date().toISOString() });
 

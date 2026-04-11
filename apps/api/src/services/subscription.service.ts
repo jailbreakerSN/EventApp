@@ -15,6 +15,7 @@ import { ValidationError, PlanLimitError } from "@/errors/app-error";
 import { BaseService } from "./base.service";
 import { eventBus } from "@/events/event-bus";
 import { getRequestId } from "@/context/request-context";
+import { db, COLLECTIONS } from "@/config/firebase";
 
 // Valid upgrade paths: free -> starter/pro, starter -> pro
 const UPGRADE_PATHS: Record<string, OrganizationPlan[]> = {
@@ -78,28 +79,32 @@ export class SubscriptionService extends BaseService {
     this.requirePermission(user, "organization:manage_billing");
     this.requireOrganizationAccess(user, orgId);
 
-    const org = await organizationRepository.findByIdOrThrow(orgId);
     const targetPlan = dto.plan;
-
-    // Validate upgrade path
-    const validTargets = UPGRADE_PATHS[org.plan] ?? [];
-    if (!validTargets.includes(targetPlan)) {
-      throw new ValidationError(`Impossible de passer du plan ${org.plan} au plan ${targetPlan}`);
-    }
-
     const now = new Date().toISOString();
     const periodEnd = new Date();
     periodEnd.setMonth(periodEnd.getMonth() + 1);
-
-    // Update organization plan
-    await organizationRepository.update(orgId, {
-      plan: targetPlan,
-    } as Partial<Organization>);
-
-    // Create or update subscription doc
-    const existing = await subscriptionRepository.findByOrganization(orgId);
     const priceXof = PLAN_DISPLAY[targetPlan].priceXof;
 
+    // Transactional: read org plan + validate + update atomically
+    const previousPlan = await db.runTransaction(async (tx) => {
+      const orgRef = db.collection(COLLECTIONS.ORGANIZATIONS).doc(orgId);
+      const orgSnap = await tx.get(orgRef);
+      if (!orgSnap.exists) throw new ValidationError("Organisation introuvable");
+
+      const orgData = orgSnap.data() as Organization;
+      const validTargets = UPGRADE_PATHS[orgData.plan] ?? [];
+      if (!validTargets.includes(targetPlan)) {
+        throw new ValidationError(
+          `Impossible de passer du plan ${orgData.plan} au plan ${targetPlan}`,
+        );
+      }
+
+      tx.update(orgRef, { plan: targetPlan });
+      return orgData.plan;
+    });
+
+    // Subscription doc update (outside transaction — not critical for atomicity)
+    const existing = await subscriptionRepository.findByOrganization(orgId);
     let subscription: Subscription;
     if (existing) {
       await subscriptionRepository.update(existing.id, {
@@ -127,7 +132,7 @@ export class SubscriptionService extends BaseService {
 
     eventBus.emit("subscription.upgraded", {
       organizationId: orgId,
-      previousPlan: org.plan,
+      previousPlan,
       newPlan: targetPlan,
       actorId: user.uid,
       requestId: getRequestId(),
@@ -145,43 +150,56 @@ export class SubscriptionService extends BaseService {
     this.requirePermission(user, "organization:manage_billing");
     this.requireOrganizationAccess(user, orgId);
 
-    const org = await organizationRepository.findByIdOrThrow(orgId);
-
-    // Validate downgrade path
-    const validTargets = DOWNGRADE_PATHS[org.plan] ?? [];
-    if (!validTargets.includes(targetPlan)) {
-      throw new ValidationError(`Impossible de passer du plan ${org.plan} au plan ${targetPlan}`);
-    }
-
-    // Check that current usage fits within target plan limits
     const targetLimits = PLAN_LIMITS[targetPlan];
-    const activeEvents = await eventRepository.countActiveByOrganization(orgId);
-    const memberCount = org.memberIds?.length ?? 0;
+    const now = new Date().toISOString();
 
-    const violations: string[] = [];
+    // Transactional: read org + validate path + check usage + update atomically
+    const previousPlan = await db.runTransaction(async (tx) => {
+      const orgRef = db.collection(COLLECTIONS.ORGANIZATIONS).doc(orgId);
+      const orgSnap = await tx.get(orgRef);
+      if (!orgSnap.exists) throw new ValidationError("Organisation introuvable");
+
+      const orgData = orgSnap.data() as Organization;
+
+      // Validate downgrade path
+      const validTargets = DOWNGRADE_PATHS[orgData.plan] ?? [];
+      if (!validTargets.includes(targetPlan)) {
+        throw new ValidationError(
+          `Impossible de passer du plan ${orgData.plan} au plan ${targetPlan}`,
+        );
+      }
+
+      // Check usage fits target limits (member count is on the org doc — read atomically)
+      const memberCount = orgData.memberIds?.length ?? 0;
+      const violations: string[] = [];
+
+      if (isFinite(targetLimits.maxMembers) && memberCount > targetLimits.maxMembers) {
+        violations.push(
+          `${memberCount} membres (max ${targetLimits.maxMembers} sur ${targetPlan})`,
+        );
+      }
+
+      if (violations.length > 0) {
+        throw new PlanLimitError(
+          `Utilisation actuelle dépasse les limites du plan ${targetPlan}: ${violations.join(", ")}`,
+        );
+      }
+
+      tx.update(orgRef, { plan: targetPlan });
+      return orgData.plan;
+    });
+
+    // Check event count outside transaction (not modifiable in this operation)
+    const activeEvents = await eventRepository.countActiveByOrganization(orgId);
     if (isFinite(targetLimits.maxEvents) && activeEvents > targetLimits.maxEvents) {
-      violations.push(
+      // Rollback plan change — usage exceeded
+      await organizationRepository.update(orgId, { plan: previousPlan } as Partial<Organization>);
+      throw new PlanLimitError(
         `${activeEvents} événements actifs (max ${targetLimits.maxEvents} sur ${targetPlan})`,
       );
     }
-    if (isFinite(targetLimits.maxMembers) && memberCount > targetLimits.maxMembers) {
-      violations.push(`${memberCount} membres (max ${targetLimits.maxMembers} sur ${targetPlan})`);
-    }
 
-    if (violations.length > 0) {
-      throw new PlanLimitError(
-        `Utilisation actuelle dépasse les limites du plan ${targetPlan}: ${violations.join(", ")}`,
-      );
-    }
-
-    const now = new Date().toISOString();
-
-    // Update organization plan
-    await organizationRepository.update(orgId, {
-      plan: targetPlan,
-    } as Partial<Organization>);
-
-    // Update subscription
+    // Update subscription doc
     const existing = await subscriptionRepository.findByOrganization(orgId);
     if (existing) {
       if (targetPlan === "free") {
@@ -202,7 +220,7 @@ export class SubscriptionService extends BaseService {
 
     eventBus.emit("subscription.downgraded", {
       organizationId: orgId,
-      previousPlan: org.plan,
+      previousPlan,
       newPlan: targetPlan,
       actorId: user.uid,
       requestId: getRequestId(),

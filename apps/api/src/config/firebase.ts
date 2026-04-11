@@ -65,4 +65,6 @@ export const COLLECTIONS = {
   VENUES: "venues",
   NEWSLETTER_SUBSCRIBERS: "newsletterSubscribers",
   SUBSCRIPTIONS: "subscriptions",
+  SESSION_BOOKMARKS: "sessionBookmarks",
+  COUNTERS: "counters",
 } as const;

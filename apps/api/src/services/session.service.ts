@@ -13,7 +13,7 @@ import { ValidationError } from "@/errors/app-error";
 import { eventBus } from "@/events/event-bus";
 import { getRequestId } from "@/context/request-context";
 import { type PaginatedResult } from "@/repositories/base.repository";
-import { db } from "@/config/firebase";
+import { db, COLLECTIONS } from "@/config/firebase";
 
 export class SessionService extends BaseService {
   // ─── Create ───────────────────────────────────────────────────────────────
@@ -178,7 +178,7 @@ export class SessionService extends BaseService {
 
     // Use deterministic ID to prevent duplicates from race conditions
     const bookmarkId = `${user.uid}_${sessionId}`;
-    const bookmarkRef = db.collection("sessionBookmarks").doc(bookmarkId);
+    const bookmarkRef = db.collection(COLLECTIONS.SESSION_BOOKMARKS).doc(bookmarkId);
 
     return db.runTransaction(async (tx) => {
       const snap = await tx.get(bookmarkRef);

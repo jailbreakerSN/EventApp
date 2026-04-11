@@ -11,10 +11,11 @@ class SessionRepository extends BaseRepository<Session> {
     eventId: string,
     pagination?: PaginationParams,
   ): Promise<PaginatedResult<Session>> {
-    return this.findMany(
-      [{ field: "eventId", op: "==", value: eventId }],
-      { ...pagination, orderBy: pagination?.orderBy ?? "startTime", orderDir: pagination?.orderDir ?? "asc" },
-    );
+    return this.findMany([{ field: "eventId", op: "==", value: eventId }], {
+      ...pagination,
+      orderBy: pagination?.orderBy ?? "startTime",
+      orderDir: pagination?.orderDir ?? "asc",
+    });
   }
 
   async findByEventAndDate(
@@ -40,7 +41,7 @@ class SessionRepository extends BaseRepository<Session> {
 
 class SessionBookmarkRepository extends BaseRepository<SessionBookmark> {
   constructor() {
-    super("sessionBookmarks", "SessionBookmark");
+    super(COLLECTIONS.SESSION_BOOKMARKS, "SessionBookmark");
   }
 
   async findByUserAndEvent(userId: string, eventId: string): Promise<SessionBookmark[]> {

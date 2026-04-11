@@ -8,10 +8,7 @@ class ReceiptRepository extends BaseRepository<Receipt> {
   }
 
   async findByPayment(paymentId: string): Promise<Receipt | null> {
-    const snap = await this.collection
-      .where("paymentId", "==", paymentId)
-      .limit(1)
-      .get();
+    const snap = await this.collection.where("paymentId", "==", paymentId).limit(1).get();
     if (snap.empty) return null;
     const doc = snap.docs[0];
     return { id: doc.id, ...doc.data() } as Receipt;
@@ -20,7 +17,10 @@ class ReceiptRepository extends BaseRepository<Receipt> {
   async findByUser(
     userId: string,
     pagination: { page: number; limit: number } = { page: 1, limit: 20 },
-  ): Promise<{ data: Receipt[]; meta: { total: number; page: number; limit: number; totalPages: number } }> {
+  ): Promise<{
+    data: Receipt[];
+    meta: { total: number; page: number; limit: number; totalPages: number };
+  }> {
     const query = this.collection.where("userId", "==", userId);
 
     const countSnap = await query.count().get();
@@ -51,12 +51,12 @@ class ReceiptRepository extends BaseRepository<Receipt> {
    * Uses a transaction to guarantee uniqueness.
    */
   async generateReceiptNumber(): Promise<string> {
-    const counterRef = db.collection("counters").doc("receipts");
+    const counterRef = db.collection(COLLECTIONS.COUNTERS).doc("receipts");
     const year = new Date().getFullYear();
 
     const newCount = await db.runTransaction(async (tx) => {
       const counterDoc = await tx.get(counterRef);
-      const current = counterDoc.exists ? (counterDoc.data()?.count as number ?? 0) : 0;
+      const current = counterDoc.exists ? ((counterDoc.data()?.count as number) ?? 0) : 0;
       const next = current + 1;
       tx.set(counterRef, { count: next, year });
       return next;

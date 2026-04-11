@@ -11,18 +11,7 @@ import {
 } from "firebase/auth";
 import { firebaseAuth } from "@/lib/firebase";
 import { useAuth } from "@/hooks/use-auth";
-import {
-  User,
-  Shield,
-  Bell,
-  Save,
-  Loader2,
-  Check,
-  Eye,
-  EyeOff,
-  Phone,
-  Globe,
-} from "lucide-react";
+import { User, Shield, Bell, Save, Loader2, Check, Eye, EyeOff, Phone, Globe } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -115,9 +104,7 @@ function Toggle({
     <div className="flex items-center justify-between py-3">
       <div>
         <p className="text-sm font-medium text-foreground">{label}</p>
-        {description && (
-          <p className="text-xs text-muted-foreground">{description}</p>
-        )}
+        {description && <p className="text-xs text-muted-foreground">{description}</p>}
       </div>
       <button
         type="button"
@@ -144,9 +131,7 @@ function Toggle({
 export default function SettingsPage() {
   const { user } = useAuth();
   const firebaseUser = firebaseAuth.currentUser;
-  const isGoogleAuth = firebaseUser?.providerData.some(
-    (p) => p.providerId === "google.com"
-  );
+  const isGoogleAuth = firebaseUser?.providerData.some((p) => p.providerId === "google.com");
 
   // Profile form
   const [displayName, setDisplayName] = useState("");
@@ -188,9 +173,9 @@ export default function SettingsPage() {
       // Save phone and language locally until API supports it
       localStorage.setItem("teranga_phone", phoneNumber);
       localStorage.setItem("teranga_language", language);
-      toast.success("Profil mis a jour");
+      toast.success("Profil mis à jour");
     } catch {
-      toast.error("Erreur lors de la mise a jour du profil");
+      toast.error("Erreur lors de la mise à jour du profil");
     } finally {
       setSavingProfile(false);
     }
@@ -206,29 +191,24 @@ export default function SettingsPage() {
       return;
     }
     if (newPassword.length < 8) {
-      toast.error("Le mot de passe doit contenir au moins 8 caracteres");
+      toast.error("Le mot de passe doit contenir au moins 8 caractères");
       return;
     }
 
     setSavingPassword(true);
     try {
       // Re-authenticate first
-      const credential = EmailAuthProvider.credential(
-        firebaseUser.email,
-        currentPassword
-      );
+      const credential = EmailAuthProvider.credential(firebaseUser.email, currentPassword);
       await reauthenticateWithCredential(firebaseUser, credential);
       await updatePassword(firebaseUser, newPassword);
 
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
-      toast.success("Mot de passe mis a jour");
+      toast.success("Mot de passe mis à jour");
     } catch (err: unknown) {
       const errorCode =
-        err && typeof err === "object" && "code" in err
-          ? (err as { code: string }).code
-          : "";
+        err && typeof err === "object" && "code" in err ? (err as { code: string }).code : "";
       if (errorCode === "auth/wrong-password") {
         toast.error("Mot de passe actuel incorrect");
       } else if (errorCode === "auth/weak-password") {
@@ -245,7 +225,7 @@ export default function SettingsPage() {
 
   const handleSavePrefs = () => {
     savePrefs(prefs);
-    toast.success("Preferences de notifications enregistrees");
+    toast.success("Préférences de notifications enregistrées");
   };
 
   const updatePref = (key: keyof NotificationPrefs, value: boolean) => {
@@ -274,8 +254,7 @@ export default function SettingsPage() {
       <div>
         <h1 className="text-2xl font-bold text-foreground">Parametres</h1>
         <p className="text-muted-foreground text-sm mt-1">
-          Gerez votre profil, la securite de votre compte et vos preferences de
-          notifications.
+          Gerez votre profil, la securite de votre compte et vos preferences de notifications.
         </p>
       </div>
 
@@ -300,9 +279,7 @@ export default function SettingsPage() {
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-muted-foreground mb-1">
-                Email
-              </label>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">Email</label>
               <Input
                 type="email"
                 value={user?.email ?? ""}
@@ -329,10 +306,7 @@ export default function SettingsPage() {
                 <Globe className="h-3 w-3 inline mr-1" />
                 Langue
               </label>
-              <Select
-                value={language}
-                onChange={(e) => setLanguage(e.target.value)}
-              >
+              <Select value={language} onChange={(e) => setLanguage(e.target.value)}>
                 <option value="fr">Francais</option>
                 <option value="en">English</option>
                 <option value="wo">Wolof</option>
@@ -366,9 +340,7 @@ export default function SettingsPage() {
                 <Check className="h-4 w-4 text-blue-600" />
               </div>
               <div>
-                <p className="text-sm font-medium text-foreground">
-                  Connecte via Google
-                </p>
+                <p className="text-sm font-medium text-foreground">Connecte via Google</p>
                 <p className="text-xs text-muted-foreground">
                   La gestion du mot de passe se fait via votre compte Google.
                 </p>
@@ -376,9 +348,7 @@ export default function SettingsPage() {
             </div>
           ) : (
             <div className="space-y-4">
-              <h3 className="text-sm font-medium text-muted-foreground">
-                Changer le mot de passe
-              </h3>
+              <h3 className="text-sm font-medium text-muted-foreground">Changer le mot de passe</h3>
 
               <div>
                 <label className="block text-xs font-medium text-muted-foreground mb-1">
@@ -396,9 +366,7 @@ export default function SettingsPage() {
                     onClick={() => setShowCurrentPassword(!showCurrentPassword)}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                     aria-label={
-                      showCurrentPassword
-                        ? "Masquer le mot de passe"
-                        : "Afficher le mot de passe"
+                      showCurrentPassword ? "Masquer le mot de passe" : "Afficher le mot de passe"
                     }
                   >
                     {showCurrentPassword ? (
@@ -426,16 +394,10 @@ export default function SettingsPage() {
                     onClick={() => setShowNewPassword(!showNewPassword)}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                     aria-label={
-                      showNewPassword
-                        ? "Masquer le mot de passe"
-                        : "Afficher le mot de passe"
+                      showNewPassword ? "Masquer le mot de passe" : "Afficher le mot de passe"
                     }
                   >
-                    {showNewPassword ? (
-                      <EyeOff className="h-4 w-4" />
-                    ) : (
-                      <Eye className="h-4 w-4" />
-                    )}
+                    {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>
 
@@ -447,16 +409,12 @@ export default function SettingsPage() {
                         <div
                           key={i}
                           className={`h-1.5 flex-1 rounded-full transition-colors ${
-                            i < passwordStrength.score
-                              ? passwordStrength.color
-                              : "bg-muted"
+                            i < passwordStrength.score ? passwordStrength.color : "bg-muted"
                           }`}
                         />
                       ))}
                     </div>
-                    <p className="text-xs text-muted-foreground">
-                      {passwordStrength.label}
-                    </p>
+                    <p className="text-xs text-muted-foreground">{passwordStrength.label}</p>
                   </div>
                 )}
               </div>
@@ -471,12 +429,11 @@ export default function SettingsPage() {
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   placeholder="Confirmez votre nouveau mot de passe"
                 />
-                {confirmPassword.length > 0 &&
-                  newPassword !== confirmPassword && (
-                    <p className="text-xs text-red-500 mt-1">
-                      Les mots de passe ne correspondent pas
-                    </p>
-                  )}
+                {confirmPassword.length > 0 && newPassword !== confirmPassword && (
+                  <p className="text-xs text-red-500 mt-1">
+                    Les mots de passe ne correspondent pas
+                  </p>
+                )}
               </div>
 
               <div className="flex justify-end">

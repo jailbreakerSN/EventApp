@@ -4,13 +4,9 @@ import { authenticate } from "@/middlewares/auth.middleware";
 import { validate } from "@/middlewares/validate.middleware";
 import { requirePermission } from "@/middlewares/permission.middleware";
 import { subscriptionService } from "@/services/subscription.service";
-import { UpgradePlanSchema } from "@teranga/shared-types";
+import { UpgradePlanSchema, DowngradePlanSchema } from "@teranga/shared-types";
 
 const ParamsOrgId = z.object({ orgId: z.string() });
-
-const DowngradeBody = z.object({
-  plan: z.enum(["free", "starter", "pro"]),
-});
 
 export const subscriptionRoutes: FastifyPluginAsync = async (app) => {
   // GET /v1/organizations/:orgId/subscription
@@ -74,14 +70,14 @@ export const subscriptionRoutes: FastifyPluginAsync = async (app) => {
   // POST /v1/organizations/:orgId/subscription/downgrade
   app.post<{
     Params: z.infer<typeof ParamsOrgId>;
-    Body: z.infer<typeof DowngradeBody>;
+    Body: z.infer<typeof DowngradePlanSchema>;
   }>(
     "/v1/organizations/:orgId/subscription/downgrade",
     {
       preHandler: [
         authenticate,
         requirePermission("organization:manage_billing"),
-        validate({ params: ParamsOrgId, body: DowngradeBody }),
+        validate({ params: ParamsOrgId, body: DowngradePlanSchema }),
       ],
     },
     async (request, reply) => {

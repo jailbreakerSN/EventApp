@@ -18,6 +18,7 @@ import {
   Textarea,
   Button,
 } from "@teranga/shared-ui";
+import { PlanGate } from "@/components/plan/PlanGate";
 import {
   useEvent,
   useUpdateEvent,
@@ -249,9 +250,21 @@ export default function EventDetailPage() {
       {tab === "Sessions" && <SessionsTab eventId={eventId} eventStatus={event.status} />}
       {tab === "Feed" && <FeedTab eventId={eventId} />}
       {tab === "Zones" && <AccessZonesTab event={event} />}
-      {tab === "Intervenants" && <SpeakersTab eventId={eventId} />}
-      {tab === "Sponsors" && <SponsorsTab eventId={eventId} />}
-      {tab === "Promos" && <PromosTab eventId={eventId} />}
+      {tab === "Intervenants" && (
+        <PlanGate feature="speakerPortal" fallback="blur">
+          <SpeakersTab eventId={eventId} />
+        </PlanGate>
+      )}
+      {tab === "Sponsors" && (
+        <PlanGate feature="sponsorPortal" fallback="blur">
+          <SponsorsTab eventId={eventId} />
+        </PlanGate>
+      )}
+      {tab === "Promos" && (
+        <PlanGate feature="promoCodes" fallback="blur">
+          <PromosTab eventId={eventId} />
+        </PlanGate>
+      )}
     </div>
   );
 }
@@ -1289,20 +1302,22 @@ function RegistrationsTab({ eventId }: { eventId: string }) {
             <option value="cancelled">Annulé</option>
             <option value="checked_in">Entré</option>
           </select>
-          <button
-            onClick={handleExportCSV}
-            disabled={isExporting || isLoading || registrations.length === 0}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-lg text-xs font-medium hover:bg-primary/90 disabled:opacity-50"
-            title="Exporter les inscriptions au format CSV"
-            aria-label="Exporter CSV"
-          >
-            {isExporting ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Download className="h-3.5 w-3.5" />
-            )}
-            Exporter CSV
-          </button>
+          <PlanGate feature="csvExport" fallback="disabled">
+            <button
+              onClick={handleExportCSV}
+              disabled={isExporting || isLoading || registrations.length === 0}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-lg text-xs font-medium hover:bg-primary/90 disabled:opacity-50"
+              title="Exporter les inscriptions au format CSV"
+              aria-label="Exporter CSV"
+            >
+              {isExporting ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Download className="h-3.5 w-3.5" />
+              )}
+              Exporter CSV
+            </button>
+          </PlanGate>
         </div>
       </div>
 

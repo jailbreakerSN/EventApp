@@ -59,3 +59,11 @@ export const UpgradePlanSchema = z.object({
 });
 
 export type UpgradePlanDto = z.infer<typeof UpgradePlanSchema>;
+
+export const DowngradePlanSchema = z.object({
+  plan: OrganizationPlanSchema.refine((p) => p !== "enterprise", {
+    message: "Impossible de passer au plan enterprise via downgrade",
+  }),
+});
+
+export type DowngradePlanDto = z.infer<typeof DowngradePlanSchema>;
