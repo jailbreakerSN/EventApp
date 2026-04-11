@@ -3,6 +3,22 @@ import { type FastifyRequest, type FastifyReply } from "fastify";
 import { z } from "zod";
 import { validate } from "../validate.middleware";
 
+interface ErrorBody {
+  success: boolean;
+  error: {
+    code: string;
+    message: string;
+    details: Array<{ source: string; field: string; message: string }>;
+  };
+}
+
+interface MockReply {
+  statusCode: number;
+  body: ErrorBody | null;
+  status(code: number): MockReply;
+  send(data: unknown): MockReply;
+}
+
 // Minimal Fastify-like request/reply mocks
 function mockRequest(overrides: { body?: unknown; params?: unknown; query?: unknown } = {}) {
   return {
@@ -14,8 +30,8 @@ function mockRequest(overrides: { body?: unknown; params?: unknown; query?: unkn
   } as unknown as FastifyRequest;
 }
 
-function mockReply() {
-  const reply: Record<string, unknown> = {
+function mockReply(): MockReply {
+  const reply: MockReply = {
     statusCode: 200,
     body: null,
     status(code: number) {
@@ -23,11 +39,11 @@ function mockReply() {
       return reply;
     },
     send(data: unknown) {
-      reply.body = data;
+      reply.body = data as ErrorBody;
       return reply;
     },
   };
-  return reply as unknown as FastifyReply;
+  return reply;
 }
 
 describe("validate middleware", () => {
@@ -50,7 +66,7 @@ describe("validate middleware", () => {
     const req = mockRequest({ body: { name: "Test", email: "test@test.com" } });
     const reply = mockReply();
 
-    await middleware(req, reply);
+    await middleware(req, reply as unknown as FastifyReply);
 
     expect(reply.body).toBeNull(); // no error sent
     expect(req.body).toEqual({ name: "Test", email: "test@test.com" });
@@ -61,13 +77,13 @@ describe("validate middleware", () => {
     const req = mockRequest({ body: { name: "A", email: "not-email" } });
     const reply = mockReply();
 
-    await middleware(req, reply);
+    await middleware(req, reply as unknown as FastifyReply);
 
     expect(reply.statusCode).toBe(400);
-    expect(reply.body.success).toBe(false);
-    expect(reply.body.error.code).toBe("VALIDATION_ERROR");
-    expect(reply.body.error.details).toHaveLength(2);
-    expect(reply.body.error.details[0].source).toBe("body");
+    expect(reply.body!.success).toBe(false);
+    expect(reply.body!.error.code).toBe("VALIDATION_ERROR");
+    expect(reply.body!.error.details).toHaveLength(2);
+    expect(reply.body!.error.details[0].source).toBe("body");
   });
 
   it("applies Zod defaults to query params", async () => {
@@ -75,7 +91,7 @@ describe("validate middleware", () => {
     const req = mockRequest({ query: {} });
     const reply = mockReply();
 
-    await middleware(req, reply);
+    await middleware(req, reply as unknown as FastifyReply);
 
     expect(reply.body).toBeNull();
     expect(req.query).toEqual({ page: 1, limit: 20 });
@@ -86,7 +102,7 @@ describe("validate middleware", () => {
     const req = mockRequest({ query: { page: "3", limit: "50" } });
     const reply = mockReply();
 
-    await middleware(req, reply);
+    await middleware(req, reply as unknown as FastifyReply);
 
     expect(req.query).toEqual({ page: 3, limit: 50 });
   });
@@ -96,10 +112,10 @@ describe("validate middleware", () => {
     const req = mockRequest({ params: { id: "not-a-uuid" } });
     const reply = mockReply();
 
-    await middleware(req, reply);
+    await middleware(req, reply as unknown as FastifyReply);
 
     expect(reply.statusCode).toBe(400);
-    expect(reply.body.error.details[0].source).toBe("params");
+    expect(reply.body!.error.details[0].source).toBe("params");
   });
 
   it("validates body + params + query simultaneously", async () => {
@@ -115,10 +131,10 @@ describe("validate middleware", () => {
     });
     const reply = mockReply();
 
-    await middleware(req, reply);
+    await middleware(req, reply as unknown as FastifyReply);
 
     expect(reply.statusCode).toBe(400);
-    const sources = reply.body.error.details.map((d: unknown) => (d as { source: string }).source);
+    const sources = reply.body!.error.details.map((d: unknown) => (d as { source: string }).source);
     expect(sources).toContain("body");
     expect(sources).toContain("params");
     expect(sources).toContain("query");
@@ -129,7 +145,7 @@ describe("validate middleware", () => {
     const req = mockRequest();
     const reply = mockReply();
 
-    await middleware(req, reply);
+    await middleware(req, reply as unknown as FastifyReply);
 
     expect(reply.body).toBeNull();
   });

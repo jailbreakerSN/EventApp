@@ -24,9 +24,12 @@ const mockCheckinService = {
 };
 
 vi.mock("@/services/checkin.service", () => ({
-  checkinService: new Proxy({}, {
-    get: (_target, prop) => (mockCheckinService as Record<string, unknown>)[prop as string],
-  }),
+  checkinService: new Proxy(
+    {},
+    {
+      get: (_target, prop) => (mockCheckinService as Record<string, unknown>)[prop as string],
+    },
+  ),
 }));
 
 // ─── Build app ────────────────────────────────────────────────────────────
@@ -37,7 +40,7 @@ beforeAll(async () => {
   app = Fastify({ logger: false });
   await app.register(checkinRoutes, { prefix: "/v1/events" });
 
-  app.setErrorHandler((error, _request, reply) => {
+  app.setErrorHandler((error: Error & { statusCode?: number }, _request, reply) => {
     const statusCode = error.statusCode ?? 500;
     return reply.status(statusCode).send({
       success: false,
@@ -131,11 +134,13 @@ describe("POST /v1/events/:eventId/checkin/sync", () => {
       url: "/v1/events/ev-1/checkin/sync",
       headers: { ...headers, "content-type": "application/json" },
       payload: {
-        items: [{
-          localId: "local-1",
-          qrCodeValue: "test-qr",
-          scannedAt: new Date().toISOString(),
-        }],
+        items: [
+          {
+            localId: "local-1",
+            qrCodeValue: "test-qr",
+            scannedAt: new Date().toISOString(),
+          },
+        ],
       },
     });
 
@@ -156,17 +161,19 @@ describe("GET /v1/events/:eventId/checkin/history", () => {
   it("returns paginated check-in history", async () => {
     const headers = authHeaders({ roles: ["organizer"] });
     mockCheckinService.getHistory.mockResolvedValue({
-      data: [{
-        registrationId: "reg-1",
-        participantName: "Alice",
-        participantEmail: "alice@test.com",
-        ticketTypeName: "Standard",
-        accessZoneName: null,
-        checkedInAt: new Date().toISOString(),
-        checkedInBy: "staff-1",
-        staffName: "Staff",
-        source: "live",
-      }],
+      data: [
+        {
+          registrationId: "reg-1",
+          participantName: "Alice",
+          participantEmail: "alice@test.com",
+          ticketTypeName: "Standard",
+          accessZoneName: null,
+          checkedInAt: new Date().toISOString(),
+          checkedInBy: "staff-1",
+          staffName: "Staff",
+          source: "live",
+        },
+      ],
       meta: { page: 1, limit: 20, total: 1, totalPages: 1 },
     });
 

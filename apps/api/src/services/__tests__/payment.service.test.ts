@@ -130,7 +130,8 @@ vi.mock("@/config/firebase", () => ({
       set: vi.fn(),
       commit: vi.fn(),
     })),
-    runTransaction: (...args: unknown[]) => mockRunTransaction(...(args as [unknown])),
+    runTransaction: (...args: unknown[]) =>
+      mockRunTransaction(...(args as [(tx: unknown) => Promise<unknown>])),
   },
   COLLECTIONS: {
     REGISTRATIONS: "registrations",
