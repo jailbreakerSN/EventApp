@@ -464,6 +464,8 @@ describe("Clone plan limit enforcement", () => {
         {
           newStartDate: new Date(Date.now() + 86400000).toISOString(),
           newEndDate: new Date(Date.now() + 2 * 86400000).toISOString(),
+          copyTicketTypes: true,
+          copyAccessZones: true,
         },
         user,
       ),
@@ -485,6 +487,8 @@ describe("Clone plan limit enforcement", () => {
       {
         newStartDate: new Date(Date.now() + 86400000).toISOString(),
         newEndDate: new Date(Date.now() + 2 * 86400000).toISOString(),
+        copyTicketTypes: true,
+        copyAccessZones: true,
       },
       user,
     );

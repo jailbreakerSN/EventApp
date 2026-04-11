@@ -18,10 +18,7 @@ import { registrationRepository } from "@/repositories/registration.repository";
 export class MessagingService extends BaseService {
   // ─── Create or get conversation ───────────────────────────────────────────
 
-  async getOrCreateConversation(
-    dto: CreateConversationDto,
-    user: AuthUser,
-  ): Promise<Conversation> {
+  async getOrCreateConversation(dto: CreateConversationDto, user: AuthUser): Promise<Conversation> {
     this.requirePermission(user, "messaging:send");
 
     // Check for existing conversation
@@ -71,11 +68,7 @@ export class MessagingService extends BaseService {
 
   // ─── Send message ─────────────────────────────────────────────────────────
 
-  async sendMessage(
-    conversationId: string,
-    dto: SendMessageDto,
-    user: AuthUser,
-  ): Promise<Message> {
+  async sendMessage(conversationId: string, dto: SendMessageDto, user: AuthUser): Promise<Message> {
     this.requirePermission(user, "messaging:send");
 
     const conversation = await conversationRepository.findByIdOrThrow(conversationId);
@@ -112,6 +105,7 @@ export class MessagingService extends BaseService {
       conversationId,
       senderId: user.uid,
       recipientId: otherUserId,
+      actorId: user.uid,
       requestId: getRequestId(),
       timestamp: new Date().toISOString(),
     });

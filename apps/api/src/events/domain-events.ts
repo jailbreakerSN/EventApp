@@ -1,8 +1,4 @@
-import {
-  type Registration,
-  type Event,
-  type Organization,
-} from "@teranga/shared-types";
+import { type Registration, type Event, type Organization } from "@teranga/shared-types";
 
 // ─── Domain Event Payloads ───────────────────────────────────────────────────
 // Each payload includes the entity data plus actor/request context
@@ -112,6 +108,12 @@ export interface EventArchivedEvent extends BaseEventPayload {
   organizationId: string;
 }
 
+export interface EventClonedEvent extends BaseEventPayload {
+  sourceEventId: string;
+  newEventId: string;
+  organizationId: string;
+}
+
 export interface WaitlistPromotedEvent extends BaseEventPayload {
   registrationId: string;
   eventId: string;
@@ -138,6 +140,12 @@ export interface MemberAddedEvent extends BaseEventPayload {
 export interface MemberRemovedEvent extends BaseEventPayload {
   organizationId: string;
   memberId: string;
+}
+
+export interface MemberRoleUpdatedEvent extends BaseEventPayload {
+  organizationId: string;
+  memberId: string;
+  newRole: string;
 }
 
 // ── Ticket Type ─────────────────────────────────────────────────────────────
@@ -268,6 +276,12 @@ export interface PromoCodeUsedEvent extends BaseEventPayload {
   promoCodeId: string;
 }
 
+export interface PromoCodeDeactivatedEvent extends BaseEventPayload {
+  promoCodeId: string;
+  eventId: string;
+  code: string;
+}
+
 // ── Venue ────────────────────────────────────────────────────────────────────
 
 export interface VenueCreatedEvent extends BaseEventPayload {
@@ -325,6 +339,11 @@ export interface FeedPostCreatedEvent extends BaseEventPayload {
   eventId: string;
   authorId: string;
   isAnnouncement: boolean;
+}
+
+export interface FeedPostUpdatedEvent extends BaseEventPayload {
+  postId: string;
+  eventId: string;
 }
 
 export interface FeedPostDeletedEvent extends BaseEventPayload {
@@ -402,6 +421,30 @@ export interface PayoutCreatedEvent extends BaseEventPayload {
   netAmount: number;
 }
 
+// ── Receipt ─────────────────────────────────────────────────────────────────
+
+export interface ReceiptGeneratedEvent extends BaseEventPayload {
+  receiptId: string;
+  paymentId: string;
+  eventId: string;
+  userId: string;
+  amount: number;
+}
+
+// ── Subscription ────────────────────────────────────────────────────────────
+
+export interface SubscriptionUpgradedEvent extends BaseEventPayload {
+  organizationId: string;
+  previousPlan: string;
+  newPlan: string;
+}
+
+export interface SubscriptionDowngradedEvent extends BaseEventPayload {
+  organizationId: string;
+  previousPlan: string;
+  newPlan: string;
+}
+
 // ─── Domain Event Map ────────────────────────────────────────────────────────
 // Type-safe mapping of event names to their payloads.
 // Adding a new event here gives compile-time safety across all emitters/listeners.
@@ -421,6 +464,7 @@ export interface DomainEventMap {
   "event.unpublished": EventUnpublishedEvent;
   "event.cancelled": EventCancelledEvent;
   "event.archived": EventArchivedEvent;
+  "event.cloned": EventClonedEvent;
   "waitlist.promoted": WaitlistPromotedEvent;
   "ticket_type.added": TicketTypeAddedEvent;
   "ticket_type.updated": TicketTypeUpdatedEvent;
@@ -429,6 +473,7 @@ export interface DomainEventMap {
   "organization.updated": OrganizationUpdatedEvent;
   "member.added": MemberAddedEvent;
   "member.removed": MemberRemovedEvent;
+  "member.role_updated": MemberRoleUpdatedEvent;
   "badge.generated": BadgeGeneratedEvent;
   "payment.initiated": PaymentInitiatedEvent;
   "payment.succeeded": PaymentSucceededEvent;
@@ -442,6 +487,7 @@ export interface DomainEventMap {
   "sponsor.lead_captured": SponsorLeadCapturedEvent;
   "promo_code.created": PromoCodeCreatedEvent;
   "promo_code.used": PromoCodeUsedEvent;
+  "promo_code.deactivated": PromoCodeDeactivatedEvent;
   // Venue
   "venue.created": VenueCreatedEvent;
   "venue.updated": VenueUpdatedEvent;
@@ -450,6 +496,7 @@ export interface DomainEventMap {
   "venue.reactivated": VenueReactivatedEvent;
   // Feed Post
   "feed_post.created": FeedPostCreatedEvent;
+  "feed_post.updated": FeedPostUpdatedEvent;
   "feed_post.deleted": FeedPostDeletedEvent;
   "feed_post.pinned": FeedPostPinnedEvent;
   // Session
@@ -463,6 +510,11 @@ export interface DomainEventMap {
   "invite.accepted": InviteAcceptedEvent;
   "invite.declined": InviteDeclinedEvent;
   "invite.revoked": InviteRevokedEvent;
+  // Receipt
+  "receipt.generated": ReceiptGeneratedEvent;
+  // Subscription
+  "subscription.upgraded": SubscriptionUpgradedEvent;
+  "subscription.downgraded": SubscriptionDowngradedEvent;
   // Payout
   "payout.created": PayoutCreatedEvent;
   // Admin

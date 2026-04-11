@@ -54,6 +54,7 @@ export class FeedService extends BaseService {
       eventId,
       authorId: user.uid,
       isAnnouncement: post.isAnnouncement,
+      actorId: user.uid,
       requestId: getRequestId(),
       timestamp: new Date().toISOString(),
     });

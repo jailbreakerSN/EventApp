@@ -191,7 +191,6 @@ export class SessionService extends BaseService {
         eventId,
         userId: user.uid,
         createdAt: now,
-        updatedAt: now,
       };
       tx.set(bookmarkRef, bookmarkData);
       return bookmarkData;
