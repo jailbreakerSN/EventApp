@@ -19,12 +19,18 @@ const mockMessageRepo = {
 };
 
 vi.mock("@/repositories/messaging.repository", () => ({
-  conversationRepository: new Proxy({}, {
-    get: (_target, prop) => (mockConversationRepo as Record<string, unknown>)[prop as string],
-  }),
-  messageRepository: new Proxy({}, {
-    get: (_target, prop) => (mockMessageRepo as Record<string, unknown>)[prop as string],
-  }),
+  conversationRepository: new Proxy(
+    {},
+    {
+      get: (_target, prop) => (mockConversationRepo as Record<string, unknown>)[prop as string],
+    },
+  ),
+  messageRepository: new Proxy(
+    {},
+    {
+      get: (_target, prop) => (mockMessageRepo as Record<string, unknown>)[prop as string],
+    },
+  ),
 }));
 
 const mockRegistrationRepo = {
@@ -32,9 +38,13 @@ const mockRegistrationRepo = {
 };
 
 vi.mock("@/repositories/registration.repository", () => ({
-  registrationRepository: new Proxy({}, {
-    get: (_target: unknown, prop: string) => (mockRegistrationRepo as Record<string, unknown>)[prop],
-  }),
+  registrationRepository: new Proxy(
+    {},
+    {
+      get: (_target: unknown, prop: string) =>
+        (mockRegistrationRepo as Record<string, unknown>)[prop],
+    },
+  ),
 }));
 
 vi.mock("@/events/event-bus", () => ({
@@ -78,10 +88,7 @@ describe("MessagingService", () => {
       const existing = { id: "conv-1", participantIds: ["user-1", "user-2"] };
       mockConversationRepo.findByParticipants.mockResolvedValue(existing);
 
-      const result = await service.getOrCreateConversation(
-        { participantId: "user-2" },
-        user,
-      );
+      const result = await service.getOrCreateConversation({ participantId: "user-2" }, user);
 
       expect(result.id).toBe("conv-1");
       expect(mockConversationRepo.create).not.toHaveBeenCalled();
@@ -90,7 +97,8 @@ describe("MessagingService", () => {
     it("creates a new conversation if none exists and users share an event", async () => {
       mockConversationRepo.findByParticipants.mockResolvedValue(null);
       mockConversationRepo.create.mockResolvedValue({
-        id: "conv-new", participantIds: ["user-1", "user-2"],
+        id: "conv-new",
+        participantIds: ["user-1", "user-2"],
       });
       // Both users registered for the same event
       mockRegistrationRepo.findByUser.mockImplementation(async (userId: string) => ({
@@ -98,10 +106,7 @@ describe("MessagingService", () => {
         meta: { total: 1, page: 1, limit: 1000, totalPages: 1 },
       }));
 
-      const result = await service.getOrCreateConversation(
-        { participantId: "user-2" },
-        user,
-      );
+      const result = await service.getOrCreateConversation({ participantId: "user-2" }, user);
 
       expect(result.id).toBe("conv-new");
       expect(mockConversationRepo.create).toHaveBeenCalledWith(
@@ -140,14 +145,13 @@ describe("MessagingService", () => {
         unreadCounts: {},
       });
       mockMessageRepo.create.mockResolvedValue({
-        id: "msg-1", content: "Hello!", senderId: "user-1", createdAt: new Date().toISOString(),
+        id: "msg-1",
+        content: "Hello!",
+        senderId: "user-1",
+        createdAt: new Date().toISOString(),
       });
 
-      const result = await service.sendMessage(
-        "conv-1",
-        { content: "Hello!", type: "text" },
-        user,
-      );
+      const result = await service.sendMessage("conv-1", { content: "Hello!", type: "text" }, user);
 
       expect(result.id).toBe("msg-1");
       expect(mockConversationRepo.update).toHaveBeenCalledWith(
@@ -167,7 +171,7 @@ describe("MessagingService", () => {
       });
 
       await expect(
-        service.sendMessage("conv-1", { content: "Hi" }, user),
+        service.sendMessage("conv-1", { content: "Hi", type: "text" }, user),
       ).rejects.toThrow("pas participant");
     });
   });
@@ -175,9 +179,13 @@ describe("MessagingService", () => {
   describe("listMessages", () => {
     it("returns messages for participant", async () => {
       mockConversationRepo.findByIdOrThrow.mockResolvedValue({
-        id: "conv-1", participantIds: ["user-1", "user-2"],
+        id: "conv-1",
+        participantIds: ["user-1", "user-2"],
       });
-      const messages = { data: [{ id: "m1" }], meta: { total: 1, page: 1, limit: 50, totalPages: 1 } };
+      const messages = {
+        data: [{ id: "m1" }],
+        meta: { total: 1, page: 1, limit: 50, totalPages: 1 },
+      };
       mockMessageRepo.findByConversation.mockResolvedValue(messages);
 
       const result = await service.listMessages("conv-1", { page: 1, limit: 50 }, user);
@@ -187,18 +195,22 @@ describe("MessagingService", () => {
 
     it("denies non-participant", async () => {
       mockConversationRepo.findByIdOrThrow.mockResolvedValue({
-        id: "conv-1", participantIds: ["other-1", "other-2"],
+        id: "conv-1",
+        participantIds: ["other-1", "other-2"],
       });
 
-      await expect(
-        service.listMessages("conv-1", { page: 1, limit: 50 }, user),
-      ).rejects.toThrow("pas participant");
+      await expect(service.listMessages("conv-1", { page: 1, limit: 50 }, user)).rejects.toThrow(
+        "pas participant",
+      );
     });
   });
 
   describe("listConversations", () => {
     it("returns user's conversations", async () => {
-      const conversations = { data: [{ id: "c1" }, { id: "c2" }], meta: { total: 2, page: 1, limit: 50, totalPages: 1 } };
+      const conversations = {
+        data: [{ id: "c1" }, { id: "c2" }],
+        meta: { total: 2, page: 1, limit: 50, totalPages: 1 },
+      };
       mockConversationRepo.findByUser.mockResolvedValue(conversations);
 
       const result = await service.listConversations({ page: 1, limit: 50 }, user);
@@ -228,7 +240,8 @@ describe("MessagingService", () => {
 
     it("denies non-participant", async () => {
       mockConversationRepo.findByIdOrThrow.mockResolvedValue({
-        id: "conv-1", participantIds: ["other-1", "other-2"],
+        id: "conv-1",
+        participantIds: ["other-1", "other-2"],
       });
 
       await expect(service.markAsRead("conv-1", user)).rejects.toThrow("pas participant");

@@ -1,6 +1,6 @@
 import { COLLECTIONS, auth } from "@/config/firebase";
 import { BaseRepository } from "./base.repository";
-import { type UserProfile } from "@teranga/shared-types";
+import { type UserProfile, type UserRole } from "@teranga/shared-types";
 
 /**
  * Internal type that maps UserProfile's `uid` to `id` for Firestore compatibility.
@@ -46,9 +46,9 @@ export class UserRepository extends BaseRepository<UserDoc> {
       photoURL: authUser.photoURL ?? null,
       phone: authUser.phoneNumber ?? null,
       bio: null,
-      roles: ["participant"],
+      roles: ["participant" as UserRole],
       organizationId: null,
-      preferredLanguage: "fr",
+      preferredLanguage: "fr" as const,
       fcmTokens: [],
       isEmailVerified: authUser.emailVerified ?? false,
       isActive: true,

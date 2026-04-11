@@ -23,6 +23,7 @@ import {
 } from "@/__tests__/factories";
 import { EventService } from "../event.service";
 import { PaymentService } from "../payment.service";
+import { type CreateEventDto, type CloneEventDto } from "@teranga/shared-types";
 // QR signing imported dynamically in tests to avoid mock conflicts
 
 // ─── Mocks (matching event.service.test.ts pattern) ────────────────────────
@@ -180,7 +181,7 @@ describe("SECURITY: Cross-Org Isolation", () => {
 
   it("denies org-B user from cloning org-A event", async () => {
     mockEventRepo.findByIdOrThrow.mockResolvedValue(eventOrgA);
-    await expect(service.clone("evt-a", {}, orgBUser)).rejects.toThrow();
+    await expect(service.clone("evt-a", {} as CloneEventDto, orgBUser)).rejects.toThrow();
   });
 
   it("allows org-A user to update their own event", async () => {
@@ -214,7 +215,7 @@ describe("SECURITY: Permission Enforcement", () => {
     timezone: "Africa/Dakar",
     isPublic: true,
     requiresApproval: false,
-  };
+  } as CreateEventDto;
 
   it("denies no-role user from creating events", async () => {
     await expect(service.create(createDto, noRoleUser)).rejects.toThrow("Permission manquante");
@@ -472,7 +473,7 @@ describe("SECURITY: Role Escalation Prevention", () => {
           timezone: "Africa/Dakar",
           isPublic: true,
           requiresApproval: false,
-        },
+        } as CreateEventDto,
         staff,
       ),
     ).rejects.toThrow("Permission manquante");

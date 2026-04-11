@@ -1,4 +1,8 @@
-import { type Broadcast, type CreateBroadcastDto } from "@teranga/shared-types";
+import {
+  type Broadcast,
+  type CreateBroadcastDto,
+  type RegistrationStatus,
+} from "@teranga/shared-types";
 import { broadcastRepository } from "@/repositories/broadcast.repository";
 import { eventRepository } from "@/repositories/event.repository";
 import { registrationRepository } from "@/repositories/registration.repository";
@@ -46,7 +50,7 @@ export class BroadcastService extends BaseService {
     broadcast.id = broadcastId;
 
     // Determine which statuses to target
-    const targetStatuses =
+    const targetStatuses: RegistrationStatus[] =
       dto.recipientFilter === "checked_in"
         ? ["checked_in"]
         : dto.recipientFilter === "not_checked_in"

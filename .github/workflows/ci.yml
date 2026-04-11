@@ -197,6 +197,9 @@ jobs:
       - name: Install dependencies
         working-directory: apps/mobile
         run: flutter pub get
+      - name: Generate code (Riverpod, Freezed, etc.)
+        working-directory: apps/mobile
+        run: dart run build_runner build --delete-conflicting-outputs
       - name: Run analyzer
         working-directory: apps/mobile
         run: flutter analyze --no-fatal-infos

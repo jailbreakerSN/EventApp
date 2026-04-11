@@ -4,10 +4,7 @@ import { authenticate } from "@/middlewares/auth.middleware";
 import { validate } from "@/middlewares/validate.middleware";
 import { requirePermission } from "@/middlewares/permission.middleware";
 import { badgeService } from "@/services/badge.service";
-import {
-  BadgeGenerateRequestSchema,
-  BulkBadgeGenerateRequestSchema,
-} from "@teranga/shared-types";
+import { BadgeGenerateRequestSchema, BulkBadgeGenerateRequestSchema } from "@teranga/shared-types";
 
 const ParamsWithEventId = z.object({ eventId: z.string() });
 const ParamsWithBadgeId = z.object({ badgeId: z.string() });
@@ -17,12 +14,24 @@ export const badgeRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post(
     "/generate",
     {
-      preHandler: [authenticate, requirePermission("badge:generate"), validate({ body: BadgeGenerateRequestSchema })],
-      schema: { tags: ["Badges"], summary: "Generate badge for a registration", security: [{ BearerAuth: [] }] },
+      preHandler: [
+        authenticate,
+        requirePermission("badge:generate"),
+        validate({ body: BadgeGenerateRequestSchema }),
+      ],
+      schema: {
+        tags: ["Badges"],
+        summary: "Generate badge for a registration",
+        security: [{ BearerAuth: [] }],
+      },
     },
     async (request, reply) => {
-      const { registrationId, templateId } = request.body as z.infer<typeof BadgeGenerateRequestSchema>;
-      const badge = await badgeService.generate(registrationId, templateId, request.user!);
+      const body = request.body as z.infer<typeof BadgeGenerateRequestSchema>;
+      const badge = await badgeService.generate(
+        body.registrationId,
+        body.templateId ?? "",
+        request.user!,
+      );
       return reply.status(202).send({ success: true, data: badge });
     },
   );
@@ -31,12 +40,24 @@ export const badgeRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post(
     "/bulk-generate",
     {
-      preHandler: [authenticate, requirePermission("badge:bulk_generate"), validate({ body: BulkBadgeGenerateRequestSchema })],
-      schema: { tags: ["Badges"], summary: "Bulk generate badges for an event", security: [{ BearerAuth: [] }] },
+      preHandler: [
+        authenticate,
+        requirePermission("badge:bulk_generate"),
+        validate({ body: BulkBadgeGenerateRequestSchema }),
+      ],
+      schema: {
+        tags: ["Badges"],
+        summary: "Bulk generate badges for an event",
+        security: [{ BearerAuth: [] }],
+      },
     },
     async (request, reply) => {
-      const { eventId, templateId } = request.body as z.infer<typeof BulkBadgeGenerateRequestSchema>;
-      const result = await badgeService.bulkGenerate(eventId, templateId, request.user!);
+      const body = request.body as z.infer<typeof BulkBadgeGenerateRequestSchema>;
+      const result = await badgeService.bulkGenerate(
+        body.eventId,
+        body.templateId ?? "",
+        request.user!,
+      );
       return reply.status(202).send({ success: true, data: result });
     },
   );
@@ -46,7 +67,11 @@ export const badgeRoutes: FastifyPluginAsync = async (fastify) => {
     "/me/:eventId",
     {
       preHandler: [authenticate, validate({ params: ParamsWithEventId })],
-      schema: { tags: ["Badges"], summary: "Get my badge for an event", security: [{ BearerAuth: [] }] },
+      schema: {
+        tags: ["Badges"],
+        summary: "Get my badge for an event",
+        security: [{ BearerAuth: [] }],
+      },
     },
     async (request, reply) => {
       const { eventId } = request.params as z.infer<typeof ParamsWithEventId>;
@@ -60,7 +85,11 @@ export const badgeRoutes: FastifyPluginAsync = async (fastify) => {
     "/:badgeId/download",
     {
       preHandler: [authenticate, validate({ params: ParamsWithBadgeId })],
-      schema: { tags: ["Badges"], summary: "Get a download URL for a badge PDF", security: [{ BearerAuth: [] }] },
+      schema: {
+        tags: ["Badges"],
+        summary: "Get a download URL for a badge PDF",
+        security: [{ BearerAuth: [] }],
+      },
     },
     async (request, reply) => {
       const { badgeId } = request.params as z.infer<typeof ParamsWithBadgeId>;
@@ -78,7 +107,11 @@ export const badgeRoutes: FastifyPluginAsync = async (fastify) => {
         requirePermission("checkin:sync_offline"),
         validate({ params: ParamsWithEventId }),
       ],
-      schema: { tags: ["Badges"], summary: "Download offline QR data for staff", security: [{ BearerAuth: [] }] },
+      schema: {
+        tags: ["Badges"],
+        summary: "Download offline QR data for staff",
+        security: [{ BearerAuth: [] }],
+      },
     },
     async (request, reply) => {
       const { eventId } = request.params as z.infer<typeof ParamsWithEventId>;

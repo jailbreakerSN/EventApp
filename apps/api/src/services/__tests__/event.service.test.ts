@@ -727,6 +727,8 @@ describe("EventService.clone", () => {
       {
         newStartDate: newStart,
         newEndDate: newEnd,
+        copyTicketTypes: true,
+        copyAccessZones: true,
       },
       user,
     );
@@ -770,6 +772,8 @@ describe("EventService.clone", () => {
         newTitle: "Custom Clone",
         newStartDate: new Date(Date.now() + 86400000).toISOString(),
         newEndDate: new Date(Date.now() + 2 * 86400000).toISOString(),
+        copyTicketTypes: true,
+        copyAccessZones: true,
       },
       user,
     );
@@ -790,6 +794,8 @@ describe("EventService.clone", () => {
         {
           newStartDate: "2026-06-01T00:00:00.000Z",
           newEndDate: "2026-05-01T00:00:00.000Z",
+          copyTicketTypes: true,
+          copyAccessZones: true,
         },
         user,
       ),
@@ -807,6 +813,8 @@ describe("EventService.clone", () => {
         {
           newStartDate: new Date(Date.now() + 86400000).toISOString(),
           newEndDate: new Date(Date.now() + 2 * 86400000).toISOString(),
+          copyTicketTypes: true,
+          copyAccessZones: true,
         },
         user,
       ),

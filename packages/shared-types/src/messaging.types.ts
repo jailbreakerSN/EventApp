@@ -128,6 +128,7 @@ export const NotificationTypeSchema = z.enum([
   "badge_ready",
   "waitlist_promoted",
   "payment_success",
+  "broadcast",
   "system",
 ]);
 

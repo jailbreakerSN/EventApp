@@ -29,12 +29,9 @@ export function registerNotificationListeners(): void {
     // SMS notification
     try {
       const user = await userRepository.findById(payload.registration.userId);
-      if (user?.phoneNumber) {
+      if (user?.phone) {
         const sms = getSmsProvider();
-        await sms.send(
-          user.phoneNumber,
-          SMS_TEMPLATES.registrationConfirmed(payload.registration.eventTitle),
-        );
+        await sms.send(user.phone, SMS_TEMPLATES.registrationConfirmed("l'événement"));
       }
     } catch {
       // Fire-and-forget: SMS failure must not block
@@ -56,12 +53,9 @@ export function registerNotificationListeners(): void {
     // SMS notification
     try {
       const user = await userRepository.findById(payload.userId);
-      if (user?.phoneNumber) {
+      if (user?.phone) {
         const sms = getSmsProvider();
-        await sms.send(
-          user.phoneNumber,
-          SMS_TEMPLATES.registrationApproved(payload.eventTitle ?? "l'événement"),
-        );
+        await sms.send(user.phone, SMS_TEMPLATES.registrationApproved("l'événement"));
       }
     } catch {
       // Fire-and-forget
@@ -91,12 +85,9 @@ export function registerNotificationListeners(): void {
         }).format(payload.amount);
 
         // SMS
-        if (user.phoneNumber) {
+        if (user.phone) {
           const sms = getSmsProvider();
-          await sms.send(
-            user.phoneNumber,
-            SMS_TEMPLATES.paymentConfirmed("votre événement", amountStr),
-          );
+          await sms.send(user.phone, SMS_TEMPLATES.paymentConfirmed("votre événement", amountStr));
         }
 
         // Email

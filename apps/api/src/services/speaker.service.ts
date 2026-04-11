@@ -41,7 +41,13 @@ export class SpeakerService extends BaseService {
       bio: dto.bio ?? null,
       photoURL: dto.photoURL ?? null,
       slidesUrl: dto.slidesUrl ?? null,
-      socialLinks: dto.socialLinks ?? null,
+      socialLinks: dto.socialLinks
+        ? {
+            twitter: dto.socialLinks.twitter ?? null,
+            linkedin: dto.socialLinks.linkedin ?? null,
+            website: dto.socialLinks.website ?? null,
+          }
+        : null,
       topics: dto.topics ?? [],
       sessionIds: dto.sessionIds ?? [],
       isConfirmed: false,

@@ -12,8 +12,8 @@ import { NotFoundError } from "@/errors/app-error";
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface PaginationParams {
-  page: number;
-  limit: number;
+  page?: number;
+  limit?: number;
   orderBy?: string;
   orderDir?: OrderByDirection;
 }
@@ -63,8 +63,7 @@ export class BaseRepository<T extends { id: string }> {
     filters: WhereClause[] = [],
     pagination?: PaginationParams,
   ): Promise<PaginatedResult<T>> {
-    const { page = 1, limit = 20, orderBy = "createdAt", orderDir = "desc" } =
-      pagination ?? {};
+    const { page = 1, limit = 20, orderBy = "createdAt", orderDir = "desc" } = pagination ?? {};
 
     let query: Query<DocumentData> = this.collection;
 
@@ -78,7 +77,10 @@ export class BaseRepository<T extends { id: string }> {
     const total = countSnap.data().count;
 
     // Apply ordering and pagination
-    query = query.orderBy(orderBy, orderDir).offset((page - 1) * limit).limit(limit);
+    query = query
+      .orderBy(orderBy, orderDir)
+      .offset((page - 1) * limit)
+      .limit(limit);
 
     const snapshot = await query.get();
     const data = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }) as T);
@@ -112,7 +114,9 @@ export class BaseRepository<T extends { id: string }> {
 
   // ── Write ─────────────────────────────────────────────────────────────
 
-  async create(data: Omit<T, "id" | "createdAt" | "updatedAt"> & Record<string, unknown>): Promise<T> {
+  async create(
+    data: Omit<T, "id" | "createdAt" | "updatedAt"> & Record<string, unknown>,
+  ): Promise<T> {
     const now = new Date().toISOString();
     const docRef = this.collection.doc();
     const document = {
@@ -125,7 +129,10 @@ export class BaseRepository<T extends { id: string }> {
     return document as unknown as T;
   }
 
-  async createWithId(id: string, data: Omit<T, "id" | "createdAt" | "updatedAt"> & Record<string, unknown>): Promise<T> {
+  async createWithId(
+    id: string,
+    data: Omit<T, "id" | "createdAt" | "updatedAt"> & Record<string, unknown>,
+  ): Promise<T> {
     const now = new Date().toISOString();
     const docRef = this.collection.doc(id);
     const document = {

@@ -111,7 +111,7 @@ describe("FeedService", () => {
 
     it("requires feed:create_announcement for announcements", async () => {
       const participant = buildAuthUser({ roles: ["participant"] });
-      const dto = { content: "Important!", isAnnouncement: true };
+      const dto = { content: "Important!", isAnnouncement: true, mediaURLs: [] as string[] };
 
       await expect(service.createPost(eventId, dto, participant)).rejects.toThrow(
         "Permission manquante",
@@ -120,7 +120,7 @@ describe("FeedService", () => {
 
     it("allows participants to create regular posts", async () => {
       const participant = buildAuthUser({ roles: ["participant"] });
-      const dto = { content: "Regular post", isAnnouncement: false };
+      const dto = { content: "Regular post", isAnnouncement: false, mediaURLs: [] as string[] };
       mockFeedPostRepo.create.mockResolvedValue({ id: "post-1", content: dto.content });
 
       const result = await service.createPost(eventId, dto, participant);

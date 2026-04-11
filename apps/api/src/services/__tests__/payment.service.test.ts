@@ -289,7 +289,7 @@ describe("PaymentService.initiatePayment", () => {
 
 describe("PaymentService.handleWebhook", () => {
   it("confirms payment, registration, and increments counters in transaction", async () => {
-    const payment = buildPayment({ status: "processing", ticketTypeId: "vip" });
+    const payment = buildPayment({ status: "processing" });
     const reg = buildRegistration({ id: payment.registrationId, ticketTypeId: "vip" });
     const event = buildEvent({
       id: payment.eventId,
