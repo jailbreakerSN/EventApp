@@ -8,6 +8,7 @@ import {
   buildSpeaker,
   buildSponsor,
 } from "@/__tests__/factories";
+import { type UploadUrlRequest } from "@teranga/shared-types";
 
 // ─── Mocks ─────────────────────────────────────────────────────────────────
 
@@ -218,7 +219,11 @@ describe("UploadService.generateUploadUrl", () => {
       service.generateUploadUrl(
         "event",
         "ev-1",
-        { fileName: "test.svg", contentType: "image/svg+xml" as any, purpose: "cover" as const },
+        {
+          fileName: "test.svg",
+          contentType: "image/svg+xml" as unknown as UploadUrlRequest["contentType"],
+          purpose: "cover" as const,
+        },
         user,
       ),
     ).rejects.toThrow("not allowed");

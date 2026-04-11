@@ -6,6 +6,7 @@ import {
   buildSuperAdmin,
   buildOrganization,
 } from "@/__tests__/factories";
+import { type UpdateOrganizationDto } from "@teranga/shared-types";
 
 // ─── Mocks ─────────────────────────────────────────────────────────────────
 
@@ -158,7 +159,7 @@ describe("OrganizationService.update", () => {
     mockOrgRepo.findByIdOrThrow.mockResolvedValue(org);
     mockOrgRepo.update.mockResolvedValue(undefined);
 
-    await service.update("org-1", { name: "New Name" } as any, user);
+    await service.update("org-1", { name: "New Name" } as unknown as UpdateOrganizationDto, user);
 
     expect(mockOrgRepo.update).toHaveBeenCalledWith("org-1", { name: "New Name" });
   });
@@ -168,9 +169,9 @@ describe("OrganizationService.update", () => {
     const user = buildOrganizerUser("org-other");
     mockOrgRepo.findByIdOrThrow.mockResolvedValue(org);
 
-    await expect(service.update("org-1", { name: "Nope" } as any, user)).rejects.toThrow(
-      "Accès refusé",
-    );
+    await expect(
+      service.update("org-1", { name: "Nope" } as unknown as UpdateOrganizationDto, user),
+    ).rejects.toThrow("Accès refusé");
   });
 });
 

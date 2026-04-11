@@ -7,7 +7,6 @@ import {
   buildPayment,
   buildRegistration,
 } from "@/__tests__/factories";
-import type { Payment, Registration, Event } from "@teranga/shared-types";
 
 // ─── Mocks (vi.hoisted so they're available inside vi.mock factories) ──────
 
@@ -66,21 +65,30 @@ const {
 });
 
 vi.mock("@/repositories/event.repository", () => ({
-  eventRepository: new Proxy({}, {
-    get: (_target, prop) => (mockEventRepo as Record<string, unknown>)[prop as string],
-  }),
+  eventRepository: new Proxy(
+    {},
+    {
+      get: (_target, prop) => (mockEventRepo as Record<string, unknown>)[prop as string],
+    },
+  ),
 }));
 
 vi.mock("@/repositories/registration.repository", () => ({
-  registrationRepository: new Proxy({}, {
-    get: (_target, prop) => (mockRegRepo as Record<string, unknown>)[prop as string],
-  }),
+  registrationRepository: new Proxy(
+    {},
+    {
+      get: (_target, prop) => (mockRegRepo as Record<string, unknown>)[prop as string],
+    },
+  ),
 }));
 
 vi.mock("@/repositories/payment.repository", () => ({
-  paymentRepository: new Proxy({}, {
-    get: (_target, prop) => (mockPaymentRepo as Record<string, unknown>)[prop as string],
-  }),
+  paymentRepository: new Proxy(
+    {},
+    {
+      get: (_target, prop) => (mockPaymentRepo as Record<string, unknown>)[prop as string],
+    },
+  ),
 }));
 
 vi.mock("@/events/event-bus", () => ({
@@ -122,7 +130,8 @@ vi.mock("@/config/firebase", () => ({
       set: vi.fn(),
       commit: vi.fn(),
     })),
-    runTransaction: (...args: unknown[]) => mockRunTransaction(...args as [unknown]),
+    runTransaction: (...args: unknown[]) =>
+      mockRunTransaction(...(args as [(tx: unknown) => Promise<unknown>])),
   },
   COLLECTIONS: {
     REGISTRATIONS: "registrations",
@@ -208,12 +217,15 @@ describe("PaymentService.initiatePayment", () => {
 
     await service.initiatePayment("ev-1", "vip", "mock", undefined, user);
 
-    expect(mockEventBus.emit).toHaveBeenCalledWith("payment.initiated", expect.objectContaining({
-      eventId: "ev-1",
-      amount: 10000,
-      method: "mock",
-      actorId: user.uid,
-    }));
+    expect(mockEventBus.emit).toHaveBeenCalledWith(
+      "payment.initiated",
+      expect.objectContaining({
+        eventId: "ev-1",
+        amount: 10000,
+        method: "mock",
+        actorId: user.uid,
+      }),
+    );
   });
 
   it("rejects if user lacks payment:initiate permission", async () => {
@@ -225,9 +237,7 @@ describe("PaymentService.initiatePayment", () => {
 
   it("rejects if event is not published", async () => {
     mockEventRepo.findByIdOrThrow.mockResolvedValue({ ...event, status: "draft" });
-    await expect(
-      service.initiatePayment("ev-1", "vip", "mock", undefined, user),
-    ).rejects.toThrow();
+    await expect(service.initiatePayment("ev-1", "vip", "mock", undefined, user)).rejects.toThrow();
   });
 
   it("rejects if ticket type not found", async () => {
@@ -239,9 +249,9 @@ describe("PaymentService.initiatePayment", () => {
 
   it("rejects if ticket is free", async () => {
     mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
-    await expect(
-      service.initiatePayment("ev-1", "free", "mock", undefined, user),
-    ).rejects.toThrow("gratuit");
+    await expect(service.initiatePayment("ev-1", "free", "mock", undefined, user)).rejects.toThrow(
+      "gratuit",
+    );
   });
 
   it("rejects duplicate registration inside transaction", async () => {
@@ -253,9 +263,9 @@ describe("PaymentService.initiatePayment", () => {
     // Transaction duplicate check returns existing registration
     mockTxGet.mockResolvedValue({ empty: false });
 
-    await expect(
-      service.initiatePayment("ev-1", "vip", "mock", undefined, user),
-    ).rejects.toThrow("déjà inscrit");
+    await expect(service.initiatePayment("ev-1", "vip", "mock", undefined, user)).rejects.toThrow(
+      "déjà inscrit",
+    );
   });
 
   it("rejects if ticket is sold out", async () => {
@@ -264,9 +274,7 @@ describe("PaymentService.initiatePayment", () => {
       ticketTypes: [{ ...event.ticketTypes[0], soldCount: 50 }],
     };
     mockEventRepo.findByIdOrThrow.mockResolvedValue(soldOutEvent);
-    await expect(
-      service.initiatePayment("ev-1", "vip", "mock", undefined, user),
-    ).rejects.toThrow();
+    await expect(service.initiatePayment("ev-1", "vip", "mock", undefined, user)).rejects.toThrow();
   });
 
   it("rejects for unsupported payment method", async () => {
@@ -283,14 +291,28 @@ describe("PaymentService.handleWebhook", () => {
   it("confirms payment, registration, and increments counters in transaction", async () => {
     const payment = buildPayment({ status: "processing", ticketTypeId: "vip" });
     const reg = buildRegistration({ id: payment.registrationId, ticketTypeId: "vip" });
-    const event = buildEvent({ id: payment.eventId, ticketTypes: [{ id: "vip", name: "VIP", price: 5000, currency: "XOF", totalQuantity: 50, soldCount: 10, accessZoneIds: [], isVisible: true }] });
+    const event = buildEvent({
+      id: payment.eventId,
+      ticketTypes: [
+        {
+          id: "vip",
+          name: "VIP",
+          price: 5000,
+          currency: "XOF",
+          totalQuantity: 50,
+          soldCount: 10,
+          accessZoneIds: [],
+          isVisible: true,
+        },
+      ],
+    });
     mockPaymentRepo.findByProviderTransactionId.mockResolvedValue(payment);
 
     // Transaction reads
     mockTxGet
-      .mockResolvedValueOnce({ exists: true, data: () => payment })   // payment re-read
-      .mockResolvedValueOnce({ exists: true, data: () => reg })       // registration
-      .mockResolvedValueOnce({ exists: true, data: () => event });    // event
+      .mockResolvedValueOnce({ exists: true, data: () => payment }) // payment re-read
+      .mockResolvedValueOnce({ exists: true, data: () => reg }) // registration
+      .mockResolvedValueOnce({ exists: true, data: () => event }); // event
 
     await service.handleWebhook(payment.providerTransactionId!, "succeeded");
 
@@ -309,10 +331,13 @@ describe("PaymentService.handleWebhook", () => {
 
     await service.handleWebhook(payment.providerTransactionId!, "succeeded");
 
-    expect(mockEventBus.emit).toHaveBeenCalledWith("payment.succeeded", expect.objectContaining({
-      paymentId: payment.id,
-      amount: payment.amount,
-    }));
+    expect(mockEventBus.emit).toHaveBeenCalledWith(
+      "payment.succeeded",
+      expect.objectContaining({
+        paymentId: payment.id,
+        amount: payment.amount,
+      }),
+    );
   });
 
   it("skips if payment already in terminal state", async () => {
@@ -328,7 +353,10 @@ describe("PaymentService.handleWebhook", () => {
     const payment = buildPayment({ status: "processing" });
     mockPaymentRepo.findByProviderTransactionId.mockResolvedValue(payment);
     // Fresh read inside tx shows succeeded (concurrent webhook won)
-    mockTxGet.mockResolvedValueOnce({ exists: true, data: () => ({ ...payment, status: "succeeded" }) });
+    mockTxGet.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({ ...payment, status: "succeeded" }),
+    });
 
     await service.handleWebhook(payment.providerTransactionId!, "succeeded");
 
@@ -341,20 +369,23 @@ describe("PaymentService.handleWebhook", () => {
     mockPaymentRepo.findByProviderTransactionId.mockResolvedValue(payment);
     mockTxGet.mockResolvedValueOnce({ exists: true, data: () => payment });
 
-    await service.handleWebhook(payment.providerTransactionId!, "failed", { reason: "Solde insuffisant" });
+    await service.handleWebhook(payment.providerTransactionId!, "failed", {
+      reason: "Solde insuffisant",
+    });
 
     expect(mockRunTransaction).toHaveBeenCalled();
     expect(mockTxUpdate).toHaveBeenCalledTimes(2); // payment + registration
-    expect(mockEventBus.emit).toHaveBeenCalledWith("payment.failed", expect.objectContaining({
-      paymentId: payment.id,
-    }));
+    expect(mockEventBus.emit).toHaveBeenCalledWith(
+      "payment.failed",
+      expect.objectContaining({
+        paymentId: payment.id,
+      }),
+    );
   });
 
   it("throws NotFoundError for unknown transaction", async () => {
     mockPaymentRepo.findByProviderTransactionId.mockResolvedValue(null);
-    await expect(
-      service.handleWebhook("unknown_tx", "succeeded"),
-    ).rejects.toThrow();
+    await expect(service.handleWebhook("unknown_tx", "succeeded")).rejects.toThrow();
   });
 
   it("throws NotFoundError if registration missing during success webhook", async () => {
@@ -384,9 +415,7 @@ describe("PaymentService.getPaymentStatus", () => {
 
   it("rejects if user lacks permission", async () => {
     const user = buildAuthUser({ roles: [] as never[] });
-    await expect(
-      service.getPaymentStatus("pay-1", user),
-    ).rejects.toThrow("Permission manquante");
+    await expect(service.getPaymentStatus("pay-1", user)).rejects.toThrow("Permission manquante");
   });
 
   it("requires payment:read_all for non-owner access", async () => {
@@ -394,9 +423,9 @@ describe("PaymentService.getPaymentStatus", () => {
     const payment = buildPayment({ userId: "other-user", organizationId: "org-1" });
     mockPaymentRepo.findByIdOrThrow.mockResolvedValue(payment);
 
-    await expect(
-      service.getPaymentStatus(payment.id, user),
-    ).rejects.toThrow("Permission manquante");
+    await expect(service.getPaymentStatus(payment.id, user)).rejects.toThrow(
+      "Permission manquante",
+    );
   });
 });
 
@@ -423,11 +452,23 @@ describe("PaymentService.listEventPayments", () => {
 
   it("passes filters to repository", async () => {
     mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
-    mockPaymentRepo.findByEvent.mockResolvedValue({ data: [], meta: { total: 0, page: 1, limit: 20, totalPages: 0 } });
+    mockPaymentRepo.findByEvent.mockResolvedValue({
+      data: [],
+      meta: { total: 0, page: 1, limit: 20, totalPages: 0 },
+    });
 
-    await service.listEventPayments("ev-1", { status: "succeeded", method: "mock" }, { page: 1, limit: 20 }, organizer);
+    await service.listEventPayments(
+      "ev-1",
+      { status: "succeeded", method: "mock" },
+      { page: 1, limit: 20 },
+      organizer,
+    );
 
-    expect(mockPaymentRepo.findByEvent).toHaveBeenCalledWith("ev-1", { status: "succeeded", method: "mock" }, { page: 1, limit: 20 });
+    expect(mockPaymentRepo.findByEvent).toHaveBeenCalledWith(
+      "ev-1",
+      { status: "succeeded", method: "mock" },
+      { page: 1, limit: 20 },
+    );
   });
 
   it("rejects if user lacks payment:read_all permission", async () => {
@@ -476,9 +517,9 @@ describe("PaymentService.getEventPaymentSummary", () => {
 
   it("rejects if user lacks payment:view_reports permission", async () => {
     const user = buildAuthUser({ roles: ["participant"] });
-    await expect(
-      service.getEventPaymentSummary("ev-1", user),
-    ).rejects.toThrow("Permission manquante");
+    await expect(service.getEventPaymentSummary("ev-1", user)).rejects.toThrow(
+      "Permission manquante",
+    );
   });
 });
 
@@ -506,11 +547,14 @@ describe("PaymentService.refundPayment", () => {
     expect(mockProvider.refund).toHaveBeenCalledWith(payment.providerTransactionId, 5000);
     // Transaction updates: payment + registration + event counter
     expect(mockTxUpdate).toHaveBeenCalledTimes(3);
-    expect(mockEventBus.emit).toHaveBeenCalledWith("payment.refunded", expect.objectContaining({
-      paymentId: payment.id,
-      amount: 5000,
-      reason: "Annulé par l'organisateur",
-    }));
+    expect(mockEventBus.emit).toHaveBeenCalledWith(
+      "payment.refunded",
+      expect.objectContaining({
+        paymentId: payment.id,
+        amount: 5000,
+        reason: "Annulé par l'organisateur",
+      }),
+    );
   });
 
   it("performs a partial refund without cancelling registration", async () => {
@@ -550,9 +594,9 @@ describe("PaymentService.refundPayment", () => {
     });
     mockPaymentRepo.findByIdOrThrow.mockResolvedValue(payment);
 
-    await expect(
-      service.refundPayment(payment.id, 2000, undefined, organizer),
-    ).rejects.toThrow("dépasse");
+    await expect(service.refundPayment(payment.id, 2000, undefined, organizer)).rejects.toThrow(
+      "dépasse",
+    );
   });
 
   it("rejects if refund amount is zero or negative", async () => {
@@ -564,16 +608,16 @@ describe("PaymentService.refundPayment", () => {
     });
     mockPaymentRepo.findByIdOrThrow.mockResolvedValue(payment);
 
-    await expect(
-      service.refundPayment(payment.id, 0, undefined, organizer),
-    ).rejects.toThrow("positif");
+    await expect(service.refundPayment(payment.id, 0, undefined, organizer)).rejects.toThrow(
+      "positif",
+    );
   });
 
   it("rejects if user lacks payment:refund permission", async () => {
     const user = buildAuthUser({ roles: ["participant"] });
-    await expect(
-      service.refundPayment("pay-1", undefined, undefined, user),
-    ).rejects.toThrow("Permission manquante");
+    await expect(service.refundPayment("pay-1", undefined, undefined, user)).rejects.toThrow(
+      "Permission manquante",
+    );
   });
 
   it("rejects if provider refuses refund", async () => {

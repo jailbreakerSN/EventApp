@@ -1,4 +1,5 @@
 import { identity } from "firebase-functions/v2";
+import * as functionsV1 from "firebase-functions/v1";
 import { logger } from "firebase-functions/v2";
 import { db, COLLECTIONS } from "../utils/admin";
 
@@ -9,26 +10,29 @@ import { db, COLLECTIONS } from "../utils/admin";
 export const onUserCreated = identity.beforeUserCreated(
   { region: "europe-west1" },
   async (event) => {
-    const user = event.data;
+    const user = event.data!;
     const now = new Date().toISOString();
 
     try {
-      await db.collection(COLLECTIONS.USERS).doc(user.uid).set({
-        uid: user.uid,
-        email: user.email ?? "",
-        displayName: user.displayName ?? user.email?.split("@")[0] ?? "User",
-        photoURL: user.photoURL ?? null,
-        phone: user.phoneNumber ?? null,
-        bio: null,
-        roles: ["participant"],
-        organizationId: null,
-        preferredLanguage: "fr",
-        fcmTokens: [],
-        isEmailVerified: user.emailVerified ?? false,
-        isActive: true,
-        createdAt: now,
-        updatedAt: now,
-      });
+      await db
+        .collection(COLLECTIONS.USERS)
+        .doc(user.uid)
+        .set({
+          uid: user.uid,
+          email: user.email ?? "",
+          displayName: user.displayName ?? user.email?.split("@")[0] ?? "User",
+          photoURL: user.photoURL ?? null,
+          phone: user.phoneNumber ?? null,
+          bio: null,
+          roles: ["participant"],
+          organizationId: null,
+          preferredLanguage: "fr",
+          fcmTokens: [],
+          isEmailVerified: user.emailVerified ?? false,
+          isActive: true,
+          createdAt: now,
+          updatedAt: now,
+        });
 
       logger.info(`User profile created for ${user.uid}`);
     } catch (err) {
@@ -43,12 +47,12 @@ export const onUserCreated = identity.beforeUserCreated(
 /**
  * Cleanup when user is deleted from Firebase Auth.
  * Soft-delete: mark as inactive to preserve event history.
+ * Uses v1 auth trigger (v2 identity module does not support user deletion events).
  */
-export const onUserDeleted = identity.beforeUserDeleted(
-  { region: "europe-west1" },
-  async (event) => {
-    const user = event.data;
-
+export const onUserDeleted = functionsV1
+  .region("europe-west1")
+  .auth.user()
+  .onDelete(async (user) => {
     try {
       const docRef = db.collection(COLLECTIONS.USERS).doc(user.uid);
       const doc = await docRef.get();
@@ -64,7 +68,4 @@ export const onUserDeleted = identity.beforeUserDeleted(
     } catch (err) {
       logger.error(`Failed to deactivate user ${user.uid}`, err);
     }
-
-    return {};
-  },
-);
+  });

@@ -45,5 +45,10 @@
       "prettier --write"
     ]
   },
-  "packageManager": "npm@10.9.2"
+  "packageManager": "npm@10.9.2",
+  "overrides": {
+    "next": "15.5.15",
+    "serialize-javascript": "7.0.5",
+    "@tootallnate/once": "3.0.1"
+  }
 }

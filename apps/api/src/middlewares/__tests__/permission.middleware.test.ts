@@ -1,5 +1,10 @@
 import { describe, it, expect, vi } from "vitest";
-import { requirePermission, requireAllPermissions, requireAnyPermission } from "../permission.middleware";
+import { type FastifyRequest, type FastifyReply } from "fastify";
+import {
+  requirePermission,
+  requireAllPermissions,
+  requireAnyPermission,
+} from "../permission.middleware";
 import { buildAuthUser, buildOrganizerUser, buildSuperAdmin } from "@/__tests__/factories";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -9,7 +14,7 @@ function makeMockRequest(user?: ReturnType<typeof buildAuthUser>) {
     user,
     permissions: undefined,
     log: { warn: vi.fn() },
-  } as any;
+  } as unknown as FastifyRequest;
 }
 
 function makeMockReply() {
@@ -18,7 +23,7 @@ function makeMockReply() {
     status: vi.fn().mockReturnThis(),
     send: vi.fn().mockReturnThis(),
   };
-  return reply as any;
+  return reply as unknown as FastifyReply;
 }
 
 // ─── Tests ──────────────────────────────────────────────────────────────────

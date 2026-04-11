@@ -14,6 +14,7 @@ import { db, COLLECTIONS } from "@/config/firebase";
 import { eventRepository } from "@/repositories/event.repository";
 import { registrationRepository } from "@/repositories/registration.repository";
 import { userRepository } from "@/repositories/user.repository";
+import type { DocumentSnapshot } from "firebase-admin/firestore";
 import { type AuthUser } from "@/middlewares/auth.middleware";
 import { BaseService } from "./base.service";
 import { verifyQrPayload } from "./qr-signing";
@@ -35,7 +36,7 @@ export class CheckinService extends BaseService {
     const CHUNK_SIZE = 1000;
     const MAX_REGISTRATIONS = 20_000;
     const allRegistrations: Registration[] = [];
-    let lastDoc: import("firebase-admin/firestore").DocumentSnapshot | null = null;
+    let lastDoc: DocumentSnapshot | null = null;
 
     let hasMore = true;
     while (hasMore && allRegistrations.length < MAX_REGISTRATIONS) {
@@ -190,7 +191,10 @@ export class CheckinService extends BaseService {
 
         // Cancelled registration: cancel always wins
         if (current.status === "cancelled") {
-          return { status: "cancelled" as BulkCheckinResultStatus, reason: "Registration was cancelled" };
+          return {
+            status: "cancelled" as BulkCheckinResultStatus,
+            reason: "Registration was cancelled",
+          };
         }
 
         // Already checked in
@@ -217,11 +221,16 @@ export class CheckinService extends BaseService {
         if (item.accessZoneId) {
           const eventSnap = await tx.get(eventRef);
           const eventData = eventSnap.data();
-          const zone = eventData?.accessZones?.find((z: { id: string; capacity?: number | null }) => z.id === item.accessZoneId);
+          const zone = eventData?.accessZones?.find(
+            (z: { id: string; capacity?: number | null }) => z.id === item.accessZoneId,
+          );
           if (zone?.capacity) {
             const zoneCount = eventData?.zoneCheckedInCounts?.[item.accessZoneId] ?? 0;
             if (zoneCount >= zone.capacity) {
-              return { status: "zone_full" as BulkCheckinResultStatus, reason: `Zone "${zone.name}" is at capacity (${zone.capacity})` };
+              return {
+                status: "zone_full" as BulkCheckinResultStatus,
+                reason: `Zone "${zone.name}" is at capacity (${zone.capacity})`,
+              };
             }
           }
         }
@@ -301,7 +310,10 @@ export class CheckinService extends BaseService {
 
     const checkedIn = registrations.filter((r) => r.status === "checked_in");
     const pending = registrations.filter((r) => r.status === "pending");
-    const cancelled = await registrationRepository.findByEvent(eventId, ["cancelled"], { page: 1, limit: 1 });
+    const cancelled = await registrationRepository.findByEvent(eventId, ["cancelled"], {
+      page: 1,
+      limit: 1,
+    });
 
     // Zone stats
     const zoneMap = new Map<string, number>();
@@ -353,7 +365,10 @@ export class CheckinService extends BaseService {
     eventId: string,
     query: CheckinHistoryQuery,
     user: AuthUser,
-  ): Promise<{ data: CheckinLogEntry[]; meta: { page: number; limit: number; total: number; totalPages: number } }> {
+  ): Promise<{
+    data: CheckinLogEntry[];
+    meta: { page: number; limit: number; total: number; totalPages: number };
+  }> {
     this.requirePermission(user, "checkin:view_log");
 
     const event = await eventRepository.findByIdOrThrow(eventId);
@@ -378,11 +393,7 @@ export class CheckinService extends BaseService {
     const page = query.page ?? 1;
     const offset = (page - 1) * limit;
 
-    const snap = await baseQuery
-      .orderBy("checkedInAt", "desc")
-      .offset(offset)
-      .limit(limit)
-      .get();
+    const snap = await baseQuery.orderBy("checkedInAt", "desc").offset(offset).limit(limit).get();
 
     const registrations = snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }) as Registration);
 

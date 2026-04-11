@@ -1,11 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { SpeakerService } from "../speaker.service";
-import {
-  buildAuthUser,
-  buildOrganizerUser,
-  buildEvent,
-  buildSpeaker,
-} from "@/__tests__/factories";
+import { buildAuthUser, buildOrganizerUser, buildEvent, buildSpeaker } from "@/__tests__/factories";
 
 // ─── Mocks (vi.hoisted) ──────────────────────────────────────────────────
 
@@ -24,15 +19,21 @@ const { mockSpeakerRepo, mockEventRepo, mockEventBus } = vi.hoisted(() => ({
 }));
 
 vi.mock("@/repositories/speaker.repository", () => ({
-  speakerRepository: new Proxy({}, {
-    get: (_t, p) => (mockSpeakerRepo as Record<string, unknown>)[p as string],
-  }),
+  speakerRepository: new Proxy(
+    {},
+    {
+      get: (_t, p) => (mockSpeakerRepo as Record<string, unknown>)[p as string],
+    },
+  ),
 }));
 
 vi.mock("@/repositories/event.repository", () => ({
-  eventRepository: new Proxy({}, {
-    get: (_t, p) => (mockEventRepo as Record<string, unknown>)[p as string],
-  }),
+  eventRepository: new Proxy(
+    {},
+    {
+      get: (_t, p) => (mockEventRepo as Record<string, unknown>)[p as string],
+    },
+  ),
 }));
 
 vi.mock("@/events/event-bus", () => ({ eventBus: mockEventBus }));
@@ -76,9 +77,9 @@ describe("SpeakerService.createSpeaker", () => {
 
   it("rejects if organizer is from different org", async () => {
     const other = buildOrganizerUser("org-other");
-    await expect(
-      service.createSpeaker({ eventId: "ev-1", name: "Test" }, other),
-    ).rejects.toThrow("Accès refusé");
+    await expect(service.createSpeaker({ eventId: "ev-1", name: "Test" }, other)).rejects.toThrow(
+      "Accès refusé",
+    );
   });
 
   it("rejects duplicate speaker (same userId + event)", async () => {
@@ -108,8 +109,10 @@ describe("SpeakerService.updateSpeaker", () => {
 
   it("allows speaker to update own profile", async () => {
     const speakerUser = buildAuthUser({ uid: "user-speaker", roles: ["speaker"] });
-    mockSpeakerRepo.findByIdOrThrow.mockResolvedValueOnce(speaker).mockResolvedValueOnce({ ...speaker, bio: "Updated" });
-    const result = await service.updateSpeaker("sp-1", { bio: "Updated" }, speakerUser);
+    mockSpeakerRepo.findByIdOrThrow
+      .mockResolvedValueOnce(speaker)
+      .mockResolvedValueOnce({ ...speaker, bio: "Updated" });
+    await service.updateSpeaker("sp-1", { bio: "Updated" }, speakerUser);
     expect(mockSpeakerRepo.update).toHaveBeenCalledTimes(1);
   });
 });
@@ -142,14 +145,19 @@ describe("SpeakerService.deleteSpeaker", () => {
     mockSpeakerRepo.update.mockResolvedValue(undefined);
 
     await service.deleteSpeaker("sp-1", organizer);
-    expect(mockSpeakerRepo.update).toHaveBeenCalledWith("sp-1", expect.objectContaining({
-      isConfirmed: false,
-      sessionIds: [],
-    }));
+    expect(mockSpeakerRepo.update).toHaveBeenCalledWith(
+      "sp-1",
+      expect.objectContaining({
+        isConfirmed: false,
+        sessionIds: [],
+      }),
+    );
   });
 
   it("rejects unauthorized user", async () => {
     const participant = buildAuthUser();
-    await expect(service.deleteSpeaker("sp-1", participant)).rejects.toThrow("Permission manquante");
+    await expect(service.deleteSpeaker("sp-1", participant)).rejects.toThrow(
+      "Permission manquante",
+    );
   });
 });

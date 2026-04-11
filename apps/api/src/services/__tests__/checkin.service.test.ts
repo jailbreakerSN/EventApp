@@ -1,6 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { CheckinService } from "../checkin.service";
-import { buildAuthUser, buildOrganizerUser, buildStaffUser, buildEvent, buildRegistration } from "@/__tests__/factories";
+import {
+  buildAuthUser,
+  buildOrganizerUser,
+  buildStaffUser,
+  buildEvent,
+  buildRegistration,
+} from "@/__tests__/factories";
+import { type UserRole } from "@teranga/shared-types";
 
 // ─── Mocks ─────────────────────────────────────────────────────────────────
 
@@ -20,21 +27,30 @@ const mockUserRepo = {
 };
 
 vi.mock("@/repositories/event.repository", () => ({
-  eventRepository: new Proxy({}, {
-    get: (_target, prop) => (mockEventRepo as Record<string, unknown>)[prop as string],
-  }),
+  eventRepository: new Proxy(
+    {},
+    {
+      get: (_target, prop) => (mockEventRepo as Record<string, unknown>)[prop as string],
+    },
+  ),
 }));
 
 vi.mock("@/repositories/registration.repository", () => ({
-  registrationRepository: new Proxy({}, {
-    get: (_target, prop) => (mockRegRepo as Record<string, unknown>)[prop as string],
-  }),
+  registrationRepository: new Proxy(
+    {},
+    {
+      get: (_target, prop) => (mockRegRepo as Record<string, unknown>)[prop as string],
+    },
+  ),
 }));
 
 vi.mock("@/repositories/user.repository", () => ({
-  userRepository: new Proxy({}, {
-    get: (_target, prop) => (mockUserRepo as Record<string, unknown>)[prop as string],
-  }),
+  userRepository: new Proxy(
+    {},
+    {
+      get: (_target, prop) => (mockUserRepo as Record<string, unknown>)[prop as string],
+    },
+  ),
 }));
 
 vi.mock("@/events/event-bus", () => ({
@@ -82,13 +98,21 @@ describe("CheckinService.getOfflineSyncData", () => {
     const user = buildOrganizerUser("org-1");
     const event = buildEvent({
       organizationId: "org-1",
-      accessZones: [{ id: "zone-1", name: "VIP", color: "#FF0000", allowedTicketTypes: ["tt-1"], capacity: 50 }],
+      accessZones: [
+        { id: "zone-1", name: "VIP", color: "#FF0000", allowedTicketTypes: ["tt-1"], capacity: 50 },
+      ],
     });
-    const reg = buildRegistration({ eventId: event.id, userId: "user-1", ticketTypeId: "ticket-standard" });
+    const reg = buildRegistration({
+      eventId: event.id,
+      userId: "user-1",
+      ticketTypeId: "ticket-standard",
+    });
 
     mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
     mockRegRepo.findByEventCursor.mockResolvedValue({ data: [reg], lastDoc: null });
-    mockUserRepo.batchGet.mockResolvedValue([{ uid: "user-1", id: "user-1", displayName: "Amadou Diallo", email: "amadou@test.com" }]);
+    mockUserRepo.batchGet.mockResolvedValue([
+      { uid: "user-1", id: "user-1", displayName: "Amadou Diallo", email: "amadou@test.com" },
+    ]);
 
     const result = await service.getOfflineSyncData(event.id, user);
 
@@ -107,7 +131,7 @@ describe("CheckinService.getOfflineSyncData", () => {
 
   it("rejects if user is not in the event's org", async () => {
     const user = buildOrganizerUser("org-other");
-    user.roles = [...user.roles, "staff"] as any;
+    user.roles = [...user.roles, "staff"] as UserRole[];
     const event = buildEvent({ organizationId: "org-1" });
     mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
 
@@ -131,9 +155,11 @@ describe("CheckinService.bulkSync", () => {
     });
     mockUserRepo.findById.mockResolvedValue({ displayName: "Test User" });
 
-    const result = await service.bulkSync(event.id, [
-      { localId: "local-1", qrCodeValue: reg.qrCodeValue, scannedAt: new Date().toISOString() },
-    ], user);
+    const result = await service.bulkSync(
+      event.id,
+      [{ localId: "local-1", qrCodeValue: reg.qrCodeValue, scannedAt: new Date().toISOString() }],
+      user,
+    );
 
     expect(result.processed).toBe(1);
     expect(result.succeeded).toBe(1);
@@ -145,9 +171,11 @@ describe("CheckinService.bulkSync", () => {
     const user = buildStaffUser({ organizationId: "org-1" });
     mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
 
-    const result = await service.bulkSync(event.id, [
-      { localId: "local-1", qrCodeValue: "invalid-qr-code", scannedAt: new Date().toISOString() },
-    ], user);
+    const result = await service.bulkSync(
+      event.id,
+      [{ localId: "local-1", qrCodeValue: "invalid-qr-code", scannedAt: new Date().toISOString() }],
+      user,
+    );
 
     expect(result.results[0].status).toBe("invalid_qr");
     expect(result.failed).toBe(1);
@@ -165,9 +193,11 @@ describe("CheckinService.bulkSync", () => {
       data: () => ({ ...reg, id: undefined }),
     });
 
-    const result = await service.bulkSync(event.id, [
-      { localId: "local-1", qrCodeValue: reg.qrCodeValue, scannedAt: new Date().toISOString() },
-    ], user);
+    const result = await service.bulkSync(
+      event.id,
+      [{ localId: "local-1", qrCodeValue: reg.qrCodeValue, scannedAt: new Date().toISOString() }],
+      user,
+    );
 
     expect(result.results[0].status).toBe("cancelled");
   });
@@ -185,9 +215,11 @@ describe("CheckinService.bulkSync", () => {
       data: () => ({ ...reg, id: undefined }),
     });
 
-    const result = await service.bulkSync(event.id, [
-      { localId: "local-1", qrCodeValue: reg.qrCodeValue, scannedAt: new Date().toISOString() },
-    ], user);
+    const result = await service.bulkSync(
+      event.id,
+      [{ localId: "local-1", qrCodeValue: reg.qrCodeValue, scannedAt: new Date().toISOString() }],
+      user,
+    );
 
     expect(result.results[0].status).toBe("already_checked_in");
   });
@@ -196,7 +228,11 @@ describe("CheckinService.bulkSync", () => {
     const user = buildAuthUser({ roles: ["participant"] });
 
     await expect(
-      service.bulkSync("ev-1", [{ localId: "l1", qrCodeValue: "qr", scannedAt: new Date().toISOString() }], user),
+      service.bulkSync(
+        "ev-1",
+        [{ localId: "l1", qrCodeValue: "qr", scannedAt: new Date().toISOString() }],
+        user,
+      ),
     ).rejects.toThrow("Permission manquante");
   });
 });
@@ -206,17 +242,32 @@ describe("CheckinService.getStats", () => {
     const user = buildOrganizerUser("org-1");
     const event = buildEvent({
       organizationId: "org-1",
-      accessZones: [{ id: "zone-1", name: "VIP", color: "#FF0000", allowedTicketTypes: [], capacity: 50 }],
+      accessZones: [
+        { id: "zone-1", name: "VIP", color: "#FF0000", allowedTicketTypes: [], capacity: 50 },
+      ],
     });
 
     const regs = [
-      buildRegistration({ eventId: event.id, status: "confirmed", ticketTypeId: "ticket-standard" }),
-      buildRegistration({ eventId: event.id, status: "checked_in", ticketTypeId: "ticket-standard", checkedInAt: new Date().toISOString(), accessZoneId: "zone-1" }),
+      buildRegistration({
+        eventId: event.id,
+        status: "confirmed",
+        ticketTypeId: "ticket-standard",
+      }),
+      buildRegistration({
+        eventId: event.id,
+        status: "checked_in",
+        ticketTypeId: "ticket-standard",
+        checkedInAt: new Date().toISOString(),
+        accessZoneId: "zone-1",
+      }),
     ];
 
     mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
     mockRegRepo.findByEvent
-      .mockResolvedValueOnce({ data: regs, meta: { page: 1, limit: 10000, total: 2, totalPages: 1 } })
+      .mockResolvedValueOnce({
+        data: regs,
+        meta: { page: 1, limit: 10000, total: 2, totalPages: 1 },
+      })
       .mockResolvedValueOnce({ data: [], meta: { page: 1, limit: 1, total: 0, totalPages: 0 } });
 
     const stats = await service.getStats(event.id, user);

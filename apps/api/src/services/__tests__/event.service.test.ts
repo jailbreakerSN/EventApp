@@ -1,6 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { EventService } from "../event.service";
 import {
+  type CreateEventDto,
+  type UpdateEventDto,
+  type CreateTicketTypeDto,
+  type Location,
+} from "@teranga/shared-types";
+import {
   buildAuthUser,
   buildOrganizerUser,
   buildSuperAdmin,
@@ -138,7 +144,7 @@ describe("EventService.create", () => {
 
   it("rejects participant without event:create permission", async () => {
     const user = buildAuthUser({ roles: ["participant"] });
-    const dto = { organizationId: "org-1", title: "Test" } as any;
+    const dto = { organizationId: "org-1", title: "Test" } as unknown as CreateEventDto;
 
     await expect(service.create(dto, user)).rejects.toThrow("Permission manquante");
   });
@@ -150,7 +156,7 @@ describe("EventService.create", () => {
       title: "Test",
       startDate: new Date(Date.now() + 86400000).toISOString(),
       endDate: new Date(Date.now() + 2 * 86400000).toISOString(),
-    } as any;
+    } as unknown as CreateEventDto;
 
     mockOrgRepo.findByIdOrThrow.mockResolvedValue(org);
 
@@ -164,7 +170,7 @@ describe("EventService.create", () => {
       title: "Admin Event",
       startDate: new Date(Date.now() + 86400000).toISOString(),
       endDate: new Date(Date.now() + 2 * 86400000).toISOString(),
-    } as any;
+    } as unknown as CreateEventDto;
 
     mockOrgRepo.findByIdOrThrow.mockResolvedValue(org);
     mockEventRepo.create.mockResolvedValue(buildEvent({ title: "Admin Event" }));
@@ -180,7 +186,7 @@ describe("EventService.create", () => {
       title: "Bad Dates",
       startDate: new Date(Date.now() + 2 * 86400000).toISOString(),
       endDate: new Date(Date.now() + 86400000).toISOString(),
-    } as any;
+    } as unknown as CreateEventDto;
 
     mockOrgRepo.findByIdOrThrow.mockResolvedValue(org);
 
@@ -229,7 +235,7 @@ describe("EventService.update", () => {
     mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
     mockEventRepo.update.mockResolvedValue(undefined);
 
-    await service.update(event.id, { title: "Updated Title" } as any, user);
+    await service.update(event.id, { title: "Updated Title" } as unknown as UpdateEventDto, user);
 
     expect(mockEventRepo.update).toHaveBeenCalledWith(
       event.id,
@@ -239,22 +245,22 @@ describe("EventService.update", () => {
 
   it("rejects update on cancelled event", async () => {
     const user = buildOrganizerUser("org-1");
-    const event = buildEvent({ organizationId: "org-1", status: "cancelled" as any });
+    const event = buildEvent({ organizationId: "org-1", status: "cancelled" });
     mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
 
-    await expect(service.update(event.id, { title: "Nope" } as any, user)).rejects.toThrow(
-      "Cannot update an event with status 'cancelled'",
-    );
+    await expect(
+      service.update(event.id, { title: "Nope" } as unknown as UpdateEventDto, user),
+    ).rejects.toThrow("Cannot update an event with status 'cancelled'");
   });
 
   it("rejects update on archived event", async () => {
     const user = buildOrganizerUser("org-1");
-    const event = buildEvent({ organizationId: "org-1", status: "archived" as any });
+    const event = buildEvent({ organizationId: "org-1", status: "archived" });
     mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
 
-    await expect(service.update(event.id, { title: "Nope" } as any, user)).rejects.toThrow(
-      "Cannot update an event with status 'archived'",
-    );
+    await expect(
+      service.update(event.id, { title: "Nope" } as unknown as UpdateEventDto, user),
+    ).rejects.toThrow("Cannot update an event with status 'archived'");
   });
 
   it("validates date consistency on update", async () => {
@@ -268,7 +274,11 @@ describe("EventService.update", () => {
     mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
 
     await expect(
-      service.update(event.id, { endDate: "2026-05-01T00:00:00Z" } as any, user),
+      service.update(
+        event.id,
+        { endDate: "2026-05-01T00:00:00Z" } as unknown as UpdateEventDto,
+        user,
+      ),
     ).rejects.toThrow("La date de fin");
   });
 
@@ -277,9 +287,9 @@ describe("EventService.update", () => {
     const event = buildEvent({ organizationId: "org-1", status: "draft" });
     mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
 
-    await expect(service.update(event.id, { title: "Nope" } as any, user)).rejects.toThrow(
-      "Accès refusé",
-    );
+    await expect(
+      service.update(event.id, { title: "Nope" } as unknown as UpdateEventDto, user),
+    ).rejects.toThrow("Accès refusé");
   });
 });
 
@@ -315,7 +325,7 @@ describe("EventService.publish", () => {
     const event = buildEvent({
       organizationId: "org-1",
       status: "draft",
-      location: null as any,
+      location: null as unknown as Location,
     });
     mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
 
@@ -340,7 +350,7 @@ describe("EventService.cancel", () => {
 
   it("rejects cancelling an already cancelled event", async () => {
     const user = buildOrganizerUser("org-1");
-    const event = buildEvent({ organizationId: "org-1", status: "cancelled" as any });
+    const event = buildEvent({ organizationId: "org-1", status: "cancelled" });
     mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
 
     await expect(service.cancel(event.id, user)).rejects.toThrow("already cancelled");
@@ -431,16 +441,16 @@ describe("EventService.addTicketType", () => {
 
   it("rejects adding to a cancelled event", async () => {
     const user = buildOrganizerUser("org-1");
-    const event = buildEvent({ organizationId: "org-1", status: "cancelled" as any });
+    const event = buildEvent({ organizationId: "org-1", status: "cancelled" });
     mockTxGet.mockResolvedValue({
       exists: true,
       id: event.id,
       data: () => ({ ...event, id: undefined }),
     });
 
-    await expect(service.addTicketType(event.id, { name: "VIP" } as any, user)).rejects.toThrow(
-      "Cannot modify ticket types",
-    );
+    await expect(
+      service.addTicketType(event.id, { name: "VIP" } as unknown as CreateTicketTypeDto, user),
+    ).rejects.toThrow("Cannot modify ticket types");
   });
 });
 

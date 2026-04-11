@@ -1,4 +1,4 @@
-import Fastify from "fastify";
+import Fastify, { type FastifyError } from "fastify";
 import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
@@ -118,9 +118,7 @@ export async function buildApp() {
           version: "0.1.0",
           contact: { name: "Teranga Team", email: "dev@teranga.events" },
         },
-        servers: [
-          { url: `http://localhost:${config.PORT}`, description: "Local dev" },
-        ],
+        servers: [{ url: `http://localhost:${config.PORT}`, description: "Local dev" }],
         components: {
           securitySchemes: {
             BearerAuth: {
@@ -155,13 +153,16 @@ export async function buildApp() {
   await registerRoutes(app);
 
   // ─── Global Error Handler ─────────────────────────────────────────────────
-  app.setErrorHandler((error, request, reply) => {
+  app.setErrorHandler((error: FastifyError, request, reply) => {
     // ── AppError (operational, expected) ────────────────────────────────
     if (error instanceof AppError) {
       if (error.statusCode >= 500) {
         request.log.error({ err: error, method: request.method, url: request.url }, error.message);
       } else {
-        request.log.warn({ code: error.code, method: request.method, url: request.url }, error.message);
+        request.log.warn(
+          { code: error.code, method: request.method, url: request.url },
+          error.message,
+        );
       }
       return reply.status(error.statusCode).send({
         success: false,
@@ -193,10 +194,7 @@ export async function buildApp() {
     }
 
     // ── Unexpected errors ──────────────────────────────────────────────
-    request.log.error(
-      { err: error, method: request.method, url: request.url },
-      error.message,
-    );
+    request.log.error({ err: error, method: request.method, url: request.url }, error.message);
 
     const statusCode = error.statusCode ?? 500;
     return reply.status(statusCode).send({

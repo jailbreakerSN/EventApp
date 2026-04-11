@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { type FastifyRequest, type FastifyReply } from "fastify";
 import { authenticate, optionalAuth } from "../auth.middleware";
 
 // Mock firebase-admin/auth
@@ -16,14 +17,14 @@ function makeMockRequest(authHeader?: string) {
     },
     user: undefined,
     log: { warn: vi.fn() },
-  } as any;
+  } as unknown as FastifyRequest;
 }
 
 function makeMockReply() {
   return {
     status: vi.fn().mockReturnThis(),
     send: vi.fn().mockReturnThis(),
-  } as any;
+  } as unknown as FastifyReply;
 }
 
 beforeEach(() => {

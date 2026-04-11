@@ -7,7 +7,6 @@ import { badgeTemplateRepository } from "@/repositories/badge-template.repositor
 import { organizationRepository } from "@/repositories/organization.repository";
 import { type PaginationParams, type PaginatedResult } from "@/repositories/base.repository";
 import { type AuthUser } from "@/middlewares/auth.middleware";
-import { ForbiddenError } from "@/errors/app-error";
 import { BaseService } from "./base.service";
 
 export class BadgeTemplateService extends BaseService {
@@ -18,7 +17,9 @@ export class BadgeTemplateService extends BaseService {
     await organizationRepository.findByIdOrThrow(dto.organizationId);
     this.requireOrganizationAccess(user, dto.organizationId);
 
-    return badgeTemplateRepository.create(dto as Omit<BadgeTemplate, "id" | "createdAt" | "updatedAt">);
+    return badgeTemplateRepository.create(
+      dto as Omit<BadgeTemplate, "id" | "createdAt" | "updatedAt">,
+    );
   }
 
   async getById(templateId: string, user: AuthUser): Promise<BadgeTemplate> {

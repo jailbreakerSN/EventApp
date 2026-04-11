@@ -36,15 +36,21 @@ const mockUploadService = {
 };
 
 vi.mock("@/services/upload.service", () => ({
-  uploadService: new Proxy({}, {
-    get: (_target, prop) => (mockUploadService as Record<string, unknown>)[prop as string],
-  }),
+  uploadService: new Proxy(
+    {},
+    {
+      get: (_target, prop) => (mockUploadService as Record<string, unknown>)[prop as string],
+    },
+  ),
 }));
 
 vi.mock("@/services/event.service", () => ({
-  eventService: new Proxy({}, {
-    get: (_target, prop) => (mockEventService as Record<string, unknown>)[prop as string],
-  }),
+  eventService: new Proxy(
+    {},
+    {
+      get: (_target, prop) => (mockEventService as Record<string, unknown>)[prop as string],
+    },
+  ),
 }));
 
 // ─── Build app ──────���──────────────────────────────────────────────────────
@@ -57,7 +63,7 @@ beforeAll(async () => {
   await app.register(eventRoutes, { prefix: "/v1/events" });
 
   // Minimal error handler for clean assertions
-  app.setErrorHandler((error, _request, reply) => {
+  app.setErrorHandler((error: Error & { statusCode?: number }, _request, reply) => {
     const statusCode = error.statusCode ?? 500;
     return reply.status(statusCode).send({
       success: false,
@@ -134,7 +140,10 @@ describe("GET /v1/events/org/:orgId", () => {
 
   it("returns paginated org-scoped event list", async () => {
     const headers = authHeaders();
-    const events = [buildEvent({ organizationId: "org-1" }), buildEvent({ organizationId: "org-1" })];
+    const events = [
+      buildEvent({ organizationId: "org-1" }),
+      buildEvent({ organizationId: "org-1" }),
+    ];
     mockEventService.listByOrganization.mockResolvedValue({
       data: events,
       meta: { page: 1, limit: 20, total: 2, totalPages: 1 },
@@ -355,14 +364,34 @@ describe("POST /v1/events/:eventId/unpublish", () => {
 describe("POST /v1/events/:eventId/ticket-types", () => {
   it("adds a ticket type and returns 201", async () => {
     const headers = authHeaders();
-    const event = buildEvent({ ticketTypes: [{ id: "tt-new", name: "VIP", price: 5000, currency: "XOF", totalQuantity: 50, soldCount: 0, accessZoneIds: [], isVisible: true }] });
+    const event = buildEvent({
+      ticketTypes: [
+        {
+          id: "tt-new",
+          name: "VIP",
+          price: 5000,
+          currency: "XOF",
+          totalQuantity: 50,
+          soldCount: 0,
+          accessZoneIds: [],
+          isVisible: true,
+        },
+      ],
+    });
     mockEventService.addTicketType.mockResolvedValue(event);
 
     const res = await app.inject({
       method: "POST",
       url: "/v1/events/ev-1/ticket-types",
       headers: { ...headers, "content-type": "application/json" },
-      payload: { name: "VIP", price: 5000, currency: "XOF", totalQuantity: 50, accessZoneIds: [], isVisible: true },
+      payload: {
+        name: "VIP",
+        price: 5000,
+        currency: "XOF",
+        totalQuantity: 50,
+        accessZoneIds: [],
+        isVisible: true,
+      },
     });
 
     expect(res.statusCode).toBe(201);
@@ -384,7 +413,20 @@ describe("POST /v1/events/:eventId/ticket-types", () => {
 describe("PATCH /v1/events/:eventId/ticket-types/:ticketTypeId", () => {
   it("updates a ticket type and returns 200", async () => {
     const headers = authHeaders();
-    const event = buildEvent({ ticketTypes: [{ id: "tt-1", name: "VIP Updated", price: 10000, currency: "XOF", totalQuantity: 50, soldCount: 0, accessZoneIds: [], isVisible: true }] });
+    const event = buildEvent({
+      ticketTypes: [
+        {
+          id: "tt-1",
+          name: "VIP Updated",
+          price: 10000,
+          currency: "XOF",
+          totalQuantity: 50,
+          soldCount: 0,
+          accessZoneIds: [],
+          isVisible: true,
+        },
+      ],
+    });
     mockEventService.updateTicketType.mockResolvedValue(event);
 
     const res = await app.inject({

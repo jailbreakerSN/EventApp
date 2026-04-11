@@ -3,7 +3,11 @@ import { z } from "zod";
 import { authenticate } from "@/middlewares/auth.middleware";
 import { validate } from "@/middlewares/validate.middleware";
 import { requirePermission } from "@/middlewares/permission.middleware";
-import { paymentService, verifyWebhookSignature, signWebhookPayload } from "@/services/payment.service";
+import {
+  paymentService,
+  verifyWebhookSignature,
+  signWebhookPayload,
+} from "@/services/payment.service";
 import { MockPaymentProvider } from "@/providers/mock-payment.provider";
 import {
   InitiatePaymentSchema,
@@ -14,7 +18,7 @@ import {
 
 const ParamsWithPaymentId = z.object({ paymentId: z.string() });
 const ParamsWithEventId = z.object({ eventId: z.string() });
-const ParamsWithTxId = z.object({ txId: z.string() });
+type ParamsWithTxId = { txId: string };
 
 // ─── HTML Escaping ──────────────────────────────────────────────────────────
 
@@ -214,35 +218,51 @@ export const paymentRoutes: FastifyPluginAsync = async (fastify) => {
 
   // ─── Mock Checkout Routes (dev/test only) ─────────────────────────────────
   if (process.env.NODE_ENV !== "production") {
-  // ─── Mock Checkout Page (dev/test only) ───────────────────────────────────
-  fastify.get(
-    "/mock-checkout/:txId",
-    {
-      schema: {
-        tags: ["Payments"],
-        summary: "Mock checkout page (dev only)",
+    // ─── Mock Checkout Page (dev/test only) ───────────────────────────────────
+    fastify.get(
+      "/mock-checkout/:txId",
+      {
+        schema: {
+          tags: ["Payments"],
+          summary: "Mock checkout page (dev only)",
+        },
       },
-    },
-    async (request, reply) => {
-      const { txId } = request.params as z.infer<typeof ParamsWithTxId>;
-      const state = MockPaymentProvider.getState(txId);
+      async (request, reply) => {
+        const { txId } = request.params as ParamsWithTxId;
+        const state = MockPaymentProvider.getState(txId);
 
-      if (!state) {
-        return reply.status(404).send({ success: false, error: { code: "NOT_FOUND", message: "Transaction inconnue" } });
-      }
+        if (!state) {
+          return reply
+            .status(404)
+            .send({
+              success: false,
+              error: { code: "NOT_FOUND", message: "Transaction inconnue" },
+            });
+        }
 
-      const amount = new Intl.NumberFormat("fr-SN", { style: "currency", currency: "XOF" }).format(state.amount);
-      const callbackUrl = state.metadata.callbackUrl as string;
-      const returnUrl = state.metadata.returnUrl as string;
+        const amount = new Intl.NumberFormat("fr-SN", {
+          style: "currency",
+          currency: "XOF",
+        }).format(state.amount);
+        const callbackUrl = state.metadata.callbackUrl as string;
+        const returnUrl = state.metadata.returnUrl as string;
 
-      // Build the webhook body the checkout page will send
-      // so we can pre-compute the HMAC signature for both pay/cancel
-      const payBody = JSON.stringify({ providerTransactionId: txId, status: "succeeded", metadata: { source: "mock_checkout" } });
-      const cancelBody = JSON.stringify({ providerTransactionId: txId, status: "failed", metadata: { source: "mock_checkout" } });
-      const paySignature = signWebhookPayload(payBody);
-      const cancelSignature = signWebhookPayload(cancelBody);
+        // Build the webhook body the checkout page will send
+        // so we can pre-compute the HMAC signature for both pay/cancel
+        const payBody = JSON.stringify({
+          providerTransactionId: txId,
+          status: "succeeded",
+          metadata: { source: "mock_checkout" },
+        });
+        const cancelBody = JSON.stringify({
+          providerTransactionId: txId,
+          status: "failed",
+          metadata: { source: "mock_checkout" },
+        });
+        const paySignature = signWebhookPayload(payBody);
+        const cancelSignature = signWebhookPayload(cancelBody);
 
-      const html = `<!DOCTYPE html>
+        const html = `<!DOCTYPE html>
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
@@ -327,28 +347,33 @@ export const paymentRoutes: FastifyPluginAsync = async (fastify) => {
 </body>
 </html>`;
 
-      return reply.type("text/html").send(html);
-    },
-  );
-
-  // ─── Mock Checkout Callback (internal) ────────────────────────────────────
-  fastify.post(
-    "/mock-checkout/:txId/complete",
-    {
-      schema: {
-        tags: ["Payments"],
-        summary: "Complete mock checkout (dev only)",
+        return reply.type("text/html").send(html);
       },
-    },
-    async (request, reply) => {
-      const { txId } = request.params as z.infer<typeof ParamsWithTxId>;
-      const body = request.body as { success: boolean };
-      const state = MockPaymentProvider.simulateCallback(txId, body.success);
-      if (!state) {
-        return reply.status(404).send({ success: false, error: { code: "NOT_FOUND", message: "Transaction inconnue" } });
-      }
-      return reply.send({ success: true, data: { status: state.status } });
-    },
-  );
+    );
+
+    // ─── Mock Checkout Callback (internal) ────────────────────────────────────
+    fastify.post(
+      "/mock-checkout/:txId/complete",
+      {
+        schema: {
+          tags: ["Payments"],
+          summary: "Complete mock checkout (dev only)",
+        },
+      },
+      async (request, reply) => {
+        const { txId } = request.params as ParamsWithTxId;
+        const body = request.body as { success: boolean };
+        const state = MockPaymentProvider.simulateCallback(txId, body.success);
+        if (!state) {
+          return reply
+            .status(404)
+            .send({
+              success: false,
+              error: { code: "NOT_FOUND", message: "Transaction inconnue" },
+            });
+        }
+        return reply.send({ success: true, data: { status: state.status } });
+      },
+    );
   } // end if (NODE_ENV !== "production")
 };

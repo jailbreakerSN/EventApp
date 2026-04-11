@@ -8,7 +8,6 @@ import {
   type Payment,
   type SpeakerProfile,
   type SponsorProfile,
-  type SponsorLead,
   type Broadcast,
   type Venue,
 } from "@teranga/shared-types";
@@ -29,7 +28,10 @@ export function buildAuthUser(overrides: Partial<AuthUser> = {}): AuthUser {
   };
 }
 
-export function buildOrganizerUser(organizationId: string, overrides: Partial<AuthUser> = {}): AuthUser {
+export function buildOrganizerUser(
+  organizationId: string,
+  overrides: Partial<AuthUser> = {},
+): AuthUser {
   return buildAuthUser({
     roles: ["organizer"],
     organizationId,
@@ -51,7 +53,10 @@ export function buildSuperAdmin(overrides: Partial<AuthUser> = {}): AuthUser {
   });
 }
 
-export function buildVenueManager(organizationId: string, overrides: Partial<AuthUser> = {}): AuthUser {
+export function buildVenueManager(
+  organizationId: string,
+  overrides: Partial<AuthUser> = {},
+): AuthUser {
   return buildAuthUser({
     roles: ["venue_manager"],
     organizationId,

@@ -1,14 +1,9 @@
-import {
-  type Broadcast,
-  type CreateBroadcastDto,
-  type CommunicationChannel,
-} from "@teranga/shared-types";
+import { type Broadcast, type CreateBroadcastDto } from "@teranga/shared-types";
 import { broadcastRepository } from "@/repositories/broadcast.repository";
 import { eventRepository } from "@/repositories/event.repository";
 import { registrationRepository } from "@/repositories/registration.repository";
 import { userRepository } from "@/repositories/user.repository";
 import { notificationService } from "@/services/notification.service";
-import { db, COLLECTIONS } from "@/config/firebase";
 import { type AuthUser } from "@/middlewares/auth.middleware";
 import { BaseService } from "./base.service";
 import { eventBus } from "@/events/event-bus";
@@ -51,11 +46,12 @@ export class BroadcastService extends BaseService {
     broadcast.id = broadcastId;
 
     // Determine which statuses to target
-    const targetStatuses = dto.recipientFilter === "checked_in"
-      ? ["checked_in"]
-      : dto.recipientFilter === "not_checked_in"
-        ? ["confirmed"]
-        : ["confirmed", "checked_in"];
+    const targetStatuses =
+      dto.recipientFilter === "checked_in"
+        ? ["checked_in"]
+        : dto.recipientFilter === "not_checked_in"
+          ? ["confirmed"]
+          : ["confirmed", "checked_in"];
 
     // Fetch registrations in pages
     const CHUNK_SIZE = 500;
