@@ -50,8 +50,8 @@ COPY package.json package-lock.json turbo.json ./
 COPY packages ./packages
 COPY apps/web-participant ./apps/web-participant
 
+# shared-ui is source-only (consumed via Next.js transpilePackages) — no build step
 RUN npm run build --workspace=packages/shared-types
-RUN npm run build --workspace=packages/shared-ui
 RUN npm run build --workspace=apps/web-participant
 
 # ─── Runner ─────────────────────────────────────────────────────────────────

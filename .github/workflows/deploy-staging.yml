@@ -62,6 +62,9 @@ jobs:
             firebase.googleapis.com \
             firebasehosting.googleapis.com \
             firebaseextensions.googleapis.com \
+            firebaserules.googleapis.com \
+            firestore.googleapis.com \
+            firebasestorage.googleapis.com \
             iamcredentials.googleapis.com \
             cloudscheduler.googleapis.com \
             eventarc.googleapis.com \
