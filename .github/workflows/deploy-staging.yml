@@ -181,11 +181,22 @@ jobs:
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
       - uses: google-github-actions/setup-gcloud@v2
-      - name: Configure Docker for gcr.io
-        run: gcloud auth configure-docker gcr.io --quiet
+      - name: Ensure Artifact Registry repo exists
+        run: |
+          set -euo pipefail
+          # Idempotent: creates 'teranga' Docker repo in europe-west1 if missing.
+          gcloud artifacts repositories describe teranga \
+            --location=europe-west1 >/dev/null 2>&1 || \
+          gcloud artifacts repositories create teranga \
+            --repository-format=docker \
+            --location=europe-west1 \
+            --description="Teranga Events container images" \
+            --quiet
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker europe-west1-docker.pkg.dev --quiet
       - name: Build and push Docker image
         run: |
-          IMAGE="gcr.io/${{ needs.setup.outputs.project_id }}/teranga-api:${{ github.sha }}"
+          IMAGE="europe-west1-docker.pkg.dev/${{ needs.setup.outputs.project_id }}/teranga/teranga-api:${{ github.sha }}"
           docker build \
             -f apps/api/Dockerfile \
             --build-arg BUILD_DATE="$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
@@ -196,7 +207,7 @@ jobs:
       - name: Deploy to Cloud Run
         run: |
           gcloud run deploy teranga-api-staging \
-            --image gcr.io/${{ needs.setup.outputs.project_id }}/teranga-api:${{ github.sha }} \
+            --image europe-west1-docker.pkg.dev/${{ needs.setup.outputs.project_id }}/teranga/teranga-api:${{ github.sha }} \
             --region europe-west1 \
             --allow-unauthenticated \
             --set-env-vars "\
