@@ -234,13 +234,6 @@
       ]
     },
     {
-      "collectionGroup": "newsletterSubscribers",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "subscribedAt", "order": "DESCENDING" }
-      ]
-    },
-    {
       "collectionGroup": "badges",
       "queryScope": "COLLECTION",
       "fields": [
