@@ -14,11 +14,17 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  NODE_VERSION: "20"
+  # Must match ci.yml — see the rationale there. Summary: apps/functions
+  # engines.node = 22; keeping CI and deploy aligned avoids drift warnings.
+  NODE_VERSION: "22"
   # The commit SHA that passed CI. With workflow_run, github.sha points to the
   # default branch HEAD rather than the commit that was actually tested — use
   # workflow_run.head_sha for image tags, checkouts, and labels.
   DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}
+  # Retry transient npm fetch failures (ECONNRESET on GHA runners is common).
+  NPM_CONFIG_FETCH_RETRIES: "5"
+  NPM_CONFIG_FETCH_RETRY_MINTIMEOUT: "10000"
+  NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT: "120000"
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Only 4 secrets required:
