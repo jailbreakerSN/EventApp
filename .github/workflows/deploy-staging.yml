@@ -38,7 +38,19 @@ jobs:
             --image gcr.io/${{ secrets.GCP_PROJECT_ID }}/teranga-api:${{ github.sha }} \
             --region europe-west1 \
             --allow-unauthenticated \
-            --set-env-vars "NODE_ENV=staging"
+            --set-env-vars "\
+              NODE_ENV=staging,\
+              FIREBASE_PROJECT_ID=${{ secrets.FIREBASE_PROJECT_ID }},\
+              FIREBASE_STORAGE_BUCKET=${{ secrets.FIREBASE_STORAGE_BUCKET }},\
+              QR_SECRET=${{ secrets.QR_SECRET }},\
+              WEBHOOK_SECRET=${{ secrets.WEBHOOK_SECRET }},\
+              RESEND_API_KEY=${{ secrets.RESEND_API_KEY }},\
+              RESEND_FROM_EMAIL=${{ secrets.RESEND_FROM_EMAIL }},\
+              RESEND_FROM_NAME=${{ secrets.RESEND_FROM_NAME }},\
+              CORS_ORIGINS=${{ secrets.API_URL_STAGING }},${{ secrets.BACKOFFICE_URL_STAGING }},${{ secrets.PARTICIPANT_URL_STAGING }},\
+              RATE_LIMIT_MAX=100,\
+              RATE_LIMIT_WINDOW_MS=60000,\
+              LOG_LEVEL=info"
 
   deploy-web:
     name: Deploy Web Apps to Firebase Hosting (staging)
