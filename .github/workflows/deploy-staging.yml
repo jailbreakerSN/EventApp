@@ -74,22 +74,20 @@ jobs:
           # GCP-managed service agents. These are idempotent.
           # Requires 'Project IAM Admin' role on the deploy service account.
 
-          PROJECT_NUMBER=$(gcloud projects describe "${{ steps.discover.outputs.project_id }}" --format='value(projectNumber)' 2>/dev/null || echo "")
-          if [ -z "$PROJECT_NUMBER" ]; then
-            # Fall back to extracting from project_id via describe after APIs are enabled
-            PROJECT_ID=$(echo "$SA_KEY" | jq -r '.project_id')
-            PROJECT_NUMBER=$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')
-          fi
+          PROJECT_ID=$(echo "$SA_KEY" | jq -r '.project_id')
+          PROJECT_NUMBER=$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')
 
           PUBSUB_SA="service-${PROJECT_NUMBER}@gcp-sa-pubsub.iam.gserviceaccount.com"
+          EVENTARC_SA="service-${PROJECT_NUMBER}@gcp-sa-eventarc.iam.gserviceaccount.com"
           COMPUTE_SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
-          PROJECT_ID=$(echo "$SA_KEY" | jq -r '.project_id')
 
-          # Trigger pubsub service identity creation (no-op if exists)
+          # Trigger service identity creation (no-op if exists)
           gcloud beta services identity create --service=pubsub.googleapis.com --project="$PROJECT_ID" || true
+          gcloud beta services identity create --service=eventarc.googleapis.com --project="$PROJECT_ID" || true
 
           for binding in \
             "serviceAccount:${PUBSUB_SA}|roles/iam.serviceAccountTokenCreator" \
+            "serviceAccount:${EVENTARC_SA}|roles/eventarc.serviceAgent" \
             "serviceAccount:${COMPUTE_SA}|roles/run.invoker" \
             "serviceAccount:${COMPUTE_SA}|roles/eventarc.eventReceiver"; do
             member="${binding%|*}"
@@ -251,5 +249,21 @@ jobs:
         run: npx turbo build --filter=@teranga/shared-types
       - name: Build functions
         run: npm run build --workspace=apps/functions
+
+      - name: Vendor shared-types into functions directory
+        # Firebase Functions uploads only the apps/functions/ folder. The
+        # workspace dep '@teranga/shared-types' won't resolve in Cloud Build
+        # because it's not on npm. Copy the built package into
+        # apps/functions/vendor/ and rewrite the dependency to a local
+        # file path.
+        run: |
+          set -euo pipefail
+          VENDOR=apps/functions/vendor/shared-types
+          mkdir -p "$VENDOR"
+          cp packages/shared-types/package.json "$VENDOR/"
+          cp -r packages/shared-types/dist "$VENDOR/dist"
+          # Rewrite the dependency to point at the vendored copy
+          (cd apps/functions && npm pkg set dependencies.@teranga/shared-types=file:./vendor/shared-types)
+
       - name: Deploy to Firebase
-        run: npx firebase-tools deploy --only functions --project ${{ needs.setup.outputs.project_id }} --non-interactive
+        run: npx firebase-tools deploy --only functions --project ${{ needs.setup.outputs.project_id }} --force --non-interactive
