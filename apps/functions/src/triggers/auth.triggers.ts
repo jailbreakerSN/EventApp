@@ -1,16 +1,22 @@
-import { identity } from "firebase-functions/v2";
 import * as functionsV1 from "firebase-functions/v1";
 import { logger } from "firebase-functions/v2";
 import { db, COLLECTIONS } from "../utils/admin";
 
 /**
  * Auto-create a Firestore user profile when a new Firebase Auth user is created.
- * Uses Firebase Functions v2 identity triggers.
+ *
+ * Uses the v1 auth trigger rather than v2 `beforeUserCreated` because:
+ *   - v2 blocking triggers require Identity Platform (paid tier of Firebase Auth).
+ *   - We don't need to veto or mutate the user creation — we just want to
+ *     mirror it into Firestore after the fact.
+ *   - v1 onCreate runs after user creation and is available on all Firebase
+ *     projects with standard Authentication enabled.
  */
-export const onUserCreated = identity.beforeUserCreated(
-  { region: "europe-west1", memory: "256MiB" },
-  async (event) => {
-    const user = event.data!;
+export const onUserCreated = functionsV1
+  .runWith({ memory: "256MB", timeoutSeconds: 60 })
+  .region("europe-west1")
+  .auth.user()
+  .onCreate(async (user) => {
     const now = new Date().toISOString();
 
     try {
@@ -39,10 +45,7 @@ export const onUserCreated = identity.beforeUserCreated(
       logger.error(`Failed to create user profile for ${user.uid}`, err);
       // Don't block user creation — profile can be created lazily
     }
-
-    return {};
-  },
-);
+  });
 
 /**
  * Cleanup when user is deleted from Firebase Auth.
