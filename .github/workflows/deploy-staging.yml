@@ -11,10 +11,112 @@ concurrency:
 env:
   NODE_VERSION: "20"
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# Only 4 secrets required:
+#   GCP_SA_KEY      — Firebase Admin SDK JSON key (derives everything else)
+#   RESEND_API_KEY  — Resend email service API key
+#   QR_SECRET       — HMAC-SHA256 key for QR badge signing
+#   WEBHOOK_SECRET  — Webhook signature verification key
+#
+# Optional variables (non-secret, set via `gh variable set`):
+#   API_URL_STAGING — Cloud Run URL (auto-detected if service exists)
+# ═══════════════════════════════════════════════════════════════════════════════
+
 jobs:
+  # ─── Derive all config from GCP_SA_KEY ────────────────────────────────────
+  setup:
+    name: Discover Firebase & GCP config
+    runs-on: ubuntu-latest
+    environment: staging
+    outputs:
+      project_id: ${{ steps.discover.outputs.project_id }}
+      firebase_api_key: ${{ steps.discover.outputs.firebase_api_key }}
+      firebase_auth_domain: ${{ steps.discover.outputs.firebase_auth_domain }}
+      firebase_storage_bucket: ${{ steps.discover.outputs.firebase_storage_bucket }}
+      firebase_messaging_sender_id: ${{ steps.discover.outputs.firebase_messaging_sender_id }}
+      firebase_app_id: ${{ steps.discover.outputs.firebase_app_id }}
+      firebase_measurement_id: ${{ steps.discover.outputs.firebase_measurement_id }}
+      api_url: ${{ steps.discover.outputs.api_url }}
+      backoffice_url: ${{ steps.discover.outputs.backoffice_url }}
+      participant_url: ${{ steps.discover.outputs.participant_url }}
+      cors_origins: ${{ steps.discover.outputs.cors_origins }}
+    steps:
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Discover config from SA key and Firebase API
+        id: discover
+        env:
+          SA_KEY: ${{ secrets.GCP_SA_KEY }}
+        run: |
+          set -euo pipefail
+
+          # ── 1. Extract project_id from the SA key JSON ──
+          PROJECT_ID=$(echo "$SA_KEY" | jq -r '.project_id')
+          echo "project_id=$PROJECT_ID" >> $GITHUB_OUTPUT
+          echo "::notice::Project ID: $PROJECT_ID"
+
+          # ── 2. Get access token for Firebase Management API ──
+          ACCESS_TOKEN=$(gcloud auth print-access-token)
+
+          # ── 3. Discover Firebase web app SDK config ──
+          echo "Fetching Firebase web apps..."
+          WEB_APPS=$(curl -sf -H "Authorization: Bearer $ACCESS_TOKEN" \
+            "https://firebase.googleapis.com/v1beta1/projects/$PROJECT_ID/webApps")
+
+          APP_ID=$(echo "$WEB_APPS" | jq -r '.apps[0].appId // empty')
+
+          if [ -z "$APP_ID" ]; then
+            echo "::warning::No Firebase web app found. Using convention-based defaults."
+            echo "firebase_api_key=" >> $GITHUB_OUTPUT
+            echo "firebase_auth_domain=$PROJECT_ID.firebaseapp.com" >> $GITHUB_OUTPUT
+            echo "firebase_storage_bucket=$PROJECT_ID.firebasestorage.app" >> $GITHUB_OUTPUT
+            echo "firebase_messaging_sender_id=" >> $GITHUB_OUTPUT
+            echo "firebase_app_id=" >> $GITHUB_OUTPUT
+            echo "firebase_measurement_id=" >> $GITHUB_OUTPUT
+          else
+            echo "Fetching SDK config for app: $APP_ID"
+            CONFIG=$(curl -sf -H "Authorization: Bearer $ACCESS_TOKEN" \
+              "https://firebase.googleapis.com/v1beta1/projects/$PROJECT_ID/webApps/$APP_ID/config")
+
+            echo "firebase_api_key=$(echo "$CONFIG" | jq -r '.apiKey // empty')" >> $GITHUB_OUTPUT
+            echo "firebase_auth_domain=$(echo "$CONFIG" | jq -r '.authDomain // empty')" >> $GITHUB_OUTPUT
+            echo "firebase_storage_bucket=$(echo "$CONFIG" | jq -r '.storageBucket // empty')" >> $GITHUB_OUTPUT
+            echo "firebase_messaging_sender_id=$(echo "$CONFIG" | jq -r '.messagingSenderId // empty')" >> $GITHUB_OUTPUT
+            echo "firebase_app_id=$(echo "$CONFIG" | jq -r '.appId // empty')" >> $GITHUB_OUTPUT
+            echo "firebase_measurement_id=$(echo "$CONFIG" | jq -r '.measurementId // empty')" >> $GITHUB_OUTPUT
+          fi
+
+          # ── 4. Derive URLs ──
+          # Firebase Hosting URLs follow convention
+          BACKOFFICE_URL="https://$PROJECT_ID.web.app"
+          PARTICIPANT_URL="https://teranga-participant-staging.web.app"
+
+          # Cloud Run URL: try to detect from existing service, fall back to variable
+          API_URL=$(gcloud run services describe teranga-api-staging \
+            --region europe-west1 \
+            --format='value(status.url)' 2>/dev/null || echo "")
+
+          if [ -z "$API_URL" ] && [ -n "${{ vars.API_URL_STAGING || '' }}" ]; then
+            API_URL="${{ vars.API_URL_STAGING }}"
+          fi
+
+          echo "api_url=$API_URL" >> $GITHUB_OUTPUT
+          echo "backoffice_url=$BACKOFFICE_URL" >> $GITHUB_OUTPUT
+          echo "participant_url=$PARTICIPANT_URL" >> $GITHUB_OUTPUT
+          echo "cors_origins=$API_URL,$BACKOFFICE_URL,$PARTICIPANT_URL" >> $GITHUB_OUTPUT
+
+          echo "::notice::API URL: $API_URL"
+          echo "::notice::Backoffice URL: $BACKOFFICE_URL"
+          echo "::notice::Participant URL: $PARTICIPANT_URL"
+
+  # ─── Deploy API to Cloud Run ──────────────────────────────────────────────
   deploy-api:
     name: Deploy API to Cloud Run (staging)
     runs-on: ubuntu-latest
+    needs: setup
     environment: staging
     permissions:
       contents: read
@@ -27,32 +129,32 @@ jobs:
       - name: Build and push Docker image
         run: |
           gcloud builds submit \
-            --tag gcr.io/${{ secrets.GCP_PROJECT_ID }}/teranga-api:${{ github.sha }} \
+            --tag gcr.io/${{ needs.setup.outputs.project_id }}/teranga-api:${{ github.sha }} \
             --build-arg BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ") \
             --build-arg GIT_SHA=${{ github.sha }}
       - name: Deploy to Cloud Run
         run: |
           gcloud run deploy teranga-api-staging \
-            --image gcr.io/${{ secrets.GCP_PROJECT_ID }}/teranga-api:${{ github.sha }} \
+            --image gcr.io/${{ needs.setup.outputs.project_id }}/teranga-api:${{ github.sha }} \
             --region europe-west1 \
             --allow-unauthenticated \
             --set-env-vars "\
               NODE_ENV=staging,\
-              FIREBASE_PROJECT_ID=${{ secrets.FIREBASE_PROJECT_ID }},\
-              FIREBASE_STORAGE_BUCKET=${{ secrets.FIREBASE_STORAGE_BUCKET }},\
+              FIREBASE_PROJECT_ID=${{ needs.setup.outputs.project_id }},\
+              FIREBASE_STORAGE_BUCKET=${{ needs.setup.outputs.firebase_storage_bucket }},\
               QR_SECRET=${{ secrets.QR_SECRET }},\
               WEBHOOK_SECRET=${{ secrets.WEBHOOK_SECRET }},\
               RESEND_API_KEY=${{ secrets.RESEND_API_KEY }},\
-              RESEND_FROM_EMAIL=${{ secrets.RESEND_FROM_EMAIL }},\
-              RESEND_FROM_NAME=${{ secrets.RESEND_FROM_NAME }},\
-              CORS_ORIGINS=${{ secrets.API_URL_STAGING }},${{ secrets.BACKOFFICE_URL_STAGING }},${{ secrets.PARTICIPANT_URL_STAGING }},\
+              CORS_ORIGINS=${{ needs.setup.outputs.cors_origins }},\
               RATE_LIMIT_MAX=100,\
               RATE_LIMIT_WINDOW_MS=60000,\
               LOG_LEVEL=info"
 
+  # ─── Deploy Web Apps to Firebase Hosting ──────────────────────────────────
   deploy-web:
     name: Deploy Web Apps to Firebase Hosting (staging)
     runs-on: ubuntu-latest
+    needs: setup
     environment: staging
     steps:
       - uses: actions/checkout@v4
@@ -66,36 +168,38 @@ jobs:
       - name: Build web backoffice
         run: npm run build --workspace=apps/web-backoffice
         env:
-          NEXT_PUBLIC_FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY_STAGING }}
-          NEXT_PUBLIC_FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID_STAGING }}
-          NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: ${{ secrets.FIREBASE_AUTH_DOMAIN_STAGING }}
-          NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: ${{ secrets.FIREBASE_STORAGE_BUCKET_STAGING }}
-          NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.FIREBASE_MESSAGING_SENDER_ID_STAGING }}
-          NEXT_PUBLIC_FIREBASE_APP_ID: ${{ secrets.FIREBASE_APP_ID_STAGING }}
-          NEXT_PUBLIC_API_URL: ${{ secrets.API_URL_STAGING }}
+          NEXT_PUBLIC_FIREBASE_API_KEY: ${{ needs.setup.outputs.firebase_api_key }}
+          NEXT_PUBLIC_FIREBASE_PROJECT_ID: ${{ needs.setup.outputs.project_id }}
+          NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: ${{ needs.setup.outputs.firebase_auth_domain }}
+          NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: ${{ needs.setup.outputs.firebase_storage_bucket }}
+          NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: ${{ needs.setup.outputs.firebase_messaging_sender_id }}
+          NEXT_PUBLIC_FIREBASE_APP_ID: ${{ needs.setup.outputs.firebase_app_id }}
+          NEXT_PUBLIC_API_URL: ${{ needs.setup.outputs.api_url }}
       - name: Build web participant
         run: npm run build --workspace=apps/web-participant
         env:
-          NEXT_PUBLIC_FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY_STAGING }}
-          NEXT_PUBLIC_FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID_STAGING }}
-          NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: ${{ secrets.FIREBASE_AUTH_DOMAIN_STAGING }}
-          NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: ${{ secrets.FIREBASE_STORAGE_BUCKET_STAGING }}
-          NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.FIREBASE_MESSAGING_SENDER_ID_STAGING }}
-          NEXT_PUBLIC_FIREBASE_APP_ID: ${{ secrets.FIREBASE_APP_ID_STAGING }}
-          NEXT_PUBLIC_API_URL: ${{ secrets.API_URL_STAGING }}
-          NEXT_PUBLIC_APP_URL: ${{ secrets.PARTICIPANT_URL_STAGING }}
-          NEXT_PUBLIC_BACKOFFICE_URL: ${{ secrets.BACKOFFICE_URL_STAGING }}
+          NEXT_PUBLIC_FIREBASE_API_KEY: ${{ needs.setup.outputs.firebase_api_key }}
+          NEXT_PUBLIC_FIREBASE_PROJECT_ID: ${{ needs.setup.outputs.project_id }}
+          NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: ${{ needs.setup.outputs.firebase_auth_domain }}
+          NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: ${{ needs.setup.outputs.firebase_storage_bucket }}
+          NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: ${{ needs.setup.outputs.firebase_messaging_sender_id }}
+          NEXT_PUBLIC_FIREBASE_APP_ID: ${{ needs.setup.outputs.firebase_app_id }}
+          NEXT_PUBLIC_API_URL: ${{ needs.setup.outputs.api_url }}
+          NEXT_PUBLIC_APP_URL: ${{ needs.setup.outputs.participant_url }}
+          NEXT_PUBLIC_BACKOFFICE_URL: ${{ needs.setup.outputs.backoffice_url }}
       - name: Deploy to Firebase Hosting
         uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: ${{ secrets.GITHUB_TOKEN }}
           firebaseServiceAccount: ${{ secrets.GCP_SA_KEY }}
-          projectId: ${{ secrets.FIREBASE_PROJECT_ID_STAGING }}
+          projectId: ${{ needs.setup.outputs.project_id }}
           channelId: live
 
+  # ─── Deploy Cloud Functions ───────────────────────────────────────────────
   deploy-functions:
     name: Deploy Cloud Functions (staging)
     runs-on: ubuntu-latest
+    needs: setup
     environment: staging
     steps:
       - uses: actions/checkout@v4
@@ -112,4 +216,4 @@ jobs:
       - name: Build functions
         run: npm run build --workspace=apps/functions
       - name: Deploy to Firebase
-        run: npx firebase-tools deploy --only functions --project ${{ secrets.FIREBASE_PROJECT_ID_STAGING }} --non-interactive
+        run: npx firebase-tools deploy --only functions --project ${{ needs.setup.outputs.project_id }} --non-interactive

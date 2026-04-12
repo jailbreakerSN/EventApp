@@ -10,6 +10,18 @@
         "backoffice": ["teranga-app-990a8"],
         "participant": ["teranga-participant"]
       }
+    },
+    "teranga-events-staging": {
+      "hosting": {
+        "backoffice": ["teranga-events-staging"],
+        "participant": ["teranga-participant-staging"]
+      }
+    },
+    "teranga-events-prod": {
+      "hosting": {
+        "backoffice": ["teranga-events-prod"],
+        "participant": ["teranga-participant-prod"]
+      }
     }
   },
   "etags": {}

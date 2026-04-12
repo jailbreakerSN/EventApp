@@ -27,7 +27,7 @@ import {
  */
 
 const RESEND_API_KEY = process.env.RESEND_API_KEY ?? "";
-const RESEND_FROM_EMAIL = process.env.RESEND_FROM_EMAIL ?? "noreply@teranga.sn";
+const RESEND_FROM_EMAIL = process.env.RESEND_FROM_EMAIL ?? "noreply@teranga.events";
 const RESEND_FROM_NAME = process.env.RESEND_FROM_NAME ?? "Teranga Events";
 const RESEND_API_URL = "https://api.resend.com";
 
