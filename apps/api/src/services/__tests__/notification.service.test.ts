@@ -127,19 +127,19 @@ describe("NotificationService.send", () => {
   it("creates an in-app notification and returns it", async () => {
     const result = await service.send({
       userId: "user-1",
-      type: "event_update",
+      type: "event_updated",
       title: "Mise à jour",
       body: "L'événement a été modifié",
     });
 
     expect(result.userId).toBe("user-1");
-    expect(result.type).toBe("event_update");
+    expect(result.type).toBe("event_updated");
     expect(result.isRead).toBe(false);
     expect(result.id).toBe("notif-1");
     expect(mockDocSet).toHaveBeenCalledWith(
       expect.objectContaining({
         userId: "user-1",
-        type: "event_update",
+        type: "event_updated",
         title: "Mise à jour",
         body: "L'événement a été modifié",
         isRead: false,

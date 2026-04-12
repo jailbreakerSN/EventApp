@@ -35,10 +35,13 @@ describe("AuditService.log", () => {
     const entry = {
       action: "event.created" as const,
       actorId: "user-123",
-      resourceType: "event" as const,
+      resourceType: "event",
       resourceId: "event-456",
+      organizationId: "org-1",
+      eventId: "event-456",
+      details: { title: "Test Event" } as Record<string, unknown>,
+      requestId: "req-1",
       timestamp: new Date().toISOString(),
-      metadata: { title: "Test Event" },
     };
 
     await auditService.log(entry);
@@ -56,8 +59,12 @@ describe("AuditService.log", () => {
     const entry = {
       action: "user.role_changed" as const,
       actorId: "admin-1",
-      resourceType: "user" as const,
+      resourceType: "user",
       resourceId: "user-2",
+      organizationId: null,
+      eventId: null,
+      details: {} as Record<string, unknown>,
+      requestId: "req-2",
       timestamp: new Date().toISOString(),
     };
 
@@ -75,8 +82,12 @@ describe("AuditService.log", () => {
     const entry = {
       action: "event.published" as const,
       actorId: "user-789",
-      resourceType: "event" as const,
+      resourceType: "event",
       resourceId: "event-000",
+      organizationId: "org-1",
+      eventId: "event-000",
+      details: {} as Record<string, unknown>,
+      requestId: "req-3",
       timestamp: new Date().toISOString(),
     };
 
@@ -98,8 +109,12 @@ describe("AuditService.log", () => {
     const entry = {
       action: "organization.verified" as const,
       actorId: "admin-1",
-      resourceType: "organization" as const,
+      resourceType: "organization",
       resourceId: "org-1",
+      organizationId: "org-1",
+      eventId: null,
+      details: {} as Record<string, unknown>,
+      requestId: "req-4",
       timestamp: new Date().toISOString(),
     };
 
