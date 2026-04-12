@@ -441,11 +441,30 @@ This project follows a **trunk-based development** model with short-lived featur
 4. **Commit early, commit often** — small, atomic commits with conventional commit messages
 5. **Conventional Commits** format: `type(scope): description`
    - Types: `feat`, `fix`, `refactor`, `test`, `chore`, `docs`, `ci`, `perf`
-   - Scope: the affected area — `api`, `web`, `mobile`, `shared-types`, `functions`, `infra`
+   - Scope: the affected area — `api`, `web`, `mobile`, `shared-types`, `functions`, `infra`, `platform` (cross-cutting)
    - Examples: `feat(api): add badge PDF generation endpoint`, `fix(shared-types): correct registration status enum`
-6. **Never force-push to `main`** — rebase or merge, never rewrite shared history
-7. **Delete branches after merge** — keep the branch list clean
-8. **Tag releases** with semver: `v0.1.0` (Wave 1), `v0.2.0` (Wave 2), etc.
+6. **Commit message quality rules** (MANDATORY on every commit):
+   - **First line**: `type(scope): concise imperative summary` (max 72 chars)
+   - **Body** (after blank line): Explain **what** changed and **why** — not just "what files were touched"
+   - **Group related changes**: When a commit spans multiple phases/areas, use bullet points or paragraphs to describe each logical change
+   - **Include test status**: End the body with "All N tests pass." when tests were run
+   - **No vague messages**: Never use "update files", "fix stuff", "WIP", or "misc changes"
+   - **Reference context**: Mention phase numbers, ticket IDs, or audit findings when applicable
+   - Example:
+
+     ```
+     feat(api): add event clone endpoint with plan limit enforcement
+
+     Add POST /v1/events/:eventId/clone that duplicates an event with
+     new dates. Enforces plan limits (maxEvents) via BaseService.checkPlanLimit().
+     Emits event.cloned domain event for audit trail.
+
+     All 520 tests pass.
+     ```
+
+7. **Never force-push to `main`** — rebase or merge, never rewrite shared history
+8. **Delete branches after merge** — keep the branch list clean
+9. **Tag releases** with semver: `v0.1.0` (Wave 1), `v0.2.0` (Wave 2), etc.
 
 ### Wave Development Flow
 
