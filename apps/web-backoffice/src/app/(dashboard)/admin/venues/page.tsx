@@ -8,6 +8,7 @@ import {
   Select,
   Input,
   Badge,
+  getStatusVariant,
   Button,
   Skeleton,
   Breadcrumb,
@@ -17,15 +18,13 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@teranga/shared-ui";
+import { MapPin, Search, ShieldCheck, Ban, CheckCircle, CalendarDays } from "lucide-react";
 import {
-  MapPin,
-  Search,
-  ShieldCheck,
-  Ban,
-  CheckCircle,
-  CalendarDays,
-} from "lucide-react";
-import { useVenues, useApproveVenue, useSuspendVenue, useReactivateVenue } from "@/hooks/use-venues";
+  useVenues,
+  useApproveVenue,
+  useSuspendVenue,
+  useReactivateVenue,
+} from "@/hooks/use-venues";
 import type { Venue, VenueType, VenueStatus } from "@teranga/shared-types";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
@@ -60,13 +59,6 @@ const TYPE_LABELS: Record<string, string> = {
   university: "Universite",
   sports: "Sport",
   other: "Autre",
-};
-
-const STATUS_BADGE_STYLES: Record<string, string> = {
-  pending: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
-  approved: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300",
-  suspended: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300",
-  archived: "bg-gray-100 text-gray-700 dark:bg-gray-800/50 dark:text-gray-300",
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -226,7 +218,9 @@ export default function AdminVenuesPage() {
                     <CalendarDays className="inline h-4 w-4" aria-label="Nombre d'evenements" />
                   </th>
                   <th className="px-4 py-3 text-left font-medium text-muted-foreground">Contact</th>
-                  <th className="px-4 py-3 text-right font-medium text-muted-foreground">Actions</th>
+                  <th className="px-4 py-3 text-right font-medium text-muted-foreground">
+                    Actions
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -237,12 +231,24 @@ export default function AdminVenuesPage() {
                         <Skeleton className="h-4 w-40 mb-1" />
                         <Skeleton className="h-3 w-24" />
                       </td>
-                      <td className="px-4 py-3"><Skeleton className="h-5 w-20" /></td>
-                      <td className="px-4 py-3"><Skeleton className="h-4 w-24" /></td>
-                      <td className="px-4 py-3"><Skeleton className="h-5 w-20" /></td>
-                      <td className="px-4 py-3 text-center"><Skeleton className="mx-auto h-4 w-8" /></td>
-                      <td className="px-4 py-3"><Skeleton className="h-4 w-32" /></td>
-                      <td className="px-4 py-3"><Skeleton className="h-8 w-28 ml-auto" /></td>
+                      <td className="px-4 py-3">
+                        <Skeleton className="h-5 w-20" />
+                      </td>
+                      <td className="px-4 py-3">
+                        <Skeleton className="h-4 w-24" />
+                      </td>
+                      <td className="px-4 py-3">
+                        <Skeleton className="h-5 w-20" />
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <Skeleton className="mx-auto h-4 w-8" />
+                      </td>
+                      <td className="px-4 py-3">
+                        <Skeleton className="h-4 w-32" />
+                      </td>
+                      <td className="px-4 py-3">
+                        <Skeleton className="h-8 w-28 ml-auto" />
+                      </td>
                     </tr>
                   ))}
 
@@ -283,7 +289,7 @@ export default function AdminVenuesPage() {
 
                       {/* Status */}
                       <td className="px-4 py-3">
-                        <Badge className={STATUS_BADGE_STYLES[venue.status] ?? STATUS_BADGE_STYLES.pending}>
+                        <Badge variant={getStatusVariant(venue.status)}>
                           {STATUS_LABELS[venue.status] ?? venue.status}
                         </Badge>
                       </td>

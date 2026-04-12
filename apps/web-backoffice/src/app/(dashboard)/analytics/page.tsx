@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useOrgAnalytics } from "@/hooks/use-organization";
+import { EmptyState } from "@teranga/shared-ui";
 import { BarChart3, TrendingUp, Users, Ticket, CalendarCheck, Loader2 } from "lucide-react";
 import {
   AreaChart,
@@ -71,9 +72,12 @@ export default function AnalyticsPage() {
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </div>
       ) : !analytics ? (
-        <div className="bg-card rounded-xl border border-border p-8 text-center text-muted-foreground">
-          <BarChart3 className="h-10 w-10 mx-auto mb-3 text-muted-foreground/50" />
-          <p>Aucune donnée analytique disponible.</p>
+        <div className="bg-card rounded-xl border border-border p-8">
+          <EmptyState
+            icon={BarChart3}
+            title="Aucune donnée analytique"
+            description="Aucune donnée analytique disponible."
+          />
         </div>
       ) : (
         <>
@@ -140,9 +144,10 @@ export default function AnalyticsPage() {
                     </AreaChart>
                   </ResponsiveContainer>
                 ) : (
-                  <p className="text-sm text-muted-foreground py-10 text-center">
-                    Aucune inscription sur cette période
-                  </p>
+                  <EmptyState
+                    title="Aucune inscription"
+                    description="Aucune inscription sur cette période"
+                  />
                 )}
               </div>
 
@@ -178,9 +183,10 @@ export default function AnalyticsPage() {
                     </AreaChart>
                   </ResponsiveContainer>
                 ) : (
-                  <p className="text-sm text-muted-foreground py-10 text-center">
-                    Aucun check-in sur cette période
-                  </p>
+                  <EmptyState
+                    title="Aucun check-in"
+                    description="Aucun check-in sur cette période"
+                  />
                 )}
               </div>
             </div>
@@ -211,7 +217,10 @@ export default function AnalyticsPage() {
                     </PieChart>
                   </ResponsiveContainer>
                 ) : (
-                  <p className="text-sm text-muted-foreground py-10 text-center">Aucune donnée</p>
+                  <EmptyState
+                    title="Aucune donnée"
+                    description="Aucune donnée de catégorie disponible"
+                  />
                 )}
               </div>
 
@@ -240,7 +249,10 @@ export default function AnalyticsPage() {
                     </BarChart>
                   </ResponsiveContainer>
                 ) : (
-                  <p className="text-sm text-muted-foreground py-10 text-center">Aucune donnée</p>
+                  <EmptyState
+                    title="Aucune donnée"
+                    description="Aucune donnée de billets disponible"
+                  />
                 )}
               </div>
             </div>
