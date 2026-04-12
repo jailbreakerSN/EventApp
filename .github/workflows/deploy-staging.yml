@@ -46,6 +46,22 @@ jobs:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
       - uses: google-github-actions/setup-gcloud@v2
 
+      - name: Enable required GCP APIs
+        run: |
+          set -euo pipefail
+          # Idempotent: only enables APIs that aren't already enabled.
+          # Requires 'Service Usage Admin' role on the service account.
+          gcloud services enable \
+            run.googleapis.com \
+            cloudbuild.googleapis.com \
+            cloudfunctions.googleapis.com \
+            artifactregistry.googleapis.com \
+            containerregistry.googleapis.com \
+            firebase.googleapis.com \
+            firebasehosting.googleapis.com \
+            iamcredentials.googleapis.com \
+            --quiet
+
       - name: Discover config from SA key and Firebase API
         id: discover
         env:

@@ -10,6 +10,9 @@ LABEL org.opencontainers.image.source="https://github.com/jailbreakersn/eventapp
 LABEL org.opencontainers.image.created="${BUILD_DATE}"
 LABEL org.opencontainers.image.revision="${GIT_SHA}"
 
+# Skip husky install (git hooks are only for local dev, not containers)
+ENV HUSKY=0
+
 WORKDIR /app
 
 # Copy workspace root manifests
@@ -32,6 +35,7 @@ FROM node:20-alpine AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
+ENV HUSKY=0
 
 # Only production dependencies
 COPY package.json package-lock.json turbo.json ./
