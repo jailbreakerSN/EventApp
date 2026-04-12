@@ -462,9 +462,14 @@ This project follows a **trunk-based development** model with short-lived featur
      All 520 tests pass.
      ```
 
-7. **Never force-push to `main`** — rebase or merge, never rewrite shared history
-8. **Delete branches after merge** — keep the branch list clean
-9. **Tag releases** with semver: `v0.1.0` (Wave 1), `v0.2.0` (Wave 2), etc.
+7. **Update PR description on every push** (MANDATORY):
+   - After every `git push`, if a pull request already exists for the current branch, **update its title and body** to reflect the full cumulative scope of all commits on the branch
+   - The PR body must include: a `## Summary` section with grouped bullet points covering all changes, and a `## Test plan` checklist
+   - Use the GitHub MCP tool `mcp__github__update_pull_request` to update the PR
+   - Never leave a stale PR description — it must always match the latest state of the branch
+8. **Never force-push to `main`** — rebase or merge, never rewrite shared history
+9. **Delete branches after merge** — keep the branch list clean
+10. **Tag releases** with semver: `v0.1.0` (Wave 1), `v0.2.0` (Wave 2), etc.
 
 ### Wave Development Flow
 
