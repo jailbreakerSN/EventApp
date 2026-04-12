@@ -126,12 +126,18 @@ jobs:
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
       - uses: google-github-actions/setup-gcloud@v2
+      - name: Configure Docker for gcr.io
+        run: gcloud auth configure-docker gcr.io --quiet
       - name: Build and push Docker image
         run: |
-          gcloud builds submit \
-            --tag gcr.io/${{ needs.setup.outputs.project_id }}/teranga-api:${{ github.sha }} \
-            --build-arg BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ") \
-            --build-arg GIT_SHA=${{ github.sha }}
+          IMAGE="gcr.io/${{ needs.setup.outputs.project_id }}/teranga-api:${{ github.sha }}"
+          docker build \
+            -f apps/api/Dockerfile \
+            --build-arg BUILD_DATE="$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
+            --build-arg GIT_SHA="${{ github.sha }}" \
+            -t "$IMAGE" \
+            .
+          docker push "$IMAGE"
       - name: Deploy to Cloud Run
         run: |
           gcloud run deploy teranga-api-staging \
