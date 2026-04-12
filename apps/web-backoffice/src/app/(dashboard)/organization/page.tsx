@@ -28,6 +28,7 @@ import {
   Eye,
   Trash2,
 } from "lucide-react";
+import { Badge, getStatusVariant } from "@teranga/shared-ui";
 import type { OrgMemberRole } from "@teranga/shared-types";
 import { PLAN_DISPLAY } from "@teranga/shared-types";
 import { usePlanGating } from "@/hooks/use-plan-gating";
@@ -58,11 +59,11 @@ const ROLE_LABELS: Record<string, { label: string; icon: React.ReactNode; color:
   },
 };
 
-const INVITE_STATUS_LABELS: Record<string, { label: string; className: string }> = {
-  pending: { label: "En attente", className: "bg-yellow-100 text-yellow-700" },
-  accepted: { label: "Acceptée", className: "bg-green-100 text-green-700" },
-  declined: { label: "Refusée", className: "bg-red-100 text-red-700" },
-  expired: { label: "Expirée", className: "bg-accent text-muted-foreground" },
+const INVITE_STATUS_LABELS: Record<string, string> = {
+  pending: "En attente",
+  accepted: "Acceptée",
+  declined: "Refusée",
+  expired: "Expirée",
 };
 
 export default function OrganizationPage() {
@@ -417,17 +418,14 @@ export default function OrganizationPage() {
 
           <div className="divide-y divide-border">
             {invites.map((invite) => {
-              const status = INVITE_STATUS_LABELS[invite.status] ?? INVITE_STATUS_LABELS.pending;
               return (
                 <div key={invite.id} className="flex items-center justify-between py-3">
                   <div>
                     <p className="text-sm font-medium text-foreground">{invite.email}</p>
                     <div className="flex items-center gap-2 mt-0.5">
-                      <span
-                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs ${status.className}`}
-                      >
-                        {status.label}
-                      </span>
+                      <Badge variant={getStatusVariant(invite.status)}>
+                        {INVITE_STATUS_LABELS[invite.status] ?? invite.status}
+                      </Badge>
                       <span className="text-xs text-muted-foreground">
                         {ROLE_LABELS[invite.role]?.label ?? invite.role}
                       </span>

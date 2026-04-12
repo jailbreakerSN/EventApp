@@ -31,6 +31,9 @@ const envSchema = z.object({
 
   QR_SECRET: z.string().min(32, "QR_SECRET must be at least 32 characters"),
   WEBHOOK_SECRET: z.string().min(16).default("dev-webhook-secret-change-in-prod"),
+
+  // ─── Observability (optional) ──────────────────────────────────────────────
+  SENTRY_DSN: z.string().url().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);

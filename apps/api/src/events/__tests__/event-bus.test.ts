@@ -60,7 +60,7 @@ describe("EventBus", () => {
     eventBus.on("registration.created", failing);
     eventBus.on("registration.created", succeeding);
 
-    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const spy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
 
     eventBus.emit("registration.created", makePayload());
     await flushImmediate();
@@ -79,7 +79,7 @@ describe("EventBus", () => {
     eventBus.on("registration.created", failing);
     eventBus.on("registration.created", succeeding);
 
-    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const spy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
 
     eventBus.emit("registration.created", makePayload());
     await flushImmediate();

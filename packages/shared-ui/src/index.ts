@@ -42,9 +42,11 @@ export {
 } from "./components/alert";
 export { cn, formatDate, formatDateTime, formatCurrency } from "./lib/utils";
 export { getErrorMessage } from "./lib/error-messages";
+export { getStatusVariant } from "./lib/status-variants";
 export { ThemeToggle } from "./components/theme-toggle";
 export { LogoLoader } from "./components/logo-loader";
 export { EmptyState, type EmptyStateProps } from "./components/empty-state";
+export { QueryError, type QueryErrorProps } from "./components/query-error";
 export { OfflineBanner } from "./components/offline-banner";
 export { Avatar, avatarVariants, type AvatarProps } from "./components/avatar";
 export { Tooltip, type TooltipProps } from "./components/tooltip";

@@ -6,6 +6,8 @@ import { toast } from "sonner";
 import {
   ConfirmDialog,
   getErrorMessage,
+  getStatusVariant,
+  Badge,
   Skeleton,
   Breadcrumb,
   BreadcrumbList,
@@ -17,6 +19,7 @@ import {
   Select,
   Textarea,
   Button,
+  QueryError,
 } from "@teranga/shared-ui";
 import { PlanGate } from "@/components/plan/PlanGate";
 import {
@@ -107,22 +110,22 @@ const TABS = [
 ] as const;
 type Tab = (typeof TABS)[number];
 
-const STATUS_LABELS: Record<string, { label: string; className: string }> = {
-  draft: { label: "Brouillon", className: "bg-muted text-muted-foreground" },
-  published: { label: "Publié", className: "bg-green-100 text-green-700" },
-  cancelled: { label: "Annulé", className: "bg-red-100 text-red-700" },
-  archived: { label: "Archivé", className: "bg-yellow-100 text-yellow-700" },
-  completed: { label: "Terminé", className: "bg-blue-100 text-blue-700" },
+const STATUS_LABELS: Record<string, string> = {
+  draft: "Brouillon",
+  published: "Publié",
+  cancelled: "Annulé",
+  archived: "Archivé",
+  completed: "Terminé",
 };
 
-const REG_STATUS: Record<string, { label: string; className: string }> = {
-  confirmed: { label: "Confirmé", className: "bg-green-100 text-green-700" },
-  pending: { label: "En attente", className: "bg-yellow-100 text-yellow-700" },
-  pending_payment: { label: "Paiement en attente", className: "bg-amber-100 text-amber-700" },
-  waitlisted: { label: "Liste d'attente", className: "bg-blue-100 text-blue-700" },
-  cancelled: { label: "Annulé", className: "bg-red-100 text-red-700" },
-  payment_failed: { label: "Paiement échoué", className: "bg-red-100 text-red-600" },
-  checked_in: { label: "Entré", className: "bg-purple-100 text-purple-700" },
+const REG_STATUS: Record<string, string> = {
+  confirmed: "Confirmé",
+  pending: "En attente",
+  pending_payment: "Paiement en attente",
+  waitlisted: "Liste d'attente",
+  cancelled: "Annulé",
+  payment_failed: "Paiement échoué",
+  checked_in: "Entré",
 };
 
 export default function EventDetailPage() {
@@ -138,7 +141,7 @@ export default function EventDetailPage() {
     [router, eventId],
   );
 
-  const { data, isLoading, isError } = useEvent(eventId);
+  const { data, isLoading, isError, refetch } = useEvent(eventId);
   const event = data?.data;
 
   if (isLoading) {
@@ -167,15 +170,7 @@ export default function EventDetailPage() {
 
   if (isError || !event) {
     return (
-      <div className="text-center py-20">
-        <p className="text-red-500 mb-4">Événement introuvable ou erreur de chargement.</p>
-        <button
-          onClick={() => router.push("/events")}
-          className="text-sm text-primary hover:underline"
-        >
-          Retour aux événements
-        </button>
-      </div>
+      <QueryError message="Événement introuvable ou erreur de chargement." onRetry={refetch} />
     );
   }
 
@@ -270,14 +265,7 @@ export default function EventDetailPage() {
 }
 
 function StatusBadge({ status }: { status: string }) {
-  const s = STATUS_LABELS[status] ?? STATUS_LABELS.draft;
-  return (
-    <span
-      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${s.className}`}
-    >
-      {s.label}
-    </span>
-  );
+  return <Badge variant={getStatusVariant(status)}>{STATUS_LABELS[status] ?? status}</Badge>;
 }
 
 function EventActions({ event }: { event: Event }) {
@@ -1345,7 +1333,6 @@ function RegistrationsTab({ eventId }: { eventId: string }) {
               </thead>
               <tbody>
                 {registrations.map((reg) => {
-                  const status = REG_STATUS[reg.status] ?? REG_STATUS.pending;
                   return (
                     <tr key={reg.id} className="border-b border-border/50 hover:bg-muted/50">
                       <td className="px-6 py-3 text-muted-foreground font-mono text-xs">
@@ -1371,11 +1358,9 @@ function RegistrationsTab({ eventId }: { eventId: string }) {
                         {reg.ticketTypeName ?? reg.ticketTypeId.slice(0, 8)}
                       </td>
                       <td className="px-6 py-3">
-                        <span
-                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${status.className}`}
-                        >
-                          {status.label}
-                        </span>
+                        <Badge variant={getStatusVariant(reg.status)}>
+                          {REG_STATUS[reg.status] ?? reg.status}
+                        </Badge>
                       </td>
                       <td className="px-6 py-3 text-muted-foreground text-xs">
                         {formatDate(reg.createdAt)}
