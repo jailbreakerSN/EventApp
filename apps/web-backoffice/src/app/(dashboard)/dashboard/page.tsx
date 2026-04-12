@@ -4,12 +4,12 @@ import Link from "next/link";
 import { useEvents } from "@/hooks/use-events";
 import { formatDate } from "@/lib/utils";
 import { Calendar, Users, Ticket, TrendingUp, ArrowRight, Banknote } from "lucide-react";
-import { Skeleton } from "@teranga/shared-ui";
+import { Skeleton, Badge, getStatusVariant } from "@teranga/shared-ui";
 
-const STATUS_LABELS: Record<string, { label: string; className: string }> = {
-  draft: { label: "Brouillon", className: "bg-muted text-muted-foreground" },
-  published: { label: "Publié", className: "bg-green-100 text-green-700" },
-  cancelled: { label: "Annulé", className: "bg-red-100 text-red-700" },
+const STATUS_LABELS: Record<string, string> = {
+  draft: "Brouillon",
+  published: "Publié",
+  cancelled: "Annulé",
 };
 
 export default function DashboardPage() {
@@ -22,7 +22,11 @@ export default function DashboardPage() {
   const totalCheckedIn = events.reduce((sum, e) => sum + (e.checkedInCount ?? 0), 0);
 
   const formatXOF = (amount: number) =>
-    new Intl.NumberFormat("fr-SN", { style: "currency", currency: "XOF", minimumFractionDigits: 0 }).format(amount);
+    new Intl.NumberFormat("fr-SN", {
+      style: "currency",
+      currency: "XOF",
+      minimumFractionDigits: 0,
+    }).format(amount);
 
   return (
     <div>
@@ -76,7 +80,10 @@ export default function DashboardPage() {
       <div className="bg-card rounded-xl border border-border">
         <div className="flex items-center justify-between px-6 py-4 border-b border-border">
           <h2 className="text-sm font-semibold text-foreground">Événements récents</h2>
-          <Link href="/events" className="text-sm text-primary hover:underline inline-flex items-center gap-1">
+          <Link
+            href="/events"
+            className="text-sm text-primary hover:underline inline-flex items-center gap-1"
+          >
             Tout voir <ArrowRight className="h-3.5 w-3.5" />
           </Link>
         </div>
@@ -86,27 +93,44 @@ export default function DashboardPage() {
             <tbody>
               {Array.from({ length: 5 }).map((_, i) => (
                 <tr key={i} className="border-b border-border last:border-0">
-                  <td className="px-6 py-3.5"><Skeleton variant="text" className="h-4 w-36" /></td>
-                  <td className="px-6 py-3.5"><Skeleton variant="text" className="h-4 w-20" /></td>
-                  <td className="px-6 py-3.5"><Skeleton variant="text" className="h-5 w-16 rounded-full" /></td>
-                  <td className="px-6 py-3.5 text-right"><Skeleton variant="text" className="h-4 w-16 ml-auto" /></td>
+                  <td className="px-6 py-3.5">
+                    <Skeleton variant="text" className="h-4 w-36" />
+                  </td>
+                  <td className="px-6 py-3.5">
+                    <Skeleton variant="text" className="h-4 w-20" />
+                  </td>
+                  <td className="px-6 py-3.5">
+                    <Skeleton variant="text" className="h-5 w-16 rounded-full" />
+                  </td>
+                  <td className="px-6 py-3.5 text-right">
+                    <Skeleton variant="text" className="h-4 w-16 ml-auto" />
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         ) : events.length === 0 ? (
           <div className="p-8 text-center text-muted-foreground">
-            Aucun événement. <Link href="/events/new" className="text-primary hover:underline">Créer votre premier</Link>
+            Aucun événement.{" "}
+            <Link href="/events/new" className="text-primary hover:underline">
+              Créer votre premier
+            </Link>
           </div>
         ) : (
           <table className="w-full text-sm">
             <tbody>
               {events.map((event) => {
-                const status = STATUS_LABELS[event.status] ?? STATUS_LABELS.draft;
+                const statusLabel = STATUS_LABELS[event.status] ?? STATUS_LABELS.draft;
                 return (
-                  <tr key={event.id} className="border-b border-border last:border-0 hover:bg-accent transition-colors">
+                  <tr
+                    key={event.id}
+                    className="border-b border-border last:border-0 hover:bg-accent transition-colors"
+                  >
                     <td className="px-6 py-3.5">
-                      <Link href={`/events/${event.id}`} className="font-medium text-foreground hover:text-primary">
+                      <Link
+                        href={`/events/${event.id}`}
+                        className="font-medium text-foreground hover:text-primary"
+                      >
                         {event.title}
                       </Link>
                     </td>
@@ -114,9 +138,7 @@ export default function DashboardPage() {
                       {formatDate(event.startDate)}
                     </td>
                     <td className="px-6 py-3.5">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${status.className}`}>
-                        {status.label}
-                      </span>
+                      <Badge variant={getStatusVariant(event.status)}>{statusLabel}</Badge>
                     </td>
                     <td className="px-6 py-3.5 text-right text-muted-foreground">
                       {event.registeredCount ?? 0} inscrits
@@ -177,9 +199,7 @@ function StatCard({
               </span>
             )}
           </div>
-          {subtitle && (
-            <p className="text-xs text-muted-foreground mt-1">{subtitle}</p>
-          )}
+          {subtitle && <p className="text-xs text-muted-foreground mt-1">{subtitle}</p>}
         </>
       )}
     </div>

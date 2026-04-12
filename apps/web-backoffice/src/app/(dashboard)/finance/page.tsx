@@ -4,12 +4,15 @@ import { useState } from "react";
 import { ArrowDownRight, TrendingUp, Clock } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useOrgPayouts } from "@/hooks/use-payouts";
-import { Button, Card, CardContent, Spinner, Badge } from "@teranga/shared-ui";
+import { Button, Card, CardContent, Spinner, Badge, EmptyState } from "@teranga/shared-ui";
 
 const formatCurrency = (amount: number) =>
   new Intl.NumberFormat("fr-SN", { style: "currency", currency: "XOF" }).format(amount);
 
-const PAYOUT_STATUS: Record<string, { label: string; variant: "default" | "success" | "warning" | "destructive" }> = {
+const PAYOUT_STATUS: Record<
+  string,
+  { label: string; variant: "default" | "success" | "warning" | "destructive" }
+> = {
   pending: { label: "En attente", variant: "warning" },
   processing: { label: "En cours", variant: "default" },
   completed: { label: "Effectue", variant: "success" },
@@ -85,9 +88,11 @@ export default function FinancePage() {
           <h2 className="mb-4 text-lg font-semibold">Historique des versements</h2>
 
           {isLoading ? (
-            <div className="flex justify-center py-8"><Spinner /></div>
+            <div className="flex justify-center py-8">
+              <Spinner />
+            </div>
           ) : payouts.length === 0 ? (
-            <p className="py-8 text-center text-muted-foreground">Aucun versement pour le moment</p>
+            <EmptyState title="Aucun versement" description="Aucun versement pour le moment" />
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -107,10 +112,13 @@ export default function FinancePage() {
                     return (
                       <tr key={payout.id} className="border-b last:border-0">
                         <td className="py-3">
-                          {new Date(payout.periodFrom).toLocaleDateString("fr-FR")} — {new Date(payout.periodTo).toLocaleDateString("fr-FR")}
+                          {new Date(payout.periodFrom).toLocaleDateString("fr-FR")} —{" "}
+                          {new Date(payout.periodTo).toLocaleDateString("fr-FR")}
                         </td>
                         <td className="py-3">{formatCurrency(payout.totalAmount)}</td>
-                        <td className="py-3 text-muted-foreground">{formatCurrency(payout.platformFee)}</td>
+                        <td className="py-3 text-muted-foreground">
+                          {formatCurrency(payout.platformFee)}
+                        </td>
                         <td className="py-3 font-medium">{formatCurrency(payout.netAmount)}</td>
                         <td className="py-3">
                           <Badge variant={status.variant}>{status.label}</Badge>
@@ -128,13 +136,23 @@ export default function FinancePage() {
 
           {meta && meta.totalPages > 1 && (
             <div className="mt-4 flex justify-between">
-              <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={page <= 1}
+                onClick={() => setPage(page - 1)}
+              >
                 Precedent
               </Button>
               <span className="text-sm text-muted-foreground">
                 Page {page} / {meta.totalPages}
               </span>
-              <Button variant="outline" size="sm" disabled={page >= meta.totalPages} onClick={() => setPage(page + 1)}>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={page >= meta.totalPages}
+                onClick={() => setPage(page + 1)}
+              >
                 Suivant
               </Button>
             </div>
