@@ -1,9 +1,21 @@
-// TODO: Add eslint-plugin-jsx-a11y for accessibility linting of JSX elements.
-// Install: npm install -D eslint-plugin-jsx-a11y
-// Then add jsxA11y.flatConfigs.recommended to the config array below.
-// See: https://github.com/jsx-eslint/eslint-plugin-jsx-a11y
 import js from "@eslint/js";
+import jsxA11y from "eslint-plugin-jsx-a11y";
 import tseslint from "typescript-eslint";
+
+// Downgrade all jsx-a11y recommended rules from "error" to "warn" so
+// existing code is not broken while we progressively fix violations.
+const a11yRecommendedRules = Object.fromEntries(
+  Object.entries(jsxA11y.flatConfigs.recommended.rules).map(([rule, value]) => {
+    if (value === "off" || (Array.isArray(value) && value[0] === "off")) {
+      return [rule, value]; // keep "off" rules as-is
+    }
+    // Downgrade to "warn", preserving options if present
+    if (Array.isArray(value)) {
+      return [rule, ["warn", ...value.slice(1)]];
+    }
+    return [rule, "warn"];
+  }),
+);
 
 export default tseslint.config(
   js.configs.recommended,
@@ -31,6 +43,14 @@ export default tseslint.config(
         { prefer: "type-imports", fixStyle: "inline-type-imports" },
       ],
       "no-console": ["warn", { allow: ["warn", "error"] }],
+    },
+  },
+  // jsx-a11y: accessibility linting for JSX elements (tsx files only)
+  {
+    files: ["**/*.tsx"],
+    plugins: { "jsx-a11y": jsxA11y },
+    rules: {
+      ...a11yRecommendedRules,
     },
   },
 );
