@@ -201,6 +201,46 @@ export async function buildApp() {
       });
     }
 
+    // ── Firestore FAILED_PRECONDITION (missing composite index) ────────
+    // Surface a specific error code + console hint so developers don't have
+    // to spelunk the stack trace to find the Firestore link. gRPC code 9 =
+    // FAILED_PRECONDITION. The index URL is embedded in the error message.
+    const maybeGrpcCode = (error as unknown as { code?: unknown }).code;
+    if (
+      maybeGrpcCode === 9 &&
+      typeof error.message === "string" &&
+      error.message.includes("query requires an index")
+    ) {
+      const urlMatch = error.message.match(/https:\/\/console\.firebase\.google\.com[^\s"]+/);
+      const consoleUrl = urlMatch?.[0];
+      request.log.error(
+        {
+          err: error,
+          method: request.method,
+          url: request.url,
+          firestoreIndexUrl: consoleUrl,
+          hint: "Declare this composite index in infrastructure/firebase/firestore.indexes.json and redeploy.",
+        },
+        "Firestore query missing composite index (FAILED_PRECONDITION)",
+      );
+      captureError(error, {
+        requestId: request.id,
+        method: request.method,
+        url: request.url,
+        firestoreIndexUrl: consoleUrl,
+      });
+      return reply.status(500).send({
+        success: false,
+        error: {
+          code: "FIRESTORE_INDEX_MISSING",
+          message:
+            config.NODE_ENV === "production"
+              ? "Une erreur interne s'est produite."
+              : `A Firestore composite index is missing. Declare it in firestore.indexes.json${consoleUrl ? ` — quick-create: ${consoleUrl}` : ""}.`,
+        },
+      });
+    }
+
     // ── Unexpected errors ──────────────────────────────────────────────
     request.log.error({ err: error, method: request.method, url: request.url }, error.message);
     captureError(error, {
