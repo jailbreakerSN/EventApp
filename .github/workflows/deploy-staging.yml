@@ -30,6 +30,7 @@ jobs:
     environment: staging
     outputs:
       project_id: ${{ steps.discover.outputs.project_id }}
+      project_number: ${{ steps.discover.outputs.project_number }}
       firebase_api_key: ${{ steps.discover.outputs.firebase_api_key }}
       firebase_auth_domain: ${{ steps.discover.outputs.firebase_auth_domain }}
       firebase_storage_bucket: ${{ steps.discover.outputs.firebase_storage_bucket }}
@@ -146,34 +147,29 @@ jobs:
             echo "firebase_measurement_id=$(echo "$CONFIG" | jq -r '.measurementId // empty')" >> $GITHUB_OUTPUT
           fi
 
-          # ── 4. Derive URLs ──
-          # Web app URLs come from Firebase App Hosting (managed via console).
-          # These are read from GitHub Actions variables if set.
-          BACKOFFICE_URL="${{ vars.BACKOFFICE_URL_STAGING || '' }}"
-          PARTICIPANT_URL="${{ vars.PARTICIPANT_URL_STAGING || '' }}"
+          # ── 4. Compute deterministic Cloud Run URLs ──
+          # All Cloud Run services in a given region follow the URL pattern:
+          #   https://{SERVICE_NAME}-{PROJECT_NUMBER}.{REGION}.run.app
+          # This lets us know URLs BEFORE services are deployed, enabling correct
+          # CORS config on first deploy without a chicken-and-egg problem.
+          PROJECT_NUMBER=$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')
+          REGION=europe-west1
 
-          # Cloud Run URL: try to detect from existing service, fall back to variable
-          API_URL=$(gcloud run services describe teranga-api-staging \
-            --region europe-west1 \
-            --format='value(status.url)' 2>/dev/null || echo "")
+          API_URL="https://teranga-api-staging-${PROJECT_NUMBER}.${REGION}.run.app"
+          BACKOFFICE_URL="https://teranga-backoffice-staging-${PROJECT_NUMBER}.${REGION}.run.app"
+          PARTICIPANT_URL="https://teranga-participant-staging-${PROJECT_NUMBER}.${REGION}.run.app"
+          CORS_ORIGINS="${API_URL},${BACKOFFICE_URL},${PARTICIPANT_URL}"
 
-          if [ -z "$API_URL" ] && [ -n "${{ vars.API_URL_STAGING || '' }}" ]; then
-            API_URL="${{ vars.API_URL_STAGING }}"
-          fi
-
-          # Build CORS origins list from whatever URLs are available
-          CORS_LIST="$API_URL"
-          [ -n "$BACKOFFICE_URL" ] && CORS_LIST="$CORS_LIST,$BACKOFFICE_URL"
-          [ -n "$PARTICIPANT_URL" ] && CORS_LIST="$CORS_LIST,$PARTICIPANT_URL"
-
+          echo "project_number=$PROJECT_NUMBER" >> $GITHUB_OUTPUT
           echo "api_url=$API_URL" >> $GITHUB_OUTPUT
           echo "backoffice_url=$BACKOFFICE_URL" >> $GITHUB_OUTPUT
           echo "participant_url=$PARTICIPANT_URL" >> $GITHUB_OUTPUT
-          echo "cors_origins=$CORS_LIST" >> $GITHUB_OUTPUT
+          echo "cors_origins=$CORS_ORIGINS" >> $GITHUB_OUTPUT
 
-          echo "::notice::API URL: $API_URL"
-          echo "::notice::Backoffice URL: ${BACKOFFICE_URL:-(not set)}"
-          echo "::notice::Participant URL: ${PARTICIPANT_URL:-(not set)}"
+          echo "::notice::Project Number: $PROJECT_NUMBER"
+          echo "::notice::API URL:         $API_URL"
+          echo "::notice::Backoffice URL:  $BACKOFFICE_URL"
+          echo "::notice::Participant URL: $PARTICIPANT_URL"
 
   # ─── Deploy API to Cloud Run ──────────────────────────────────────────────
   deploy-api:
@@ -223,14 +219,92 @@ jobs:
             --allow-unauthenticated \
             --set-env-vars "^@^NODE_ENV=staging@FIREBASE_PROJECT_ID=${{ needs.setup.outputs.project_id }}@FIREBASE_STORAGE_BUCKET=${{ needs.setup.outputs.firebase_storage_bucket }}@QR_SECRET=${{ secrets.QR_SECRET }}@WEBHOOK_SECRET=${{ secrets.WEBHOOK_SECRET }}@RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}@CORS_ORIGINS=${{ needs.setup.outputs.cors_origins }}@RATE_LIMIT_MAX=100@RATE_LIMIT_WINDOW_MS=60000@LOG_LEVEL=info"
 
-  # ─── Deploy Web Apps ──────────────────────────────────────────────────────
-  # Web apps (web-backoffice, web-participant) are deployed via Firebase
-  # App Hosting, which has its own git-based CI/CD triggered automatically
-  # when this branch receives commits. Configuration lives in:
-  #   apps/web-backoffice/apphosting.yaml
-  #   apps/web-participant/apphosting.yaml
-  # Backend setup is a one-time operation via Firebase Console:
-  #   https://console.firebase.google.com/project/teranga-app-990a8/apphosting
+  # ─── Deploy Web Backoffice to Cloud Run ───────────────────────────────────
+  deploy-web-backoffice:
+    name: Deploy Web Backoffice to Cloud Run (staging)
+    runs-on: ubuntu-latest
+    needs: setup
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker europe-west1-docker.pkg.dev --quiet
+      - name: Build and push Docker image
+        run: |
+          IMAGE="europe-west1-docker.pkg.dev/${{ needs.setup.outputs.project_id }}/teranga/teranga-backoffice:${{ github.sha }}"
+          docker build \
+            -f apps/web-backoffice/Dockerfile \
+            --build-arg NEXT_PUBLIC_FIREBASE_API_KEY="${{ needs.setup.outputs.firebase_api_key }}" \
+            --build-arg NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN="${{ needs.setup.outputs.firebase_auth_domain }}" \
+            --build-arg NEXT_PUBLIC_FIREBASE_PROJECT_ID="${{ needs.setup.outputs.project_id }}" \
+            --build-arg NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET="${{ needs.setup.outputs.firebase_storage_bucket }}" \
+            --build-arg NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID="${{ needs.setup.outputs.firebase_messaging_sender_id }}" \
+            --build-arg NEXT_PUBLIC_FIREBASE_APP_ID="${{ needs.setup.outputs.firebase_app_id }}" \
+            --build-arg NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID="${{ needs.setup.outputs.firebase_measurement_id }}" \
+            --build-arg NEXT_PUBLIC_API_URL="${{ needs.setup.outputs.api_url }}" \
+            -t "$IMAGE" \
+            .
+          docker push "$IMAGE"
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy teranga-backoffice-staging \
+            --image europe-west1-docker.pkg.dev/${{ needs.setup.outputs.project_id }}/teranga/teranga-backoffice:${{ github.sha }} \
+            --region europe-west1 \
+            --allow-unauthenticated \
+            --port 3000 \
+            --cpu 1 \
+            --memory 512Mi \
+            --min-instances 0 \
+            --max-instances 5 \
+            --set-env-vars "NODE_ENV=production"
+
+  # ─── Deploy Web Participant to Cloud Run ──────────────────────────────────
+  deploy-web-participant:
+    name: Deploy Web Participant to Cloud Run (staging)
+    runs-on: ubuntu-latest
+    needs: setup
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker europe-west1-docker.pkg.dev --quiet
+      - name: Build and push Docker image
+        run: |
+          IMAGE="europe-west1-docker.pkg.dev/${{ needs.setup.outputs.project_id }}/teranga/teranga-participant:${{ github.sha }}"
+          docker build \
+            -f apps/web-participant/Dockerfile \
+            --build-arg NEXT_PUBLIC_FIREBASE_API_KEY="${{ needs.setup.outputs.firebase_api_key }}" \
+            --build-arg NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN="${{ needs.setup.outputs.firebase_auth_domain }}" \
+            --build-arg NEXT_PUBLIC_FIREBASE_PROJECT_ID="${{ needs.setup.outputs.project_id }}" \
+            --build-arg NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET="${{ needs.setup.outputs.firebase_storage_bucket }}" \
+            --build-arg NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID="${{ needs.setup.outputs.firebase_messaging_sender_id }}" \
+            --build-arg NEXT_PUBLIC_FIREBASE_APP_ID="${{ needs.setup.outputs.firebase_app_id }}" \
+            --build-arg NEXT_PUBLIC_API_URL="${{ needs.setup.outputs.api_url }}" \
+            --build-arg NEXT_PUBLIC_APP_URL="${{ needs.setup.outputs.participant_url }}" \
+            --build-arg NEXT_PUBLIC_BACKOFFICE_URL="${{ needs.setup.outputs.backoffice_url }}" \
+            -t "$IMAGE" \
+            .
+          docker push "$IMAGE"
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy teranga-participant-staging \
+            --image europe-west1-docker.pkg.dev/${{ needs.setup.outputs.project_id }}/teranga/teranga-participant:${{ github.sha }} \
+            --region europe-west1 \
+            --allow-unauthenticated \
+            --port 3000 \
+            --cpu 1 \
+            --memory 512Mi \
+            --min-instances 0 \
+            --max-instances 5 \
+            --set-env-vars "NODE_ENV=production"
 
   # ─── Deploy Firebase (rules, indexes, storage, functions) ────────────────
   deploy-firebase:

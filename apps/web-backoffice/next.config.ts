@@ -2,6 +2,10 @@ import type { NextConfig } from "next";
 import path from "path";
 
 const nextConfig: NextConfig = {
+  // Produce a self-contained Node.js server at .next/standalone for Cloud Run
+  output: "standalone",
+  // Monorepo: include files from repo root in the standalone bundle
+  outputFileTracingRoot: path.resolve(__dirname, "../.."),
   transpilePackages: ["@teranga/shared-ui", "@teranga/shared-types"],
   images: {
     remotePatterns: [
