@@ -273,6 +273,25 @@ jobs:
         working-directory: apps/mobile
         run: flutter test --no-pub
 
+  # ─── Firestore Index Coverage ────────────────────────────────────────────
+  # Static analysis of every `.where()` / `.orderBy()` pattern in
+  # repositories and Cloud Function triggers. Fails the build if any query
+  # lacks a matching composite index in firestore.indexes.json. Prevents
+  # the class of `FAILED_PRECONDITION: The query requires an index` 500s
+  # that have bitten us in staging. See scripts/audit-firestore-indexes.ts.
+  firestore-indexes:
+    name: Firestore Index Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: Audit Firestore index coverage
+        run: npm run audit:firestore-indexes
+
   # ─── Firestore Rules Validation ──────────────────────────────────────────
   firebase-rules:
     name: Firebase Rules (syntax check)
@@ -290,21 +309,32 @@ jobs:
     name: CI Gate
     runs-on: ubuntu-latest
     if: always()
-    needs: [api-lint, api-test, functions, web-backoffice, web-participant, flutter, firebase-rules]
+    needs:
+      [
+        api-lint,
+        api-test,
+        functions,
+        web-backoffice,
+        web-participant,
+        flutter,
+        firebase-rules,
+        firestore-indexes,
+      ]
     steps:
       - name: Check results
         run: |
           failed=""
-          for job in api-lint api-test functions web-backoffice web-participant flutter firebase-rules; do
+          for job in api-lint api-test functions web-backoffice web-participant flutter firebase-rules firestore-indexes; do
             result="${{ needs.api-lint.result }}"
             case "$job" in
-              api-lint)         result="${{ needs.api-lint.result }}" ;;
-              api-test)         result="${{ needs.api-test.result }}" ;;
-              functions)        result="${{ needs.functions.result }}" ;;
-              web-backoffice)   result="${{ needs.web-backoffice.result }}" ;;
-              web-participant)  result="${{ needs.web-participant.result }}" ;;
-              flutter)          result="${{ needs.flutter.result }}" ;;
-              firebase-rules)   result="${{ needs.firebase-rules.result }}" ;;
+              api-lint)          result="${{ needs.api-lint.result }}" ;;
+              api-test)          result="${{ needs.api-test.result }}" ;;
+              functions)         result="${{ needs.functions.result }}" ;;
+              web-backoffice)    result="${{ needs.web-backoffice.result }}" ;;
+              web-participant)   result="${{ needs.web-participant.result }}" ;;
+              flutter)           result="${{ needs.flutter.result }}" ;;
+              firebase-rules)    result="${{ needs.firebase-rules.result }}" ;;
+              firestore-indexes) result="${{ needs.firestore-indexes.result }}" ;;
             esac
             if [[ "$result" == "failure" ]]; then
               echo "::error::Job '$job' failed"
