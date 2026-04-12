@@ -13,7 +13,9 @@ import { db, COLLECTIONS } from "../utils/admin";
  *     projects with standard Authentication enabled.
  */
 export const onUserCreated = functionsV1
-  .runWith({ memory: "256MB", timeoutSeconds: 60 })
+  // maxInstances caps dev/staging cost if the Auth event loop misbehaves —
+  // v1 setGlobalOptions doesn't apply so we declare it inline. Bump before prod.
+  .runWith({ memory: "256MB", timeoutSeconds: 60, maxInstances: 2 })
   .region("europe-west1")
   .auth.user()
   .onCreate(async (user) => {
@@ -53,7 +55,9 @@ export const onUserCreated = functionsV1
  * Uses v1 auth trigger (v2 identity module does not support user deletion events).
  */
 export const onUserDeleted = functionsV1
-  .runWith({ memory: "256MB", timeoutSeconds: 60 })
+  // maxInstances caps dev/staging cost if the Auth event loop misbehaves —
+  // v1 setGlobalOptions doesn't apply so we declare it inline. Bump before prod.
+  .runWith({ memory: "256MB", timeoutSeconds: 60, maxInstances: 2 })
   .region("europe-west1")
   .auth.user()
   .onDelete(async (user) => {

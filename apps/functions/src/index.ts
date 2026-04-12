@@ -3,6 +3,10 @@
  * Export all triggers here for Firebase deployment.
  */
 
+// Global runtime options (region, maxInstances cap). MUST be first — ES module
+// imports are hoisted in order, so this runs before any trigger module loads.
+import "./options";
+
 // ─── Auth Triggers ────────────────────────────────────────────────────────────
 export { onUserCreated, onUserDeleted } from "./triggers/auth.triggers";
 
@@ -10,7 +14,11 @@ export { onUserCreated, onUserDeleted } from "./triggers/auth.triggers";
 export { onBadgeCreated } from "./triggers/badge.triggers";
 
 // ─── Registration Triggers (auto badge generation + waitlist promotion) ──────
-export { onRegistrationCreated, onRegistrationApproved, onRegistrationCancelled } from "./triggers/registration.triggers";
+export {
+  onRegistrationCreated,
+  onRegistrationApproved,
+  onRegistrationCancelled,
+} from "./triggers/registration.triggers";
 
 // ─── Check-in Triggers ───────────────────────────────────────────────────────
 export { onCheckinCompleted } from "./triggers/checkin.triggers";
