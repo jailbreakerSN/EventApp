@@ -20,6 +20,9 @@ COPY package.json package-lock.json turbo.json ./
 COPY packages/shared-types/package.json ./packages/shared-types/
 COPY apps/api/package.json ./apps/api/
 
+# Remove the 'prepare' script which invokes husky (dev-only git hooks tool)
+RUN npm pkg delete scripts.prepare
+
 RUN npm ci --workspace=packages/shared-types --workspace=apps/api
 
 # Copy source
@@ -41,6 +44,9 @@ ENV HUSKY=0
 COPY package.json package-lock.json turbo.json ./
 COPY packages/shared-types/package.json ./packages/shared-types/
 COPY apps/api/package.json ./apps/api/
+
+# Remove the 'prepare' script which invokes husky
+RUN npm pkg delete scripts.prepare
 
 RUN npm ci --workspace=packages/shared-types --workspace=apps/api --omit=dev
 

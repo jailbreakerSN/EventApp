@@ -59,8 +59,47 @@ jobs:
             containerregistry.googleapis.com \
             firebase.googleapis.com \
             firebasehosting.googleapis.com \
+            firebaseextensions.googleapis.com \
             iamcredentials.googleapis.com \
+            cloudscheduler.googleapis.com \
+            eventarc.googleapis.com \
+            pubsub.googleapis.com \
             --quiet
+
+      - name: Grant IAM roles to GCP service agents (for Firebase Functions)
+        run: |
+          set -euo pipefail
+          # Firebase Functions deploy requires specific IAM bindings on
+          # GCP-managed service agents. These are idempotent.
+          # Requires 'Project IAM Admin' role on the deploy service account.
+
+          PROJECT_NUMBER=$(gcloud projects describe "${{ steps.discover.outputs.project_id }}" --format='value(projectNumber)' 2>/dev/null || echo "")
+          if [ -z "$PROJECT_NUMBER" ]; then
+            # Fall back to extracting from project_id via describe after APIs are enabled
+            PROJECT_ID=$(echo "$SA_KEY" | jq -r '.project_id')
+            PROJECT_NUMBER=$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')
+          fi
+
+          PUBSUB_SA="service-${PROJECT_NUMBER}@gcp-sa-pubsub.iam.gserviceaccount.com"
+          COMPUTE_SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
+          PROJECT_ID=$(echo "$SA_KEY" | jq -r '.project_id')
+
+          # Trigger pubsub service identity creation (no-op if exists)
+          gcloud beta services identity create --service=pubsub.googleapis.com --project="$PROJECT_ID" || true
+
+          for binding in \
+            "serviceAccount:${PUBSUB_SA}|roles/iam.serviceAccountTokenCreator" \
+            "serviceAccount:${COMPUTE_SA}|roles/run.invoker" \
+            "serviceAccount:${COMPUTE_SA}|roles/eventarc.eventReceiver"; do
+            member="${binding%|*}"
+            role="${binding#*|}"
+            gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+              --member="$member" --role="$role" \
+              --condition=None --quiet >/dev/null || \
+              echo "::warning::Failed to bind $role to $member (may already exist or SA lacks Project IAM Admin)"
+          done
+        env:
+          SA_KEY: ${{ secrets.GCP_SA_KEY }}
 
       - name: Discover config from SA key and Firebase API
         id: discover
