@@ -20,16 +20,26 @@ function buildQuery(params: Record<string, unknown>): string {
 }
 
 async function serverFetch<T>(path: string): Promise<T> {
-  const res = await fetch(`${API_URL}${path}`, {
-    headers: { "Content-Type": "application/json" },
-    next: { revalidate: 60 },
-  });
+  // 5s timeout so page builds don't hang when the API is unreachable
+  // (e.g., first-time staging deploy before Cloud Run service exists).
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 5000);
 
-  if (!res.ok) {
-    throw new Error(`API error ${res.status}: ${res.statusText}`);
+  try {
+    const res = await fetch(`${API_URL}${path}`, {
+      headers: { "Content-Type": "application/json" },
+      next: { revalidate: 60 },
+      signal: controller.signal,
+    });
+
+    if (!res.ok) {
+      throw new Error(`API error ${res.status}: ${res.statusText}`);
+    }
+
+    return (await res.json()) as T;
+  } finally {
+    clearTimeout(timeoutId);
   }
-
-  return res.json() as Promise<T>;
 }
 
 export const serverEventsApi = {
