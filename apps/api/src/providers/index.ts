@@ -99,9 +99,10 @@ export function buildRegistrationEmail(params: {
       <tr><td style="padding: 8px 0; color: #666;">Lieu</td><td style="padding: 8px 0; font-weight: 600;">${escapeHtml(params.eventLocation)}</td></tr>
       <tr><td style="padding: 8px 0; color: #666;">Billet</td><td style="padding: 8px 0; font-weight: 600;">${escapeHtml(params.ticketName)}</td></tr>
     </table>
-    ${params.badgeUrl
-      ? `<a href="${escapeHtml(params.badgeUrl)}" style="display: inline-block; background: #D4A843; color: #fff; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600; margin-top: 8px;">Télécharger mon badge</a>`
-      : `<p style="background: #f8f9fa; padding: 12px; border-radius: 8px; text-align: center;">Votre badge QR sera disponible dans l'application.</p>`
+    ${
+      params.badgeUrl
+        ? `<a href="${escapeHtml(params.badgeUrl)}" style="display: inline-block; background: #D4A843; color: #fff; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600; margin-top: 8px;">Télécharger mon badge</a>`
+        : `<p style="background: #f8f9fa; padding: 12px; border-radius: 8px; text-align: center;">Votre badge QR sera disponible dans l'application.</p>`
     }
   </div>
   <div style="text-align: center; padding: 16px; color: #999; font-size: 12px;">
@@ -151,6 +152,183 @@ export function buildEventReminderEmail(params: {
       <tr><td style="padding: 8px 0; color: #666;">Lieu</td><td style="padding: 8px 0; font-weight: 600;">${escapeHtml(params.eventLocation)}</td></tr>
     </table>
     <p style="background: #fef3c7; padding: 12px; border-radius: 8px; text-align: center; font-weight: 600;">N'oubliez pas votre badge QR !</p>
+  </div>
+  <div style="text-align: center; padding: 16px; color: #999; font-size: 12px;">
+    <p>Teranga Events — La plateforme événementielle du Sénégal</p>
+  </div>
+</body>
+</html>`;
+
+  return { subject, html, text };
+}
+
+export function buildRegistrationApprovedEmail(params: {
+  participantName: string;
+  eventTitle: string;
+  eventDate: string;
+  eventLocation: string;
+  badgeUrl?: string;
+}): { subject: string; html: string; text: string } {
+  const subject = `Inscription approuvée — ${params.eventTitle}`;
+  const text = [
+    `Bonjour ${params.participantName},`,
+    ``,
+    `Votre inscription à "${params.eventTitle}" a été approuvée par l'organisateur !`,
+    ``,
+    `Date : ${params.eventDate}`,
+    `Lieu : ${params.eventLocation}`,
+    ``,
+    params.badgeUrl
+      ? `Téléchargez votre badge : ${params.badgeUrl}`
+      : `Votre badge QR sera disponible dans l'application.`,
+    ``,
+    `À bientôt !`,
+    `L'équipe Teranga`,
+  ].join("\n");
+
+  const html = `
+<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="UTF-8"></head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #333;">
+  <div style="text-align: center; padding: 20px 0; background: #1A1A2E; border-radius: 12px 12px 0 0;">
+    <h1 style="color: #D4A843; margin: 0; font-size: 24px;">Teranga</h1>
+  </div>
+  <div style="padding: 24px; background: #fff; border: 1px solid #eee; border-top: none;">
+    <h2 style="margin-top: 0;">Inscription approuvée !</h2>
+    <p>Bonjour <strong>${escapeHtml(params.participantName)}</strong>,</p>
+    <p>Votre inscription à <strong>${escapeHtml(params.eventTitle)}</strong> a été approuvée par l'organisateur.</p>
+    <table style="width: 100%; border-collapse: collapse; margin: 16px 0;">
+      <tr><td style="padding: 8px 0; color: #666;">Date</td><td style="padding: 8px 0; font-weight: 600;">${escapeHtml(params.eventDate)}</td></tr>
+      <tr><td style="padding: 8px 0; color: #666;">Lieu</td><td style="padding: 8px 0; font-weight: 600;">${escapeHtml(params.eventLocation)}</td></tr>
+    </table>
+    ${
+      params.badgeUrl
+        ? `<a href="${escapeHtml(params.badgeUrl)}" style="display: inline-block; background: #D4A843; color: #fff; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600; margin-top: 8px;">Télécharger mon badge</a>`
+        : `<p style="background: #f8f9fa; padding: 12px; border-radius: 8px; text-align: center;">Votre badge QR sera disponible dans l'application.</p>`
+    }
+  </div>
+  <div style="text-align: center; padding: 16px; color: #999; font-size: 12px;">
+    <p>Teranga Events — La plateforme événementielle du Sénégal</p>
+  </div>
+</body>
+</html>`;
+
+  return { subject, html, text };
+}
+
+export function buildBadgeReadyEmail(params: {
+  participantName: string;
+  eventTitle: string;
+  badgeUrl?: string;
+}): { subject: string; html: string; text: string } {
+  const subject = `Votre badge est prêt — ${params.eventTitle}`;
+  const text = [
+    `Bonjour ${params.participantName},`,
+    ``,
+    `Votre badge pour "${params.eventTitle}" est prêt !`,
+    ``,
+    params.badgeUrl
+      ? `Téléchargez-le ici : ${params.badgeUrl}`
+      : `Ouvrez l'application Teranga pour le télécharger.`,
+    ``,
+    `L'équipe Teranga`,
+  ].join("\n");
+
+  const html = `
+<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="UTF-8"></head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #333;">
+  <div style="text-align: center; padding: 20px 0; background: #1A1A2E; border-radius: 12px 12px 0 0;">
+    <h1 style="color: #D4A843; margin: 0; font-size: 24px;">Teranga</h1>
+  </div>
+  <div style="padding: 24px; background: #fff; border: 1px solid #eee; border-top: none;">
+    <h2 style="margin-top: 0;">Votre badge est prêt !</h2>
+    <p>Bonjour <strong>${escapeHtml(params.participantName)}</strong>,</p>
+    <p>Votre badge pour <strong>${escapeHtml(params.eventTitle)}</strong> est prêt à être téléchargé.</p>
+    ${
+      params.badgeUrl
+        ? `<a href="${escapeHtml(params.badgeUrl)}" style="display: inline-block; background: #D4A843; color: #fff; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600; margin-top: 16px;">Télécharger mon badge</a>`
+        : `<p style="background: #f8f9fa; padding: 12px; border-radius: 8px; text-align: center;">Ouvrez l'application Teranga pour télécharger votre badge.</p>`
+    }
+  </div>
+  <div style="text-align: center; padding: 16px; color: #999; font-size: 12px;">
+    <p>Teranga Events — La plateforme événementielle du Sénégal</p>
+  </div>
+</body>
+</html>`;
+
+  return { subject, html, text };
+}
+
+export function buildEventCancelledEmail(params: {
+  participantName: string;
+  eventTitle: string;
+  eventDate: string;
+}): { subject: string; html: string; text: string } {
+  const subject = `Événement annulé — ${params.eventTitle}`;
+  const text = [
+    `Bonjour ${params.participantName},`,
+    ``,
+    `Nous sommes désolés de vous informer que l'événement "${params.eventTitle}" prévu le ${params.eventDate} a été annulé.`,
+    ``,
+    `Si vous avez des questions, veuillez contacter l'organisateur.`,
+    ``,
+    `L'équipe Teranga`,
+  ].join("\n");
+
+  const html = `
+<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="UTF-8"></head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #333;">
+  <div style="text-align: center; padding: 20px 0; background: #1A1A2E; border-radius: 12px 12px 0 0;">
+    <h1 style="color: #D4A843; margin: 0; font-size: 24px;">Teranga</h1>
+  </div>
+  <div style="padding: 24px; background: #fff; border: 1px solid #eee; border-top: none;">
+    <h2 style="margin-top: 0; color: #dc2626;">Événement annulé</h2>
+    <p>Bonjour <strong>${escapeHtml(params.participantName)}</strong>,</p>
+    <p>Nous sommes désolés de vous informer que l'événement <strong>${escapeHtml(params.eventTitle)}</strong> prévu le <strong>${escapeHtml(params.eventDate)}</strong> a été annulé.</p>
+    <p style="background: #fef2f2; padding: 12px; border-radius: 8px; border-left: 4px solid #dc2626;">Si vous avez des questions, veuillez contacter l'organisateur de l'événement.</p>
+  </div>
+  <div style="text-align: center; padding: 16px; color: #999; font-size: 12px;">
+    <p>Teranga Events — La plateforme événementielle du Sénégal</p>
+  </div>
+</body>
+</html>`;
+
+  return { subject, html, text };
+}
+
+export function buildWelcomeEmail(_params?: { email?: string }): {
+  subject: string;
+  html: string;
+  text: string;
+} {
+  const subject = "Bienvenue sur Teranga Events !";
+  const text = [
+    `Bienvenue sur Teranga Events !`,
+    ``,
+    `Votre inscription à notre newsletter a bien été enregistrée.`,
+    `Vous recevrez des informations sur les événements à venir au Sénégal et en Afrique de l'Ouest.`,
+    ``,
+    `L'équipe Teranga`,
+  ].join("\n");
+
+  const html = `
+<!DOCTYPE html>
+<html lang="fr">
+<head><meta charset="UTF-8"></head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #333;">
+  <div style="text-align: center; padding: 20px 0; background: #1A1A2E; border-radius: 12px 12px 0 0;">
+    <h1 style="color: #D4A843; margin: 0; font-size: 24px;">Teranga</h1>
+  </div>
+  <div style="padding: 24px; background: #fff; border: 1px solid #eee; border-top: none;">
+    <h2 style="margin-top: 0;">Bienvenue !</h2>
+    <p>Votre inscription à notre newsletter a bien été enregistrée.</p>
+    <p>Vous recevrez des informations sur les prochains événements au Sénégal et en Afrique de l'Ouest.</p>
+    <p style="background: #f0fdf4; padding: 12px; border-radius: 8px; text-align: center;">Restez connecté — de grands événements arrivent bientôt !</p>
   </div>
   <div style="text-align: center; padding: 16px; color: #999; font-size: 12px;">
     <p>Teranga Events — La plateforme événementielle du Sénégal</p>

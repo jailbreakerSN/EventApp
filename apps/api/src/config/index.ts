@@ -22,7 +22,8 @@ const envSchema = z.object({
   RATE_LIMIT_WINDOW_MS: z.coerce.number().default(60_000),
 
   RESEND_API_KEY: z.string().optional(),
-  EMAIL_FROM: z.string().default("noreply@teranga.events"),
+  RESEND_FROM_EMAIL: z.string().default("noreply@teranga.events"),
+  RESEND_FROM_NAME: z.string().default("Teranga Events"),
 
   AT_API_KEY: z.string().optional(),
   AT_USERNAME: z.string().default("sandbox"),
