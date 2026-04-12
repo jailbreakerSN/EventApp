@@ -265,5 +265,31 @@ jobs:
           # Rewrite the dependency to point at the vendored copy
           (cd apps/functions && npm pkg set dependencies.@teranga/shared-types=file:./vendor/shared-types)
 
+      - name: Cleanup functions left in incompatible state from previous failed deploys
+        # Partial/failed previous deploys can leave functions stuck as the
+        # wrong trigger type (e.g., HTTPS when the code declares a Firestore
+        # trigger), blocking redeploy with "Changing from an HTTPS function
+        # to a background triggered function is not allowed". This step
+        # deletes all functions defined in the codebase before redeploy.
+        # Safe for staging; tolerates missing functions gracefully.
+        run: |
+          set +e
+          FUNCTIONS="onUserCreated onUserDeleted onBadgeCreated \
+            onRegistrationCreated onRegistrationApproved onRegistrationCancelled \
+            onCheckinCompleted onFeedPostCreated onRegistrationConfirmed \
+            onPaymentTimeout onPaymentSucceeded onPaymentFailed \
+            sendEventReminders sendSessionReminders"
+          for fn in $FUNCTIONS; do
+            echo "→ Attempting to delete $fn (Gen2, then Gen1)..."
+            gcloud functions delete "$fn" \
+              --region=europe-west1 \
+              --gen2 --quiet 2>/dev/null || \
+            gcloud functions delete "$fn" \
+              --region=europe-west1 \
+              --quiet 2>/dev/null || \
+            echo "  (not found, skipping)"
+          done
+          exit 0
+
       - name: Deploy to Firebase
         run: npx firebase-tools deploy --only functions --project ${{ needs.setup.outputs.project_id }} --force --non-interactive
