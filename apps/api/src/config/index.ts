@@ -33,7 +33,13 @@ const envSchema = z.object({
   WEBHOOK_SECRET: z.string().min(16).default("dev-webhook-secret-change-in-prod"),
 
   // ─── Observability (optional) ──────────────────────────────────────────────
-  SENTRY_DSN: z.string().url().optional(),
+  // GitHub Actions injects `${{ secrets.SENTRY_DSN }}` as an empty string when
+  // the secret is unset — preprocess converts that back to undefined so the
+  // URL validator doesn't reject it.
+  SENTRY_DSN: z.preprocess(
+    (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
+    z.string().url().optional(),
+  ),
 });
 
 const parsed = envSchema.safeParse(process.env);

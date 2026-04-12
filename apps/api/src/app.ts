@@ -11,6 +11,7 @@ import { AppError } from "@/errors/app-error";
 import { runWithContext, enrichContext } from "@/context/request-context";
 import { registerNotificationListeners } from "@/events/listeners/notification.listener";
 import { registerAuditListeners } from "@/events/listeners/audit.listener";
+import { captureError } from "@/observability/sentry";
 
 export async function buildApp() {
   const app = Fastify({
@@ -158,6 +159,13 @@ export async function buildApp() {
     if (error instanceof AppError) {
       if (error.statusCode >= 500) {
         request.log.error({ err: error, method: request.method, url: request.url }, error.message);
+        // Only 5xx operational errors go to Sentry — 4xx is client error noise.
+        captureError(error, {
+          requestId: request.id,
+          method: request.method,
+          url: request.url,
+          code: error.code,
+        });
       } else {
         request.log.warn(
           { code: error.code, method: request.method, url: request.url },
@@ -195,6 +203,11 @@ export async function buildApp() {
 
     // ── Unexpected errors ──────────────────────────────────────────────
     request.log.error({ err: error, method: request.method, url: request.url }, error.message);
+    captureError(error, {
+      requestId: request.id,
+      method: request.method,
+      url: request.url,
+    });
 
     const statusCode = error.statusCode ?? 500;
     return reply.status(statusCode).send({

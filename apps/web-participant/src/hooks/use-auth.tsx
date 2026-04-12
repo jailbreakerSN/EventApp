@@ -6,7 +6,8 @@ import { useIdleTimeout } from "./use-idle-timeout";
 import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
-  signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   GoogleAuthProvider,
   signOut,
   onAuthStateChanged,
@@ -49,6 +50,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let mounted = true;
 
+    // Consume any pending Google sign-in redirect result. Safe to call on every
+    // mount — returns null if no redirect is pending. Errors are toasted rather
+    // than thrown to avoid breaking the auth provider initialization.
+    getRedirectResult(firebaseAuth).catch((err) => {
+      console.error("Google sign-in redirect error", err);
+      toast.error("Échec de la connexion Google. Veuillez réessayer.");
+    });
+
     const unsubscribe = onAuthStateChanged(firebaseAuth, async (firebaseUser: User | null) => {
       if (firebaseUser) {
         const tokenResult = await firebaseUser.getIdTokenResult();
@@ -85,7 +94,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const loginWithGoogle = async () => {
-    await signInWithPopup(firebaseAuth, googleProvider);
+    // Use redirect flow (not popup) to avoid Cross-Origin-Opener-Policy
+    // warnings from Chrome polling window.closed on the Google popup.
+    // The redirect result is consumed in the useEffect above on app load.
+    await signInWithRedirect(firebaseAuth, googleProvider);
   };
 
   const logout = async () => {

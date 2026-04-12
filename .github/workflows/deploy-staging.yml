@@ -1,8 +1,13 @@
 name: Deploy to Staging
 
+# Runs only after CI completes successfully on `develop`. Gating on
+# workflow_run avoids shipping broken code: a failing lint/type-check/test
+# in CI will prevent the deploy entirely.
 on:
-  push:
-    branches: [develop, claude/setup-env-variables-KO5o1]
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [develop]
 
 concurrency:
   group: deploy-staging
@@ -10,6 +15,10 @@ concurrency:
 
 env:
   NODE_VERSION: "20"
+  # The commit SHA that passed CI. With workflow_run, github.sha points to the
+  # default branch HEAD rather than the commit that was actually tested — use
+  # workflow_run.head_sha for image tags, checkouts, and labels.
+  DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Only 4 secrets required:
@@ -26,6 +35,9 @@ jobs:
   # ─── Derive all config from GCP_SA_KEY ────────────────────────────────────
   setup:
     name: Discover Firebase & GCP config
+    # Skip the entire deploy if the upstream CI run failed or was cancelled.
+    # All other jobs depend on `setup`, so this gate cascades.
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     environment: staging
     outputs:
@@ -161,7 +173,11 @@ jobs:
           API_URL="https://teranga-api-staging-${PROJECT_NUMBER}.${REGION}.run.app"
           BACKOFFICE_URL="https://teranga-backoffice-staging-${PROJECT_NUMBER}.${REGION}.run.app"
           PARTICIPANT_URL="https://teranga-participant-staging-${PROJECT_NUMBER}.${REGION}.run.app"
-          CORS_ORIGINS="${API_URL},${BACKOFFICE_URL},${PARTICIPANT_URL}"
+          # CORS origins are the browser-facing apps only. The API does not
+          # call itself from a browser context, so its own URL must never be
+          # an allowed origin — including it would let the API accept cross-
+          # origin requests from any page that can spoof that Origin header.
+          CORS_ORIGINS="${BACKOFFICE_URL},${PARTICIPANT_URL}"
 
           echo "project_number=$PROJECT_NUMBER" >> $GITHUB_OUTPUT
           echo "api_url=$API_URL" >> $GITHUB_OUTPUT
@@ -184,6 +200,10 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
+        with:
+          # workflow_run sets github.sha to the default branch HEAD, not the
+          # commit that triggered CI — check out the actual tested commit.
+          ref: ${{ github.event.workflow_run.head_sha }}
       - uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
@@ -201,26 +221,66 @@ jobs:
             --quiet
       - name: Configure Docker for Artifact Registry
         run: gcloud auth configure-docker europe-west1-docker.pkg.dev --quiet
-      - name: Build and push Docker image
-        run: |
-          IMAGE="europe-west1-docker.pkg.dev/${{ needs.setup.outputs.project_id }}/teranga/teranga-api:${{ github.sha }}"
-          docker build \
-            -f apps/api/Dockerfile \
-            --build-arg BUILD_DATE="$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
-            --build-arg GIT_SHA="${{ github.sha }}" \
-            -t "$IMAGE" \
-            .
-          docker push "$IMAGE"
+      - name: Set up Docker Buildx
+        # Required for docker/build-push-action with GHA cache backend.
+        uses: docker/setup-buildx-action@v3
+      - name: Build and push API image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          push: true
+          tags: europe-west1-docker.pkg.dev/${{ needs.setup.outputs.project_id }}/teranga/teranga-api:${{ env.DEPLOY_SHA }}
+          build-args: |
+            BUILD_DATE=${{ github.event.workflow_run.updated_at }}
+            GIT_SHA=${{ env.DEPLOY_SHA }}
+          # GitHub Actions cache backend. `scope=api` keeps per-service caches
+          # isolated so a backoffice build doesn't evict API layers.
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,mode=max,scope=api
+      - name: Scan API image for HIGH vulnerabilities (warn-only)
+        # Visibility-only. Does not fail the build; listed so HIGH findings
+        # are surfaced in the run log and can be triaged asynchronously.
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: europe-west1-docker.pkg.dev/${{ needs.setup.outputs.project_id }}/teranga/teranga-api:${{ env.DEPLOY_SHA }}
+          severity: HIGH
+          exit-code: "0"
+          ignore-unfixed: true
+          format: table
+      - name: Scan API image for CRITICAL vulnerabilities (blocking)
+        # Mirrors the npm audit policy already in CI: CRITICAL blocks, HIGH warns.
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: europe-west1-docker.pkg.dev/${{ needs.setup.outputs.project_id }}/teranga/teranga-api:${{ env.DEPLOY_SHA }}
+          severity: CRITICAL
+          exit-code: "1"
+          ignore-unfixed: true
+          format: table
       - name: Deploy to Cloud Run
+        # Staging cost controls:
+        #   --cpu 1 --memory 512Mi  : smallest sensible profile for
+        #     Fastify + firebase-admin (256Mi risks OOM on first warm-up).
+        #   --min-instances 0       : no always-on billing when idle.
+        #   --max-instances 2       : cap runaway scale in dev.
+        #   --concurrency 80        : default, 80 requests per instance.
+        #   --no-cpu-boost          : skip the 2x CPU startup boost. Longer
+        #                             cold starts, but we don't care here.
         # The '^@^' prefix tells gcloud to use '@' as the delimiter between
         # env var entries instead of the default ','. This is required because
         # CORS_ORIGINS contains commas.
         run: |
           gcloud run deploy teranga-api-staging \
-            --image europe-west1-docker.pkg.dev/${{ needs.setup.outputs.project_id }}/teranga/teranga-api:${{ github.sha }} \
+            --image europe-west1-docker.pkg.dev/${{ needs.setup.outputs.project_id }}/teranga/teranga-api:${{ env.DEPLOY_SHA }} \
             --region europe-west1 \
             --allow-unauthenticated \
-            --set-env-vars "^@^NODE_ENV=staging@FIREBASE_PROJECT_ID=${{ needs.setup.outputs.project_id }}@FIREBASE_STORAGE_BUCKET=${{ needs.setup.outputs.firebase_storage_bucket }}@QR_SECRET=${{ secrets.QR_SECRET }}@WEBHOOK_SECRET=${{ secrets.WEBHOOK_SECRET }}@RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}@CORS_ORIGINS=${{ needs.setup.outputs.cors_origins }}@RATE_LIMIT_MAX=100@RATE_LIMIT_WINDOW_MS=60000@LOG_LEVEL=info"
+            --cpu 1 \
+            --memory 512Mi \
+            --min-instances 0 \
+            --max-instances 2 \
+            --concurrency 80 \
+            --no-cpu-boost \
+            --set-env-vars "^@^NODE_ENV=staging@FIREBASE_PROJECT_ID=${{ needs.setup.outputs.project_id }}@FIREBASE_STORAGE_BUCKET=${{ needs.setup.outputs.firebase_storage_bucket }}@QR_SECRET=${{ secrets.QR_SECRET }}@WEBHOOK_SECRET=${{ secrets.WEBHOOK_SECRET }}@RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}@SENTRY_DSN=${{ secrets.SENTRY_DSN }}@CORS_ORIGINS=${{ needs.setup.outputs.cors_origins }}@RATE_LIMIT_MAX=100@RATE_LIMIT_WINDOW_MS=60000@LOG_LEVEL=info"
 
   # ─── Deploy Web Backoffice to Cloud Run ───────────────────────────────────
   deploy-web-backoffice:
@@ -230,39 +290,67 @@ jobs:
     environment: staging
     steps:
       - uses: actions/checkout@v4
+        with:
+          # workflow_run sets github.sha to the default branch HEAD, not the
+          # commit that triggered CI — check out the actual tested commit.
+          ref: ${{ github.event.workflow_run.head_sha }}
       - uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
       - uses: google-github-actions/setup-gcloud@v2
       - name: Configure Docker for Artifact Registry
         run: gcloud auth configure-docker europe-west1-docker.pkg.dev --quiet
-      - name: Build and push Docker image
-        run: |
-          IMAGE="europe-west1-docker.pkg.dev/${{ needs.setup.outputs.project_id }}/teranga/teranga-backoffice:${{ github.sha }}"
-          docker build \
-            -f apps/web-backoffice/Dockerfile \
-            --build-arg NEXT_PUBLIC_FIREBASE_API_KEY="${{ needs.setup.outputs.firebase_api_key }}" \
-            --build-arg NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN="${{ needs.setup.outputs.firebase_auth_domain }}" \
-            --build-arg NEXT_PUBLIC_FIREBASE_PROJECT_ID="${{ needs.setup.outputs.project_id }}" \
-            --build-arg NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET="${{ needs.setup.outputs.firebase_storage_bucket }}" \
-            --build-arg NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID="${{ needs.setup.outputs.firebase_messaging_sender_id }}" \
-            --build-arg NEXT_PUBLIC_FIREBASE_APP_ID="${{ needs.setup.outputs.firebase_app_id }}" \
-            --build-arg NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID="${{ needs.setup.outputs.firebase_measurement_id }}" \
-            --build-arg NEXT_PUBLIC_API_URL="${{ needs.setup.outputs.api_url }}" \
-            -t "$IMAGE" \
-            .
-          docker push "$IMAGE"
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Build and push Backoffice image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: apps/web-backoffice/Dockerfile
+          push: true
+          tags: europe-west1-docker.pkg.dev/${{ needs.setup.outputs.project_id }}/teranga/teranga-backoffice:${{ env.DEPLOY_SHA }}
+          build-args: |
+            NEXT_PUBLIC_FIREBASE_API_KEY=${{ needs.setup.outputs.firebase_api_key }}
+            NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=${{ needs.setup.outputs.firebase_auth_domain }}
+            NEXT_PUBLIC_FIREBASE_PROJECT_ID=${{ needs.setup.outputs.project_id }}
+            NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=${{ needs.setup.outputs.firebase_storage_bucket }}
+            NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=${{ needs.setup.outputs.firebase_messaging_sender_id }}
+            NEXT_PUBLIC_FIREBASE_APP_ID=${{ needs.setup.outputs.firebase_app_id }}
+            NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=${{ needs.setup.outputs.firebase_measurement_id }}
+            NEXT_PUBLIC_API_URL=${{ needs.setup.outputs.api_url }}
+          cache-from: type=gha,scope=backoffice
+          cache-to: type=gha,mode=max,scope=backoffice
+      - name: Scan Backoffice image for HIGH vulnerabilities (warn-only)
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: europe-west1-docker.pkg.dev/${{ needs.setup.outputs.project_id }}/teranga/teranga-backoffice:${{ env.DEPLOY_SHA }}
+          severity: HIGH
+          exit-code: "0"
+          ignore-unfixed: true
+          format: table
+      - name: Scan Backoffice image for CRITICAL vulnerabilities (blocking)
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: europe-west1-docker.pkg.dev/${{ needs.setup.outputs.project_id }}/teranga/teranga-backoffice:${{ env.DEPLOY_SHA }}
+          severity: CRITICAL
+          exit-code: "1"
+          ignore-unfixed: true
+          format: table
       - name: Deploy to Cloud Run
+        # Staging cost controls: cap max-instances at 2 and disable cpu-boost.
+        # Bump these when promoting to production.
         run: |
           gcloud run deploy teranga-backoffice-staging \
-            --image europe-west1-docker.pkg.dev/${{ needs.setup.outputs.project_id }}/teranga/teranga-backoffice:${{ github.sha }} \
+            --image europe-west1-docker.pkg.dev/${{ needs.setup.outputs.project_id }}/teranga/teranga-backoffice:${{ env.DEPLOY_SHA }} \
             --region europe-west1 \
             --allow-unauthenticated \
             --port 3000 \
             --cpu 1 \
             --memory 512Mi \
             --min-instances 0 \
-            --max-instances 5 \
+            --max-instances 2 \
+            --concurrency 80 \
+            --no-cpu-boost \
             --set-env-vars "NODE_ENV=production"
 
   # ─── Deploy Web Participant to Cloud Run ──────────────────────────────────
@@ -273,40 +361,68 @@ jobs:
     environment: staging
     steps:
       - uses: actions/checkout@v4
+        with:
+          # workflow_run sets github.sha to the default branch HEAD, not the
+          # commit that triggered CI — check out the actual tested commit.
+          ref: ${{ github.event.workflow_run.head_sha }}
       - uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
       - uses: google-github-actions/setup-gcloud@v2
       - name: Configure Docker for Artifact Registry
         run: gcloud auth configure-docker europe-west1-docker.pkg.dev --quiet
-      - name: Build and push Docker image
-        run: |
-          IMAGE="europe-west1-docker.pkg.dev/${{ needs.setup.outputs.project_id }}/teranga/teranga-participant:${{ github.sha }}"
-          docker build \
-            -f apps/web-participant/Dockerfile \
-            --build-arg NEXT_PUBLIC_FIREBASE_API_KEY="${{ needs.setup.outputs.firebase_api_key }}" \
-            --build-arg NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN="${{ needs.setup.outputs.firebase_auth_domain }}" \
-            --build-arg NEXT_PUBLIC_FIREBASE_PROJECT_ID="${{ needs.setup.outputs.project_id }}" \
-            --build-arg NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET="${{ needs.setup.outputs.firebase_storage_bucket }}" \
-            --build-arg NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID="${{ needs.setup.outputs.firebase_messaging_sender_id }}" \
-            --build-arg NEXT_PUBLIC_FIREBASE_APP_ID="${{ needs.setup.outputs.firebase_app_id }}" \
-            --build-arg NEXT_PUBLIC_API_URL="${{ needs.setup.outputs.api_url }}" \
-            --build-arg NEXT_PUBLIC_APP_URL="${{ needs.setup.outputs.participant_url }}" \
-            --build-arg NEXT_PUBLIC_BACKOFFICE_URL="${{ needs.setup.outputs.backoffice_url }}" \
-            -t "$IMAGE" \
-            .
-          docker push "$IMAGE"
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Build and push Participant image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: apps/web-participant/Dockerfile
+          push: true
+          tags: europe-west1-docker.pkg.dev/${{ needs.setup.outputs.project_id }}/teranga/teranga-participant:${{ env.DEPLOY_SHA }}
+          build-args: |
+            NEXT_PUBLIC_FIREBASE_API_KEY=${{ needs.setup.outputs.firebase_api_key }}
+            NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=${{ needs.setup.outputs.firebase_auth_domain }}
+            NEXT_PUBLIC_FIREBASE_PROJECT_ID=${{ needs.setup.outputs.project_id }}
+            NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=${{ needs.setup.outputs.firebase_storage_bucket }}
+            NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=${{ needs.setup.outputs.firebase_messaging_sender_id }}
+            NEXT_PUBLIC_FIREBASE_APP_ID=${{ needs.setup.outputs.firebase_app_id }}
+            NEXT_PUBLIC_API_URL=${{ needs.setup.outputs.api_url }}
+            NEXT_PUBLIC_APP_URL=${{ needs.setup.outputs.participant_url }}
+            NEXT_PUBLIC_BACKOFFICE_URL=${{ needs.setup.outputs.backoffice_url }}
+          cache-from: type=gha,scope=participant
+          cache-to: type=gha,mode=max,scope=participant
+      - name: Scan Participant image for HIGH vulnerabilities (warn-only)
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: europe-west1-docker.pkg.dev/${{ needs.setup.outputs.project_id }}/teranga/teranga-participant:${{ env.DEPLOY_SHA }}
+          severity: HIGH
+          exit-code: "0"
+          ignore-unfixed: true
+          format: table
+      - name: Scan Participant image for CRITICAL vulnerabilities (blocking)
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: europe-west1-docker.pkg.dev/${{ needs.setup.outputs.project_id }}/teranga/teranga-participant:${{ env.DEPLOY_SHA }}
+          severity: CRITICAL
+          exit-code: "1"
+          ignore-unfixed: true
+          format: table
       - name: Deploy to Cloud Run
+        # Staging cost controls: cap max-instances at 2 and disable cpu-boost.
+        # Bump these when promoting to production.
         run: |
           gcloud run deploy teranga-participant-staging \
-            --image europe-west1-docker.pkg.dev/${{ needs.setup.outputs.project_id }}/teranga/teranga-participant:${{ github.sha }} \
+            --image europe-west1-docker.pkg.dev/${{ needs.setup.outputs.project_id }}/teranga/teranga-participant:${{ env.DEPLOY_SHA }} \
             --region europe-west1 \
             --allow-unauthenticated \
             --port 3000 \
             --cpu 1 \
             --memory 512Mi \
             --min-instances 0 \
-            --max-instances 5 \
+            --max-instances 2 \
+            --concurrency 80 \
+            --no-cpu-boost \
             --set-env-vars "NODE_ENV=production"
 
   # ─── Deploy Firebase (rules, indexes, storage, functions) ────────────────
@@ -317,6 +433,10 @@ jobs:
     environment: staging
     steps:
       - uses: actions/checkout@v4
+        with:
+          # workflow_run sets github.sha to the default branch HEAD, not the
+          # commit that triggered CI — check out the actual tested commit.
+          ref: ${{ github.event.workflow_run.head_sha }}
       - uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
@@ -345,31 +465,12 @@ jobs:
           # Rewrite the dependency to point at the vendored copy
           (cd apps/functions && npm pkg set dependencies.@teranga/shared-types=file:./vendor/shared-types)
 
-      - name: Cleanup functions left in incompatible state from previous failed deploys
-        # Partial/failed previous deploys can leave functions stuck as the
-        # wrong trigger type (e.g., HTTPS when the code declares a Firestore
-        # trigger), blocking redeploy with "Changing from an HTTPS function
-        # to a background triggered function is not allowed". This step
-        # deletes all functions defined in the codebase before redeploy.
-        # Safe for staging; tolerates missing functions gracefully.
-        run: |
-          set +e
-          FUNCTIONS="onUserCreated onUserDeleted onBadgeCreated \
-            onRegistrationCreated onRegistrationApproved onRegistrationCancelled \
-            onCheckinCompleted onFeedPostCreated onRegistrationConfirmed \
-            onPaymentTimeout onPaymentSucceeded onPaymentFailed \
-            sendEventReminders sendSessionReminders"
-          for fn in $FUNCTIONS; do
-            echo "→ Attempting to delete $fn (Gen2, then Gen1)..."
-            gcloud functions delete "$fn" \
-              --region=europe-west1 \
-              --gen2 --quiet 2>/dev/null || \
-            gcloud functions delete "$fn" \
-              --region=europe-west1 \
-              --quiet 2>/dev/null || \
-            echo "  (not found, skipping)"
-          done
-          exit 0
+      # Note: A previous revision of this workflow force-deleted all Cloud
+      # Functions before each deploy to recover from a one-off trigger-type
+      # migration (HTTPS → Firestore). That migration is done, and deleting
+      # functions on every deploy caused unnecessary cold starts and brief
+      # downtime. If a trigger type changes again, handle it manually with a
+      # one-shot `gcloud functions delete` rather than on every deploy.
 
       - name: Deploy Firebase resources (rules, indexes, storage, functions)
         run: |
@@ -390,6 +491,10 @@ jobs:
     environment: staging
     steps:
       - uses: actions/checkout@v4
+        with:
+          # workflow_run sets github.sha to the default branch HEAD, not the
+          # commit that triggered CI — check out the actual tested commit.
+          ref: ${{ github.event.workflow_run.head_sha }}
       - uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
@@ -403,3 +508,96 @@ jobs:
           SEED_TARGET: staging
           FIREBASE_PROJECT_ID: ${{ needs.setup.outputs.project_id }}
         run: npx tsx scripts/seed-emulators.ts
+
+  # ─── Post-deploy smoke test ──────────────────────────────────────────────
+  # Replaces the former 10-minute uptime cron: we only probe once after the
+  # CD pipeline completes, which is enough signal in dev/staging and avoids
+  # the cost of 144 Cloud Run invocations per day from a 10-min cron hitting
+  # /ready (which actually queries Firestore, so it's not free).
+  smoke-test:
+    name: Smoke test staging endpoints
+    runs-on: ubuntu-latest
+    needs: [setup, deploy-api, deploy-web-backoffice, deploy-web-participant, seed-staging]
+    environment: staging
+    permissions:
+      contents: read
+      issues: write # Required to file a failure issue
+    steps:
+      - name: Probe endpoints
+        id: probe
+        env:
+          API_URL: ${{ needs.setup.outputs.api_url }}
+          BACKOFFICE_URL: ${{ needs.setup.outputs.backoffice_url }}
+          PARTICIPANT_URL: ${{ needs.setup.outputs.participant_url }}
+        run: |
+          set +e # Collect all results instead of stopping on first failure.
+          FAIL=0
+          REPORT=""
+
+          check() {
+            local name="$1" url="$2" expected_code="${3:-200}"
+            # 5 attempts with backoff — first request after a fresh deploy
+            # may trigger a cold start, especially with --no-cpu-boost.
+            local code
+            for attempt in 1 2 3 4 5; do
+              code=$(curl -s -o /dev/null -w "%{http_code}" -m 20 "$url" || echo "000")
+              if [ "$code" = "$expected_code" ]; then
+                echo "::notice::$name OK ($code) on attempt $attempt"
+                return 0
+              fi
+              echo "::warning::$name attempt $attempt returned $code, retrying..."
+              sleep $((attempt * 3))
+            done
+            echo "::error::$name FAILED — last code: $code, url: $url"
+            REPORT="${REPORT}- **$name** returned \`$code\` (expected \`$expected_code\`) — $url\n"
+            FAIL=1
+          }
+
+          check "API /health" "${API_URL}/health" 200
+          check "API /ready" "${API_URL}/ready" 200
+          check "Backoffice /" "$BACKOFFICE_URL" 200
+          check "Participant /" "$PARTICIPANT_URL" 200
+
+          {
+            echo "fail=$FAIL"
+            echo "report<<EOF"
+            echo -e "$REPORT"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+          # Fail the job (and the workflow) if any probe failed — matches the
+          # spirit of the old uptime alert but keeps it inside the deploy run.
+          exit $FAIL
+
+      - name: File incident issue on failure
+        if: failure() && steps.probe.outputs.fail == '1'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = `[smoke-test] Post-deploy probe failed on ${context.sha.slice(0, 7)}`;
+            const body = `Staging deploy of ${context.sha} completed, but the post-deploy smoke test found one or more endpoints unhealthy.\n\n${{ steps.probe.outputs.report }}\n\nRun: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}\n\n_Auto-filed by the smoke-test job in \`deploy-staging.yml\`. Close once the incident is resolved._`;
+
+            // De-dupe: if an open incident issue already exists, comment on it instead.
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'smoke-test,incident',
+              per_page: 5,
+            });
+            if (existing.data.length > 0) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.data[0].number,
+                body,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+                labels: ['smoke-test', 'incident'],
+              });
+            }
