@@ -12,8 +12,7 @@ import { type AuthUser } from "@/middlewares/auth.middleware";
 import { BaseService } from "./base.service";
 import { eventBus } from "@/events/event-bus";
 import { getRequestId } from "@/context/request-context";
-import { mockSmsProvider } from "@/providers/mock-sms.provider";
-import { mockEmailProvider } from "@/providers/mock-email.provider";
+import { getSmsProvider, getEmailProvider } from "@/providers/index";
 
 export class BroadcastService extends BaseService {
   /**
@@ -109,7 +108,7 @@ export class BroadcastService extends BaseService {
             }));
 
           if (smsMessages.length > 0) {
-            const result = await mockSmsProvider.sendBulk(smsMessages);
+            const result = await getSmsProvider().sendBulk(smsMessages);
             totalSent += result.sent;
             totalFailed += result.failed;
           }
@@ -126,7 +125,7 @@ export class BroadcastService extends BaseService {
             }));
 
           if (emailMessages.length > 0) {
-            const result = await mockEmailProvider.sendBulk(emailMessages);
+            const result = await getEmailProvider().sendBulk(emailMessages);
             totalSent += result.sent;
             totalFailed += result.failed;
           }

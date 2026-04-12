@@ -1,9 +1,15 @@
 import type { FastifyPluginAsync } from "fastify";
 import { validate } from "@/middlewares/validate.middleware";
-import { newsletterService, NewsletterSubscribeSchema } from "@/services/newsletter.service";
+import { authenticate } from "@/middlewares/auth.middleware";
+import { requirePermission } from "@/middlewares/permission.middleware";
+import {
+  newsletterService,
+  NewsletterSubscribeSchema,
+  NewsletterSendSchema,
+} from "@/services/newsletter.service";
 
 export const newsletterRoutes: FastifyPluginAsync = async (fastify) => {
-  // ─── Subscribe to Newsletter (public, no auth) ────────────────────────────
+  // ─── Subscribe to Newsletter (public, no auth) ─────────��──────────────────
   fastify.post(
     "/subscribe",
     {
@@ -25,6 +31,35 @@ export const newsletterRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.send({
         success: true,
         message: "Inscription réussie",
+      });
+    },
+  );
+
+  // ─── Send Newsletter (super_admin only) ───────────────────────────────────
+  fastify.post(
+    "/send",
+    {
+      preHandler: [
+        authenticate,
+        requirePermission("platform:manage"),
+        validate({ body: NewsletterSendSchema }),
+      ],
+      schema: {
+        tags: ["Newsletter"],
+        summary: "Send newsletter to all subscribers (super_admin only)",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const { subject, htmlBody, textBody } = request.body as {
+        subject: string;
+        htmlBody: string;
+        textBody?: string;
+      };
+      const result = await newsletterService.sendNewsletter(subject, htmlBody, textBody);
+      return reply.send({
+        success: true,
+        data: result,
       });
     },
   );
