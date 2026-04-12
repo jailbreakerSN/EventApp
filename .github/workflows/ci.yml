@@ -21,8 +21,23 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  NODE_VERSION: "20"
+  # Aligned to Node 22 across all workspaces:
+  #   - apps/functions pins engines.node = "22" (required for Firebase
+  #     Functions v2 runtime), so running CI on anything else emits
+  #     EBADENGINE warnings on every `npm ci`.
+  #   - web-backoffice + web-participant Dockerfiles use node:22-alpine.
+  #   - apps/api Dockerfile was bumped to node:22-alpine in this commit.
+  # Keeping everything on one major removes drift and removes the warning
+  # noise from CI logs.
+  NODE_VERSION: "22"
   FLUTTER_VERSION: "3.27.x"
+  # Harden npm against transient GitHub Actions → registry network flakes
+  # (e.g. ECONNRESET mid-`npm ci`). Retries up to 5 times with exponential
+  # backoff; defaults are only 2 retries which is routinely insufficient
+  # for a ~1,300-package install over a shaky connection.
+  NPM_CONFIG_FETCH_RETRIES: "5"
+  NPM_CONFIG_FETCH_RETRY_MINTIMEOUT: "10000"
+  NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT: "120000"
 
 jobs:
   # ─── Shared Types (must build first — other packages depend on it) ───────
