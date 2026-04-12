@@ -6,6 +6,7 @@ import { eventsApi } from "@/lib/api-client";
 import { useAuth } from "@/hooks/use-auth";
 import { useFeed } from "@/hooks/use-feed";
 import { MessageSquare, ArrowLeft, Loader2 } from "lucide-react";
+import { QueryError } from "@teranga/shared-ui";
 import Link from "next/link";
 import { CreatePostForm } from "@/components/feed/CreatePostForm";
 import { FeedPostCard } from "@/components/feed/FeedPostCard";
@@ -90,12 +91,7 @@ export default function FeedPage() {
           <span className="sr-only">Chargement du feed...</span>
         </div>
       ) : feedError ? (
-        <div className="text-center py-16">
-          <p className="text-destructive mb-3">Impossible de charger le feed.</p>
-          <button onClick={refresh} className="text-sm text-primary hover:underline">
-            Réessayer
-          </button>
-        </div>
+        <QueryError message="Impossible de charger le feed." onRetry={refresh} />
       ) : posts.length === 0 ? (
         <div className="text-center py-16 text-muted-foreground">
           <MessageSquare className="h-12 w-12 mx-auto mb-4 opacity-30" />
