@@ -4,13 +4,5 @@
     "staging": "teranga-events-staging",
     "production": "teranga-events-prod"
   },
-  "targets": {
-    "teranga-app-990a8": {
-      "hosting": {
-        "backoffice": ["teranga-app-990a8"],
-        "participant": ["teranga-participant"]
-      }
-    }
-  },
   "etags": {}
 }

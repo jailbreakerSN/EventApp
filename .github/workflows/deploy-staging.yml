@@ -2,7 +2,7 @@ name: Deploy to Staging
 
 on:
   push:
-    branches: [develop]
+    branches: [develop, claude/setup-env-variables-KO5o1]
 
 concurrency:
   group: deploy-staging
@@ -11,84 +11,315 @@ concurrency:
 env:
   NODE_VERSION: "20"
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# Only 4 secrets required:
+#   GCP_SA_KEY      — Firebase Admin SDK JSON key (derives everything else)
+#   RESEND_API_KEY  — Resend email service API key
+#   QR_SECRET       — HMAC-SHA256 key for QR badge signing
+#   WEBHOOK_SECRET  — Webhook signature verification key
+#
+# Optional variables (non-secret, set via `gh variable set`):
+#   API_URL_STAGING — Cloud Run URL (auto-detected if service exists)
+# ═══════════════════════════════════════════════════════════════════════════════
+
 jobs:
+  # ─── Derive all config from GCP_SA_KEY ────────────────────────────────────
+  setup:
+    name: Discover Firebase & GCP config
+    runs-on: ubuntu-latest
+    environment: staging
+    outputs:
+      project_id: ${{ steps.discover.outputs.project_id }}
+      project_number: ${{ steps.discover.outputs.project_number }}
+      firebase_api_key: ${{ steps.discover.outputs.firebase_api_key }}
+      firebase_auth_domain: ${{ steps.discover.outputs.firebase_auth_domain }}
+      firebase_storage_bucket: ${{ steps.discover.outputs.firebase_storage_bucket }}
+      firebase_messaging_sender_id: ${{ steps.discover.outputs.firebase_messaging_sender_id }}
+      firebase_app_id: ${{ steps.discover.outputs.firebase_app_id }}
+      firebase_measurement_id: ${{ steps.discover.outputs.firebase_measurement_id }}
+      api_url: ${{ steps.discover.outputs.api_url }}
+      backoffice_url: ${{ steps.discover.outputs.backoffice_url }}
+      participant_url: ${{ steps.discover.outputs.participant_url }}
+      cors_origins: ${{ steps.discover.outputs.cors_origins }}
+    steps:
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Enable required GCP APIs
+        run: |
+          set -euo pipefail
+          # Idempotent: only enables APIs that aren't already enabled.
+          # Requires 'Service Usage Admin' role on the service account.
+          gcloud services enable \
+            run.googleapis.com \
+            cloudbuild.googleapis.com \
+            cloudfunctions.googleapis.com \
+            cloudbilling.googleapis.com \
+            artifactregistry.googleapis.com \
+            containerregistry.googleapis.com \
+            firebase.googleapis.com \
+            firebasehosting.googleapis.com \
+            firebaseextensions.googleapis.com \
+            firebaserules.googleapis.com \
+            firestore.googleapis.com \
+            firebasestorage.googleapis.com \
+            iamcredentials.googleapis.com \
+            cloudscheduler.googleapis.com \
+            eventarc.googleapis.com \
+            pubsub.googleapis.com \
+            --quiet
+
+      - name: Grant IAM roles to GCP service agents (for Firebase Functions)
+        run: |
+          set -euo pipefail
+          # Firebase Functions deploy requires specific IAM bindings on
+          # GCP-managed service agents. These are idempotent.
+          # Requires 'Project IAM Admin' role on the deploy service account.
+
+          PROJECT_ID=$(echo "$SA_KEY" | jq -r '.project_id')
+          PROJECT_NUMBER=$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')
+
+          PUBSUB_SA="service-${PROJECT_NUMBER}@gcp-sa-pubsub.iam.gserviceaccount.com"
+          EVENTARC_SA="service-${PROJECT_NUMBER}@gcp-sa-eventarc.iam.gserviceaccount.com"
+          COMPUTE_SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
+
+          # Trigger service identity creation (no-op if exists)
+          gcloud beta services identity create --service=pubsub.googleapis.com --project="$PROJECT_ID" || true
+          gcloud beta services identity create --service=eventarc.googleapis.com --project="$PROJECT_ID" || true
+
+          for binding in \
+            "serviceAccount:${PUBSUB_SA}|roles/iam.serviceAccountTokenCreator" \
+            "serviceAccount:${EVENTARC_SA}|roles/eventarc.serviceAgent" \
+            "serviceAccount:${COMPUTE_SA}|roles/run.invoker" \
+            "serviceAccount:${COMPUTE_SA}|roles/eventarc.eventReceiver" \
+            "serviceAccount:${COMPUTE_SA}|roles/datastore.user" \
+            "serviceAccount:${COMPUTE_SA}|roles/storage.objectAdmin" \
+            "serviceAccount:${COMPUTE_SA}|roles/firebasecloudmessaging.admin"; do
+            member="${binding%|*}"
+            role="${binding#*|}"
+            gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+              --member="$member" --role="$role" \
+              --condition=None --quiet >/dev/null || \
+              echo "::warning::Failed to bind $role to $member (may already exist or SA lacks Project IAM Admin)"
+          done
+        env:
+          SA_KEY: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Discover config from SA key and Firebase API
+        id: discover
+        env:
+          SA_KEY: ${{ secrets.GCP_SA_KEY }}
+        run: |
+          set -euo pipefail
+
+          # ── 1. Extract project_id from the SA key JSON ──
+          PROJECT_ID=$(echo "$SA_KEY" | jq -r '.project_id')
+          echo "project_id=$PROJECT_ID" >> $GITHUB_OUTPUT
+          echo "::notice::Project ID: $PROJECT_ID"
+
+          # ── 2. Get access token for Firebase Management API ──
+          ACCESS_TOKEN=$(gcloud auth print-access-token)
+
+          # ── 3. Discover Firebase web app SDK config ──
+          echo "Fetching Firebase web apps..."
+          WEB_APPS=$(curl -sf -H "Authorization: Bearer $ACCESS_TOKEN" \
+            "https://firebase.googleapis.com/v1beta1/projects/$PROJECT_ID/webApps")
+
+          APP_ID=$(echo "$WEB_APPS" | jq -r '.apps[0].appId // empty')
+
+          if [ -z "$APP_ID" ]; then
+            echo "::warning::No Firebase web app found. Using convention-based defaults."
+            echo "firebase_api_key=" >> $GITHUB_OUTPUT
+            echo "firebase_auth_domain=$PROJECT_ID.firebaseapp.com" >> $GITHUB_OUTPUT
+            echo "firebase_storage_bucket=$PROJECT_ID.firebasestorage.app" >> $GITHUB_OUTPUT
+            echo "firebase_messaging_sender_id=" >> $GITHUB_OUTPUT
+            echo "firebase_app_id=" >> $GITHUB_OUTPUT
+            echo "firebase_measurement_id=" >> $GITHUB_OUTPUT
+          else
+            echo "Fetching SDK config for app: $APP_ID"
+            CONFIG=$(curl -sf -H "Authorization: Bearer $ACCESS_TOKEN" \
+              "https://firebase.googleapis.com/v1beta1/projects/$PROJECT_ID/webApps/$APP_ID/config")
+
+            echo "firebase_api_key=$(echo "$CONFIG" | jq -r '.apiKey // empty')" >> $GITHUB_OUTPUT
+            echo "firebase_auth_domain=$(echo "$CONFIG" | jq -r '.authDomain // empty')" >> $GITHUB_OUTPUT
+            echo "firebase_storage_bucket=$(echo "$CONFIG" | jq -r '.storageBucket // empty')" >> $GITHUB_OUTPUT
+            echo "firebase_messaging_sender_id=$(echo "$CONFIG" | jq -r '.messagingSenderId // empty')" >> $GITHUB_OUTPUT
+            echo "firebase_app_id=$(echo "$CONFIG" | jq -r '.appId // empty')" >> $GITHUB_OUTPUT
+            echo "firebase_measurement_id=$(echo "$CONFIG" | jq -r '.measurementId // empty')" >> $GITHUB_OUTPUT
+          fi
+
+          # ── 4. Compute deterministic Cloud Run URLs ──
+          # All Cloud Run services in a given region follow the URL pattern:
+          #   https://{SERVICE_NAME}-{PROJECT_NUMBER}.{REGION}.run.app
+          # This lets us know URLs BEFORE services are deployed, enabling correct
+          # CORS config on first deploy without a chicken-and-egg problem.
+          PROJECT_NUMBER=$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')
+          REGION=europe-west1
+
+          API_URL="https://teranga-api-staging-${PROJECT_NUMBER}.${REGION}.run.app"
+          BACKOFFICE_URL="https://teranga-backoffice-staging-${PROJECT_NUMBER}.${REGION}.run.app"
+          PARTICIPANT_URL="https://teranga-participant-staging-${PROJECT_NUMBER}.${REGION}.run.app"
+          CORS_ORIGINS="${API_URL},${BACKOFFICE_URL},${PARTICIPANT_URL}"
+
+          echo "project_number=$PROJECT_NUMBER" >> $GITHUB_OUTPUT
+          echo "api_url=$API_URL" >> $GITHUB_OUTPUT
+          echo "backoffice_url=$BACKOFFICE_URL" >> $GITHUB_OUTPUT
+          echo "participant_url=$PARTICIPANT_URL" >> $GITHUB_OUTPUT
+          echo "cors_origins=$CORS_ORIGINS" >> $GITHUB_OUTPUT
+
+          echo "::notice::Project Number: $PROJECT_NUMBER"
+          echo "::notice::API URL:         $API_URL"
+          echo "::notice::Backoffice URL:  $BACKOFFICE_URL"
+          echo "::notice::Participant URL: $PARTICIPANT_URL"
+
+  # ─── Deploy API to Cloud Run ──────────────────────────────────────────────
   deploy-api:
     name: Deploy API to Cloud Run (staging)
     runs-on: ubuntu-latest
+    needs: setup
     environment: staging
     permissions:
       contents: read
-      id-token: write
     steps:
       - uses: actions/checkout@v4
       - uses: google-github-actions/auth@v2
         with:
-          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
       - uses: google-github-actions/setup-gcloud@v2
+      - name: Ensure Artifact Registry repo exists
+        run: |
+          set -euo pipefail
+          # Idempotent: creates 'teranga' Docker repo in europe-west1 if missing.
+          gcloud artifacts repositories describe teranga \
+            --location=europe-west1 >/dev/null 2>&1 || \
+          gcloud artifacts repositories create teranga \
+            --repository-format=docker \
+            --location=europe-west1 \
+            --description="Teranga Events container images" \
+            --quiet
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker europe-west1-docker.pkg.dev --quiet
       - name: Build and push Docker image
         run: |
-          gcloud builds submit \
-            --tag gcr.io/${{ secrets.GCP_PROJECT_ID }}/teranga-api:${{ github.sha }} \
-            --build-arg BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ") \
-            --build-arg GIT_SHA=${{ github.sha }}
+          IMAGE="europe-west1-docker.pkg.dev/${{ needs.setup.outputs.project_id }}/teranga/teranga-api:${{ github.sha }}"
+          docker build \
+            -f apps/api/Dockerfile \
+            --build-arg BUILD_DATE="$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
+            --build-arg GIT_SHA="${{ github.sha }}" \
+            -t "$IMAGE" \
+            .
+          docker push "$IMAGE"
       - name: Deploy to Cloud Run
+        # The '^@^' prefix tells gcloud to use '@' as the delimiter between
+        # env var entries instead of the default ','. This is required because
+        # CORS_ORIGINS contains commas.
         run: |
           gcloud run deploy teranga-api-staging \
-            --image gcr.io/${{ secrets.GCP_PROJECT_ID }}/teranga-api:${{ github.sha }} \
+            --image europe-west1-docker.pkg.dev/${{ needs.setup.outputs.project_id }}/teranga/teranga-api:${{ github.sha }} \
             --region europe-west1 \
             --allow-unauthenticated \
-            --set-env-vars "NODE_ENV=staging"
+            --set-env-vars "^@^NODE_ENV=staging@FIREBASE_PROJECT_ID=${{ needs.setup.outputs.project_id }}@FIREBASE_STORAGE_BUCKET=${{ needs.setup.outputs.firebase_storage_bucket }}@QR_SECRET=${{ secrets.QR_SECRET }}@WEBHOOK_SECRET=${{ secrets.WEBHOOK_SECRET }}@RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}@CORS_ORIGINS=${{ needs.setup.outputs.cors_origins }}@RATE_LIMIT_MAX=100@RATE_LIMIT_WINDOW_MS=60000@LOG_LEVEL=info"
 
-  deploy-web:
-    name: Deploy Web Apps to Firebase Hosting (staging)
+  # ─── Deploy Web Backoffice to Cloud Run ───────────────────────────────────
+  deploy-web-backoffice:
+    name: Deploy Web Backoffice to Cloud Run (staging)
     runs-on: ubuntu-latest
+    needs: setup
     environment: staging
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: google-github-actions/auth@v2
         with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-      - run: npm ci
-      - name: Build shared packages
-        run: npx turbo build --filter=@teranga/shared-types --filter=@teranga/shared-ui
-      - name: Build web backoffice
-        run: npm run build --workspace=apps/web-backoffice
-        env:
-          NEXT_PUBLIC_FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY_STAGING }}
-          NEXT_PUBLIC_FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID_STAGING }}
-          NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: ${{ secrets.FIREBASE_AUTH_DOMAIN_STAGING }}
-          NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: ${{ secrets.FIREBASE_STORAGE_BUCKET_STAGING }}
-          NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.FIREBASE_MESSAGING_SENDER_ID_STAGING }}
-          NEXT_PUBLIC_FIREBASE_APP_ID: ${{ secrets.FIREBASE_APP_ID_STAGING }}
-          NEXT_PUBLIC_API_URL: ${{ secrets.API_URL_STAGING }}
-      - name: Build web participant
-        run: npm run build --workspace=apps/web-participant
-        env:
-          NEXT_PUBLIC_FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY_STAGING }}
-          NEXT_PUBLIC_FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID_STAGING }}
-          NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: ${{ secrets.FIREBASE_AUTH_DOMAIN_STAGING }}
-          NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: ${{ secrets.FIREBASE_STORAGE_BUCKET_STAGING }}
-          NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.FIREBASE_MESSAGING_SENDER_ID_STAGING }}
-          NEXT_PUBLIC_FIREBASE_APP_ID: ${{ secrets.FIREBASE_APP_ID_STAGING }}
-          NEXT_PUBLIC_API_URL: ${{ secrets.API_URL_STAGING }}
-          NEXT_PUBLIC_APP_URL: ${{ secrets.PARTICIPANT_URL_STAGING }}
-          NEXT_PUBLIC_BACKOFFICE_URL: ${{ secrets.BACKOFFICE_URL_STAGING }}
-      - name: Deploy to Firebase Hosting
-        uses: FirebaseExtended/action-hosting-deploy@v0
-        with:
-          repoToken: ${{ secrets.GITHUB_TOKEN }}
-          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_STAGING }}
-          projectId: teranga-events-staging
-          channelId: live
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker europe-west1-docker.pkg.dev --quiet
+      - name: Build and push Docker image
+        run: |
+          IMAGE="europe-west1-docker.pkg.dev/${{ needs.setup.outputs.project_id }}/teranga/teranga-backoffice:${{ github.sha }}"
+          docker build \
+            -f apps/web-backoffice/Dockerfile \
+            --build-arg NEXT_PUBLIC_FIREBASE_API_KEY="${{ needs.setup.outputs.firebase_api_key }}" \
+            --build-arg NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN="${{ needs.setup.outputs.firebase_auth_domain }}" \
+            --build-arg NEXT_PUBLIC_FIREBASE_PROJECT_ID="${{ needs.setup.outputs.project_id }}" \
+            --build-arg NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET="${{ needs.setup.outputs.firebase_storage_bucket }}" \
+            --build-arg NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID="${{ needs.setup.outputs.firebase_messaging_sender_id }}" \
+            --build-arg NEXT_PUBLIC_FIREBASE_APP_ID="${{ needs.setup.outputs.firebase_app_id }}" \
+            --build-arg NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID="${{ needs.setup.outputs.firebase_measurement_id }}" \
+            --build-arg NEXT_PUBLIC_API_URL="${{ needs.setup.outputs.api_url }}" \
+            -t "$IMAGE" \
+            .
+          docker push "$IMAGE"
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy teranga-backoffice-staging \
+            --image europe-west1-docker.pkg.dev/${{ needs.setup.outputs.project_id }}/teranga/teranga-backoffice:${{ github.sha }} \
+            --region europe-west1 \
+            --allow-unauthenticated \
+            --port 3000 \
+            --cpu 1 \
+            --memory 512Mi \
+            --min-instances 0 \
+            --max-instances 5 \
+            --set-env-vars "NODE_ENV=production"
 
-  deploy-functions:
-    name: Deploy Cloud Functions (staging)
+  # ─── Deploy Web Participant to Cloud Run ──────────────────────────────────
+  deploy-web-participant:
+    name: Deploy Web Participant to Cloud Run (staging)
     runs-on: ubuntu-latest
+    needs: setup
     environment: staging
     steps:
       - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker europe-west1-docker.pkg.dev --quiet
+      - name: Build and push Docker image
+        run: |
+          IMAGE="europe-west1-docker.pkg.dev/${{ needs.setup.outputs.project_id }}/teranga/teranga-participant:${{ github.sha }}"
+          docker build \
+            -f apps/web-participant/Dockerfile \
+            --build-arg NEXT_PUBLIC_FIREBASE_API_KEY="${{ needs.setup.outputs.firebase_api_key }}" \
+            --build-arg NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN="${{ needs.setup.outputs.firebase_auth_domain }}" \
+            --build-arg NEXT_PUBLIC_FIREBASE_PROJECT_ID="${{ needs.setup.outputs.project_id }}" \
+            --build-arg NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET="${{ needs.setup.outputs.firebase_storage_bucket }}" \
+            --build-arg NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID="${{ needs.setup.outputs.firebase_messaging_sender_id }}" \
+            --build-arg NEXT_PUBLIC_FIREBASE_APP_ID="${{ needs.setup.outputs.firebase_app_id }}" \
+            --build-arg NEXT_PUBLIC_API_URL="${{ needs.setup.outputs.api_url }}" \
+            --build-arg NEXT_PUBLIC_APP_URL="${{ needs.setup.outputs.participant_url }}" \
+            --build-arg NEXT_PUBLIC_BACKOFFICE_URL="${{ needs.setup.outputs.backoffice_url }}" \
+            -t "$IMAGE" \
+            .
+          docker push "$IMAGE"
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy teranga-participant-staging \
+            --image europe-west1-docker.pkg.dev/${{ needs.setup.outputs.project_id }}/teranga/teranga-participant:${{ github.sha }} \
+            --region europe-west1 \
+            --allow-unauthenticated \
+            --port 3000 \
+            --cpu 1 \
+            --memory 512Mi \
+            --min-instances 0 \
+            --max-instances 5 \
+            --set-env-vars "NODE_ENV=production"
+
+  # ─── Deploy Firebase (rules, indexes, storage, functions) ────────────────
+  deploy-firebase:
+    name: Deploy Firebase rules/indexes/storage/functions (staging)
+    runs-on: ubuntu-latest
+    needs: setup
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -98,5 +329,77 @@ jobs:
         run: npx turbo build --filter=@teranga/shared-types
       - name: Build functions
         run: npm run build --workspace=apps/functions
-      - name: Deploy to Firebase
-        run: npx firebase-tools deploy --only functions --project staging --non-interactive --token ${{ secrets.FIREBASE_TOKEN }}
+
+      - name: Vendor shared-types into functions directory
+        # Firebase Functions uploads only the apps/functions/ folder. The
+        # workspace dep '@teranga/shared-types' won't resolve in Cloud Build
+        # because it's not on npm. Copy the built package into
+        # apps/functions/vendor/ and rewrite the dependency to a local
+        # file path.
+        run: |
+          set -euo pipefail
+          VENDOR=apps/functions/vendor/shared-types
+          mkdir -p "$VENDOR"
+          cp packages/shared-types/package.json "$VENDOR/"
+          cp -r packages/shared-types/dist "$VENDOR/dist"
+          # Rewrite the dependency to point at the vendored copy
+          (cd apps/functions && npm pkg set dependencies.@teranga/shared-types=file:./vendor/shared-types)
+
+      - name: Cleanup functions left in incompatible state from previous failed deploys
+        # Partial/failed previous deploys can leave functions stuck as the
+        # wrong trigger type (e.g., HTTPS when the code declares a Firestore
+        # trigger), blocking redeploy with "Changing from an HTTPS function
+        # to a background triggered function is not allowed". This step
+        # deletes all functions defined in the codebase before redeploy.
+        # Safe for staging; tolerates missing functions gracefully.
+        run: |
+          set +e
+          FUNCTIONS="onUserCreated onUserDeleted onBadgeCreated \
+            onRegistrationCreated onRegistrationApproved onRegistrationCancelled \
+            onCheckinCompleted onFeedPostCreated onRegistrationConfirmed \
+            onPaymentTimeout onPaymentSucceeded onPaymentFailed \
+            sendEventReminders sendSessionReminders"
+          for fn in $FUNCTIONS; do
+            echo "→ Attempting to delete $fn (Gen2, then Gen1)..."
+            gcloud functions delete "$fn" \
+              --region=europe-west1 \
+              --gen2 --quiet 2>/dev/null || \
+            gcloud functions delete "$fn" \
+              --region=europe-west1 \
+              --quiet 2>/dev/null || \
+            echo "  (not found, skipping)"
+          done
+          exit 0
+
+      - name: Deploy Firebase resources (rules, indexes, storage, functions)
+        run: |
+          npx firebase-tools deploy \
+            --only firestore:rules,firestore:indexes,storage,functions \
+            --project ${{ needs.setup.outputs.project_id }} \
+            --force \
+            --non-interactive
+
+  # ─── Seed staging database (one-time, idempotent) ────────────────────────
+  # Runs the seed script against the real Firestore. The script checks for
+  # existing data and skips if the database already has organizations.
+  # Depends on deploy-firebase so rules + indexes are in place first.
+  seed-staging:
+    name: Seed staging database (idempotent)
+    runs-on: ubuntu-latest
+    needs: [setup, deploy-firebase]
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: Run seed script (skips if data exists)
+        env:
+          SEED_TARGET: staging
+          FIREBASE_PROJECT_ID: ${{ needs.setup.outputs.project_id }}
+        run: npx tsx scripts/seed-emulators.ts

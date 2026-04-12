@@ -10,12 +10,18 @@ LABEL org.opencontainers.image.source="https://github.com/jailbreakersn/eventapp
 LABEL org.opencontainers.image.created="${BUILD_DATE}"
 LABEL org.opencontainers.image.revision="${GIT_SHA}"
 
+# Skip husky install (git hooks are only for local dev, not containers)
+ENV HUSKY=0
+
 WORKDIR /app
 
 # Copy workspace root manifests
 COPY package.json package-lock.json turbo.json ./
 COPY packages/shared-types/package.json ./packages/shared-types/
 COPY apps/api/package.json ./apps/api/
+
+# Remove the 'prepare' script which invokes husky (dev-only git hooks tool)
+RUN npm pkg delete scripts.prepare
 
 RUN npm ci --workspace=packages/shared-types --workspace=apps/api
 
@@ -32,11 +38,15 @@ FROM node:20-alpine AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
+ENV HUSKY=0
 
 # Only production dependencies
 COPY package.json package-lock.json turbo.json ./
 COPY packages/shared-types/package.json ./packages/shared-types/
 COPY apps/api/package.json ./apps/api/
+
+# Remove the 'prepare' script which invokes husky
+RUN npm pkg delete scripts.prepare
 
 RUN npm ci --workspace=packages/shared-types --workspace=apps/api --omit=dev
 
