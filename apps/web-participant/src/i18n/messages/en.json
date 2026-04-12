@@ -1,0 +1,49 @@
+{
+  "common": {
+    "loading": "Loading...",
+    "error": "An error occurred",
+    "retry": "Retry",
+    "back": "Back",
+    "close": "Close",
+    "search": "Search"
+  },
+  "auth": {
+    "login": "Sign in",
+    "logout": "Sign out",
+    "register": "Sign up",
+    "email": "Email address",
+    "password": "Password",
+    "forgotPassword": "Forgot password?",
+    "sessionExpiring": "Your session will expire in 5 minutes due to inactivity.",
+    "sessionExpired": "Session expired. Please sign in again."
+  },
+  "events": {
+    "title": "Events",
+    "discover": "Discover events",
+    "noEvents": "No events available at the moment.",
+    "register": "Register",
+    "registered": "Registered",
+    "myEvents": "My events",
+    "noMyEvents": "You are not registered for any events."
+  },
+  "badge": {
+    "title": "My badge",
+    "download": "Download",
+    "scanToCheckin": "Show this QR code at the event entrance."
+  },
+  "feed": {
+    "title": "Feed",
+    "writePost": "Write a post...",
+    "noPostsYet": "No posts yet."
+  },
+  "notifications": {
+    "title": "Notifications",
+    "markAllRead": "Mark all read",
+    "empty": "No notifications"
+  },
+  "messages": {
+    "title": "Messages",
+    "noConversations": "No conversations.",
+    "writeMessage": "Write a message..."
+  }
+}

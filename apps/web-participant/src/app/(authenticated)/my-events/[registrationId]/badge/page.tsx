@@ -2,11 +2,12 @@
 
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { ArrowLeft, Download, Loader2 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { useQuery } from "@tanstack/react-query";
 import { registrationsApi, badgesApi } from "@/lib/api-client";
+import { cacheBadgeInServiceWorker } from "@/hooks/use-badges";
 import { Button, Spinner, Card, CardContent } from "@teranga/shared-ui";
 import type { Registration, GeneratedBadge } from "@teranga/shared-types";
 
@@ -29,6 +30,8 @@ export default function BadgePage() {
       const res = await badgesApi.getMyBadge(registration.eventId);
       const badge = (res as { data?: GeneratedBadge })?.data as GeneratedBadge | undefined;
       if (badge?.pdfURL) {
+        // Cache badge data in service worker for offline access
+        cacheBadgeInServiceWorker(`/v1/badges/me/${registration.eventId}`);
         window.open(badge.pdfURL, "_blank");
         setPdfState("idle");
       } else {
@@ -38,6 +41,13 @@ export default function BadgePage() {
       setPdfState("error");
     }
   };
+
+  // Proactively cache badge data in service worker when registration is loaded
+  useEffect(() => {
+    if (registration?.eventId) {
+      cacheBadgeInServiceWorker(`/v1/badges/me/${registration.eventId}`);
+    }
+  }, [registration?.eventId]);
 
   if (isLoading) {
     return (
@@ -62,7 +72,10 @@ export default function BadgePage() {
 
   return (
     <div className="mx-auto max-w-lg px-4 py-8">
-      <Link href="/my-events" className="mb-6 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+      <Link
+        href="/my-events"
+        className="mb-6 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+      >
         <ArrowLeft className="h-4 w-4" />
         Mes inscriptions
       </Link>
@@ -74,12 +87,7 @@ export default function BadgePage() {
           {registration.qrCodeValue ? (
             <>
               <div className="rounded-lg bg-white p-4 shadow-inner">
-                <QRCodeSVG
-                  value={registration.qrCodeValue}
-                  size={240}
-                  level="M"
-                  includeMargin
-                />
+                <QRCodeSVG value={registration.qrCodeValue} size={240} level="M" includeMargin />
               </div>
               <p className="mt-4 text-center text-sm text-muted-foreground">
                 Présentez ce QR code à l&apos;entrée de l&apos;événement.

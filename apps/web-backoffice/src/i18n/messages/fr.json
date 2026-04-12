@@ -1,0 +1,95 @@
+{
+  "common": {
+    "loading": "Chargement...",
+    "error": "Une erreur est survenue",
+    "retry": "Réessayer",
+    "save": "Enregistrer",
+    "cancel": "Annuler",
+    "delete": "Supprimer",
+    "edit": "Modifier",
+    "create": "Créer",
+    "search": "Rechercher",
+    "filter": "Filtrer",
+    "export": "Exporter",
+    "back": "Retour",
+    "next": "Suivant",
+    "previous": "Précédent",
+    "close": "Fermer",
+    "confirm": "Confirmer",
+    "yes": "Oui",
+    "no": "Non",
+    "all": "Tous",
+    "none": "Aucun"
+  },
+  "auth": {
+    "login": "Connexion",
+    "logout": "Déconnexion",
+    "register": "Inscription",
+    "email": "Adresse e-mail",
+    "password": "Mot de passe",
+    "forgotPassword": "Mot de passe oublié ?",
+    "resetPassword": "Réinitialiser le mot de passe",
+    "sessionExpiring": "Votre session va expirer dans 5 minutes en raison d'inactivité.",
+    "sessionExpired": "Session expirée. Veuillez vous reconnecter."
+  },
+  "nav": {
+    "dashboard": "Tableau de bord",
+    "events": "Événements",
+    "participants": "Participants",
+    "badges": "Badges",
+    "communications": "Communications",
+    "analytics": "Analyses",
+    "finance": "Finance",
+    "venues": "Lieux",
+    "organization": "Organisation",
+    "settings": "Paramètres",
+    "notifications": "Notifications"
+  },
+  "events": {
+    "title": "Événements",
+    "create": "Créer un événement",
+    "noEvents": "Aucun événement pour le moment. Créez votre premier événement.",
+    "noFilterResults": "Aucun événement ne correspond à vos filtres.",
+    "allCategories": "Toutes les catégories",
+    "status": {
+      "draft": "Brouillon",
+      "published": "Publié",
+      "cancelled": "Annulé",
+      "archived": "Archivé"
+    }
+  },
+  "registrations": {
+    "status": {
+      "confirmed": "Confirmé",
+      "pending": "En attente",
+      "cancelled": "Annulé",
+      "waitlisted": "Liste d'attente",
+      "checked_in": "Enregistré"
+    },
+    "exportCsv": "Exporter CSV"
+  },
+  "venues": {
+    "title": "Lieux",
+    "create": "Ajouter un lieu",
+    "noVenues": "Aucun lieu pour le moment.",
+    "status": {
+      "approved": "Approuvé",
+      "pending": "En attente",
+      "suspended": "Suspendu"
+    }
+  },
+  "notifications": {
+    "title": "Notifications",
+    "markAllRead": "Tout lire",
+    "empty": "Aucune notification",
+    "loadError": "Erreur de chargement des notifications."
+  },
+  "plan": {
+    "free": "Gratuit",
+    "starter": "Starter",
+    "pro": "Pro",
+    "enterprise": "Entreprise",
+    "upgrade": "Mettre à niveau",
+    "currentPlan": "Plan actuel"
+  }
+}
