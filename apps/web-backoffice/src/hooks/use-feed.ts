@@ -22,11 +22,56 @@ export function useCreateFeedPost(eventId: string) {
   });
 }
 
-export function useToggleLike(eventId: string) {
+export function useToggleLike(eventId: string, currentUserId?: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (postId: string) => feedApi.toggleLike(eventId, postId),
-    onSuccess: () => {
+    onMutate: async (postId: string) => {
+      // Cancel in-flight feed queries to avoid overwrites
+      await qc.cancelQueries({ queryKey: ["feed", eventId] });
+
+      // Snapshot previous data for rollback
+      const previousQueries = qc.getQueriesData({ queryKey: ["feed", eventId] });
+
+      // Optimistically update the like state in all matching feed queries
+      if (currentUserId) {
+        qc.setQueriesData(
+          { queryKey: ["feed", eventId] },
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (old: any) => {
+            if (!old?.data) return old;
+            return {
+              ...old,
+              data: old.data.map(
+                (post: { id: string; likedByIds: string[]; likeCount: number }) => {
+                  if (post.id !== postId) return post;
+                  const isLiked = post.likedByIds.includes(currentUserId);
+                  return {
+                    ...post,
+                    likedByIds: isLiked
+                      ? post.likedByIds.filter((id: string) => id !== currentUserId)
+                      : [...post.likedByIds, currentUserId],
+                    likeCount: isLiked ? post.likeCount - 1 : post.likeCount + 1,
+                  };
+                },
+              ),
+            };
+          },
+        );
+      }
+
+      return { previousQueries };
+    },
+    onError: (_err, _postId, context) => {
+      // Rollback to previous state on error
+      if (context?.previousQueries) {
+        for (const [queryKey, data] of context.previousQueries) {
+          qc.setQueryData(queryKey, data);
+        }
+      }
+    },
+    onSettled: () => {
+      // Always refetch after mutation to ensure server state
       qc.invalidateQueries({ queryKey: ["feed", eventId] });
     },
   });

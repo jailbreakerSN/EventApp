@@ -5,13 +5,13 @@ import Link from "next/link";
 import { useEvents } from "@/hooks/use-events";
 import { formatDate } from "@/lib/utils";
 import { Search, Plus, ChevronLeft, ChevronRight, Calendar, MapPin, Users } from "lucide-react";
-import { Select, Skeleton, QueryError } from "@teranga/shared-ui";
+import { Select, Skeleton, QueryError, Badge, getStatusVariant } from "@teranga/shared-ui";
 
-const STATUS_LABELS: Record<string, { label: string; className: string }> = {
-  draft: { label: "Brouillon", className: "bg-accent text-foreground" },
-  published: { label: "Publié", className: "bg-green-100 text-green-700" },
-  cancelled: { label: "Annulé", className: "bg-red-100 text-red-700" },
-  archived: { label: "Archivé", className: "bg-yellow-100 text-yellow-700" },
+const STATUS_LABELS: Record<string, string> = {
+  draft: "Brouillon",
+  published: "Publié",
+  cancelled: "Annulé",
+  archived: "Archivé",
 };
 
 const CATEGORY_OPTIONS = [
@@ -165,7 +165,7 @@ export default function EventsPage() {
                 </thead>
                 <tbody>
                   {events.map((event) => {
-                    const status = STATUS_LABELS[event.status] ?? STATUS_LABELS.draft;
+                    const statusLabel = STATUS_LABELS[event.status] ?? STATUS_LABELS.draft;
                     return (
                       <tr
                         key={event.id}
@@ -187,18 +187,14 @@ export default function EventsPage() {
                               {event.location.city}
                             </span>
                           ) : (
-                            <span className="text-muted-foreground">—</span>
+                            <span className="text-muted-foreground">--</span>
                           )}
                         </td>
                         <td className="px-6 py-4 text-muted-foreground capitalize">
                           {event.category ?? "—"}
                         </td>
                         <td className="px-6 py-4">
-                          <span
-                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${status.className}`}
-                          >
-                            {status.label}
-                          </span>
+                          <Badge variant={getStatusVariant(event.status)}>{statusLabel}</Badge>
                         </td>
                         <td className="px-6 py-4 text-right text-muted-foreground">
                           <span className="inline-flex items-center gap-1.5">

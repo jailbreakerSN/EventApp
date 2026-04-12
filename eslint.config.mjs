@@ -1,3 +1,7 @@
+// TODO: Add eslint-plugin-jsx-a11y for accessibility linting of JSX elements.
+// Install: npm install -D eslint-plugin-jsx-a11y
+// Then add jsxA11y.flatConfigs.recommended to the config array below.
+// See: https://github.com/jsx-eslint/eslint-plugin-jsx-a11y
 import js from "@eslint/js";
 import tseslint from "typescript-eslint";
 

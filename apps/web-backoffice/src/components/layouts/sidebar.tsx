@@ -166,7 +166,10 @@ export function Sidebar() {
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
+      <nav
+        className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto"
+        aria-label="Navigation principale"
+      >
         {visibleItems.map(({ href, icon: Icon, label }) => {
           const isActive = pathname === href || pathname.startsWith(href + "/");
           return (
