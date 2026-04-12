@@ -1,4 +1,8 @@
-import { onDocumentCreated, onDocumentUpdated, onDocumentWritten } from "firebase-functions/v2/firestore";
+import {
+  onDocumentCreated,
+  onDocumentUpdated,
+  onDocumentWritten,
+} from "firebase-functions/v2/firestore";
 import { logger } from "firebase-functions/v2";
 import { db, messaging, COLLECTIONS } from "../utils/admin";
 
@@ -10,6 +14,8 @@ export const onRegistrationCreated = onDocumentCreated(
   {
     document: `${COLLECTIONS.REGISTRATIONS}/{regId}`,
     region: "europe-west1",
+    memory: "256MiB",
+    timeoutSeconds: 60,
   },
   async (event) => {
     const snapshot = event.data;
@@ -17,7 +23,9 @@ export const onRegistrationCreated = onDocumentCreated(
 
     const registration = snapshot.data();
     if (registration.status !== "confirmed") {
-      logger.info(`Registration ${snapshot.id} status is '${registration.status}', skipping badge generation`);
+      logger.info(
+        `Registration ${snapshot.id} status is '${registration.status}', skipping badge generation`,
+      );
       return;
     }
 
@@ -33,6 +41,8 @@ export const onRegistrationApproved = onDocumentUpdated(
   {
     document: `${COLLECTIONS.REGISTRATIONS}/{regId}`,
     region: "europe-west1",
+    memory: "256MiB",
+    timeoutSeconds: 60,
   },
   async (event) => {
     const before = event.data?.before?.data();
@@ -203,9 +213,7 @@ async function createBadgeForRegistration(
     await db.runTransaction(async (tx) => {
       // Check for existing badge inside the transaction
       const existingBadge = await tx.get(
-        db.collection(COLLECTIONS.BADGES)
-          .where("registrationId", "==", regId)
-          .limit(1),
+        db.collection(COLLECTIONS.BADGES).where("registrationId", "==", regId).limit(1),
       );
 
       if (!existingBadge.empty) {

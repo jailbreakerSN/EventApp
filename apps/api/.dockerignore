@@ -1,0 +1,30 @@
+# Dependencies (reinstalled in Docker)
+node_modules
+
+# Source (only built artifacts needed in production)
+src
+**/__tests__
+**/*.test.ts
+**/*.spec.ts
+
+# Development files
+.env
+.env.*
+*.md
+coverage
+.turbo
+tsconfig*.json
+vitest.config.ts
+eslint.config.*
+
+# IDE
+.vscode
+.idea
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git
+.gitignore

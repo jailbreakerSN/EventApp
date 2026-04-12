@@ -183,6 +183,47 @@ jobs:
           NEXT_PUBLIC_FIREBASE_APP_ID: ci-placeholder
           NEXT_PUBLIC_API_URL: http://localhost:3000
 
+  # ─── Web Participant ─────────────────────────────────────────────────────
+  web-participant:
+    name: Web Participant
+    runs-on: ubuntu-latest
+    needs: shared-types
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - uses: actions/download-artifact@v4
+        with:
+          name: shared-types-dist
+          path: packages/shared-types/dist
+      - name: Turbo cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            node_modules/.cache/turbo
+            apps/web-participant/.next/cache
+          key: turbo-participant-${{ runner.os }}-${{ hashFiles('apps/web-participant/src/**', 'apps/web-participant/package.json') }}
+          restore-keys: turbo-participant-${{ runner.os }}-
+      - name: Lint
+        run: npx eslint apps/web-participant/src/
+      - name: Type-check
+        run: npm run type-check --workspace=apps/web-participant
+      - name: Build
+        run: npm run build --workspace=apps/web-participant
+        env:
+          NEXT_PUBLIC_FIREBASE_API_KEY: ci-placeholder
+          NEXT_PUBLIC_FIREBASE_PROJECT_ID: teranga-events-dev
+          NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: teranga-events-dev.firebaseapp.com
+          NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: teranga-events-dev.appspot.com
+          NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: "000000000000"
+          NEXT_PUBLIC_FIREBASE_APP_ID: ci-placeholder
+          NEXT_PUBLIC_API_URL: http://localhost:3000
+          NEXT_PUBLIC_APP_URL: http://localhost:3002
+          NEXT_PUBLIC_BACKOFFICE_URL: http://localhost:3001
+
   # ─── Flutter Mobile ──────────────────────────────────────────────────────
   flutter:
     name: Flutter
@@ -224,20 +265,21 @@ jobs:
     name: CI Gate
     runs-on: ubuntu-latest
     if: always()
-    needs: [api-lint, api-test, functions, web-backoffice, flutter, firebase-rules]
+    needs: [api-lint, api-test, functions, web-backoffice, web-participant, flutter, firebase-rules]
     steps:
       - name: Check results
         run: |
           failed=""
-          for job in api-lint api-test functions web-backoffice flutter firebase-rules; do
+          for job in api-lint api-test functions web-backoffice web-participant flutter firebase-rules; do
             result="${{ needs.api-lint.result }}"
             case "$job" in
-              api-lint)       result="${{ needs.api-lint.result }}" ;;
-              api-test)       result="${{ needs.api-test.result }}" ;;
-              functions)      result="${{ needs.functions.result }}" ;;
-              web-backoffice) result="${{ needs.web-backoffice.result }}" ;;
-              flutter)        result="${{ needs.flutter.result }}" ;;
-              firebase-rules) result="${{ needs.firebase-rules.result }}" ;;
+              api-lint)         result="${{ needs.api-lint.result }}" ;;
+              api-test)         result="${{ needs.api-test.result }}" ;;
+              functions)        result="${{ needs.functions.result }}" ;;
+              web-backoffice)   result="${{ needs.web-backoffice.result }}" ;;
+              web-participant)  result="${{ needs.web-participant.result }}" ;;
+              flutter)          result="${{ needs.flutter.result }}" ;;
+              firebase-rules)   result="${{ needs.firebase-rules.result }}" ;;
             esac
             if [[ "$result" == "failure" ]]; then
               echo "::error::Job '$job' failed"

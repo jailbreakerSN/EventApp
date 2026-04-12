@@ -1,5 +1,15 @@
 # ─── Build Stage ─────────────────────────────────────────────────────────────
 FROM node:20-alpine AS builder
+
+ARG BUILD_DATE
+ARG GIT_SHA
+
+LABEL org.opencontainers.image.title="Teranga API"
+LABEL org.opencontainers.image.description="Teranga Event Platform REST API"
+LABEL org.opencontainers.image.source="https://github.com/jailbreakersn/eventapp"
+LABEL org.opencontainers.image.created="${BUILD_DATE}"
+LABEL org.opencontainers.image.revision="${GIT_SHA}"
+
 WORKDIR /app
 
 # Copy workspace root manifests
@@ -35,6 +45,10 @@ COPY --from=builder /app/packages/shared-types/dist ./packages/shared-types/dist
 COPY --from=builder /app/apps/api/dist ./apps/api/dist
 
 EXPOSE 3000
+
+# Health check for Cloud Run and container orchestrators
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD wget -q --spider http://localhost:3000/health || exit 1
 
 # Use non-root user
 RUN addgroup -g 1001 -S nodejs && adduser -S teranga -u 1001
