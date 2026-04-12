@@ -115,30 +115,39 @@ $FIREBASE_APP_ID             = Read-Secret "Firebase App ID (e.g. 1:xxx:web:xxx)
 $FIREBASE_MEASUREMENT_ID     = Read-Secret "Firebase Measurement ID (optional, e.g. G-XXXXXX)"
 
 # ============================================================================
-# SECTION 2: GCP / Cloud Run (for staging deployment)
+# SECTION 2: GCP Service Account Key (single key for all deploys)
 # ============================================================================
 
-Write-Header "GCP / Cloud Run Configuration"
-Write-Host "  These are needed for the deploy-staging.yml workflow." -ForegroundColor DarkGray
-Write-Host "  If not ready yet, press Enter to skip — you can re-run this script later." -ForegroundColor DarkGray
+Write-Header "GCP / Firebase Service Account Key"
+Write-Host "  A single JSON key file is used for Cloud Run, Firebase Hosting, and Functions deploys." -ForegroundColor DarkGray
+Write-Host "  This is your firebase_adminsdk.json (or any GCP service account key with the right roles)." -ForegroundColor DarkGray
+Write-Host ""
+Write-Host "  Required IAM roles on this service account:" -ForegroundColor DarkGray
+Write-Host "    - Cloud Run Admin" -ForegroundColor DarkGray
+Write-Host "    - Cloud Build Editor" -ForegroundColor DarkGray
+Write-Host "    - Firebase Hosting Admin" -ForegroundColor DarkGray
+Write-Host "    - Cloud Functions Admin" -ForegroundColor DarkGray
+Write-Host "    - Service Account User" -ForegroundColor DarkGray
 Write-Host ""
 
-$GCP_PROJECT_ID                 = Read-Secret "GCP Project ID (e.g. teranga-events-staging)" $FIREBASE_PROJECT_ID
-$GCP_SERVICE_ACCOUNT            = Read-Secret "GCP Service Account email (e.g. github-deploy@project.iam.gserviceaccount.com)"
-$GCP_WORKLOAD_IDENTITY_PROVIDER = Read-Secret "GCP Workload Identity Provider (e.g. projects/123/locations/global/workloadIdentityPools/...)"
-
-# ============================================================================
-# SECTION 3: Firebase Service Account & Token (for hosting/functions deploy)
-# ============================================================================
-
-Write-Header "Firebase Deploy Credentials"
-Write-Host "  FIREBASE_SERVICE_ACCOUNT_STAGING: JSON key for Firebase Hosting deploy action." -ForegroundColor DarkGray
-Write-Host "  Get it from: Firebase Console → ⚙ → Service accounts → Generate new private key" -ForegroundColor DarkGray
-Write-Host "  Paste the ENTIRE JSON content (single line or multi-line, then press Enter twice)." -ForegroundColor DarkGray
-Write-Host ""
-
-$FIREBASE_SERVICE_ACCOUNT_STAGING = Read-Secret "Firebase Service Account JSON (or press Enter to skip)"
-$FIREBASE_TOKEN                   = Read-Secret "Firebase CI Token (from 'firebase login:ci', or press Enter to skip)"
+$SA_KEY_PATH = Read-Secret "Path to your service account JSON key file (e.g. C:\Users\you\firebase_adminsdk.json)"
+$GCP_SA_KEY = ""
+if (-not [string]::IsNullOrWhiteSpace($SA_KEY_PATH)) {
+    if (Test-Path $SA_KEY_PATH) {
+        $GCP_SA_KEY = Get-Content $SA_KEY_PATH -Raw
+        # Extract project_id from the JSON key for convenience
+        $keyJson = $GCP_SA_KEY | ConvertFrom-Json
+        $GCP_PROJECT_ID = $keyJson.project_id
+        Write-Host "  ✓ Loaded service account key for project: $GCP_PROJECT_ID" -ForegroundColor Green
+    }
+    else {
+        Write-Host "  ✗ File not found: $SA_KEY_PATH" -ForegroundColor Red
+        Write-Host "    You can re-run the script later with the correct path." -ForegroundColor DarkGray
+    }
+}
+else {
+    $GCP_PROJECT_ID = Read-Secret "GCP Project ID (e.g. teranga-events-staging)" $FIREBASE_PROJECT_ID
+}
 
 # ============================================================================
 # SECTION 4: Email — Resend
@@ -198,6 +207,7 @@ $secrets = @{
     }
     # ── Staging environment secrets ──
     "staging" = [ordered]@{
+        "GCP_SA_KEY"                          = if ($GCP_SA_KEY) { "(JSON key loaded)" } else { "(skipped)" }
         "FIREBASE_API_KEY_STAGING"            = if ($FIREBASE_API_KEY) { "****" } else { "" }
         "FIREBASE_PROJECT_ID_STAGING"         = $FIREBASE_PROJECT_ID
         "FIREBASE_AUTH_DOMAIN_STAGING"        = $FIREBASE_AUTH_DOMAIN
@@ -205,10 +215,6 @@ $secrets = @{
         "FIREBASE_MESSAGING_SENDER_ID_STAGING" = if ($FIREBASE_MESSAGING_SENDER_ID) { "****" } else { "" }
         "FIREBASE_APP_ID_STAGING"             = if ($FIREBASE_APP_ID) { "****" } else { "" }
         "GCP_PROJECT_ID"                      = $GCP_PROJECT_ID
-        "GCP_SERVICE_ACCOUNT"                 = $GCP_SERVICE_ACCOUNT
-        "GCP_WORKLOAD_IDENTITY_PROVIDER"      = if ($GCP_WORKLOAD_IDENTITY_PROVIDER) { "****" } else { "(skipped)" }
-        "FIREBASE_SERVICE_ACCOUNT_STAGING"    = if ($FIREBASE_SERVICE_ACCOUNT_STAGING) { "(JSON key)" } else { "(skipped)" }
-        "FIREBASE_TOKEN"                      = if ($FIREBASE_TOKEN) { "****" } else { "(skipped)" }
         "API_URL_STAGING"                     = $API_URL_STAGING
         "BACKOFFICE_URL_STAGING"              = $BACKOFFICE_URL_STAGING
         "PARTICIPANT_URL_STAGING"             = $PARTICIPANT_URL_STAGING
@@ -254,6 +260,7 @@ Set-RepoSecret "SENTRY_DSN"               $SENTRY_DSN
 
 Write-Header "Setting Staging Environment Secrets"
 
+Set-EnvSecret "GCP_SA_KEY"                          $GCP_SA_KEY                  "staging"
 Set-EnvSecret "FIREBASE_API_KEY_STAGING"            $FIREBASE_API_KEY            "staging"
 Set-EnvSecret "FIREBASE_PROJECT_ID_STAGING"         $FIREBASE_PROJECT_ID         "staging"
 Set-EnvSecret "FIREBASE_AUTH_DOMAIN_STAGING"        $FIREBASE_AUTH_DOMAIN        "staging"
@@ -261,10 +268,6 @@ Set-EnvSecret "FIREBASE_STORAGE_BUCKET_STAGING"     $FIREBASE_STORAGE_BUCKET    
 Set-EnvSecret "FIREBASE_MESSAGING_SENDER_ID_STAGING" $FIREBASE_MESSAGING_SENDER_ID "staging"
 Set-EnvSecret "FIREBASE_APP_ID_STAGING"             $FIREBASE_APP_ID             "staging"
 Set-EnvSecret "GCP_PROJECT_ID"                      $GCP_PROJECT_ID              "staging"
-Set-EnvSecret "GCP_SERVICE_ACCOUNT"                 $GCP_SERVICE_ACCOUNT         "staging"
-Set-EnvSecret "GCP_WORKLOAD_IDENTITY_PROVIDER"      $GCP_WORKLOAD_IDENTITY_PROVIDER "staging"
-Set-EnvSecret "FIREBASE_SERVICE_ACCOUNT_STAGING"    $FIREBASE_SERVICE_ACCOUNT_STAGING "staging"
-Set-EnvSecret "FIREBASE_TOKEN"                      $FIREBASE_TOKEN              "staging"
 Set-EnvSecret "API_URL_STAGING"                     $API_URL_STAGING             "staging"
 Set-EnvSecret "BACKOFFICE_URL_STAGING"              $BACKOFFICE_URL_STAGING      "staging"
 Set-EnvSecret "PARTICIPANT_URL_STAGING"             $PARTICIPANT_URL_STAGING     "staging"

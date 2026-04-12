@@ -18,13 +18,11 @@ jobs:
     environment: staging
     permissions:
       contents: read
-      id-token: write
     steps:
       - uses: actions/checkout@v4
       - uses: google-github-actions/auth@v2
         with:
-          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
-          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
       - uses: google-github-actions/setup-gcloud@v2
       - name: Build and push Docker image
         run: |
@@ -91,8 +89,8 @@ jobs:
         uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           repoToken: ${{ secrets.GITHUB_TOKEN }}
-          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_STAGING }}
-          projectId: teranga-events-staging
+          firebaseServiceAccount: ${{ secrets.GCP_SA_KEY }}
+          projectId: ${{ secrets.FIREBASE_PROJECT_ID_STAGING }}
           channelId: live
 
   deploy-functions:
@@ -101,6 +99,9 @@ jobs:
     environment: staging
     steps:
       - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -111,4 +112,4 @@ jobs:
       - name: Build functions
         run: npm run build --workspace=apps/functions
       - name: Deploy to Firebase
-        run: npx firebase-tools deploy --only functions --project staging --non-interactive --token ${{ secrets.FIREBASE_TOKEN }}
+        run: npx firebase-tools deploy --only functions --project ${{ secrets.FIREBASE_PROJECT_ID_STAGING }} --non-interactive
