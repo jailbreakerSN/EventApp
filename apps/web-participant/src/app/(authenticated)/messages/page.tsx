@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { messagingApi } from "@/lib/api-client";
 import { useAuth } from "@/hooks/use-auth";
 import { MessageSquare, Send, Loader2, ArrowLeft } from "lucide-react";
+import { QueryError } from "@teranga/shared-ui";
 import Link from "next/link";
 import type { Conversation, Message } from "@teranga/shared-types";
 
@@ -167,15 +168,10 @@ export default function MessagesPage() {
             <h2 className="text-sm font-semibold text-foreground">Conversations</h2>
           </div>
           {convError ? (
-            <div className="text-center py-12 px-4">
-              <p className="text-sm text-destructive">Erreur de chargement des conversations.</p>
-              <button
-                onClick={() => qc.invalidateQueries({ queryKey: ["conversations"] })}
-                className="mt-2 text-xs text-primary hover:underline"
-              >
-                Réessayer
-              </button>
-            </div>
+            <QueryError
+              message="Erreur de chargement des conversations."
+              onRetry={() => qc.invalidateQueries({ queryKey: ["conversations"] })}
+            />
           ) : loadingConvs ? (
             <div className="animate-pulse divide-y divide-border">
               {[1, 2, 3, 4, 5].map((i) => (
@@ -271,15 +267,10 @@ export default function MessagesPage() {
 
               <div className="flex-1 overflow-y-auto p-4 space-y-4">
                 {msgsError ? (
-                  <div className="text-center py-8">
-                    <p className="text-sm text-destructive">Erreur de chargement des messages.</p>
-                    <button
-                      onClick={() => qc.invalidateQueries({ queryKey: ["messages", selectedConv] })}
-                      className="mt-2 text-xs text-primary hover:underline"
-                    >
-                      Réessayer
-                    </button>
-                  </div>
+                  <QueryError
+                    message="Erreur de chargement des messages."
+                    onRetry={() => qc.invalidateQueries({ queryKey: ["messages", selectedConv] })}
+                  />
                 ) : loadingMsgs ? (
                   <div className="animate-pulse space-y-4 py-4">
                     <div className="flex justify-start">

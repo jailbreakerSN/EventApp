@@ -22,23 +22,28 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@teranga/shared-ui";
-import {
-  Building2,
-  Search,
-  ShieldCheck,
-  Ban,
-  CheckCircle,
-  XCircle,
-} from "lucide-react";
+import { Building2, Search, ShieldCheck, Ban, CheckCircle, XCircle } from "lucide-react";
 import type { Organization } from "@teranga/shared-types";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
-const PLAN_BADGE_STYLES: Record<string, string> = {
-  free: "bg-gray-100 text-gray-700 dark:bg-gray-800/50 dark:text-gray-300",
-  starter: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
-  pro: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300",
-  enterprise: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
+const PLAN_BADGE_VARIANTS: Record<
+  string,
+  | "default"
+  | "secondary"
+  | "destructive"
+  | "outline"
+  | "success"
+  | "warning"
+  | "info"
+  | "pending"
+  | "neutral"
+  | "premium"
+> = {
+  free: "neutral",
+  starter: "info",
+  pro: "premium",
+  enterprise: "warning",
 };
 
 const PLAN_LABELS: Record<string, string> = {
@@ -74,8 +79,7 @@ export default function AdminOrganizationsPage() {
   const { data, isLoading } = useAdminOrganizations({
     q: search || undefined,
     plan: planFilter || undefined,
-    isVerified:
-      verifiedFilter === "" ? undefined : verifiedFilter === "true",
+    isVerified: verifiedFilter === "" ? undefined : verifiedFilter === "true",
     page,
     limit,
   });
@@ -87,11 +91,7 @@ export default function AdminOrganizationsPage() {
   const updateOrgStatus = useUpdateOrgStatus();
 
   const handleVerify = (org: Organization) => {
-    if (
-      !window.confirm(
-        `Voulez-vous verifier l'organisation "${org.name}" ?`,
-      )
-    ) {
+    if (!window.confirm(`Voulez-vous verifier l'organisation "${org.name}" ?`)) {
       return;
     }
     verifyOrg.mutate(org.id);
@@ -99,11 +99,7 @@ export default function AdminOrganizationsPage() {
 
   const handleToggleStatus = (org: Organization) => {
     const action = org.isActive ? "suspendre" : "reactiver";
-    if (
-      !window.confirm(
-        `Voulez-vous ${action} l'organisation "${org.name}" ?`,
-      )
-    ) {
+    if (!window.confirm(`Voulez-vous ${action} l'organisation "${org.name}" ?`)) {
       return;
     }
     updateOrgStatus.mutate({ orgId: org.id, isActive: !org.isActive });
@@ -135,9 +131,7 @@ export default function AdminOrganizationsPage() {
       {/* Header */}
       <div className="flex items-center gap-3">
         <Building2 className="h-7 w-7 text-primary" />
-        <h1 className="text-2xl font-bold text-foreground">
-          Gestion des organisations
-        </h1>
+        <h1 className="text-2xl font-bold text-foreground">Gestion des organisations</h1>
       </div>
 
       {/* Filters */}
@@ -211,24 +205,15 @@ export default function AdminOrganizationsPage() {
       <Card>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
-            <table
-              className="w-full text-sm"
-              aria-label="Liste des organisations"
-            >
+            <table className="w-full text-sm" aria-label="Liste des organisations">
               <thead>
                 <tr className="border-b border-border bg-muted/50">
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">
-                    Nom
-                  </th>
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">
-                    Plan
-                  </th>
+                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">Nom</th>
+                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">Plan</th>
                   <th className="px-4 py-3 text-center font-medium text-muted-foreground">
                     Verifie
                   </th>
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">
-                    Statut
-                  </th>
+                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">Statut</th>
                   <th className="px-4 py-3 text-center font-medium text-muted-foreground">
                     Membres
                   </th>
@@ -265,10 +250,7 @@ export default function AdminOrganizationsPage() {
 
                 {!isLoading && organizations.length === 0 && (
                   <tr>
-                    <td
-                      colSpan={6}
-                      className="px-4 py-12 text-center text-muted-foreground"
-                    >
+                    <td colSpan={6} className="px-4 py-12 text-center text-muted-foreground">
                       <Building2 className="mx-auto mb-2 h-8 w-8 opacity-40" />
                       Aucune organisation trouvee
                     </td>
@@ -283,9 +265,7 @@ export default function AdminOrganizationsPage() {
                     >
                       {/* Name */}
                       <td className="px-4 py-3">
-                        <p className="font-medium text-foreground">
-                          {org.name}
-                        </p>
+                        <p className="font-medium text-foreground">{org.name}</p>
                         {org.city && (
                           <p className="text-xs text-muted-foreground">
                             {org.city}, {org.country}
@@ -295,12 +275,7 @@ export default function AdminOrganizationsPage() {
 
                       {/* Plan */}
                       <td className="px-4 py-3">
-                        <Badge
-                          className={
-                            PLAN_BADGE_STYLES[org.plan] ??
-                            PLAN_BADGE_STYLES.free
-                          }
-                        >
+                        <Badge variant={PLAN_BADGE_VARIANTS[org.plan] ?? "neutral"}>
                           {PLAN_LABELS[org.plan] ?? org.plan}
                         </Badge>
                       </td>
@@ -323,13 +298,9 @@ export default function AdminOrganizationsPage() {
                       {/* Status */}
                       <td className="px-4 py-3">
                         {org.isActive ? (
-                          <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
-                            Actif
-                          </Badge>
+                          <Badge variant="success">Actif</Badge>
                         ) : (
-                          <Badge className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300">
-                            Suspendu
-                          </Badge>
+                          <Badge variant="destructive">Suspendu</Badge>
                         )}
                       </td>
 
@@ -360,9 +331,7 @@ export default function AdminOrganizationsPage() {
                             onClick={() => handleToggleStatus(org)}
                             disabled={updateOrgStatus.isPending}
                             aria-label={
-                              org.isActive
-                                ? `Suspendre ${org.name}`
-                                : `Reactiver ${org.name}`
+                              org.isActive ? `Suspendre ${org.name}` : `Reactiver ${org.name}`
                             }
                           >
                             {org.isActive ? (

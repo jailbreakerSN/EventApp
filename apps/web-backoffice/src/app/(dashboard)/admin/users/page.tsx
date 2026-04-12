@@ -2,11 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
-import {
-  useAdminUsers,
-  useUpdateUserRoles,
-  useUpdateUserStatus,
-} from "@/hooks/use-admin";
+import { useAdminUsers, useUpdateUserRoles, useUpdateUserStatus } from "@/hooks/use-admin";
 import {
   Card,
   CardContent,
@@ -35,12 +31,27 @@ const ROLE_FILTERS = [
   { value: "venue_manager", label: "Venue Manager" },
 ] as const;
 
-const ROLE_BADGE_STYLES: Record<string, string> = {
-  super_admin: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300",
-  organizer: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
-  participant: "bg-gray-100 text-gray-700 dark:bg-gray-800/50 dark:text-gray-300",
-  venue_manager: "bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300",
-  staff: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300",
+const ROLE_BADGE_VARIANTS: Record<
+  string,
+  | "default"
+  | "secondary"
+  | "destructive"
+  | "outline"
+  | "success"
+  | "warning"
+  | "info"
+  | "pending"
+  | "neutral"
+  | "premium"
+> = {
+  super_admin: "destructive",
+  organizer: "info",
+  co_organizer: "info",
+  participant: "neutral",
+  venue_manager: "success",
+  staff: "warning",
+  speaker: "premium",
+  sponsor: "pending",
 };
 
 const ROLE_LABELS: Record<string, string> = {
@@ -97,9 +108,7 @@ function RoleEditor({
   }, [open]);
 
   const toggleRole = (role: string) => {
-    setSelected((prev) =>
-      prev.includes(role) ? prev.filter((r) => r !== role) : [...prev, role],
-    );
+    setSelected((prev) => (prev.includes(role) ? prev.filter((r) => r !== role) : [...prev, role]));
   };
 
   const handleSave = () => {
@@ -128,15 +137,10 @@ function RoleEditor({
           role="dialog"
           aria-label="Modifier les roles"
         >
-          <p className="mb-2 text-xs font-medium text-muted-foreground">
-            Selectionner les roles
-          </p>
+          <p className="mb-2 text-xs font-medium text-muted-foreground">Selectionner les roles</p>
           <div className="space-y-1.5">
             {ALL_ROLES.map((role) => (
-              <label
-                key={role}
-                className="flex items-center gap-2 cursor-pointer text-sm"
-              >
+              <label key={role} className="flex items-center gap-2 cursor-pointer text-sm">
                 <input
                   type="checkbox"
                   checked={selected.includes(role)}
@@ -149,18 +153,10 @@ function RoleEditor({
             ))}
           </div>
           <div className="mt-3 flex justify-end gap-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setOpen(false)}
-            >
+            <Button variant="ghost" size="sm" onClick={() => setOpen(false)}>
               Annuler
             </Button>
-            <Button
-              size="sm"
-              onClick={handleSave}
-              disabled={isSaving || selected.length === 0}
-            >
+            <Button size="sm" onClick={handleSave} disabled={isSaving || selected.length === 0}>
               {isSaving ? <Spinner size="sm" /> : "Enregistrer"}
             </Button>
           </div>
@@ -229,9 +225,7 @@ export default function AdminUsersPage() {
       {/* Header */}
       <div className="flex items-center gap-3">
         <Users className="h-7 w-7 text-primary" />
-        <h1 className="text-2xl font-bold text-foreground">
-          Gestion des utilisateurs
-        </h1>
+        <h1 className="text-2xl font-bold text-foreground">Gestion des utilisateurs</h1>
       </div>
 
       {/* Search + Filters */}
@@ -281,12 +275,8 @@ export default function AdminUsersPage() {
                   <th className="px-4 py-3 text-left font-medium text-muted-foreground">
                     Nom / Email
                   </th>
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">
-                    Roles
-                  </th>
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">
-                    Statut
-                  </th>
+                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">Roles</th>
+                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">Statut</th>
                   <th className="px-4 py-3 text-right font-medium text-muted-foreground">
                     Actions
                   </th>
@@ -314,10 +304,7 @@ export default function AdminUsersPage() {
 
                 {!isLoading && users.length === 0 && (
                   <tr>
-                    <td
-                      colSpan={4}
-                      className="px-4 py-12 text-center text-muted-foreground"
-                    >
+                    <td colSpan={4} className="px-4 py-12 text-center text-muted-foreground">
                       <Users className="mx-auto mb-2 h-8 w-8 opacity-40" />
                       Aucun utilisateur trouve
                     </td>
@@ -332,25 +319,15 @@ export default function AdminUsersPage() {
                     >
                       {/* Name / Email */}
                       <td className="px-4 py-3">
-                        <p className="font-medium text-foreground">
-                          {user.displayName}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {user.email}
-                        </p>
+                        <p className="font-medium text-foreground">{user.displayName}</p>
+                        <p className="text-xs text-muted-foreground">{user.email}</p>
                       </td>
 
                       {/* Roles */}
                       <td className="px-4 py-3">
                         <div className="flex flex-wrap gap-1">
                           {user.roles.map((role) => (
-                            <Badge
-                              key={role}
-                              className={
-                                ROLE_BADGE_STYLES[role] ??
-                                "bg-gray-100 text-gray-700 dark:bg-gray-800/50 dark:text-gray-300"
-                              }
-                            >
+                            <Badge key={role} variant={ROLE_BADGE_VARIANTS[role] ?? "neutral"}>
                               {ROLE_LABELS[role] ?? role}
                             </Badge>
                           ))}
@@ -360,12 +337,12 @@ export default function AdminUsersPage() {
                       {/* Status */}
                       <td className="px-4 py-3">
                         {user.isActive ? (
-                          <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
+                          <Badge variant="success">
                             <CheckCircle className="mr-1 h-3 w-3" />
                             Actif
                           </Badge>
                         ) : (
-                          <Badge className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300">
+                          <Badge variant="destructive">
                             <Ban className="mr-1 h-3 w-3" />
                             Suspendu
                           </Badge>

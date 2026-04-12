@@ -1,0 +1,49 @@
+{
+  "common": {
+    "loading": "Chargement...",
+    "error": "Une erreur est survenue",
+    "retry": "Réessayer",
+    "back": "Retour",
+    "close": "Fermer",
+    "search": "Rechercher"
+  },
+  "auth": {
+    "login": "Connexion",
+    "logout": "Déconnexion",
+    "register": "Inscription",
+    "email": "Adresse e-mail",
+    "password": "Mot de passe",
+    "forgotPassword": "Mot de passe oublié ?",
+    "sessionExpiring": "Votre session va expirer dans 5 minutes en raison d'inactivité.",
+    "sessionExpired": "Session expirée. Veuillez vous reconnecter."
+  },
+  "events": {
+    "title": "Événements",
+    "discover": "Découvrez les événements",
+    "noEvents": "Aucun événement disponible pour le moment.",
+    "register": "S'inscrire",
+    "registered": "Inscrit",
+    "myEvents": "Mes événements",
+    "noMyEvents": "Vous n'êtes inscrit à aucun événement."
+  },
+  "badge": {
+    "title": "Mon badge",
+    "download": "Télécharger",
+    "scanToCheckin": "Présentez ce QR code à l'entrée de l'événement."
+  },
+  "feed": {
+    "title": "Fil d'actualité",
+    "writePost": "Écrire une publication...",
+    "noPostsYet": "Aucune publication pour le moment."
+  },
+  "notifications": {
+    "title": "Notifications",
+    "markAllRead": "Tout lire",
+    "empty": "Aucune notification"
+  },
+  "messages": {
+    "title": "Messages",
+    "noConversations": "Aucune conversation.",
+    "writeMessage": "Écrire un message..."
+  }
+}

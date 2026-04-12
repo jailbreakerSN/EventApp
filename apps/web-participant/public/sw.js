@@ -1,4 +1,5 @@
 const CACHE_NAME = "teranga-v1";
+const BADGES_CACHE_NAME = "teranga-badges-v1";
 const OFFLINE_URL = "/offline";
 
 // Pre-cache the offline fallback page on install
@@ -11,17 +12,49 @@ self.addEventListener("install", (event) => {
 
 // Clean old caches on activate
 self.addEventListener("activate", (event) => {
+  const KEEP_CACHES = [CACHE_NAME, BADGES_CACHE_NAME];
   event.waitUntil(
     caches.keys().then((keys) =>
       Promise.all(
         keys
-          .filter((key) => key !== CACHE_NAME)
+          .filter((key) => !KEEP_CACHES.includes(key))
           .map((key) => caches.delete(key))
       )
     )
   );
   self.clients.claim();
 });
+
+// Handle messages from the app (e.g. proactive badge caching)
+self.addEventListener("message", (event) => {
+  if (event.data && event.data.type === "CACHE_BADGE") {
+    const url = event.data.url;
+    if (!url) return;
+    event.waitUntil(
+      fetch(url)
+        .then((response) => {
+          if (response.ok) {
+            return caches.open(BADGES_CACHE_NAME).then((cache) => cache.put(url, response));
+          }
+        })
+        .catch(() => {
+          // Network unavailable — nothing to cache
+        })
+    );
+  }
+});
+
+// Check if a request URL matches a badge API route
+function isBadgeRequest(url) {
+  const path = url.pathname;
+  // Matches: /v1/badges/me/{eventId}, /v1/badges/{badgeId}/download
+  if (/^\/v1\/badges\//.test(path)) return true;
+  // Matches: /v1/events/{id}/badges/{id}
+  if (/^\/v1\/events\/[^/]+\/badges\//.test(path)) return true;
+  // Matches: /v1/registrations/{id}/badge
+  if (/^\/v1\/registrations\/[^/]+\/badge$/.test(path)) return true;
+  return false;
+}
 
 // Fetch handler
 self.addEventListener("fetch", (event) => {
@@ -61,6 +94,29 @@ self.addEventListener("fetch", (event) => {
             return response;
           })
       )
+    );
+    return;
+  }
+
+  // Badge API requests: network-first, fall back to badges cache
+  if (isBadgeRequest(url)) {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          if (response.ok) {
+            const clone = response.clone();
+            caches.open(BADGES_CACHE_NAME).then((cache) => cache.put(request, clone));
+          }
+          return response;
+        })
+        .catch(() =>
+          caches.match(request, { cacheName: BADGES_CACHE_NAME }).then(
+            (cached) => cached || new Response(JSON.stringify({ success: false, error: { code: "OFFLINE", message: "Badge indisponible hors connexion" } }), {
+              status: 503,
+              headers: { "Content-Type": "application/json" },
+            })
+          )
+        )
     );
     return;
   }

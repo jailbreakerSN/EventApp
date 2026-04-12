@@ -22,6 +22,7 @@ import {
   QueryError,
 } from "@teranga/shared-ui";
 import { PlanGate } from "@/components/plan/PlanGate";
+import { CsvExportButton, type CsvColumn } from "@/components/csv-export-button";
 import {
   useEvent,
   useUpdateEvent,
@@ -54,7 +55,6 @@ import {
   ScanLine,
   MapPin,
   Copy,
-  Download,
   Pencil,
   Save,
   X,
@@ -72,8 +72,7 @@ import {
   useCreatePromoCode,
   useDeactivatePromoCode,
 } from "@/hooks/use-promo-codes";
-import { eventsApi, registrationsApi, uploadsApi } from "@/lib/api-client";
-import { registrationsToCSV, downloadCSV } from "@/lib/csv-export";
+import { eventsApi, uploadsApi } from "@/lib/api-client";
 import type {
   Event,
   CreateTicketTypeDto,
@@ -127,6 +126,14 @@ const REG_STATUS: Record<string, string> = {
   payment_failed: "Paiement échoué",
   checked_in: "Entré",
 };
+
+const CSV_COLUMNS: CsvColumn[] = [
+  { key: "participantName", header: "Nom" },
+  { key: "participantEmail", header: "Email" },
+  { key: "status", header: "Statut" },
+  { key: "createdAt", header: "Date d'inscription" },
+  { key: "ticketTypeName", header: "Type de billet" },
+];
 
 export default function EventDetailPage() {
   const { eventId } = useParams<{ eventId: string }>();
@@ -1175,7 +1182,6 @@ function TicketsTab({ event }: { event: Event }) {
 function RegistrationsTab({ eventId }: { eventId: string }) {
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState("");
-  const [isExporting, setIsExporting] = useState(false);
   const limit = 15;
 
   const { data, isLoading } = useEventRegistrations(eventId, {
@@ -1192,34 +1198,13 @@ function RegistrationsTab({ eventId }: { eventId: string }) {
   const totalPages = meta?.totalPages ?? 1;
   const waitlistedCount = registrations.filter((r) => r.status === "waitlisted").length;
 
-  const handleExportCSV = async () => {
-    setIsExporting(true);
-    try {
-      // Paginate through all registrations (API max limit is 100)
-      const allRegistrations: typeof registrations = [];
-      let page = 1;
-      let hasMore = true;
-      while (hasMore) {
-        const batch = await registrationsApi.getEventRegistrations(eventId, {
-          page,
-          limit: 100,
-          status: statusFilter || undefined,
-        });
-        allRegistrations.push(...(batch?.data ?? []));
-        hasMore = page < (batch?.meta?.totalPages ?? 1);
-        page++;
-      }
-      const exported = allRegistrations.length > 0 ? allRegistrations : registrations;
-      const csv = registrationsToCSV(exported);
-      const date = new Date().toISOString().slice(0, 10);
-      downloadCSV(csv, `inscriptions-${eventId.slice(0, 8)}-${date}.csv`);
-      toast.success(`${exported.length} inscription(s) exportée(s)`);
-    } catch {
-      toast.error("Erreur lors de l'export CSV");
-    } finally {
-      setIsExporting(false);
-    }
-  };
+  const csvData = registrations.map((r) => ({
+    participantName: r.participantName ?? r.userId,
+    participantEmail: r.participantEmail ?? "",
+    status: REG_STATUS[r.status] ?? r.status,
+    createdAt: r.createdAt,
+    ticketTypeName: r.ticketTypeName ?? r.ticketTypeId,
+  }));
 
   return (
     <div>
@@ -1291,20 +1276,11 @@ function RegistrationsTab({ eventId }: { eventId: string }) {
             <option value="checked_in">Entré</option>
           </select>
           <PlanGate feature="csvExport" fallback="disabled">
-            <button
-              onClick={handleExportCSV}
-              disabled={isExporting || isLoading || registrations.length === 0}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground rounded-lg text-xs font-medium hover:bg-primary/90 disabled:opacity-50"
-              title="Exporter les inscriptions au format CSV"
-              aria-label="Exporter CSV"
-            >
-              {isExporting ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Download className="h-3.5 w-3.5" />
-              )}
-              Exporter CSV
-            </button>
+            <CsvExportButton
+              data={csvData}
+              columns={CSV_COLUMNS}
+              filename={`participants-${eventId.slice(0, 8)}`}
+            />
           </PlanGate>
         </div>
       </div>

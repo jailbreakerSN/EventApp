@@ -1,0 +1,95 @@
+{
+  "common": {
+    "loading": "Loading...",
+    "error": "An error occurred",
+    "retry": "Retry",
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "create": "Create",
+    "search": "Search",
+    "filter": "Filter",
+    "export": "Export",
+    "back": "Back",
+    "next": "Next",
+    "previous": "Previous",
+    "close": "Close",
+    "confirm": "Confirm",
+    "yes": "Yes",
+    "no": "No",
+    "all": "All",
+    "none": "None"
+  },
+  "auth": {
+    "login": "Sign in",
+    "logout": "Sign out",
+    "register": "Sign up",
+    "email": "Email address",
+    "password": "Password",
+    "forgotPassword": "Forgot password?",
+    "resetPassword": "Reset password",
+    "sessionExpiring": "Your session will expire in 5 minutes due to inactivity.",
+    "sessionExpired": "Session expired. Please sign in again."
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "events": "Events",
+    "participants": "Participants",
+    "badges": "Badges",
+    "communications": "Communications",
+    "analytics": "Analytics",
+    "finance": "Finance",
+    "venues": "Venues",
+    "organization": "Organization",
+    "settings": "Settings",
+    "notifications": "Notifications"
+  },
+  "events": {
+    "title": "Events",
+    "create": "Create event",
+    "noEvents": "No events yet. Create your first event.",
+    "noFilterResults": "No events match your filters.",
+    "allCategories": "All categories",
+    "status": {
+      "draft": "Draft",
+      "published": "Published",
+      "cancelled": "Cancelled",
+      "archived": "Archived"
+    }
+  },
+  "registrations": {
+    "status": {
+      "confirmed": "Confirmed",
+      "pending": "Pending",
+      "cancelled": "Cancelled",
+      "waitlisted": "Waitlisted",
+      "checked_in": "Checked in"
+    },
+    "exportCsv": "Export CSV"
+  },
+  "venues": {
+    "title": "Venues",
+    "create": "Add venue",
+    "noVenues": "No venues yet.",
+    "status": {
+      "approved": "Approved",
+      "pending": "Pending",
+      "suspended": "Suspended"
+    }
+  },
+  "notifications": {
+    "title": "Notifications",
+    "markAllRead": "Mark all read",
+    "empty": "No notifications",
+    "loadError": "Failed to load notifications."
+  },
+  "plan": {
+    "free": "Free",
+    "starter": "Starter",
+    "pro": "Pro",
+    "enterprise": "Enterprise",
+    "upgrade": "Upgrade",
+    "currentPlan": "Current plan"
+  }
+}

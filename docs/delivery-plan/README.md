@@ -20,39 +20,41 @@ The MVP prioritizes the **web platform** (participant web app + organizer backof
 
 ---
 
-## Current State (as of 2026-04-11)
+## Current State (as of 2026-04-12)
 
-| Component        | Completion | Notes                                                                                                                                                                               |
-| ---------------- | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Shared Types     | ~99%       | 18 Zod schema files: all entities, venues, promo codes, phone validation, subscriptions                                                                                             |
-| API (Fastify)    | ~98%       | 26 route files, 32 services, 401 tests. Real providers + admin/venue/subscription APIs                                                                                              |
-| Cloud Functions  | ~95%       | Auth, badge, check-in, payment lifecycle, scheduled reminders                                                                                                                       |
-| Web Backoffice   | **~99%**   | All pages + super admin panel (6 pages) + billing/plan management + command palette, WCAG AA                                                                                        |
-| Web Participant  | **~97%**   | Discovery + filters, registration, badges, portals, markdown, newsletter, WCAG AA                                                                                                   |
-| Shared UI        | **~95%**   | 17 components (was 8): Button, Card, Input, Select, Textarea, Dialog, Tabs, Skeleton, FormField, Breadcrumb, Alert, Badge, Spinner, ConfirmDialog, ThemeToggle, LogoLoader, Toaster |
-| Mobile (Flutter) | ~35%       | Wave 1 basics; full app deferred to Wave 9                                                                                                                                          |
-| Infrastructure   | ~97%       | Firestore rules, indexes, hosting, emulators, seed script (plan-diverse test data)                                                                                                  |
+| Component        | Completion | Notes                                                                                                                                                                                                      |
+| ---------------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Shared Types     | ~99%       | 18 Zod schema files: all entities, venues, promo codes, phone validation, subscriptions                                                                                                                    |
+| API (Fastify)    | **~99%**   | 26 route files, 32 services, **558 tests (39 files)**. All services have test coverage. Security hardening applied.                                                                                        |
+| Cloud Functions  | **~97%**   | Auth, badge, check-in, payment lifecycle, scheduled reminders. **All 14 triggers standardized** (memory/timeout).                                                                                          |
+| Web Backoffice   | **~99%**   | All pages + super admin + billing + command palette + WCAG AA. **QueryError, error boundaries, semantic badges, responsive tables, idle timeout, CSV export, i18n infrastructure, eslint-plugin-jsx-a11y** |
+| Web Participant  | **~98%**   | Discovery + filters, registration, badges, portals, markdown, newsletter, WCAG AA. **Error boundaries, QueryError, badge offline caching, idle timeout, i18n infrastructure**                              |
+| Shared UI        | **~97%**   | **20 components**: + QueryError, + responsive DataTable card mode, + semantic Badge variants (info, pending, neutral, premium), + getStatusVariant()                                                       |
+| Mobile (Flutter) | ~35%       | Wave 1 basics; full app deferred to Wave 9                                                                                                                                                                 |
+| Infrastructure   | **~98%**   | Firestore rules, indexes, hosting, emulators, seed script. **+ CI for web-participant, + staging deploy workflow, + Dockerfile hardening, + Firestore rules test infrastructure**                          |
+| CI/CD            | **~95%**   | **All 7 apps in CI pipeline** (was 6). Staging deploy workflow. eslint-plugin-jsx-a11y for accessibility linting.                                                                                          |
 
 ### Wave Assessment (Post UX/UI Audit — 2026-04-08)
 
-| Wave            | Name                              | Status          | Completion | Notes                                                                                                                                     |
-| --------------- | --------------------------------- | --------------- | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| Pre-Wave        | Foundation Hardening              | `completed`     | 100%       | —                                                                                                                                         |
-| Wave 1          | Core Loop                         | `completed`     | 98%        | CSV export deferred                                                                                                                       |
-| Wave 2          | Check-in & Dashboard              | `completed`     | 95%        | Mobile scanner → Wave 9                                                                                                                   |
-| Wave 3          | Participant Web App               | `completed`     | 97%        | +filters, markdown, similar events, newsletter                                                                                            |
-| Wave 4          | Organizer Productivity            | `completed`     | 95%        | +command palette, keyboard shortcuts, breadcrumbs                                                                                         |
-| Wave 5          | Feed, Messaging, Sessions         | `completed`     | 92%        | Mobile screens → Wave 9                                                                                                                   |
-| Wave 6          | Payments                          | `completed`     | 90%        | Wave + OM providers ready, payment lifecycle                                                                                              |
-| Wave 7          | Communications                    | `completed`     | 85%        | AT SMS + Resend email, templates, reminders                                                                                               |
-| Wave 8          | Portals                           | `completed`     | 85%        | Speaker + sponsor self-service portals                                                                                                    |
-| MVP Sprint      | Dakar Launch                      | `completed`     | 95%        | Real providers, SEO, promo codes, Cloud Functions                                                                                         |
-| **UX/UI Audit** | **4-Phase Polish**                | **`completed`** | **100%**   | **97 files, ~4300 lines, WCAG AA, 17 shared-ui components**                                                                               |
-| **Super Admin** | **Platform Administration**       | **`completed`** | **95%**    | **Admin dashboard, user/org/event management, audit logs, venue lifecycle**                                                               |
-| **Venue Host**  | **Venue Entity + Host Dashboard** | **`completed`** | **100%**   | **Venue CRUD, event-venue link, admin venues, host dashboard, venue selector in event creation, participant venue display**               |
-| **Freemium**    | **Plan Gating + Billing**         | **`completed`** | **95%**    | **4 tiers (free/starter/pro/enterprise), 11 feature flags, API enforcement, billing page, plan comparison, upgrade/downgrade, 401 tests** |
-| Wave 9          | Mobile App                        | `not_started`   | 0%         | Post-MVP validation                                                                                                                       |
-| Wave 10         | Production Hardening              | `not_started`   | 0%         | Next priority                                                                                                                             |
+| Wave               | Name                              | Status          | Completion | Notes                                                                                                                                |
+| ------------------ | --------------------------------- | --------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Pre-Wave           | Foundation Hardening              | `completed`     | 100%       | —                                                                                                                                    |
+| Wave 1             | Core Loop                         | `completed`     | 98%        | CSV export deferred                                                                                                                  |
+| Wave 2             | Check-in & Dashboard              | `completed`     | 95%        | Mobile scanner → Wave 9                                                                                                              |
+| Wave 3             | Participant Web App               | `completed`     | 97%        | +filters, markdown, similar events, newsletter                                                                                       |
+| Wave 4             | Organizer Productivity            | `completed`     | 95%        | +command palette, keyboard shortcuts, breadcrumbs                                                                                    |
+| Wave 5             | Feed, Messaging, Sessions         | `completed`     | 92%        | Mobile screens → Wave 9                                                                                                              |
+| Wave 6             | Payments                          | `completed`     | 90%        | Wave + OM providers ready, payment lifecycle                                                                                         |
+| Wave 7             | Communications                    | `completed`     | 85%        | AT SMS + Resend email, templates, reminders                                                                                          |
+| Wave 8             | Portals                           | `completed`     | 85%        | Speaker + sponsor self-service portals                                                                                               |
+| MVP Sprint         | Dakar Launch                      | `completed`     | 95%        | Real providers, SEO, promo codes, Cloud Functions                                                                                    |
+| **UX/UI Audit**    | **4-Phase Polish**                | **`completed`** | **100%**   | **97 files, ~4300 lines, WCAG AA, 17 shared-ui components**                                                                          |
+| **Super Admin**    | **Platform Administration**       | **`completed`** | **95%**    | **Admin dashboard, user/org/event management, audit logs, venue lifecycle**                                                          |
+| **Venue Host**     | **Venue Entity + Host Dashboard** | **`completed`** | **100%**   | **Venue CRUD, event-venue link, admin venues, host dashboard, venue selector in event creation, participant venue display**          |
+| **Freemium**       | **Plan Gating + Billing**         | **`completed`** | **95%**    | **4 tiers (free/starter/pro/enterprise), 11 feature flags, API enforcement, billing page, plan comparison, upgrade/downgrade**       |
+| **Platform Audit** | **Full Repo Audit & Remediation** | **`completed`** | **95%**    | **558 tests, CI for all apps, security fixes, error boundaries, i18n infra, a11y, responsive tables, offline badges, status tokens** |
+| Wave 9             | Mobile App                        | `not_started`   | 0%         | Post-MVP validation                                                                                                                  |
+| Wave 10            | Production Hardening              | `not_started`   | 0%         | Next priority                                                                                                                        |
 
 ### UX/UI Audit Summary (2026-04-07 → 2026-04-08)
 
