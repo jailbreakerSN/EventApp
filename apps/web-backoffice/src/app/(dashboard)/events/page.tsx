@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useEvents } from "@/hooks/use-events";
 import { formatDate } from "@/lib/utils";
 import { Search, Plus, ChevronLeft, ChevronRight, Calendar, MapPin, Users } from "lucide-react";
-import { Select, Skeleton } from "@teranga/shared-ui";
+import { Select, Skeleton, QueryError } from "@teranga/shared-ui";
 
 const STATUS_LABELS: Record<string, { label: string; className: string }> = {
   draft: { label: "Brouillon", className: "bg-accent text-foreground" },
@@ -31,7 +31,7 @@ export default function EventsPage() {
   const [page, setPage] = useState(1);
   const limit = 10;
 
-  const { data, isLoading, isError } = useEvents({
+  const { data, isLoading, isError, refetch } = useEvents({
     page,
     limit,
   });
@@ -139,9 +139,7 @@ export default function EventsPage() {
           </div>
         </div>
       ) : isError ? (
-        <div className="bg-card rounded-xl border border-border p-12 text-center text-red-500">
-          Erreur lors du chargement. Veuillez réessayer.
-        </div>
+        <QueryError onRetry={refetch} />
       ) : events.length === 0 ? (
         <div className="bg-card rounded-xl border border-border p-12 text-center text-muted-foreground">
           {search || category

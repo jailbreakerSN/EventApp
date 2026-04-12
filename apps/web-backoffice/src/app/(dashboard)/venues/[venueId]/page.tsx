@@ -16,6 +16,7 @@ import {
   BreadcrumbLink,
   BreadcrumbPage,
   BreadcrumbSeparator,
+  QueryError,
 } from "@teranga/shared-ui";
 import { MapPin, Calendar, Users, Globe, Save, ChevronLeft, ChevronRight } from "lucide-react";
 import { useVenue, useVenueEvents, useUpdateVenue } from "@/hooks/use-venues";
@@ -35,7 +36,13 @@ const VENUE_TYPE_LABELS: Record<string, string> = {
   other: "Autre",
 };
 
-const STATUS_STYLES: Record<string, { variant: "default" | "secondary" | "destructive" | "success" | "warning" | "outline"; label: string }> = {
+const STATUS_STYLES: Record<
+  string,
+  {
+    variant: "default" | "secondary" | "destructive" | "success" | "warning" | "outline";
+    label: string;
+  }
+> = {
   pending: { variant: "warning", label: "En attente d'approbation" },
   approved: { variant: "success", label: "Approuv\u00e9" },
   suspended: { variant: "destructive", label: "Suspendu" },
@@ -54,7 +61,7 @@ type TabId = (typeof TABS)[number]["id"];
 
 export default function VenueDetailPage() {
   const { venueId } = useParams<{ venueId: string }>();
-  const { data: venueData, isLoading, isError } = useVenue(venueId);
+  const { data: venueData, isLoading, isError, refetch } = useVenue(venueId);
   const updateVenue = useUpdateVenue();
   const [activeTab, setActiveTab] = useState<TabId>("info");
 
@@ -70,13 +77,7 @@ export default function VenueDetailPage() {
   }
 
   if (isError || !venue) {
-    return (
-      <Card>
-        <CardContent className="p-12 text-center text-destructive">
-          Lieu introuvable ou erreur de chargement
-        </CardContent>
-      </Card>
-    );
+    return <QueryError message="Lieu introuvable ou erreur de chargement." onRetry={refetch} />;
   }
 
   const status = STATUS_STYLES[venue.status] ?? STATUS_STYLES.pending;
@@ -123,7 +124,7 @@ export default function VenueDetailPage() {
                 "px-4 py-2.5 text-sm font-medium border-b-2 transition-colors",
                 activeTab === tab.id
                   ? "border-primary text-primary"
-                  : "border-transparent text-muted-foreground hover:text-foreground"
+                  : "border-transparent text-muted-foreground hover:text-foreground",
               )}
             >
               {tab.label}
@@ -133,15 +134,9 @@ export default function VenueDetailPage() {
       </div>
 
       {/* Tab content */}
-      {activeTab === "info" && (
-        <InfoTab venue={venue} onUpdate={updateVenue} />
-      )}
-      {activeTab === "events" && (
-        <EventsTab venueId={venueId} />
-      )}
-      {activeTab === "analytics" && (
-        <AnalyticsTab venue={venue} />
-      )}
+      {activeTab === "info" && <InfoTab venue={venue} onUpdate={updateVenue} />}
+      {activeTab === "events" && <EventsTab venueId={venueId} />}
+      {activeTab === "analytics" && <AnalyticsTab venue={venue} />}
     </div>
   );
 }
@@ -171,7 +166,10 @@ function InfoTab({ venue, onUpdate }: { venue: any; onUpdate: any }) {
           contactEmail: contactEmail || undefined,
           contactPhone: contactPhone || undefined,
           website: website || undefined,
-          amenities: amenities.split(",").map((a: string) => a.trim()).filter(Boolean),
+          amenities: amenities
+            .split(",")
+            .map((a: string) => a.trim())
+            .filter(Boolean),
         },
       });
       toast.success("Lieu mis \u00e0 jour");
@@ -226,7 +224,9 @@ function InfoTab({ venue, onUpdate }: { venue: any; onUpdate: any }) {
               </div>
             </div>
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">\u00c9quipements</label>
+              <label className="block text-sm font-medium text-foreground mb-1">
+                \u00c9quipements
+              </label>
               <input
                 type="text"
                 value={amenities}
@@ -255,7 +255,9 @@ function InfoTab({ venue, onUpdate }: { venue: any; onUpdate: any }) {
           <h3 className="font-semibold text-foreground">Contact</h3>
           <div className="space-y-3">
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">Nom du contact</label>
+              <label className="block text-sm font-medium text-foreground mb-1">
+                Nom du contact
+              </label>
               <input
                 type="text"
                 value={contactName}
@@ -273,7 +275,9 @@ function InfoTab({ venue, onUpdate }: { venue: any; onUpdate: any }) {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-foreground mb-1">T\u00e9l\u00e9phone</label>
+              <label className="block text-sm font-medium text-foreground mb-1">
+                T\u00e9l\u00e9phone
+              </label>
               <input
                 type="tel"
                 value={contactPhone}
@@ -290,7 +294,10 @@ function InfoTab({ venue, onUpdate }: { venue: any; onUpdate: any }) {
             <div className="grid grid-cols-2 gap-3">
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Calendar size={14} />
-                <span>{venue.eventCount ?? 0} \u00e9v\u00e9nement{(venue.eventCount ?? 0) !== 1 ? "s" : ""}</span>
+                <span>
+                  {venue.eventCount ?? 0} \u00e9v\u00e9nement
+                  {(venue.eventCount ?? 0) !== 1 ? "s" : ""}
+                </span>
               </div>
               {venue.capacity?.max && (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -300,12 +307,19 @@ function InfoTab({ venue, onUpdate }: { venue: any; onUpdate: any }) {
               )}
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <MapPin size={14} />
-                <span>{venue.address?.city ?? "N/A"}, {venue.address?.country ?? "SN"}</span>
+                <span>
+                  {venue.address?.city ?? "N/A"}, {venue.address?.country ?? "SN"}
+                </span>
               </div>
               {venue.website && (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Globe size={14} />
-                  <a href={venue.website} target="_blank" rel="noopener noreferrer" className="hover:underline truncate">
+                  <a
+                    href={venue.website}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="hover:underline truncate"
+                  >
                     {venue.website.replace(/^https?:\/\//, "")}
                   </a>
                 </div>
@@ -339,7 +353,9 @@ function EventsTab({ venueId }: { venueId: string }) {
 
         {isLoading && (
           <div className="space-y-3">
-            {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}
+            {Array.from({ length: 3 }).map((_, i) => (
+              <Skeleton key={i} className="h-12 w-full" />
+            ))}
           </div>
         )}
 
@@ -354,7 +370,9 @@ function EventsTab({ venueId }: { venueId: string }) {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border text-left">
-                  <th className="py-2 pr-4 font-medium text-muted-foreground">\u00c9v\u00e9nement</th>
+                  <th className="py-2 pr-4 font-medium text-muted-foreground">
+                    \u00c9v\u00e9nement
+                  </th>
                   <th className="py-2 pr-4 font-medium text-muted-foreground">Date</th>
                   <th className="py-2 pr-4 font-medium text-muted-foreground">Statut</th>
                   <th className="py-2 font-medium text-muted-foreground">Inscrits</th>
@@ -364,15 +382,25 @@ function EventsTab({ venueId }: { venueId: string }) {
                 {events.map((event: any) => (
                   <tr key={event.id} className="border-b border-border/50">
                     <td className="py-3 pr-4">
-                      <Link href={`/events/${event.id}`} className="text-foreground hover:underline font-medium">
+                      <Link
+                        href={`/events/${event.id}`}
+                        className="text-foreground hover:underline font-medium"
+                      >
                         {event.title}
                       </Link>
                     </td>
                     <td className="py-3 pr-4 text-muted-foreground">
-                      {event.startDate ? new Date(event.startDate).toLocaleDateString("fr-FR", { dateStyle: "medium" }) : "\u2014"}
+                      {event.startDate
+                        ? new Date(event.startDate).toLocaleDateString("fr-FR", {
+                            dateStyle: "medium",
+                          })
+                        : "\u2014"}
                     </td>
                     <td className="py-3 pr-4">
-                      <Badge variant={event.status === "published" ? "success" : "secondary"} className="text-[10px]">
+                      <Badge
+                        variant={event.status === "published" ? "success" : "secondary"}
+                        className="text-[10px]"
+                      >
                         {event.status}
                       </Badge>
                     </td>
@@ -391,10 +419,20 @@ function EventsTab({ venueId }: { venueId: string }) {
               Page {meta.page} sur {meta.totalPages} ({meta.total} total)
             </span>
             <div className="flex gap-1">
-              <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={page <= 1}
+                onClick={() => setPage(page - 1)}
+              >
                 <ChevronLeft size={14} />
               </Button>
-              <Button variant="outline" size="sm" disabled={page >= meta.totalPages} onClick={() => setPage(page + 1)}>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={page >= meta.totalPages}
+                onClick={() => setPage(page + 1)}
+              >
                 <ChevronRight size={14} />
               </Button>
             </div>
@@ -409,9 +447,17 @@ function EventsTab({ venueId }: { venueId: string }) {
 
 function AnalyticsTab({ venue }: { venue: any }) {
   const stats = [
-    { label: "\u00c9v\u00e9nements h\u00e9berg\u00e9s", value: venue.eventCount ?? 0, icon: Calendar },
+    {
+      label: "\u00c9v\u00e9nements h\u00e9berg\u00e9s",
+      value: venue.eventCount ?? 0,
+      icon: Calendar,
+    },
     { label: "Capacit\u00e9 max", value: venue.capacity?.max ?? "\u2014", icon: Users },
-    { label: "Note", value: venue.rating ? `${venue.rating}/5` : "Pas encore not\u00e9", icon: MapPin },
+    {
+      label: "Note",
+      value: venue.rating ? `${venue.rating}/5` : "Pas encore not\u00e9",
+      icon: MapPin,
+    },
   ];
 
   return (

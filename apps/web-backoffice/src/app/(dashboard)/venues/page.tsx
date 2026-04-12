@@ -15,6 +15,7 @@ import {
   BreadcrumbLink,
   BreadcrumbPage,
   BreadcrumbSeparator,
+  QueryError,
 } from "@teranga/shared-ui";
 import { MapPin, Plus, Calendar, Users, ExternalLink } from "lucide-react";
 import { useMyVenues, useCreateVenue } from "@/hooks/use-venues";
@@ -33,7 +34,13 @@ const VENUE_TYPE_LABELS: Record<string, string> = {
   other: "Autre",
 };
 
-const STATUS_STYLES: Record<string, { variant: "default" | "secondary" | "destructive" | "success" | "warning" | "outline"; label: string }> = {
+const STATUS_STYLES: Record<
+  string,
+  {
+    variant: "default" | "secondary" | "destructive" | "success" | "warning" | "outline";
+    label: string;
+  }
+> = {
   pending: { variant: "warning", label: "En attente" },
   approved: { variant: "success", label: "Approuv\u00e9" },
   suspended: { variant: "destructive", label: "Suspendu" },
@@ -43,7 +50,7 @@ const STATUS_STYLES: Record<string, { variant: "default" | "secondary" | "destru
 // ─── Page ───────────────────────────────────────────────────────────────────
 
 export default function VenuesPage() {
-  const { data, isLoading, isError } = useMyVenues();
+  const { data, isLoading, isError, refetch } = useMyVenues();
   const createVenue = useCreateVenue();
   const [showCreate, setShowCreate] = useState(false);
   const [formName, setFormName] = useState("");
@@ -133,7 +140,9 @@ export default function VenuesPage() {
                   className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
                 >
                   {Object.entries(VENUE_TYPE_LABELS).map(([value, label]) => (
-                    <option key={value} value={value}>{label}</option>
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
                   ))}
                 </select>
               </div>
@@ -193,15 +202,17 @@ export default function VenuesPage() {
       {isLoading && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {Array.from({ length: 3 }).map((_, i) => (
-            <Card key={i}><CardContent className="p-6"><Skeleton className="h-32 w-full" /></CardContent></Card>
+            <Card key={i}>
+              <CardContent className="p-6">
+                <Skeleton className="h-32 w-full" />
+              </CardContent>
+            </Card>
           ))}
         </div>
       )}
 
       {/* Error */}
-      {isError && (
-        <Card><CardContent className="p-6 text-center text-destructive">Erreur lors du chargement des lieux</CardContent></Card>
-      )}
+      {isError && <QueryError onRetry={refetch} />}
 
       {/* Empty */}
       {!isLoading && !isError && venues.length === 0 && (
@@ -241,7 +252,8 @@ export default function VenuesPage() {
                     <div className="flex items-center gap-4 text-xs text-muted-foreground mt-4">
                       <span className="flex items-center gap-1">
                         <Calendar size={13} />
-                        {venue.eventCount ?? 0} \u00e9v\u00e9nement{(venue.eventCount ?? 0) !== 1 ? "s" : ""}
+                        {venue.eventCount ?? 0} \u00e9v\u00e9nement
+                        {(venue.eventCount ?? 0) !== 1 ? "s" : ""}
                       </span>
                       {venue.capacity?.max && (
                         <span className="flex items-center gap-1">

@@ -12,6 +12,8 @@ export const onPaymentTimeout = onSchedule(
     schedule: "every 5 minutes",
     region: "europe-west1",
     timeZone: "Africa/Dakar",
+    memory: "512MiB",
+    timeoutSeconds: 120,
   },
   async () => {
     const TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
@@ -75,6 +77,8 @@ export const onPaymentSucceeded = onDocumentWritten(
   {
     document: `${COLLECTIONS.PAYMENTS}/{paymentId}`,
     region: "europe-west1",
+    memory: "512MiB",
+    timeoutSeconds: 120,
   },
   async (event) => {
     const before = event.data?.before?.data();
@@ -200,6 +204,8 @@ export const onPaymentFailed = onDocumentWritten(
   {
     document: `${COLLECTIONS.PAYMENTS}/{paymentId}`,
     region: "europe-west1",
+    memory: "256MiB",
+    timeoutSeconds: 60,
   },
   async (event) => {
     const before = event.data?.before?.data();

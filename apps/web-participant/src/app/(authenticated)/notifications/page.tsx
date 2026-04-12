@@ -3,14 +3,14 @@
 import { useState } from "react";
 import { Bell, CheckCheck, Circle } from "lucide-react";
 import { useNotifications, useMarkAsRead, useMarkAllAsRead } from "@/hooks/use-notifications";
-import { Button, Card, CardContent } from "@teranga/shared-ui";
+import { Button, Card, CardContent, QueryError } from "@teranga/shared-ui";
 import type { Notification } from "@teranga/shared-types";
 
 export default function NotificationsPage() {
   const [page, setPage] = useState(1);
   const [unreadOnly, setUnreadOnly] = useState(false);
 
-  const { data, isLoading, isError } = useNotifications({ page, limit: 20, unreadOnly });
+  const { data, isLoading, isError, refetch } = useNotifications({ page, limit: 20, unreadOnly });
   const notifications = data?.data ?? [];
   const total = data?.meta?.total ?? 0;
 
@@ -43,18 +43,7 @@ export default function NotificationsPage() {
       </div>
 
       {isError ? (
-        <Card>
-          <CardContent className="flex flex-col items-center py-12">
-            <Bell className="mb-3 h-10 w-10 text-destructive" />
-            <p className="text-destructive">Erreur de chargement des notifications.</p>
-            <button
-              onClick={() => window.location.reload()}
-              className="mt-2 text-sm text-primary hover:underline"
-            >
-              Réessayer
-            </button>
-          </CardContent>
-        </Card>
+        <QueryError onRetry={refetch} />
       ) : isLoading ? (
         <div className="space-y-2">
           {[1, 2, 3, 4, 5].map((i) => (

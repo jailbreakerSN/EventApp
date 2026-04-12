@@ -1,6 +1,8 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from "react";
+import { toast } from "sonner";
+import { useIdleTimeout } from "./use-idle-timeout";
 import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
@@ -89,6 +91,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = async () => {
     await signOut(firebaseAuth);
   };
+
+  // ─── Session idle timeout (30 min for participant) ────────────────────────
+  const handleIdleWarning = useCallback(() => {
+    toast.warning("Votre session va expirer dans 5 minutes en raison d'inactivité.");
+  }, []);
+
+  const handleIdleTimeout = useCallback(() => {
+    toast.error("Session expirée. Veuillez vous reconnecter.");
+    logout();
+  }, []);
+
+  useIdleTimeout({
+    warningMs: 25 * 60 * 1000, // warn at 25 min
+    timeoutMs: 30 * 60 * 1000, // logout at 30 min
+    onWarning: handleIdleWarning,
+    onTimeout: handleIdleTimeout,
+    enabled: !!user,
+  });
 
   const resendVerification = async () => {
     if (firebaseAuth.currentUser) {
