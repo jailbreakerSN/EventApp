@@ -2,7 +2,7 @@ name: Deploy to Staging
 
 on:
   push:
-    branches: [develop]
+    branches: [develop, claude/setup-env-variables-KO5o1]
 
 concurrency:
   group: deploy-staging
