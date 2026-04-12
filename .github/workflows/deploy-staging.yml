@@ -378,3 +378,28 @@ jobs:
             --project ${{ needs.setup.outputs.project_id }} \
             --force \
             --non-interactive
+
+  # ─── Seed staging database (one-time, idempotent) ────────────────────────
+  # Runs the seed script against the real Firestore. The script checks for
+  # existing data and skips if the database already has organizations.
+  # Depends on deploy-firebase so rules + indexes are in place first.
+  seed-staging:
+    name: Seed staging database (idempotent)
+    runs-on: ubuntu-latest
+    needs: [setup, deploy-firebase]
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: Run seed script (skips if data exists)
+        env:
+          SEED_TARGET: staging
+          FIREBASE_PROJECT_ID: ${{ needs.setup.outputs.project_id }}
+        run: npx tsx scripts/seed-emulators.ts

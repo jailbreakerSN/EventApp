@@ -27,15 +27,30 @@
  *   - 12 audit logs (including admin + subscription actions)
  */
 
-process.env.FIRESTORE_EMULATOR_HOST = "localhost:8080";
-process.env.FIREBASE_AUTH_EMULATOR_HOST = "localhost:9099";
-process.env.FIREBASE_STORAGE_EMULATOR_HOST = "localhost:9199";
+// ─── Mode detection ────────────────────────────────────────────────────────
+// Defaults to emulator mode for safety. Set SEED_TARGET=staging (or any other
+// non-empty value) to seed against a real Firestore project.
+//   - emulator: writes to local Firebase emulators (default)
+//   - staging:  writes to real Firestore. Requires GOOGLE_APPLICATION_CREDENTIALS
+//               or Application Default Credentials (set automatically by
+//               google-github-actions/auth in CI). Checks idempotency before
+//               writing, unless SEED_FORCE=true.
+
+const SEED_TARGET = process.env.SEED_TARGET ?? "emulator";
+const SEED_FORCE = process.env.SEED_FORCE === "true";
+const PROJECT_ID = process.env.FIREBASE_PROJECT_ID ?? "teranga-app-990a8";
+
+if (SEED_TARGET === "emulator") {
+  process.env.FIRESTORE_EMULATOR_HOST = "localhost:8080";
+  process.env.FIREBASE_AUTH_EMULATOR_HOST = "localhost:9099";
+  process.env.FIREBASE_STORAGE_EMULATOR_HOST = "localhost:9199";
+}
 
 import { initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
 
-const app = initializeApp({ projectId: "teranga-app-990a8" });
+const app = initializeApp({ projectId: PROJECT_ID });
 const auth = getAuth(app);
 const db = getFirestore(app);
 
@@ -131,7 +146,20 @@ async function ensureUser(
 }
 
 async function seed() {
-  console.log("🌱 Seeding Firebase emulators (Waves 1-8 + Admin + Venues)...\n");
+  console.log(`🌱 Seeding Firebase (target=${SEED_TARGET}, project=${PROJECT_ID})...\n`);
+
+  // ─── Idempotency guard ─────────────────────────────────────────────────
+  // Only relevant in non-emulator mode: skip if data exists, unless forced.
+  // Emulator is ephemeral — always re-seed.
+  if (SEED_TARGET !== "emulator" && !SEED_FORCE) {
+    const existing = await db.collection("organizations").limit(1).get();
+    if (!existing.empty) {
+      console.log("✓ Database already contains organizations. Skipping seed.");
+      console.log("  Set SEED_FORCE=true to re-run anyway (destructive).");
+      return;
+    }
+    console.log("✓ Database is empty. Proceeding with initial seed.\n");
+  }
 
   // ═══════════════════════════════════════════════════════════════════════════
   // 1. USERS
