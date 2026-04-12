@@ -8,7 +8,7 @@ import { db, COLLECTIONS } from "../utils/admin";
  * Uses Firebase Functions v2 identity triggers.
  */
 export const onUserCreated = identity.beforeUserCreated(
-  { region: "europe-west1" },
+  { region: "europe-west1", memory: "256MiB" },
   async (event) => {
     const user = event.data!;
     const now = new Date().toISOString();
@@ -50,6 +50,7 @@ export const onUserCreated = identity.beforeUserCreated(
  * Uses v1 auth trigger (v2 identity module does not support user deletion events).
  */
 export const onUserDeleted = functionsV1
+  .runWith({ memory: "256MB", timeoutSeconds: 60 })
   .region("europe-west1")
   .auth.user()
   .onDelete(async (user) => {

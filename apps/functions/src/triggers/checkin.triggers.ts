@@ -10,6 +10,8 @@ export const onCheckinCompleted = onDocumentUpdated(
   {
     document: `${COLLECTIONS.REGISTRATIONS}/{regId}`,
     region: "europe-west1",
+    memory: "256MiB",
+    timeoutSeconds: 60,
   },
   async (event) => {
     const before = event.data?.before?.data();

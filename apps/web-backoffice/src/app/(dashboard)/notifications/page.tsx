@@ -14,8 +14,6 @@ import {
   Calendar,
   CheckCheck,
   Loader2,
-  AlertCircle,
-  RefreshCw,
 } from "lucide-react";
 import {
   Card,
@@ -32,6 +30,7 @@ import {
   TabsList,
   TabsTrigger,
   TabsContent,
+  QueryError,
 } from "@teranga/shared-ui";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -237,21 +236,7 @@ export default function NotificationsPage() {
           )}
 
           {/* Error state */}
-          {isError && !isLoading && (
-            <Card>
-              <CardContent className="p-8 text-center">
-                <AlertCircle className="h-10 w-10 mx-auto mb-3 text-red-400" />
-                <p className="text-sm font-medium text-foreground mb-1">Erreur de chargement</p>
-                <p className="text-xs text-muted-foreground mb-4">
-                  Impossible de charger vos notifications. Veuillez reessayer.
-                </p>
-                <Button variant="outline" onClick={() => refetch()}>
-                  <RefreshCw className="h-4 w-4 mr-2" />
-                  Reessayer
-                </Button>
-              </CardContent>
-            </Card>
-          )}
+          {isError && !isLoading && <QueryError onRetry={refetch} />}
 
           {/* Empty state */}
           {!isLoading && !isError && filteredNotifications.length === 0 && (

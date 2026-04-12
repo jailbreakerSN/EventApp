@@ -19,6 +19,9 @@
     },
     "type-check": {
       "dependsOn": ["^build"]
+    },
+    "clean": {
+      "cache": false
     }
   }
 }

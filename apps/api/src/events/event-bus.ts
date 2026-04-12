@@ -29,12 +29,26 @@ class EventBus {
           const result = listener(payload);
           // If listener returns a promise, catch its errors
           if (result && typeof result === "object" && "catch" in result) {
-            (result as Promise<void>).catch((err) => {
-              console.error(`[EventBus] Listener error for "${event}":`, err);
+            (result as Promise<void>).catch((err: unknown) => {
+              process.stderr.write(
+                JSON.stringify({
+                  level: "error",
+                  msg: "[EventBus] Async listener error",
+                  event,
+                  err: err instanceof Error ? err.message : String(err),
+                }) + "\n",
+              );
             });
           }
         } catch (err) {
-          console.error(`[EventBus] Sync listener error for "${event}":`, err);
+          process.stderr.write(
+            JSON.stringify({
+              level: "error",
+              msg: "[EventBus] Sync listener error",
+              event,
+              err: err instanceof Error ? err.message : String(err),
+            }) + "\n",
+          );
         }
       }
     });

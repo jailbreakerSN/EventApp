@@ -1,0 +1,102 @@
+name: Deploy to Staging
+
+on:
+  push:
+    branches: [develop]
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "20"
+
+jobs:
+  deploy-api:
+    name: Deploy API to Cloud Run (staging)
+    runs-on: ubuntu-latest
+    environment: staging
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - name: Build and push Docker image
+        run: |
+          gcloud builds submit \
+            --tag gcr.io/${{ secrets.GCP_PROJECT_ID }}/teranga-api:${{ github.sha }} \
+            --build-arg BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ") \
+            --build-arg GIT_SHA=${{ github.sha }}
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy teranga-api-staging \
+            --image gcr.io/${{ secrets.GCP_PROJECT_ID }}/teranga-api:${{ github.sha }} \
+            --region europe-west1 \
+            --allow-unauthenticated \
+            --set-env-vars "NODE_ENV=staging"
+
+  deploy-web:
+    name: Deploy Web Apps to Firebase Hosting (staging)
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: Build shared packages
+        run: npx turbo build --filter=@teranga/shared-types --filter=@teranga/shared-ui
+      - name: Build web backoffice
+        run: npm run build --workspace=apps/web-backoffice
+        env:
+          NEXT_PUBLIC_FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY_STAGING }}
+          NEXT_PUBLIC_FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID_STAGING }}
+          NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: ${{ secrets.FIREBASE_AUTH_DOMAIN_STAGING }}
+          NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: ${{ secrets.FIREBASE_STORAGE_BUCKET_STAGING }}
+          NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.FIREBASE_MESSAGING_SENDER_ID_STAGING }}
+          NEXT_PUBLIC_FIREBASE_APP_ID: ${{ secrets.FIREBASE_APP_ID_STAGING }}
+          NEXT_PUBLIC_API_URL: ${{ secrets.API_URL_STAGING }}
+      - name: Build web participant
+        run: npm run build --workspace=apps/web-participant
+        env:
+          NEXT_PUBLIC_FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY_STAGING }}
+          NEXT_PUBLIC_FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID_STAGING }}
+          NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: ${{ secrets.FIREBASE_AUTH_DOMAIN_STAGING }}
+          NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: ${{ secrets.FIREBASE_STORAGE_BUCKET_STAGING }}
+          NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.FIREBASE_MESSAGING_SENDER_ID_STAGING }}
+          NEXT_PUBLIC_FIREBASE_APP_ID: ${{ secrets.FIREBASE_APP_ID_STAGING }}
+          NEXT_PUBLIC_API_URL: ${{ secrets.API_URL_STAGING }}
+          NEXT_PUBLIC_APP_URL: ${{ secrets.PARTICIPANT_URL_STAGING }}
+          NEXT_PUBLIC_BACKOFFICE_URL: ${{ secrets.BACKOFFICE_URL_STAGING }}
+      - name: Deploy to Firebase Hosting
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          repoToken: ${{ secrets.GITHUB_TOKEN }}
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_STAGING }}
+          projectId: teranga-events-staging
+          channelId: live
+
+  deploy-functions:
+    name: Deploy Cloud Functions (staging)
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: Build shared types
+        run: npx turbo build --filter=@teranga/shared-types
+      - name: Build functions
+        run: npm run build --workspace=apps/functions
+      - name: Deploy to Firebase
+        run: npx firebase-tools deploy --only functions --project staging --non-interactive --token ${{ secrets.FIREBASE_TOKEN }}

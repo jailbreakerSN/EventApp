@@ -9,6 +9,8 @@ export const onFeedPostCreated = onDocumentCreated(
   {
     document: `${COLLECTIONS.FEED_POSTS}/{postId}`,
     region: "europe-west1",
+    memory: "256MiB",
+    timeoutSeconds: 60,
   },
   async (event) => {
     const snapshot = event.data;
@@ -91,6 +93,8 @@ export const onRegistrationConfirmed = onDocumentWritten(
   {
     document: `${COLLECTIONS.REGISTRATIONS}/{regId}`,
     region: "europe-west1",
+    memory: "256MiB",
+    timeoutSeconds: 60,
   },
   async (event) => {
     const before = event.data?.before?.data();

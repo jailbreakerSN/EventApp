@@ -16,6 +16,8 @@ export interface DataTableProps<T> extends React.HTMLAttributes<HTMLDivElement> 
   data: T[];
   loading?: boolean;
   emptyMessage?: string;
+  /** Accessible label for screen readers (e.g. "Liste des événements") */
+  "aria-label"?: string;
 }
 
 function DataTable<T extends Record<string, unknown>>({
@@ -24,19 +26,27 @@ function DataTable<T extends Record<string, unknown>>({
   loading = false,
   emptyMessage = "Aucune donnée",
   className,
+  "aria-label": ariaLabel,
   ...props
 }: DataTableProps<T>) {
   return (
     <div
       className={cn("w-full overflow-auto rounded-md border border-border", className)}
+      role="region"
+      aria-label={ariaLabel}
       {...props}
     >
-      <table className="w-full caption-bottom text-sm">
+      <table
+        className="w-full caption-bottom text-sm"
+        aria-rowcount={data.length}
+        aria-colcount={columns.length}
+      >
         <thead className="bg-muted/50">
           <tr>
             {columns.map((col) => (
               <th
                 key={col.key}
+                scope="col"
                 className="h-10 px-4 text-left align-middle font-medium text-muted-foreground whitespace-nowrap"
               >
                 {col.header}

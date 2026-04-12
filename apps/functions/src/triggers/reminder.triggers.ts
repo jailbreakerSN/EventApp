@@ -15,6 +15,8 @@ export const sendEventReminders = onSchedule(
     schedule: "every 15 minutes",
     region: "europe-west1",
     timeZone: "Africa/Dakar",
+    memory: "512MiB",
+    timeoutSeconds: 120,
   },
   async () => {
     const now = Date.now();
@@ -165,6 +167,8 @@ export const sendSessionReminders = onSchedule(
     schedule: "every 5 minutes",
     region: "europe-west1",
     timeZone: "Africa/Dakar",
+    memory: "512MiB",
+    timeoutSeconds: 120,
   },
   async () => {
     const now = Date.now();

@@ -17,6 +17,7 @@ import {
   Select,
   Textarea,
   Button,
+  QueryError,
 } from "@teranga/shared-ui";
 import { PlanGate } from "@/components/plan/PlanGate";
 import {
@@ -138,7 +139,7 @@ export default function EventDetailPage() {
     [router, eventId],
   );
 
-  const { data, isLoading, isError } = useEvent(eventId);
+  const { data, isLoading, isError, refetch } = useEvent(eventId);
   const event = data?.data;
 
   if (isLoading) {
@@ -167,15 +168,7 @@ export default function EventDetailPage() {
 
   if (isError || !event) {
     return (
-      <div className="text-center py-20">
-        <p className="text-red-500 mb-4">Événement introuvable ou erreur de chargement.</p>
-        <button
-          onClick={() => router.push("/events")}
-          className="text-sm text-primary hover:underline"
-        >
-          Retour aux événements
-        </button>
-      </div>
+      <QueryError message="Événement introuvable ou erreur de chargement." onRetry={refetch} />
     );
   }
 

@@ -1,12 +1,8 @@
 "use client";
 
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useState,
-  type ReactNode,
-} from "react";
+import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from "react";
+import { toast } from "sonner";
+import { useIdleTimeout } from "./use-idle-timeout";
 import {
   signInWithEmailAndPassword,
   signOut,
@@ -74,8 +70,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await signOut(firebaseAuth);
   };
 
-  const hasRole = (...roles: UserRole[]) =>
-    roles.some((r) => user?.roles.includes(r)) ?? false;
+  // ─── Session idle timeout (60 min for backoffice) ─────────────────────────
+  const handleIdleWarning = useCallback(() => {
+    toast.warning("Votre session va expirer dans 5 minutes en raison d'inactivité.");
+  }, []);
+
+  const handleIdleTimeout = useCallback(() => {
+    toast.error("Session expirée. Veuillez vous reconnecter.");
+    logout();
+  }, []);
+
+  useIdleTimeout({
+    warningMs: 55 * 60 * 1000, // warn at 55 min
+    timeoutMs: 60 * 60 * 1000, // logout at 60 min
+    onWarning: handleIdleWarning,
+    onTimeout: handleIdleTimeout,
+    enabled: !!user,
+  });
+
+  const hasRole = (...roles: UserRole[]) => roles.some((r) => user?.roles.includes(r)) ?? false;
 
   const resendVerification = async () => {
     if (firebaseAuth.currentUser) {
@@ -88,7 +101,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, hasRole, resetPassword, resendVerification }}>
+    <AuthContext.Provider
+      value={{ user, loading, login, logout, hasRole, resetPassword, resendVerification }}
+    >
       {children}
     </AuthContext.Provider>
   );

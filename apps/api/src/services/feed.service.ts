@@ -70,7 +70,12 @@ export class FeedService extends BaseService {
     user: AuthUser,
   ): Promise<PaginatedResult<FeedPost>> {
     this.requirePermission(user, "feed:read");
-    await eventRepository.findByIdOrThrow(eventId);
+    const event = await eventRepository.findByIdOrThrow(eventId);
+
+    // Non-published events require org-level access
+    if (event.status !== "published") {
+      this.requireOrganizationAccess(user, event.organizationId);
+    }
 
     return feedPostRepository.findByEvent(eventId, {
       page: query.page ?? 1,
