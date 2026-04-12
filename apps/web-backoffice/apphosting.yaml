@@ -1,0 +1,19 @@
+# Firebase App Hosting configuration for the backoffice web app (Next.js 15)
+# https://firebase.google.com/docs/app-hosting/configure
+
+runConfig:
+  # Start at 0 to avoid cost, scale up on demand
+  minInstances: 0
+  maxInstances: 5
+  concurrency: 80
+  cpu: 1
+  memoryMiB: 512
+
+env:
+  # ─── API URL ──────────────────────────────────────────────────────────
+  # Points to the Cloud Run API deployed by the GitHub Actions pipeline.
+  - variable: NEXT_PUBLIC_API_URL
+    value: "https://teranga-api-staging-784468934140.europe-west1.run.app"
+    availability:
+      - BUILD
+      - RUNTIME

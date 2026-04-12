@@ -1,0 +1,57 @@
+# Firebase App Hosting configuration for the participant web app (Next.js 15)
+# https://firebase.google.com/docs/app-hosting/configure
+
+runConfig:
+  # Start at 0 to avoid cost, scale up on demand
+  minInstances: 0
+  maxInstances: 5
+  concurrency: 80
+  cpu: 1
+  memoryMiB: 512
+
+# Environment variables available at build and runtime.
+# - NEXT_PUBLIC_* vars are embedded in the client bundle at build time.
+# - Secrets should be stored in Cloud Secret Manager and referenced below.
+# - Values configured here override defaults. Firebase Web SDK config
+#   (apiKey, authDomain, etc.) can be left empty if the project has a
+#   single web app — App Hosting auto-injects them at build time.
+env:
+  # ─── Firebase Web SDK ─────────────────────────────────────────────────
+  # These are auto-detected by App Hosting from the project's web app
+  # registration. Uncomment and set explicitly only if you have multiple
+  # web apps and need to target a specific one.
+  # - variable: NEXT_PUBLIC_FIREBASE_API_KEY
+  #   value: ""
+  #   availability: [BUILD, RUNTIME]
+
+  # ─── API URL ──────────────────────────────────────────────────────────
+  # Points to the Cloud Run API deployed by the GitHub Actions pipeline.
+  # Update this after the first deploy-api run captures the actual URL.
+  - variable: NEXT_PUBLIC_API_URL
+    value: "https://teranga-api-staging-784468934140.europe-west1.run.app"
+    availability:
+      - BUILD
+      - RUNTIME
+
+  # ─── Cross-app URLs ───────────────────────────────────────────────────
+  - variable: NEXT_PUBLIC_APP_URL
+    value: "https://participant--teranga-app-990a8.web.app"
+    availability:
+      - BUILD
+      - RUNTIME
+
+  - variable: NEXT_PUBLIC_BACKOFFICE_URL
+    value: "https://backoffice--teranga-app-990a8.web.app"
+    availability:
+      - BUILD
+      - RUNTIME
+
+  - variable: NEXT_PUBLIC_USE_EMULATORS
+    value: "false"
+    availability:
+      - BUILD
+      - RUNTIME
+
+# Build configuration.
+# App Hosting auto-detects Next.js and runs the appropriate build command.
+# For monorepos, the rootDirectory is set when creating the backend.

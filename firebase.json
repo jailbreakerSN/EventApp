@@ -13,20 +13,6 @@
       "ignore": ["node_modules", ".git", "firebase-debug.log", "firebase-debug.*.log"]
     }
   ],
-  "hosting": [
-    {
-      "target": "backoffice",
-      "public": "apps/web-backoffice/out",
-      "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
-      "rewrites": [{ "source": "**", "destination": "/index.html" }]
-    },
-    {
-      "target": "participant",
-      "public": "apps/web-participant/out",
-      "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
-      "rewrites": [{ "source": "**", "destination": "/index.html" }]
-    }
-  ],
   "emulators": {
     "auth": { "port": 9099, "host": "0.0.0.0" },
     "functions": { "port": 5001, "host": "0.0.0.0" },

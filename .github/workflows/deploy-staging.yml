@@ -146,9 +146,10 @@ jobs:
           fi
 
           # ── 4. Derive URLs ──
-          # Firebase Hosting URLs follow convention
-          BACKOFFICE_URL="https://$PROJECT_ID.web.app"
-          PARTICIPANT_URL="https://teranga-participant-staging.web.app"
+          # Web app URLs come from Firebase App Hosting (managed via console).
+          # These are read from GitHub Actions variables if set.
+          BACKOFFICE_URL="${{ vars.BACKOFFICE_URL_STAGING || '' }}"
+          PARTICIPANT_URL="${{ vars.PARTICIPANT_URL_STAGING || '' }}"
 
           # Cloud Run URL: try to detect from existing service, fall back to variable
           API_URL=$(gcloud run services describe teranga-api-staging \
@@ -159,14 +160,19 @@ jobs:
             API_URL="${{ vars.API_URL_STAGING }}"
           fi
 
+          # Build CORS origins list from whatever URLs are available
+          CORS_LIST="$API_URL"
+          [ -n "$BACKOFFICE_URL" ] && CORS_LIST="$CORS_LIST,$BACKOFFICE_URL"
+          [ -n "$PARTICIPANT_URL" ] && CORS_LIST="$CORS_LIST,$PARTICIPANT_URL"
+
           echo "api_url=$API_URL" >> $GITHUB_OUTPUT
           echo "backoffice_url=$BACKOFFICE_URL" >> $GITHUB_OUTPUT
           echo "participant_url=$PARTICIPANT_URL" >> $GITHUB_OUTPUT
-          echo "cors_origins=$API_URL,$BACKOFFICE_URL,$PARTICIPANT_URL" >> $GITHUB_OUTPUT
+          echo "cors_origins=$CORS_LIST" >> $GITHUB_OUTPUT
 
           echo "::notice::API URL: $API_URL"
-          echo "::notice::Backoffice URL: $BACKOFFICE_URL"
-          echo "::notice::Participant URL: $PARTICIPANT_URL"
+          echo "::notice::Backoffice URL: ${BACKOFFICE_URL:-(not set)}"
+          echo "::notice::Participant URL: ${PARTICIPANT_URL:-(not set)}"
 
   # ─── Deploy API to Cloud Run ──────────────────────────────────────────────
   deploy-api:
@@ -216,50 +222,14 @@ jobs:
             --allow-unauthenticated \
             --set-env-vars "^@^NODE_ENV=staging@FIREBASE_PROJECT_ID=${{ needs.setup.outputs.project_id }}@FIREBASE_STORAGE_BUCKET=${{ needs.setup.outputs.firebase_storage_bucket }}@QR_SECRET=${{ secrets.QR_SECRET }}@WEBHOOK_SECRET=${{ secrets.WEBHOOK_SECRET }}@RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}@CORS_ORIGINS=${{ needs.setup.outputs.cors_origins }}@RATE_LIMIT_MAX=100@RATE_LIMIT_WINDOW_MS=60000@LOG_LEVEL=info"
 
-  # ─── Deploy Web Apps to Firebase Hosting ──────────────────────────────────
-  deploy-web:
-    name: Deploy Web Apps to Firebase Hosting (staging)
-    runs-on: ubuntu-latest
-    needs: setup
-    environment: staging
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-      - run: npm ci
-      - name: Build shared packages
-        run: npx turbo build --filter=@teranga/shared-types --filter=@teranga/shared-ui
-      - name: Build web backoffice
-        run: npm run build --workspace=apps/web-backoffice
-        env:
-          NEXT_PUBLIC_FIREBASE_API_KEY: ${{ needs.setup.outputs.firebase_api_key }}
-          NEXT_PUBLIC_FIREBASE_PROJECT_ID: ${{ needs.setup.outputs.project_id }}
-          NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: ${{ needs.setup.outputs.firebase_auth_domain }}
-          NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: ${{ needs.setup.outputs.firebase_storage_bucket }}
-          NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: ${{ needs.setup.outputs.firebase_messaging_sender_id }}
-          NEXT_PUBLIC_FIREBASE_APP_ID: ${{ needs.setup.outputs.firebase_app_id }}
-          NEXT_PUBLIC_API_URL: ${{ needs.setup.outputs.api_url }}
-      - name: Build web participant
-        run: npm run build --workspace=apps/web-participant
-        env:
-          NEXT_PUBLIC_FIREBASE_API_KEY: ${{ needs.setup.outputs.firebase_api_key }}
-          NEXT_PUBLIC_FIREBASE_PROJECT_ID: ${{ needs.setup.outputs.project_id }}
-          NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: ${{ needs.setup.outputs.firebase_auth_domain }}
-          NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: ${{ needs.setup.outputs.firebase_storage_bucket }}
-          NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: ${{ needs.setup.outputs.firebase_messaging_sender_id }}
-          NEXT_PUBLIC_FIREBASE_APP_ID: ${{ needs.setup.outputs.firebase_app_id }}
-          NEXT_PUBLIC_API_URL: ${{ needs.setup.outputs.api_url }}
-          NEXT_PUBLIC_APP_URL: ${{ needs.setup.outputs.participant_url }}
-          NEXT_PUBLIC_BACKOFFICE_URL: ${{ needs.setup.outputs.backoffice_url }}
-      - name: Deploy to Firebase Hosting
-        uses: FirebaseExtended/action-hosting-deploy@v0
-        with:
-          repoToken: ${{ secrets.GITHUB_TOKEN }}
-          firebaseServiceAccount: ${{ secrets.GCP_SA_KEY }}
-          projectId: ${{ needs.setup.outputs.project_id }}
-          channelId: live
+  # ─── Deploy Web Apps ──────────────────────────────────────────────────────
+  # Web apps (web-backoffice, web-participant) are deployed via Firebase
+  # App Hosting, which has its own git-based CI/CD triggered automatically
+  # when this branch receives commits. Configuration lives in:
+  #   apps/web-backoffice/apphosting.yaml
+  #   apps/web-participant/apphosting.yaml
+  # Backend setup is a one-time operation via Firebase Console:
+  #   https://console.firebase.google.com/project/teranga-app-990a8/apphosting
 
   # ─── Deploy Cloud Functions ───────────────────────────────────────────────
   deploy-functions:
