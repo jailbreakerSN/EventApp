@@ -1,26 +1,36 @@
 name: Deploy to Staging
 
-# Runs only after CI completes successfully on `develop`. Gating on
-# workflow_run avoids shipping broken code: a failing lint/type-check/test
-# in CI will prevent the deploy entirely.
+# Deploys on every push to `develop`. Safety comes from branch protection:
+# `develop` requires the CI workflow's ci-gate check to pass before any PR
+# can merge. This means everything that lands on `develop` has already
+# passed CI, so deploying on push is safe.
+#
+# History: previously gated on `workflow_run` from the CI workflow, which
+# is the "correct" GitHub pattern but has a footgun — `workflow_run`
+# triggers only fire for workflows that exist on the **default branch**.
+# With `main` as the default and this workflow living only on `develop`,
+# `workflow_run` never fired on merges to `develop`. That silently broke
+# all deploys (see the Firestore-index regression after PR #11). Switching
+# back to `push` makes the behaviour explicit and reliable.
 on:
-  workflow_run:
-    workflows: [CI]
-    types: [completed]
+  push:
     branches: [develop]
+  # Allow manually re-deploying a specific commit (e.g., after fixing a
+  # transient GCP issue) without forcing an empty commit.
+  workflow_dispatch:
 
 concurrency:
   group: deploy-staging
   cancel-in-progress: true
 
 env:
-  # Must match ci.yml — see the rationale there. Summary: apps/functions
-  # engines.node = 22; keeping CI and deploy aligned avoids drift warnings.
+  # Must match ci.yml — apps/functions engines.node = 22; keeping CI and
+  # deploy aligned avoids drift warnings.
   NODE_VERSION: "22"
-  # The commit SHA that passed CI. With workflow_run, github.sha points to the
-  # default branch HEAD rather than the commit that was actually tested — use
-  # workflow_run.head_sha for image tags, checkouts, and labels.
-  DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}
+  # The commit being deployed. With `push`/`workflow_dispatch` triggers,
+  # github.sha points at the right commit directly — no workflow_run
+  # indirection needed.
+  DEPLOY_SHA: ${{ github.sha }}
   # Retry transient npm fetch failures (ECONNRESET on GHA runners is common).
   NPM_CONFIG_FETCH_RETRIES: "5"
   NPM_CONFIG_FETCH_RETRY_MINTIMEOUT: "10000"
@@ -41,9 +51,6 @@ jobs:
   # ─── Derive all config from GCP_SA_KEY ────────────────────────────────────
   setup:
     name: Discover Firebase & GCP config
-    # Skip the entire deploy if the upstream CI run failed or was cancelled.
-    # All other jobs depend on `setup`, so this gate cascades.
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     environment: staging
     outputs:
@@ -206,10 +213,6 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
-        with:
-          # workflow_run sets github.sha to the default branch HEAD, not the
-          # commit that triggered CI — check out the actual tested commit.
-          ref: ${{ github.event.workflow_run.head_sha }}
       - uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
@@ -238,7 +241,7 @@ jobs:
           push: true
           tags: europe-west1-docker.pkg.dev/${{ needs.setup.outputs.project_id }}/teranga/teranga-api:${{ env.DEPLOY_SHA }}
           build-args: |
-            BUILD_DATE=${{ github.event.workflow_run.updated_at }}
+            BUILD_DATE=${{ github.event.head_commit.timestamp }}
             GIT_SHA=${{ env.DEPLOY_SHA }}
           # GitHub Actions cache backend. `scope=api` keeps per-service caches
           # isolated so a backoffice build doesn't evict API layers.
@@ -296,10 +299,6 @@ jobs:
     environment: staging
     steps:
       - uses: actions/checkout@v4
-        with:
-          # workflow_run sets github.sha to the default branch HEAD, not the
-          # commit that triggered CI — check out the actual tested commit.
-          ref: ${{ github.event.workflow_run.head_sha }}
       - uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
@@ -367,10 +366,6 @@ jobs:
     environment: staging
     steps:
       - uses: actions/checkout@v4
-        with:
-          # workflow_run sets github.sha to the default branch HEAD, not the
-          # commit that triggered CI — check out the actual tested commit.
-          ref: ${{ github.event.workflow_run.head_sha }}
       - uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
@@ -439,10 +434,6 @@ jobs:
     environment: staging
     steps:
       - uses: actions/checkout@v4
-        with:
-          # workflow_run sets github.sha to the default branch HEAD, not the
-          # commit that triggered CI — check out the actual tested commit.
-          ref: ${{ github.event.workflow_run.head_sha }}
       - uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
@@ -478,13 +469,42 @@ jobs:
       # downtime. If a trigger type changes again, handle it manually with a
       # one-shot `gcloud functions delete` rather than on every deploy.
 
-      - name: Deploy Firebase resources (rules, indexes, storage, functions)
+      # Split into per-resource deploys so a failure on one doesn't mask or
+      # block the others. Previously these were a single combined command:
+      #   firebase-tools deploy --only firestore:rules,firestore:indexes,storage,functions
+      # which could mask a silent failure on one resource (e.g., the SA
+      # missing the datastore.indexAdmin role would skip indexes while
+      # reporting overall success). Separate steps make failures loud.
+      - name: Deploy Firestore rules
         run: |
           npx firebase-tools deploy \
-            --only firestore:rules,firestore:indexes,storage,functions \
+            --only firestore:rules \
             --project ${{ needs.setup.outputs.project_id }} \
-            --force \
-            --non-interactive
+            --force --non-interactive
+
+      - name: Deploy Firestore indexes
+        # Requires the deploy SA to have `roles/datastore.indexAdmin` (or
+        # broader Firebase admin). If this step fails with PERMISSION_DENIED,
+        # grant that role to the deploy SA in GCP IAM.
+        run: |
+          npx firebase-tools deploy \
+            --only firestore:indexes \
+            --project ${{ needs.setup.outputs.project_id }} \
+            --force --non-interactive
+
+      - name: Deploy Storage rules
+        run: |
+          npx firebase-tools deploy \
+            --only storage \
+            --project ${{ needs.setup.outputs.project_id }} \
+            --force --non-interactive
+
+      - name: Deploy Cloud Functions
+        run: |
+          npx firebase-tools deploy \
+            --only functions \
+            --project ${{ needs.setup.outputs.project_id }} \
+            --force --non-interactive
 
   # ─── Seed staging database (one-time, idempotent) ────────────────────────
   # Runs the seed script against the real Firestore. The script checks for
@@ -497,10 +517,6 @@ jobs:
     environment: staging
     steps:
       - uses: actions/checkout@v4
-        with:
-          # workflow_run sets github.sha to the default branch HEAD, not the
-          # commit that triggered CI — check out the actual tested commit.
-          ref: ${{ github.event.workflow_run.head_sha }}
       - uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}

@@ -203,15 +203,32 @@ export async function buildApp() {
 
     // ── Firestore FAILED_PRECONDITION (missing composite index) ────────
     // Surface a specific error code + console hint so developers don't have
-    // to spelunk the stack trace to find the Firestore link. gRPC code 9 =
-    // FAILED_PRECONDITION. The index URL is embedded in the error message.
-    const maybeGrpcCode = (error as unknown as { code?: unknown }).code;
-    if (
-      maybeGrpcCode === 9 &&
-      typeof error.message === "string" &&
-      error.message.includes("query requires an index")
-    ) {
-      const urlMatch = error.message.match(/https:\/\/console\.firebase\.google\.com[^\s"]+/);
+    // to spelunk the stack trace to find the Firestore link. The real-world
+    // error can arrive in several shapes depending on the Firebase SDK
+    // version and wrapping:
+    //   - `error.code === 9`                       (raw gRPC numeric code)
+    //   - `error.code === "failed-precondition"`   (Firebase JS SDK string code)
+    //   - `error.code === "FAILED_PRECONDITION"`   (some admin builds)
+    //   - code nested under `error.cause.code`     (re-thrown/wrapped errors)
+    //   - none of the above, but message prefixed with "9 FAILED_PRECONDITION:"
+    //     (google-gax stringifies gRPC status into the message)
+    // The message-based check is the most reliable discriminator — the Firestore
+    // index-missing error uniquely contains "query requires an index".
+    const message = typeof error.message === "string" ? error.message : "";
+    const errorObj = error as unknown as {
+      code?: unknown;
+      cause?: { code?: unknown };
+    };
+    const code = errorObj.code ?? errorObj.cause?.code;
+    const isFailedPrecondition =
+      code === 9 ||
+      code === "failed-precondition" ||
+      code === "FAILED_PRECONDITION" ||
+      message.startsWith("9 FAILED_PRECONDITION") ||
+      message.includes("FAILED_PRECONDITION:");
+    const isMissingIndex = message.includes("query requires an index");
+    if (isFailedPrecondition && isMissingIndex) {
+      const urlMatch = message.match(/https:\/\/console\.firebase\.google\.com[^\s"]+/);
       const consoleUrl = urlMatch?.[0];
       request.log.error(
         {
