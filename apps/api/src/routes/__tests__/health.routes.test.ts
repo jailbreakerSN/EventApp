@@ -2,13 +2,13 @@ import { describe, it, expect, vi, beforeAll, afterAll } from "vitest";
 import Fastify, { type FastifyInstance } from "fastify";
 import { healthRoutes } from "../health.routes";
 
-// Mock Firestore db used in the health route
-const mockGet = vi.fn();
+// Mock Firestore db used in the health route. The readiness probe calls
+// db.listCollections() (changed from db.collection("__healthcheck__") because
+// double-underscore identifiers are reserved by Firestore).
+const mockListCollections = vi.fn();
 vi.mock("@/config/firebase", () => ({
   db: {
-    collection: () => ({
-      limit: () => ({ get: mockGet }),
-    }),
+    listCollections: () => mockListCollections(),
   },
 }));
 
@@ -37,7 +37,7 @@ describe("GET /health", () => {
 
 describe("GET /ready", () => {
   it("returns 200 with firestore latency when healthy", async () => {
-    mockGet.mockResolvedValue({ docs: [] });
+    mockListCollections.mockResolvedValue([]);
 
     const res = await app.inject({ method: "GET", url: "/ready" });
     expect(res.statusCode).toBe(200);
@@ -48,7 +48,7 @@ describe("GET /ready", () => {
   });
 
   it("returns 503 when firestore is unreachable", async () => {
-    mockGet.mockRejectedValue(new Error("Connection refused"));
+    mockListCollections.mockRejectedValue(new Error("Connection refused"));
 
     const res = await app.inject({ method: "GET", url: "/ready" });
     expect(res.statusCode).toBe(503);
