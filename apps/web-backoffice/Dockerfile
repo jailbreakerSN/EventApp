@@ -1,6 +1,6 @@
 # ─── Dependencies ───────────────────────────────────────────────────────────
 # Install only the workspaces needed to build the backoffice app.
-FROM node:22-alpine AS deps
+FROM node:22-alpine@sha256:4d64b49e6c891c8fc821007cb1cdc6c0db7773110ac2c34bf2e6960adef62ed3 AS deps
 WORKDIR /app
 
 # Copy workspace manifests (better layer caching — reinstalls only on lock changes)
@@ -18,7 +18,7 @@ RUN npm ci \
   --workspace=apps/web-backoffice
 
 # ─── Builder ────────────────────────────────────────────────────────────────
-FROM node:22-alpine AS builder
+FROM node:22-alpine@sha256:4d64b49e6c891c8fc821007cb1cdc6c0db7773110ac2c34bf2e6960adef62ed3 AS builder
 WORKDIR /app
 
 # Firebase Web SDK config is baked in at build time (NEXT_PUBLIC_*).
@@ -52,7 +52,7 @@ RUN npm run build --workspace=packages/shared-types
 RUN npm run build --workspace=apps/web-backoffice
 
 # ─── Runner ─────────────────────────────────────────────────────────────────
-FROM node:22-alpine AS runner
+FROM node:22-alpine@sha256:4d64b49e6c891c8fc821007cb1cdc6c0db7773110ac2c34bf2e6960adef62ed3 AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production

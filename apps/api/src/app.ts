@@ -11,6 +11,7 @@ import { AppError } from "@/errors/app-error";
 import { runWithContext, enrichContext } from "@/context/request-context";
 import { registerNotificationListeners } from "@/events/listeners/notification.listener";
 import { registerAuditListeners } from "@/events/listeners/audit.listener";
+import { captureError } from "@/observability/sentry";
 
 export async function buildApp() {
   const app = Fastify({
@@ -158,6 +159,13 @@ export async function buildApp() {
     if (error instanceof AppError) {
       if (error.statusCode >= 500) {
         request.log.error({ err: error, method: request.method, url: request.url }, error.message);
+        // Only 5xx operational errors go to Sentry — 4xx is client error noise.
+        captureError(error, {
+          requestId: request.id,
+          method: request.method,
+          url: request.url,
+          code: error.code,
+        });
       } else {
         request.log.warn(
           { code: error.code, method: request.method, url: request.url },
@@ -193,8 +201,70 @@ export async function buildApp() {
       });
     }
 
+    // ── Firestore FAILED_PRECONDITION (missing composite index) ────────
+    // Surface a specific error code + console hint so developers don't have
+    // to spelunk the stack trace to find the Firestore link. The real-world
+    // error can arrive in several shapes depending on the Firebase SDK
+    // version and wrapping:
+    //   - `error.code === 9`                       (raw gRPC numeric code)
+    //   - `error.code === "failed-precondition"`   (Firebase JS SDK string code)
+    //   - `error.code === "FAILED_PRECONDITION"`   (some admin builds)
+    //   - code nested under `error.cause.code`     (re-thrown/wrapped errors)
+    //   - none of the above, but message prefixed with "9 FAILED_PRECONDITION:"
+    //     (google-gax stringifies gRPC status into the message)
+    // The message-based check is the most reliable discriminator — the Firestore
+    // index-missing error uniquely contains "query requires an index".
+    const message = typeof error.message === "string" ? error.message : "";
+    const errorObj = error as unknown as {
+      code?: unknown;
+      cause?: { code?: unknown };
+    };
+    const code = errorObj.code ?? errorObj.cause?.code;
+    const isFailedPrecondition =
+      code === 9 ||
+      code === "failed-precondition" ||
+      code === "FAILED_PRECONDITION" ||
+      message.startsWith("9 FAILED_PRECONDITION") ||
+      message.includes("FAILED_PRECONDITION:");
+    const isMissingIndex = message.includes("query requires an index");
+    if (isFailedPrecondition && isMissingIndex) {
+      const urlMatch = message.match(/https:\/\/console\.firebase\.google\.com[^\s"]+/);
+      const consoleUrl = urlMatch?.[0];
+      request.log.error(
+        {
+          err: error,
+          method: request.method,
+          url: request.url,
+          firestoreIndexUrl: consoleUrl,
+          hint: "Declare this composite index in infrastructure/firebase/firestore.indexes.json and redeploy.",
+        },
+        "Firestore query missing composite index (FAILED_PRECONDITION)",
+      );
+      captureError(error, {
+        requestId: request.id,
+        method: request.method,
+        url: request.url,
+        firestoreIndexUrl: consoleUrl,
+      });
+      return reply.status(500).send({
+        success: false,
+        error: {
+          code: "FIRESTORE_INDEX_MISSING",
+          message:
+            config.NODE_ENV === "production"
+              ? "Une erreur interne s'est produite."
+              : `A Firestore composite index is missing. Declare it in firestore.indexes.json${consoleUrl ? ` — quick-create: ${consoleUrl}` : ""}.`,
+        },
+      });
+    }
+
     // ── Unexpected errors ──────────────────────────────────────────────
     request.log.error({ err: error, method: request.method, url: request.url }, error.message);
+    captureError(error, {
+      requestId: request.id,
+      method: request.method,
+      url: request.url,
+    });
 
     const statusCode = error.statusCode ?? 500;
     return reply.status(statusCode).send({

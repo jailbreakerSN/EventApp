@@ -20,6 +20,7 @@
     "web:dev": "turbo dev --filter=@teranga/web-backoffice",
     "participant:dev": "turbo dev --filter=@teranga/web-participant",
     "types:build": "turbo build --filter=@teranga/shared-types",
+    "audit:firestore-indexes": "tsx scripts/audit-firestore-indexes.ts",
     "clean": "turbo clean && rm -rf node_modules/.cache",
     "prepare": "husky"
   },

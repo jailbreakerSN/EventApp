@@ -1,0 +1,142 @@
+name: Claude AI Review
+
+# Manual-trigger-only advisory review by Claude. Runs the project subagents
+# defined in .claude/agents/ against a specific PR's diff and posts findings
+# as a single PR comment.
+#
+# WHY MANUAL:
+# - Cost efficiency: each run consumes Anthropic API tokens. Auto-running on
+#   every PR / push is wasteful while we evaluate signal quality.
+# - Blocking correctness is handled by ci.yml (lint, type-check, tests,
+#   Firestore index + rules checks). This workflow is strictly advisory.
+#
+# HOW TO RUN:
+# - GitHub UI: Actions → "Claude AI Review" → Run workflow → enter the PR
+#   number (e.g. 42) → Run.
+# - CLI: `gh workflow run claude-review.yml -f pr_number=42`
+#
+# REQUIREMENTS:
+# - Repository secret `ANTHROPIC_API_KEY` must be set.
+# - The PR must be in this repository (fork PRs can't access secrets).
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "Pull request number to review (e.g. 42)"
+        required: true
+        type: string
+
+concurrency:
+  group: claude-review-${{ github.event.inputs.pr_number }}
+  cancel-in-progress: true
+
+# Least-privilege permissions. pull-requests:write is required to post the
+# review comment; contents:read to fetch the diff.
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  claude-review:
+    name: Claude AI Review (manual, advisory)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve PR metadata
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          PR_NUMBER="${{ github.event.inputs.pr_number }}"
+          DATA=$(gh pr view "$PR_NUMBER" \
+            --repo "${{ github.repository }}" \
+            --json number,title,headRefName,headRefOid,baseRefName,isCrossRepository,isDraft)
+          echo "$DATA" | jq -r '
+            "number=" + (.number|tostring),
+            "title=" + .title,
+            "head_ref=" + .headRefName,
+            "head_sha=" + .headRefOid,
+            "base_ref=" + .baseRefName,
+            "is_fork=" + (.isCrossRepository|tostring),
+            "is_draft=" + (.isDraft|tostring)
+          ' >> "$GITHUB_OUTPUT"
+
+      - name: Guard against fork PRs
+        if: steps.pr.outputs.is_fork == 'true'
+        run: |
+          echo "::error title=Fork PRs not supported::Fork PRs cannot access secrets. Run the review manually on a branch inside this repo."
+          exit 1
+
+      - name: Check for Anthropic API key
+        id: check_key
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "::error title=Missing secret::ANTHROPIC_API_KEY is not set. Add it under Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+
+      - name: Check out PR head (full history for diff context)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ steps.pr.outputs.head_sha }}
+
+      - name: Run Claude subagents on the PR diff
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # The action auto-discovers agents from .claude/agents/ and uses
+          # the project-level .mcp.json (code-review-graph, context7,
+          # sequential-thinking).
+          direct_prompt: |
+            You are reviewing PR #${{ steps.pr.outputs.number }}
+            ("${{ steps.pr.outputs.title }}") against base branch
+            "${{ steps.pr.outputs.base_ref }}".
+
+            Run the following project subagents in parallel against the PR
+            diff (git diff origin/${{ steps.pr.outputs.base_ref }}...HEAD):
+
+            1. @security-reviewer
+            2. @firestore-transaction-auditor
+            3. @domain-event-auditor
+            4. @plan-limit-auditor (only if the diff touches events,
+               registrations, members, tickets, or subscriptions)
+            5. @l10n-auditor (only if the diff touches apps/web-* or apps/mobile)
+
+            Consolidate all findings into a SINGLE PR comment on PR
+            #${{ steps.pr.outputs.number }} with this structure:
+
+            ## 🤖 Claude advisory review (manual run)
+
+            > Non-blocking. Blocking correctness is enforced by the main CI.
+            > This review was triggered manually via the "Claude AI Review"
+            > workflow. Re-run from the Actions tab if the diff changes.
+
+            ### security-reviewer
+            (findings or "✅ no issues")
+
+            ### firestore-transaction-auditor
+            ...
+
+            ### domain-event-auditor
+            ...
+
+            ### plan-limit-auditor
+            (or "— not applicable to this diff")
+
+            ### l10n-auditor
+            (or "— not applicable to this diff")
+
+            ---
+            <sub>Rules live in CLAUDE.md. Agent prompts live in
+            .claude/agents/. Edit either and the next manual run picks it up.</sub>
+
+            Rules:
+            - Cite file:line for every finding.
+            - If an agent produces zero findings, say "✅ no issues" under its heading.
+            - Do NOT approve or request changes on the PR. Only post a comment.
+            - Do NOT modify files. This is read-only review.

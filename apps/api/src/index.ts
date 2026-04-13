@@ -1,3 +1,9 @@
+// Sentry must initialise before any other application import so its Node SDK
+// auto-instrumentation can hook into outgoing HTTP and fs calls before
+// Fastify/firebase-admin load them. No-op when SENTRY_DSN is unset.
+import { initSentry, captureError, closeSentry } from "./observability/sentry";
+initSentry();
+
 import { buildApp } from "./app";
 import { config } from "./config/index";
 
@@ -28,6 +34,7 @@ async function main() {
 
     try {
       await app.close(); // Drains in-flight requests, closes keep-alive connections
+      await closeSentry(); // Flush pending Sentry events before exit
       app.log.info("Graceful shutdown complete");
       process.exit(0);
     } catch (err) {
@@ -42,13 +49,16 @@ async function main() {
   // ── Unhandled rejection / uncaught exception ────────────────────────────
   // Log and crash — running in an undefined state is worse than restarting.
   process.on("unhandledRejection", (reason) => {
+    captureError(reason, { source: "unhandledRejection" });
     app.log.fatal({ err: reason }, "Unhandled promise rejection — crashing");
-    process.exit(1);
+    // Give Sentry a brief window to flush before exit.
+    closeSentry(1000).finally(() => process.exit(1));
   });
 
   process.on("uncaughtException", (err) => {
+    captureError(err, { source: "uncaughtException" });
     app.log.fatal({ err }, "Uncaught exception — crashing");
-    process.exit(1);
+    closeSentry(1000).finally(() => process.exit(1));
   });
 
   // ── Start server ────────────────────────────────────────────────────────

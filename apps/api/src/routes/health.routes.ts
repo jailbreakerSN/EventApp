@@ -14,12 +14,20 @@ export async function healthRoutes(app: FastifyInstance) {
   }));
 
   // Readiness: can the service actually handle requests?
-  // Verifies Firestore connectivity with a lightweight read.
+  // Verifies Firestore connectivity with a lightweight operation.
+  //
+  // Uses `db.listCollections()` (limited to 1) instead of reading from a
+  // specific collection. Benefits:
+  //   1. Doesn't require any particular collection to exist.
+  //   2. Doesn't touch a reserved name. An earlier version queried a
+  //      collection called `__healthcheck__`, which Firestore rejects with
+  //      INVALID_ARGUMENT because identifiers starting with `__` are
+  //      reserved. See https://firebase.google.com/docs/firestore/reference/naming
+  //   3. No composite-index requirement — uses the root-level API.
   app.get("/ready", async (_request, reply) => {
     try {
-      // Attempt a cheap Firestore operation (list 1 doc from root collection)
       const start = Date.now();
-      await db.collection("__healthcheck__").limit(1).get();
+      await db.listCollections();
       const latencyMs = Date.now() - start;
 
       return {

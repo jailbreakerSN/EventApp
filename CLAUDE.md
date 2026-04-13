@@ -675,6 +675,20 @@ When working on this project, Claude should leverage specialized agents and skil
 | Implementation planning    | `Plan`                      | Architectural decisions, multi-step feature design  |
 | Parallel independent tasks | Multiple agents in parallel | e.g., API fix + web fix + mobile fix simultaneously |
 
+### Project Subagents (committed in `.claude/agents/`)
+
+These are shared across the team and also run in CI via `.github/workflows/claude-review.yml`. Invoke locally with `@<agent-name>` in any Claude Code session.
+
+| Agent                            | Use when                                                                 |
+| -------------------------------- | ------------------------------------------------------------------------ |
+| `security-reviewer`              | After any service / route / Firestore-rules / upload change              |
+| `firestore-transaction-auditor`  | After any service edit — scans for non-atomic read-then-write sequences  |
+| `plan-limit-auditor`             | After changes to events, registrations, members, tickets, subscriptions  |
+| `domain-event-auditor`           | After any mutation — confirms `eventBus.emit(...)` calls exist           |
+| `l10n-auditor`                   | After any UI change in `apps/web-*` or `apps/mobile/`                    |
+
+These agents are read-only — they produce reports, never modify code. Each encodes a specific rule from this file; if the rule changes here, update the matching agent prompt.
+
 ### Development Workflow
 
 1. **Before any implementation**:
@@ -705,6 +719,16 @@ For any substantial change (new feature, security fix, refactor), perform a self
 3. **Audit**: Does the mutation emit a domain event?
 4. **Tests**: Are happy path, error path, and permission denial tested?
 5. **Types**: Are shared-types schemas updated and rebuilt?
+
+**Before pushing service-layer changes**, invoke the project subagents to mechanize the checks above:
+
+- `@security-reviewer` — runs §1
+- `@firestore-transaction-auditor` — runs §2
+- `@domain-event-auditor` — runs §3
+- `@plan-limit-auditor` — when the change touches freemium-gated features
+- `@l10n-auditor` — when the change touches UI code
+
+The same agents can also be invoked on-demand via `.github/workflows/claude-review.yml` — a **manually-triggered** (`workflow_dispatch`) advisory workflow. Run it from **Actions → Claude AI Review → Run workflow** (pass the PR number) or via `gh workflow run claude-review.yml -f pr_number=<N>`. It's manual by design to stay cost-efficient; local runs are faster and free, so prefer them during development.
 
 ---
 

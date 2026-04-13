@@ -1,5 +1,12 @@
+# Base images are pinned to their manifest-list digests (not just tags) so
+# builds are reproducible and protected against upstream tag reassignments.
+# To refresh: `docker manifest inspect node:22-alpine | jq -r '.manifests[0].digest'`
+# or check https://hub.docker.com/_/node and update the digest below.
+# Aligned with the web Dockerfiles and apps/functions engines.node = "22"
+# so every runtime uses the same Node major.
+
 # ─── Build Stage ─────────────────────────────────────────────────────────────
-FROM node:20-alpine AS builder
+FROM node:22-alpine@sha256:4d64b49e6c891c8fc821007cb1cdc6c0db7773110ac2c34bf2e6960adef62ed3 AS builder
 
 ARG BUILD_DATE
 ARG GIT_SHA
@@ -34,7 +41,7 @@ RUN npm run build --workspace=packages/shared-types
 RUN npm run build --workspace=apps/api
 
 # ─── Production Stage ─────────────────────────────────────────────────────────
-FROM node:20-alpine AS runner
+FROM node:22-alpine@sha256:4d64b49e6c891c8fc821007cb1cdc6c0db7773110ac2c34bf2e6960adef62ed3 AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
