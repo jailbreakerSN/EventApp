@@ -1,0 +1,106 @@
+name: Claude AI Review
+
+# Advisory, non-blocking PR review by Claude. Runs the project subagents
+# defined in .claude/agents/ against the PR diff and posts findings as a
+# single PR comment.
+#
+# - Blocking correctness is handled by ci.yml (lint, type-check, tests,
+#   Firestore index + rules checks). This workflow is intentionally
+#   decoupled so AI flakiness or rate limits never hold up a merge.
+# - Triggered only on pull_request events (not push) to bound cost.
+# - Skipped when the PR carries the label `skip-ai-review`.
+# - Requires the repository secret `ANTHROPIC_API_KEY`.
+# - Concurrency cancels superseded runs on force-push / new commits.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+      - ".gitignore"
+      - "LICENSE"
+
+concurrency:
+  group: claude-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+# Least-privilege permissions. pull-requests:write is required to post
+# the review comment; contents:read to fetch the diff.
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  claude-review:
+    name: Claude AI Review (advisory)
+    runs-on: ubuntu-latest
+    # Skip drafts, skip when label present, skip forks (no access to secrets).
+    if: >-
+      github.event.pull_request.draft == false
+      && !contains(github.event.pull_request.labels.*.name, 'skip-ai-review')
+      && github.event.pull_request.head.repo.full_name == github.repository
+    # Non-blocking: even if the agent fails, the PR is not blocked.
+    continue-on-error: true
+    steps:
+      - name: Check out PR head (full history for diff context)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Run Claude subagents on the PR diff
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Let the action auto-discover agents from .claude/agents/
+          # and use the project-level .mcp.json for code-review-graph,
+          # context7, and sequential-thinking.
+          direct_prompt: |
+            You are reviewing PR #${{ github.event.pull_request.number }}
+            (${{ github.event.pull_request.title }}) against the base branch
+            ${{ github.event.pull_request.base.ref }}.
+
+            Run the following project subagents in parallel against the PR
+            diff (git diff origin/${{ github.event.pull_request.base.ref }}...HEAD):
+
+            1. @security-reviewer
+            2. @firestore-transaction-auditor
+            3. @domain-event-auditor
+            4. @plan-limit-auditor (only if the diff touches events,
+               registrations, members, tickets, or subscriptions)
+            5. @l10n-auditor (only if the diff touches apps/web-* or apps/mobile)
+
+            Consolidate all findings into a SINGLE PR comment with this
+            structure:
+
+            ## 🤖 Claude advisory review
+
+            > Non-blocking. Blocking correctness is enforced by the main CI.
+            > To skip future AI reviews on a PR, add the `skip-ai-review` label.
+
+            ### security-reviewer
+            (findings or "✅ no issues")
+
+            ### firestore-transaction-auditor
+            ...
+
+            ### domain-event-auditor
+            ...
+
+            ### plan-limit-auditor
+            (or "— not applicable to this diff")
+
+            ### l10n-auditor
+            (or "— not applicable to this diff")
+
+            ---
+            <sub>Rules live in CLAUDE.md. Agent prompts live in
+            .claude/agents/. Edit either and CI picks it up on the next run.</sub>
+
+            Rules:
+            - Cite file:line for every finding.
+            - If an agent produces zero findings, say "✅ no issues" under its heading.
+            - Do NOT approve or request changes on the PR. Only post a comment.
+            - Do NOT modify files. This is read-only review.
