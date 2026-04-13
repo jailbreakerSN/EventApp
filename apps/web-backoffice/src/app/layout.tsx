@@ -4,7 +4,12 @@ import "./globals.css";
 import { Providers } from "./providers";
 import { Toaster, OfflineBanner } from "@teranga/shared-ui";
 
-const inter = Inter({ subsets: ["latin"] });
+const inter = Inter({
+  subsets: ["latin"],
+  display: "swap",
+  // Limit preloaded weights to keep initial payload small on African 3G networks.
+  weight: ["400", "500", "600", "700"],
+});
 
 export const metadata: Metadata = {
   title: { default: "Teranga", template: "%s | Teranga" },

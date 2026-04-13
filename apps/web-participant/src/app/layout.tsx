@@ -6,7 +6,12 @@ import { OfflineIndicator } from "@/components/offline-indicator";
 import { SwRegister } from "@/components/sw-register";
 import "./globals.css";
 
-const inter = Inter({ subsets: ["latin"] });
+const inter = Inter({
+  subsets: ["latin"],
+  display: "swap",
+  // Limit preloaded weights to keep initial payload small on African 3G networks.
+  weight: ["400", "500", "600", "700"],
+});
 
 export const metadata: Metadata = {
   title: {
