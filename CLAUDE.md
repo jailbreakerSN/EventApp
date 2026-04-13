@@ -728,7 +728,7 @@ For any substantial change (new feature, security fix, refactor), perform a self
 - `@plan-limit-auditor` — when the change touches freemium-gated features
 - `@l10n-auditor` — when the change touches UI code
 
-The same agents also run automatically on every PR in `.github/workflows/claude-review.yml` (advisory, non-blocking). Local runs are faster and free, so prefer them during development.
+The same agents can also be invoked on-demand via `.github/workflows/claude-review.yml` — a **manually-triggered** (`workflow_dispatch`) advisory workflow. Run it from **Actions → Claude AI Review → Run workflow** (pass the PR number) or via `gh workflow run claude-review.yml -f pr_number=<N>`. It's manual by design to stay cost-efficient; local runs are faster and free, so prefer them during development.
 
 ---
 

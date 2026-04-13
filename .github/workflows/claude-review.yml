@@ -1,32 +1,38 @@
 name: Claude AI Review
 
-# Advisory, non-blocking PR review by Claude. Runs the project subagents
-# defined in .claude/agents/ against the PR diff and posts findings as a
-# single PR comment.
+# Manual-trigger-only advisory review by Claude. Runs the project subagents
+# defined in .claude/agents/ against a specific PR's diff and posts findings
+# as a single PR comment.
 #
+# WHY MANUAL:
+# - Cost efficiency: each run consumes Anthropic API tokens. Auto-running on
+#   every PR / push is wasteful while we evaluate signal quality.
 # - Blocking correctness is handled by ci.yml (lint, type-check, tests,
-#   Firestore index + rules checks). This workflow is intentionally
-#   decoupled so AI flakiness or rate limits never hold up a merge.
-# - Triggered only on pull_request events (not push) to bound cost.
-# - Skipped when the PR carries the label `skip-ai-review`.
-# - Requires the repository secret `ANTHROPIC_API_KEY`.
-# - Concurrency cancels superseded runs on force-push / new commits.
+#   Firestore index + rules checks). This workflow is strictly advisory.
+#
+# HOW TO RUN:
+# - GitHub UI: Actions → "Claude AI Review" → Run workflow → enter the PR
+#   number (e.g. 42) → Run.
+# - CLI: `gh workflow run claude-review.yml -f pr_number=42`
+#
+# REQUIREMENTS:
+# - Repository secret `ANTHROPIC_API_KEY` must be set.
+# - The PR must be in this repository (fork PRs can't access secrets).
 
 on:
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
-    paths-ignore:
-      - "**/*.md"
-      - "docs/**"
-      - ".gitignore"
-      - "LICENSE"
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "Pull request number to review (e.g. 42)"
+        required: true
+        type: string
 
 concurrency:
-  group: claude-review-${{ github.event.pull_request.number }}
+  group: claude-review-${{ github.event.inputs.pr_number }}
   cancel-in-progress: true
 
-# Least-privilege permissions. pull-requests:write is required to post
-# the review comment; contents:read to fetch the diff.
+# Least-privilege permissions. pull-requests:write is required to post the
+# review comment; contents:read to fetch the diff.
 permissions:
   contents: read
   pull-requests: write
@@ -34,53 +40,65 @@ permissions:
 
 jobs:
   claude-review:
-    name: Claude AI Review (advisory)
+    name: Claude AI Review (manual, advisory)
     runs-on: ubuntu-latest
-    # Skip drafts, skip when label present, skip forks (no access to secrets).
-    if: >-
-      github.event.pull_request.draft == false
-      && !contains(github.event.pull_request.labels.*.name, 'skip-ai-review')
-      && github.event.pull_request.head.repo.full_name == github.repository
-    # Non-blocking: even if the agent fails, the PR is not blocked.
-    continue-on-error: true
     steps:
-      - name: Check out PR head (full history for diff context)
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Resolve PR metadata
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          PR_NUMBER="${{ github.event.inputs.pr_number }}"
+          DATA=$(gh pr view "$PR_NUMBER" \
+            --repo "${{ github.repository }}" \
+            --json number,title,headRefName,headRefOid,baseRefName,isCrossRepository,isDraft)
+          echo "$DATA" | jq -r '
+            "number=" + (.number|tostring),
+            "title=" + .title,
+            "head_ref=" + .headRefName,
+            "head_sha=" + .headRefOid,
+            "base_ref=" + .baseRefName,
+            "is_fork=" + (.isCrossRepository|tostring),
+            "is_draft=" + (.isDraft|tostring)
+          ' >> "$GITHUB_OUTPUT"
 
-      # Skip gracefully when the repo has not yet configured ANTHROPIC_API_KEY.
-      # We intentionally do NOT fail the job in this case — the workflow is
-      # advisory and should be a no-op until someone explicitly opts in by
-      # setting the secret. This keeps the PR's check status green.
+      - name: Guard against fork PRs
+        if: steps.pr.outputs.is_fork == 'true'
+        run: |
+          echo "::error title=Fork PRs not supported::Fork PRs cannot access secrets. Run the review manually on a branch inside this repo."
+          exit 1
+
       - name: Check for Anthropic API key
         id: check_key
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           if [ -z "$ANTHROPIC_API_KEY" ]; then
-            echo "::warning title=Claude AI review skipped::ANTHROPIC_API_KEY is not set; skipping advisory review. Add it under Settings → Secrets and variables → Actions to enable."
-            echo "has_key=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "has_key=true" >> "$GITHUB_OUTPUT"
+            echo "::error title=Missing secret::ANTHROPIC_API_KEY is not set. Add it under Settings → Secrets and variables → Actions."
+            exit 1
           fi
 
+      - name: Check out PR head (full history for diff context)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ steps.pr.outputs.head_sha }}
+
       - name: Run Claude subagents on the PR diff
-        if: steps.check_key.outputs.has_key == 'true'
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-          # Let the action auto-discover agents from .claude/agents/
-          # and use the project-level .mcp.json for code-review-graph,
-          # context7, and sequential-thinking.
+          # The action auto-discovers agents from .claude/agents/ and uses
+          # the project-level .mcp.json (code-review-graph, context7,
+          # sequential-thinking).
           direct_prompt: |
-            You are reviewing PR #${{ github.event.pull_request.number }}
-            (${{ github.event.pull_request.title }}) against the base branch
-            ${{ github.event.pull_request.base.ref }}.
+            You are reviewing PR #${{ steps.pr.outputs.number }}
+            ("${{ steps.pr.outputs.title }}") against base branch
+            "${{ steps.pr.outputs.base_ref }}".
 
             Run the following project subagents in parallel against the PR
-            diff (git diff origin/${{ github.event.pull_request.base.ref }}...HEAD):
+            diff (git diff origin/${{ steps.pr.outputs.base_ref }}...HEAD):
 
             1. @security-reviewer
             2. @firestore-transaction-auditor
@@ -89,13 +107,14 @@ jobs:
                registrations, members, tickets, or subscriptions)
             5. @l10n-auditor (only if the diff touches apps/web-* or apps/mobile)
 
-            Consolidate all findings into a SINGLE PR comment with this
-            structure:
+            Consolidate all findings into a SINGLE PR comment on PR
+            #${{ steps.pr.outputs.number }} with this structure:
 
-            ## 🤖 Claude advisory review
+            ## 🤖 Claude advisory review (manual run)
 
             > Non-blocking. Blocking correctness is enforced by the main CI.
-            > To skip future AI reviews on a PR, add the `skip-ai-review` label.
+            > This review was triggered manually via the "Claude AI Review"
+            > workflow. Re-run from the Actions tab if the diff changes.
 
             ### security-reviewer
             (findings or "✅ no issues")
@@ -114,7 +133,7 @@ jobs:
 
             ---
             <sub>Rules live in CLAUDE.md. Agent prompts live in
-            .claude/agents/. Edit either and CI picks it up on the next run.</sub>
+            .claude/agents/. Edit either and the next manual run picks it up.</sub>
 
             Rules:
             - Cite file:line for every finding.
