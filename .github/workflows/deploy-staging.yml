@@ -250,7 +250,7 @@ jobs:
       - name: Scan API image for HIGH vulnerabilities (warn-only)
         # Visibility-only. Does not fail the build; listed so HIGH findings
         # are surfaced in the run log and can be triaged asynchronously.
-        uses: aquasecurity/trivy-action@0.24.0
+        uses: aquasecurity/trivy-action@0.35.0
         with:
           image-ref: europe-west1-docker.pkg.dev/${{ needs.setup.outputs.project_id }}/teranga/teranga-api:${{ env.DEPLOY_SHA }}
           severity: HIGH
@@ -259,7 +259,7 @@ jobs:
           format: table
       - name: Scan API image for CRITICAL vulnerabilities (blocking)
         # Mirrors the npm audit policy already in CI: CRITICAL blocks, HIGH warns.
-        uses: aquasecurity/trivy-action@0.24.0
+        uses: aquasecurity/trivy-action@0.35.0
         with:
           image-ref: europe-west1-docker.pkg.dev/${{ needs.setup.outputs.project_id }}/teranga/teranga-api:${{ env.DEPLOY_SHA }}
           severity: CRITICAL
@@ -326,7 +326,7 @@ jobs:
           cache-from: type=gha,scope=backoffice
           cache-to: type=gha,mode=max,scope=backoffice
       - name: Scan Backoffice image for HIGH vulnerabilities (warn-only)
-        uses: aquasecurity/trivy-action@0.24.0
+        uses: aquasecurity/trivy-action@0.35.0
         with:
           image-ref: europe-west1-docker.pkg.dev/${{ needs.setup.outputs.project_id }}/teranga/teranga-backoffice:${{ env.DEPLOY_SHA }}
           severity: HIGH
@@ -334,7 +334,7 @@ jobs:
           ignore-unfixed: true
           format: table
       - name: Scan Backoffice image for CRITICAL vulnerabilities (blocking)
-        uses: aquasecurity/trivy-action@0.24.0
+        uses: aquasecurity/trivy-action@0.35.0
         with:
           image-ref: europe-west1-docker.pkg.dev/${{ needs.setup.outputs.project_id }}/teranga/teranga-backoffice:${{ env.DEPLOY_SHA }}
           severity: CRITICAL
@@ -394,7 +394,7 @@ jobs:
           cache-from: type=gha,scope=participant
           cache-to: type=gha,mode=max,scope=participant
       - name: Scan Participant image for HIGH vulnerabilities (warn-only)
-        uses: aquasecurity/trivy-action@0.24.0
+        uses: aquasecurity/trivy-action@0.35.0
         with:
           image-ref: europe-west1-docker.pkg.dev/${{ needs.setup.outputs.project_id }}/teranga/teranga-participant:${{ env.DEPLOY_SHA }}
           severity: HIGH
@@ -402,7 +402,7 @@ jobs:
           ignore-unfixed: true
           format: table
       - name: Scan Participant image for CRITICAL vulnerabilities (blocking)
-        uses: aquasecurity/trivy-action@0.24.0
+        uses: aquasecurity/trivy-action@0.35.0
         with:
           image-ref: europe-west1-docker.pkg.dev/${{ needs.setup.outputs.project_id }}/teranga/teranga-participant:${{ env.DEPLOY_SHA }}
           severity: CRITICAL
