@@ -37,7 +37,10 @@ Thumbs.db
 *.swo
 
 # Claude Code
-.claude/
+# Share project-level settings with the team but keep per-user overrides local.
+.claude/*
+!.claude/settings.json
+.claude/settings.local.json
 
 # Code Review Graph (machine-specific binary DB)
 .code-review-graph/
