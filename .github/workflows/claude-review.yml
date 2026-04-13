@@ -50,7 +50,24 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.event.pull_request.head.sha }}
 
+      # Skip gracefully when the repo has not yet configured ANTHROPIC_API_KEY.
+      # We intentionally do NOT fail the job in this case — the workflow is
+      # advisory and should be a no-op until someone explicitly opts in by
+      # setting the secret. This keeps the PR's check status green.
+      - name: Check for Anthropic API key
+        id: check_key
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "::warning title=Claude AI review skipped::ANTHROPIC_API_KEY is not set; skipping advisory review. Add it under Settings → Secrets and variables → Actions to enable."
+            echo "has_key=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_key=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Run Claude subagents on the PR diff
+        if: steps.check_key.outputs.has_key == 'true'
         uses: anthropics/claude-code-action@v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
