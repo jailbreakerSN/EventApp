@@ -933,9 +933,7 @@ function InfoTab({ event }: { event: Event }) {
                         {registered} / {event.maxAttendees} places
                       </span>
                       {isFull ? (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">
-                          Complet
-                        </span>
+                        <Badge variant="warning">Complet</Badge>
                       ) : (
                         <span
                           className={`font-medium ${pct >= 90 ? "text-red-600" : pct >= 70 ? "text-amber-600" : "text-green-600"}`}
@@ -1111,9 +1109,9 @@ function TicketsTab({ event }: { event: Event }) {
                       {tt.soldCount}/{tt.totalQuantity ?? "\u221e"} vendus
                       {!tt.isVisible && " · Masqu\u00e9"}
                       {ttFull && (
-                        <span className="ml-2 inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700">
+                        <Badge variant="warning" className="ml-2">
                           Complet
-                        </span>
+                        </Badge>
                       )}
                     </p>
                   </div>
@@ -1927,16 +1925,8 @@ function FeedTab({ eventId }: { eventId: string }) {
                     <span className="text-xs text-muted-foreground">
                       {formatDate(post.createdAt)}
                     </span>
-                    {post.isAnnouncement && (
-                      <span className="bg-blue-100 text-blue-700 text-xs px-2 py-0.5 rounded-full">
-                        Annonce
-                      </span>
-                    )}
-                    {post.isPinned && (
-                      <span className="bg-amber-100 text-amber-700 text-xs px-2 py-0.5 rounded-full">
-                        Épinglé
-                      </span>
-                    )}
+                    {post.isAnnouncement && <Badge variant="info">Annonce</Badge>}
+                    {post.isPinned && <Badge variant="warning">Épinglé</Badge>}
                   </div>
                   <p className="text-sm text-foreground whitespace-pre-wrap">{post.content}</p>
                   <div className="flex items-center gap-4 mt-3 text-xs text-muted-foreground">
@@ -1994,12 +1984,26 @@ function FeedTab({ eventId }: { eventId: string }) {
 
 // ─── Payments Tab ──────────────────────────────────────────────────────────────
 
+// Status pills — className strings include dark: overrides so they
+// render correctly in both themes (theme-factory: dark-mode contrast ≥ 4.5:1).
 const PAYMENT_STATUS: Record<string, { label: string; className: string }> = {
   pending: { label: "En attente", className: "bg-accent text-foreground" },
-  processing: { label: "En cours", className: "bg-yellow-100 text-yellow-700" },
-  succeeded: { label: "Confirmé", className: "bg-green-100 text-green-700" },
-  failed: { label: "Échoué", className: "bg-red-100 text-red-700" },
-  refunded: { label: "Remboursé", className: "bg-purple-100 text-purple-700" },
+  processing: {
+    label: "En cours",
+    className: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300",
+  },
+  succeeded: {
+    label: "Confirmé",
+    className: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300",
+  },
+  failed: {
+    label: "Échoué",
+    className: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300",
+  },
+  refunded: {
+    label: "Remboursé",
+    className: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300",
+  },
   expired: { label: "Expiré", className: "bg-accent text-muted-foreground" },
 };
 
@@ -2387,12 +2391,22 @@ function SpeakersTab({ eventId }: { eventId: string }) {
 
 // ─── Sponsors Tab ─────────────────────────────────────────────────────────
 
+// Sponsor-tier pills — dark: overrides included for WCAG 2.1 AA in dark mode.
 const TIER_LABELS: Record<string, { label: string; className: string }> = {
   platinum: { label: "Platine", className: "bg-muted text-foreground" },
-  gold: { label: "Or", className: "bg-amber-100 text-amber-700" },
+  gold: {
+    label: "Or",
+    className: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
+  },
   silver: { label: "Argent", className: "bg-accent text-muted-foreground" },
-  bronze: { label: "Bronze", className: "bg-orange-100 text-orange-700" },
-  partner: { label: "Partenaire", className: "bg-blue-100 text-blue-700" },
+  bronze: {
+    label: "Bronze",
+    className: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300",
+  },
+  partner: {
+    label: "Partenaire",
+    className: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
+  },
 };
 
 function SponsorsTab({ eventId }: { eventId: string }) {
@@ -2734,13 +2748,9 @@ function PromosTab({ eventId }: { eventId: string }) {
                           Expiré
                         </span>
                       ) : maxedOut ? (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">
-                          Épuisé
-                        </span>
+                        <Badge variant="warning">Épuisé</Badge>
                       ) : (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700">
-                          Actif
-                        </span>
+                        <Badge variant="success">Actif</Badge>
                       )}
                     </td>
                     <td className="px-4 py-3 text-right">
