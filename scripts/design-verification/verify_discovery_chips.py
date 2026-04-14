@@ -14,7 +14,7 @@ import sys
 from _shared import build_arg_parser, fail, pass_, skip
 
 
-GATED = True  # flip to False when TASK-P1-H1 ships
+GATED = False  # flip to False when TASK-P1-H1 ships
 
 TARGET = "apps/web-participant/src/components/event-filters.tsx"
 

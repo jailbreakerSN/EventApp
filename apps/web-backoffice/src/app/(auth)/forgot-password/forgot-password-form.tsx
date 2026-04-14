@@ -2,30 +2,52 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { FormField } from "@teranga/shared-ui";
 import { useAuth } from "@/hooks/use-auth";
 import { ThemeLogo } from "@/components/theme-logo";
 
+const schema = z.object({
+  email: z
+    .string()
+    .trim()
+    .regex(/^[^\s@]+@[^\s@]+\.[^\s@]+$/, { message: "Adresse email invalide" }),
+});
+
+type FormValues = z.infer<typeof schema>;
+
 export function ForgotPasswordForm() {
   const { resetPassword } = useAuth();
-  const [email, setEmail] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [submittedEmail, setSubmittedEmail] = useState("");
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    setLoading(true);
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, touchedFields, dirtyFields, isSubmitting },
+  } = useForm<FormValues>({
+    mode: "onBlur",
+    defaultValues: { email: "" },
+    resolver: zodResolver(schema),
+  });
+
+  const onSubmit = async ({ email }: FormValues) => {
     try {
       await resetPassword(email);
-      setSuccess(true);
     } catch {
-      // Security best practice: don't reveal whether the email exists
-      setSuccess(true);
-    } finally {
-      setLoading(false);
+      // Security best practice: don't reveal whether the email exists.
     }
+    setSubmittedEmail(email);
+    setSuccess(true);
   };
+
+  const emailState: "idle" | "valid" | "error" = errors.email
+    ? "error"
+    : touchedFields.email && dirtyFields.email
+      ? "valid"
+      : "idle";
 
   return (
     <div className="bg-card rounded-2xl shadow-2xl p-8">
@@ -48,38 +70,34 @@ export function ForgotPasswordForm() {
       {success ? (
         <div className="rounded-lg bg-green-500/10 p-4 text-sm text-green-700 dark:text-green-400 mb-4">
           Si un compte existe avec cet email, un lien de r&eacute;initialisation a
-          &eacute;t&eacute; envoy&eacute; &agrave; <strong>{email}</strong>.
+          &eacute;t&eacute; envoy&eacute; &agrave; <strong>{submittedEmail}</strong>.
           V&eacute;rifiez votre bo&icirc;te de r&eacute;ception.
         </div>
       ) : (
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {error && (
-            <p className="text-destructive text-sm bg-destructive/10 rounded-lg p-3">
-              {error}
-            </p>
-          )}
-
-          <div>
-            <label className="block text-sm font-medium text-card-foreground mb-1">
-              Adresse email
-            </label>
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
+          <FormField
+            label="Adresse email"
+            htmlFor="email"
+            required
+            error={errors.email?.message}
+            state={emailState}
+          >
             <input
+              id="email"
               type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
               placeholder="vous@organisation.sn"
-              required
               autoComplete="email"
               className="w-full border border-input bg-background rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+              {...register("email")}
             />
-          </div>
+          </FormField>
 
           <button
             type="submit"
-            disabled={loading}
+            disabled={isSubmitting}
             className="w-full bg-primary text-primary-foreground rounded-lg py-2.5 text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60"
           >
-            {loading
+            {isSubmitting
               ? "Envoi en cours..."
               : "Envoyer le lien de r\u00e9initialisation"}
           </button>
