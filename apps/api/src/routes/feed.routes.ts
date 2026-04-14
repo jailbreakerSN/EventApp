@@ -27,6 +27,7 @@ export async function feedRoutes(app: FastifyInstance) {
     {
       preHandler: [
         authenticate,
+        requireEmailVerified,
         requirePermission("feed:create_post"),
         validate({ params: EventIdParams, body: UploadUrlRequestSchema }),
       ],
@@ -63,6 +64,7 @@ export async function feedRoutes(app: FastifyInstance) {
     {
       preHandler: [
         authenticate,
+        requireEmailVerified,
         requirePermission("feed:create_post"),
         validate({ params: EventIdParams, body: CreateFeedPostSchema }),
       ],
@@ -81,6 +83,7 @@ export async function feedRoutes(app: FastifyInstance) {
     {
       preHandler: [
         authenticate,
+        requireEmailVerified,
         requirePermission("feed:read"),
         validate({ params: PostIdParams }),
       ],
@@ -98,6 +101,7 @@ export async function feedRoutes(app: FastifyInstance) {
     {
       preHandler: [
         authenticate,
+        requireEmailVerified,
         requirePermission("feed:moderate"),
         validate({ params: PostIdParams }),
       ],
@@ -115,6 +119,7 @@ export async function feedRoutes(app: FastifyInstance) {
     {
       preHandler: [
         authenticate,
+        requireEmailVerified,
         requirePermission("feed:create_post"),
         validate({
           params: PostIdParams,
@@ -136,6 +141,7 @@ export async function feedRoutes(app: FastifyInstance) {
     {
       preHandler: [
         authenticate,
+        requireEmailVerified,
         requirePermission("feed:create_post"),
         validate({ params: PostIdParams }),
       ],
@@ -171,6 +177,7 @@ export async function feedRoutes(app: FastifyInstance) {
     {
       preHandler: [
         authenticate,
+        requireEmailVerified,
         requirePermission("feed:create_post"),
         validate({ params: PostIdParams, body: CreateFeedCommentSchema }),
       ],
@@ -189,6 +196,7 @@ export async function feedRoutes(app: FastifyInstance) {
     {
       preHandler: [
         authenticate,
+        requireEmailVerified,
         requirePermission("feed:create_post"),
         validate({ params: CommentIdParams }),
       ],

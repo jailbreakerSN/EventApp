@@ -15,6 +15,7 @@ export const communicationRoutes: FastifyPluginAsync = async (fastify) => {
     {
       preHandler: [
         authenticate,
+        requireEmailVerified,
         requirePermission("broadcast:send"),
         validate({ params: ParamsWithEventId, body: CreateBroadcastSchema }),
       ],

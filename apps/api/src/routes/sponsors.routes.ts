@@ -25,6 +25,7 @@ export const sponsorRoutes: FastifyPluginAsync = async (fastify) => {
     {
       preHandler: [
         authenticate,
+        requireEmailVerified,
         requirePermission("event:manage_sponsors"),
         validate({ params: ParamsWithEventId, body: CreateSponsorSchema }),
       ],
@@ -86,6 +87,7 @@ export const sponsorRoutes: FastifyPluginAsync = async (fastify) => {
     {
       preHandler: [
         authenticate,
+        requireEmailVerified,
         requireAnyPermission(["sponsor:manage_booth", "event:manage_sponsors"]),
         validate({ params: ParamsWithSponsorId, body: UpdateSponsorSchema }),
       ],
@@ -109,6 +111,7 @@ export const sponsorRoutes: FastifyPluginAsync = async (fastify) => {
     {
       preHandler: [
         authenticate,
+        requireEmailVerified,
         requirePermission("event:manage_sponsors"),
         validate({ params: ParamsWithSponsorId }),
       ],
@@ -131,6 +134,7 @@ export const sponsorRoutes: FastifyPluginAsync = async (fastify) => {
     {
       preHandler: [
         authenticate,
+        requireEmailVerified,
         requirePermission("sponsor:manage_booth"),
         validate({ params: ParamsWithSponsorId, body: UploadUrlRequestSchema }),
       ],
@@ -158,6 +162,7 @@ export const sponsorRoutes: FastifyPluginAsync = async (fastify) => {
     {
       preHandler: [
         authenticate,
+        requireEmailVerified,
         requirePermission("sponsor:collect_leads"),
         validate({ params: ParamsWithSponsorId, body: CreateLeadSchema }),
       ],

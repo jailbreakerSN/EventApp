@@ -17,6 +17,7 @@ export const speakerRoutes: FastifyPluginAsync = async (fastify) => {
     {
       preHandler: [
         authenticate,
+        requireEmailVerified,
         requirePermission("event:manage_speakers"),
         validate({ params: ParamsWithEventId, body: CreateSpeakerSchema }),
       ],
@@ -74,6 +75,7 @@ export const speakerRoutes: FastifyPluginAsync = async (fastify) => {
     {
       preHandler: [
         authenticate,
+        requireEmailVerified,
         requirePermission("profile:update_own"),
         validate({ params: ParamsWithSpeakerId, body: UpdateSpeakerSchema }),
       ],
@@ -97,6 +99,7 @@ export const speakerRoutes: FastifyPluginAsync = async (fastify) => {
     {
       preHandler: [
         authenticate,
+        requireEmailVerified,
         requirePermission("event:manage_speakers"),
         validate({ params: ParamsWithSpeakerId }),
       ],
@@ -119,6 +122,7 @@ export const speakerRoutes: FastifyPluginAsync = async (fastify) => {
     {
       preHandler: [
         authenticate,
+        requireEmailVerified,
         requirePermission("profile:update_own"),
         validate({ params: ParamsWithSpeakerId, body: UploadUrlRequestSchema }),
       ],

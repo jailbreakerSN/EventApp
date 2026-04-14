@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
-import { authenticate } from "@/middlewares/auth.middleware";
+import { authenticate, requireEmailVerified } from "@/middlewares/auth.middleware";
 import { validate } from "@/middlewares/validate.middleware";
 import { requirePermission } from "@/middlewares/permission.middleware";
 import { notificationService } from "@/services/notification.service";
@@ -69,6 +69,7 @@ export const notificationRoutes: FastifyPluginAsync = async (fastify) => {
     {
       preHandler: [
         authenticate,
+        requireEmailVerified,
         requirePermission("notification:read_own"),
         validate({ params: ParamsWithNotificationId }),
       ],
@@ -141,6 +142,7 @@ export const notificationRoutes: FastifyPluginAsync = async (fastify) => {
     {
       preHandler: [
         authenticate,
+        requireEmailVerified,
         requirePermission("notification:read_own"),
         validate({ body: UpdateNotificationPreferenceSchema }),
       ],

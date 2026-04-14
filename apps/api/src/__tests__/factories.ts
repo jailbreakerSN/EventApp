@@ -24,6 +24,9 @@ export function buildAuthUser(overrides: Partial<AuthUser> = {}): AuthUser {
     email: `user-${uid()}@test.teranga.events`,
     roles: ["participant"],
     organizationId: undefined,
+    // Default to verified — most tests simulate the happy path. Tests
+    // exercising the requireEmailVerified gate explicitly override to false.
+    emailVerified: true,
     ...overrides,
   };
 }

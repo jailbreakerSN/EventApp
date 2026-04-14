@@ -35,6 +35,7 @@ export const organizationRoutes: FastifyPluginAsync = async (fastify) => {
     {
       preHandler: [
         authenticate,
+        requireEmailVerified,
         requirePermission("organization:create"),
         validate({ body: CreateOrganizationSchema }),
       ],
@@ -81,6 +82,7 @@ export const organizationRoutes: FastifyPluginAsync = async (fastify) => {
     {
       preHandler: [
         authenticate,
+        requireEmailVerified,
         requirePermission("organization:update"),
         validate({ params: ParamsWithOrgId, body: UpdateOrganizationSchema }),
       ],
@@ -107,6 +109,7 @@ export const organizationRoutes: FastifyPluginAsync = async (fastify) => {
     {
       preHandler: [
         authenticate,
+        requireEmailVerified,
         requirePermission("organization:manage_members"),
         validate({ params: ParamsWithOrgId, body: AddMemberBody }),
       ],
@@ -130,6 +133,7 @@ export const organizationRoutes: FastifyPluginAsync = async (fastify) => {
     {
       preHandler: [
         authenticate,
+        requireEmailVerified,
         requirePermission("organization:manage_members"),
         validate({ params: ParamsWithOrgId, body: RemoveMemberBody }),
       ],
@@ -153,6 +157,7 @@ export const organizationRoutes: FastifyPluginAsync = async (fastify) => {
     {
       preHandler: [
         authenticate,
+        requireEmailVerified,
         requirePermission("organization:manage_members"),
         validate({ params: ParamsWithOrgIdAndMemberId, body: UpdateMemberRoleBody }),
       ],
@@ -177,6 +182,7 @@ export const organizationRoutes: FastifyPluginAsync = async (fastify) => {
     {
       preHandler: [
         authenticate,
+        requireEmailVerified,
         requirePermission("organization:manage_members"),
         validate({ params: ParamsWithOrgId, body: CreateInviteSchema }),
       ],
@@ -227,6 +233,7 @@ export const organizationRoutes: FastifyPluginAsync = async (fastify) => {
     {
       preHandler: [
         authenticate,
+        requireEmailVerified,
         requirePermission("organization:manage_members"),
         validate({ params: z.object({ orgId: z.string(), inviteId: z.string() }) }),
       ],

@@ -38,6 +38,7 @@ export const checkinRoutes: FastifyPluginAsync = async (fastify) => {
     {
       preHandler: [
         authenticate,
+        requireEmailVerified,
         validate({ params: ParamsWithEventId, body: BulkCheckinRequestSchema }),
         requirePermission("checkin:scan"),
       ],

@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { authenticate } from "@/middlewares/auth.middleware";
+import { authenticate, requireEmailVerified } from "@/middlewares/auth.middleware";
 import { validate } from "@/middlewares/validate.middleware";
 import { requirePermission } from "@/middlewares/permission.middleware";
 import { sessionService } from "@/services/session.service";
@@ -55,6 +55,7 @@ export async function sessionRoutes(app: FastifyInstance) {
     {
       preHandler: [
         authenticate,
+        requireEmailVerified,
         requirePermission("event:create"),
         validate({ params: EventIdParams, body: CreateSessionSchema }),
       ],
@@ -73,6 +74,7 @@ export async function sessionRoutes(app: FastifyInstance) {
     {
       preHandler: [
         authenticate,
+        requireEmailVerified,
         requirePermission("event:update"),
         validate({ params: SessionIdParams, body: UpdateSessionSchema }),
       ],
@@ -91,6 +93,7 @@ export async function sessionRoutes(app: FastifyInstance) {
     {
       preHandler: [
         authenticate,
+        requireEmailVerified,
         requirePermission("event:update"),
         validate({ params: SessionIdParams }),
       ],
@@ -108,6 +111,7 @@ export async function sessionRoutes(app: FastifyInstance) {
     {
       preHandler: [
         authenticate,
+        requireEmailVerified,
         requirePermission("event:read"),
         validate({ params: SessionIdParams }),
       ],
@@ -125,6 +129,7 @@ export async function sessionRoutes(app: FastifyInstance) {
     {
       preHandler: [
         authenticate,
+        requireEmailVerified,
         requirePermission("event:read"),
         validate({ params: SessionIdParams }),
       ],
