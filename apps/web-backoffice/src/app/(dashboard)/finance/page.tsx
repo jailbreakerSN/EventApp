@@ -92,7 +92,11 @@ export default function FinancePage() {
               <Spinner />
             </div>
           ) : payouts.length === 0 ? (
-            <EmptyState title="Aucun versement" description="Aucun versement pour le moment" />
+            <EmptyState
+              icon={ArrowDownRight}
+              title="Aucun versement pour le moment"
+              description="Vos revenus s'afficheront ici après la clôture du premier événement payant."
+            />
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">

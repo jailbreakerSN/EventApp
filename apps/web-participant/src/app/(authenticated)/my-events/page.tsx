@@ -11,6 +11,7 @@ import {
   Button,
   Badge,
   Card,
+  EmptyState,
   formatDate,
   ConfirmDialog,
   getErrorMessage,
@@ -139,15 +140,18 @@ export default function MyEventsPage() {
       )}
 
       {registrations && registrations.length === 0 && (
-        <div className="mt-12 text-center">
-          <Calendar className="mx-auto h-12 w-12 text-muted-foreground/50" />
-          <p className="mt-4 text-lg text-muted-foreground">Aucune inscription pour le moment.</p>
-          <Link href="/events">
-            <Button className="mt-4 bg-teranga-gold hover:bg-teranga-gold/90">
-              D\u00e9couvrir les \u00e9v\u00e9nements
-            </Button>
-          </Link>
-        </div>
+        <EmptyState
+          icon={Calendar}
+          title="Aucune inscription pour le moment"
+          description="Explorez les \u00e9v\u00e9nements \u00e0 venir et inscrivez-vous en quelques clics."
+          action={
+            <Link href="/events">
+              <Button className="bg-teranga-gold hover:bg-teranga-gold/90">
+                D\u00e9couvrir les \u00e9v\u00e9nements
+              </Button>
+            </Link>
+          }
+        />
       )}
 
       {registrations && registrations.length > 0 && (

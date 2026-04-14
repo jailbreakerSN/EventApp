@@ -8,7 +8,6 @@ import {
   Building,
   Edit3,
   Save,
-  Loader2,
   Download,
   Users,
   ExternalLink,
@@ -23,6 +22,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import type { SponsorProfile } from "@teranga/shared-types";
+import { Skeleton } from "@teranga/shared-ui";
 
 interface Lead {
   id: string;
@@ -124,12 +124,27 @@ export default function SponsorPortalPage() {
   if (loading) {
     return (
       <div
-        className="flex items-center justify-center py-20 text-muted-foreground"
+        className="mx-auto max-w-3xl px-4 py-8 space-y-6"
         role="status"
         aria-label="Chargement du portail sponsor"
       >
-        <Loader2 className="h-6 w-6 animate-spin mr-2" aria-hidden="true" />
-        <span>Chargement...</span>
+        <div className="space-y-3">
+          <Skeleton className="h-7 w-1/2" />
+          <Skeleton className="h-4 w-1/3" />
+        </div>
+        <div className="bg-card rounded-xl border border-border p-6 space-y-3">
+          <Skeleton className="h-4 w-1/4" />
+          <Skeleton className="h-3 w-full" />
+          <Skeleton className="h-3 w-5/6" />
+        </div>
+        <div className="grid gap-4 sm:grid-cols-3">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="bg-card rounded-xl border border-border p-4 space-y-2">
+              <Skeleton className="h-3 w-1/2" />
+              <Skeleton className="h-6 w-1/3" />
+            </div>
+          ))}
+        </div>
       </div>
     );
   }

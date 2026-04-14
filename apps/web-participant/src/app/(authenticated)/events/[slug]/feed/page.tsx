@@ -6,7 +6,7 @@ import { eventsApi } from "@/lib/api-client";
 import { useAuth } from "@/hooks/use-auth";
 import { useFeed } from "@/hooks/use-feed";
 import { MessageSquare, ArrowLeft, Loader2 } from "lucide-react";
-import { QueryError } from "@teranga/shared-ui";
+import { QueryError, EmptyState } from "@teranga/shared-ui";
 import Link from "next/link";
 import { CreatePostForm } from "@/components/feed/CreatePostForm";
 import { FeedPostCard } from "@/components/feed/FeedPostCard";
@@ -93,11 +93,11 @@ export default function FeedPage() {
       ) : feedError ? (
         <QueryError message="Impossible de charger le feed." onRetry={refresh} />
       ) : posts.length === 0 ? (
-        <div className="text-center py-16 text-muted-foreground">
-          <MessageSquare className="h-12 w-12 mx-auto mb-4 opacity-30" />
-          <p className="text-lg">Aucune publication pour le moment</p>
-          <p className="text-sm mt-1">Soyez le premier à partager !</p>
-        </div>
+        <EmptyState
+          icon={MessageSquare}
+          title="Aucune publication pour le moment"
+          description="Soyez le premier à partager une publication avec les participants."
+        />
       ) : (
         <>
           <NewPostsBanner count={newPostCount} onRefresh={refresh} />

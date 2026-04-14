@@ -19,6 +19,7 @@ import {
 import { serverEventsApi, serverSpeakersApi, serverSessionsApi } from "@/lib/server-api";
 import { formatDate, formatDateTime, formatCurrency, Badge } from "@teranga/shared-ui";
 import { EventJsonLd } from "@/components/event-detail/event-jsonld";
+import { EventDetailTabs } from "@/components/event-detail/event-detail-tabs";
 import { ShareButtons } from "@/components/share-buttons";
 import { AddToCalendar } from "@/components/add-to-calendar";
 import { EventCard } from "@/components/event-card";
@@ -391,18 +392,17 @@ export default async function EventDetailPage({ params }: PageProps) {
                 />
               </div>
 
-              {/* Description */}
-              <div className="mt-8">
-                <h2 className="text-xl font-semibold">À propos</h2>
-                <div className="mt-3 prose prose-sm max-w-none prose-headings:text-foreground prose-headings:font-semibold prose-p:text-muted-foreground prose-p:leading-relaxed prose-a:text-teranga-gold-dark prose-a:underline prose-strong:text-foreground prose-ul:text-muted-foreground prose-ol:text-muted-foreground prose-li:text-muted-foreground">
-                  <ReactMarkdown>{event.description}</ReactMarkdown>
-                </div>
-              </div>
-
-              {/* Speakers */}
-              {speakers.length > 0 && (
-                <div className="mt-10">
-                  <div className="flex items-center gap-2 mb-5">
+              {/* Tabbed sections — about / speakers / sessions */}
+              <EventDetailTabs
+                about={
+                  <div className="prose prose-sm max-w-none prose-headings:text-foreground prose-headings:font-semibold prose-p:text-muted-foreground prose-p:leading-relaxed prose-a:text-teranga-gold-dark prose-a:underline prose-strong:text-foreground prose-ul:text-muted-foreground prose-ol:text-muted-foreground prose-li:text-muted-foreground">
+                    <ReactMarkdown>{event.description}</ReactMarkdown>
+                  </div>
+                }
+                speakers={
+                  speakers.length > 0 ? (
+                    <div>
+                  <div className="sr-only">
                     <Mic2 className="h-5 w-5 text-teranga-gold" aria-hidden="true" />
                     <h2 className="text-xl font-semibold">Intervenants</h2>
                   </div>
@@ -490,12 +490,12 @@ export default async function EventDetailPage({ params }: PageProps) {
                     ))}
                   </div>
                 </div>
-              )}
-
-              {/* Schedule / Sessions */}
-              {sessions.length > 0 && (
-                <div className="mt-10">
-                  <div className="flex items-center gap-2 mb-5">
+                  ) : null
+                }
+                sessions={
+                  sessions.length > 0 ? (
+                    <div>
+                  <div className="sr-only">
                     <Calendar className="h-5 w-5 text-teranga-gold" aria-hidden="true" />
                     <h2 className="text-xl font-semibold">Programme</h2>
                   </div>
@@ -560,7 +560,9 @@ export default async function EventDetailPage({ params }: PageProps) {
                     ))}
                   </div>
                 </div>
-              )}
+                  ) : null
+                }
+              />
             </div>
           </div>
 
