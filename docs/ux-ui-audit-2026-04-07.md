@@ -1,5 +1,8 @@
 # Teranga Platform — Comprehensive UX/UI Audit Report
 
+> **⚠️ SUPERSEDED (2026-04-13 — Phase 3).** Kept for historical reference.
+> **Canonical UX/UI docs now:** [`docs/design-system/audit-2026-04-13.md`](design-system/audit-2026-04-13.md) + [`docs/design-system/execution-plan-2026-04-13.md`](design-system/execution-plan-2026-04-13.md).
+
 **Date:** April 7, 2026
 **Scope:** Web Backoffice + Web Participant + Shared-UI Component Library
 **Benchmark:** Eventbrite, Luma, Linear, Notion, Meetup
