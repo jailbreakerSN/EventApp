@@ -4,10 +4,10 @@ import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useEvent } from "@/hooks/use-events";
 import { useCheckinHistory } from "@/hooks/use-checkin";
+import { Badge, DataTable, type DataTableColumn } from "@teranga/shared-ui";
 import {
   ArrowLeft,
   Search,
-  Loader2,
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
@@ -74,54 +74,71 @@ export default function CheckinHistoryPage() {
 
       {/* Table */}
       <div className="bg-card rounded-lg border overflow-hidden">
-        {isLoading ? (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-          </div>
-        ) : entries.length === 0 ? (
-          <p className="text-muted-foreground text-center py-12">Aucun check-in trouve</p>
-        ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-muted-foreground bg-muted border-b">
-                <th className="px-4 py-3">Participant</th>
-                <th className="px-4 py-3">Billet</th>
-                <th className="px-4 py-3">Zone</th>
-                <th className="px-4 py-3">Heure</th>
-                <th className="px-4 py-3">Staff</th>
-              </tr>
-            </thead>
-            <tbody>
-              {entries.map((entry, i) => (
-                <tr key={i} className="border-b last:border-0 hover:bg-muted">
-                  <td className="px-4 py-3">
-                    <div className="font-medium text-foreground">{(entry.participantName as string) ?? "—"}</div>
-                    <div className="text-xs text-muted-foreground">{(entry.participantEmail as string) ?? ""}</div>
-                  </td>
-                  <td className="px-4 py-3">{entry.ticketTypeName as string}</td>
-                  <td className="px-4 py-3">
-                    {entry.accessZoneName ? (
-                      <span className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">
-                        {entry.accessZoneName as string}
-                      </span>
-                    ) : (
-                      <span className="text-muted-foreground">—</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground">
+        <DataTable<Record<string, unknown>>
+          aria-label="Historique des check-ins"
+          emptyMessage="Aucun check-in trouve"
+          responsiveCards
+          loading={isLoading}
+          data={entries}
+          columns={
+            [
+              {
+                key: "participant",
+                header: "Participant",
+                primary: true,
+                render: (entry) => (
+                  <div>
+                    <div className="font-medium text-foreground">
+                      {(entry.participantName as string) ?? "—"}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {(entry.participantEmail as string) ?? ""}
+                    </div>
+                  </div>
+                ),
+              },
+              {
+                key: "ticketTypeName",
+                header: "Billet",
+                render: (entry) => (entry.ticketTypeName as string) ?? "—",
+              },
+              {
+                key: "accessZoneName",
+                header: "Zone",
+                render: (entry) =>
+                  entry.accessZoneName ? (
+                    <Badge variant="info">{entry.accessZoneName as string}</Badge>
+                  ) : (
+                    <span className="text-muted-foreground">—</span>
+                  ),
+              },
+              {
+                key: "checkedInAt",
+                header: "Heure",
+                render: (entry) => (
+                  <span className="text-muted-foreground">
                     {new Date(entry.checkedInAt as string).toLocaleString("fr-FR", {
                       hour: "2-digit",
                       minute: "2-digit",
                       day: "2-digit",
                       month: "short",
                     })}
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground">{(entry.staffName as string) ?? "—"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+                  </span>
+                ),
+              },
+              {
+                key: "staffName",
+                header: "Staff",
+                hideOnMobile: true,
+                render: (entry) => (
+                  <span className="text-muted-foreground">
+                    {(entry.staffName as string) ?? "—"}
+                  </span>
+                ),
+              },
+            ] as DataTableColumn<Record<string, unknown>>[]
+          }
+        />
 
         {/* Pagination */}
         {meta && meta.totalPages > 1 && (
