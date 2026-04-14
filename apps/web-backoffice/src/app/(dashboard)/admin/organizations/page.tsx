@@ -25,6 +25,7 @@ import {
 } from "@teranga/shared-ui";
 import { Building2, Search, ShieldCheck, Ban, CheckCircle, XCircle } from "lucide-react";
 import type { Organization } from "@teranga/shared-types";
+import { useTranslations } from "next-intl";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -71,6 +72,7 @@ const PLAN_OPTIONS = [
 // ─── Page ───────────────────────────────────────────────────────────────────
 
 export default function AdminOrganizationsPage() {
+  const tCommon = useTranslations("common"); void tCommon;
   const [search, setSearch] = useState("");
   const [planFilter, setPlanFilter] = useState("");
   const [verifiedFilter, setVerifiedFilter] = useState("");

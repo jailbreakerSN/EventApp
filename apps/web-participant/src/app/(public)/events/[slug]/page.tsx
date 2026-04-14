@@ -25,6 +25,7 @@ import { AddToCalendar } from "@/components/add-to-calendar";
 import { EventCard } from "@/components/event-card";
 import type { Event, SpeakerProfile, Session } from "@teranga/shared-types";
 import ReactMarkdown from "react-markdown";
+import { getTranslations } from "next-intl/server";
 
 export const revalidate = 60;
 export const dynamicParams = true;
@@ -191,6 +192,7 @@ const CATEGORY_LABELS: Record<string, string> = {
 };
 
 export default async function EventDetailPage({ params }: PageProps) {
+  const _t = await getTranslations("common"); void _t;
   const { slug } = await params;
   const event = await getEvent(slug);
   if (!event) notFound();

@@ -21,11 +21,13 @@ import {
 import Link from "next/link";
 import type { SpeakerProfile, Session } from "@teranga/shared-types";
 import { Skeleton, EmptyState } from "@teranga/shared-ui";
+import { useTranslations } from "next-intl";
 
 const ALLOWED_SLIDE_TYPES = ["application/pdf", "image/jpeg", "image/png", "image/webp"];
 const MAX_SLIDE_SIZE = 20 * 1024 * 1024; // 20 Mo
 
 export default function SpeakerPortalPage() {
+  const _t = useTranslations("common"); void _t;
   const { eventId } = useParams<{ eventId: string }>();
   const [speaker, setSpeaker] = useState<SpeakerProfile | null>(null);
   const [sessions, setSessions] = useState<Session[]>([]);

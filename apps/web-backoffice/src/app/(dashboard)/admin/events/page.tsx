@@ -18,6 +18,7 @@ import {
 } from "@teranga/shared-ui";
 import { ChevronLeft, ChevronRight, Eye, Users, Building } from "lucide-react";
 import { useAdminEvents, useAdminOrganizations } from "@/hooks/use-admin";
+import { useTranslations } from "next-intl";
 
 const STATUS_OPTIONS = [
   { value: "", label: "Tous les statuts" },
@@ -44,6 +45,7 @@ function formatDate(timestamp: string) {
 }
 
 export default function AdminEventsPage() {
+  const tCommon = useTranslations("common"); void tCommon;
   const [page, setPage] = useState(1);
   const [status, setStatus] = useState("");
 

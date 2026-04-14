@@ -21,6 +21,7 @@ import {
 } from "@teranga/shared-ui";
 import { Users, Shield, Search, Ban, CheckCircle } from "lucide-react";
 import type { UserProfile } from "@teranga/shared-types";
+import { useTranslations } from "next-intl";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -170,6 +171,7 @@ function RoleEditor({
 // ─── Page ───────────────────────────────────────────────────────────────────
 
 export default function AdminUsersPage() {
+  const tCommon = useTranslations("common"); void tCommon;
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("");
   const [page, setPage] = useState(1);

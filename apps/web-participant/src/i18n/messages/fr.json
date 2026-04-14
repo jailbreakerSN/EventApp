@@ -5,7 +5,19 @@
     "retry": "Réessayer",
     "back": "Retour",
     "close": "Fermer",
-    "search": "Rechercher"
+    "search": "Rechercher",
+    "save": "Enregistrer",
+    "cancel": "Annuler",
+    "delete": "Supprimer",
+    "edit": "Modifier",
+    "confirm": "Confirmer",
+    "yes": "Oui",
+    "no": "Non",
+    "viewDetails": "Voir les détails",
+    "date": "Date",
+    "location": "Lieu",
+    "price": "Prix",
+    "status": "Statut"
   },
   "auth": {
     "login": "Connexion",
@@ -14,8 +26,24 @@
     "email": "Adresse e-mail",
     "password": "Mot de passe",
     "forgotPassword": "Mot de passe oublié ?",
+    "resetPassword": "Réinitialiser le mot de passe",
     "sessionExpiring": "Votre session va expirer dans 5 minutes en raison d'inactivité.",
-    "sessionExpired": "Session expirée. Veuillez vous reconnecter."
+    "sessionExpired": "Session expirée. Veuillez vous reconnecter.",
+    "verifyEmail": "Vérifiez votre email",
+    "verificationSent": "Un email de vérification a été envoyé.",
+    "resendVerification": "Renvoyer l'email",
+    "alreadyAccount": "Déjà un compte ?",
+    "noAccount": "Pas encore de compte ?",
+    "createAccount": "Créer un compte",
+    "continueWithGoogle": "Continuer avec Google"
+  },
+  "nav": {
+    "home": "Accueil",
+    "events": "Événements",
+    "myEvents": "Mes événements",
+    "profile": "Profil",
+    "settings": "Paramètres",
+    "notifications": "Notifications"
   },
   "events": {
     "title": "Événements",
@@ -24,17 +52,54 @@
     "register": "S'inscrire",
     "registered": "Inscrit",
     "myEvents": "Mes événements",
-    "noMyEvents": "Vous n'êtes inscrit à aucun événement."
+    "noMyEvents": "Vous n'êtes inscrit à aucun événement.",
+    "noResults": "Aucun événement trouvé",
+    "noResultsHint": "Aucun événement ne correspond à vos critères. Essayez d'élargir votre recherche.",
+    "clearFilters": "Réinitialiser les filtres",
+    "filters": {
+      "today": "Aujourd'hui",
+      "thisWeek": "Cette semaine",
+      "thisWeekend": "Ce weekend",
+      "thisMonth": "Ce mois",
+      "free": "Gratuit",
+      "paid": "Payant"
+    },
+    "detail": {
+      "about": "À propos",
+      "speakers": "Intervenants",
+      "schedule": "Programme",
+      "sessions": "Sessions",
+      "tickets": "Billets",
+      "registerFree": "S'inscrire gratuitement",
+      "registerPaid": "S'inscrire — à partir de {price}",
+      "approvalRequired": "Inscription soumise à approbation de l'organisateur.",
+      "soldOut": "Complet",
+      "seatsLeft": "{count} places restantes",
+      "lastSeats": "Plus que {count} places !",
+      "feedCommunity": "Feed communautaire",
+      "feedHint": "Échangez avec les participants",
+      "onlineEvent": "Événement en ligne",
+      "onlineHint": "Le lien d'accès sera partagé après inscription."
+    }
   },
   "badge": {
     "title": "Mon badge",
     "download": "Télécharger",
-    "scanToCheckin": "Présentez ce QR code à l'entrée de l'événement."
+    "scanToCheckin": "Présentez ce QR code à l'entrée de l'événement.",
+    "addToWallet": "Ajouter au portefeuille"
   },
   "feed": {
     "title": "Fil d'actualité",
     "writePost": "Écrire une publication...",
-    "noPostsYet": "Aucune publication pour le moment."
+    "noPostsYet": "Aucune publication pour le moment.",
+    "beFirstToShare": "Soyez le premier à partager une publication avec les participants.",
+    "announce": "Annonce",
+    "pinned": "Épinglé",
+    "like": "J'aime",
+    "comment": "Commenter",
+    "share": "Partager",
+    "publish": "Publier",
+    "publishing": "Publication..."
   },
   "notifications": {
     "title": "Notifications",
@@ -45,5 +110,24 @@
     "title": "Messages",
     "noConversations": "Aucune conversation.",
     "writeMessage": "Écrire un message..."
+  },
+  "profile": {
+    "title": "Mon profil",
+    "displayName": "Nom complet",
+    "bio": "Biographie",
+    "company": "Organisation",
+    "jobTitle": "Poste",
+    "saveProfile": "Enregistrer le profil",
+    "profileUpdated": "Profil mis à jour"
+  },
+  "newsletter": {
+    "heading": "Restez informé des événements au Sénégal",
+    "description": "Recevez chaque semaine les meilleurs événements près de chez vous.",
+    "placeholder": "votre@email.com",
+    "submit": "S'inscrire",
+    "submitting": "Inscription…",
+    "success": "Merci ! Vous êtes inscrit.",
+    "error": "Une erreur s'est produite. Veuillez réessayer.",
+    "privacyNote": "En vous inscrivant, vous acceptez notre politique de confidentialité."
   }
 }

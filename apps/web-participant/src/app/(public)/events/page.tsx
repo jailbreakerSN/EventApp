@@ -7,6 +7,7 @@ import { EventFilters } from "@/components/event-filters";
 import { NewsletterSignup } from "@/components/newsletter-signup";
 import { getDateRange } from "@/lib/date-utils";
 import { Pagination } from "@/components/pagination";
+import { getTranslations } from "next-intl/server";
 
 export const revalidate = 60;
 
@@ -31,6 +32,7 @@ interface EventsPageProps {
 }
 
 export default async function EventsPage({ searchParams }: EventsPageProps) {
+  const _t = await getTranslations("common"); void _t;
   const params = await searchParams;
   const page = Number(params.page) || 1;
 

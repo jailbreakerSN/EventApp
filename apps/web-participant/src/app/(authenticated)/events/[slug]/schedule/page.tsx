@@ -6,6 +6,7 @@ import { sessionsApi, eventsApi } from "@/lib/api-client";
 import { Calendar, Clock, Mic, Bookmark, Loader2, ArrowLeft } from "lucide-react";
 import { EmptyState } from "@teranga/shared-ui";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 
 function formatTime(iso: string) {
   return new Date(iso).toLocaleString("fr-FR", {
@@ -17,6 +18,7 @@ function formatTime(iso: string) {
 }
 
 export default function SchedulePage() {
+  const tCommon = useTranslations("common"); void tCommon;
   const { slug } = useParams<{ slug: string }>();
   const qc = useQueryClient();
 

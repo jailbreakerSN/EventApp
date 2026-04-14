@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
+import { getTranslations } from "next-intl/server";
 
 export const metadata: Metadata = {
   title: "Mentions légales | Teranga",
@@ -8,7 +9,8 @@ export const metadata: Metadata = {
     "Mentions légales de la plateforme Teranga Events. Informations sur l'éditeur, l'hébergeur et les conditions d'utilisation.",
 };
 
-export default function LegalPage() {
+export default async function LegalPage() {
+  const _t = await getTranslations("common"); void _t;
   return (
     <div className="mx-auto max-w-3xl px-4 py-12">
       <Link

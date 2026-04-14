@@ -5,8 +5,10 @@ import { Bell, CheckCheck, Circle } from "lucide-react";
 import { useNotifications, useMarkAsRead, useMarkAllAsRead } from "@/hooks/use-notifications";
 import { Button, Card, CardContent, QueryError } from "@teranga/shared-ui";
 import type { Notification } from "@teranga/shared-types";
+import { useTranslations } from "next-intl";
 
 export default function NotificationsPage() {
+  const _t = useTranslations("common"); void _t;
   const [page, setPage] = useState(1);
   const [unreadOnly, setUnreadOnly] = useState(false);
 

@@ -41,6 +41,7 @@ import {
   useBulkGenerateBadges,
 } from "@/hooks/use-badges";
 import type { BadgeTemplate } from "@teranga/shared-types";
+import { useTranslations } from "next-intl";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -55,6 +56,7 @@ const FIELD_VISIBILITY_OPTIONS = [
 // ─── Page ───────────────────────────────────────────────────────────────────
 
 export default function BadgesPage() {
+  const tCommon = useTranslations("common"); void tCommon;
   const { user } = useAuth();
   const orgId = user?.organizationId;
 

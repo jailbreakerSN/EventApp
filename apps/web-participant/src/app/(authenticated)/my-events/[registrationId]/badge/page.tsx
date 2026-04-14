@@ -10,8 +10,10 @@ import { registrationsApi, badgesApi } from "@/lib/api-client";
 import { cacheBadgeInServiceWorker } from "@/hooks/use-badges";
 import { Button, Spinner, Card, CardContent } from "@teranga/shared-ui";
 import type { Registration, GeneratedBadge } from "@teranga/shared-types";
+import { useTranslations } from "next-intl";
 
 export default function BadgePage() {
+  const _t = useTranslations("common"); void _t;
   const { registrationId } = useParams<{ registrationId: string }>();
   const [pdfState, setPdfState] = useState<"idle" | "loading" | "error">("idle");
 

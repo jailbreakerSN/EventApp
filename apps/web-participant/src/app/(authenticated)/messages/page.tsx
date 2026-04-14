@@ -8,6 +8,7 @@ import { MessageSquare, Send, Loader2, ArrowLeft } from "lucide-react";
 import { QueryError } from "@teranga/shared-ui";
 import Link from "next/link";
 import type { Conversation, Message } from "@teranga/shared-types";
+import { useTranslations } from "next-intl";
 
 /** Relative time in French */
 function relativeTime(iso: string): string {
@@ -66,6 +67,7 @@ function groupMessages(msgs: Message[]): MessageGroup[] {
 }
 
 export default function MessagesPage() {
+  const _t = useTranslations("common"); void _t;
   const qc = useQueryClient();
   const { user } = useAuth();
   const currentUserId = user?.uid ?? "";

@@ -9,8 +9,10 @@ import { getAuth } from "firebase/auth";
 import { Button } from "@teranga/shared-ui";
 import { useAuth } from "@/hooks/use-auth";
 import { ThemeLogo } from "@/components/theme-logo";
+import { useTranslations } from "next-intl";
 
 export default function VerifyEmailPage() {
+  const _t = useTranslations("common"); void _t;
   const { user, loading, resendVerification, logout } = useAuth();
   const router = useRouter();
   const [sending, setSending] = useState(false);
