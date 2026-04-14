@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useOrgAnalytics } from "@/hooks/use-organization";
-import { EmptyState } from "@teranga/shared-ui";
+import { EmptyState, DataTable, type DataTableColumn } from "@teranga/shared-ui";
 import { BarChart3, TrendingUp, Users, Ticket, CalendarCheck, Loader2 } from "lucide-react";
 import {
   AreaChart,
@@ -261,42 +261,58 @@ export default function AnalyticsPage() {
             {analytics.topEvents.length > 0 && (
               <div className="bg-card rounded-xl border border-border p-5">
                 <h3 className="text-sm font-semibold text-foreground mb-4">Top événements</h3>
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="text-xs text-muted-foreground border-b border-border">
-                      <th className="text-left pb-2 font-medium">Événement</th>
-                      <th className="text-right pb-2 font-medium">Inscrits</th>
-                      <th className="text-right pb-2 font-medium">Check-ins</th>
-                      <th className="text-right pb-2 font-medium">Taux</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {analytics.topEvents.map((event) => {
-                      const rate =
-                        event.registeredCount > 0
-                          ? Math.round((event.checkedInCount / event.registeredCount) * 100)
-                          : 0;
-                      return (
-                        <tr key={event.eventId} className="border-b border-border last:border-0">
-                          <td className="py-2.5 font-medium text-foreground">{event.title}</td>
-                          <td className="py-2.5 text-right text-muted-foreground">
-                            {event.registeredCount}
-                          </td>
-                          <td className="py-2.5 text-right text-muted-foreground">
-                            {event.checkedInCount}
-                          </td>
-                          <td className="py-2.5 text-right">
+                <DataTable<(typeof analytics.topEvents)[number] & Record<string, unknown>>
+                  aria-label="Top événements"
+                  data={
+                    analytics.topEvents as ((typeof analytics.topEvents)[number] &
+                      Record<string, unknown>)[]
+                  }
+                  columns={
+                    [
+                      {
+                        key: "title",
+                        header: "Événement",
+                        primary: true,
+                        render: (e) => (
+                          <span className="font-medium text-foreground">{e.title}</span>
+                        ),
+                      },
+                      {
+                        key: "registeredCount",
+                        header: "Inscrits",
+                        render: (e) => (
+                          <span className="text-muted-foreground">{e.registeredCount}</span>
+                        ),
+                      },
+                      {
+                        key: "checkedInCount",
+                        header: "Check-ins",
+                        render: (e) => (
+                          <span className="text-muted-foreground">{e.checkedInCount}</span>
+                        ),
+                      },
+                      {
+                        key: "rate",
+                        header: "Taux",
+                        render: (e) => {
+                          const rate =
+                            e.registeredCount > 0
+                              ? Math.round((e.checkedInCount / e.registeredCount) * 100)
+                              : 0;
+                          return (
                             <span
-                              className={`text-xs font-medium ${rate >= 70 ? "text-green-600" : rate >= 40 ? "text-yellow-600" : "text-muted-foreground"}`}
+                              className={`text-xs font-medium ${rate >= 70 ? "text-teranga-green" : rate >= 40 ? "text-teranga-gold-dark" : "text-muted-foreground"}`}
                             >
                               {rate}%
                             </span>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                          );
+                        },
+                      },
+                    ] as DataTableColumn<
+                      (typeof analytics.topEvents)[number] & Record<string, unknown>
+                    >[]
+                  }
+                />
               </div>
             )}
           </PlanGate>
