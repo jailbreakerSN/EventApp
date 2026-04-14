@@ -1,6 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { type FastifyRequest, type FastifyReply } from "fastify";
-import { authenticate, optionalAuth } from "../auth.middleware";
+import {
+  authenticate,
+  optionalAuth,
+  requireEmailVerified,
+  type AuthUser,
+} from "../auth.middleware";
+import { type UserRole } from "@teranga/shared-types";
 
 // Mock firebase-admin/auth
 const mockVerifyIdToken = vi.fn();
@@ -16,6 +22,14 @@ function makeMockRequest(authHeader?: string) {
       authorization: authHeader,
     },
     user: undefined,
+    log: { warn: vi.fn() },
+  } as unknown as FastifyRequest;
+}
+
+function makeMockRequestWithUser(user: AuthUser) {
+  return {
+    headers: {},
+    user,
     log: { warn: vi.fn() },
   } as unknown as FastifyRequest;
 }
@@ -36,6 +50,7 @@ describe("authenticate", () => {
     mockVerifyIdToken.mockResolvedValue({
       uid: "user-1",
       email: "test@test.com",
+      email_verified: true,
       roles: ["organizer"],
       organizationId: "org-1",
     });
@@ -50,8 +65,24 @@ describe("authenticate", () => {
       email: "test@test.com",
       roles: ["organizer"],
       organizationId: "org-1",
+      emailVerified: true,
     });
     expect(reply.status).not.toHaveBeenCalled();
+  });
+
+  it("sets emailVerified=false when the claim is missing or falsy", async () => {
+    mockVerifyIdToken.mockResolvedValue({
+      uid: "user-2",
+      email: "new@test.com",
+      // no email_verified claim
+    });
+
+    const request = makeMockRequest("Bearer valid-token");
+    const reply = makeMockReply();
+
+    await authenticate(request, reply);
+
+    expect(request.user?.emailVerified).toBe(false);
   });
 
   it("returns 401 when Authorization header is missing", async () => {
@@ -125,6 +156,7 @@ describe("optionalAuth", () => {
     mockVerifyIdToken.mockResolvedValue({
       uid: "user-1",
       email: "test@test.com",
+      email_verified: true,
       roles: ["participant"],
     });
 
@@ -135,6 +167,7 @@ describe("optionalAuth", () => {
 
     expect(request.user).toBeDefined();
     expect(request.user?.uid).toBe("user-1");
+    expect(request.user?.emailVerified).toBe(true);
   });
 
   it("does not set user when no header is present", async () => {
@@ -157,5 +190,94 @@ describe("optionalAuth", () => {
 
     expect(request.user).toBeUndefined();
     expect(reply.status).not.toHaveBeenCalled();
+  });
+});
+
+describe("requireEmailVerified", () => {
+  const verifiedUser: AuthUser = {
+    uid: "verified-user",
+    email: "verified@test.com",
+    roles: ["organizer"] as UserRole[],
+    organizationId: "org-1",
+    emailVerified: true,
+  };
+
+  const unverifiedUser: AuthUser = {
+    uid: "unverified-user",
+    email: "unverified@test.com",
+    roles: ["organizer"] as UserRole[],
+    organizationId: "org-1",
+    emailVerified: false,
+  };
+
+  const superAdminUnverified: AuthUser = {
+    uid: "admin-1",
+    email: "admin@teranga.sn",
+    roles: ["super_admin"] as UserRole[],
+    emailVerified: false,
+  };
+
+  it("passes through when request.user.emailVerified is true", async () => {
+    const request = makeMockRequestWithUser(verifiedUser);
+    const reply = makeMockReply();
+
+    await requireEmailVerified(request, reply);
+
+    expect(reply.status).not.toHaveBeenCalled();
+    expect(reply.send).not.toHaveBeenCalled();
+  });
+
+  it("returns 403 EMAIL_NOT_VERIFIED when user's email is not verified", async () => {
+    const request = makeMockRequestWithUser(unverifiedUser);
+    const reply = makeMockReply();
+
+    await requireEmailVerified(request, reply);
+
+    expect(reply.status).toHaveBeenCalledWith(403);
+    expect(reply.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        success: false,
+        error: expect.objectContaining({ code: "EMAIL_NOT_VERIFIED" }),
+      }),
+    );
+  });
+
+  it("exempts super_admin even when email is not verified", async () => {
+    const request = makeMockRequestWithUser(superAdminUnverified);
+    const reply = makeMockReply();
+
+    await requireEmailVerified(request, reply);
+
+    expect(reply.status).not.toHaveBeenCalled();
+  });
+
+  it("returns 401 UNAUTHORIZED when request.user is missing (authenticate not run first)", async () => {
+    const request = makeMockRequest(undefined);
+    const reply = makeMockReply();
+
+    await requireEmailVerified(request, reply);
+
+    expect(reply.status).toHaveBeenCalledWith(401);
+    expect(reply.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        success: false,
+        error: expect.objectContaining({ code: "UNAUTHORIZED" }),
+      }),
+    );
+  });
+
+  it("does not leak a stack trace — the 403 body carries only the code + message", async () => {
+    const request = makeMockRequestWithUser(unverifiedUser);
+    const reply = makeMockReply();
+
+    await requireEmailVerified(request, reply);
+
+    const sendArg = (reply.send as unknown as { mock: { calls: unknown[][] } }).mock
+      .calls[0][0] as {
+      error: { code: string; message: string; stack?: unknown };
+    };
+    expect(sendArg.error.code).toBe("EMAIL_NOT_VERIFIED");
+    expect(sendArg.error.message).toMatch(/verification/i);
+    expect(sendArg.error).not.toHaveProperty("stack");
   });
 });

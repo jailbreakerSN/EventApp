@@ -12,8 +12,36 @@ import { CommandPalette } from "@/components/command-palette";
 import { KeyboardShortcutsDialog } from "@/components/keyboard-shortcuts-dialog";
 import { useAuth } from "@/hooks/use-auth";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
+import { useTranslations } from "next-intl";
 
 const BACKOFFICE_ROLES = ["organizer", "co_organizer", "super_admin", "venue_manager"] as const;
+
+// Grace period before the email-verification hard gate kicks in. Configurable
+// via NEXT_PUBLIC_EMAIL_GRACE_DAYS; default 7. Set to 0 to gate immediately.
+const GRACE_DAYS = Number.parseInt(
+  process.env.NEXT_PUBLIC_EMAIL_GRACE_DAYS ?? "7",
+  10,
+);
+const GRACE_MS = Number.isFinite(GRACE_DAYS) && GRACE_DAYS >= 0
+  ? GRACE_DAYS * 24 * 60 * 60 * 1000
+  : 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * Returns true when an unverified user has exceeded the grace period.
+ * Super-admins are always exempt so platform operators can triage without
+ * locking themselves out.
+ */
+function shouldHardGateEmail(user: {
+  emailVerified: boolean;
+  createdAt: string | null;
+  roles: readonly string[];
+}): boolean {
+  if (user.emailVerified) return false;
+  if (user.roles.includes("super_admin")) return false;
+  if (!user.createdAt) return false;
+  const age = Date.now() - new Date(user.createdAt).getTime();
+  return age > GRACE_MS;
+}
 
 function DashboardShell({ children }: { children: React.ReactNode }) {
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
@@ -94,6 +122,7 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
 }
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+  const tCommon = useTranslations("common"); void tCommon;
   const { user, loading, hasRole } = useAuth();
   const router = useRouter();
 
@@ -108,6 +137,20 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     // Role gate: only organizers, co-organizers, and super admins can access backoffice
     if (!hasRole(...BACKOFFICE_ROLES)) {
       router.replace("/unauthorized");
+      return;
+    }
+
+    // Hard email-verification gate once the grace period elapses.
+    // NOTE (2026-04-14, security review): the API auth middleware does
+    // NOT currently check `email_verified` on the decoded ID token —
+    // this client gate is presently the *sole* enforcement layer. A
+    // companion PR will add a `requireEmailVerified` middleware in
+    // apps/api/src/middlewares/auth.middleware.ts and apply it to
+    // every mutating backoffice route. Until that lands, treat this
+    // redirect as UX-only and do not rely on it as a security boundary.
+    if (shouldHardGateEmail(user)) {
+      router.replace("/verify-email");
+      return;
     }
   }, [user, loading, hasRole, router]);
 
@@ -116,6 +159,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }
 
   if (!user || !hasRole(...BACKOFFICE_ROLES)) return null;
+  if (shouldHardGateEmail(user)) return null;
 
   return <DashboardShell>{children}</DashboardShell>;
 }

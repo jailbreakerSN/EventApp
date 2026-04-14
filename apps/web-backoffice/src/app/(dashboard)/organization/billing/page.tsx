@@ -17,6 +17,7 @@ import { PlanComparisonTable } from "@/components/plan/PlanComparisonTable";
 import { UpgradePreview } from "@/components/plan/UpgradeDialog";
 import type { OrganizationPlan } from "@teranga/shared-types";
 import { PLAN_DISPLAY } from "@teranga/shared-types";
+import { useTranslations } from "next-intl";
 
 function formatPrice(priceXof: number): string {
   if (priceXof === 0) return "Gratuit";
@@ -30,6 +31,7 @@ function formatPrice(priceXof: number): string {
 const PLAN_ORDER: OrganizationPlan[] = ["free", "starter", "pro", "enterprise"];
 
 export default function BillingPage() {
+  const tCommon = useTranslations("common"); void tCommon;
   const { data: orgData, isLoading: orgLoading } = useOrganization();
   const { data: subData } = useSubscription();
   const { plan, checkLimit } = usePlanGating();

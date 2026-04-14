@@ -9,6 +9,7 @@ import { DeleteConfirm } from "./DeleteConfirm";
 import { InlineComment } from "./InlineComment";
 import { ImageGallery } from "./ImageGallery";
 import type { FeedPost } from "@teranga/shared-types";
+import { Badge } from "@teranga/shared-ui";
 
 function formatPostDate(iso: string) {
   return new Date(iso).toLocaleString("fr-FR", {
@@ -145,16 +146,16 @@ export function FeedPostCard({ post, eventId, currentUserId }: FeedPostCardProps
               {post.authorName}
             </span>
             {post.isAnnouncement && (
-              <span className="inline-flex items-center gap-1 bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300 text-xs px-2 py-0.5 rounded-full">
+              <Badge variant="info" className="gap-1">
                 <Megaphone className="h-3 w-3" aria-hidden="true" />
                 Annonce
-              </span>
+              </Badge>
             )}
             {post.isPinned && (
-              <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300 text-xs px-2 py-0.5 rounded-full">
+              <Badge variant="warning" className="gap-1">
                 <Pin className="h-3 w-3" aria-hidden="true" />
                 Épinglé
-              </span>
+              </Badge>
             )}
           </div>
           <span className="text-xs text-muted-foreground">{formatPostDate(post.createdAt)}</span>

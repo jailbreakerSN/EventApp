@@ -1,0 +1,29 @@
+{
+  "_meta": {
+    "locale": "wo",
+    "name": "Wolof",
+    "coverage": "partial",
+    "note": "Seed file — covers the highest-visibility keys (events, nav, auth). Long-tail translations land with TASK-P1-I1d."
+  },
+  "common": {
+    "loading": "Di yëngu...",
+    "error": "Bënn mbir bu bon am na",
+    "retry": "Jéem waaf",
+    "back": "Dellu",
+    "search": "Wut",
+    "close": "Tëj"
+  },
+  "auth": {
+    "login": "Dugg",
+    "logout": "Génn",
+    "register": "Bind sa tur",
+    "email": "Imeyl",
+    "password": "Baatu-ruus"
+  },
+  "events": {
+    "title": "Xew-xew yi",
+    "noEvents": "Amul xew-xew bu am fi muy jëkk.",
+    "register": "Bind sa tur",
+    "details": "Xam lu ëpp"
+  }
+}

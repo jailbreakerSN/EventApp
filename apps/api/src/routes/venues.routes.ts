@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
-import { authenticate } from "@/middlewares/auth.middleware";
+import { authenticate, requireEmailVerified } from "@/middlewares/auth.middleware";
 import { requirePermission } from "@/middlewares/permission.middleware";
 import { validate } from "@/middlewares/validate.middleware";
 import { venueService } from "@/services/venue.service";
@@ -97,6 +97,7 @@ export const venueRoutes: FastifyPluginAsync = async (fastify) => {
     {
       preHandler: [
         authenticate,
+        requireEmailVerified,
         requirePermission("venue:create"),
         validate({ body: CreateVenueSchema }),
       ],
@@ -120,6 +121,7 @@ export const venueRoutes: FastifyPluginAsync = async (fastify) => {
     {
       preHandler: [
         authenticate,
+        requireEmailVerified,
         requirePermission("venue:update"),
         validate({ params: ParamsVenueId, body: UpdateVenueSchema }),
       ],
@@ -144,6 +146,7 @@ export const venueRoutes: FastifyPluginAsync = async (fastify) => {
     {
       preHandler: [
         authenticate,
+        requireEmailVerified,
         requirePermission("venue:approve"),
         validate({ params: ParamsVenueId }),
       ],
@@ -167,6 +170,7 @@ export const venueRoutes: FastifyPluginAsync = async (fastify) => {
     {
       preHandler: [
         authenticate,
+        requireEmailVerified,
         requirePermission("venue:manage_all"),
         validate({ params: ParamsVenueId }),
       ],
@@ -190,6 +194,7 @@ export const venueRoutes: FastifyPluginAsync = async (fastify) => {
     {
       preHandler: [
         authenticate,
+        requireEmailVerified,
         requirePermission("venue:manage_all"),
         validate({ params: ParamsVenueId }),
       ],

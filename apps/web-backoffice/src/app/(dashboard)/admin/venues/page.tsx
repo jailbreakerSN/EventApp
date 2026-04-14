@@ -10,7 +10,8 @@ import {
   Badge,
   getStatusVariant,
   Button,
-  Skeleton,
+  DataTable,
+  type DataTableColumn,
   Breadcrumb,
   BreadcrumbList,
   BreadcrumbItem,
@@ -18,7 +19,7 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@teranga/shared-ui";
-import { MapPin, Search, ShieldCheck, Ban, CheckCircle, CalendarDays } from "lucide-react";
+import { MapPin, Search, ShieldCheck, Ban, CheckCircle } from "lucide-react";
 import {
   useVenues,
   useApproveVenue,
@@ -26,6 +27,7 @@ import {
   useReactivateVenue,
 } from "@/hooks/use-venues";
 import type { Venue, VenueType, VenueStatus } from "@teranga/shared-types";
+import { useTranslations } from "next-intl";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -71,6 +73,7 @@ const STATUS_LABELS: Record<string, string> = {
 // ─── Page ───────────────────────────────────────────────────────────────────
 
 export default function AdminVenuesPage() {
+  const tCommon = useTranslations("common"); void tCommon;
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
@@ -206,152 +209,118 @@ export default function AdminVenuesPage() {
       {/* Data Table */}
       <Card>
         <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm" aria-label="Liste des lieux">
-              <thead>
-                <tr className="border-b border-border bg-muted/50">
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">Nom</th>
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">Type</th>
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">Ville</th>
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">Statut</th>
-                  <th className="px-4 py-3 text-center font-medium text-muted-foreground">
-                    <CalendarDays className="inline h-4 w-4" aria-label="Nombre d'evenements" />
-                  </th>
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">Contact</th>
-                  <th className="px-4 py-3 text-right font-medium text-muted-foreground">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {isLoading &&
-                  Array.from({ length: 5 }).map((_, i) => (
-                    <tr key={i} className="border-b border-border">
-                      <td className="px-4 py-3">
-                        <Skeleton className="h-4 w-40 mb-1" />
-                        <Skeleton className="h-3 w-24" />
-                      </td>
-                      <td className="px-4 py-3">
-                        <Skeleton className="h-5 w-20" />
-                      </td>
-                      <td className="px-4 py-3">
-                        <Skeleton className="h-4 w-24" />
-                      </td>
-                      <td className="px-4 py-3">
-                        <Skeleton className="h-5 w-20" />
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        <Skeleton className="mx-auto h-4 w-8" />
-                      </td>
-                      <td className="px-4 py-3">
-                        <Skeleton className="h-4 w-32" />
-                      </td>
-                      <td className="px-4 py-3">
-                        <Skeleton className="h-8 w-28 ml-auto" />
-                      </td>
-                    </tr>
-                  ))}
-
-                {!isLoading && venues.length === 0 && (
-                  <tr>
-                    <td colSpan={7} className="px-4 py-12 text-center text-muted-foreground">
-                      <MapPin className="mx-auto mb-2 h-8 w-8 opacity-40" />
-                      Aucun lieu trouve
-                    </td>
-                  </tr>
-                )}
-
-                {!isLoading &&
-                  venues.map((venue) => (
-                    <tr
-                      key={venue.id}
-                      className="border-b border-border hover:bg-muted/30 transition-colors"
-                    >
-                      {/* Name */}
-                      <td className="px-4 py-3">
-                        <p className="font-medium text-foreground">{venue.name}</p>
-                        {venue.slug && (
-                          <p className="text-xs text-muted-foreground font-mono">{venue.slug}</p>
-                        )}
-                      </td>
-
-                      {/* Type */}
-                      <td className="px-4 py-3">
-                        <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
-                          {TYPE_LABELS[venue.venueType] ?? venue.venueType}
-                        </Badge>
-                      </td>
-
-                      {/* City */}
-                      <td className="px-4 py-3 text-muted-foreground">
-                        {venue.address.city}, {venue.address.country}
-                      </td>
-
-                      {/* Status */}
-                      <td className="px-4 py-3">
-                        <Badge variant={getStatusVariant(venue.status)}>
-                          {STATUS_LABELS[venue.status] ?? venue.status}
-                        </Badge>
-                      </td>
-
-                      {/* Event count */}
-                      <td className="px-4 py-3 text-center font-medium text-foreground">
-                        {venue.eventCount}
-                      </td>
-
-                      {/* Contact */}
-                      <td className="px-4 py-3 text-muted-foreground text-xs">
-                        {venue.contactEmail}
-                      </td>
-
-                      {/* Actions */}
-                      <td className="px-4 py-3">
-                        <div className="flex items-center justify-end gap-2">
-                          {venue.status === "pending" && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleApprove(venue)}
-                              disabled={approveVenue.isPending}
-                              aria-label={`Approuver ${venue.name}`}
-                            >
-                              <ShieldCheck className="h-3.5 w-3.5 mr-1" />
-                              Approuver
-                            </Button>
+          <DataTable<Venue & Record<string, unknown>>
+            aria-label="Liste des lieux"
+            emptyMessage="Aucun lieu trouve"
+            responsiveCards
+            loading={isLoading}
+            data={venues as (Venue & Record<string, unknown>)[]}
+            columns={
+              [
+                {
+                  key: "name",
+                  header: "Nom",
+                  primary: true,
+                  render: (venue) => (
+                    <div>
+                      <p className="font-medium text-foreground">{venue.name}</p>
+                      {venue.slug && (
+                        <p className="text-xs text-muted-foreground font-mono">{venue.slug}</p>
+                      )}
+                    </div>
+                  ),
+                },
+                {
+                  key: "venueType",
+                  header: "Type",
+                  render: (venue) => (
+                    <Badge variant="info">
+                      {TYPE_LABELS[venue.venueType] ?? venue.venueType}
+                    </Badge>
+                  ),
+                },
+                {
+                  key: "city",
+                  header: "Ville",
+                  render: (venue) => (
+                    <span className="text-muted-foreground">
+                      {venue.address.city}, {venue.address.country}
+                    </span>
+                  ),
+                },
+                {
+                  key: "status",
+                  header: "Statut",
+                  render: (venue) => (
+                    <Badge variant={getStatusVariant(venue.status)}>
+                      {STATUS_LABELS[venue.status] ?? venue.status}
+                    </Badge>
+                  ),
+                },
+                {
+                  key: "eventCount",
+                  header: "Événements",
+                  hideOnMobile: true,
+                  render: (venue) => (
+                    <span className="font-medium text-foreground">{venue.eventCount}</span>
+                  ),
+                },
+                {
+                  key: "contactEmail",
+                  header: "Contact",
+                  hideOnMobile: true,
+                  render: (venue) => (
+                    <span className="text-muted-foreground text-xs">{venue.contactEmail}</span>
+                  ),
+                },
+                {
+                  key: "actions",
+                  header: "Actions",
+                  render: (venue) => (
+                    <div className="flex items-center justify-end gap-2">
+                      {venue.status === "pending" && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleApprove(venue)}
+                          disabled={approveVenue.isPending}
+                          aria-label={`Approuver ${venue.name}`}
+                        >
+                          <ShieldCheck className="h-3.5 w-3.5 mr-1" />
+                          Approuver
+                        </Button>
+                      )}
+                      {venue.status !== "archived" && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleToggleStatus(venue)}
+                          disabled={suspendVenue.isPending || reactivateVenue.isPending}
+                          aria-label={
+                            venue.status === "suspended"
+                              ? `Reactiver ${venue.name}`
+                              : `Suspendre ${venue.name}`
+                          }
+                        >
+                          {venue.status === "suspended" ? (
+                            <>
+                              <CheckCircle className="h-3.5 w-3.5 mr-1" />
+                              Reactiver
+                            </>
+                          ) : (
+                            <>
+                              <Ban className="h-3.5 w-3.5 mr-1" />
+                              Suspendre
+                            </>
                           )}
-
-                          {venue.status !== "archived" && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleToggleStatus(venue)}
-                              disabled={suspendVenue.isPending || reactivateVenue.isPending}
-                              aria-label={
-                                venue.status === "suspended"
-                                  ? `Reactiver ${venue.name}`
-                                  : `Suspendre ${venue.name}`
-                              }
-                            >
-                              {venue.status === "suspended" ? (
-                                <>
-                                  <CheckCircle className="h-3.5 w-3.5 mr-1" />
-                                  Reactiver
-                                </>
-                              ) : (
-                                <>
-                                  <Ban className="h-3.5 w-3.5 mr-1" />
-                                  Suspendre
-                                </>
-                              )}
-                            </Button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-              </tbody>
-            </table>
-          </div>
+                        </Button>
+                      )}
+                    </div>
+                  ),
+                },
+              ] as DataTableColumn<Venue & Record<string, unknown>>[]
+            }
+          />
         </CardContent>
       </Card>
 

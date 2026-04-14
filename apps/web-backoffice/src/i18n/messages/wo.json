@@ -1,0 +1,38 @@
+{
+  "_meta": {
+    "locale": "wo",
+    "name": "Wolof",
+    "coverage": "partial",
+    "note": "Seed file — covers the highest-visibility keys (nav, auth, common actions). Long-tail translations land with TASK-P1-I1d."
+  },
+  "common": {
+    "loading": "Di yëngu...",
+    "error": "Bënn mbir bu bon am na",
+    "retry": "Jéem waaf",
+    "save": "Denc",
+    "cancel": "Bayyi",
+    "delete": "Far",
+    "edit": "Soppi",
+    "create": "Sos",
+    "search": "Wut",
+    "filter": "Tann",
+    "export": "Génne",
+    "back": "Dellu",
+    "next": "Lu ci topp",
+    "previous": "Lu jiitu",
+    "close": "Tëj",
+    "confirm": "Dëggal",
+    "yes": "Waaw",
+    "no": "Déedéet",
+    "all": "Lépp",
+    "none": "Dara"
+  },
+  "auth": {
+    "login": "Dugg",
+    "logout": "Génn",
+    "register": "Bind sa tur",
+    "email": "Imeyl",
+    "password": "Baatu-ruus",
+    "forgotPassword": "Fàtte naa sama baatu-ruus ?"
+  }
+}

@@ -4,6 +4,7 @@ import { useState, useCallback } from "react";
 import Link from "next/link";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { useTranslations } from "next-intl";
 import { notificationsApi } from "@/lib/api-client";
 import type { Notification } from "@teranga/shared-types";
 import {
@@ -101,6 +102,7 @@ function formatRelativeTime(dateStr: string): string {
 // ─── Main Component ──────────────────────────────────────────────────────────
 
 export default function NotificationsPage() {
+  const t = useTranslations("nav");
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const [filter, setFilter] = useState<"all" | "unread" | "read">("all");
@@ -176,7 +178,7 @@ export default function NotificationsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Notifications</h1>
+          <h1 className="text-2xl font-bold text-foreground">{t("notifications")}</h1>
           <p className="text-muted-foreground text-sm mt-1">
             {total > 0
               ? `${total} notification${total > 1 ? "s" : ""}`

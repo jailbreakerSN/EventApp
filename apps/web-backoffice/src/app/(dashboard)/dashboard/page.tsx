@@ -4,7 +4,13 @@ import Link from "next/link";
 import { useEvents } from "@/hooks/use-events";
 import { formatDate } from "@/lib/utils";
 import { Calendar, Users, Ticket, TrendingUp, ArrowRight, Banknote } from "lucide-react";
-import { Skeleton, Badge, getStatusVariant } from "@teranga/shared-ui";
+import {
+  Skeleton,
+  Badge,
+  getStatusVariant,
+  DataTable,
+  type DataTableColumn,
+} from "@teranga/shared-ui";
 
 const STATUS_LABELS: Record<string, string> = {
   draft: "Brouillon",
@@ -88,66 +94,64 @@ export default function DashboardPage() {
           </Link>
         </div>
 
-        {isLoading ? (
-          <table className="w-full text-sm">
-            <tbody>
-              {Array.from({ length: 5 }).map((_, i) => (
-                <tr key={i} className="border-b border-border last:border-0">
-                  <td className="px-6 py-3.5">
-                    <Skeleton variant="text" className="h-4 w-36" />
-                  </td>
-                  <td className="px-6 py-3.5">
-                    <Skeleton variant="text" className="h-4 w-20" />
-                  </td>
-                  <td className="px-6 py-3.5">
-                    <Skeleton variant="text" className="h-5 w-16 rounded-full" />
-                  </td>
-                  <td className="px-6 py-3.5 text-right">
-                    <Skeleton variant="text" className="h-4 w-16 ml-auto" />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        ) : events.length === 0 ? (
+        <DataTable<(typeof events)[number] & Record<string, unknown>>
+          aria-label="Événements récents"
+          emptyMessage="Aucun événement pour le moment."
+          responsiveCards
+          loading={isLoading}
+          data={events as ((typeof events)[number] & Record<string, unknown>)[]}
+          columns={
+            [
+              {
+                key: "title",
+                header: "Événement",
+                primary: true,
+                render: (event) => (
+                  <Link
+                    href={`/events/${event.id}`}
+                    className="font-medium text-foreground hover:text-primary"
+                  >
+                    {event.title}
+                  </Link>
+                ),
+              },
+              {
+                key: "startDate",
+                header: "Date",
+                hideOnMobile: true,
+                render: (event) => (
+                  <span className="text-muted-foreground text-xs whitespace-nowrap">
+                    {formatDate(event.startDate)}
+                  </span>
+                ),
+              },
+              {
+                key: "status",
+                header: "Statut",
+                render: (event) => (
+                  <Badge variant={getStatusVariant(event.status)}>
+                    {STATUS_LABELS[event.status] ?? STATUS_LABELS.draft}
+                  </Badge>
+                ),
+              },
+              {
+                key: "registered",
+                header: "Inscrits",
+                render: (event) => (
+                  <span className="text-muted-foreground">
+                    {event.registeredCount ?? 0} inscrits
+                  </span>
+                ),
+              },
+            ] as DataTableColumn<(typeof events)[number] & Record<string, unknown>>[]
+          }
+        />
+        {events.length === 0 && !isLoading && (
           <div className="p-8 text-center text-muted-foreground">
-            Aucun événement.{" "}
             <Link href="/events/new" className="text-primary hover:underline">
-              Créer votre premier
+              Créer votre premier événement
             </Link>
           </div>
-        ) : (
-          <table className="w-full text-sm">
-            <tbody>
-              {events.map((event) => {
-                const statusLabel = STATUS_LABELS[event.status] ?? STATUS_LABELS.draft;
-                return (
-                  <tr
-                    key={event.id}
-                    className="border-b border-border last:border-0 hover:bg-accent transition-colors"
-                  >
-                    <td className="px-6 py-3.5">
-                      <Link
-                        href={`/events/${event.id}`}
-                        className="font-medium text-foreground hover:text-primary"
-                      >
-                        {event.title}
-                      </Link>
-                    </td>
-                    <td className="px-6 py-3.5 text-muted-foreground text-xs whitespace-nowrap">
-                      {formatDate(event.startDate)}
-                    </td>
-                    <td className="px-6 py-3.5">
-                      <Badge variant={getStatusVariant(event.status)}>{statusLabel}</Badge>
-                    </td>
-                    <td className="px-6 py-3.5 text-right text-muted-foreground">
-                      {event.registeredCount ?? 0} inscrits
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
         )}
       </div>
     </div>
@@ -162,6 +166,7 @@ function StatCard({
   isLoading,
   trend,
   trendLabel,
+  deltaPct,
   subtitle,
 }: {
   icon: React.ReactNode;
@@ -171,15 +176,46 @@ function StatCard({
   isLoading?: boolean;
   trend?: "up" | "down" | "neutral";
   trendLabel?: string;
+  /** Optional numeric delta — rendered as "+X %" / "−X %" when provided. */
+  deltaPct?: number;
   subtitle?: string;
 }) {
+  // ui-ux-pro-max rule 78: never rely on color alone.
+  // Each delta uses glyph (triangle) + textual sign + semantic color.
+  // Positive = teranga-green, negative = teranga-gold-dark (avoids
+  // red/green confusion for deuteranopia; both hit 4.5:1 on bg-card in
+  // both light and dark themes).
   const trendDisplay = trend
     ? {
-        up: { arrow: "\u2191", className: "text-emerald-600" },
-        down: { arrow: "\u2193", className: "text-red-500" },
-        neutral: { arrow: "\u2192", className: "text-muted-foreground" },
+        up: {
+          glyph: "\u25B2", // ▲
+          className: "text-teranga-green",
+          ariaDirection: "Hausse",
+        },
+        down: {
+          glyph: "\u25BC", // ▼
+          className: "text-teranga-gold-dark",
+          ariaDirection: "Baisse",
+        },
+        neutral: {
+          glyph: "\u2014", // —
+          className: "text-muted-foreground",
+          ariaDirection: "Stable",
+        },
       }[trend]
     : null;
+
+  const signedDelta =
+    typeof deltaPct === "number"
+      ? `${deltaPct > 0 ? "+" : deltaPct < 0 ? "\u2212" : ""}${Math.abs(deltaPct)}\u00A0%`
+      : null;
+
+  const ariaLabel =
+    trendDisplay && trendLabel
+      ? typeof deltaPct === "number"
+        ? `${trendDisplay.ariaDirection} de ${Math.abs(deltaPct)} pour cent ${trendLabel}`
+        : `${trendDisplay.ariaDirection} ${trendLabel}`
+      : undefined;
 
   return (
     <div className="bg-card rounded-xl p-5 shadow-sm border border-border">
@@ -194,8 +230,13 @@ function StatCard({
           <div className="flex items-baseline gap-2">
             <p className="text-3xl font-bold text-primary">{value}</p>
             {trendDisplay && (
-              <span className={`text-xs font-medium ${trendDisplay.className}`}>
-                {trendDisplay.arrow} {trendLabel}
+              <span
+                className={`inline-flex items-center gap-1 text-xs font-medium ${trendDisplay.className}`}
+                aria-label={ariaLabel}
+              >
+                <span aria-hidden="true">{trendDisplay.glyph}</span>
+                {signedDelta && <span aria-hidden="true">{signedDelta}</span>}
+                {trendLabel && <span aria-hidden="true">{trendLabel}</span>}
               </span>
             )}
           </div>

@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
+import { NextIntlClientProvider } from "next-intl";
+import { getLocale, getMessages } from "next-intl/server";
 import "./globals.css";
 import { Providers } from "./providers";
 import { Toaster, OfflineBanner } from "@teranga/shared-ui";
@@ -30,13 +32,20 @@ export const viewport: Viewport = {
   initialScale: 1,
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  // i18n: the cookie-driven locale comes from src/i18n/request.ts; the
+  // provider hydrates messages for all client components below.
+  const locale = await getLocale();
+  const messages = await getMessages();
+
   return (
-    <html lang="fr" suppressHydrationWarning>
+    <html lang={locale} suppressHydrationWarning>
       <body className={inter.className}>
-        <OfflineBanner />
-        <Providers>{children}</Providers>
-        <Toaster />
+        <NextIntlClientProvider locale={locale} messages={messages}>
+          <OfflineBanner />
+          <Providers>{children}</Providers>
+          <Toaster />
+        </NextIntlClientProvider>
       </body>
     </html>
   );

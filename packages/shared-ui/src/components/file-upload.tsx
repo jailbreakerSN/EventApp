@@ -3,24 +3,35 @@
 import * as React from "react";
 import { Upload, X } from "lucide-react";
 import { cn } from "../lib/utils";
+import { DEFAULT_UI_LOCALE_FR, type FileUploadLabels } from "../lib/i18n";
 
 export interface FileUploadProps extends Omit<React.HTMLAttributes<HTMLDivElement>, "onDrop"> {
   accept?: string;
   maxSizeMB?: number;
   onFileSelect: (file: File) => void;
+  /** Visible drop-zone label (deprecated in favour of `labels.dropzone`). */
   label?: string;
   description?: string;
+  /**
+   * Localised labels; unspecified keys fall back to French. Takes
+   * precedence over the legacy `label` prop.
+   */
+  labels?: Partial<FileUploadLabels>;
 }
 
 function FileUpload({
   accept,
   maxSizeMB,
   onFileSelect,
-  label = "Glissez un fichier ici",
+  label,
   description,
   className,
+  labels,
   ...props
 }: FileUploadProps) {
+  const l = { ...DEFAULT_UI_LOCALE_FR.fileUpload, ...labels };
+  // Legacy `label` prop wins over labels.dropzone when provided for backward compat.
+  const dropzoneLabel = label ?? l.dropzone;
   const [isDragging, setIsDragging] = React.useState(false);
   const [selectedFile, setSelectedFile] = React.useState<File | null>(null);
   const [error, setError] = React.useState<string | null>(null);
@@ -46,7 +57,7 @@ function FileUpload({
         return file.type === type;
       });
       if (!matches) {
-        setError("Type de fichier non accepté");
+        setError(l.invalidType);
         return;
       }
     }
@@ -107,7 +118,7 @@ function FileUpload({
         )}
       >
         <Upload className="h-8 w-8" />
-        <span className="text-sm font-medium">{label}</span>
+        <span className="text-sm font-medium">{dropzoneLabel}</span>
         {description && <span className="text-xs text-muted-foreground">{description}</span>}
         {maxSizeMB && <span className="text-xs text-muted-foreground">Max {maxSizeMB} Mo</span>}
       </div>
@@ -133,7 +144,7 @@ function FileUpload({
               handleClear();
             }}
             className="shrink-0 text-muted-foreground hover:text-foreground transition-colors"
-            aria-label="Supprimer le fichier"
+            aria-label={l.remove}
           >
             <X className="h-4 w-4" />
           </button>

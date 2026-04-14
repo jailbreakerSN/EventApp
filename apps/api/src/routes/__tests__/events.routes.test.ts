@@ -88,6 +88,7 @@ function authHeaders(overrides: Record<string, unknown> = {}) {
   mockVerifyIdToken.mockResolvedValue({
     uid: "user-1",
     email: "test@teranga.events",
+    email_verified: true, // matches buildAuthUser() default — see factories.ts
     roles: ["organizer"],
     organizationId: "org-1",
     ...overrides,

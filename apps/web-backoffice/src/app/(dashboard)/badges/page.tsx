@@ -41,6 +41,7 @@ import {
   useBulkGenerateBadges,
 } from "@/hooks/use-badges";
 import type { BadgeTemplate } from "@teranga/shared-types";
+import { useTranslations } from "next-intl";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -55,6 +56,7 @@ const FIELD_VISIBILITY_OPTIONS = [
 // ─── Page ───────────────────────────────────────────────────────────────────
 
 export default function BadgesPage() {
+  const tCommon = useTranslations("common"); void tCommon;
   const { user } = useAuth();
   const orgId = user?.organizationId;
 
@@ -609,7 +611,7 @@ export default function BadgesPage() {
                     disabled={eventsLoading}
                   >
                     <option value="">
-                      {eventsLoading ? "Chargement..." : "Selectionnez un evenement"}
+                      {eventsLoading ? "…" : "Selectionnez un evenement"}
                     </option>
                     {events.map((event: { id: string; title: string }) => (
                       <option key={event.id} value={event.id}>
@@ -634,7 +636,7 @@ export default function BadgesPage() {
                   >
                     <option value="">
                       {templatesLoading
-                        ? "Chargement..."
+                        ? "…"
                         : templates.length === 0
                           ? "Aucun modele disponible"
                           : "Selectionnez un modele"}

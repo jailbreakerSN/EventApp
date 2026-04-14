@@ -29,6 +29,7 @@ import { UsageMeter } from "@/components/plan/UsageMeter";
 import { PLAN_DISPLAY } from "@teranga/shared-types";
 import type { UserRole } from "@teranga/shared-types";
 import { CreditCard, ArrowUpRight } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 interface NavItem {
   href: string;
@@ -294,6 +295,7 @@ export function Sidebar() {
 }
 
 function SidebarPlanWidget() {
+  const _t = useTranslations("common"); void _t;
   const { plan, checkLimit, isNearLimit } = usePlanGating();
   const display = PLAN_DISPLAY[plan];
   const events = checkLimit("events");

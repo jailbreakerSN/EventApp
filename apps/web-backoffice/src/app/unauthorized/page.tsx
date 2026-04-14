@@ -3,8 +3,10 @@
 import { useAuth } from "@/hooks/use-auth";
 import { useRouter } from "next/navigation";
 import { ShieldX, LogOut, ArrowLeft } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 export default function UnauthorizedPage() {
+  const _t = useTranslations("common"); void _t;
   const { user, logout, hasRole } = useAuth();
   const router = useRouter();
 

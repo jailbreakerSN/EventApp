@@ -10,11 +10,25 @@ Read the audit and execution plan first. This doc answers *how* to ship them.
 
 ## 1. Operating model
 
-**One task = one short-lived branch off `main`**, named per CLAUDE.md §Git Branching:
+**Target branch for all feature PRs: `develop`** (policy updated 2026-04-14 after PR #18 cascade landed on `main` and `develop` was synced via PR #30).
+
+Each task = one short-lived branch, named per CLAUDE.md §Git Branching:
 
 - `feature/p1-h7-badge-darkmode-sweep`
 - `feature/p1-h4a-datatable-admin`
 - `feature/p1-i1a-shared-ui-i18n-extraction`
+
+**Branching rule:** branch **off the previous feature branch** so WIP doesn't lose the upstream context it was written against — but **open the PR against `develop`**. Stacked authoring, flat review targets.
+
+### Auto-rebase on upstream merge
+
+`.github/workflows/auto-rebase.yml` watches `push` events on `develop`. Whenever an upstream PR merges, every open PR whose head matches `feature/*`, `fix/*`, `refactor/*`, `chore/*`, or `docs/*` gets its head rebased onto the new `develop` tip automatically ([`peter-evans/rebase@v3`](https://github.com/peter-evans/rebase)). Benefits:
+
+- No "Update branch" merge commits polluting the PR diff.
+- CI re-runs on the rebased tip so reviewers see a green build against the latest `develop`.
+- Branches with unresolvable conflicts are left alone and surfaced via a PR comment for manual resolution.
+
+**Setup requirement:** a PAT (`REBASE_TOKEN`) with `contents:write` + `pull_requests:write` in repo secrets so the rebased push re-triggers CI; falls back to `GITHUB_TOKEN` without CI re-run.
 
 ### Standard per-task loop
 
@@ -48,6 +62,7 @@ Repeat for every `TASK-P1-*` in `execution-plan-2026-04-13.md`:
 
 5. COMMIT + PR
    └─ Conventional Commit per CLAUDE.md §6 (body explains *why*, includes test status).
+   └─ PR base: develop (NOT the previous feature branch).
    └─ PR body: ## Summary grouped by AC + ## Test plan checklist (per CLAUDE.md §7).
 
 6. REVIEW
@@ -55,6 +70,7 @@ Repeat for every `TASK-P1-*` in `execution-plan-2026-04-13.md`:
    └─ Optional: gh workflow run claude-review.yml -f pr_number=<N>   (advisory).
 
 7. MERGE + DELETE BRANCH
+   └─ auto-rebase.yml fires: every other open PR rebased onto the new develop tip.
 ```
 
 ---

@@ -4,7 +4,9 @@ import { useParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { sessionsApi, eventsApi } from "@/lib/api-client";
 import { Calendar, Clock, Mic, Bookmark, Loader2, ArrowLeft } from "lucide-react";
+import { EmptyState } from "@teranga/shared-ui";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 
 function formatTime(iso: string) {
   return new Date(iso).toLocaleString("fr-FR", {
@@ -16,6 +18,7 @@ function formatTime(iso: string) {
 }
 
 export default function SchedulePage() {
+  const tCommon = useTranslations("common"); void tCommon;
   const { slug } = useParams<{ slug: string }>();
   const qc = useQueryClient();
 
@@ -108,11 +111,11 @@ export default function SchedulePage() {
       </div>
 
       {sessions.length === 0 ? (
-        <div className="text-center py-16 text-muted-foreground">
-          <Calendar className="h-12 w-12 mx-auto mb-4 opacity-30" />
-          <p className="text-lg">Aucune session programmée</p>
-          <p className="text-sm mt-1">Le programme sera disponible prochainement</p>
-        </div>
+        <EmptyState
+          icon={Calendar}
+          title="Aucune session programmée"
+          description="Le programme sera disponible prochainement. Revenez bientôt."
+        />
       ) : (
         <div className="space-y-4">
           {sessions.map((session) => {

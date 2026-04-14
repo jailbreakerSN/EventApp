@@ -12,9 +12,13 @@ import sys
 from _shared import build_arg_parser, fail, pass_, skip
 
 
-GATED = True
+GATED = False
 
-ALLOW_PATTERNS = ("BrandedLoader", "label={")  # BrandedLoader carries "Chargement" as a prop; acceptable
+# Legitimate occurrences of the word "Chargement":
+#   - BrandedLoader / label={...}  : branded full-screen affordance
+#   - aria-label="..."             : screen-reader announcement (required for role="status" regions)
+#   - sr-only                      : screen-reader-only span (not visible text)
+ALLOW_PATTERNS = ("BrandedLoader", "label={", "aria-label=", "sr-only")
 
 
 def check(repo_root: pathlib.Path) -> tuple[bool, str]:

@@ -8,7 +8,8 @@ import {
   Badge,
   Select,
   Input,
-  Skeleton,
+  DataTable,
+  type DataTableColumn,
   Breadcrumb,
   BreadcrumbList,
   BreadcrumbItem,
@@ -16,8 +17,9 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@teranga/shared-ui";
-import { ChevronLeft, ChevronRight, FileText } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useAdminAuditLogs } from "@/hooks/use-admin";
+import { useTranslations } from "next-intl";
 
 const ACTION_OPTIONS = [
   { value: "", label: "Toutes les actions" },
@@ -51,6 +53,7 @@ function formatDate(timestamp: string) {
 }
 
 export default function AdminAuditPage() {
+  const tCommon = useTranslations("common"); void tCommon;
   const [page, setPage] = useState(1);
   const [actionFilter, setActionFilter] = useState("");
   const [dateFrom, setDateFrom] = useState("");
@@ -147,66 +150,62 @@ export default function AdminAuditPage() {
       {/* Table */}
       <Card>
         <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border bg-muted/50">
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">Action</th>
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground hidden sm:table-cell">Acteur</th>
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground hidden md:table-cell">Ressource</th>
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">Date</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {isLoading ? (
-                  Array.from({ length: 10 }).map((_, i) => (
-                    <tr key={i}>
-                      <td className="px-4 py-3"><Skeleton className="h-5 w-32 rounded-full" /></td>
-                      <td className="px-4 py-3 hidden sm:table-cell"><Skeleton className="h-4 w-24" /></td>
-                      <td className="px-4 py-3 hidden md:table-cell"><Skeleton className="h-4 w-40" /></td>
-                      <td className="px-4 py-3"><Skeleton className="h-4 w-36" /></td>
-                    </tr>
-                  ))
-                ) : logs.length === 0 ? (
-                  <tr>
-                    <td colSpan={4} className="px-4 py-12 text-center text-muted-foreground">
-                      <FileText className="mx-auto mb-2 h-8 w-8 opacity-40" />
-                      Aucune entrée trouvée
-                    </td>
-                  </tr>
-                ) : (
-                  logs.map((log: Record<string, unknown>) => {
-                    const actionStyle = getActionStyle(log.action as string);
-                    return (
-                      <tr key={log.id as string} className="hover:bg-muted/30 transition-colors">
-                        <td className="px-4 py-3">
-                          <Badge variant={actionStyle.variant}>
-                            {log.action as string}
-                          </Badge>
-                        </td>
-                        <td className="px-4 py-3 text-muted-foreground hidden sm:table-cell font-mono text-xs">
-                          {(log.actorId as string)?.slice(0, 12)}...
-                        </td>
-                        <td className="px-4 py-3 text-muted-foreground hidden md:table-cell">
-                          <span className="font-medium text-foreground">
-                            {log.resourceType as string}
-                          </span>
-                          {log.resourceId ? (
-                            <span className="ml-1 font-mono text-xs">
-                              {(log.resourceId as string).slice(0, 12)}...
-                            </span>
-                          ) : null}
-                        </td>
-                        <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
-                          {log.timestamp ? formatDate(log.timestamp as string) : "-"}
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
+          <DataTable<Record<string, unknown>>
+            aria-label="Journal d'audit"
+            emptyMessage="Aucune entrée trouvée"
+            responsiveCards
+            loading={isLoading}
+            data={logs as Record<string, unknown>[]}
+            columns={
+              [
+                {
+                  key: "action",
+                  header: "Action",
+                  primary: true,
+                  render: (log) => (
+                    <Badge variant={getActionStyle(log.action as string).variant}>
+                      {log.action as string}
+                    </Badge>
+                  ),
+                },
+                {
+                  key: "actorId",
+                  header: "Acteur",
+                  render: (log) => (
+                    <span className="font-mono text-xs text-muted-foreground">
+                      {(log.actorId as string)?.slice(0, 12)}...
+                    </span>
+                  ),
+                },
+                {
+                  key: "resource",
+                  header: "Ressource",
+                  hideOnMobile: true,
+                  render: (log) => (
+                    <span className="text-muted-foreground">
+                      <span className="font-medium text-foreground">
+                        {log.resourceType as string}
+                      </span>
+                      {log.resourceId ? (
+                        <span className="ml-1 font-mono text-xs">
+                          {(log.resourceId as string).slice(0, 12)}...
+                        </span>
+                      ) : null}
+                    </span>
+                  ),
+                },
+                {
+                  key: "timestamp",
+                  header: "Date",
+                  render: (log) => (
+                    <span className="text-muted-foreground whitespace-nowrap">
+                      {log.timestamp ? formatDate(log.timestamp as string) : "-"}
+                    </span>
+                  ),
+                },
+              ] as DataTableColumn<Record<string, unknown>>[]
+            }
+          />
         </CardContent>
       </Card>
 

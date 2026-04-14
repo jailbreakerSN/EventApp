@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
-import { authenticate } from "@/middlewares/auth.middleware";
+import { authenticate, requireEmailVerified } from "@/middlewares/auth.middleware";
 import { validate } from "@/middlewares/validate.middleware";
 import { inviteService } from "@/services/invite.service";
 
@@ -11,7 +11,7 @@ export const inviteRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post(
     "/accept",
     {
-      preHandler: [authenticate, validate({ body: TokenBody })],
+      preHandler: [authenticate, requireEmailVerified, validate({ body: TokenBody })],
       schema: { tags: ["Invites"], summary: "Accept organization invite", security: [{ BearerAuth: [] }] },
     },
     async (request, reply) => {
@@ -25,7 +25,7 @@ export const inviteRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post(
     "/decline",
     {
-      preHandler: [authenticate, validate({ body: TokenBody })],
+      preHandler: [authenticate, requireEmailVerified, validate({ body: TokenBody })],
       schema: { tags: ["Invites"], summary: "Decline organization invite", security: [{ BearerAuth: [] }] },
     },
     async (request, reply) => {

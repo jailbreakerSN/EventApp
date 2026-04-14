@@ -9,6 +9,13 @@ export interface AuthUser {
   email: string;
   roles: UserRole[];
   organizationId?: string;
+  /**
+   * Whether the user's email has been verified. Sourced from the
+   * decoded Firebase ID token's `email_verified` claim.
+   * Used by `requireEmailVerified` to gate mutating routes and by the
+   * backoffice dashboard layout's UX-level gate (CLAUDE.md §H6).
+   */
+  emailVerified: boolean;
 }
 
 declare module "fastify" {
@@ -39,6 +46,7 @@ export async function authenticate(request: FastifyRequest, reply: FastifyReply)
       email: decoded.email ?? "",
       roles: Array.isArray(decoded.roles) ? (decoded.roles as UserRole[]) : ["participant"],
       organizationId: (decoded.organizationId as string) ?? undefined,
+      emailVerified: decoded.email_verified === true,
     };
   } catch (_err) {
     request.log.warn({ err: _err }, "Token verification failed");
@@ -63,9 +71,53 @@ export async function optionalAuth(request: FastifyRequest, _reply: FastifyReply
       email: decoded.email ?? "",
       roles: Array.isArray(decoded.roles) ? (decoded.roles as UserRole[]) : ["participant"],
       organizationId: (decoded.organizationId as string) ?? undefined,
+      emailVerified: decoded.email_verified === true,
     };
   } catch {
     // Token present but invalid — treat as anonymous
+  }
+}
+
+// ─── Email-Verification Guard ─────────────────────────────────────────────────
+// Rejects mutating requests from users whose Firebase email is not verified.
+// Must run AFTER `authenticate` so `request.user` is populated.
+//
+// Exemptions:
+//   - `super_admin` role — platform operators must never be locked out by
+//     a verification race. Roles come from signed Firebase custom claims
+//     set by the API itself; a regular user cannot self-assign super_admin.
+//
+// Behaviour:
+//   - If `request.user` is missing → 401 (authenticate must run first).
+//   - If user is super_admin → pass.
+//   - If user.emailVerified → pass.
+//   - Otherwise → 403 EMAIL_NOT_VERIFIED.
+//
+// The matching UX-level gate in apps/web-backoffice/src/app/(dashboard)/
+// layout.tsx redirects unverified users past the grace period to
+// /verify-email. This API guard is the security boundary — do not rely
+// on the client gate alone.
+
+export async function requireEmailVerified(request: FastifyRequest, reply: FastifyReply) {
+  if (!request.user) {
+    return reply.status(401).send({
+      success: false,
+      error: { code: "UNAUTHORIZED", message: "Not authenticated" },
+    });
+  }
+
+  // Super-admins bypass the gate (operational necessity).
+  if (request.user.roles.includes("super_admin")) return;
+
+  if (!request.user.emailVerified) {
+    return reply.status(403).send({
+      success: false,
+      error: {
+        code: "EMAIL_NOT_VERIFIED",
+        message:
+          "Email verification required. Check your inbox for the verification link.",
+      },
+    });
   }
 }
 

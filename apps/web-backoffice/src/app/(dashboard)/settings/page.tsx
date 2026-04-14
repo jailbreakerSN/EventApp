@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
+import { useTranslations } from "next-intl";
 import {
   updateProfile,
   updatePassword,
@@ -129,6 +130,7 @@ function Toggle({
 // ─── Main Component ──────────────────────────────────────────────────────────
 
 export default function SettingsPage() {
+  const t = useTranslations("nav");
   const { user } = useAuth();
   const firebaseUser = firebaseAuth.currentUser;
   const isGoogleAuth = firebaseUser?.providerData.some((p) => p.providerId === "google.com");
@@ -252,7 +254,7 @@ export default function SettingsPage() {
       </Breadcrumb>
 
       <div>
-        <h1 className="text-2xl font-bold text-foreground">Parametres</h1>
+        <h1 className="text-2xl font-bold text-foreground">{t("settings")}</h1>
         <p className="text-muted-foreground text-sm mt-1">
           Gerez votre profil, la securite de votre compte et vos preferences de notifications.
         </p>

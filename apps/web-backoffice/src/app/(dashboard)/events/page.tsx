@@ -5,7 +5,15 @@ import Link from "next/link";
 import { useEvents } from "@/hooks/use-events";
 import { formatDate } from "@/lib/utils";
 import { Search, Plus, ChevronLeft, ChevronRight, Calendar, MapPin, Users } from "lucide-react";
-import { Select, Skeleton, QueryError, Badge, getStatusVariant } from "@teranga/shared-ui";
+import {
+  Select,
+  QueryError,
+  Badge,
+  getStatusVariant,
+  EmptyState,
+  DataTable,
+  type DataTableColumn,
+} from "@teranga/shared-ui";
 
 const STATUS_LABELS: Record<string, string> = {
   draft: "Brouillon",
@@ -93,130 +101,120 @@ export default function EventsPage() {
       </div>
 
       {/* Content */}
-      {isLoading ? (
-        <div className="bg-card rounded-xl border border-border overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border text-left text-muted-foreground font-medium">
-                  <th className="px-6 py-3">Événement</th>
-                  <th className="px-6 py-3">Date</th>
-                  <th className="px-6 py-3">Lieu</th>
-                  <th className="px-6 py-3">Catégorie</th>
-                  <th className="px-6 py-3">Statut</th>
-                  <th className="px-6 py-3 text-right">Inscrits</th>
-                  <th className="px-6 py-3"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {Array.from({ length: 5 }).map((_, i) => (
-                  <tr key={i} className="border-b border-border/50">
-                    <td className="px-6 py-4">
-                      <Skeleton variant="text" className="h-4 w-40" />
-                    </td>
-                    <td className="px-6 py-4">
-                      <Skeleton variant="text" className="h-4 w-24" />
-                    </td>
-                    <td className="px-6 py-4">
-                      <Skeleton variant="text" className="h-4 w-20" />
-                    </td>
-                    <td className="px-6 py-4">
-                      <Skeleton variant="text" className="h-4 w-16" />
-                    </td>
-                    <td className="px-6 py-4">
-                      <Skeleton variant="text" className="h-5 w-16 rounded-full" />
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <Skeleton variant="text" className="h-4 w-8 ml-auto" />
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <Skeleton variant="text" className="h-4 w-10 ml-auto" />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      ) : isError ? (
+      {isError ? (
         <QueryError onRetry={refetch} />
-      ) : events.length === 0 ? (
-        <div className="bg-card rounded-xl border border-border p-12 text-center text-muted-foreground">
-          {search || category
-            ? "Aucun événement ne correspond à vos filtres."
-            : "Aucun événement pour le moment. Créez votre premier événement."}
+      ) : !isLoading && events.length === 0 ? (
+        <div className="bg-card rounded-xl border border-border">
+          {search || category ? (
+            <EmptyState
+              icon={Search}
+              title="Aucun événement trouvé"
+              description="Aucun événement ne correspond à vos filtres. Essayez d'élargir votre recherche."
+            />
+          ) : (
+            <EmptyState
+              icon={Calendar}
+              title="Aucun événement pour le moment"
+              description="Créez votre premier événement pour commencer à accueillir des participants."
+              action={
+                <Link
+                  href="/events/new"
+                  className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+                >
+                  <Plus className="h-4 w-4" aria-hidden="true" />
+                  Créer un événement
+                </Link>
+              }
+            />
+          )}
         </div>
       ) : (
         <>
-          {/* Table */}
-          <div className="bg-card rounded-xl border border-border overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border text-left text-muted-foreground font-medium">
-                    <th className="px-6 py-3">Événement</th>
-                    <th className="px-6 py-3">Date</th>
-                    <th className="px-6 py-3">Lieu</th>
-                    <th className="px-6 py-3">Catégorie</th>
-                    <th className="px-6 py-3">Statut</th>
-                    <th className="px-6 py-3 text-right">Inscrits</th>
-                    <th className="px-6 py-3"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {events.map((event) => {
-                    const statusLabel = STATUS_LABELS[event.status] ?? STATUS_LABELS.draft;
-                    return (
-                      <tr
-                        key={event.id}
-                        className="border-b border-border/50 hover:bg-muted/50 transition-colors"
-                      >
-                        <td className="px-6 py-4 font-medium text-foreground max-w-[250px] truncate">
-                          {event.title}
-                        </td>
-                        <td className="px-6 py-4 text-muted-foreground whitespace-nowrap">
-                          <span className="inline-flex items-center gap-1.5">
-                            <Calendar className="h-3.5 w-3.5" />
-                            {formatDate(event.startDate)}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 text-muted-foreground whitespace-nowrap">
-                          {event.location?.city ? (
-                            <span className="inline-flex items-center gap-1.5">
-                              <MapPin className="h-3.5 w-3.5" />
-                              {event.location.city}
-                            </span>
-                          ) : (
-                            <span className="text-muted-foreground">--</span>
-                          )}
-                        </td>
-                        <td className="px-6 py-4 text-muted-foreground capitalize">
-                          {event.category ?? "—"}
-                        </td>
-                        <td className="px-6 py-4">
-                          <Badge variant={getStatusVariant(event.status)}>{statusLabel}</Badge>
-                        </td>
-                        <td className="px-6 py-4 text-right text-muted-foreground">
-                          <span className="inline-flex items-center gap-1.5">
-                            <Users className="h-3.5 w-3.5" />
-                            {event.registeredCount ?? 0}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 text-right">
-                          <Link
-                            href={`/events/${event.id}`}
-                            className="text-primary hover:underline font-medium text-sm"
-                          >
-                            Voir
-                          </Link>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          <DataTable<(typeof events)[number] & Record<string, unknown>>
+            aria-label="Liste des événements"
+            responsiveCards
+            loading={isLoading}
+            data={events as ((typeof events)[number] & Record<string, unknown>)[]}
+            columns={
+              [
+                {
+                  key: "title",
+                  header: "Événement",
+                  primary: true,
+                  render: (event) => (
+                    <span className="font-medium text-foreground max-w-[250px] truncate inline-block">
+                      {event.title}
+                    </span>
+                  ),
+                },
+                {
+                  key: "startDate",
+                  header: "Date",
+                  render: (event) => (
+                    <span className="inline-flex items-center gap-1.5 text-muted-foreground whitespace-nowrap">
+                      <Calendar className="h-3.5 w-3.5" />
+                      {formatDate(event.startDate)}
+                    </span>
+                  ),
+                },
+                {
+                  key: "city",
+                  header: "Lieu",
+                  hideOnMobile: true,
+                  render: (event) =>
+                    event.location?.city ? (
+                      <span className="inline-flex items-center gap-1.5 text-muted-foreground whitespace-nowrap">
+                        <MapPin className="h-3.5 w-3.5" />
+                        {event.location.city}
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground">--</span>
+                    ),
+                },
+                {
+                  key: "category",
+                  header: "Catégorie",
+                  hideOnMobile: true,
+                  render: (event) => (
+                    <span className="text-muted-foreground capitalize">
+                      {event.category ?? "—"}
+                    </span>
+                  ),
+                },
+                {
+                  key: "status",
+                  header: "Statut",
+                  render: (event) => (
+                    <Badge variant={getStatusVariant(event.status)}>
+                      {STATUS_LABELS[event.status] ?? STATUS_LABELS.draft}
+                    </Badge>
+                  ),
+                },
+                {
+                  key: "registered",
+                  header: "Inscrits",
+                  render: (event) => (
+                    <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+                      <Users className="h-3.5 w-3.5" />
+                      {event.registeredCount ?? 0}
+                    </span>
+                  ),
+                },
+                {
+                  key: "actions",
+                  header: "Actions",
+                  render: (event) => (
+                    <Link
+                      href={`/events/${event.id}`}
+                      className="text-primary hover:underline font-medium text-sm"
+                    >
+                      Voir
+                    </Link>
+                  ),
+                },
+              ] as DataTableColumn<(typeof events)[number] & Record<string, unknown>>[]
+            }
+          />
 
           {/* Pagination */}
           {totalPages > 1 && (

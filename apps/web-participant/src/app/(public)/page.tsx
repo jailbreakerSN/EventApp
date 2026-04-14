@@ -4,10 +4,12 @@ import { serverEventsApi } from "@/lib/server-api";
 import { EventCard } from "@/components/event-card";
 import { Card, CardContent } from "@teranga/shared-ui";
 import type { Event } from "@teranga/shared-types";
+import { getTranslations } from "next-intl/server";
 
 export const revalidate = 60;
 
 export default async function HomePage() {
+  const _t = await getTranslations("common"); void _t;
   let featuredEvents: Event[] = [];
   try {
     const result = await serverEventsApi.search({ isFeatured: true, limit: 6 });

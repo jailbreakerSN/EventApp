@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
-import { authenticate } from "@/middlewares/auth.middleware";
+import { authenticate, requireEmailVerified } from "@/middlewares/auth.middleware";
 import { validate } from "@/middlewares/validate.middleware";
 import { requirePermission } from "@/middlewares/permission.middleware";
 import { checkinService } from "@/services/checkin.service";
@@ -38,6 +38,7 @@ export const checkinRoutes: FastifyPluginAsync = async (fastify) => {
     {
       preHandler: [
         authenticate,
+        requireEmailVerified,
         validate({ params: ParamsWithEventId, body: BulkCheckinRequestSchema }),
         requirePermission("checkin:scan"),
       ],

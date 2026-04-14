@@ -14,7 +14,8 @@ import {
   Badge,
   Button,
   Select,
-  Skeleton,
+  DataTable,
+  type DataTableColumn,
   Breadcrumb,
   BreadcrumbList,
   BreadcrumbItem,
@@ -24,6 +25,7 @@ import {
 } from "@teranga/shared-ui";
 import { Building2, Search, ShieldCheck, Ban, CheckCircle, XCircle } from "lucide-react";
 import type { Organization } from "@teranga/shared-types";
+import { useTranslations } from "next-intl";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -70,6 +72,7 @@ const PLAN_OPTIONS = [
 // ─── Page ───────────────────────────────────────────────────────────────────
 
 export default function AdminOrganizationsPage() {
+  const tCommon = useTranslations("common"); void tCommon;
   const [search, setSearch] = useState("");
   const [planFilter, setPlanFilter] = useState("");
   const [verifiedFilter, setVerifiedFilter] = useState("");
@@ -204,155 +207,116 @@ export default function AdminOrganizationsPage() {
       {/* Data Table */}
       <Card>
         <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm" aria-label="Liste des organisations">
-              <thead>
-                <tr className="border-b border-border bg-muted/50">
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">Nom</th>
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">Plan</th>
-                  <th className="px-4 py-3 text-center font-medium text-muted-foreground">
-                    Verifie
-                  </th>
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">Statut</th>
-                  <th className="px-4 py-3 text-center font-medium text-muted-foreground">
-                    Membres
-                  </th>
-                  <th className="px-4 py-3 text-right font-medium text-muted-foreground">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {isLoading &&
-                  Array.from({ length: 5 }).map((_, i) => (
-                    <tr key={i} className="border-b border-border">
-                      <td className="px-4 py-3">
-                        <Skeleton className="h-4 w-40 mb-1" />
-                        <Skeleton className="h-3 w-28" />
-                      </td>
-                      <td className="px-4 py-3">
-                        <Skeleton className="h-5 w-16" />
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        <Skeleton className="mx-auto h-5 w-5" variant="circle" />
-                      </td>
-                      <td className="px-4 py-3">
-                        <Skeleton className="h-5 w-16" />
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        <Skeleton className="mx-auto h-4 w-8" />
-                      </td>
-                      <td className="px-4 py-3">
-                        <Skeleton className="h-8 w-32 ml-auto" />
-                      </td>
-                    </tr>
-                  ))}
-
-                {!isLoading && organizations.length === 0 && (
-                  <tr>
-                    <td colSpan={6} className="px-4 py-12 text-center text-muted-foreground">
-                      <Building2 className="mx-auto mb-2 h-8 w-8 opacity-40" />
-                      Aucune organisation trouvee
-                    </td>
-                  </tr>
-                )}
-
-                {!isLoading &&
-                  organizations.map((org) => (
-                    <tr
-                      key={org.id}
-                      className="border-b border-border hover:bg-muted/30 transition-colors"
-                    >
-                      {/* Name */}
-                      <td className="px-4 py-3">
-                        <p className="font-medium text-foreground">{org.name}</p>
-                        {org.city && (
-                          <p className="text-xs text-muted-foreground">
-                            {org.city}, {org.country}
-                          </p>
-                        )}
-                      </td>
-
-                      {/* Plan */}
-                      <td className="px-4 py-3">
-                        <Badge variant={PLAN_BADGE_VARIANTS[org.plan] ?? "neutral"}>
-                          {PLAN_LABELS[org.plan] ?? org.plan}
-                        </Badge>
-                      </td>
-
-                      {/* Verified */}
-                      <td className="px-4 py-3 text-center">
-                        {org.isVerified ? (
-                          <ShieldCheck
-                            className="mx-auto h-5 w-5 text-emerald-600 dark:text-emerald-400"
-                            aria-label="Verifie"
-                          />
-                        ) : (
-                          <XCircle
-                            className="mx-auto h-5 w-5 text-muted-foreground"
-                            aria-label="Non verifie"
-                          />
-                        )}
-                      </td>
-
-                      {/* Status */}
-                      <td className="px-4 py-3">
+          <DataTable<Organization & Record<string, unknown>>
+            aria-label="Liste des organisations"
+            emptyMessage="Aucune organisation trouvee"
+            responsiveCards
+            loading={isLoading}
+            data={organizations as (Organization & Record<string, unknown>)[]}
+            columns={
+              [
+                {
+                  key: "name",
+                  header: "Nom",
+                  primary: true,
+                  render: (org) => (
+                    <div>
+                      <p className="font-medium text-foreground">{org.name}</p>
+                      {org.city && (
+                        <p className="text-xs text-muted-foreground">
+                          {org.city}, {org.country}
+                        </p>
+                      )}
+                    </div>
+                  ),
+                },
+                {
+                  key: "plan",
+                  header: "Plan",
+                  render: (org) => (
+                    <Badge variant={PLAN_BADGE_VARIANTS[org.plan] ?? "neutral"}>
+                      {PLAN_LABELS[org.plan] ?? org.plan}
+                    </Badge>
+                  ),
+                },
+                {
+                  key: "isVerified",
+                  header: "Verifie",
+                  render: (org) =>
+                    org.isVerified ? (
+                      <ShieldCheck
+                        className="h-5 w-5 text-teranga-green"
+                        aria-label="Verifie"
+                      />
+                    ) : (
+                      <XCircle
+                        className="h-5 w-5 text-muted-foreground"
+                        aria-label="Non verifie"
+                      />
+                    ),
+                },
+                {
+                  key: "status",
+                  header: "Statut",
+                  render: (org) =>
+                    org.isActive ? (
+                      <Badge variant="success">Actif</Badge>
+                    ) : (
+                      <Badge variant="destructive">Suspendu</Badge>
+                    ),
+                },
+                {
+                  key: "memberCount",
+                  header: "Membres",
+                  hideOnMobile: true,
+                  render: (org) => (
+                    <span className="font-medium text-foreground">{org.memberIds.length}</span>
+                  ),
+                },
+                {
+                  key: "actions",
+                  header: "Actions",
+                  render: (org) => (
+                    <div className="flex items-center justify-end gap-2">
+                      {!org.isVerified && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleVerify(org)}
+                          disabled={verifyOrg.isPending}
+                          aria-label={`Verifier ${org.name}`}
+                        >
+                          <ShieldCheck className="h-3.5 w-3.5 mr-1" />
+                          Verifier
+                        </Button>
+                      )}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleToggleStatus(org)}
+                        disabled={updateOrgStatus.isPending}
+                        aria-label={
+                          org.isActive ? `Suspendre ${org.name}` : `Reactiver ${org.name}`
+                        }
+                      >
                         {org.isActive ? (
-                          <Badge variant="success">Actif</Badge>
+                          <>
+                            <Ban className="h-3.5 w-3.5 mr-1" />
+                            Suspendre
+                          </>
                         ) : (
-                          <Badge variant="destructive">Suspendu</Badge>
+                          <>
+                            <CheckCircle className="h-3.5 w-3.5 mr-1" />
+                            Reactiver
+                          </>
                         )}
-                      </td>
-
-                      {/* Members */}
-                      <td className="px-4 py-3 text-center font-medium text-foreground">
-                        {org.memberIds.length}
-                      </td>
-
-                      {/* Actions */}
-                      <td className="px-4 py-3">
-                        <div className="flex items-center justify-end gap-2">
-                          {!org.isVerified && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => handleVerify(org)}
-                              disabled={verifyOrg.isPending}
-                              aria-label={`Verifier ${org.name}`}
-                            >
-                              <ShieldCheck className="h-3.5 w-3.5 mr-1" />
-                              Verifier
-                            </Button>
-                          )}
-
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleToggleStatus(org)}
-                            disabled={updateOrgStatus.isPending}
-                            aria-label={
-                              org.isActive ? `Suspendre ${org.name}` : `Reactiver ${org.name}`
-                            }
-                          >
-                            {org.isActive ? (
-                              <>
-                                <Ban className="h-3.5 w-3.5 mr-1" />
-                                Suspendre
-                              </>
-                            ) : (
-                              <>
-                                <CheckCircle className="h-3.5 w-3.5 mr-1" />
-                                Reactiver
-                              </>
-                            )}
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-              </tbody>
-            </table>
-          </div>
+                      </Button>
+                    </div>
+                  ),
+                },
+              ] as DataTableColumn<Organization & Record<string, unknown>>[]
+            }
+          />
         </CardContent>
       </Card>
 

@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
-import { authenticate } from "@/middlewares/auth.middleware";
+import { authenticate, requireEmailVerified } from "@/middlewares/auth.middleware";
 import { validate } from "@/middlewares/validate.middleware";
 import { requirePermission } from "@/middlewares/permission.middleware";
 import { subscriptionService } from "@/services/subscription.service";
@@ -53,6 +53,7 @@ export const subscriptionRoutes: FastifyPluginAsync = async (app) => {
     {
       preHandler: [
         authenticate,
+        requireEmailVerified,
         requirePermission("organization:manage_billing"),
         validate({ params: ParamsOrgId, body: UpgradePlanSchema }),
       ],
@@ -76,6 +77,7 @@ export const subscriptionRoutes: FastifyPluginAsync = async (app) => {
     {
       preHandler: [
         authenticate,
+        requireEmailVerified,
         requirePermission("organization:manage_billing"),
         validate({ params: ParamsOrgId, body: DowngradePlanSchema }),
       ],
@@ -92,6 +94,7 @@ export const subscriptionRoutes: FastifyPluginAsync = async (app) => {
     {
       preHandler: [
         authenticate,
+        requireEmailVerified,
         requirePermission("organization:manage_billing"),
         validate({ params: ParamsOrgId }),
       ],

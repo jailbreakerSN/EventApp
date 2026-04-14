@@ -4,7 +4,16 @@ import { useState } from "react";
 import { ArrowDownRight, TrendingUp, Clock } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useOrgPayouts } from "@/hooks/use-payouts";
-import { Button, Card, CardContent, Spinner, Badge, EmptyState } from "@teranga/shared-ui";
+import {
+  Button,
+  Card,
+  CardContent,
+  Spinner,
+  Badge,
+  EmptyState,
+  DataTable,
+  type DataTableColumn,
+} from "@teranga/shared-ui";
 
 const formatCurrency = (amount: number) =>
   new Intl.NumberFormat("fr-SN", { style: "currency", currency: "XOF" }).format(amount);
@@ -92,46 +101,70 @@ export default function FinancePage() {
               <Spinner />
             </div>
           ) : payouts.length === 0 ? (
-            <EmptyState title="Aucun versement" description="Aucun versement pour le moment" />
+            <EmptyState
+              icon={ArrowDownRight}
+              title="Aucun versement pour le moment"
+              description="Vos revenus s'afficheront ici après la clôture du premier événement payant."
+            />
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b text-left text-muted-foreground">
-                    <th className="pb-2 font-medium">Periode</th>
-                    <th className="pb-2 font-medium">Brut</th>
-                    <th className="pb-2 font-medium">Frais</th>
-                    <th className="pb-2 font-medium">Net</th>
-                    <th className="pb-2 font-medium">Statut</th>
-                    <th className="pb-2 font-medium">Date</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {payouts.map((payout) => {
-                    const status = PAYOUT_STATUS[payout.status] ?? PAYOUT_STATUS.pending;
-                    return (
-                      <tr key={payout.id} className="border-b last:border-0">
-                        <td className="py-3">
-                          {new Date(payout.periodFrom).toLocaleDateString("fr-FR")} —{" "}
-                          {new Date(payout.periodTo).toLocaleDateString("fr-FR")}
-                        </td>
-                        <td className="py-3">{formatCurrency(payout.totalAmount)}</td>
-                        <td className="py-3 text-muted-foreground">
-                          {formatCurrency(payout.platformFee)}
-                        </td>
-                        <td className="py-3 font-medium">{formatCurrency(payout.netAmount)}</td>
-                        <td className="py-3">
-                          <Badge variant={status.variant}>{status.label}</Badge>
-                        </td>
-                        <td className="py-3 text-muted-foreground">
-                          {new Date(payout.createdAt).toLocaleDateString("fr-FR")}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+            <DataTable<(typeof payouts)[number] & Record<string, unknown>>
+              aria-label="Historique des versements"
+              responsiveCards
+              data={payouts as ((typeof payouts)[number] & Record<string, unknown>)[]}
+              columns={
+                [
+                  {
+                    key: "period",
+                    header: "Periode",
+                    primary: true,
+                    render: (p) => (
+                      <span>
+                        {new Date(p.periodFrom).toLocaleDateString("fr-FR")} —{" "}
+                        {new Date(p.periodTo).toLocaleDateString("fr-FR")}
+                      </span>
+                    ),
+                  },
+                  {
+                    key: "totalAmount",
+                    header: "Brut",
+                    render: (p) => formatCurrency(p.totalAmount),
+                  },
+                  {
+                    key: "platformFee",
+                    header: "Frais",
+                    hideOnMobile: true,
+                    render: (p) => (
+                      <span className="text-muted-foreground">{formatCurrency(p.platformFee)}</span>
+                    ),
+                  },
+                  {
+                    key: "netAmount",
+                    header: "Net",
+                    render: (p) => (
+                      <span className="font-medium">{formatCurrency(p.netAmount)}</span>
+                    ),
+                  },
+                  {
+                    key: "status",
+                    header: "Statut",
+                    render: (p) => {
+                      const status = PAYOUT_STATUS[p.status] ?? PAYOUT_STATUS.pending;
+                      return <Badge variant={status.variant}>{status.label}</Badge>;
+                    },
+                  },
+                  {
+                    key: "createdAt",
+                    header: "Date",
+                    hideOnMobile: true,
+                    render: (p) => (
+                      <span className="text-muted-foreground">
+                        {new Date(p.createdAt).toLocaleDateString("fr-FR")}
+                      </span>
+                    ),
+                  },
+                ] as DataTableColumn<(typeof payouts)[number] & Record<string, unknown>>[]
+              }
+            />
           )}
 
           {meta && meta.totalPages > 1 && (

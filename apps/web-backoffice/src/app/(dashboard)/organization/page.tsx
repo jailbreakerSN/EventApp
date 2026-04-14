@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
+import { useTranslations } from "next-intl";
 import {
   useOrganization,
   useUpdateOrganization,
@@ -67,6 +68,7 @@ const INVITE_STATUS_LABELS: Record<string, string> = {
 };
 
 export default function OrganizationPage() {
+  const t = useTranslations("nav");
   const { data: orgData, isLoading } = useOrganization();
   const { data: invitesData } = useOrgInvites();
   const updateOrg = useUpdateOrganization();
@@ -174,7 +176,7 @@ export default function OrganizationPage() {
 
   return (
     <div className="max-w-4xl">
-      <h1 className="text-2xl font-bold text-foreground mb-6">Organisation</h1>
+      <h1 className="text-2xl font-bold text-foreground mb-6">{t("organization")}</h1>
 
       {/* Plan card */}
       <PlanCard plan={org.plan} memberCount={org.memberIds?.length ?? 0} />

@@ -8,7 +8,6 @@ import {
   Building,
   Edit3,
   Save,
-  Loader2,
   Download,
   Users,
   ExternalLink,
@@ -23,6 +22,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import type { SponsorProfile } from "@teranga/shared-types";
+import { Skeleton, DataTable, type DataTableColumn } from "@teranga/shared-ui";
 
 interface Lead {
   id: string;
@@ -124,12 +124,27 @@ export default function SponsorPortalPage() {
   if (loading) {
     return (
       <div
-        className="flex items-center justify-center py-20 text-muted-foreground"
+        className="mx-auto max-w-3xl px-4 py-8 space-y-6"
         role="status"
         aria-label="Chargement du portail sponsor"
       >
-        <Loader2 className="h-6 w-6 animate-spin mr-2" aria-hidden="true" />
-        <span>Chargement...</span>
+        <div className="space-y-3">
+          <Skeleton className="h-7 w-1/2" />
+          <Skeleton className="h-4 w-1/3" />
+        </div>
+        <div className="bg-card rounded-xl border border-border p-6 space-y-3">
+          <Skeleton className="h-4 w-1/4" />
+          <Skeleton className="h-3 w-full" />
+          <Skeleton className="h-3 w-5/6" />
+        </div>
+        <div className="grid gap-4 sm:grid-cols-3">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="bg-card rounded-xl border border-border p-4 space-y-2">
+              <Skeleton className="h-3 w-1/2" />
+              <Skeleton className="h-6 w-1/3" />
+            </div>
+          ))}
+        </div>
       </div>
     );
   }
@@ -397,63 +412,77 @@ export default function SponsorPortalPage() {
               </p>
             </div>
           ) : (
-            <div className="overflow-x-auto rounded-lg border bg-card shadow-sm">
-              <table className="w-full text-sm">
-                <thead className="bg-muted/50">
-                  <tr>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Nom</th>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">
-                      Contact
-                    </th>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Tags</th>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Notes</th>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">
-                      Scanné le
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {leads.map((lead) => (
-                    <tr key={lead.id}>
-                      <td className="px-4 py-3 font-medium">{lead.name}</td>
-                      <td className="px-4 py-3">
-                        <div className="flex flex-col gap-0.5">
-                          <span className="flex items-center gap-1 text-xs">
-                            <Mail className="h-3 w-3" /> {lead.email}
+            <DataTable<Lead & Record<string, unknown>>
+              aria-label="Leads collectés"
+              emptyMessage="Aucun lead pour le moment"
+              responsiveCards
+              data={leads as (Lead & Record<string, unknown>)[]}
+              columns={
+                [
+                  {
+                    key: "name",
+                    header: "Nom",
+                    primary: true,
+                    render: (lead) => <span className="font-medium">{lead.name}</span>,
+                  },
+                  {
+                    key: "contact",
+                    header: "Contact",
+                    render: (lead) => (
+                      <div className="flex flex-col gap-0.5">
+                        <span className="flex items-center gap-1 text-xs">
+                          <Mail className="h-3 w-3" /> {lead.email}
+                        </span>
+                        {lead.phone && (
+                          <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                            <Phone className="h-3 w-3" /> {lead.phone}
                           </span>
-                          {lead.phone && (
-                            <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                              <Phone className="h-3 w-3" /> {lead.phone}
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex flex-wrap gap-1">
-                          {lead.tags.map((tag) => (
-                            <span
-                              key={tag}
-                              className="inline-flex items-center gap-0.5 rounded-full bg-muted px-2 py-0.5 text-xs"
-                            >
-                              <Tag className="h-2.5 w-2.5" /> {tag}
-                            </span>
-                          ))}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-xs text-muted-foreground max-w-[200px] truncate">
+                        )}
+                      </div>
+                    ),
+                  },
+                  {
+                    key: "tags",
+                    header: "Tags",
+                    hideOnMobile: true,
+                    render: (lead) => (
+                      <div className="flex flex-wrap gap-1">
+                        {lead.tags.map((tag) => (
+                          <span
+                            key={tag}
+                            className="inline-flex items-center gap-0.5 rounded-full bg-muted px-2 py-0.5 text-xs"
+                          >
+                            <Tag className="h-2.5 w-2.5" /> {tag}
+                          </span>
+                        ))}
+                      </div>
+                    ),
+                  },
+                  {
+                    key: "notes",
+                    header: "Notes",
+                    hideOnMobile: true,
+                    render: (lead) => (
+                      <span className="text-xs text-muted-foreground max-w-[200px] truncate inline-block">
                         {lead.notes ?? "—"}
-                      </td>
-                      <td className="px-4 py-3 text-xs text-muted-foreground whitespace-nowrap">
+                      </span>
+                    ),
+                  },
+                  {
+                    key: "scannedAt",
+                    header: "Scanné le",
+                    render: (lead) => (
+                      <span className="text-xs text-muted-foreground whitespace-nowrap">
                         {new Date(lead.scannedAt).toLocaleString("fr-FR", {
                           dateStyle: "short",
                           timeStyle: "short",
                         })}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                      </span>
+                    ),
+                  },
+                ] as DataTableColumn<Lead & Record<string, unknown>>[]
+              }
+            />
           )}
         </section>
       )}

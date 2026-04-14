@@ -19,7 +19,15 @@
     "yes": "Yes",
     "no": "No",
     "all": "All",
-    "none": "None"
+    "none": "None",
+    "view": "View",
+    "viewAll": "View all",
+    "actions": "Actions",
+    "date": "Date",
+    "status": "Status",
+    "total": "Total",
+    "page": "Page",
+    "of": "of"
   },
   "auth": {
     "login": "Sign in",
@@ -45,17 +53,88 @@
     "settings": "Settings",
     "notifications": "Notifications"
   },
+  "dashboard": {
+    "title": "Dashboard",
+    "stats": {
+      "totalEvents": "Total events",
+      "published": "Published",
+      "recentRegistrations": "Recent registrations",
+      "checkins": "Check-ins",
+      "revenue": "Revenue",
+      "vsLastMonth": "vs last month",
+      "paymentsComingSoon": "Payments coming soon"
+    },
+    "recent": {
+      "title": "Recent events",
+      "empty": "No events yet.",
+      "createFirst": "Create your first event",
+      "event": "Event",
+      "attendees": "{count} registered"
+    }
+  },
   "events": {
     "title": "Events",
     "create": "Create event",
     "noEvents": "No events yet. Create your first event.",
     "noFilterResults": "No events match your filters.",
     "allCategories": "All categories",
+    "table": {
+      "event": "Event",
+      "location": "Location",
+      "category": "Category",
+      "registered": "Registered"
+    },
+    "empty": {
+      "filtered": "No events match your filters. Try broadening your search.",
+      "unfiltered": {
+        "title": "No events yet",
+        "description": "Create your first event to start hosting attendees."
+      }
+    },
     "status": {
       "draft": "Draft",
       "published": "Published",
       "cancelled": "Cancelled",
       "archived": "Archived"
+    }
+  },
+  "finance": {
+    "title": "Finance",
+    "payoutsHistory": "Payout history",
+    "empty": {
+      "title": "No payouts yet",
+      "description": "Your revenue will appear here after the first paid event closes."
+    },
+    "table": {
+      "period": "Period",
+      "gross": "Gross",
+      "fees": "Fees",
+      "net": "Net",
+      "status": "Status",
+      "date": "Date"
+    },
+    "status": {
+      "pending": "Pending",
+      "paid": "Paid",
+      "failed": "Failed"
+    }
+  },
+  "analytics": {
+    "title": "Analytics",
+    "topEvents": "Top events",
+    "stats": {
+      "totalEvents": "Events",
+      "registrations": "Registrations",
+      "checkins": "Check-ins",
+      "checkinRate": "Check-in rate",
+      "noRegistrationsInPeriod": "No registrations",
+      "noRegistrationsInPeriodHint": "No registrations in this period"
+    },
+    "table": {
+      "event": "Event",
+      "registered": "Registered",
+      "checkins": "Check-ins",
+      "rate": "Rate"
     }
   },
   "registrations": {

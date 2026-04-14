@@ -3,6 +3,7 @@
 import { useAuth } from "@/hooks/use-auth";
 import { useTheme } from "next-themes";
 import { ThemeToggle } from "@teranga/shared-ui";
+import { LanguageSwitcher } from "@/components/language-switcher";
 import { Bell, Keyboard, LogOut, Menu, Search } from "lucide-react";
 import { useSidebar } from "./sidebar-context";
 
@@ -62,6 +63,7 @@ export function TopBar({ onShowShortcuts }: TopBarProps) {
 
       {/* Right: actions */}
       <div className="flex items-center gap-3">
+        <LanguageSwitcher />
         <ThemeToggle theme={theme} setTheme={setTheme} />
 
         {/* Keyboard shortcuts hint */}

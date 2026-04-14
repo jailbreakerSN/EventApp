@@ -5,7 +5,19 @@
     "retry": "Retry",
     "back": "Back",
     "close": "Close",
-    "search": "Search"
+    "search": "Search",
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "confirm": "Confirm",
+    "yes": "Yes",
+    "no": "No",
+    "viewDetails": "View details",
+    "date": "Date",
+    "location": "Location",
+    "price": "Price",
+    "status": "Status"
   },
   "auth": {
     "login": "Sign in",
@@ -14,27 +26,80 @@
     "email": "Email address",
     "password": "Password",
     "forgotPassword": "Forgot password?",
+    "resetPassword": "Reset password",
     "sessionExpiring": "Your session will expire in 5 minutes due to inactivity.",
-    "sessionExpired": "Session expired. Please sign in again."
+    "sessionExpired": "Session expired. Please sign in again.",
+    "verifyEmail": "Verify your email",
+    "verificationSent": "A verification email has been sent.",
+    "resendVerification": "Resend email",
+    "alreadyAccount": "Already have an account?",
+    "noAccount": "No account yet?",
+    "createAccount": "Create an account",
+    "continueWithGoogle": "Continue with Google"
+  },
+  "nav": {
+    "home": "Home",
+    "events": "Events",
+    "myEvents": "My events",
+    "profile": "Profile",
+    "settings": "Settings",
+    "notifications": "Notifications"
   },
   "events": {
     "title": "Events",
     "discover": "Discover events",
-    "noEvents": "No events available at the moment.",
+    "noEvents": "No events available yet.",
     "register": "Register",
     "registered": "Registered",
     "myEvents": "My events",
-    "noMyEvents": "You are not registered for any events."
+    "noMyEvents": "You're not registered to any event.",
+    "noResults": "No events found",
+    "noResultsHint": "No events match your criteria. Try broadening your search.",
+    "clearFilters": "Clear filters",
+    "filters": {
+      "today": "Today",
+      "thisWeek": "This week",
+      "thisWeekend": "This weekend",
+      "thisMonth": "This month",
+      "free": "Free",
+      "paid": "Paid"
+    },
+    "detail": {
+      "about": "About",
+      "speakers": "Speakers",
+      "schedule": "Schedule",
+      "sessions": "Sessions",
+      "tickets": "Tickets",
+      "registerFree": "Register for free",
+      "registerPaid": "Register — from {price}",
+      "approvalRequired": "Registration subject to organizer approval.",
+      "soldOut": "Sold out",
+      "seatsLeft": "{count} seats left",
+      "lastSeats": "Only {count} seats left!",
+      "feedCommunity": "Community feed",
+      "feedHint": "Chat with attendees",
+      "onlineEvent": "Online event",
+      "onlineHint": "The access link will be shared after registration."
+    }
   },
   "badge": {
     "title": "My badge",
     "download": "Download",
-    "scanToCheckin": "Show this QR code at the event entrance."
+    "scanToCheckin": "Show this QR code at the event entrance.",
+    "addToWallet": "Add to wallet"
   },
   "feed": {
     "title": "Feed",
     "writePost": "Write a post...",
-    "noPostsYet": "No posts yet."
+    "noPostsYet": "No posts yet.",
+    "beFirstToShare": "Be the first to share a post with attendees.",
+    "announce": "Announcement",
+    "pinned": "Pinned",
+    "like": "Like",
+    "comment": "Comment",
+    "share": "Share",
+    "publish": "Publish",
+    "publishing": "Publishing..."
   },
   "notifications": {
     "title": "Notifications",
@@ -45,5 +110,24 @@
     "title": "Messages",
     "noConversations": "No conversations.",
     "writeMessage": "Write a message..."
+  },
+  "profile": {
+    "title": "My profile",
+    "displayName": "Full name",
+    "bio": "Bio",
+    "company": "Organization",
+    "jobTitle": "Job title",
+    "saveProfile": "Save profile",
+    "profileUpdated": "Profile updated"
+  },
+  "newsletter": {
+    "heading": "Stay informed about Senegal events",
+    "description": "Get the best events near you delivered weekly.",
+    "placeholder": "your@email.com",
+    "submit": "Subscribe",
+    "submitting": "Subscribing…",
+    "success": "Thanks! You're subscribed.",
+    "error": "Something went wrong. Please try again.",
+    "privacyNote": "By subscribing, you accept our privacy policy."
   }
 }

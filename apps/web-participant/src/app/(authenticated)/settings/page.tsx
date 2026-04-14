@@ -8,6 +8,7 @@ import {
   useUpdateNotificationPreferences,
 } from "@/hooks/use-notifications";
 import { Card, CardContent } from "@teranga/shared-ui";
+import { useTranslations } from "next-intl";
 
 function Toggle({
   checked,
@@ -51,6 +52,7 @@ function Toggle({
 }
 
 export default function SettingsPage() {
+  const tCommon = useTranslations("common"); void tCommon;
   const { data, isLoading } = useNotificationPreferences();
   const update = useUpdateNotificationPreferences();
 

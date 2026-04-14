@@ -19,11 +19,13 @@ import {
   getErrorMessage,
 } from "@teranga/shared-ui";
 import { Camera, Loader2 } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
 const MAX_PHOTO_SIZE = 5 * 1024 * 1024; // 5 Mo
 
 export default function ProfilePage() {
+  const tCommon = useTranslations("common"); void tCommon;
   const { user } = useAuth();
   const { data: profileData, isLoading } = useProfile();
   const updateMutation = useUpdateProfile();

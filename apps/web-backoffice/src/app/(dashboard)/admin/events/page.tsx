@@ -7,7 +7,8 @@ import {
   CardContent,
   Badge,
   Select,
-  Skeleton,
+  DataTable,
+  type DataTableColumn,
   Breadcrumb,
   BreadcrumbList,
   BreadcrumbItem,
@@ -15,8 +16,9 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@teranga/shared-ui";
-import { Calendar, ChevronLeft, ChevronRight, Eye, Users, Building } from "lucide-react";
+import { ChevronLeft, ChevronRight, Eye, Users, Building } from "lucide-react";
 import { useAdminEvents, useAdminOrganizations } from "@/hooks/use-admin";
+import { useTranslations } from "next-intl";
 
 const STATUS_OPTIONS = [
   { value: "", label: "Tous les statuts" },
@@ -43,6 +45,7 @@ function formatDate(timestamp: string) {
 }
 
 export default function AdminEventsPage() {
+  const tCommon = useTranslations("common"); void tCommon;
   const [page, setPage] = useState(1);
   const [status, setStatus] = useState("");
 
@@ -112,88 +115,88 @@ export default function AdminEventsPage() {
       {/* Table */}
       <Card>
         <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border bg-muted/50">
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">Titre</th>
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground hidden md:table-cell">Organisation</th>
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">Statut</th>
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground hidden lg:table-cell">Date</th>
-                  <th className="px-4 py-3 text-right font-medium text-muted-foreground hidden sm:table-cell">Inscrits</th>
-                  <th className="px-4 py-3 text-right font-medium text-muted-foreground">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {isLoading ? (
-                  Array.from({ length: 8 }).map((_, i) => (
-                    <tr key={i}>
-                      <td className="px-4 py-3"><Skeleton className="h-4 w-48" /></td>
-                      <td className="px-4 py-3 hidden md:table-cell"><Skeleton className="h-4 w-32" /></td>
-                      <td className="px-4 py-3"><Skeleton className="h-5 w-20 rounded-full" /></td>
-                      <td className="px-4 py-3 hidden lg:table-cell"><Skeleton className="h-4 w-36" /></td>
-                      <td className="px-4 py-3 hidden sm:table-cell"><Skeleton className="h-4 w-12 ml-auto" /></td>
-                      <td className="px-4 py-3"><Skeleton className="h-4 w-8 ml-auto" /></td>
-                    </tr>
-                  ))
-                ) : events.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="px-4 py-12 text-center text-muted-foreground">
-                      <Calendar className="mx-auto mb-2 h-8 w-8 opacity-40" />
-                      Aucun événement trouvé
-                    </td>
-                  </tr>
-                ) : (
-                  events.map((event: Record<string, unknown>) => {
-                    const statusInfo = STATUS_STYLES[(event.status as string) ?? "draft"] ?? STATUS_STYLES.draft;
-                    return (
-                      <tr key={event.id as string} className="hover:bg-muted/30 transition-colors">
-                        <td className="px-4 py-3 font-medium text-foreground">
-                          {event.title as string}
-                        </td>
-                        <td className="px-4 py-3 text-muted-foreground hidden md:table-cell">
-                          {(() => {
-                            const orgId = event.organizationId as string;
-                            const orgName = orgNameMap.get(orgId);
-                            return orgName ? (
-                              <span className="inline-flex items-center gap-1 text-sm">
-                                <Building className="h-3.5 w-3.5 shrink-0" />
-                                <span className="truncate max-w-[200px]">{orgName}</span>
-                              </span>
-                            ) : (
-                              <span className="font-mono text-xs">{orgId?.slice(0, 12)}...</span>
-                            );
-                          })()}
-                        </td>
-                        <td className="px-4 py-3">
-                          <Badge variant={statusInfo.variant}>{statusInfo.label}</Badge>
-                        </td>
-                        <td className="px-4 py-3 text-muted-foreground hidden lg:table-cell">
-                          {event.startDate ? formatDate(event.startDate as string) : "-"}
-                        </td>
-                        <td className="px-4 py-3 text-right hidden sm:table-cell">
-                          <span className="inline-flex items-center gap-1 text-muted-foreground">
-                            <Users className="h-3.5 w-3.5" />
-                            {(event.registrationCount as number) ?? 0}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          <Link
-                            href={`/events/${event.id as string}`}
-                            className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
-                            aria-label={`Voir ${event.title as string}`}
-                          >
-                            <Eye className="h-4 w-4" />
-                            <span className="hidden sm:inline">Voir</span>
-                          </Link>
-                        </td>
-                      </tr>
+          <DataTable<Record<string, unknown>>
+            aria-label="Liste des événements"
+            emptyMessage="Aucun événement trouvé"
+            responsiveCards
+            loading={isLoading}
+            data={events as Record<string, unknown>[]}
+            columns={
+              [
+                {
+                  key: "title",
+                  header: "Titre",
+                  primary: true,
+                  render: (event) => (
+                    <span className="font-medium text-foreground">{event.title as string}</span>
+                  ),
+                },
+                {
+                  key: "organization",
+                  header: "Organisation",
+                  hideOnMobile: true,
+                  render: (event) => {
+                    const orgId = event.organizationId as string;
+                    const orgName = orgNameMap.get(orgId);
+                    return orgName ? (
+                      <span className="inline-flex items-center gap-1 text-sm text-muted-foreground">
+                        <Building className="h-3.5 w-3.5 shrink-0" />
+                        <span className="truncate max-w-[200px]">{orgName}</span>
+                      </span>
+                    ) : (
+                      <span className="font-mono text-xs text-muted-foreground">
+                        {orgId?.slice(0, 12)}...
+                      </span>
                     );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
+                  },
+                },
+                {
+                  key: "status",
+                  header: "Statut",
+                  render: (event) => {
+                    const statusInfo =
+                      STATUS_STYLES[(event.status as string) ?? "draft"] ?? STATUS_STYLES.draft;
+                    return <Badge variant={statusInfo.variant}>{statusInfo.label}</Badge>;
+                  },
+                },
+                {
+                  key: "startDate",
+                  header: "Date",
+                  hideOnMobile: true,
+                  render: (event) => (
+                    <span className="text-muted-foreground">
+                      {event.startDate ? formatDate(event.startDate as string) : "-"}
+                    </span>
+                  ),
+                },
+                {
+                  key: "registrationCount",
+                  header: "Inscrits",
+                  hideOnMobile: true,
+                  render: (event) => (
+                    <span className="inline-flex items-center gap-1 text-muted-foreground">
+                      <Users className="h-3.5 w-3.5" />
+                      {(event.registrationCount as number) ?? 0}
+                    </span>
+                  ),
+                },
+                {
+                  key: "actions",
+                  header: "Actions",
+                  render: (event) => (
+                    <Link
+                      href={`/events/${event.id as string}`}
+                      className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
+                      aria-label={`Voir ${event.title as string}`}
+                    >
+                      <Eye className="h-4 w-4" />
+                      <span className="hidden sm:inline">Voir</span>
+                    </Link>
+                  ),
+                },
+              ] as DataTableColumn<Record<string, unknown>>[]
+            }
+          />
         </CardContent>
       </Card>
 

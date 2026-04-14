@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
-import { authenticate } from "@/middlewares/auth.middleware";
+import { authenticate, requireEmailVerified } from "@/middlewares/auth.middleware";
 import { validate } from "@/middlewares/validate.middleware";
 import { requirePermission } from "@/middlewares/permission.middleware";
 import { badgeService } from "@/services/badge.service";
@@ -16,6 +16,7 @@ export const badgeRoutes: FastifyPluginAsync = async (fastify) => {
     {
       preHandler: [
         authenticate,
+        requireEmailVerified,
         requirePermission("badge:generate"),
         validate({ body: BadgeGenerateRequestSchema }),
       ],
@@ -42,6 +43,7 @@ export const badgeRoutes: FastifyPluginAsync = async (fastify) => {
     {
       preHandler: [
         authenticate,
+        requireEmailVerified,
         requirePermission("badge:bulk_generate"),
         validate({ body: BulkBadgeGenerateRequestSchema }),
       ],

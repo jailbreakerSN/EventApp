@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
-import { authenticate } from "@/middlewares/auth.middleware";
+import { authenticate, requireEmailVerified } from "@/middlewares/auth.middleware";
 import { validate } from "@/middlewares/validate.middleware";
 import { requirePermission } from "@/middlewares/permission.middleware";
 import { badgeTemplateService } from "@/services/badge-template.service";
@@ -23,6 +23,7 @@ export const badgeTemplateRoutes: FastifyPluginAsync = async (fastify) => {
     {
       preHandler: [
         authenticate,
+        requireEmailVerified,
         requirePermission("badge:generate"),
         validate({ body: CreateBadgeTemplateSchema }),
       ],
@@ -90,6 +91,7 @@ export const badgeTemplateRoutes: FastifyPluginAsync = async (fastify) => {
     {
       preHandler: [
         authenticate,
+        requireEmailVerified,
         requirePermission("badge:generate"),
         validate({ params: ParamsWithTemplateId, body: UpdateBadgeTemplateSchema }),
       ],
@@ -116,6 +118,7 @@ export const badgeTemplateRoutes: FastifyPluginAsync = async (fastify) => {
     {
       preHandler: [
         authenticate,
+        requireEmailVerified,
         requirePermission("badge:generate"),
         validate({ params: ParamsWithTemplateId }),
       ],

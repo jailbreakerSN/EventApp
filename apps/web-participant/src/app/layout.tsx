@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
+import { NextIntlClientProvider } from "next-intl";
+import { getLocale, getMessages } from "next-intl/server";
 import { Providers } from "./providers";
 import { Toaster } from "@teranga/shared-ui";
 import { OfflineIndicator } from "@/components/offline-indicator";
@@ -37,14 +39,21 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  // i18n: the cookie-driven locale comes from src/i18n/request.ts; the
+  // provider hydrates messages for all client components below.
+  const locale = await getLocale();
+  const messages = await getMessages();
+
   return (
-    <html lang="fr" suppressHydrationWarning>
+    <html lang={locale} suppressHydrationWarning>
       <body className={inter.className}>
-        <OfflineIndicator />
-        <Providers>{children}</Providers>
-        <Toaster />
-        <SwRegister />
+        <NextIntlClientProvider locale={locale} messages={messages}>
+          <OfflineIndicator />
+          <Providers>{children}</Providers>
+          <Toaster />
+          <SwRegister />
+        </NextIntlClientProvider>
       </body>
     </html>
   );

@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
-import { authenticate, optionalAuth } from "@/middlewares/auth.middleware";
+import { authenticate, requireEmailVerified, optionalAuth } from "@/middlewares/auth.middleware";
 import { validate } from "@/middlewares/validate.middleware";
 import { requirePermission } from "@/middlewares/permission.middleware";
 import { eventService } from "@/services/event.service";
@@ -102,6 +102,7 @@ export const eventRoutes: FastifyPluginAsync = async (fastify) => {
     {
       preHandler: [
         authenticate,
+        requireEmailVerified,
         requirePermission("event:create"),
         validate({ body: CreateEventSchema }),
       ],
@@ -119,6 +120,7 @@ export const eventRoutes: FastifyPluginAsync = async (fastify) => {
     {
       preHandler: [
         authenticate,
+        requireEmailVerified,
         requirePermission("event:update"),
         validate({ params: ParamsWithEventId, body: UpdateEventSchema }),
       ],
@@ -138,6 +140,7 @@ export const eventRoutes: FastifyPluginAsync = async (fastify) => {
     {
       preHandler: [
         authenticate,
+        requireEmailVerified,
         requirePermission("event:publish"),
         validate({ params: ParamsWithEventId }),
       ],
@@ -156,6 +159,7 @@ export const eventRoutes: FastifyPluginAsync = async (fastify) => {
     {
       preHandler: [
         authenticate,
+        requireEmailVerified,
         requirePermission("event:publish"),
         validate({ params: ParamsWithEventId }),
       ],
@@ -178,6 +182,7 @@ export const eventRoutes: FastifyPluginAsync = async (fastify) => {
     {
       preHandler: [
         authenticate,
+        requireEmailVerified,
         requirePermission("event:update"),
         validate({ params: ParamsWithEventId }),
       ],
@@ -196,6 +201,7 @@ export const eventRoutes: FastifyPluginAsync = async (fastify) => {
     {
       preHandler: [
         authenticate,
+        requireEmailVerified,
         requirePermission("event:delete"),
         validate({ params: ParamsWithEventId }),
       ],
@@ -214,6 +220,7 @@ export const eventRoutes: FastifyPluginAsync = async (fastify) => {
     {
       preHandler: [
         authenticate,
+        requireEmailVerified,
         requirePermission("event:update"),
         validate({ params: ParamsWithEventId, body: CreateTicketTypeSchema }),
       ],
@@ -240,6 +247,7 @@ export const eventRoutes: FastifyPluginAsync = async (fastify) => {
     {
       preHandler: [
         authenticate,
+        requireEmailVerified,
         requirePermission("event:update"),
         validate({ params: TicketTypeParams, body: UpdateTicketTypeSchema }),
       ],
@@ -263,6 +271,7 @@ export const eventRoutes: FastifyPluginAsync = async (fastify) => {
     {
       preHandler: [
         authenticate,
+        requireEmailVerified,
         requirePermission("event:update"),
         validate({ params: TicketTypeParams }),
       ],
@@ -281,6 +290,7 @@ export const eventRoutes: FastifyPluginAsync = async (fastify) => {
     {
       preHandler: [
         authenticate,
+        requireEmailVerified,
         requirePermission("event:update"),
         validate({ params: ParamsWithEventId, body: CreateAccessZoneSchema }),
       ],
@@ -303,6 +313,7 @@ export const eventRoutes: FastifyPluginAsync = async (fastify) => {
     {
       preHandler: [
         authenticate,
+        requireEmailVerified,
         requirePermission("event:update"),
         validate({ params: AccessZoneParams, body: UpdateAccessZoneSchema }),
       ],
@@ -330,6 +341,7 @@ export const eventRoutes: FastifyPluginAsync = async (fastify) => {
     {
       preHandler: [
         authenticate,
+        requireEmailVerified,
         requirePermission("event:update"),
         validate({ params: AccessZoneParams }),
       ],
@@ -352,6 +364,7 @@ export const eventRoutes: FastifyPluginAsync = async (fastify) => {
     {
       preHandler: [
         authenticate,
+        requireEmailVerified,
         requirePermission("event:create"),
         validate({ params: ParamsWithEventId, body: CloneEventSchema }),
       ],
@@ -441,6 +454,7 @@ export const eventRoutes: FastifyPluginAsync = async (fastify) => {
     {
       preHandler: [
         authenticate,
+        requireEmailVerified,
         requirePermission("event:update"),
         validate({ params: ParamsWithEventId, body: UploadUrlRequestSchema }),
       ],
