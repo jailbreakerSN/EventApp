@@ -724,4 +724,48 @@ export function registerAuditListeners(): void {
       details: { isActive: payload.isActive },
     });
   });
+
+  // ── Plan Catalog Events ────────────────────────────────────────────────
+
+  eventBus.on("plan.created", async (payload) => {
+    await auditService.log({
+      action: "plan.created",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "plan",
+      resourceId: payload.planId,
+      eventId: null,
+      organizationId: null,
+      details: { key: payload.key },
+    });
+  });
+
+  eventBus.on("plan.updated", async (payload) => {
+    await auditService.log({
+      action: "plan.updated",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "plan",
+      resourceId: payload.planId,
+      eventId: null,
+      organizationId: null,
+      details: { key: payload.key, changes: payload.changes },
+    });
+  });
+
+  eventBus.on("plan.archived", async (payload) => {
+    await auditService.log({
+      action: "plan.archived",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "plan",
+      resourceId: payload.planId,
+      eventId: null,
+      organizationId: null,
+      details: { key: payload.key },
+    });
+  });
 }

@@ -6,7 +6,7 @@ import { z } from "zod";
 
 export const PermissionSchema = z.enum([
   // ── Platform ──────────────────────────────────────────────────────────────
-  "platform:manage",           // super admin — full platform control
+  "platform:manage", // super admin — full platform control
 
   // ── Organization ──────────────────────────────────────────────────────────
   "organization:create",
@@ -16,89 +16,93 @@ export const PermissionSchema = z.enum([
   "organization:manage_members", // add/remove members, change their roles
   "organization:manage_billing", // plans, payment methods
 
+  // ── Plan Catalog (superadmin) ─────────────────────────────────────────────
+  "plan:manage", // create, edit, archive catalog plans
+  "subscription:override", // assign a plan / custom overrides to an org
+
   // ── Event ─────────────────────────────────────────────────────────────────
   "event:create",
   "event:read",
   "event:update",
-  "event:delete",              // soft-delete (archive)
+  "event:delete", // soft-delete (archive)
   "event:publish",
-  "event:manage_sessions",     // create/edit/delete sessions
+  "event:manage_sessions", // create/edit/delete sessions
   "event:manage_speakers",
   "event:manage_sponsors",
   "event:view_analytics",
 
   // ── Registration ──────────────────────────────────────────────────────────
-  "registration:create",       // register self for events
-  "registration:read_own",     // view own registrations
-  "registration:read_all",     // view all registrations for an event (organizer/staff)
+  "registration:create", // register self for events
+  "registration:read_own", // view own registrations
+  "registration:read_all", // view all registrations for an event (organizer/staff)
   "registration:cancel_own",
-  "registration:cancel_any",   // cancel anyone's registration
-  "registration:approve",      // approve waitlisted/pending registrations
-  "registration:export",       // export participant CSV
+  "registration:cancel_any", // cancel anyone's registration
+  "registration:approve", // approve waitlisted/pending registrations
+  "registration:export", // export participant CSV
 
   // ── Check-in ──────────────────────────────────────────────────────────────
-  "checkin:scan",              // scan QR badges
-  "checkin:manual",            // manual check-in without QR
-  "checkin:view_log",          // view check-in history
-  "checkin:sync_offline",      // download offline sync data
+  "checkin:scan", // scan QR badges
+  "checkin:manual", // manual check-in without QR
+  "checkin:view_log", // view check-in history
+  "checkin:sync_offline", // download offline sync data
 
   // ── Badge ─────────────────────────────────────────────────────────────────
-  "badge:view_own",            // view/download own badge
-  "badge:generate",            // trigger badge generation for participants
-  "badge:manage_templates",    // create/edit badge templates
-  "badge:bulk_generate",       // generate badges in bulk
+  "badge:view_own", // view/download own badge
+  "badge:generate", // trigger badge generation for participants
+  "badge:manage_templates", // create/edit badge templates
+  "badge:bulk_generate", // generate badges in bulk
 
   // ── Communication ─────────────────────────────────────────────────────────
-  "notification:send",         // send push/email/SMS to participants
-  "notification:read_own",     // view own notifications
+  "notification:send", // send push/email/SMS to participants
+  "notification:read_own", // view own notifications
 
-  "feed:read",                 // read event feed posts
-  "feed:create_post",          // create a post in the event feed
-  "feed:create_announcement",  // create an announcement (pushed to all)
-  "feed:delete_post",          // delete own posts or comments
-  "feed:manage_content",       // pin/unpin posts, moderate content (admin)
-  "feed:moderate",             // delete/pin posts
+  "feed:read", // read event feed posts
+  "feed:create_post", // create a post in the event feed
+  "feed:create_announcement", // create an announcement (pushed to all)
+  "feed:delete_post", // delete own posts or comments
+  "feed:manage_content", // pin/unpin posts, moderate content (admin)
+  "feed:moderate", // delete/pin posts
 
-  "messaging:send",            // send direct messages
-  "messaging:read_own",        // read own conversations
+  "messaging:send", // send direct messages
+  "messaging:read_own", // read own conversations
 
   // ── Profile ───────────────────────────────────────────────────────────────
   "profile:read_own",
   "profile:update_own",
-  "profile:read_any",          // view any user's public profile (for networking)
+  "profile:read_any", // view any user's public profile (for networking)
 
   // ── Payment ────────────────────────────────────────────────────────────────
-  "payment:initiate",          // initiate payment for registration
-  "payment:read_own",          // view own payment history
-  "payment:read_all",          // view all payments for an event (organizer)
-  "payment:refund",            // issue refunds
-  "payment:view_reports",      // view financial reports
+  "payment:initiate", // initiate payment for registration
+  "payment:read_own", // view own payment history
+  "payment:read_all", // view all payments for an event (organizer)
+  "payment:refund", // issue refunds
+  "payment:view_reports", // view financial reports
 
   // ── Sponsor ───────────────────────────────────────────────────────────────
-  "sponsor:manage_booth",      // manage exhibition page
-  "sponsor:collect_leads",     // scan participant QR for lead capture
+  "sponsor:manage_booth", // manage exhibition page
+  "sponsor:collect_leads", // scan participant QR for lead capture
   "sponsor:view_leads",
 
   // ── Payout ────────────────────────────────────────────────────────────────
-  "payout:read",               // view payout history for organization
-  "payout:create",             // create a payout request
+  "payout:read", // view payout history for organization
+  "payout:create", // create a payout request
 
   // ── Broadcast ─────────────────────────────────────────────────────────────
-  "broadcast:send",            // send broadcast to event participants
-  "broadcast:read",            // view broadcast history
+  "broadcast:send", // send broadcast to event participants
+  "broadcast:read", // view broadcast history
 
   // ── Speaker ───────────────────────────────────────────────────────────────
-  "speaker:read",              // view speaker profiles
-  "speaker:update_own",        // speaker edits own profile
+  "speaker:read", // view speaker profiles
+  "speaker:update_own", // speaker edits own profile
 
   // ── Venue ─────────────────────────────────────────────────────────────────
-  "venue:create",              // create a venue (admin or host org)
-  "venue:read",                // view venue info
-  "venue:update",              // host manages own venue
-  "venue:approve",             // admin approves venue applications
-  "venue:manage_all",          // admin manages any venue
-  "venue:view_events",         // host sees events at their venue
-  "venue:analytics",           // host views venue analytics
+  "venue:create", // create a venue (admin or host org)
+  "venue:read", // view venue info
+  "venue:update", // host manages own venue
+  "venue:approve", // admin approves venue applications
+  "venue:manage_all", // admin manages any venue
+  "venue:view_events", // host sees events at their venue
+  "venue:analytics", // host views venue analytics
 ]);
 
 export type Permission = z.infer<typeof PermissionSchema>;
@@ -110,11 +114,11 @@ export type Permission = z.infer<typeof PermissionSchema>;
 export const SystemRoleSchema = z.enum([
   "participant",
   "organizer",
-  "co_organizer",     // invited to manage specific events, not entire org
+  "co_organizer", // invited to manage specific events, not entire org
   "speaker",
   "sponsor",
-  "staff",            // QR scanner / access control
-  "venue_manager",    // venue host — manages venue profile & sees events
+  "staff", // QR scanner / access control
+  "venue_manager", // venue host — manages venue profile & sees events
   "super_admin",
 ]);
 
@@ -345,8 +349,8 @@ export const RoleAssignmentSchema = z.object({
   scope: RoleScopeSchema,
   // The resource this role is scoped to (null for global)
   organizationId: z.string().nullable(),
-  eventId: z.string().nullable(),        // for event-scoped roles (co_organizer, staff, speaker, sponsor)
-  grantedBy: z.string(),                 // uid of who granted this role
+  eventId: z.string().nullable(), // for event-scoped roles (co_organizer, staff, speaker, sponsor)
+  grantedBy: z.string(), // uid of who granted this role
   grantedAt: z.string().datetime(),
   expiresAt: z.string().datetime().nullable().optional(), // for temporary roles (e.g., staff for one event)
   isActive: z.boolean().default(true),
@@ -405,26 +409,18 @@ export function resolvePermissions(
   return permissions;
 }
 
-function isAssignmentApplicable(
-  assignment: RoleAssignment,
-  context: PermissionContext,
-): boolean {
+function isAssignmentApplicable(assignment: RoleAssignment, context: PermissionContext): boolean {
   switch (assignment.scope) {
     case "global":
       return true; // Always applies
 
     case "organization":
       // Applies if the context is within this organization
-      return (
-        !context.organizationId ||
-        assignment.organizationId === context.organizationId
-      );
+      return !context.organizationId || assignment.organizationId === context.organizationId;
 
     case "event":
       // Applies if accessing this specific event
-      return (
-        !context.eventId || assignment.eventId === context.eventId
-      );
+      return !context.eventId || assignment.eventId === context.eventId;
 
     default:
       return false;
@@ -434,10 +430,7 @@ function isAssignmentApplicable(
 /**
  * Check if a set of resolved permissions includes the required permission.
  */
-export function hasPermission(
-  permissions: Set<Permission>,
-  required: Permission,
-): boolean {
+export function hasPermission(permissions: Set<Permission>, required: Permission): boolean {
   if (permissions.has("platform:manage")) return true;
   return permissions.has(required);
 }
@@ -445,10 +438,7 @@ export function hasPermission(
 /**
  * Check if a set of resolved permissions includes ALL of the required permissions.
  */
-export function hasAllPermissions(
-  permissions: Set<Permission>,
-  required: Permission[],
-): boolean {
+export function hasAllPermissions(permissions: Set<Permission>, required: Permission[]): boolean {
   if (permissions.has("platform:manage")) return true;
   return required.every((p) => permissions.has(p));
 }
@@ -456,10 +446,7 @@ export function hasAllPermissions(
 /**
  * Check if a set of resolved permissions includes ANY of the required permissions.
  */
-export function hasAnyPermission(
-  permissions: Set<Permission>,
-  required: Permission[],
-): boolean {
+export function hasAnyPermission(permissions: Set<Permission>, required: Permission[]): boolean {
   if (permissions.has("platform:manage")) return true;
   return required.some((p) => permissions.has(p));
 }

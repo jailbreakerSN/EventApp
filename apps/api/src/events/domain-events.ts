@@ -445,6 +445,24 @@ export interface SubscriptionDowngradedEvent extends BaseEventPayload {
   newPlan: string;
 }
 
+// ── Plan Catalog ─────────────────────────────────────────────────────────────
+
+export interface PlanCreatedEvent extends BaseEventPayload {
+  planId: string;
+  key: string;
+}
+
+export interface PlanUpdatedEvent extends BaseEventPayload {
+  planId: string;
+  key: string;
+  changes: string[];
+}
+
+export interface PlanArchivedEvent extends BaseEventPayload {
+  planId: string;
+  key: string;
+}
+
 // ─── Domain Event Map ────────────────────────────────────────────────────────
 // Type-safe mapping of event names to their payloads.
 // Adding a new event here gives compile-time safety across all emitters/listeners.
@@ -515,6 +533,10 @@ export interface DomainEventMap {
   // Subscription
   "subscription.upgraded": SubscriptionUpgradedEvent;
   "subscription.downgraded": SubscriptionDowngradedEvent;
+  // Plan Catalog
+  "plan.created": PlanCreatedEvent;
+  "plan.updated": PlanUpdatedEvent;
+  "plan.archived": PlanArchivedEvent;
   // Payout
   "payout.created": PayoutCreatedEvent;
   // Admin
