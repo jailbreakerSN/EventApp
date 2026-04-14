@@ -17,7 +17,7 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@teranga/shared-ui";
-import { ChevronLeft, ChevronRight, FileText } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useAdminAuditLogs } from "@/hooks/use-admin";
 
 const ACTION_OPTIONS = [

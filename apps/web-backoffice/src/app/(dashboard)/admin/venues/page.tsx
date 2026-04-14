@@ -19,7 +19,7 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@teranga/shared-ui";
-import { MapPin, Search, ShieldCheck, Ban, CheckCircle, CalendarDays } from "lucide-react";
+import { MapPin, Search, ShieldCheck, Ban, CheckCircle } from "lucide-react";
 import {
   useVenues,
   useApproveVenue,

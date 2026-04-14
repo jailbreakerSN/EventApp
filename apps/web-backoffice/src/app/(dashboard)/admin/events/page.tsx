@@ -16,7 +16,7 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@teranga/shared-ui";
-import { Calendar, ChevronLeft, ChevronRight, Eye, Users, Building } from "lucide-react";
+import { ChevronLeft, ChevronRight, Eye, Users, Building } from "lucide-react";
 import { useAdminEvents, useAdminOrganizations } from "@/hooks/use-admin";
 
 const STATUS_OPTIONS = [
