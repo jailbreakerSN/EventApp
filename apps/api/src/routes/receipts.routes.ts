@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
-import { authenticate } from "@/middlewares/auth.middleware";
+import { authenticate, requireEmailVerified } from "@/middlewares/auth.middleware";
 import { validate } from "@/middlewares/validate.middleware";
 import { requirePermission } from "@/middlewares/permission.middleware";
 import { receiptService } from "@/services/receipt.service";
@@ -19,6 +19,7 @@ export const receiptRoutes: FastifyPluginAsync = async (fastify) => {
     {
       preHandler: [
         authenticate,
+        requireEmailVerified,
         requirePermission("payment:read_own"),
         validate({ params: ParamsWithPaymentId }),
       ],
