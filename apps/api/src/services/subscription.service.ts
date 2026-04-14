@@ -2,6 +2,7 @@ import {
   type Organization,
   type OrganizationPlan,
   type Subscription,
+  type SubscriptionOverrides,
   type PlanUsage,
   type UpgradePlanDto,
   PLAN_LIMITS,
@@ -9,6 +10,7 @@ import {
 } from "@teranga/shared-types";
 import { subscriptionRepository } from "@/repositories/subscription.repository";
 import { organizationRepository } from "@/repositories/organization.repository";
+import { planRepository } from "@/repositories/plan.repository";
 import { eventRepository } from "@/repositories/event.repository";
 import { type AuthUser } from "@/middlewares/auth.middleware";
 import { ValidationError, PlanLimitError } from "@/errors/app-error";
@@ -16,6 +18,7 @@ import { BaseService } from "./base.service";
 import { eventBus } from "@/events/event-bus";
 import { getRequestId } from "@/context/request-context";
 import { db, COLLECTIONS } from "@/config/firebase";
+import { resolveEffective, toStoredSnapshot, type EffectivePlan } from "./effective-plan";
 
 // Valid upgrade paths: free -> starter/pro, starter -> pro
 const UPGRADE_PATHS: Record<string, OrganizationPlan[]> = {
@@ -42,6 +45,26 @@ export class SubscriptionService extends BaseService {
     this.requireOrganizationAccess(user, orgId);
 
     return subscriptionRepository.findByOrganization(orgId);
+  }
+
+  /**
+   * Resolve the effective plan snapshot for an organization based on its
+   * current plan (via the seeded catalog) and any subscription overrides.
+   * Used by denormalization writes on upgrade/downgrade and by the backfill
+   * script.
+   *
+   * Returns null if the catalog lookup fails (e.g. plan key not yet seeded).
+   * Callers should tolerate null during the Phase 2 migration — enforcement
+   * still falls back to the hardcoded PLAN_LIMITS.
+   */
+  async resolveEffectiveForOrg(
+    planKey: OrganizationPlan | string,
+    overrides?: SubscriptionOverrides,
+    now: Date = new Date(),
+  ): Promise<EffectivePlan | null> {
+    const plan = await planRepository.findByKey(planKey);
+    if (!plan) return null;
+    return resolveEffective(plan, overrides, now);
   }
 
   /**
@@ -85,7 +108,18 @@ export class SubscriptionService extends BaseService {
     periodEnd.setMonth(periodEnd.getMonth() + 1);
     const priceXof = PLAN_DISPLAY[targetPlan].priceXof;
 
-    // Transactional: read org plan + validate + update atomically
+    // Resolve effective snapshot for the target plan from the catalog. Done
+    // outside the transaction — the plans collection is slow-moving and not
+    // part of the atomicity boundary. Null return is tolerated during the
+    // Phase 2 migration window (pre-seed) so upgrades never hard-fail on a
+    // missing catalog entry.
+    const existingSubscription = await subscriptionRepository.findByOrganization(orgId);
+    const effective = await this.resolveEffectiveForOrg(
+      targetPlan,
+      existingSubscription?.overrides,
+    );
+
+    // Transactional: read org plan + validate + update + denormalize atomically
     const previousPlan = await db.runTransaction(async (tx) => {
       const orgRef = db.collection(COLLECTIONS.ORGANIZATIONS).doc(orgId);
       const orgSnap = await tx.get(orgRef);
@@ -99,16 +133,24 @@ export class SubscriptionService extends BaseService {
         );
       }
 
-      tx.update(orgRef, { plan: targetPlan });
+      const update: Record<string, unknown> = { plan: targetPlan };
+      if (effective) {
+        const stored = toStoredSnapshot(effective);
+        update.effectiveLimits = stored.limits;
+        update.effectiveFeatures = stored.features;
+        update.effectivePlanKey = stored.planKey;
+        update.effectiveComputedAt = stored.computedAt;
+      }
+      tx.update(orgRef, update);
       return orgData.plan;
     });
 
     // Subscription doc update (outside transaction — not critical for atomicity)
-    const existing = await subscriptionRepository.findByOrganization(orgId);
     let subscription: Subscription;
-    if (existing) {
-      await subscriptionRepository.update(existing.id, {
+    if (existingSubscription) {
+      await subscriptionRepository.update(existingSubscription.id, {
         plan: targetPlan,
+        planId: effective?.planId,
         status: "active",
         currentPeriodStart: now,
         currentPeriodEnd: periodEnd.toISOString(),
@@ -116,11 +158,12 @@ export class SubscriptionService extends BaseService {
         cancelledAt: null,
         updatedAt: now,
       } as Partial<Subscription>);
-      subscription = await subscriptionRepository.findByIdOrThrow(existing.id);
+      subscription = await subscriptionRepository.findByIdOrThrow(existingSubscription.id);
     } else {
       subscription = await subscriptionRepository.create({
         organizationId: orgId,
         plan: targetPlan,
+        planId: effective?.planId,
         status: "active",
         currentPeriodStart: now,
         currentPeriodEnd: periodEnd.toISOString(),
@@ -153,7 +196,11 @@ export class SubscriptionService extends BaseService {
     const targetLimits = PLAN_LIMITS[targetPlan];
     const now = new Date().toISOString();
 
-    // Transactional: read org + validate path + check usage + update atomically
+    // Resolve target plan snapshot from the catalog (overrides cleared on
+    // downgrade — a downgrade always resets to the base plan).
+    const effective = await this.resolveEffectiveForOrg(targetPlan, undefined);
+
+    // Transactional: read org + validate path + check usage + update + denormalize atomically
     const previousPlan = await db.runTransaction(async (tx) => {
       const orgRef = db.collection(COLLECTIONS.ORGANIZATIONS).doc(orgId);
       const orgSnap = await tx.get(orgRef);
@@ -185,7 +232,15 @@ export class SubscriptionService extends BaseService {
         );
       }
 
-      tx.update(orgRef, { plan: targetPlan });
+      const update: Record<string, unknown> = { plan: targetPlan };
+      if (effective) {
+        const stored = toStoredSnapshot(effective);
+        update.effectiveLimits = stored.limits;
+        update.effectiveFeatures = stored.features;
+        update.effectivePlanKey = stored.planKey;
+        update.effectiveComputedAt = stored.computedAt;
+      }
+      tx.update(orgRef, update);
       return orgData.plan;
     });
 
@@ -206,12 +261,14 @@ export class SubscriptionService extends BaseService {
         await subscriptionRepository.update(existing.id, {
           status: "cancelled",
           plan: targetPlan,
+          planId: effective?.planId,
           cancelledAt: now,
           updatedAt: now,
         } as Partial<Subscription>);
       } else {
         await subscriptionRepository.update(existing.id, {
           plan: targetPlan,
+          planId: effective?.planId,
           priceXof: PLAN_DISPLAY[targetPlan].priceXof,
           updatedAt: now,
         } as Partial<Subscription>);

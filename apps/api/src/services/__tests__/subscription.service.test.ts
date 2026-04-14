@@ -50,6 +50,23 @@ vi.mock("@/repositories/event.repository", () => ({
   ),
 }));
 
+// ── Plan repository mock ──────────────────────────────────────────────────
+// Default: catalog lookup returns null. This matches the pre-Phase-2 behavior
+// and leaves the existing test assertions (strict `{ plan: "x" }` matches)
+// untouched. Phase 2 denormalization tests override this per-case.
+const mockPlanRepo = {
+  findByKey: vi.fn().mockResolvedValue(null),
+};
+
+vi.mock("@/repositories/plan.repository", () => ({
+  planRepository: new Proxy(
+    {},
+    {
+      get: (_target, prop) => (mockPlanRepo as Record<string, unknown>)[prop as string],
+    },
+  ),
+}));
+
 const mockTxGet = vi.fn();
 const mockTxUpdate = vi.fn();
 const mockDocRef = { id: "mock-doc" };
@@ -88,6 +105,10 @@ const service = new SubscriptionService();
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Default: plan catalog lookup returns null → resolveEffectiveForOrg yields
+  // null → upgrade/downgrade tx write contains only { plan } (matches legacy
+  // strict assertions). Phase 2 tests below override per-case.
+  mockPlanRepo.findByKey.mockResolvedValue(null);
 });
 
 // ── Permission denial ────────────────────────────────────────────────────
@@ -566,5 +587,184 @@ describe("SubscriptionService — super_admin bypass", () => {
 
     const result = await service.upgrade("any-org", { plan: "pro" }, admin);
     expect(result.plan).toBe("pro");
+  });
+});
+
+// ── Phase 2: effective-plan denormalization ───────────────────────────────
+
+function buildCatalogPlan(key: string) {
+  const now = new Date().toISOString();
+  return {
+    id: `plan-${key}`,
+    key,
+    name: { fr: key, en: key },
+    description: null,
+    priceXof: key === "pro" ? 29900 : 9900,
+    currency: "XOF" as const,
+    limits:
+      key === "pro"
+        ? { maxEvents: -1, maxParticipantsPerEvent: 2000, maxMembers: 50 }
+        : { maxEvents: 10, maxParticipantsPerEvent: 200, maxMembers: 3 },
+    features: {
+      qrScanning: true,
+      paidTickets: key === "pro",
+      customBadges: true,
+      csvExport: true,
+      smsNotifications: key === "pro",
+      advancedAnalytics: key === "pro",
+      speakerPortal: key === "pro",
+      sponsorPortal: key === "pro",
+      apiAccess: false,
+      whiteLabel: false,
+      promoCodes: true,
+    },
+    isSystem: true,
+    isPublic: true,
+    isArchived: false,
+    sortOrder: 1,
+    createdBy: null,
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+describe("SubscriptionService — Phase 2 denormalization", () => {
+  it("writes effectiveLimits/Features/PlanKey onto the org in the upgrade tx", async () => {
+    const user = buildOrganizerUser("org-1");
+    const pro = buildCatalogPlan("pro");
+    mockPlanRepo.findByKey.mockResolvedValue(pro);
+
+    mockTxGet.mockResolvedValue({
+      exists: true,
+      data: () => ({ plan: "starter", memberIds: ["u1"] }),
+    });
+    mockSubRepo.findByOrganization.mockResolvedValue({
+      id: "sub-1",
+      organizationId: "org-1",
+      plan: "starter",
+    });
+    mockSubRepo.update.mockResolvedValue(undefined);
+    mockSubRepo.findByIdOrThrow.mockResolvedValue({
+      id: "sub-1",
+      organizationId: "org-1",
+      plan: "pro",
+      status: "active",
+    });
+
+    await service.upgrade("org-1", { plan: "pro" }, user);
+
+    expect(mockPlanRepo.findByKey).toHaveBeenCalledWith("pro");
+    const txArg = mockTxUpdate.mock.calls[0][1] as Record<string, unknown>;
+    expect(txArg.plan).toBe("pro");
+    expect(txArg.effectivePlanKey).toBe("pro");
+    // Stored shape: -1 survives, Infinity is never persisted
+    expect(txArg.effectiveLimits).toMatchObject({
+      maxEvents: -1,
+      maxParticipantsPerEvent: 2000,
+      maxMembers: 50,
+    });
+    expect((txArg.effectiveFeatures as Record<string, boolean>).paidTickets).toBe(true);
+    expect(txArg.effectiveComputedAt).toEqual(expect.any(String));
+  });
+
+  it("writes planId onto the subscription doc during upgrade", async () => {
+    const user = buildOrganizerUser("org-1");
+    mockPlanRepo.findByKey.mockResolvedValue(buildCatalogPlan("pro"));
+
+    mockTxGet.mockResolvedValue({
+      exists: true,
+      data: () => ({ plan: "starter", memberIds: ["u1"] }),
+    });
+    mockSubRepo.findByOrganization.mockResolvedValue({
+      id: "sub-1",
+      organizationId: "org-1",
+      plan: "starter",
+    });
+    mockSubRepo.update.mockResolvedValue(undefined);
+    mockSubRepo.findByIdOrThrow.mockResolvedValue({ id: "sub-1", plan: "pro" });
+
+    await service.upgrade("org-1", { plan: "pro" }, user);
+
+    expect(mockSubRepo.update).toHaveBeenCalledWith(
+      "sub-1",
+      expect.objectContaining({ plan: "pro", planId: "plan-pro" }),
+    );
+  });
+
+  it("layers subscription.overrides on top of the base plan", async () => {
+    const user = buildOrganizerUser("org-1");
+    mockPlanRepo.findByKey.mockResolvedValue(buildCatalogPlan("starter"));
+
+    mockTxGet.mockResolvedValue({
+      exists: true,
+      data: () => ({ plan: "free", memberIds: [] }),
+    });
+    // Existing subscription carries a +50 maxEvents override
+    mockSubRepo.findByOrganization.mockResolvedValue({
+      id: "sub-1",
+      organizationId: "org-1",
+      plan: "free",
+      overrides: { limits: { maxEvents: 999 } },
+    });
+    mockSubRepo.update.mockResolvedValue(undefined);
+    mockSubRepo.findByIdOrThrow.mockResolvedValue({ id: "sub-1", plan: "starter" });
+
+    await service.upgrade("org-1", { plan: "starter" }, user);
+
+    const txArg = mockTxUpdate.mock.calls[0][1] as Record<string, unknown>;
+    expect((txArg.effectiveLimits as { maxEvents: number }).maxEvents).toBe(999);
+    // Non-overridden limit from the base plan still present
+    expect((txArg.effectiveLimits as { maxMembers: number }).maxMembers).toBe(3);
+  });
+
+  it("skips denormalization when the catalog lookup returns null (graceful)", async () => {
+    const user = buildOrganizerUser("org-1");
+    mockPlanRepo.findByKey.mockResolvedValue(null);
+
+    mockTxGet.mockResolvedValue({
+      exists: true,
+      data: () => ({ plan: "free", memberIds: [] }),
+    });
+    mockSubRepo.findByOrganization.mockResolvedValue(null);
+    mockSubRepo.create.mockResolvedValue({ id: "sub-x", plan: "starter", status: "active" });
+
+    await service.upgrade("org-1", { plan: "starter" }, user);
+
+    // Legacy strict shape: only the plan field is written
+    expect(mockTxUpdate).toHaveBeenCalledWith(mockDocRef, { plan: "starter" });
+  });
+
+  it("writes effective fields on downgrade", async () => {
+    const user = buildOrganizerUser("org-1");
+    mockPlanRepo.findByKey.mockResolvedValue(buildCatalogPlan("starter"));
+
+    mockTxGet.mockResolvedValue({
+      exists: true,
+      data: () => ({ plan: "pro", memberIds: ["u1"] }),
+    });
+    mockEventRepo.countActiveByOrganization.mockResolvedValue(0);
+    mockSubRepo.findByOrganization.mockResolvedValue({ id: "sub-1", plan: "pro" });
+    mockSubRepo.update.mockResolvedValue(undefined);
+
+    await service.downgrade("org-1", "starter", user);
+
+    const txArg = mockTxUpdate.mock.calls[0][1] as Record<string, unknown>;
+    expect(txArg.plan).toBe("starter");
+    expect(txArg.effectivePlanKey).toBe("starter");
+  });
+});
+
+describe("SubscriptionService.resolveEffectiveForOrg", () => {
+  it("returns null when the plan key is not in the catalog", async () => {
+    mockPlanRepo.findByKey.mockResolvedValue(null);
+    const result = await service.resolveEffectiveForOrg("pro");
+    expect(result).toBeNull();
+  });
+
+  it("returns the resolved effective plan for a catalog hit", async () => {
+    mockPlanRepo.findByKey.mockResolvedValue(buildCatalogPlan("pro"));
+    const result = await service.resolveEffectiveForOrg("pro");
+    expect(result?.planKey).toBe("pro");
+    expect(result?.limits.maxEvents).toBe(Infinity); // runtime form
   });
 });
