@@ -99,16 +99,15 @@ export default function VerifyEmailPage() {
           className="font-medium text-primary hover:underline"
           onClick={(e) => {
             e.preventDefault();
-            logout().then(() => router.replace("/login"));
+            // Redirect to /login regardless of whether signOut resolves —
+            // otherwise a network failure would silently strand the user
+            // on /verify-email with no feedback.
+            logout()
+              .catch(() => undefined)
+              .finally(() => router.replace("/login"));
           }}
         >
           Changer de compte
-        </Link>
-        <Link
-          href="/dashboard"
-          className="text-muted-foreground hover:text-foreground"
-        >
-          Plus tard
         </Link>
       </div>
     </div>

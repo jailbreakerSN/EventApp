@@ -139,11 +139,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     }
 
     // Hard email-verification gate once the grace period elapses.
-    // API-side mutations already enforce emailVerified via custom claims;
-    // this is the UX-layer complement so users see the consequence
-    // instead of a silent 403.
+    // NOTE (2026-04-14, security review): the API auth middleware does
+    // NOT currently check `email_verified` on the decoded ID token —
+    // this client gate is presently the *sole* enforcement layer. A
+    // companion PR will add a `requireEmailVerified` middleware in
+    // apps/api/src/middlewares/auth.middleware.ts and apply it to
+    // every mutating backoffice route. Until that lands, treat this
+    // redirect as UX-only and do not rely on it as a security boundary.
     if (shouldHardGateEmail(user)) {
       router.replace("/verify-email");
+      return;
     }
   }, [user, loading, hasRole, router]);
 
