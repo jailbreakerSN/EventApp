@@ -666,6 +666,17 @@ These security patterns were established during the Wave 1 review and MUST be ma
 
 When working on this project, Claude should leverage specialized agents and skills effectively:
 
+### Design Skills (UX/UI work)
+
+For **any** change that touches `apps/web-backoffice`, `apps/web-participant`, or `packages/shared-ui`, the canonical entry point is the **`teranga-design-review`** skill at `.claude/skills/teranga-design-review/SKILL.md`. It wraps four external skills installed under `.claude/skills/`:
+
+- `frontend-design` (Anthropic) — design-thinking guardrails.
+- `theme-factory` (Anthropic) — theme exploration within the locked Teranga palette.
+- `webapp-testing` (Anthropic) — automated browser verification of a11y & responsiveness.
+- `ui-ux-pro-max` (third-party) — 161 industry rules, 99 UX guidelines, 67 UI styles, used as challenger/reviewer.
+
+Full inventory and update procedure: `.claude/skills/README.md`. Non-negotiable brand tokens (teranga-navy / gold / green / Inter, French-first, `XOF`, WCAG 2.1 AA) are enforced by the adapter skill — never overridden by sub-skill advice.
+
 ### When to Use Agents
 
 | Scenario                   | Agent Type                  | Why                                                 |

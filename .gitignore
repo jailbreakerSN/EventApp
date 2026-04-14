@@ -36,12 +36,12 @@ Thumbs.db
 *.swp
 *.swo
 
-# Claude Code
-# Share project-level settings and subagents with the team but keep
-# per-user overrides local.
+# Claude Code — ignore local state, but share project-level settings,
+# skills, and subagents with the team. Per-user overrides stay local.
 .claude/*
 !.claude/settings.json
 !.claude/agents/
+!.claude/skills/
 .claude/settings.local.json
 
 # Code Review Graph (machine-specific binary DB)

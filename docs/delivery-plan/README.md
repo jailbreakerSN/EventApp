@@ -458,7 +458,8 @@ See [future-roadmap.md](future-roadmap.md) for post-launch feature ideas.
 | Wave 7                   | [wave-7-communications.md](wave-7-communications.md)           |
 | Wave 8                   | [wave-8-portals.md](wave-8-portals.md)                         |
 | MVP Sprint               | [mvp-launch-sprint.md](mvp-launch-sprint.md)                   |
-| UX/UI Audit              | [ux-ui-audit-results.md](../../docs/ux-ui-audit-2026-04-07.md) |
+| UX/UI Audit (current)    | [audit-2026-04-13.md](../design-system/audit-2026-04-13.md) + [execution-plan-2026-04-13.md](../design-system/execution-plan-2026-04-13.md) + [implementation-plan-2026-04-13.md](../design-system/implementation-plan-2026-04-13.md) |
+| UX/UI Audit (historical) | [ux-ui-audit-2026-04-07.md](../../docs/ux-ui-audit-2026-04-07.md) (superseded), [roadmap-2026-04-13.md](../design-system/roadmap-2026-04-13.md) (superseded) |
 | Super Admin + Venue Host | _(plan in `.claude/plans/`)_                                   |
 | Freemium Model           | _(plan in `.claude/plans/compiled-strolling-backus.md`)_       |
 | Wave 9                   | [wave-9-mobile-app.md](wave-9-mobile-app.md)                   |
