@@ -1,0 +1,51 @@
+name: Auto-rebase stacked PRs
+
+# When `develop` moves (a PR merges into it), every open PR that targets
+# `develop` gets its head branch rebased onto the new develop tip. Keeps
+# a clean linear history for review and avoids "update branch" merge commits.
+#
+# Why this workflow?
+#   In our stacked-PR policy, each P1 feature branch is branched from the
+#   previous feature branch but TARGETS develop directly. Once an upstream
+#   PR merges to develop, downstream PRs need to rebase to drop the commits
+#   that are now in develop. Doing this manually is tedious and error-prone
+#   at scale — this action handles it.
+#
+# Trigger: push to develop (fires on every merge to develop).
+# Scope: all currently-open PRs whose base is `develop`.
+# Safety: the rebase runs in a fresh workdir, pushes with --force-with-lease,
+#         and skips any PR that has open merge conflicts (emits a PR comment
+#         asking the author to resolve manually).
+#
+# Ref: https://github.com/peter-evans/rebase (MIT)
+
+on:
+  push:
+    branches: [develop]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  rebase:
+    name: Rebase open PRs targeting develop
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          # PAT with repo scope needed so the rebase push triggers CI on the PRs;
+          # GITHUB_TOKEN would silently skip CI. Create a fine-grained PAT with
+          # write:contents + write:pull_requests and save it as REBASE_TOKEN.
+          token: ${{ secrets.REBASE_TOKEN || secrets.GITHUB_TOKEN }}
+
+      - name: Rebase
+        uses: peter-evans/rebase@v3
+        with:
+          token: ${{ secrets.REBASE_TOKEN || secrets.GITHUB_TOKEN }}
+          base: develop
+          # Only rebase branches we control — ignore forks and dependabot.
+          include: '^(feature|fix|refactor|chore|docs)\/'
+          exclude: '^(dependabot|renovate)\/'
