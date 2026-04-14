@@ -435,9 +435,9 @@ This project follows a **trunk-based development** model with short-lived featur
 
 ### Workflow Rules
 
-1. **`main` is the stable trunk** — always deployable, protected by CI gate
+1. **`develop` is the integration trunk** — always deployable, protected by CI gate. `main` is the production-release branch; promotions from `develop → main` happen via release PRs.
 2. **One branch per wave or logical unit** — e.g., `feature/wave-1-core-loop` for all Wave 1 work
-3. **Branch from `main`**, merge back to `main` via PR (or direct merge for solo development)
+3. **Branch from `develop`**, merge back to `develop` via PR (or direct merge for solo development)
 4. **Commit early, commit often** — small, atomic commits with conventional commit messages
 5. **Conventional Commits** format: `type(scope): description`
    - Types: `feat`, `fix`, `refactor`, `test`, `chore`, `docs`, `ci`, `perf`
@@ -467,15 +467,17 @@ This project follows a **trunk-based development** model with short-lived featur
    - The PR body must include: a `## Summary` section with grouped bullet points covering all changes, and a `## Test plan` checklist
    - Use the GitHub MCP tool `mcp__github__update_pull_request` to update the PR
    - Never leave a stale PR description — it must always match the latest state of the branch
-8. **Never force-push to `main`** — rebase or merge, never rewrite shared history
+8. **Never force-push to `develop` or `main`** — rebase or merge, never rewrite shared history
 9. **Delete branches after merge** — keep the branch list clean
 10. **Tag releases** with semver: `v0.1.0` (Wave 1), `v0.2.0` (Wave 2), etc.
 
 ### Wave Development Flow
 
 ```
-main ──────────────────────────────────────────────►
-  └── feature/wave-1-core-loop ──── commits ──── merge back to main
+main (production releases) ◄──── release PR ────┐
+                                                │
+develop (integration trunk) ────────────────────┘──►
+  └── feature/wave-1-core-loop ──── commits ──── merge back to develop
                                                     └── feature/wave-2-offline-checkin ──── ...
 ```
 
@@ -690,13 +692,13 @@ Full inventory and update procedure: `.claude/skills/README.md`. Non-negotiable 
 
 These are shared across the team and also run in CI via `.github/workflows/claude-review.yml`. Invoke locally with `@<agent-name>` in any Claude Code session.
 
-| Agent                            | Use when                                                                 |
-| -------------------------------- | ------------------------------------------------------------------------ |
-| `security-reviewer`              | After any service / route / Firestore-rules / upload change              |
-| `firestore-transaction-auditor`  | After any service edit — scans for non-atomic read-then-write sequences  |
-| `plan-limit-auditor`             | After changes to events, registrations, members, tickets, subscriptions  |
-| `domain-event-auditor`           | After any mutation — confirms `eventBus.emit(...)` calls exist           |
-| `l10n-auditor`                   | After any UI change in `apps/web-*` or `apps/mobile/`                    |
+| Agent                           | Use when                                                                |
+| ------------------------------- | ----------------------------------------------------------------------- |
+| `security-reviewer`             | After any service / route / Firestore-rules / upload change             |
+| `firestore-transaction-auditor` | After any service edit — scans for non-atomic read-then-write sequences |
+| `plan-limit-auditor`            | After changes to events, registrations, members, tickets, subscriptions |
+| `domain-event-auditor`          | After any mutation — confirms `eventBus.emit(...)` calls exist          |
+| `l10n-auditor`                  | After any UI change in `apps/web-*` or `apps/mobile/`                   |
 
 These agents are read-only — they produce reports, never modify code. Each encodes a specific rule from this file; if the rule changes here, update the matching agent prompt.
 

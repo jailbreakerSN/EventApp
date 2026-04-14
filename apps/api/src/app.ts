@@ -11,6 +11,7 @@ import { AppError } from "@/errors/app-error";
 import { runWithContext, enrichContext } from "@/context/request-context";
 import { registerNotificationListeners } from "@/events/listeners/notification.listener";
 import { registerAuditListeners } from "@/events/listeners/audit.listener";
+import { registerEffectivePlanListeners } from "@/events/listeners/effective-plan.listener";
 import { captureError } from "@/observability/sentry";
 
 export async function buildApp() {
@@ -149,6 +150,7 @@ export async function buildApp() {
   // ─── Domain Event Listeners ───────────────────────────────────────────────
   registerNotificationListeners();
   registerAuditListeners();
+  registerEffectivePlanListeners();
 
   // ─── Routes ───────────────────────────────────────────────────────────────
   await registerRoutes(app);

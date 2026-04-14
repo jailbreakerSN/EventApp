@@ -1874,6 +1874,21 @@ async function seed() {
   console.log("  ✓ Startup Dakar — no subscription (free plan)");
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // 20b. BACKFILL EFFECTIVE LIMITS (Phase 2 denormalization)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  console.log("\n🔁 Backfilling effective plan limits onto organizations...");
+  const { backfillEffectiveLimits } = await import("./backfill-effective-limits");
+  const backfill = await backfillEffectiveLimits(db);
+  console.log(`  ✓ ${backfill.updated}/${backfill.total} organizations updated`);
+  if (backfill.skipped > 0) {
+    console.log(`  ⚠ ${backfill.skipped} skipped (missing plan in catalog):`);
+    for (const entry of backfill.missingPlan) {
+      console.log(`    - ${entry}`);
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // DONE
   // ═══════════════════════════════════════════════════════════════════════════
 

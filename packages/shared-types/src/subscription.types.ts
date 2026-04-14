@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { OrganizationPlanSchema } from "./organization.types";
 import { PaymentMethodSchema } from "./payment.types";
+import { SubscriptionOverridesSchema } from "./plan.types";
 
 // ─── Subscription Status ────────────────────────────────────────────────────
 
@@ -26,6 +27,15 @@ export const SubscriptionSchema = z.object({
   cancelReason: z.string().nullable().optional(),
   paymentMethod: PaymentMethodSchema.nullable(),
   priceXof: z.number().int(),
+  // ── Dynamic plan fields (Phase 2+) ────────────────────────────────────────
+  // Optional during migration: when present, `planId` is the authoritative
+  // reference to the plans/{id} catalog doc and `overrides` layers per-org
+  // customization on top. The legacy `plan` enum stays in sync for backward
+  // compatibility but Phase 3 treats `planId` as the source of truth.
+  planId: z.string().optional(),
+  overrides: SubscriptionOverridesSchema.optional(),
+  assignedBy: z.string().optional(),
+  assignedAt: z.string().datetime().optional(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 });
