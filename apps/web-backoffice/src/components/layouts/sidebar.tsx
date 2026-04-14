@@ -102,6 +102,7 @@ const adminNavItems: NavItem[] = [
   { href: "/admin/organizations", icon: Building2, label: "Organisations", roles: ["super_admin"] },
   { href: "/admin/events", icon: CalendarDays, label: "Événements (tous)", roles: ["super_admin"] },
   { href: "/admin/venues", icon: MapPin, label: "Lieux", roles: ["super_admin"] },
+  { href: "/admin/plans", icon: CreditCard, label: "Plans", roles: ["super_admin"] },
   { href: "/admin/audit", icon: FileText, label: "Journal d'audit", roles: ["super_admin"] },
 ];
 
@@ -295,7 +296,8 @@ export function Sidebar() {
 }
 
 function SidebarPlanWidget() {
-  const _t = useTranslations("common"); void _t;
+  const _t = useTranslations("common");
+  void _t;
   const { plan, checkLimit, isNearLimit } = usePlanGating();
   const display = PLAN_DISPLAY[plan];
   const events = checkLimit("events");

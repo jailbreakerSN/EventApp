@@ -1,6 +1,13 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { adminApi } from "@/lib/api-client";
-import type { AdminUserQuery, AdminOrgQuery, AdminEventQuery, AdminAuditQuery } from "@teranga/shared-types";
+import type {
+  AdminUserQuery,
+  AdminOrgQuery,
+  AdminEventQuery,
+  AdminAuditQuery,
+  CreatePlanDto,
+  UpdatePlanDto,
+} from "@teranga/shared-types";
 
 // ─── Stats ──────────────────────────────────────────────────────────────────
 
@@ -80,5 +87,51 @@ export function useAdminAuditLogs(params: Partial<AdminAuditQuery> = {}) {
   return useQuery({
     queryKey: ["admin", "audit-logs", params],
     queryFn: () => adminApi.listAuditLogs(params),
+  });
+}
+
+// ─── Plan Catalog ───────────────────────────────────────────────────────────
+
+export function useAdminPlans(params: { includeArchived?: boolean } = {}) {
+  return useQuery({
+    queryKey: ["admin", "plans", params],
+    queryFn: () => adminApi.listPlans(params),
+    staleTime: 30_000,
+  });
+}
+
+export function useAdminPlan(planId: string | undefined) {
+  return useQuery({
+    queryKey: ["admin", "plans", "detail", planId],
+    queryFn: () => adminApi.getPlan(planId!),
+    enabled: !!planId,
+  });
+}
+
+export function useCreatePlan() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (dto: CreatePlanDto) => adminApi.createPlan(dto),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin", "plans"] }),
+  });
+}
+
+export function useUpdatePlan() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ planId, dto }: { planId: string; dto: UpdatePlanDto }) =>
+      adminApi.updatePlan(planId, dto),
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: ["admin", "plans"] });
+      qc.invalidateQueries({ queryKey: ["admin", "plans", "detail", variables.planId] });
+    },
+  });
+}
+
+export function useArchivePlan() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (planId: string) => adminApi.archivePlan(planId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin", "plans"] }),
   });
 }
