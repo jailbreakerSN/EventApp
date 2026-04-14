@@ -1,0 +1,22 @@
+{
+  "name": "@teranga/staging-qa",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Playwright QA suite for Teranga staging (backoffice + participant). Runs in CI after deploy-staging and can be executed locally.",
+  "scripts": {
+    "test": "playwright test",
+    "test:smoke": "playwright test tests/smoke.spec.ts",
+    "test:a11y": "playwright test tests/a11y.spec.ts",
+    "test:responsive": "playwright test tests/responsive.spec.ts",
+    "test:headed": "playwright test --headed",
+    "report": "playwright show-report",
+    "codegen:backoffice": "playwright codegen $STAGING_BACKOFFICE",
+    "codegen:participant": "playwright codegen $STAGING_PARTICIPANT"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.10.0",
+    "@playwright/test": "^1.48.0",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.5.0"
+  }
+}
