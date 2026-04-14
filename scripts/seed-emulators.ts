@@ -1800,6 +1800,16 @@ async function seed() {
   console.log(`  ✓ ${auditEvents.length} audit log entries (including venue & admin actions)`);
 
   // ═══════════════════════════════════════════════════════════════════════════
+  // 19b. PLAN CATALOG (dynamic, superadmin-managed)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  console.log("\n💼 Seeding plan catalog...");
+
+  const { seedPlans } = await import("./seed-plans");
+  const planCount = await seedPlans(db);
+  console.log(`  ✓ ${planCount} system plans upserted (free, starter, pro, enterprise)`);
+
+  // ═══════════════════════════════════════════════════════════════════════════
   // 20. SUBSCRIPTIONS (Freemium Model)
   // ═══════════════════════════════════════════════════════════════════════════
 

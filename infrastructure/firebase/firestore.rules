@@ -498,5 +498,21 @@ service cloud.firestore {
       allow update: if false;
       allow delete: if false;
     }
+
+    // ─── Plan Catalog ──────────────────────────────────────────────────────
+    // Superadmin-managed catalog of subscription plans. Any authenticated
+    // user can read published (public, non-archived) plans so the billing
+    // page works without elevated permissions. Superadmins can read every
+    // plan, including archived/private ones.
+    // Writes go through the API (admin routes) — client-side mutations are
+    // blocked even for superadmins to preserve audit trail and validation.
+    match /plans/{planId} {
+      allow read: if isAuthenticated()
+                  && resource.data.isPublic == true
+                  && resource.data.isArchived == false;
+      allow read: if isSuperAdmin();
+
+      allow create, update, delete: if false;
+    }
   }
 }

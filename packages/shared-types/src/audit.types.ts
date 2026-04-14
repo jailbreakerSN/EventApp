@@ -61,6 +61,10 @@ export const AuditActionSchema = z.enum([
   "user.activated",
   "organization.verified",
   "organization.suspended",
+  // ── Plan Catalog ──────────────────────────────────────────────────────────
+  "plan.created",
+  "plan.updated",
+  "plan.archived",
 ]);
 
 export type AuditAction = z.infer<typeof AuditActionSchema>;
