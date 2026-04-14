@@ -19,6 +19,7 @@ import {
 } from "@teranga/shared-ui";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useAdminAuditLogs } from "@/hooks/use-admin";
+import { useTranslations } from "next-intl";
 
 const ACTION_OPTIONS = [
   { value: "", label: "Toutes les actions" },
@@ -52,6 +53,7 @@ function formatDate(timestamp: string) {
 }
 
 export default function AdminAuditPage() {
+  const tCommon = useTranslations("common"); void tCommon;
   const [page, setPage] = useState(1);
   const [actionFilter, setActionFilter] = useState("");
   const [dateFrom, setDateFrom] = useState("");

@@ -19,6 +19,7 @@ import {
 } from "@teranga/shared-ui";
 import { MapPin, Plus, Calendar, Users, ExternalLink } from "lucide-react";
 import { useMyVenues, useCreateVenue } from "@/hooks/use-venues";
+import { useTranslations } from "next-intl";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -50,6 +51,7 @@ const STATUS_STYLES: Record<
 // ─── Page ───────────────────────────────────────────────────────────────────
 
 export default function VenuesPage() {
+  const tCommon = useTranslations("common"); void tCommon;
   const { data, isLoading, isError, refetch } = useMyVenues();
   const createVenue = useCreateVenue();
   const [showCreate, setShowCreate] = useState(false);

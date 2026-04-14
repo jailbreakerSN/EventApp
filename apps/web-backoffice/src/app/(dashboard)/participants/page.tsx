@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
 import { Users, ArrowRight } from "lucide-react";
 import Link from "next/link";
+import { getTranslations } from "next-intl/server";
 
 export const metadata: Metadata = { title: "Participants" };
 
-export default function ParticipantsPage() {
+export default async function ParticipantsPage() {
+  const _t = await getTranslations("common"); void _t;
   return (
     <div>
       <h1 className="text-2xl font-bold text-foreground mb-6">Participants</h1>

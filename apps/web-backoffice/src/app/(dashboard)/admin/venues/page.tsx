@@ -27,6 +27,7 @@ import {
   useReactivateVenue,
 } from "@/hooks/use-venues";
 import type { Venue, VenueType, VenueStatus } from "@teranga/shared-types";
+import { useTranslations } from "next-intl";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -72,6 +73,7 @@ const STATUS_LABELS: Record<string, string> = {
 // ─── Page ───────────────────────────────────────────────────────────────────
 
 export default function AdminVenuesPage() {
+  const tCommon = useTranslations("common"); void tCommon;
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");

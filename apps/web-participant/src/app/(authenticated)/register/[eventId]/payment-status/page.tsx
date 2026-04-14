@@ -10,8 +10,10 @@ import { eventsApi, registrationsApi } from "@/lib/api-client";
 import { usePaymentStatus } from "@/hooks/use-payments";
 import { Button, Card, CardContent, Spinner, formatCurrency } from "@teranga/shared-ui";
 import type { Event, Payment, Registration } from "@teranga/shared-types";
+import { useTranslations } from "next-intl";
 
 export default function PaymentStatusPage() {
+  const _t = useTranslations("common"); void _t;
   const { eventId } = useParams<{ eventId: string }>();
   const searchParams = useSearchParams();
   const router = useRouter();

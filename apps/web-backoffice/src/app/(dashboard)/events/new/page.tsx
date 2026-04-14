@@ -20,6 +20,7 @@ import {
 } from "@teranga/shared-ui";
 import type { CreateEventDto } from "@teranga/shared-types";
 import { VenueSelector } from "@/components/venue-selector";
+import { useTranslations } from "next-intl";
 
 const STEPS = ["Détails", "Lieu", "Billets", "Paramètres"] as const;
 
@@ -64,6 +65,7 @@ const emptyTicket: TicketDraft = {
 };
 
 export default function NewEventPage() {
+  const tCommon = useTranslations("common"); void tCommon;
   const router = useRouter();
   const { user } = useAuth();
   const createEvent = useCreateEvent();

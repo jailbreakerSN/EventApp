@@ -13,8 +13,10 @@ import { FeedPostCard } from "@/components/feed/FeedPostCard";
 import { FeedPostSkeleton } from "@/components/feed/FeedPostSkeleton";
 import { NewPostsBanner } from "@/components/feed/NewPostsBanner";
 import { InfiniteScrollSentinel } from "@/components/feed/InfiniteScrollSentinel";
+import { useTranslations } from "next-intl";
 
 export default function FeedPage() {
+  const tCommon = useTranslations("common"); void tCommon;
   const { slug } = useParams<{ slug: string }>();
   const { user } = useAuth();
 

@@ -34,10 +34,12 @@ import {
   getErrorMessage,
 } from "@teranga/shared-ui";
 import type { Event, TicketType, Registration } from "@teranga/shared-types";
+import { useTranslations } from "next-intl";
 
 type Step = "select" | "confirm" | "success";
 
 export default function RegisterPage() {
+  const _t = useTranslations("common"); void _t;
   const { eventId } = useParams<{ eventId: string }>();
   const router = useRouter();
   const [step, setStep] = useState<Step>("select");

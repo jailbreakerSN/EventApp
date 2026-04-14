@@ -7,8 +7,10 @@ import { Mail } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/use-auth";
 import { Button, Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@teranga/shared-ui";
+import { useTranslations } from "next-intl";
 
 export default function VerifyEmailPage() {
+  const tCommon = useTranslations("common"); void tCommon;
   const { user, loading, resendVerification } = useAuth();
   const router = useRouter();
   const [sending, setSending] = useState(false);

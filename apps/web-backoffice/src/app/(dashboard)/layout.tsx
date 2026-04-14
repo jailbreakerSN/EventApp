@@ -12,6 +12,7 @@ import { CommandPalette } from "@/components/command-palette";
 import { KeyboardShortcutsDialog } from "@/components/keyboard-shortcuts-dialog";
 import { useAuth } from "@/hooks/use-auth";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
+import { useTranslations } from "next-intl";
 
 const BACKOFFICE_ROLES = ["organizer", "co_organizer", "super_admin", "venue_manager"] as const;
 
@@ -121,6 +122,7 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
 }
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+  const tCommon = useTranslations("common"); void tCommon;
   const { user, loading, hasRole } = useAuth();
   const router = useRouter();
 

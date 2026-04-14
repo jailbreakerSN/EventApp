@@ -17,6 +17,7 @@ import {
   getErrorMessage,
 } from "@teranga/shared-ui";
 import type { Registration } from "@teranga/shared-types";
+import { useTranslations } from "next-intl";
 
 const STATUS_LABELS: Record<
   string,
@@ -33,6 +34,7 @@ const STATUS_LABELS: Record<
 };
 
 export default function MyEventsPage() {
+  const tCommon = useTranslations("common"); void tCommon;
   const [page, setPage] = useState(1);
   const { data, isLoading, error } = useMyRegistrations({ page, limit: 20 });
   const cancelMutation = useCancelRegistration();

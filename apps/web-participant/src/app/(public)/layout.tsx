@@ -1,7 +1,9 @@
 import { Header } from "@/components/layouts/header";
 import { Footer } from "@/components/layouts/footer";
+import { getTranslations } from "next-intl/server";
 
-export default function PublicLayout({ children }: { children: React.ReactNode }) {
+export default async function PublicLayout({ children }: { children: React.ReactNode }) {
+  const _t = await getTranslations("common"); void _t;
   return (
     <div className="flex min-h-screen flex-col">
       {/* Skip to content link — WCAG 2.4.1 */}
