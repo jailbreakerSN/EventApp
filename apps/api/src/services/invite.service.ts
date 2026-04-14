@@ -3,19 +3,13 @@ import {
   type CreateInviteDto,
   type OrganizationInvite,
   type Organization,
-  PLAN_LIMITS,
 } from "@teranga/shared-types";
 import { inviteRepository } from "@/repositories/invite.repository";
 import { organizationRepository } from "@/repositories/organization.repository";
 import { userRepository } from "@/repositories/user.repository";
 import { type AuthUser } from "@/middlewares/auth.middleware";
 import { auth, db, COLLECTIONS } from "@/config/firebase";
-import {
-  ConflictError,
-  NotFoundError,
-  ValidationError,
-  PlanLimitError,
-} from "@/errors/app-error";
+import { ConflictError, NotFoundError, ValidationError, PlanLimitError } from "@/errors/app-error";
 import { BaseService } from "./base.service";
 import { eventBus } from "@/events/event-bus";
 import { getRequestId } from "@/context/request-context";
@@ -34,15 +28,16 @@ export class InviteService extends BaseService {
 
     const org = await organizationRepository.findByIdOrThrow(orgId);
 
-    // Check plan limits
-    const limits = PLAN_LIMITS[org.plan];
+    // Check plan limits (reads org.effectiveLimits via BaseService with safe
+    // fallback to PLAN_LIMITS[org.plan] when denormalization is missing)
     const currentMembers = org.memberIds?.length ?? 0;
     const pendingInvites = await inviteRepository.findByOrganization(orgId);
     const pendingCount = pendingInvites.filter((i) => i.status === "pending").length;
 
-    if (currentMembers + pendingCount >= limits.maxMembers) {
+    const { allowed, limit } = this.checkPlanLimit(org, "members", currentMembers + pendingCount);
+    if (!allowed) {
       throw new PlanLimitError(
-        `Maximum ${limits.maxMembers} membres (invitations en attente incluses) sur le plan ${org.plan}`,
+        `Maximum ${limit} membres (invitations en attente incluses) sur le plan ${org.effectivePlanKey ?? org.plan}`,
       );
     }
 
@@ -108,7 +103,9 @@ export class InviteService extends BaseService {
       throw new ValidationError(`Cette invitation a déjà été traitée (${invite.status})`);
     }
     if (new Date(invite.expiresAt) < new Date()) {
-      await inviteRepository.update(invite.id, { status: "expired" } as Partial<OrganizationInvite>);
+      await inviteRepository.update(invite.id, {
+        status: "expired",
+      } as Partial<OrganizationInvite>);
       throw new ValidationError("Cette invitation a expiré");
     }
 
@@ -135,9 +132,9 @@ export class InviteService extends BaseService {
         return;
       }
 
-      const limits = PLAN_LIMITS[org.plan];
-      if (members.length >= limits.maxMembers) {
-        throw new PlanLimitError(`Organization has reached the maximum of ${limits.maxMembers} members`);
+      const { allowed, limit } = this.checkPlanLimit(org, "members", members.length);
+      if (!allowed) {
+        throw new PlanLimitError(`Organization has reached the maximum of ${limit} members`);
       }
 
       tx.update(orgRef, {
@@ -177,7 +174,9 @@ export class InviteService extends BaseService {
       throw new ValidationError(`Cette invitation a déjà été traitée (${invite.status})`);
     }
     if (new Date(invite.expiresAt) < new Date()) {
-      await inviteRepository.update(invite.id, { status: "expired" } as Partial<OrganizationInvite>);
+      await inviteRepository.update(invite.id, {
+        status: "expired",
+      } as Partial<OrganizationInvite>);
       throw new ValidationError("Cette invitation a expiré");
     }
     if (user.email?.toLowerCase() !== invite.email.toLowerCase()) {

@@ -10,7 +10,7 @@ import {
   type Event,
   type EventStatus,
   type EventSearchQuery,
-  type OrganizationPlan,
+  type Organization,
 } from "@teranga/shared-types";
 import {
   eventRepository,
@@ -58,7 +58,7 @@ export class EventService extends BaseService {
     }
 
     // Check plan limit for active events
-    await this.checkEventLimit(dto.organizationId, org.plan);
+    await this.checkEventLimit(org);
 
     // Validate dates
     if (new Date(dto.endDate) <= new Date(dto.startDate)) {
@@ -332,7 +332,7 @@ export class EventService extends BaseService {
       // Gate paid tickets behind plan feature
       if (dto.price && dto.price > 0) {
         const org = await organizationRepository.findByIdOrThrow(event.organizationId);
-        this.requirePlanFeature(org.plan, "paidTickets");
+        this.requirePlanFeature(org, "paidTickets");
       }
 
       const updatedTicketTypes = [...event.ticketTypes, newTicketType];
@@ -560,7 +560,7 @@ export class EventService extends BaseService {
 
     // Check plan limits for event count
     const org = await organizationRepository.findByIdOrThrow(source.organizationId);
-    await this.checkEventLimit(source.organizationId, org.plan);
+    await this.checkEventLimit(org);
 
     // Validate new dates
     if (new Date(dto.newEndDate) <= new Date(dto.newStartDate)) {
@@ -674,17 +674,18 @@ export class EventService extends BaseService {
 
   // ─── Plan Limit Helpers ────────────────────────────────────────────────────
 
-  private async checkEventLimit(organizationId: string, plan: OrganizationPlan): Promise<void> {
+  private async checkEventLimit(org: Organization): Promise<void> {
     const { allowed, current, limit } = this.checkPlanLimit(
-      plan,
+      org,
       "events",
-      await eventRepository.countActiveByOrganization(organizationId),
+      await eventRepository.countActiveByOrganization(org.id),
     );
     if (!allowed) {
-      throw new PlanLimitError(`Maximum ${limit} événements actifs sur le plan ${plan}`, {
+      const planLabel = org.effectivePlanKey ?? org.plan;
+      throw new PlanLimitError(`Maximum ${limit} événements actifs sur le plan ${planLabel}`, {
         current,
         max: limit,
-        plan,
+        plan: planLabel,
       });
     }
   }

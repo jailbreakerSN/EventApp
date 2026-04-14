@@ -7,6 +7,7 @@ import {
   type UpgradePlanDto,
   PLAN_LIMITS,
   PLAN_DISPLAY,
+  PLAN_LIMIT_UNLIMITED,
 } from "@teranga/shared-types";
 import { subscriptionRepository } from "@/repositories/subscription.repository";
 import { organizationRepository } from "@/repositories/organization.repository";
@@ -76,21 +77,31 @@ export class SubscriptionService extends BaseService {
     this.requireOrganizationAccess(user, orgId);
 
     const org = await organizationRepository.findByIdOrThrow(orgId);
-    const limits = PLAN_LIMITS[org.plan];
     const activeEvents = await eventRepository.countActiveByOrganization(orgId);
     const memberCount = org.memberIds?.length ?? 0;
 
+    // Prefer the denormalized effective snapshot; fall back to PLAN_LIMITS when
+    // the org predates the Phase 2 backfill.
+    const effectiveLimitsStored = org.effectiveLimits;
+    const effectiveFeaturesSnap = org.effectiveFeatures;
+    const fallback = PLAN_LIMITS[org.plan];
+
+    const maxEvents = effectiveLimitsStored
+      ? effectiveLimitsStored.maxEvents === PLAN_LIMIT_UNLIMITED
+        ? Infinity
+        : effectiveLimitsStored.maxEvents
+      : fallback.maxEvents;
+    const maxMembers = effectiveLimitsStored
+      ? effectiveLimitsStored.maxMembers === PLAN_LIMIT_UNLIMITED
+        ? Infinity
+        : effectiveLimitsStored.maxMembers
+      : fallback.maxMembers;
+
     return {
       plan: org.plan,
-      events: {
-        current: activeEvents,
-        limit: limits.maxEvents,
-      },
-      members: {
-        current: memberCount,
-        limit: limits.maxMembers,
-      },
-      features: { ...limits.features },
+      events: { current: activeEvents, limit: maxEvents },
+      members: { current: memberCount, limit: maxMembers },
+      features: { ...(effectiveFeaturesSnap ?? fallback.features) },
     };
   }
 
@@ -193,12 +204,18 @@ export class SubscriptionService extends BaseService {
     this.requirePermission(user, "organization:manage_billing");
     this.requireOrganizationAccess(user, orgId);
 
-    const targetLimits = PLAN_LIMITS[targetPlan];
     const now = new Date().toISOString();
 
     // Resolve target plan snapshot from the catalog (overrides cleared on
-    // downgrade — a downgrade always resets to the base plan).
+    // downgrade — a downgrade always resets to the base plan). Fall back to
+    // the hardcoded PLAN_LIMITS when the catalog lookup fails.
     const effective = await this.resolveEffectiveForOrg(targetPlan, undefined);
+    const targetMaxMembers = effective
+      ? effective.limits.maxMembers
+      : PLAN_LIMITS[targetPlan].maxMembers;
+    const targetMaxEvents = effective
+      ? effective.limits.maxEvents
+      : PLAN_LIMITS[targetPlan].maxEvents;
 
     // Transactional: read org + validate path + check usage + update + denormalize atomically
     const previousPlan = await db.runTransaction(async (tx) => {
@@ -220,10 +237,8 @@ export class SubscriptionService extends BaseService {
       const memberCount = orgData.memberIds?.length ?? 0;
       const violations: string[] = [];
 
-      if (isFinite(targetLimits.maxMembers) && memberCount > targetLimits.maxMembers) {
-        violations.push(
-          `${memberCount} membres (max ${targetLimits.maxMembers} sur ${targetPlan})`,
-        );
+      if (isFinite(targetMaxMembers) && memberCount > targetMaxMembers) {
+        violations.push(`${memberCount} membres (max ${targetMaxMembers} sur ${targetPlan})`);
       }
 
       if (violations.length > 0) {
@@ -246,11 +261,11 @@ export class SubscriptionService extends BaseService {
 
     // Check event count outside transaction (not modifiable in this operation)
     const activeEvents = await eventRepository.countActiveByOrganization(orgId);
-    if (isFinite(targetLimits.maxEvents) && activeEvents > targetLimits.maxEvents) {
+    if (isFinite(targetMaxEvents) && activeEvents > targetMaxEvents) {
       // Rollback plan change — usage exceeded
       await organizationRepository.update(orgId, { plan: previousPlan } as Partial<Organization>);
       throw new PlanLimitError(
-        `${activeEvents} événements actifs (max ${targetLimits.maxEvents} sur ${targetPlan})`,
+        `${activeEvents} événements actifs (max ${targetMaxEvents} sur ${targetPlan})`,
       );
     }
 

@@ -4,7 +4,6 @@ import {
   type QrScanResult,
   type Event,
   type Organization,
-  PLAN_LIMITS,
 } from "@teranga/shared-types";
 import { registrationRepository } from "@/repositories/registration.repository";
 import { eventRepository } from "@/repositories/event.repository";
@@ -68,17 +67,18 @@ export class RegistrationService extends BaseService {
         const orgSnap = await tx.get(orgRef);
         if (orgSnap.exists) {
           const org = { id: orgSnap.id, ...orgSnap.data() } as Organization;
-          const planLimits = PLAN_LIMITS[org.plan];
-          if (
-            isFinite(planLimits.maxParticipantsPerEvent) &&
-            event.registeredCount >= planLimits.maxParticipantsPerEvent
-          ) {
+          const { allowed, limit } = this.checkPlanLimit(
+            org,
+            "participantsPerEvent",
+            event.registeredCount,
+          );
+          if (!allowed) {
             throw new PlanLimitError(
-              `Maximum ${planLimits.maxParticipantsPerEvent} participants par événement sur le plan ${org.plan}`,
+              `Maximum ${limit} participants par événement sur le plan ${org.effectivePlanKey ?? org.plan}`,
               {
                 current: event.registeredCount,
-                max: planLimits.maxParticipantsPerEvent,
-                plan: org.plan,
+                max: limit,
+                plan: org.effectivePlanKey ?? org.plan,
               },
             );
           }
