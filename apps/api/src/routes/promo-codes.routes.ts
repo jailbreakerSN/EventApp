@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
-import { authenticate } from "@/middlewares/auth.middleware";
+import { authenticate, requireEmailVerified } from "@/middlewares/auth.middleware";
 import { validate } from "@/middlewares/validate.middleware";
 import { requirePermission } from "@/middlewares/permission.middleware";
 import { promoCodeService } from "@/services/promo-code.service";
