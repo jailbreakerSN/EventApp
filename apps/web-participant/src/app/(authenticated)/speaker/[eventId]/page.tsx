@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import type { SpeakerProfile, Session } from "@teranga/shared-types";
-import { Skeleton } from "@teranga/shared-ui";
+import { Skeleton, EmptyState } from "@teranga/shared-ui";
 
 const ALLOWED_SLIDE_TYPES = ["application/pdf", "image/jpeg", "image/png", "image/webp"];
 const MAX_SLIDE_SIZE = 20 * 1024 * 1024; // 20 Mo
@@ -424,9 +424,12 @@ export default function SpeakerPortalPage() {
         </h2>
 
         {sessions.length === 0 ? (
-          <p className="text-sm text-muted-foreground py-4">
-            Aucune session assignée pour le moment.
-          </p>
+          <EmptyState
+            icon={Calendar}
+            title="Aucune session assignée"
+            description="Votre programme apparaîtra ici dès que l'organisateur vous attribuera des sessions."
+            className="py-4"
+          />
         ) : (
           <div className="space-y-3">
             {sessions.map((session) => (

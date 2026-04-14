@@ -12,17 +12,27 @@ import sys
 from _shared import build_arg_parser, fail, pass_, skip
 
 
-GATED = True
+GATED = False
 
-TARGET = "apps/web-participant/src/app/(public)/events/[slug]/page.tsx"
+TARGETS = [
+    "apps/web-participant/src/app/(public)/events/[slug]/page.tsx",
+    "apps/web-participant/src/components/event-detail/event-detail-tabs.tsx",
+]
 
 
 def check(repo_root: pathlib.Path) -> tuple[bool, str]:
-    text = (repo_root / TARGET).read_text()
-    if "<Tabs" not in text:
-        return False, "no <Tabs> found — tab structure not implemented"
-    if 'role="tabpanel"' not in text and "TabsPanel" not in text:
-        return False, "no tabpanel role — incomplete a11y"
+    # The page should consume EventDetailTabs.
+    page = (repo_root / TARGETS[0]).read_text()
+    if "EventDetailTabs" not in page:
+        return False, "page does not render <EventDetailTabs>"
+    # The tab component should wrap shared-ui Tabs primitive.
+    tabs = (repo_root / TARGETS[1]).read_text()
+    if "Tabs" not in tabs or "TabsTrigger" not in tabs or "TabsContent" not in tabs:
+        return False, "EventDetailTabs missing Tabs / TabsTrigger / TabsContent wiring"
+    if "snap-x" not in tabs and "overflow-x-auto" not in tabs:
+        return False, "tab list missing horizontal-scroll styling for < 640 px"
+    if "history.replaceState" not in tabs and "location.hash" not in tabs:
+        return False, "tab state does not persist to URL"
     return True, ""
 
 
