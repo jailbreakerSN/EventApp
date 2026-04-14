@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import type { SpeakerProfile, Session } from "@teranga/shared-types";
+import { Skeleton, EmptyState } from "@teranga/shared-ui";
 
 const ALLOWED_SLIDE_TYPES = ["application/pdf", "image/jpeg", "image/png", "image/webp"];
 const MAX_SLIDE_SIZE = 20 * 1024 * 1024; // 20 Mo
@@ -193,12 +194,24 @@ export default function SpeakerPortalPage() {
   if (loading) {
     return (
       <div
-        className="flex items-center justify-center py-20 text-muted-foreground"
+        className="mx-auto max-w-3xl px-4 py-8 space-y-6"
         role="status"
         aria-label="Chargement du portail intervenant"
       >
-        <Loader2 className="h-6 w-6 animate-spin mr-2" aria-hidden="true" />
-        <span>Chargement...</span>
+        <div className="space-y-3">
+          <Skeleton className="h-7 w-1/2" />
+          <Skeleton className="h-4 w-1/3" />
+        </div>
+        <div className="bg-card rounded-xl border border-border p-6 space-y-3">
+          <Skeleton className="h-4 w-1/4" />
+          <Skeleton className="h-3 w-full" />
+          <Skeleton className="h-3 w-5/6" />
+          <Skeleton className="h-3 w-3/4" />
+        </div>
+        <div className="bg-card rounded-xl border border-border p-6 space-y-3">
+          <Skeleton className="h-4 w-1/3" />
+          <Skeleton variant="rectangle" className="h-32" />
+        </div>
       </div>
     );
   }
@@ -411,9 +424,12 @@ export default function SpeakerPortalPage() {
         </h2>
 
         {sessions.length === 0 ? (
-          <p className="text-sm text-muted-foreground py-4">
-            Aucune session assignée pour le moment.
-          </p>
+          <EmptyState
+            icon={Calendar}
+            title="Aucune session assignée"
+            description="Votre programme apparaîtra ici dès que l'organisateur vous attribuera des sessions."
+            className="py-4"
+          />
         ) : (
           <div className="space-y-3">
             {sessions.map((session) => (
