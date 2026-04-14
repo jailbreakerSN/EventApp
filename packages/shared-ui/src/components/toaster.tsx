@@ -2,12 +2,18 @@
 
 import { useEffect, useState } from "react";
 import { Toaster as SonnerToaster } from "sonner";
+import { DEFAULT_UI_LOCALE_FR, type ToasterLabels } from "../lib/i18n";
 
 const MOBILE_BREAKPOINT = "(max-width: 639px)";
 const DESKTOP_POSITION = "bottom-right" as const;
 const MOBILE_POSITION = "top-center" as const;
 
 type ToastPosition = typeof DESKTOP_POSITION | typeof MOBILE_POSITION;
+
+export interface ToasterProps {
+  /** Localised labels; unspecified keys fall back to French. */
+  labels?: Partial<ToasterLabels>;
+}
 
 /**
  * Breakpoint-aware toast placement (ui-ux-pro-max rule 55).
@@ -21,8 +27,9 @@ type ToastPosition = typeof DESKTOP_POSITION | typeof MOBILE_POSITION;
  * hydration mismatch while still snapping to `top-center` before the first
  * toast is displayed on a mobile viewport.
  */
-export function Toaster() {
+export function Toaster({ labels }: ToasterProps = {}) {
   const [position, setPosition] = useState<ToastPosition>(DESKTOP_POSITION);
+  const l = { ...DEFAULT_UI_LOCALE_FR.toaster, ...labels };
 
   useEffect(() => {
     if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
@@ -46,7 +53,7 @@ export function Toaster() {
         duration: 4000,
         className: "text-sm",
       }}
-      aria-label="Notifications"
+      aria-label={l.region}
     />
   );
 }

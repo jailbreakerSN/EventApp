@@ -43,9 +43,11 @@ function useDialogContext() {
 interface DialogContentProps {
   className?: string;
   children: React.ReactNode;
+  /** aria-label for the close button. Defaults to the French "Fermer". */
+  closeLabel?: string;
 }
 
-function DialogContent({ className, children }: DialogContentProps) {
+function DialogContent({ className, children, closeLabel = "Fermer" }: DialogContentProps) {
   const { open, onOpenChange, titleId, descId } = useDialogContext();
   const dialogRef = useRef<HTMLDialogElement>(null);
 
@@ -92,7 +94,7 @@ function DialogContent({ className, children }: DialogContentProps) {
           type="button"
           onClick={handleClose}
           className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-          aria-label="Fermer"
+          aria-label={closeLabel}
         >
           <X className="h-4 w-4" aria-hidden="true" />
         </button>
