@@ -20,10 +20,8 @@ GATED = False
 # - Scope-excluded pages for H4b/c/d (sub-PRs not yet merged)
 ALLOW_LIST = {
     "apps/web-backoffice/src/components/plan/PlanComparisonTable.tsx",
-    # H4b scope — event detail + check-in (sub-PR pending):
-    "apps/web-backoffice/src/app/(dashboard)/events/[eventId]/page.tsx",
-    "apps/web-backoffice/src/app/(dashboard)/events/[eventId]/checkin/page.tsx",
-    "apps/web-backoffice/src/app/(dashboard)/events/[eventId]/checkin/history/page.tsx",
+    # H4b scope — event detail + check-in: MIGRATED.
+    # (files removed from allow-list; any new <table> in these would fail.)
     # H4c scope — finance / analytics / dashboard / events (sub-PR pending):
     "apps/web-backoffice/src/app/(dashboard)/finance/page.tsx",
     "apps/web-backoffice/src/app/(dashboard)/analytics/page.tsx",
