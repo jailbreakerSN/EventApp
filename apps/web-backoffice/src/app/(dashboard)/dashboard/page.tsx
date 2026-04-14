@@ -4,7 +4,13 @@ import Link from "next/link";
 import { useEvents } from "@/hooks/use-events";
 import { formatDate } from "@/lib/utils";
 import { Calendar, Users, Ticket, TrendingUp, ArrowRight, Banknote } from "lucide-react";
-import { Skeleton, Badge, getStatusVariant } from "@teranga/shared-ui";
+import {
+  Skeleton,
+  Badge,
+  getStatusVariant,
+  DataTable,
+  type DataTableColumn,
+} from "@teranga/shared-ui";
 
 const STATUS_LABELS: Record<string, string> = {
   draft: "Brouillon",
@@ -88,66 +94,64 @@ export default function DashboardPage() {
           </Link>
         </div>
 
-        {isLoading ? (
-          <table className="w-full text-sm">
-            <tbody>
-              {Array.from({ length: 5 }).map((_, i) => (
-                <tr key={i} className="border-b border-border last:border-0">
-                  <td className="px-6 py-3.5">
-                    <Skeleton variant="text" className="h-4 w-36" />
-                  </td>
-                  <td className="px-6 py-3.5">
-                    <Skeleton variant="text" className="h-4 w-20" />
-                  </td>
-                  <td className="px-6 py-3.5">
-                    <Skeleton variant="text" className="h-5 w-16 rounded-full" />
-                  </td>
-                  <td className="px-6 py-3.5 text-right">
-                    <Skeleton variant="text" className="h-4 w-16 ml-auto" />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        ) : events.length === 0 ? (
+        <DataTable<(typeof events)[number] & Record<string, unknown>>
+          aria-label="Événements récents"
+          emptyMessage="Aucun événement pour le moment."
+          responsiveCards
+          loading={isLoading}
+          data={events as ((typeof events)[number] & Record<string, unknown>)[]}
+          columns={
+            [
+              {
+                key: "title",
+                header: "Événement",
+                primary: true,
+                render: (event) => (
+                  <Link
+                    href={`/events/${event.id}`}
+                    className="font-medium text-foreground hover:text-primary"
+                  >
+                    {event.title}
+                  </Link>
+                ),
+              },
+              {
+                key: "startDate",
+                header: "Date",
+                hideOnMobile: true,
+                render: (event) => (
+                  <span className="text-muted-foreground text-xs whitespace-nowrap">
+                    {formatDate(event.startDate)}
+                  </span>
+                ),
+              },
+              {
+                key: "status",
+                header: "Statut",
+                render: (event) => (
+                  <Badge variant={getStatusVariant(event.status)}>
+                    {STATUS_LABELS[event.status] ?? STATUS_LABELS.draft}
+                  </Badge>
+                ),
+              },
+              {
+                key: "registered",
+                header: "Inscrits",
+                render: (event) => (
+                  <span className="text-muted-foreground">
+                    {event.registeredCount ?? 0} inscrits
+                  </span>
+                ),
+              },
+            ] as DataTableColumn<(typeof events)[number] & Record<string, unknown>>[]
+          }
+        />
+        {events.length === 0 && !isLoading && (
           <div className="p-8 text-center text-muted-foreground">
-            Aucun événement.{" "}
             <Link href="/events/new" className="text-primary hover:underline">
-              Créer votre premier
+              Créer votre premier événement
             </Link>
           </div>
-        ) : (
-          <table className="w-full text-sm">
-            <tbody>
-              {events.map((event) => {
-                const statusLabel = STATUS_LABELS[event.status] ?? STATUS_LABELS.draft;
-                return (
-                  <tr
-                    key={event.id}
-                    className="border-b border-border last:border-0 hover:bg-accent transition-colors"
-                  >
-                    <td className="px-6 py-3.5">
-                      <Link
-                        href={`/events/${event.id}`}
-                        className="font-medium text-foreground hover:text-primary"
-                      >
-                        {event.title}
-                      </Link>
-                    </td>
-                    <td className="px-6 py-3.5 text-muted-foreground text-xs whitespace-nowrap">
-                      {formatDate(event.startDate)}
-                    </td>
-                    <td className="px-6 py-3.5">
-                      <Badge variant={getStatusVariant(event.status)}>{statusLabel}</Badge>
-                    </td>
-                    <td className="px-6 py-3.5 text-right text-muted-foreground">
-                      {event.registeredCount ?? 0} inscrits
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
         )}
       </div>
     </div>

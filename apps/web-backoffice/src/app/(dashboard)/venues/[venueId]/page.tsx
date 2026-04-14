@@ -17,6 +17,8 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
   QueryError,
+  DataTable,
+  type DataTableColumn,
 } from "@teranga/shared-ui";
 import { MapPin, Calendar, Users, Globe, Save, ChevronLeft, ChevronRight } from "lucide-react";
 import { useVenue, useVenueEvents, useUpdateVenue } from "@/hooks/use-venues";
@@ -359,57 +361,65 @@ function EventsTab({ venueId }: { venueId: string }) {
           </div>
         )}
 
-        {!isLoading && events.length === 0 && (
-          <p className="text-muted-foreground text-sm text-center py-8">
-            Aucun \u00e9v\u00e9nement programm\u00e9 dans ce lieu
-          </p>
-        )}
-
-        {!isLoading && events.length > 0 && (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border text-left">
-                  <th className="py-2 pr-4 font-medium text-muted-foreground">
-                    \u00c9v\u00e9nement
-                  </th>
-                  <th className="py-2 pr-4 font-medium text-muted-foreground">Date</th>
-                  <th className="py-2 pr-4 font-medium text-muted-foreground">Statut</th>
-                  <th className="py-2 font-medium text-muted-foreground">Inscrits</th>
-                </tr>
-              </thead>
-              <tbody>
-                {events.map((event: any) => (
-                  <tr key={event.id} className="border-b border-border/50">
-                    <td className="py-3 pr-4">
-                      <Link
-                        href={`/events/${event.id}`}
-                        className="text-foreground hover:underline font-medium"
-                      >
-                        {event.title}
-                      </Link>
-                    </td>
-                    <td className="py-3 pr-4 text-muted-foreground">
+        {!isLoading && (
+          <DataTable<Record<string, unknown>>
+            aria-label="\u00c9v\u00e9nements du lieu"
+            emptyMessage="Aucun \u00e9v\u00e9nement programm\u00e9 dans ce lieu"
+            responsiveCards
+            data={events as Record<string, unknown>[]}
+            columns={
+              [
+                {
+                  key: "title",
+                  header: "\u00c9v\u00e9nement",
+                  primary: true,
+                  render: (event) => (
+                    <Link
+                      href={`/events/${event.id as string}`}
+                      className="text-foreground hover:underline font-medium"
+                    >
+                      {event.title as string}
+                    </Link>
+                  ),
+                },
+                {
+                  key: "startDate",
+                  header: "Date",
+                  render: (event) => (
+                    <span className="text-muted-foreground">
                       {event.startDate
-                        ? new Date(event.startDate).toLocaleDateString("fr-FR", {
+                        ? new Date(event.startDate as string).toLocaleDateString("fr-FR", {
                             dateStyle: "medium",
                           })
                         : "\u2014"}
-                    </td>
-                    <td className="py-3 pr-4">
-                      <Badge
-                        variant={event.status === "published" ? "success" : "secondary"}
-                        className="text-[10px]"
-                      >
-                        {event.status}
-                      </Badge>
-                    </td>
-                    <td className="py-3 text-muted-foreground">{event.registeredCount ?? 0}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                    </span>
+                  ),
+                },
+                {
+                  key: "status",
+                  header: "Statut",
+                  render: (event) => (
+                    <Badge
+                      variant={event.status === "published" ? "success" : "secondary"}
+                      className="text-[10px]"
+                    >
+                      {event.status as string}
+                    </Badge>
+                  ),
+                },
+                {
+                  key: "registered",
+                  header: "Inscrits",
+                  hideOnMobile: true,
+                  render: (event) => (
+                    <span className="text-muted-foreground">
+                      {(event.registeredCount as number) ?? 0}
+                    </span>
+                  ),
+                },
+              ] as DataTableColumn<Record<string, unknown>>[]
+            }
+          />
         )}
 
         {/* Pagination */}

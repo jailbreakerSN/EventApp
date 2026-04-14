@@ -22,12 +22,8 @@ ALLOW_LIST = {
     "apps/web-backoffice/src/components/plan/PlanComparisonTable.tsx",
     # H4b scope — event detail + check-in: MIGRATED.
     # (files removed from allow-list; any new <table> in these would fail.)
-    # H4c scope — finance / analytics / dashboard / events (sub-PR pending):
-    "apps/web-backoffice/src/app/(dashboard)/finance/page.tsx",
-    "apps/web-backoffice/src/app/(dashboard)/analytics/page.tsx",
-    "apps/web-backoffice/src/app/(dashboard)/dashboard/page.tsx",
-    "apps/web-backoffice/src/app/(dashboard)/events/page.tsx",
-    "apps/web-backoffice/src/app/(dashboard)/venues/[venueId]/page.tsx",
+    # H4c scope — finance / analytics / dashboard / events / venues[venueId]:
+    # MIGRATED (files removed from allow-list).
     # H4d scope — participant side (sub-PR pending):
     "apps/web-participant/src/app/(public)/events/compare/page.tsx",
     "apps/web-participant/src/app/(authenticated)/sponsor/[eventId]/page.tsx",
