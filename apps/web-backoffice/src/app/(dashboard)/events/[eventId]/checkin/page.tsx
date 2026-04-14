@@ -20,6 +20,8 @@ import {
   TabsTrigger,
   TabsContent,
   EmptyState,
+  DataTable,
+  type DataTableColumn,
 } from "@teranga/shared-ui";
 import {
   ArrowLeft,
@@ -645,29 +647,41 @@ function DashboardTab({
           <Card>
             <CardContent className="p-6">
               <h2 className="text-lg font-semibold text-foreground mb-4">Par type de billet</h2>
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-left text-muted-foreground border-b">
-                    <th className="pb-2">Type</th>
-                    <th className="pb-2 text-right">Inscrits</th>
-                    <th className="pb-2 text-right">Entrees</th>
-                    <th className="pb-2 text-right">%</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {byTicketType.map((tt) => {
-                    const pct = tt.registered > 0 ? Math.round((tt.checkedIn / tt.registered) * 100) : 0;
-                    return (
-                      <tr key={tt.ticketTypeId} className="border-b last:border-0">
-                        <td className="py-2 font-medium">{tt.ticketTypeName}</td>
-                        <td className="py-2 text-right">{tt.registered}</td>
-                        <td className="py-2 text-right">{tt.checkedIn}</td>
-                        <td className="py-2 text-right">{pct}%</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+              <DataTable<Record<string, unknown>>
+                aria-label="Statistiques par type de billet"
+                data={byTicketType as unknown as Record<string, unknown>[]}
+                columns={
+                  [
+                    {
+                      key: "ticketTypeName",
+                      header: "Type",
+                      primary: true,
+                      render: (tt) => (
+                        <span className="font-medium">{tt.ticketTypeName as string}</span>
+                      ),
+                    },
+                    {
+                      key: "registered",
+                      header: "Inscrits",
+                      render: (tt) => (tt.registered as number) ?? 0,
+                    },
+                    {
+                      key: "checkedIn",
+                      header: "Entrees",
+                      render: (tt) => (tt.checkedIn as number) ?? 0,
+                    },
+                    {
+                      key: "pct",
+                      header: "%",
+                      render: (tt) => {
+                        const reg = (tt.registered as number) ?? 0;
+                        const ci = (tt.checkedIn as number) ?? 0;
+                        return `${reg > 0 ? Math.round((ci / reg) * 100) : 0}%`;
+                      },
+                    },
+                  ] as DataTableColumn<Record<string, unknown>>[]
+                }
+              />
             </CardContent>
           </Card>
         )}
