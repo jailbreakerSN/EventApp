@@ -24,9 +24,12 @@ ALLOW_LIST = {
     # (files removed from allow-list; any new <table> in these would fail.)
     # H4c scope — finance / analytics / dashboard / events / venues[venueId]:
     # MIGRATED (files removed from allow-list).
-    # H4d scope — participant side (sub-PR pending):
+    # H4d scope — participant side: MIGRATED.
+    # events/compare/page.tsx is intentionally kept as raw <table> — it is a
+    # side-by-side comparison grid where events are the columns (not rows),
+    # so the DataTable row-per-item model does not apply. Same rationale as
+    # PlanComparisonTable.tsx above.
     "apps/web-participant/src/app/(public)/events/compare/page.tsx",
-    "apps/web-participant/src/app/(authenticated)/sponsor/[eventId]/page.tsx",
 }
 
 
