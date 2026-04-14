@@ -19,7 +19,15 @@
     "yes": "Oui",
     "no": "Non",
     "all": "Tous",
-    "none": "Aucun"
+    "none": "Aucun",
+    "view": "Voir",
+    "viewAll": "Tout voir",
+    "actions": "Actions",
+    "date": "Date",
+    "status": "Statut",
+    "total": "Total",
+    "page": "Page",
+    "of": "sur"
   },
   "auth": {
     "login": "Connexion",
@@ -45,17 +53,88 @@
     "settings": "Paramètres",
     "notifications": "Notifications"
   },
+  "dashboard": {
+    "title": "Tableau de bord",
+    "stats": {
+      "totalEvents": "Total événements",
+      "published": "Publiés",
+      "recentRegistrations": "Inscrits récents",
+      "checkins": "Check-ins",
+      "revenue": "Revenus",
+      "vsLastMonth": "vs dernier mois",
+      "paymentsComingSoon": "Paiements bientôt disponibles"
+    },
+    "recent": {
+      "title": "Événements récents",
+      "empty": "Aucun événement pour le moment.",
+      "createFirst": "Créer votre premier événement",
+      "event": "Événement",
+      "attendees": "{count} inscrits"
+    }
+  },
   "events": {
     "title": "Événements",
     "create": "Créer un événement",
     "noEvents": "Aucun événement pour le moment. Créez votre premier événement.",
     "noFilterResults": "Aucun événement ne correspond à vos filtres.",
     "allCategories": "Toutes les catégories",
+    "table": {
+      "event": "Événement",
+      "location": "Lieu",
+      "category": "Catégorie",
+      "registered": "Inscrits"
+    },
+    "empty": {
+      "filtered": "Aucun événement ne correspond à vos filtres. Essayez d'élargir votre recherche.",
+      "unfiltered": {
+        "title": "Aucun événement pour le moment",
+        "description": "Créez votre premier événement pour commencer à accueillir des participants."
+      }
+    },
     "status": {
       "draft": "Brouillon",
       "published": "Publié",
       "cancelled": "Annulé",
       "archived": "Archivé"
+    }
+  },
+  "finance": {
+    "title": "Finance",
+    "payoutsHistory": "Historique des versements",
+    "empty": {
+      "title": "Aucun versement pour le moment",
+      "description": "Vos revenus s'afficheront ici après la clôture du premier événement payant."
+    },
+    "table": {
+      "period": "Période",
+      "gross": "Brut",
+      "fees": "Frais",
+      "net": "Net",
+      "status": "Statut",
+      "date": "Date"
+    },
+    "status": {
+      "pending": "En attente",
+      "paid": "Payé",
+      "failed": "Échoué"
+    }
+  },
+  "analytics": {
+    "title": "Analyses",
+    "topEvents": "Top événements",
+    "stats": {
+      "totalEvents": "Événements",
+      "registrations": "Inscriptions",
+      "checkins": "Check-ins",
+      "checkinRate": "Taux de check-in",
+      "noRegistrationsInPeriod": "Aucune inscription",
+      "noRegistrationsInPeriodHint": "Aucune inscription sur cette période"
+    },
+    "table": {
+      "event": "Événement",
+      "registered": "Inscrits",
+      "checkins": "Check-ins",
+      "rate": "Taux"
     }
   },
   "registrations": {

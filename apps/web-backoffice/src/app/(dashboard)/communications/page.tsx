@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Send, Mail, Smartphone, Bell, Clock, CalendarClock } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { useEventBroadcasts, useSendBroadcast } from "@/hooks/use-broadcasts";
 import { useEvents } from "@/hooks/use-events";
 import { useAuth } from "@/hooks/use-auth";
@@ -57,6 +58,7 @@ const STATUS_LABELS: Record<
 };
 
 export default function CommunicationsPage() {
+  const t = useTranslations("nav");
   useAuth();
   const { data: eventsData } = useEvents();
   const events = eventsData?.data ?? [];
@@ -117,7 +119,7 @@ export default function CommunicationsPage() {
             </BreadcrumbItem>
           </BreadcrumbList>
         </Breadcrumb>
-        <h1 className="text-2xl font-bold">Communications</h1>
+        <h1 className="text-2xl font-bold">{t("communications")}</h1>
         <p className="text-muted-foreground">
           Envoyez des messages aux participants de vos evenements
         </p>
