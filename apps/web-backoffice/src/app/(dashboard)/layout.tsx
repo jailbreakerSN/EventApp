@@ -15,6 +15,33 @@ import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 
 const BACKOFFICE_ROLES = ["organizer", "co_organizer", "super_admin", "venue_manager"] as const;
 
+// Grace period before the email-verification hard gate kicks in. Configurable
+// via NEXT_PUBLIC_EMAIL_GRACE_DAYS; default 7. Set to 0 to gate immediately.
+const GRACE_DAYS = Number.parseInt(
+  process.env.NEXT_PUBLIC_EMAIL_GRACE_DAYS ?? "7",
+  10,
+);
+const GRACE_MS = Number.isFinite(GRACE_DAYS) && GRACE_DAYS >= 0
+  ? GRACE_DAYS * 24 * 60 * 60 * 1000
+  : 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * Returns true when an unverified user has exceeded the grace period.
+ * Super-admins are always exempt so platform operators can triage without
+ * locking themselves out.
+ */
+function shouldHardGateEmail(user: {
+  emailVerified: boolean;
+  createdAt: string | null;
+  roles: readonly string[];
+}): boolean {
+  if (user.emailVerified) return false;
+  if (user.roles.includes("super_admin")) return false;
+  if (!user.createdAt) return false;
+  const age = Date.now() - new Date(user.createdAt).getTime();
+  return age > GRACE_MS;
+}
+
 function DashboardShell({ children }: { children: React.ReactNode }) {
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [bannerDismissed, setBannerDismissed] = useState(false);
@@ -108,6 +135,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     // Role gate: only organizers, co-organizers, and super admins can access backoffice
     if (!hasRole(...BACKOFFICE_ROLES)) {
       router.replace("/unauthorized");
+      return;
+    }
+
+    // Hard email-verification gate once the grace period elapses.
+    // API-side mutations already enforce emailVerified via custom claims;
+    // this is the UX-layer complement so users see the consequence
+    // instead of a silent 403.
+    if (shouldHardGateEmail(user)) {
+      router.replace("/verify-email");
     }
   }, [user, loading, hasRole, router]);
 
@@ -116,6 +152,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }
 
   if (!user || !hasRole(...BACKOFFICE_ROLES)) return null;
+  if (shouldHardGateEmail(user)) return null;
 
   return <DashboardShell>{children}</DashboardShell>;
 }

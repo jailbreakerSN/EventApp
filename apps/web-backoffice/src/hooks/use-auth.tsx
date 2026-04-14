@@ -22,6 +22,8 @@ interface AuthUser {
   roles: UserRole[];
   organizationId?: string;
   emailVerified: boolean;
+  /** ISO string; sourced from firebaseUser.metadata.creationTime. */
+  createdAt: string | null;
 }
 
 interface AuthContextValue {
@@ -52,6 +54,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           roles: (tokenResult.claims.roles as UserRole[]) ?? ["participant"],
           organizationId: tokenResult.claims.organizationId as string | undefined,
           emailVerified: firebaseUser.emailVerified,
+          createdAt: firebaseUser.metadata.creationTime
+            ? new Date(firebaseUser.metadata.creationTime).toISOString()
+            : null,
         });
       } else {
         setUser(null);
