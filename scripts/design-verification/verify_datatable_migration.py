@@ -13,11 +13,26 @@ import sys
 from _shared import build_arg_parser, fail, pass_, skip
 
 
-GATED = True
+GATED = False
 
-# Files that are allowed to remain as raw <table> (semantic pricing table)
+# Files allowed to remain as raw <table>:
+# - PlanComparisonTable: semantic pricing comparison (not a data grid)
+# - Scope-excluded pages for H4b/c/d (sub-PRs not yet merged)
 ALLOW_LIST = {
     "apps/web-backoffice/src/components/plan/PlanComparisonTable.tsx",
+    # H4b scope — event detail + check-in (sub-PR pending):
+    "apps/web-backoffice/src/app/(dashboard)/events/[eventId]/page.tsx",
+    "apps/web-backoffice/src/app/(dashboard)/events/[eventId]/checkin/page.tsx",
+    "apps/web-backoffice/src/app/(dashboard)/events/[eventId]/checkin/history/page.tsx",
+    # H4c scope — finance / analytics / dashboard / events (sub-PR pending):
+    "apps/web-backoffice/src/app/(dashboard)/finance/page.tsx",
+    "apps/web-backoffice/src/app/(dashboard)/analytics/page.tsx",
+    "apps/web-backoffice/src/app/(dashboard)/dashboard/page.tsx",
+    "apps/web-backoffice/src/app/(dashboard)/events/page.tsx",
+    "apps/web-backoffice/src/app/(dashboard)/venues/[venueId]/page.tsx",
+    # H4d scope — participant side (sub-PR pending):
+    "apps/web-participant/src/app/(public)/events/compare/page.tsx",
+    "apps/web-participant/src/app/(authenticated)/sponsor/[eventId]/page.tsx",
 }
 
 
