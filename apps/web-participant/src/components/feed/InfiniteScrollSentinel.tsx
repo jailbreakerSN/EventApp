@@ -36,9 +36,13 @@ export function InfiniteScrollSentinel({
   return (
     <div ref={sentinelRef} className="flex justify-center py-6">
       {isFetchingNextPage && (
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        <div
+          className="flex items-center gap-2 text-sm text-muted-foreground"
+          role="status"
+          aria-label="Chargement de publications supplémentaires"
+        >
           <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-          Chargement...
+          <span className="sr-only">Chargement de publications supplémentaires</span>
         </div>
       )}
     </div>

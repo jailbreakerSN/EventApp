@@ -609,7 +609,7 @@ export default function BadgesPage() {
                     disabled={eventsLoading}
                   >
                     <option value="">
-                      {eventsLoading ? "Chargement..." : "Selectionnez un evenement"}
+                      {eventsLoading ? "…" : "Selectionnez un evenement"}
                     </option>
                     {events.map((event: { id: string; title: string }) => (
                       <option key={event.id} value={event.id}>
@@ -634,7 +634,7 @@ export default function BadgesPage() {
                   >
                     <option value="">
                       {templatesLoading
-                        ? "Chargement..."
+                        ? "…"
                         : templates.length === 0
                           ? "Aucun modele disponible"
                           : "Selectionnez un modele"}
