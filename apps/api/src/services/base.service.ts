@@ -1,14 +1,56 @@
 import {
+  type Organization,
   type Permission,
-  type RoleAssignment,
-  type OrganizationPlan,
   type PlanFeature,
+  type PlanFeatures,
+  type RoleAssignment,
   PLAN_LIMITS,
+  PLAN_LIMIT_UNLIMITED,
   hasPermission,
   resolvePermissions,
 } from "@teranga/shared-types";
 import { type AuthUser } from "@/middlewares/auth.middleware";
 import { ForbiddenError, PlanLimitError } from "@/errors/app-error";
+
+// ─── Effective-plan fallback helpers ─────────────────────────────────────────
+//
+// Phase 3 of dynamic plans: enforcement reads `org.effectiveLimits` /
+// `org.effectiveFeatures` first. If these are missing (an org that predates
+// the Phase 2 backfill, or an org created mid-deploy before the plan doc was
+// seeded), we fall back to the hardcoded `PLAN_LIMITS` record keyed by the
+// legacy `org.plan` enum. This keeps every request safe while we finish the
+// rollout; Phase 6 removes the hardcoded constants once no org is missing
+// effective fields.
+
+function storedToRuntime(n: number): number {
+  return n === PLAN_LIMIT_UNLIMITED ? Infinity : n;
+}
+
+function effectiveFeatures(org: Organization): PlanFeatures {
+  if (org.effectiveFeatures) return org.effectiveFeatures;
+  return PLAN_LIMITS[org.plan].features;
+}
+
+type LimitResource = "events" | "members" | "participantsPerEvent";
+
+function effectiveLimit(org: Organization, resource: LimitResource): number {
+  if (org.effectiveLimits) {
+    const stored =
+      resource === "events"
+        ? org.effectiveLimits.maxEvents
+        : resource === "members"
+          ? org.effectiveLimits.maxMembers
+          : org.effectiveLimits.maxParticipantsPerEvent;
+    return storedToRuntime(stored);
+  }
+  // Fallback: read from the hardcoded PLAN_LIMITS table.
+  const legacy = PLAN_LIMITS[org.plan];
+  return resource === "events"
+    ? legacy.maxEvents
+    : resource === "members"
+      ? legacy.maxMembers
+      : legacy.maxParticipantsPerEvent;
+}
 
 /**
  * Base service providing shared permission resolution logic.
@@ -45,14 +87,17 @@ export abstract class BaseService {
   }
 
   /**
-   * Throw PlanLimitError if the plan does not include the given feature.
+   * Throw PlanLimitError if the organization's effective plan does not include
+   * the given feature. Reads `org.effectiveFeatures` with a safe fallback to
+   * the hardcoded `PLAN_LIMITS[org.plan].features` record when the
+   * denormalization is missing (e.g. pre-backfill org).
    */
-  protected requirePlanFeature(plan: OrganizationPlan, feature: PlanFeature): void {
-    const limits = PLAN_LIMITS[plan];
-    if (!limits.features[feature]) {
+  protected requirePlanFeature(org: Organization, feature: PlanFeature): void {
+    const features = effectiveFeatures(org);
+    if (!features[feature]) {
       throw new PlanLimitError(
-        `La fonctionnalité « ${feature} » n'est pas disponible sur le plan ${plan}`,
-        { feature, plan },
+        `La fonctionnalité « ${feature} » n'est pas disponible sur le plan ${org.effectivePlanKey ?? org.plan}`,
+        { feature, plan: org.effectivePlanKey ?? org.plan },
       );
     }
   }
@@ -60,20 +105,16 @@ export abstract class BaseService {
   /**
    * Check a numeric plan limit without throwing.
    * Returns the comparison so the caller can decide (throw, waitlist, etc.).
+   *
+   * Reads `org.effectiveLimits` with a safe fallback to `PLAN_LIMITS[org.plan]`
+   * when the denormalization is missing.
    */
   protected checkPlanLimit(
-    plan: OrganizationPlan,
-    resource: "events" | "members" | "participantsPerEvent",
+    org: Organization,
+    resource: LimitResource,
     current: number,
   ): { allowed: boolean; current: number; limit: number } {
-    const limits = PLAN_LIMITS[plan];
-    const limit =
-      resource === "events"
-        ? limits.maxEvents
-        : resource === "members"
-          ? limits.maxMembers
-          : limits.maxParticipantsPerEvent;
-
+    const limit = effectiveLimit(org, resource);
     return {
       allowed: !isFinite(limit) || current < limit,
       current,

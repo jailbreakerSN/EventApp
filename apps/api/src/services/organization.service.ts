@@ -1,19 +1,13 @@
 import {
   type Organization,
-  type OrganizationPlan,
   type OrgMemberRole,
   type CreateOrganizationDto,
   type UpdateOrganizationDto,
-  PLAN_LIMITS,
 } from "@teranga/shared-types";
 import { organizationRepository } from "@/repositories/organization.repository";
 import { type AuthUser } from "@/middlewares/auth.middleware";
 import { auth, db, COLLECTIONS } from "@/config/firebase";
-import {
-  ValidationError,
-  ConflictError,
-  PlanLimitError,
-} from "@/errors/app-error";
+import { ValidationError, ConflictError, PlanLimitError } from "@/errors/app-error";
 import { BaseService } from "./base.service";
 import { eventBus } from "@/events/event-bus";
 import { getRequestId } from "@/context/request-context";
@@ -109,9 +103,11 @@ export class OrganizationService extends BaseService {
 
       if (members.includes(userId)) return;
 
-      const limits = PLAN_LIMITS[org.plan];
-      if (members.length >= limits.maxMembers) {
-        throw new PlanLimitError(`Maximum ${limits.maxMembers} members on the ${org.plan} plan`);
+      const { allowed, limit } = this.checkPlanLimit(org, "members", members.length);
+      if (!allowed) {
+        throw new PlanLimitError(
+          `Maximum ${limit} members on the ${org.effectivePlanKey ?? org.plan} plan`,
+        );
       }
 
       tx.update(docRef, { memberIds: [...members, userId] });
@@ -164,7 +160,12 @@ export class OrganizationService extends BaseService {
     });
   }
 
-  async updateMemberRole(orgId: string, userId: string, role: OrgMemberRole, user: AuthUser): Promise<void> {
+  async updateMemberRole(
+    orgId: string,
+    userId: string,
+    role: OrgMemberRole,
+    user: AuthUser,
+  ): Promise<void> {
     this.requirePermission(user, "organization:manage_members");
 
     const org = await organizationRepository.findByIdOrThrow(orgId);
@@ -202,11 +203,6 @@ export class OrganizationService extends BaseService {
       timestamp: new Date().toISOString(),
     });
   }
-
-  getPlanLimits(plan: OrganizationPlan) {
-    return PLAN_LIMITS[plan];
-  }
-
 }
 
 export const organizationService = new OrganizationService();
