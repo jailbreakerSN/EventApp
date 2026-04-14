@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { Users, Building2, CalendarDays, Wallet, MapPin } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { useAdminStats } from "@/hooks/use-admin";
 import {
   Card,
@@ -38,7 +39,9 @@ const STAT_CARDS: StatCardDef[] = [
 ];
 
 export default function AdminPage() {
+  const tCommon = useTranslations("common");
   const { data: stats, isLoading } = useAdminStats();
+  void tCommon; // reserved for future string swaps (I1d long-tail)
 
   return (
     <div>
