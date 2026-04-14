@@ -3,11 +3,17 @@
 import * as React from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "../lib/utils";
+import { DEFAULT_UI_LOCALE_FR, type PaginationLabels } from "../lib/i18n";
 
 export interface PaginationProps extends React.HTMLAttributes<HTMLElement> {
   currentPage: number;
   totalPages: number;
   onPageChange: (page: number) => void;
+  /**
+   * Localised labels. Pass a partial object to override individual keys;
+   * unspecified keys fall back to French defaults (DEFAULT_UI_LOCALE_FR).
+   */
+  labels?: Partial<PaginationLabels>;
 }
 
 function getPageNumbers(current: number, total: number): (number | "ellipsis")[] {
@@ -42,11 +48,13 @@ function Pagination({
   totalPages,
   onPageChange,
   className,
+  labels,
   ...props
 }: PaginationProps) {
   if (totalPages <= 1) return null;
 
   const pages = getPageNumbers(currentPage, totalPages);
+  const l = { ...DEFAULT_UI_LOCALE_FR.pagination, ...labels };
 
   const buttonBase =
     "inline-flex items-center justify-center h-9 min-w-9 rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50";
@@ -54,7 +62,7 @@ function Pagination({
   return (
     <nav
       role="navigation"
-      aria-label="Pagination"
+      aria-label={l.navigation}
       className={cn("flex items-center justify-center gap-1", className)}
       {...props}
     >
@@ -63,7 +71,7 @@ function Pagination({
         className={cn(buttonBase, "px-2 hover:bg-accent hover:text-accent-foreground")}
         onClick={() => onPageChange(currentPage - 1)}
         disabled={currentPage <= 1}
-        aria-label="Page précédente"
+        aria-label={l.previous}
       >
         <ChevronLeft className="h-4 w-4" />
       </button>
@@ -88,7 +96,7 @@ function Pagination({
             )}
             onClick={() => onPageChange(page)}
             aria-current={page === currentPage ? "page" : undefined}
-            aria-label={`Page ${page}`}
+            aria-label={l.page(page)}
           >
             {page}
           </button>
@@ -100,7 +108,7 @@ function Pagination({
         className={cn(buttonBase, "px-2 hover:bg-accent hover:text-accent-foreground")}
         onClick={() => onPageChange(currentPage + 1)}
         disabled={currentPage >= totalPages}
-        aria-label="Page suivante"
+        aria-label={l.next}
       >
         <ChevronRight className="h-4 w-4" />
       </button>

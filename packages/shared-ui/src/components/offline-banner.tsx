@@ -2,10 +2,17 @@
 
 import * as React from "react";
 import { WifiOff } from "lucide-react";
+import { DEFAULT_UI_LOCALE_FR, type OfflineBannerLabels } from "../lib/i18n";
 
-function OfflineBanner() {
+export interface OfflineBannerProps {
+  /** Localised labels; unspecified keys fall back to French. */
+  labels?: Partial<OfflineBannerLabels>;
+}
+
+function OfflineBanner({ labels }: OfflineBannerProps = {}) {
   const [isOffline, setIsOffline] = React.useState(false);
   const [isVisible, setIsVisible] = React.useState(false);
+  const l = { ...DEFAULT_UI_LOCALE_FR.offlineBanner, ...labels };
 
   React.useEffect(() => {
     // Check initial state
@@ -45,7 +52,7 @@ function OfflineBanner() {
       }`}
     >
       <WifiOff className="h-4 w-4 shrink-0" />
-      <span>{"Connexion perdue. Certaines fonctionnalit\u00e9s peuvent \u00eatre indisponibles."}</span>
+      <span>{l.message}</span>
     </div>
   );
 }

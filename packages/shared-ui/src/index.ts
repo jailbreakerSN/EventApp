@@ -56,3 +56,17 @@ export { SearchInput, type SearchInputProps } from "./components/search-input";
 export { FileUpload, type FileUploadProps } from "./components/file-upload";
 export { DataTable, type DataTableProps, type DataTableColumn } from "./components/data-table";
 export { RadioGroup, type RadioGroupProps, type RadioOption } from "./components/radio-group";
+
+// ─── i18n ─────────────────────────────────────────────────────────────────
+export {
+  DEFAULT_UI_LOCALE_FR,
+  type TerangaUILocale,
+  type PaginationLabels,
+  type DialogLabels,
+  type FileUploadLabels,
+  type OfflineBannerLabels,
+  type ToasterLabels,
+  type DataTableLabels,
+  type QueryErrorLabels,
+  type ConfirmDialogLabels,
+} from "./lib/i18n";
