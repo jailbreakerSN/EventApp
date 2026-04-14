@@ -162,6 +162,7 @@ function StatCard({
   isLoading,
   trend,
   trendLabel,
+  deltaPct,
   subtitle,
 }: {
   icon: React.ReactNode;
@@ -171,15 +172,46 @@ function StatCard({
   isLoading?: boolean;
   trend?: "up" | "down" | "neutral";
   trendLabel?: string;
+  /** Optional numeric delta — rendered as "+X %" / "−X %" when provided. */
+  deltaPct?: number;
   subtitle?: string;
 }) {
+  // ui-ux-pro-max rule 78: never rely on color alone.
+  // Each delta uses glyph (triangle) + textual sign + semantic color.
+  // Positive = teranga-green, negative = teranga-gold-dark (avoids
+  // red/green confusion for deuteranopia; both hit 4.5:1 on bg-card in
+  // both light and dark themes).
   const trendDisplay = trend
     ? {
-        up: { arrow: "\u2191", className: "text-emerald-600" },
-        down: { arrow: "\u2193", className: "text-red-500" },
-        neutral: { arrow: "\u2192", className: "text-muted-foreground" },
+        up: {
+          glyph: "\u25B2", // ▲
+          className: "text-teranga-green",
+          ariaDirection: "Hausse",
+        },
+        down: {
+          glyph: "\u25BC", // ▼
+          className: "text-teranga-gold-dark",
+          ariaDirection: "Baisse",
+        },
+        neutral: {
+          glyph: "\u2014", // —
+          className: "text-muted-foreground",
+          ariaDirection: "Stable",
+        },
       }[trend]
     : null;
+
+  const signedDelta =
+    typeof deltaPct === "number"
+      ? `${deltaPct > 0 ? "+" : deltaPct < 0 ? "\u2212" : ""}${Math.abs(deltaPct)}\u00A0%`
+      : null;
+
+  const ariaLabel =
+    trendDisplay && trendLabel
+      ? typeof deltaPct === "number"
+        ? `${trendDisplay.ariaDirection} de ${Math.abs(deltaPct)} pour cent ${trendLabel}`
+        : `${trendDisplay.ariaDirection} ${trendLabel}`
+      : undefined;
 
   return (
     <div className="bg-card rounded-xl p-5 shadow-sm border border-border">
@@ -194,8 +226,13 @@ function StatCard({
           <div className="flex items-baseline gap-2">
             <p className="text-3xl font-bold text-primary">{value}</p>
             {trendDisplay && (
-              <span className={`text-xs font-medium ${trendDisplay.className}`}>
-                {trendDisplay.arrow} {trendLabel}
+              <span
+                className={`inline-flex items-center gap-1 text-xs font-medium ${trendDisplay.className}`}
+                aria-label={ariaLabel}
+              >
+                <span aria-hidden="true">{trendDisplay.glyph}</span>
+                {signedDelta && <span aria-hidden="true">{signedDelta}</span>}
+                {trendLabel && <span aria-hidden="true">{trendLabel}</span>}
               </span>
             )}
           </div>

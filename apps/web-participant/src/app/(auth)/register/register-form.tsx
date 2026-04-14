@@ -3,6 +3,9 @@
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import { useAuth } from "@/hooks/use-auth";
 import { getAndClearRedirectUrl } from "@/components/auth-guard";
 import { ThemeLogo } from "@/components/theme-logo";
@@ -18,6 +21,24 @@ import {
   FormField,
 } from "@teranga/shared-ui";
 
+const registerSchema = z.object({
+  displayName: z
+    .string()
+    .trim()
+    .min(1, { message: "Ce champ est requis" }),
+  email: z
+    .string()
+    .trim()
+    .regex(/^[^\s@]+@[^\s@]+\.[^\s@]+$/, { message: "Adresse email invalide" }),
+  password: z
+    .string()
+    .min(8, { message: "Le mot de passe doit contenir au moins 8 caractères" })
+    .regex(/[A-Z]/, { message: "Le mot de passe doit contenir au moins une majuscule" })
+    .regex(/[0-9]/, { message: "Le mot de passe doit contenir au moins un chiffre" }),
+});
+
+type RegisterFormValues = z.infer<typeof registerSchema>;
+
 function safeRedirect(url: string | null): string {
   if (!url) return "/events";
   // Only allow relative paths starting with / (block protocol-relative URLs like //evil.com)
@@ -26,50 +47,34 @@ function safeRedirect(url: string | null): string {
 }
 
 export function RegisterForm() {
-  const { register, loginWithGoogle } = useAuth();
+  const { register: registerUser, loginWithGoogle } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [displayName, setDisplayName] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [googleLoading, setGoogleLoading] = useState(false);
 
-  const validatePassword = (value: string): string => {
-    if (value.length < 8) return "Le mot de passe doit contenir au moins 8 caractères";
-    if (!/[A-Z]/.test(value)) return "Le mot de passe doit contenir au moins une majuscule";
-    if (!/[0-9]/.test(value)) return "Le mot de passe doit contenir au moins un chiffre";
-    return "";
-  };
-
-  const validateField = (name: string, value: string) => {
-    let message = "";
-    if (name === "displayName") {
-      if (!value.trim()) message = "Ce champ est requis";
-    } else if (name === "email") {
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) message = "Adresse email invalide";
-    } else if (name === "password") {
-      message = validatePassword(value);
-    }
-    setFieldErrors((prev) => ({ ...prev, [name]: message }));
-  };
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, touchedFields, isSubmitting, dirtyFields },
+  } = useForm<RegisterFormValues>({
+    mode: "onBlur",
+    defaultValues: { displayName: "", email: "", password: "" },
+    resolver: zodResolver(registerSchema),
+  });
 
   const redirectTo = safeRedirect(searchParams.get("redirect"));
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const fieldState = (name: keyof RegisterFormValues): "idle" | "valid" | "error" => {
+    if (errors[name]) return "error";
+    if (touchedFields[name] && dirtyFields[name]) return "valid";
+    return "idle";
+  };
+
+  const onSubmit = async (values: RegisterFormValues) => {
     setError(null);
-
-    const pwError = validatePassword(password);
-    if (pwError) {
-      setError(pwError);
-      return;
-    }
-
-    setLoading(true);
     try {
-      await register(email, password, displayName);
+      await registerUser(values.email, values.password, values.displayName);
       router.push("/verify-email");
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Erreur lors de l'inscription";
@@ -80,14 +85,12 @@ export function RegisterForm() {
       } else {
         setError(message);
       }
-    } finally {
-      setLoading(false);
     }
   };
 
   const handleGoogle = async () => {
     setError(null);
-    setLoading(true);
+    setGoogleLoading(true);
     try {
       await loginWithGoogle();
       const savedUrl = safeRedirect(getAndClearRedirectUrl());
@@ -95,9 +98,11 @@ export function RegisterForm() {
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Erreur de connexion Google");
     } finally {
-      setLoading(false);
+      setGoogleLoading(false);
     }
   };
+
+  const loading = isSubmitting || googleLoading;
 
   return (
     <Card>
@@ -114,7 +119,7 @@ export function RegisterForm() {
         <CardDescription>Inscrivez-vous pour découvrir les événements</CardDescription>
       </CardHeader>
       <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
           {error && (
             <div role="alert" className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
               {error}
@@ -125,61 +130,54 @@ export function RegisterForm() {
             label="Nom complet"
             required
             htmlFor="displayName"
-            error={fieldErrors.displayName}
+            error={errors.displayName?.message}
+            state={fieldState("displayName")}
           >
             <Input
               id="displayName"
               type="text"
               placeholder="Prénom Nom"
-              value={displayName}
-              onChange={(e) => {
-                setDisplayName(e.target.value);
-                setFieldErrors((p) => ({ ...p, displayName: "" }));
-              }}
-              onBlur={(e) => validateField("displayName", e.target.value)}
-              required
               autoComplete="name"
-              aria-invalid={!!fieldErrors.displayName}
+              {...register("displayName")}
             />
           </FormField>
 
-          <FormField label="Email" required htmlFor="email" error={fieldErrors.email}>
+          <FormField
+            label="Email"
+            required
+            htmlFor="email"
+            error={errors.email?.message}
+            state={fieldState("email")}
+          >
             <Input
               id="email"
               type="email"
               placeholder="votre@email.com"
-              value={email}
-              onChange={(e) => {
-                setEmail(e.target.value);
-                setFieldErrors((p) => ({ ...p, email: "" }));
-              }}
-              onBlur={(e) => validateField("email", e.target.value)}
-              required
               autoComplete="email"
-              aria-invalid={!!fieldErrors.email}
+              {...register("email")}
             />
           </FormField>
 
-          <FormField label="Mot de passe" required htmlFor="password" error={fieldErrors.password}>
+          <FormField
+            label="Mot de passe"
+            required
+            htmlFor="password"
+            error={errors.password?.message}
+            state={fieldState("password")}
+            hint="Au moins 8 caractères, 1 majuscule, 1 chiffre"
+          >
             <Input
               id="password"
               type="password"
-              placeholder="Au moins 8 caractères, 1 majuscule, 1 chiffre"
-              value={password}
-              onChange={(e) => {
-                setPassword(e.target.value);
-                setFieldErrors((p) => ({ ...p, password: "" }));
-              }}
-              onBlur={(e) => validateField("password", e.target.value)}
-              required
+              placeholder="Votre mot de passe"
               autoComplete="new-password"
               minLength={8}
-              aria-invalid={!!fieldErrors.password}
+              {...register("password")}
             />
           </FormField>
 
           <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? "Inscription..." : "Créer mon compte"}
+            {isSubmitting ? "Inscription..." : "Créer mon compte"}
           </Button>
         </form>
 
