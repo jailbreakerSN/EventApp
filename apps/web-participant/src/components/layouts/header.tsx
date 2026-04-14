@@ -5,6 +5,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useTheme } from "next-themes";
 import { Button, ThemeToggle } from "@teranga/shared-ui";
 import { ThemeLogo } from "@/components/theme-logo";
+import { LanguageSwitcher } from "@/components/language-switcher";
 import { Menu, X, User, LogOut } from "lucide-react";
 import { useState } from "react";
 
@@ -33,6 +34,7 @@ export function Header() {
         </nav>
 
         <div className="hidden items-center gap-3 md:flex">
+          <LanguageSwitcher />
           <ThemeToggle theme={theme} setTheme={setTheme} />
           {loading ? (
             <div className="h-9 w-20 animate-pulse rounded-md bg-muted" />

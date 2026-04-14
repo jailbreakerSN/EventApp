@@ -70,3 +70,4 @@ export {
   type QueryErrorLabels,
   type ConfirmDialogLabels,
 } from "./lib/i18n";
+export { LanguageSwitcher, DEFAULT_LOCALES, type LanguageSwitcherProps, type LanguageOption } from "./components/language-switcher";
