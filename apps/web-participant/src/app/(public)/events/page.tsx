@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { Search } from "lucide-react";
+import { EmptyState } from "@teranga/shared-ui";
 import { serverEventsApi } from "@/lib/server-api";
 import { EventCard } from "@/components/event-card";
 import { EventFilters } from "@/components/event-filters";
@@ -91,17 +93,19 @@ export default async function EventsPage({ searchParams }: EventsPageProps) {
           )}
         </>
       ) : (
-        <div className="mt-12 text-center">
-          <p className="text-lg text-muted-foreground">
-            Aucun événement ne correspond à vos critères.
-          </p>
-          <a
-            href="/events"
-            className="mt-4 inline-block text-sm font-medium text-teranga-gold-dark hover:underline"
-          >
-            Réinitialiser les filtres
-          </a>
-        </div>
+        <EmptyState
+          icon={Search}
+          title="Aucun événement trouvé"
+          description="Aucun événement ne correspond à vos critères. Essayez d'élargir votre recherche."
+          action={
+            <a
+              href="/events"
+              className="text-sm font-medium text-teranga-gold-dark hover:underline"
+            >
+              Réinitialiser les filtres
+            </a>
+          }
+        />
       )}
 
       <div className="mt-16">

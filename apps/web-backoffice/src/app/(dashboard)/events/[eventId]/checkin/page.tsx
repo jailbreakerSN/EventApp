@@ -19,6 +19,7 @@ import {
   TabsList,
   TabsTrigger,
   TabsContent,
+  EmptyState,
 } from "@teranga/shared-ui";
 import {
   ArrowLeft,
@@ -409,9 +410,12 @@ function ScannerTab({
         </CardHeader>
         <CardContent>
           {recentEntries.length === 0 ? (
-            <p className="text-muted-foreground text-center py-6 text-sm">
-              Aucun check-in pour le moment
-            </p>
+            <EmptyState
+              icon={UserCheck}
+              title="Aucun check-in pour le moment"
+              description="Les check-ins apparaîtront ici dès que vos participants arriveront."
+              className="py-6"
+            />
           ) : (
             <div className="space-y-1">
               {recentEntries.slice(0, 10).map((entry, i) => (

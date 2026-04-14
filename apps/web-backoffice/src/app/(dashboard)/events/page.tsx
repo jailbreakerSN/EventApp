@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useEvents } from "@/hooks/use-events";
 import { formatDate } from "@/lib/utils";
 import { Search, Plus, ChevronLeft, ChevronRight, Calendar, MapPin, Users } from "lucide-react";
-import { Select, Skeleton, QueryError, Badge, getStatusVariant } from "@teranga/shared-ui";
+import { Select, Skeleton, QueryError, Badge, getStatusVariant, EmptyState } from "@teranga/shared-ui";
 
 const STATUS_LABELS: Record<string, string> = {
   draft: "Brouillon",
@@ -141,10 +141,29 @@ export default function EventsPage() {
       ) : isError ? (
         <QueryError onRetry={refetch} />
       ) : events.length === 0 ? (
-        <div className="bg-card rounded-xl border border-border p-12 text-center text-muted-foreground">
-          {search || category
-            ? "Aucun événement ne correspond à vos filtres."
-            : "Aucun événement pour le moment. Créez votre premier événement."}
+        <div className="bg-card rounded-xl border border-border">
+          {search || category ? (
+            <EmptyState
+              icon={Search}
+              title="Aucun événement trouvé"
+              description="Aucun événement ne correspond à vos filtres. Essayez d'élargir votre recherche."
+            />
+          ) : (
+            <EmptyState
+              icon={Calendar}
+              title="Aucun événement pour le moment"
+              description="Créez votre premier événement pour commencer à accueillir des participants."
+              action={
+                <Link
+                  href="/events/new"
+                  className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+                >
+                  <Plus className="h-4 w-4" aria-hidden="true" />
+                  Créer un événement
+                </Link>
+              }
+            />
+          )}
         </div>
       ) : (
         <>

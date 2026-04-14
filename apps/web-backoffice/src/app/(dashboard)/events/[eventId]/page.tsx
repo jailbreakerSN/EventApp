@@ -8,6 +8,7 @@ import {
   getErrorMessage,
   getStatusVariant,
   Badge,
+  EmptyState,
   Skeleton,
   Breadcrumb,
   BreadcrumbList,
@@ -1303,8 +1304,12 @@ function RegistrationsTab({ eventId }: { eventId: string }) {
           </div>
         </div>
       ) : registrations.length === 0 ? (
-        <div className="bg-card rounded-xl border border-border p-8 text-center text-muted-foreground">
-          Aucune inscription pour le moment.
+        <div className="bg-card rounded-xl border border-border">
+          <EmptyState
+            icon={Users}
+            title="Aucune inscription pour le moment"
+            description="Partagez le lien de votre événement pour recevoir vos premières inscriptions."
+          />
         </div>
       ) : (
         <>
@@ -1749,10 +1754,12 @@ function SessionsTab({ eventId, eventStatus }: { eventId: string; eventStatus: s
           ))}
         </div>
       ) : sessions.length === 0 ? (
-        <div className="bg-card rounded-xl border border-border p-8 text-center text-muted-foreground">
-          <Calendar className="h-10 w-10 mx-auto mb-3 opacity-30" />
-          <p>Aucune session programmée</p>
-          <p className="text-sm mt-1">Ajoutez des sessions pour construire l&apos;agenda</p>
+        <div className="bg-card rounded-xl border border-border">
+          <EmptyState
+            icon={Calendar}
+            title="Aucune session programmée"
+            description="Ajoutez des sessions pour construire l'agenda de votre événement."
+          />
         </div>
       ) : (
         <div className="space-y-3">
@@ -1907,9 +1914,12 @@ function FeedTab({ eventId }: { eventId: string }) {
           ))}
         </div>
       ) : posts.length === 0 ? (
-        <div className="bg-card rounded-xl border border-border p-8 text-center text-muted-foreground">
-          <MessageSquare className="h-10 w-10 mx-auto mb-3 opacity-30" />
-          <p>Aucune publication</p>
+        <div className="bg-card rounded-xl border border-border">
+          <EmptyState
+            icon={MessageSquare}
+            title="Aucune publication"
+            description="Publiez une annonce ou une mise à jour pour vos participants."
+          />
         </div>
       ) : (
         <div className="space-y-3">
@@ -2333,7 +2343,11 @@ function SpeakersTab({ eventId }: { eventId: string }) {
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </div>
       ) : speakers.length === 0 ? (
-        <p className="py-8 text-center text-muted-foreground">Aucun intervenant</p>
+        <EmptyState
+          icon={Users}
+          title="Aucun intervenant"
+          description="Invitez des intervenants pour animer votre événement."
+        />
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {speakers.map((s) => (
@@ -2508,7 +2522,11 @@ function SponsorsTab({ eventId }: { eventId: string }) {
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         </div>
       ) : sponsors.length === 0 ? (
-        <p className="py-8 text-center text-muted-foreground">Aucun sponsor</p>
+        <EmptyState
+          icon={Users}
+          title="Aucun sponsor"
+          description="Ajoutez des sponsors pour faire rayonner leur marque sur votre événement."
+        />
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {sponsors.map((s) => {
