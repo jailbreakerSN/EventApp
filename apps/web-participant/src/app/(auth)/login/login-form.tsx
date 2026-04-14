@@ -3,10 +3,35 @@
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import { useAuth } from "@/hooks/use-auth";
 import { getAndClearRedirectUrl } from "@/components/auth-guard";
 import { ThemeLogo } from "@/components/theme-logo";
-import { Button, Input, Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter, FormField } from "@teranga/shared-ui";
+import {
+  Button,
+  Input,
+  Card,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+  CardContent,
+  CardFooter,
+  FormField,
+} from "@teranga/shared-ui";
+
+const schema = z.object({
+  email: z
+    .string()
+    .trim()
+    .regex(/^[^\s@]+@[^\s@]+\.[^\s@]+$/, { message: "Adresse email invalide" }),
+  password: z
+    .string()
+    .min(6, { message: "Le mot de passe doit contenir au moins 6 caractères" }),
+});
+
+type FormValues = z.infer<typeof schema>;
 
 function safeRedirect(url: string | null): string {
   if (!url) return "/events";
@@ -19,28 +44,29 @@ export function LoginForm() {
   const { login, loginWithGoogle } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [googleLoading, setGoogleLoading] = useState(false);
 
-  const validateField = (name: string, value: string) => {
-    let message = "";
-    if (name === "email") {
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) message = "Adresse email invalide";
-    } else if (name === "password") {
-      if (value.length < 6) message = "Le mot de passe doit contenir au moins 6 caractères";
-    }
-    setFieldErrors((prev) => ({ ...prev, [name]: message }));
-  };
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, touchedFields, dirtyFields, isSubmitting },
+  } = useForm<FormValues>({
+    mode: "onBlur",
+    defaultValues: { email: "", password: "" },
+    resolver: zodResolver(schema),
+  });
 
   const redirectTo = safeRedirect(searchParams.get("redirect"));
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const fieldState = (name: keyof FormValues): "idle" | "valid" | "error" => {
+    if (errors[name]) return "error";
+    if (touchedFields[name] && dirtyFields[name]) return "valid";
+    return "idle";
+  };
+
+  const onSubmit = async ({ email, password }: FormValues) => {
     setError(null);
-    setLoading(true);
     try {
       await login(email, password);
       const savedUrl = safeRedirect(getAndClearRedirectUrl());
@@ -52,14 +78,12 @@ export function LoginForm() {
       } else {
         setError(message);
       }
-    } finally {
-      setLoading(false);
     }
   };
 
   const handleGoogle = async () => {
     setError(null);
-    setLoading(true);
+    setGoogleLoading(true);
     try {
       await loginWithGoogle();
       const savedUrl = safeRedirect(getAndClearRedirectUrl());
@@ -68,9 +92,11 @@ export function LoginForm() {
       const message = err instanceof Error ? err.message : "Erreur de connexion Google";
       setError(message);
     } finally {
-      setLoading(false);
+      setGoogleLoading(false);
     }
   };
+
+  const loading = isSubmitting || googleLoading;
 
   return (
     <Card>
@@ -82,37 +108,41 @@ export function LoginForm() {
         <CardDescription>Connectez-vous pour accéder à vos événements</CardDescription>
       </CardHeader>
       <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
           {error && (
             <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
               {error}
             </div>
           )}
 
-          <FormField label="Email" required htmlFor="email" error={fieldErrors.email}>
+          <FormField
+            label="Email"
+            required
+            htmlFor="email"
+            error={errors.email?.message}
+            state={fieldState("email")}
+          >
             <Input
               id="email"
               type="email"
               placeholder="votre@email.com"
-              value={email}
-              onChange={(e) => { setEmail(e.target.value); setFieldErrors((p) => ({ ...p, email: "" })); }}
-              onBlur={(e) => validateField("email", e.target.value)}
-              required
               autoComplete="email"
-              aria-invalid={!!fieldErrors.email}
+              {...register("email")}
             />
           </FormField>
 
-          <FormField label="Mot de passe" required htmlFor="password" error={fieldErrors.password}>
+          <FormField
+            label="Mot de passe"
+            required
+            htmlFor="password"
+            error={errors.password?.message}
+            state={fieldState("password")}
+          >
             <Input
               id="password"
               type="password"
-              value={password}
-              onChange={(e) => { setPassword(e.target.value); setFieldErrors((p) => ({ ...p, password: "" })); }}
-              onBlur={(e) => validateField("password", e.target.value)}
-              required
               autoComplete="current-password"
-              aria-invalid={!!fieldErrors.password}
+              {...register("password")}
             />
           </FormField>
 
@@ -123,7 +153,7 @@ export function LoginForm() {
           </div>
 
           <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? "Connexion..." : "Se connecter"}
+            {isSubmitting ? "Connexion..." : "Se connecter"}
           </Button>
         </form>
 

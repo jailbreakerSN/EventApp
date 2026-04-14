@@ -2,6 +2,9 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import { useAuth } from "@/hooks/use-auth";
 import { ThemeLogo } from "@/components/theme-logo";
 import {
@@ -13,29 +16,48 @@ import {
   CardDescription,
   CardContent,
   CardFooter,
+  FormField,
 } from "@teranga/shared-ui";
+
+const schema = z.object({
+  email: z
+    .string()
+    .trim()
+    .regex(/^[^\s@]+@[^\s@]+\.[^\s@]+$/, { message: "Adresse email invalide" }),
+});
+
+type FormValues = z.infer<typeof schema>;
 
 export function ForgotPasswordForm() {
   const { resetPassword } = useAuth();
-  const [email, setEmail] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [submittedEmail, setSubmittedEmail] = useState("");
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    setLoading(true);
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, touchedFields, dirtyFields, isSubmitting },
+  } = useForm<FormValues>({
+    mode: "onBlur",
+    defaultValues: { email: "" },
+    resolver: zodResolver(schema),
+  });
+
+  const onSubmit = async ({ email }: FormValues) => {
     try {
       await resetPassword(email);
-      setSuccess(true);
     } catch {
-      // Security best practice: don't reveal whether the email exists
-      setSuccess(true);
-    } finally {
-      setLoading(false);
+      // Security best practice: don't reveal whether the email exists.
     }
+    setSubmittedEmail(email);
+    setSuccess(true);
   };
+
+  const emailState: "idle" | "valid" | "error" = errors.email
+    ? "error"
+    : touchedFields.email && dirtyFields.email
+      ? "valid"
+      : "idle";
 
   return (
     <Card>
@@ -58,34 +80,29 @@ export function ForgotPasswordForm() {
         {success ? (
           <div className="rounded-md bg-green-500/10 p-4 text-sm text-green-700 dark:text-green-400">
             Si un compte existe avec cet email, un lien de r&eacute;initialisation a
-            &eacute;t&eacute; envoy&eacute; &agrave; <strong>{email}</strong>.
+            &eacute;t&eacute; envoy&eacute; &agrave; <strong>{submittedEmail}</strong>.
             V&eacute;rifiez votre bo&icirc;te de r&eacute;ception.
           </div>
         ) : (
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {error && (
-              <div className="rounded-md bg-destructive/10 p-3 text-sm text-destructive">
-                {error}
-              </div>
-            )}
-
-            <div className="space-y-2">
-              <label htmlFor="email" className="text-sm font-medium">
-                Email
-              </label>
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
+            <FormField
+              label="Email"
+              htmlFor="email"
+              required
+              error={errors.email?.message}
+              state={emailState}
+            >
               <Input
                 id="email"
                 type="email"
                 placeholder="votre@email.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
                 autoComplete="email"
+                {...register("email")}
               />
-            </div>
+            </FormField>
 
-            <Button type="submit" className="w-full" disabled={loading}>
-              {loading
+            <Button type="submit" className="w-full" disabled={isSubmitting}>
+              {isSubmitting
                 ? "Envoi en cours..."
                 : "Envoyer le lien de r\u00e9initialisation"}
             </Button>

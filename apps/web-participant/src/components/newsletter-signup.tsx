@@ -1,51 +1,47 @@
 "use client";
 
 import { useState } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
 import { Button, Input, Spinner } from "@teranga/shared-ui";
 import { newsletterApi } from "@/lib/api-client";
 
-type FormState = "idle" | "submitting" | "success" | "error";
+type FormState = "idle" | "success" | "error";
+
+const schema = z.object({
+  email: z
+    .string()
+    .trim()
+    .min(1, { message: "Veuillez saisir votre adresse e-mail." })
+    .regex(/^[^\s@]+@[^\s@]+\.[^\s@]+$/, { message: "Adresse e-mail invalide." }),
+});
+
+type FormValues = z.infer<typeof schema>;
 
 export function NewsletterSignup() {
-  const [email, setEmail] = useState("");
-  const [emailError, setEmailError] = useState<string | null>(null);
   const [formState, setFormState] = useState<FormState>("idle");
 
-  function validateEmail(value: string): string | null {
-    if (!value.trim()) return "Veuillez saisir votre adresse e-mail.";
-    // Basic RFC-compatible check
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim())) {
-      return "Adresse e-mail invalide.";
-    }
-    return null;
-  }
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors, isSubmitting },
+  } = useForm<FormValues>({
+    mode: "onBlur",
+    defaultValues: { email: "" },
+    resolver: zodResolver(schema),
+  });
 
-  function handleBlur() {
-    setEmailError(validateEmail(email));
-  }
-
-  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-
-    const error = validateEmail(email);
-    if (error) {
-      setEmailError(error);
-      return;
-    }
-
-    setEmailError(null);
-    setFormState("submitting");
-
+  const onSubmit = async ({ email }: FormValues) => {
     try {
       await newsletterApi.subscribe(email.trim());
       setFormState("success");
-      setEmail("");
+      reset();
     } catch {
       setFormState("error");
     }
-  }
-
-  const isSubmitting = formState === "submitting";
+  };
 
   return (
     <section
@@ -83,7 +79,7 @@ export function NewsletterSignup() {
 
         {formState !== "success" && (
           <form
-            onSubmit={handleSubmit}
+            onSubmit={handleSubmit(onSubmit)}
             noValidate
             className="mt-6"
           >
@@ -91,25 +87,22 @@ export function NewsletterSignup() {
               <div className="flex-1">
                 <Input
                   type="email"
-                  name="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  onBlur={handleBlur}
                   placeholder="votre@email.com"
                   aria-label="Adresse e-mail pour la newsletter"
-                  aria-describedby={emailError ? "newsletter-email-error" : undefined}
-                  aria-invalid={emailError ? true : undefined}
+                  aria-describedby={errors.email ? "newsletter-email-error" : undefined}
+                  aria-invalid={errors.email ? true : undefined}
                   disabled={isSubmitting}
                   className="w-full"
                   autoComplete="email"
+                  {...register("email")}
                 />
-                {emailError && (
+                {errors.email && (
                   <p
                     id="newsletter-email-error"
                     role="alert"
                     className="mt-1 text-left text-sm text-destructive"
                   >
-                    {emailError}
+                    {errors.email.message}
                   </p>
                 )}
               </div>
