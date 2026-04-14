@@ -19,6 +19,7 @@ export async function messagingRoutes(app: FastifyInstance) {
     {
       preHandler: [
         authenticate,
+        requireEmailVerified,
         requirePermission("messaging:send"),
         validate({ body: CreateConversationSchema }),
       ],
@@ -53,6 +54,7 @@ export async function messagingRoutes(app: FastifyInstance) {
     {
       preHandler: [
         authenticate,
+        requireEmailVerified,
         requirePermission("messaging:send"),
         validate({ params: ConversationIdParams, body: SendMessageSchema }),
       ],
@@ -89,6 +91,7 @@ export async function messagingRoutes(app: FastifyInstance) {
     {
       preHandler: [
         authenticate,
+        requireEmailVerified,
         requirePermission("messaging:read_own"),
         validate({ params: ConversationIdParams }),
       ],

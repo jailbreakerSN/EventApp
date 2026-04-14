@@ -16,6 +16,7 @@ export const badgeRoutes: FastifyPluginAsync = async (fastify) => {
     {
       preHandler: [
         authenticate,
+        requireEmailVerified,
         requirePermission("badge:generate"),
         validate({ body: BadgeGenerateRequestSchema }),
       ],
@@ -42,6 +43,7 @@ export const badgeRoutes: FastifyPluginAsync = async (fastify) => {
     {
       preHandler: [
         authenticate,
+        requireEmailVerified,
         requirePermission("badge:bulk_generate"),
         validate({ body: BulkBadgeGenerateRequestSchema }),
       ],

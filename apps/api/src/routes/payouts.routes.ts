@@ -45,6 +45,7 @@ export const payoutRoutes: FastifyPluginAsync = async (fastify) => {
     {
       preHandler: [
         authenticate,
+        requireEmailVerified,
         requirePermission("payout:create"),
         validate({ params: ParamsWithEventId, body: CreatePayoutSchema }),
       ],

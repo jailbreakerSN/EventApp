@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
-import { authenticate } from "@/middlewares/auth.middleware";
+import { authenticate, requireEmailVerified } from "@/middlewares/auth.middleware";
 import { validate } from "@/middlewares/validate.middleware";
 import { requirePermission } from "@/middlewares/permission.middleware";
 import { userRepository } from "@/repositories/user.repository";
@@ -65,6 +65,7 @@ export const userRoutes: FastifyPluginAsync = async (fastify) => {
     {
       preHandler: [
         authenticate,
+        requireEmailVerified,
         requirePermission("profile:read_any"),
         validate({ params: ParamsWithUserId }),
       ],

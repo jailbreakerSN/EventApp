@@ -23,6 +23,7 @@ export const promoCodeRoutes: FastifyPluginAsync = async (fastify) => {
     {
       preHandler: [
         authenticate,
+        requireEmailVerified,
         requirePermission("event:update"),
         validate({ params: ParamsWithEventId, body: CreatePromoCodeSchema }),
       ],
@@ -84,6 +85,7 @@ export const promoCodeRoutes: FastifyPluginAsync = async (fastify) => {
     {
       preHandler: [
         authenticate,
+        requireEmailVerified,
         requirePermission("event:update"),
         validate({ params: ParamsWithPromoCodeId }),
       ],
