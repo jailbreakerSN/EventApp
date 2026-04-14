@@ -12,7 +12,7 @@ import sys
 from _shared import build_arg_parser, fail, pass_, skip
 
 
-GATED = True
+GATED = False
 
 TARGET = "packages/shared-ui/src/components/toaster.tsx"
 
