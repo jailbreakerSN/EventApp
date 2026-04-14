@@ -8,6 +8,8 @@ import {
   getErrorMessage,
   getStatusVariant,
   Badge,
+  DataTable,
+  type DataTableColumn,
   EmptyState,
   Skeleton,
   Breadcrumb,
@@ -1313,125 +1315,145 @@ function RegistrationsTab({ eventId }: { eventId: string }) {
         </div>
       ) : (
         <>
-          <div className="bg-card rounded-xl border border-border overflow-hidden">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border text-left text-muted-foreground font-medium">
-                  <th className="px-6 py-3">ID</th>
-                  <th className="px-6 py-3">Participant</th>
-                  <th className="px-6 py-3">Billet</th>
-                  <th className="px-6 py-3">Statut</th>
-                  <th className="px-6 py-3">Date</th>
-                  <th className="px-6 py-3"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {registrations.map((reg) => {
-                  return (
-                    <tr key={reg.id} className="border-b border-border/50 hover:bg-muted/50">
-                      <td className="px-6 py-3 text-muted-foreground font-mono text-xs">
-                        {reg.id.slice(0, 8)}
-                      </td>
-                      <td className="px-6 py-3 text-foreground">
-                        {reg.participantName ? (
-                          <div>
-                            <span className="font-medium">{reg.participantName}</span>
-                            {reg.participantEmail && (
-                              <span className="block text-xs text-muted-foreground">
-                                {reg.participantEmail}
-                              </span>
-                            )}
-                          </div>
-                        ) : (
-                          <span className="font-mono text-xs text-muted-foreground">
-                            {reg.userId.slice(0, 12)}...
+          <DataTable<(typeof registrations)[number] & Record<string, unknown>>
+            aria-label="Liste des inscriptions"
+            emptyMessage="Aucune inscription pour le moment"
+            responsiveCards
+            data={registrations as ((typeof registrations)[number] & Record<string, unknown>)[]}
+            columns={
+              [
+                {
+                  key: "id",
+                  header: "ID",
+                  hideOnMobile: true,
+                  render: (reg) => (
+                    <span className="text-muted-foreground font-mono text-xs">
+                      {reg.id.slice(0, 8)}
+                    </span>
+                  ),
+                },
+                {
+                  key: "participant",
+                  header: "Participant",
+                  primary: true,
+                  render: (reg) =>
+                    reg.participantName ? (
+                      <div>
+                        <span className="font-medium">{reg.participantName}</span>
+                        {reg.participantEmail && (
+                          <span className="block text-xs text-muted-foreground">
+                            {reg.participantEmail}
                           </span>
                         )}
-                      </td>
-                      <td className="px-6 py-3 text-muted-foreground">
-                        {reg.ticketTypeName ?? reg.ticketTypeId.slice(0, 8)}
-                      </td>
-                      <td className="px-6 py-3">
-                        <Badge variant={getStatusVariant(reg.status)}>
-                          {REG_STATUS[reg.status] ?? reg.status}
-                        </Badge>
-                      </td>
-                      <td className="px-6 py-3 text-muted-foreground text-xs">
-                        {formatDate(reg.createdAt)}
-                      </td>
-                      <td className="px-6 py-3 text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          {reg.status === "pending" && (
-                            <button
-                              onClick={() =>
-                                approve.mutate(reg.id, {
-                                  onSuccess: () => toast.success("Inscription approuvée."),
-                                  onError: (err: unknown) => {
-                                    const code = (err as { code?: string })?.code;
-                                    const message = (err as { message?: string })?.message;
-                                    toast.error(getErrorMessage(code, message));
-                                  },
-                                })
-                              }
-                              disabled={approve.isPending}
-                              className="text-green-600 hover:text-green-800 p-1"
-                              title="Approuver"
-                              aria-label="Approuver l'inscription"
-                            >
-                              <CheckCircle className="h-4 w-4" />
-                            </button>
-                          )}
-                          {reg.status === "waitlisted" && (
-                            <button
-                              onClick={() =>
-                                promote.mutate(reg.id, {
-                                  onSuccess: () =>
-                                    toast.success("Inscription promue en confirmée."),
-                                  onError: (err: unknown) => {
-                                    const code = (err as { code?: string })?.code;
-                                    const message = (err as { message?: string })?.message;
-                                    toast.error(getErrorMessage(code, message));
-                                  },
-                                })
-                              }
-                              disabled={promote.isPending}
-                              className="text-amber-500 hover:text-amber-700 p-1"
-                              title="Promouvoir"
-                              aria-label="Promouvoir l'inscription"
-                            >
-                              <ArrowUpCircle className="h-4 w-4" />
-                            </button>
-                          )}
-                          {(reg.status === "pending" ||
-                            reg.status === "confirmed" ||
-                            reg.status === "waitlisted") && (
-                            <button
-                              onClick={() =>
-                                cancelReg.mutate(reg.id, {
-                                  onSuccess: () => toast.success("Inscription annulée."),
-                                  onError: (err: unknown) => {
-                                    const code = (err as { code?: string })?.code;
-                                    const message = (err as { message?: string })?.message;
-                                    toast.error(getErrorMessage(code, message));
-                                  },
-                                })
-                              }
-                              disabled={cancelReg.isPending}
-                              className="text-red-400 hover:text-red-600 p-1"
-                              title="Annuler"
-                              aria-label="Annuler l'inscription"
-                            >
-                              <XCircle className="h-4 w-4" />
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                      </div>
+                    ) : (
+                      <span className="font-mono text-xs text-muted-foreground">
+                        {reg.userId.slice(0, 12)}...
+                      </span>
+                    ),
+                },
+                {
+                  key: "ticketType",
+                  header: "Billet",
+                  render: (reg) => (
+                    <span className="text-muted-foreground">
+                      {reg.ticketTypeName ?? reg.ticketTypeId.slice(0, 8)}
+                    </span>
+                  ),
+                },
+                {
+                  key: "status",
+                  header: "Statut",
+                  render: (reg) => (
+                    <Badge variant={getStatusVariant(reg.status)}>
+                      {REG_STATUS[reg.status] ?? reg.status}
+                    </Badge>
+                  ),
+                },
+                {
+                  key: "createdAt",
+                  header: "Date",
+                  hideOnMobile: true,
+                  render: (reg) => (
+                    <span className="text-muted-foreground text-xs">
+                      {formatDate(reg.createdAt)}
+                    </span>
+                  ),
+                },
+                {
+                  key: "actions",
+                  header: "Actions",
+                  render: (reg) => (
+                    <div className="flex items-center justify-end gap-1">
+                      {reg.status === "pending" && (
+                        <button
+                          onClick={() =>
+                            approve.mutate(reg.id, {
+                              onSuccess: () => toast.success("Inscription approuvée."),
+                              onError: (err: unknown) => {
+                                const code = (err as { code?: string })?.code;
+                                const message = (err as { message?: string })?.message;
+                                toast.error(getErrorMessage(code, message));
+                              },
+                            })
+                          }
+                          disabled={approve.isPending}
+                          className="text-green-600 hover:text-green-800 p-1"
+                          title="Approuver"
+                          aria-label="Approuver l'inscription"
+                        >
+                          <CheckCircle className="h-4 w-4" />
+                        </button>
+                      )}
+                      {reg.status === "waitlisted" && (
+                        <button
+                          onClick={() =>
+                            promote.mutate(reg.id, {
+                              onSuccess: () =>
+                                toast.success("Inscription promue en confirmée."),
+                              onError: (err: unknown) => {
+                                const code = (err as { code?: string })?.code;
+                                const message = (err as { message?: string })?.message;
+                                toast.error(getErrorMessage(code, message));
+                              },
+                            })
+                          }
+                          disabled={promote.isPending}
+                          className="text-amber-500 hover:text-amber-700 p-1"
+                          title="Promouvoir"
+                          aria-label="Promouvoir l'inscription"
+                        >
+                          <ArrowUpCircle className="h-4 w-4" />
+                        </button>
+                      )}
+                      {(reg.status === "pending" ||
+                        reg.status === "confirmed" ||
+                        reg.status === "waitlisted") && (
+                        <button
+                          onClick={() =>
+                            cancelReg.mutate(reg.id, {
+                              onSuccess: () => toast.success("Inscription annulée."),
+                              onError: (err: unknown) => {
+                                const code = (err as { code?: string })?.code;
+                                const message = (err as { message?: string })?.message;
+                                toast.error(getErrorMessage(code, message));
+                              },
+                            })
+                          }
+                          disabled={cancelReg.isPending}
+                          className="text-red-400 hover:text-red-600 p-1"
+                          title="Annuler"
+                          aria-label="Annuler l'inscription"
+                        >
+                          <XCircle className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
+                  ),
+                },
+              ] as DataTableColumn<(typeof registrations)[number] & Record<string, unknown>>[]
+            }
+          />
 
           {totalPages > 1 && (
             <div className="flex items-center justify-between mt-4 text-sm text-muted-foreground">
@@ -2129,43 +2151,41 @@ function PaymentsTab({ eventId }: { eventId: string }) {
         </div>
       )}
 
-      {payments && payments.length === 0 && (
-        <div className="text-center py-12 text-muted-foreground">
-          <Ticket className="mx-auto h-10 w-10 mb-3 opacity-50" />
-          <p>Aucun paiement pour cet événement.</p>
-        </div>
-      )}
-
-      {payments && payments.length > 0 && (
-        <div className="overflow-x-auto rounded-lg border">
-          <table className="w-full text-sm">
-            <thead className="bg-muted text-left text-xs text-muted-foreground uppercase">
-              <tr>
-                <th className="px-4 py-3">Date</th>
-                <th className="px-4 py-3">Montant</th>
-                <th className="px-4 py-3">Méthode</th>
-                <th className="px-4 py-3">Statut</th>
-                <th className="px-4 py-3">Remboursé</th>
-                <th className="px-4 py-3">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              {payments.map((p) => {
-                const st = PAYMENT_STATUS[p.status] ?? PAYMENT_STATUS.pending;
-                const methodLabel = PAYMENT_METHOD[p.method] ?? p.method;
-                const canRefund = p.status === "succeeded" && p.refundedAmount < p.amount;
-
-                return (
-                  <tr
-                    key={p.id}
-                    className={`hover:bg-muted ${p.status === "failed" ? "bg-red-50/50" : ""}`}
-                  >
-                    <td className="px-4 py-3 whitespace-nowrap">{formatDate(p.createdAt)}</td>
-                    <td className="px-4 py-3 font-medium">
-                      {formatCurrency(p.amount, p.currency)}
-                    </td>
-                    <td className="px-4 py-3">{methodLabel}</td>
-                    <td className="px-4 py-3">
+      {payments && (
+        <DataTable<(typeof payments)[number] & Record<string, unknown>>
+          aria-label="Liste des paiements"
+          emptyMessage="Aucun paiement pour cet événement."
+          responsiveCards
+          data={payments as ((typeof payments)[number] & Record<string, unknown>)[]}
+          columns={
+            [
+              {
+                key: "createdAt",
+                header: "Date",
+                primary: true,
+                render: (p) => (
+                  <span className="whitespace-nowrap">{formatDate(p.createdAt)}</span>
+                ),
+              },
+              {
+                key: "amount",
+                header: "Montant",
+                render: (p) => (
+                  <span className="font-medium">{formatCurrency(p.amount, p.currency)}</span>
+                ),
+              },
+              {
+                key: "method",
+                header: "Méthode",
+                render: (p) => PAYMENT_METHOD[p.method] ?? p.method,
+              },
+              {
+                key: "status",
+                header: "Statut",
+                render: (p) => {
+                  const st = PAYMENT_STATUS[p.status] ?? PAYMENT_STATUS.pending;
+                  return (
+                    <div>
                       <span
                         className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${st.className}`}
                       >
@@ -2173,32 +2193,41 @@ function PaymentsTab({ eventId }: { eventId: string }) {
                       </span>
                       {p.status === "failed" && (p as Record<string, unknown>).failureReason ? (
                         <p
-                          className="mt-1 text-xs text-red-500 max-w-[200px] truncate"
+                          className="mt-1 text-xs text-destructive max-w-[200px] truncate"
                           title={String((p as Record<string, unknown>).failureReason)}
                         >
                           {String((p as Record<string, unknown>).failureReason)}
                         </p>
                       ) : null}
-                    </td>
-                    <td className="px-4 py-3">
-                      {p.refundedAmount > 0 ? formatCurrency(p.refundedAmount, p.currency) : "—"}
-                    </td>
-                    <td className="px-4 py-3">
-                      {canRefund && (
-                        <button
-                          onClick={() => setRefundTarget(p)}
-                          className="text-xs text-red-600 hover:text-red-800 font-medium"
-                        >
-                          Rembourser
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                    </div>
+                  );
+                },
+              },
+              {
+                key: "refundedAmount",
+                header: "Remboursé",
+                hideOnMobile: true,
+                render: (p) =>
+                  p.refundedAmount > 0 ? formatCurrency(p.refundedAmount, p.currency) : "—",
+              },
+              {
+                key: "actions",
+                header: "Actions",
+                render: (p) => {
+                  const canRefund = p.status === "succeeded" && p.refundedAmount < p.amount;
+                  return canRefund ? (
+                    <button
+                      onClick={() => setRefundTarget(p)}
+                      className="text-xs text-destructive hover:underline font-medium"
+                    >
+                      Rembourser
+                    </button>
+                  ) : null;
+                },
+              },
+            ] as DataTableColumn<(typeof payments)[number] & Record<string, unknown>>[]
+          }
+        />
       )}
 
       {/* Pagination */}
@@ -2712,83 +2741,73 @@ function PromosTab({ eventId }: { eventId: string }) {
         </div>
       )}
 
-      {isLoading ? (
-        <div className="flex justify-center py-8">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-        </div>
-      ) : promoCodes.length === 0 ? (
-        <p className="py-8 text-center text-muted-foreground">Aucun code promo</p>
-      ) : (
-        <div className="overflow-x-auto rounded-lg border">
-          <table className="w-full text-sm">
-            <thead className="bg-muted">
-              <tr>
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Code</th>
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Réduction</th>
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">
-                  Utilisations
-                </th>
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">
-                  Expiration
-                </th>
-                <th className="px-4 py-3 text-left font-medium text-muted-foreground">Statut</th>
-                <th className="px-4 py-3 text-right font-medium text-muted-foreground">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              {promoCodes.map((p) => {
+      <DataTable<(typeof promoCodes)[number] & Record<string, unknown>>
+        aria-label="Liste des codes promo"
+        emptyMessage="Aucun code promo"
+        responsiveCards
+        loading={isLoading}
+        data={promoCodes as ((typeof promoCodes)[number] & Record<string, unknown>)[]}
+        columns={
+          [
+            {
+              key: "code",
+              header: "Code",
+              primary: true,
+              render: (p) => <span className="font-mono font-medium">{p.code}</span>,
+            },
+            {
+              key: "discount",
+              header: "Réduction",
+              render: (p) =>
+                p.discountType === "percentage"
+                  ? `${p.discountValue}%`
+                  : formatCurrency(p.discountValue),
+            },
+            {
+              key: "uses",
+              header: "Utilisations",
+              render: (p) => `${p.usedCount}${p.maxUses !== null ? ` / ${p.maxUses}` : ""}`,
+            },
+            {
+              key: "expiresAt",
+              header: "Expiration",
+              hideOnMobile: true,
+              render: (p) =>
+                p.expiresAt ? (
+                  <span className="text-xs">{formatDate(p.expiresAt)}</span>
+                ) : (
+                  "—"
+                ),
+            },
+            {
+              key: "status",
+              header: "Statut",
+              render: (p) => {
                 const expired = p.expiresAt && new Date(p.expiresAt) < new Date();
                 const maxedOut = p.maxUses !== null && p.usedCount >= p.maxUses;
-                const active = p.isActive && !expired && !maxedOut;
-
-                return (
-                  <tr key={p.id} className={!active ? "opacity-60" : ""}>
-                    <td className="px-4 py-3 font-mono font-medium">{p.code}</td>
-                    <td className="px-4 py-3">
-                      {p.discountType === "percentage"
-                        ? `${p.discountValue}%`
-                        : formatCurrency(p.discountValue)}
-                    </td>
-                    <td className="px-4 py-3">
-                      {p.usedCount}
-                      {p.maxUses !== null ? ` / ${p.maxUses}` : ""}
-                    </td>
-                    <td className="px-4 py-3 text-xs">
-                      {p.expiresAt ? formatDate(p.expiresAt) : "—"}
-                    </td>
-                    <td className="px-4 py-3">
-                      {!p.isActive ? (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-accent text-muted-foreground">
-                          Désactivé
-                        </span>
-                      ) : expired ? (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-600">
-                          Expiré
-                        </span>
-                      ) : maxedOut ? (
-                        <Badge variant="warning">Épuisé</Badge>
-                      ) : (
-                        <Badge variant="success">Actif</Badge>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      {p.isActive && (
-                        <button
-                          onClick={() => handleDeactivate(p.id)}
-                          className="text-xs text-red-500 hover:underline"
-                          disabled={deactivatePromo.isPending}
-                        >
-                          Désactiver
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
+                if (!p.isActive) return <Badge variant="neutral">Désactivé</Badge>;
+                if (expired) return <Badge variant="destructive">Expiré</Badge>;
+                if (maxedOut) return <Badge variant="warning">Épuisé</Badge>;
+                return <Badge variant="success">Actif</Badge>;
+              },
+            },
+            {
+              key: "actions",
+              header: "Actions",
+              render: (p) =>
+                p.isActive ? (
+                  <button
+                    onClick={() => handleDeactivate(p.id)}
+                    className="text-xs text-destructive hover:underline"
+                    disabled={deactivatePromo.isPending}
+                  >
+                    Désactiver
+                  </button>
+                ) : null,
+            },
+          ] as DataTableColumn<(typeof promoCodes)[number] & Record<string, unknown>>[]
+        }
+      />
     </div>
   );
 }

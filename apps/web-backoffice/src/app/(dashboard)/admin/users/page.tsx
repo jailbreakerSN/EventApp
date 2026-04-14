@@ -10,13 +10,14 @@ import {
   Badge,
   Spinner,
   Button,
-  Skeleton,
   Breadcrumb,
   BreadcrumbList,
   BreadcrumbItem,
   BreadcrumbLink,
   BreadcrumbPage,
   BreadcrumbSeparator,
+  DataTable,
+  type DataTableColumn,
 } from "@teranga/shared-ui";
 import { Users, Shield, Search, Ban, CheckCircle } from "lucide-react";
 import type { UserProfile } from "@teranga/shared-types";
@@ -268,126 +269,93 @@ export default function AdminUsersPage() {
       {/* Data Table */}
       <Card>
         <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm" aria-label="Liste des utilisateurs">
-              <thead>
-                <tr className="border-b border-border bg-muted/50">
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">
-                    Nom / Email
-                  </th>
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">Roles</th>
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">Statut</th>
-                  <th className="px-4 py-3 text-right font-medium text-muted-foreground">
-                    Actions
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {isLoading &&
-                  Array.from({ length: 5 }).map((_, i) => (
-                    <tr key={i} className="border-b border-border">
-                      <td className="px-4 py-3">
-                        <Skeleton className="h-4 w-40 mb-1" />
-                        <Skeleton className="h-3 w-56" />
-                      </td>
-                      <td className="px-4 py-3">
-                        <Skeleton className="h-5 w-24" />
-                      </td>
-                      <td className="px-4 py-3">
-                        <Skeleton className="h-5 w-16" />
-                      </td>
-                      <td className="px-4 py-3">
-                        <Skeleton className="h-8 w-32 ml-auto" />
-                      </td>
-                    </tr>
-                  ))}
-
-                {!isLoading && users.length === 0 && (
-                  <tr>
-                    <td colSpan={4} className="px-4 py-12 text-center text-muted-foreground">
-                      <Users className="mx-auto mb-2 h-8 w-8 opacity-40" />
-                      Aucun utilisateur trouve
-                    </td>
-                  </tr>
-                )}
-
-                {!isLoading &&
-                  users.map((user) => (
-                    <tr
-                      key={user.uid}
-                      className="border-b border-border hover:bg-muted/30 transition-colors"
-                    >
-                      {/* Name / Email */}
-                      <td className="px-4 py-3">
-                        <p className="font-medium text-foreground">{user.displayName}</p>
-                        <p className="text-xs text-muted-foreground">{user.email}</p>
-                      </td>
-
-                      {/* Roles */}
-                      <td className="px-4 py-3">
-                        <div className="flex flex-wrap gap-1">
-                          {user.roles.map((role) => (
-                            <Badge key={role} variant={ROLE_BADGE_VARIANTS[role] ?? "neutral"}>
-                              {ROLE_LABELS[role] ?? role}
-                            </Badge>
-                          ))}
-                        </div>
-                      </td>
-
-                      {/* Status */}
-                      <td className="px-4 py-3">
+          <DataTable<UserProfile & Record<string, unknown>>
+            aria-label="Liste des utilisateurs"
+            emptyMessage="Aucun utilisateur trouve"
+            responsiveCards
+            loading={isLoading}
+            data={users as (UserProfile & Record<string, unknown>)[]}
+            columns={
+              [
+                {
+                  key: "displayName",
+                  header: "Nom / Email",
+                  primary: true,
+                  render: (user) => (
+                    <div>
+                      <p className="font-medium text-foreground">{user.displayName}</p>
+                      <p className="text-xs text-muted-foreground">{user.email}</p>
+                    </div>
+                  ),
+                },
+                {
+                  key: "roles",
+                  header: "Roles",
+                  render: (user) => (
+                    <div className="flex flex-wrap gap-1">
+                      {user.roles.map((role) => (
+                        <Badge key={role} variant={ROLE_BADGE_VARIANTS[role] ?? "neutral"}>
+                          {ROLE_LABELS[role] ?? role}
+                        </Badge>
+                      ))}
+                    </div>
+                  ),
+                },
+                {
+                  key: "status",
+                  header: "Statut",
+                  render: (user) =>
+                    user.isActive ? (
+                      <Badge variant="success">
+                        <CheckCircle className="mr-1 h-3 w-3" />
+                        Actif
+                      </Badge>
+                    ) : (
+                      <Badge variant="destructive">
+                        <Ban className="mr-1 h-3 w-3" />
+                        Suspendu
+                      </Badge>
+                    ),
+                },
+                {
+                  key: "actions",
+                  header: "Actions",
+                  render: (user) => (
+                    <div className="flex items-center justify-end gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleToggleStatus(user)}
+                        disabled={updateStatus.isPending}
+                        aria-label={
+                          user.isActive
+                            ? `Suspendre ${user.displayName}`
+                            : `Reactiver ${user.displayName}`
+                        }
+                      >
                         {user.isActive ? (
-                          <Badge variant="success">
-                            <CheckCircle className="mr-1 h-3 w-3" />
-                            Actif
-                          </Badge>
+                          <>
+                            <Ban className="h-3.5 w-3.5 mr-1" />
+                            Suspendre
+                          </>
                         ) : (
-                          <Badge variant="destructive">
-                            <Ban className="mr-1 h-3 w-3" />
-                            Suspendu
-                          </Badge>
+                          <>
+                            <CheckCircle className="h-3.5 w-3.5 mr-1" />
+                            Reactiver
+                          </>
                         )}
-                      </td>
-
-                      {/* Actions */}
-                      <td className="px-4 py-3">
-                        <div className="flex items-center justify-end gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleToggleStatus(user)}
-                            disabled={updateStatus.isPending}
-                            aria-label={
-                              user.isActive
-                                ? `Suspendre ${user.displayName}`
-                                : `Reactiver ${user.displayName}`
-                            }
-                          >
-                            {user.isActive ? (
-                              <>
-                                <Ban className="h-3.5 w-3.5 mr-1" />
-                                Suspendre
-                              </>
-                            ) : (
-                              <>
-                                <CheckCircle className="h-3.5 w-3.5 mr-1" />
-                                Reactiver
-                              </>
-                            )}
-                          </Button>
-
-                          <RoleEditor
-                            user={user}
-                            onSave={(roles) => handleUpdateRoles(user.uid, roles)}
-                            isSaving={updateRoles.isPending}
-                          />
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-              </tbody>
-            </table>
-          </div>
+                      </Button>
+                      <RoleEditor
+                        user={user}
+                        onSave={(roles) => handleUpdateRoles(user.uid, roles)}
+                        isSaving={updateRoles.isPending}
+                      />
+                    </div>
+                  ),
+                },
+              ] as DataTableColumn<UserProfile & Record<string, unknown>>[]
+            }
+          />
         </CardContent>
       </Card>
 
