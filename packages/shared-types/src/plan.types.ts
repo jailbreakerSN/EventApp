@@ -57,6 +57,21 @@ export const PlanLimitsValueSchema = z.object({
   maxMembers: PlanLimitValueSchema,
 });
 
+// ─── Pricing model ──────────────────────────────────────────────────────────
+// Disambiguates the meaning of `priceXof: 0`. Without this, a free plan and
+// an enterprise "contact sales" plan both render as "Gratuit" in the UI.
+//
+//  - "free":    truly free, no charge, no quote. priceXof MUST be 0.
+//  - "fixed":   flat recurring price. priceXof is the amount charged per
+//               billing cycle.
+//  - "custom":  quote on request / contact sales. priceXof is ignored by
+//               the UI (renders as "Sur devis"). Typical for enterprise
+//               contracts that are negotiated individually.
+//  - "metered": base fee + usage overage. priceXof is the base fee; overage
+//               rates live on the plan's entitlement meters (Phase 5+).
+export const PricingModelSchema = z.enum(["free", "fixed", "custom", "metered"]);
+export type PricingModel = z.infer<typeof PricingModelSchema>;
+
 export const PlanSchema = z.object({
   id: z.string(),
   key: z
@@ -66,6 +81,7 @@ export const PlanSchema = z.object({
     .regex(/^[a-z0-9_-]+$/, "La clé doit être en minuscules, alphanumérique"),
   name: LocalizedStringSchema,
   description: LocalizedDescriptionSchema.nullable().optional(),
+  pricingModel: PricingModelSchema.default("fixed"),
   priceXof: z.number().int().min(0),
   currency: z.literal("XOF").default("XOF"),
   limits: PlanLimitsValueSchema,
@@ -83,16 +99,26 @@ export type Plan = z.infer<typeof PlanSchema>;
 
 // ─── Create / Update DTOs ────────────────────────────────────────────────────
 
-export const CreatePlanSchema = z.object({
-  key: PlanSchema.shape.key,
-  name: LocalizedStringSchema,
-  description: LocalizedDescriptionSchema.nullable().optional(),
-  priceXof: z.number().int().min(0),
-  limits: PlanLimitsValueSchema,
-  features: PlanFeaturesSchema,
-  isPublic: z.boolean().default(true),
-  sortOrder: z.number().int().default(0),
-});
+export const CreatePlanSchema = z
+  .object({
+    key: PlanSchema.shape.key,
+    name: LocalizedStringSchema,
+    description: LocalizedDescriptionSchema.nullable().optional(),
+    pricingModel: PricingModelSchema.default("fixed"),
+    priceXof: z.number().int().min(0),
+    limits: PlanLimitsValueSchema,
+    features: PlanFeaturesSchema,
+    isPublic: z.boolean().default(true),
+    sortOrder: z.number().int().default(0),
+  })
+  .refine((v) => !(v.pricingModel === "free" && v.priceXof > 0), {
+    message: "Un plan 'free' ne peut pas avoir de priceXof > 0",
+    path: ["priceXof"],
+  })
+  .refine((v) => !(v.pricingModel === "fixed" && v.priceXof <= 0), {
+    message: "Un plan 'fixed' doit avoir un priceXof > 0",
+    path: ["priceXof"],
+  });
 
 export type CreatePlanDto = z.infer<typeof CreatePlanSchema>;
 
@@ -101,6 +127,7 @@ export const UpdatePlanSchema = z
   .object({
     name: LocalizedStringSchema,
     description: LocalizedDescriptionSchema.nullable(),
+    pricingModel: PricingModelSchema,
     priceXof: z.number().int().min(0),
     limits: PlanLimitsValueSchema,
     features: PlanFeaturesSchema,

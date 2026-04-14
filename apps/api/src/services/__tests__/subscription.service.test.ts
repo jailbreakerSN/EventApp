@@ -599,6 +599,7 @@ function buildCatalogPlan(key: string) {
     key,
     name: { fr: key, en: key },
     description: null,
+    pricingModel: "fixed" as const,
     priceXof: key === "pro" ? 29900 : 9900,
     currency: "XOF" as const,
     limits:

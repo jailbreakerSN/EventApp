@@ -40,6 +40,7 @@ function buildPlan(overrides: Partial<Plan> = {}): Plan {
     key: "free",
     name: { fr: "Teranga Libre", en: "Teranga Free" },
     description: null,
+    pricingModel: "free",
     priceXof: 0,
     currency: "XOF",
     limits: { maxEvents: 3, maxParticipantsPerEvent: 50, maxMembers: 1 },
@@ -71,6 +72,7 @@ const baseCreateDto: CreatePlanDto = {
   key: "custom_acme",
   name: { fr: "Plan Acme", en: "Acme Plan" },
   description: null,
+  pricingModel: "fixed",
   priceXof: 49900,
   limits: {
     maxEvents: PLAN_LIMIT_UNLIMITED,

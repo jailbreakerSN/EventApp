@@ -10,6 +10,7 @@ import {
   type CreatePlanDto,
   type Plan,
   type PlanFeatures,
+  type PricingModel,
 } from "@teranga/shared-types";
 import {
   Button,
@@ -19,6 +20,7 @@ import {
   CardTitle,
   FormField,
   Input,
+  Select,
   Switch,
   Textarea,
 } from "@teranga/shared-ui";
@@ -85,6 +87,8 @@ export function PlanForm({ mode, plan }: PlanFormProps) {
         key: plan.key,
         name: plan.name,
         description: plan.description ?? null,
+        // Fallback for legacy plan docs without the field (pre-pricingModel).
+        pricingModel: plan.pricingModel ?? (plan.priceXof > 0 ? "fixed" : "free"),
         priceXof: plan.priceXof,
         limits: plan.limits,
         features: plan.features,
@@ -96,7 +100,8 @@ export function PlanForm({ mode, plan }: PlanFormProps) {
       key: "",
       name: { fr: "", en: "" },
       description: null,
-      priceXof: 0,
+      pricingModel: "fixed" as PricingModel,
+      priceXof: 9900,
       limits: {
         maxEvents: 3,
         maxParticipantsPerEvent: 50,
@@ -133,8 +138,14 @@ export function PlanForm({ mode, plan }: PlanFormProps) {
       const description =
         data.description && (data.description.fr || data.description.en) ? data.description : null;
 
+      // "free" and "custom" plans ignore priceXof by contract; normalize
+      // so we don't persist stale values that the server-side refinement
+      // would reject (free + priceXof>0).
+      const normalizedPriceXof =
+        data.pricingModel === "free" || data.pricingModel === "custom" ? 0 : data.priceXof;
+
       if (mode === "create") {
-        await createPlan.mutateAsync({ ...data, description });
+        await createPlan.mutateAsync({ ...data, description, priceXof: normalizedPriceXof });
         toast.success("Plan créé");
         router.push("/admin/plans");
       } else if (plan) {
@@ -145,7 +156,8 @@ export function PlanForm({ mode, plan }: PlanFormProps) {
           dto: {
             name: data.name,
             description,
-            priceXof: data.priceXof,
+            pricingModel: data.pricingModel,
+            priceXof: normalizedPriceXof,
             limits: data.limits,
             features: data.features,
             isPublic: data.isPublic,
@@ -238,11 +250,54 @@ export function PlanForm({ mode, plan }: PlanFormProps) {
           <CardTitle>Tarification &amp; visibilité</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          <Controller
+            control={control}
+            name="pricingModel"
+            render={({ field }) => {
+              const model = field.value as PricingModel;
+              const hints: Record<PricingModel, string> = {
+                free: "Plan gratuit. Le prix n'est pas affiché.",
+                fixed:
+                  "Tarif fixe récurrent. Le montant saisi ci-dessous est facturé chaque cycle.",
+                custom:
+                  "Sur devis. Le prix n'est pas affiché publiquement — contact commercial requis.",
+                metered: "Forfait de base + facturation à l'usage (au-delà des quotas inclus).",
+              };
+              return (
+                <FormField
+                  label="Modèle de tarification"
+                  hint={hints[model]}
+                  error={errors.pricingModel?.message}
+                  required
+                  htmlFor="pricingModel"
+                >
+                  <Select
+                    id="pricingModel"
+                    value={field.value}
+                    onChange={(e) => field.onChange(e.target.value as PricingModel)}
+                  >
+                    <option value="free">Gratuit (free)</option>
+                    <option value="fixed">Tarif fixe (fixed)</option>
+                    <option value="custom">Sur devis (custom)</option>
+                    <option value="metered">À l'usage (metered)</option>
+                  </Select>
+                </FormField>
+              );
+            }}
+          />
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <FormField
               label="Prix mensuel (XOF)"
+              hint={
+                watch("pricingModel") === "free"
+                  ? "Verrouillé à 0 pour un plan gratuit."
+                  : watch("pricingModel") === "custom"
+                    ? "Ignoré pour un plan sur devis."
+                    : undefined
+              }
               error={errors.priceXof?.message}
-              required
+              required={watch("pricingModel") === "fixed" || watch("pricingModel") === "metered"}
               htmlFor="priceXof"
             >
               <Input
@@ -250,6 +305,7 @@ export function PlanForm({ mode, plan }: PlanFormProps) {
                 type="number"
                 min={0}
                 step={100}
+                disabled={watch("pricingModel") === "free" || watch("pricingModel") === "custom"}
                 {...register("priceXof", { valueAsNumber: true })}
               />
             </FormField>
