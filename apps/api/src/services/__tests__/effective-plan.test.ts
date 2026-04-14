@@ -33,6 +33,7 @@ function buildPlan(overrides: Partial<Plan> = {}): Plan {
     key: "starter",
     name: { fr: "Starter", en: "Starter" },
     description: null,
+    pricingModel: "fixed",
     priceXof: 9900,
     currency: "XOF",
     limits: { maxEvents: 10, maxParticipantsPerEvent: 200, maxMembers: 3 },

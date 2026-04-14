@@ -19,7 +19,7 @@ import {
   BreadcrumbSeparator,
 } from "@teranga/shared-ui";
 import { CreditCard, Archive, Pencil, Plus, Lock } from "lucide-react";
-import type { Plan } from "@teranga/shared-types";
+import type { Plan, PricingModel } from "@teranga/shared-types";
 import { PLAN_LIMIT_UNLIMITED } from "@teranga/shared-types";
 import { toast } from "sonner";
 
@@ -29,9 +29,29 @@ function formatLimit(n: number): string {
   return n === PLAN_LIMIT_UNLIMITED ? "∞" : n.toLocaleString("fr-FR");
 }
 
-function formatPrice(priceXof: number): string {
-  if (priceXof === 0) return "Gratuit";
-  return `${priceXof.toLocaleString("fr-FR")} XOF`;
+// Fallback for legacy plan docs that haven't been re-seeded yet: infer the
+// pricing model from priceXof. Once the next seed-plans run completes on
+// staging/production every doc will carry the explicit field.
+function resolvePricingModel(plan: Plan): PricingModel {
+  if (plan.pricingModel) return plan.pricingModel;
+  return plan.priceXof > 0 ? "fixed" : "free";
+}
+
+function formatPrice(plan: Plan): string {
+  const model = resolvePricingModel(plan);
+  switch (model) {
+    case "free":
+      return "Gratuit";
+    case "custom":
+      return "Sur devis";
+    case "metered":
+      return plan.priceXof > 0
+        ? `À l'usage · base ${plan.priceXof.toLocaleString("fr-FR")} XOF`
+        : "À l'usage";
+    case "fixed":
+    default:
+      return `${plan.priceXof.toLocaleString("fr-FR")} XOF`;
+  }
 }
 
 function countEnabledFeatures(features: Plan["features"]): number {
@@ -148,9 +168,7 @@ export default function AdminPlansPage() {
                   key: "price",
                   header: "Prix",
                   render: (plan) => (
-                    <span className="font-medium text-foreground">
-                      {formatPrice(plan.priceXof)}
-                    </span>
+                    <span className="font-medium text-foreground">{formatPrice(plan)}</span>
                   ),
                 },
                 {

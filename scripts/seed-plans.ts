@@ -24,6 +24,7 @@ import {
   type OrganizationPlan,
   type Plan,
   type PlanFeatures,
+  type PricingModel,
 } from "@teranga/shared-types";
 
 const SEED_TARGET = process.env.SEED_TARGET ?? "emulator";
@@ -59,9 +60,18 @@ const DESCRIPTIONS: Record<OrganizationPlan, { fr: string; en: string }> = {
     en: "The full suite for event agencies: analytics, SMS, portals.",
   },
   enterprise: {
-    fr: "Sans limites, avec API, marque blanche et accompagnement dédié.",
-    en: "Unlimited, API access, white-label, dedicated support.",
+    fr: "Sans limites, avec API, marque blanche et accompagnement dédié. Tarif sur devis.",
+    en: "Unlimited, API access, white-label, dedicated support. Custom pricing.",
   },
+};
+
+// Pricing model per system plan. Disambiguates priceXof=0 between "truly
+// free" (Free tier) and "contact sales" (Enterprise).
+const PRICING_MODEL: Record<OrganizationPlan, PricingModel> = {
+  free: "free",
+  starter: "fixed",
+  pro: "fixed",
+  enterprise: "custom",
 };
 
 function buildSystemPlanDoc(
@@ -81,6 +91,7 @@ function buildSystemPlanDoc(
     key,
     name: display.name,
     description: DESCRIPTIONS[key],
+    pricingModel: PRICING_MODEL[key],
     priceXof: display.priceXof,
     currency: "XOF",
     limits: {
