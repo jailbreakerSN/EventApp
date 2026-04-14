@@ -148,17 +148,64 @@ async function ensureUser(
 async function seed() {
   console.log(`🌱 Seeding Firebase (target=${SEED_TARGET}, project=${PROJECT_ID})...\n`);
 
+  // ─── Always-run: plan catalog + effective-limits backfill ──────────────
+  // These two steps are pure upserts / denormalization refreshes — safe to
+  // run on every deploy regardless of whether the database is "empty" or
+  // not. They MUST run before the idempotency guard below so that existing
+  // staging/prod environments (which skip the rest of the seed) still get
+  // the four system plans and fresh effective-limits snapshots.
+  //
+  // - seedPlans: upserts free/starter/pro/enterprise by deterministic key,
+  //   preserving createdAt on re-run.
+  // - backfillEffectiveLimits: recomputes effectiveLimits/Features for every
+  //   org from the catalog + any subscription overrides. Idempotent.
+
+  console.log("💼 Seeding plan catalog (always runs)...");
+  {
+    const { seedPlans } = await import("./seed-plans");
+    const n = await seedPlans(db);
+    console.log(`  ✓ ${n} system plans upserted (free, starter, pro, enterprise)`);
+  }
+
+  console.log("🔁 Backfilling effective plan limits on organizations (always runs)...");
+  {
+    const { backfillEffectiveLimits } = await import("./backfill-effective-limits");
+    try {
+      const result = await backfillEffectiveLimits(db);
+      console.log(`  ✓ ${result.updated}/${result.total} organizations updated`);
+      if (result.skipped > 0) {
+        console.log(`  ⚠ ${result.skipped} skipped (missing plan in catalog):`);
+        for (const entry of result.missingPlan) {
+          console.log(`    - ${entry}`);
+        }
+      }
+    } catch (err) {
+      // A fresh project with zero organizations yet is fine — the backfill
+      // throws only when the plans catalog is empty, which we just seeded
+      // above. Any other error should surface.
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("catalogue de plans est vide")) {
+        console.log("  ⚠ Skipping backfill: catalog still empty (should never happen).");
+      } else {
+        throw err;
+      }
+    }
+  }
+
   // ─── Idempotency guard ─────────────────────────────────────────────────
-  // Only relevant in non-emulator mode: skip if data exists, unless forced.
-  // Emulator is ephemeral — always re-seed.
+  // Only relevant in non-emulator mode: skip the rest of the seed if data
+  // exists, unless forced. Emulator is ephemeral — always re-seed.
+  // IMPORTANT: this guard must come AFTER the plan catalog and effective-
+  // limits backfill so those steps reach production even when the rest of
+  // the seed is skipped.
   if (SEED_TARGET !== "emulator" && !SEED_FORCE) {
     const existing = await db.collection("organizations").limit(1).get();
     if (!existing.empty) {
-      console.log("✓ Database already contains organizations. Skipping seed.");
-      console.log("  Set SEED_FORCE=true to re-run anyway (destructive).");
+      console.log("\n✓ Database already contains organizations. Skipping remaining seed.");
+      console.log("  Set SEED_FORCE=true to re-run the full seed (destructive).");
       return;
     }
-    console.log("✓ Database is empty. Proceeding with initial seed.\n");
+    console.log("\n✓ Database is empty. Proceeding with initial seed.\n");
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -1799,15 +1846,8 @@ async function seed() {
 
   console.log(`  ✓ ${auditEvents.length} audit log entries (including venue & admin actions)`);
 
-  // ═══════════════════════════════════════════════════════════════════════════
-  // 19b. PLAN CATALOG (dynamic, superadmin-managed)
-  // ═══════════════════════════════════════════════════════════════════════════
-
-  console.log("\n💼 Seeding plan catalog...");
-
-  const { seedPlans } = await import("./seed-plans");
-  const planCount = await seedPlans(db);
-  console.log(`  ✓ ${planCount} system plans upserted (free, starter, pro, enterprise)`);
+  // NOTE: plan catalog is seeded up-front (always-runs block near the top of
+  // seed()) so this function no longer needs a dedicated plan-catalog step.
 
   // ═══════════════════════════════════════════════════════════════════════════
   // 20. SUBSCRIPTIONS (Freemium Model)
@@ -1876,10 +1916,16 @@ async function seed() {
   // ═══════════════════════════════════════════════════════════════════════════
   // 20b. BACKFILL EFFECTIVE LIMITS (Phase 2 denormalization)
   // ═══════════════════════════════════════════════════════════════════════════
+  //
+  // The always-runs block near the top of seed() also calls
+  // backfillEffectiveLimits, but on a fresh seed that call sees zero orgs
+  // (orgs are created later in this function). Re-run here so the 4 freshly
+  // seeded orgs get their effective* fields populated. Idempotent — safe to
+  // run multiple times.
 
-  console.log("\n🔁 Backfilling effective plan limits onto organizations...");
-  const { backfillEffectiveLimits } = await import("./backfill-effective-limits");
-  const backfill = await backfillEffectiveLimits(db);
+  console.log("\n🔁 Backfilling effective plan limits onto freshly-seeded organizations...");
+  const { backfillEffectiveLimits: backfillLate } = await import("./backfill-effective-limits");
+  const backfill = await backfillLate(db);
   console.log(`  ✓ ${backfill.updated}/${backfill.total} organizations updated`);
   if (backfill.skipped > 0) {
     console.log(`  ⚠ ${backfill.skipped} skipped (missing plan in catalog):`);

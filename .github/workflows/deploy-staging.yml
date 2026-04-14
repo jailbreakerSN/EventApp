@@ -508,8 +508,11 @@ jobs:
 
   # ─── Seed staging database (one-time, idempotent) ────────────────────────
   # Runs the seed script against the real Firestore. The script checks for
-  # existing data and skips if the database already has organizations.
-  # Depends on deploy-firebase so rules + indexes are in place first.
+  # existing data and skips the bulk seed if the database already has
+  # organizations — but the plan catalog + effective-limits backfill run
+  # unconditionally on every deploy (they're pure upserts / denormalization
+  # refreshes, safe to re-run). Depends on deploy-firebase so rules +
+  # indexes are in place first.
   seed-staging:
     name: Seed staging database (idempotent)
     runs-on: ubuntu-latest
@@ -525,7 +528,12 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - run: npm ci
-      - name: Run seed script (skips if data exists)
+      - name: Build shared-types
+        # Required because seed-plans.ts and backfill-effective-limits.ts
+        # import from @teranga/shared-types (PLAN_LIMITS, PLAN_DISPLAY,
+        # PLAN_LIMIT_UNLIMITED).
+        run: npx turbo build --filter=@teranga/shared-types
+      - name: Run seed script (upserts plan catalog + backfill; bulk seed skips if data exists)
         env:
           SEED_TARGET: staging
           FIREBASE_PROJECT_ID: ${{ needs.setup.outputs.project_id }}
