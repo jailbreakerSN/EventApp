@@ -68,6 +68,9 @@ import type {
   GeneratedBadge,
   Subscription,
   PlanUsage,
+  Plan,
+  CreatePlanDto,
+  UpdatePlanDto,
 } from "@teranga/shared-types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
@@ -527,6 +530,21 @@ export const adminApi = {
 
   listAuditLogs: (query: Partial<AdminAuditQuery> = {}) =>
     api.get<PaginatedResponse<AuditLogEntry>>(`/v1/admin/audit-logs${buildQuery(query)}`),
+
+  // ── Plan Catalog ────────────────────────────────────────────────────────
+  listPlans: (query: { includeArchived?: boolean } = {}) =>
+    api.get<ApiResponse<Plan[]>>(`/v1/admin/plans${buildQuery(query)}`),
+
+  getPlan: (planId: string) =>
+    api.get<ApiResponse<Plan>>(`/v1/admin/plans/${planId}`),
+
+  createPlan: (dto: CreatePlanDto) =>
+    api.post<ApiResponse<Plan>>("/v1/admin/plans", dto),
+
+  updatePlan: (planId: string, dto: UpdatePlanDto) =>
+    api.patch<ApiResponse<Plan>>(`/v1/admin/plans/${planId}`, dto),
+
+  archivePlan: (planId: string) => api.delete(`/v1/admin/plans/${planId}`),
 };
 
 // ─── Venues ─────────────────────────────────────────────────────────────────
