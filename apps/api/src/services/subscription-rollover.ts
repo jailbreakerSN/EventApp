@@ -102,8 +102,10 @@ export async function applyScheduledRollovers(
     const sub = { id: subDoc.id, ...(subDoc.data() as Omit<Subscription, "id">) } as Subscription;
     try {
       const outcome = await db.runTransaction(async (tx) => {
+        // ── All reads FIRST (Firestore requires reads before writes in a tx)
         const subRef = db.collection("subscriptions").doc(sub.id);
-        const freshSnap = await tx.get(subRef);
+        const orgRef = db.collection("organizations").doc(sub.organizationId);
+        const [freshSnap, orgSnap] = await Promise.all([tx.get(subRef), tx.get(orgRef)]);
         if (!freshSnap.exists) return { status: "skipped" as const };
 
         const fresh = {
@@ -122,6 +124,15 @@ export async function applyScheduledRollovers(
           // Dunning owns this sub's lifecycle; don't compound the state.
           return { status: "skipped" as const };
         }
+
+        if (!orgSnap.exists) {
+          // Edge case: org gone but subscription lingered. Nothing more to do.
+          return { status: "skipped" as const };
+        }
+        const org = {
+          id: orgSnap.id,
+          ...(orgSnap.data() as Omit<Organization, "id">),
+        } as Organization;
 
         const targetPlan = sc.toPlan;
         const catalogPlan = sc.toPlanId
@@ -142,7 +153,7 @@ export async function applyScheduledRollovers(
         const targetPriceXof =
           catalogPlan?.priceXof ?? PLAN_DISPLAY[targetPlan as OrganizationPlan]?.priceXof ?? 0;
 
-        // Apply to subscription doc.
+        // ── All writes AFTER all reads
         const subUpdate: Record<string, unknown> = {
           plan: targetPlan,
           priceXof: targetPriceXof,
@@ -156,17 +167,6 @@ export async function applyScheduledRollovers(
         }
         tx.update(subRef, subUpdate);
 
-        // Apply to org doc (plan + denormalized effective fields).
-        const orgRef = db.collection("organizations").doc(sub.organizationId);
-        const orgSnap = await tx.get(orgRef);
-        if (!orgSnap.exists) {
-          // Edge case: org gone but subscription lingered. Nothing more to do.
-          return { status: "skipped" as const };
-        }
-        const org = {
-          id: orgSnap.id,
-          ...(orgSnap.data() as Omit<Organization, "id">),
-        } as Organization;
         const orgUpdate: Record<string, unknown> = {
           plan: targetPlan,
           updatedAt: nowIso,
