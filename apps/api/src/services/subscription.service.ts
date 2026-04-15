@@ -131,6 +131,17 @@ export class SubscriptionService extends BaseService {
       existingSubscription?.overrides,
     );
 
+    // ── Billing cycle (Phase 7+ item #3) ───────────────────────────────────
+    // The caller can commit to an annual cadence instead of the default
+    // monthly. Annual requires the target plan to publish an `annualPriceXof`
+    // — refuse the request rather than silently fall back to monthly, so
+    // the UI knows to hide the annual toggle for plans that don't offer it.
+    const catalogPlan = effective ? await planRepository.findById(effective.planId) : null;
+    const cycle = dto.cycle ?? "monthly";
+    if (cycle === "annual" && !(catalogPlan?.annualPriceXof && catalogPlan.annualPriceXof > 0)) {
+      throw new ValidationError(`Le plan ${targetPlan} n'offre pas de facturation annuelle`);
+    }
+
     // ── Trial enrolment (Phase 7+ item #4) ─────────────────────────────────
     // A plan's catalog entry may carry `trialDays > 0`. A first-time upgrade
     // from a non-paying org (no prior subscription, or current subscription
@@ -140,25 +151,34 @@ export class SubscriptionService extends BaseService {
     // "active" at trial end. Once a customer has ever paid (any status !=
     // "free"), trials no longer apply — matches the industry-standard
     // "once per customer" semantic without a separate history collection.
-    const catalogPlan = effective ? await planRepository.findById(effective.planId) : null;
     const trialDays = catalogPlan?.trialDays ?? 0;
     const isFirstPaidUpgrade = !existingSubscription || existingSubscription.plan === "free";
     const startsWithTrial = trialDays > 0 && isFirstPaidUpgrade;
 
-    // Trial: period ends at `now + trialDays`; monthly otherwise.
+    // Period length: trial (days) > annual (12 months) > monthly (1 month).
+    // Trial always runs for `trialDays` regardless of cycle; the rollover
+    // worker advances to the full monthly / annual period when flipping
+    // `trialing → active`.
     const periodEnd = new Date(nowDate);
     if (startsWithTrial) {
       periodEnd.setDate(periodEnd.getDate() + trialDays);
+    } else if (cycle === "annual") {
+      periodEnd.setFullYear(periodEnd.getFullYear() + 1);
     } else {
       periodEnd.setMonth(periodEnd.getMonth() + 1);
     }
     const periodEndIso = periodEnd.toISOString();
 
-    const fullPriceXof = PLAN_DISPLAY[targetPlan].priceXof;
+    // Monthly vs annual price on the resolved catalog plan (falls back to
+    // the legacy PLAN_DISPLAY table when the catalog lookup returned null —
+    // same migration cushion as the rest of this service).
+    const monthlyPrice = catalogPlan?.priceXof ?? PLAN_DISPLAY[targetPlan].priceXof;
+    const annualPrice = catalogPlan?.annualPriceXof ?? 0;
+    const fullPriceXof = cycle === "annual" ? annualPrice : monthlyPrice;
     // During a trial the customer is not charged — store priceXof as 0 so
     // billing summaries don't surface a mid-trial debit. After rollover
     // flips status → active, the rollover worker rewrites priceXof from
-    // the catalog.
+    // the catalog based on billingCycle.
     const priceXof = startsWithTrial ? 0 : fullPriceXof;
 
     // Queue the end-of-trial flip as a scheduledChange — the daily rollover
@@ -218,6 +238,7 @@ export class SubscriptionService extends BaseService {
         currentPeriodStart: now,
         currentPeriodEnd: periodEndIso,
         priceXof,
+        billingCycle: cycle,
         cancelledAt: null,
         scheduledChange,
         updatedAt: now,
@@ -234,6 +255,7 @@ export class SubscriptionService extends BaseService {
         cancelledAt: null,
         paymentMethod: null,
         priceXof,
+        billingCycle: cycle,
         scheduledChange,
       } as Omit<Subscription, "id" | "createdAt" | "updatedAt">);
     }

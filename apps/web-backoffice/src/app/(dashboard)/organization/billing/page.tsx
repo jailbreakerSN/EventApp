@@ -60,6 +60,10 @@ export default function BillingPage() {
   const { map: planCatalog } = usePlansCatalogMap();
 
   const [selectedPlan, setSelectedPlan] = useState<OrganizationPlan | null>(null);
+  // Phase 7+ item #3 — billing cadence the user picked from the comparison
+  // table toggle. Defaults to monthly; annual requires the target plan to
+  // publish an `annualPriceXof` (server-side guard).
+  const [selectedCycle, setSelectedCycle] = useState<"monthly" | "annual">("monthly");
 
   const org = orgData?.data;
   const subscription = subData?.data;
@@ -72,12 +76,13 @@ export default function BillingPage() {
   const overridesActive =
     overrides && (!overrides.validUntil || new Date(overrides.validUntil).getTime() > Date.now());
 
-  const handleSelectPlan = (target: OrganizationPlan) => {
+  const handleSelectPlan = (target: OrganizationPlan, cycle: "monthly" | "annual" = "monthly") => {
     if (target === plan) {
       setSelectedPlan(null);
       return;
     }
     setSelectedPlan(target);
+    setSelectedCycle(cycle);
   };
 
   const handleConfirmChange = async () => {
@@ -85,9 +90,10 @@ export default function BillingPage() {
     const isUpgrade = PLAN_ORDER.indexOf(selectedPlan) > PLAN_ORDER.indexOf(plan);
     try {
       if (isUpgrade) {
-        await upgradePlan.mutateAsync(selectedPlan);
+        await upgradePlan.mutateAsync({ plan: selectedPlan, cycle: selectedCycle });
+        const cycleLabel = selectedCycle === "annual" ? " (annuel)" : "";
         toast.success(
-          `Plan mis à niveau vers ${getPlanDisplay(selectedPlan, planCatalog).name.fr}`,
+          `Plan mis à niveau vers ${getPlanDisplay(selectedPlan, planCatalog).name.fr}${cycleLabel}`,
         );
       } else {
         // Default: schedule at currentPeriodEnd (prepaid rights honored).

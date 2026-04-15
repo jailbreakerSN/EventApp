@@ -158,19 +158,39 @@ export async function applyScheduledRollovers(
         // Trial ending (Phase 7+ item #4) is a special case: the rollover
         // toPlan is the SAME as the current plan — we only flip status from
         // "trialing" → "active" and re-enable billing (priceXof from the
-        // catalog). No denormalisation change on the org doc (effective
-        // limits already match).
+        // catalog, honouring the subscription's billingCycle). No
+        // denormalisation change on the org doc (effective limits already
+        // match). We also advance `currentPeriodEnd` by a full monthly /
+        // annual cadence from the trial-end boundary so the next renewal
+        // fires on schedule.
         const isTrialEnd = sc.reason === "trial_ended";
+
+        // Trial end: honour the subscription's chosen billingCycle (Phase
+        // 7+ item #3). Fall back to "monthly" for subs written before that
+        // field landed.
+        const cycle = (fresh.billingCycle ?? "monthly") as "monthly" | "annual";
+        const postTrialPriceXof =
+          cycle === "annual"
+            ? (catalogPlan?.annualPriceXof ?? 0)
+            : (catalogPlan?.priceXof ?? targetPriceXof);
+        const renewedPeriodEnd = new Date(sc.effectiveAt);
+        if (cycle === "annual") {
+          renewedPeriodEnd.setFullYear(renewedPeriodEnd.getFullYear() + 1);
+        } else {
+          renewedPeriodEnd.setMonth(renewedPeriodEnd.getMonth() + 1);
+        }
 
         const subUpdate: Record<string, unknown> = {
           plan: targetPlan,
-          priceXof: targetPriceXof,
+          priceXof: isTrialEnd ? postTrialPriceXof : targetPriceXof,
           scheduledChange: null,
           updatedAt: nowIso,
         };
         if (catalogPlan?.id) subUpdate.planId = catalogPlan.id;
         if (isTrialEnd) {
           subUpdate.status = "active";
+          subUpdate.currentPeriodStart = sc.effectiveAt;
+          subUpdate.currentPeriodEnd = renewedPeriodEnd.toISOString();
         } else if (targetPlan === "free") {
           subUpdate.status = "cancelled";
           subUpdate.cancelledAt = nowIso;

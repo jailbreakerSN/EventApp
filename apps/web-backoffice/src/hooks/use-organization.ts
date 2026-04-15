@@ -128,7 +128,15 @@ export function useUpgradePlan() {
   const qc = useQueryClient();
 
   return useMutation({
-    mutationFn: (plan: OrganizationPlan) => organizationsApi.upgradePlan(orgId!, plan),
+    // Accept either a bare plan (legacy) or `{ plan, cycle }` (Phase 7+ item
+    // #3). Pre-#3 callers pass the plan string; newer callers pass the
+    // object and pick up monthly/annual billing.
+    mutationFn: (
+      input: OrganizationPlan | { plan: OrganizationPlan; cycle?: "monthly" | "annual" },
+    ) => {
+      if (typeof input === "string") return organizationsApi.upgradePlan(orgId!, input);
+      return organizationsApi.upgradePlan(orgId!, input.plan, input.cycle);
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["organization", orgId] });
       qc.invalidateQueries({ queryKey: ["subscription", orgId] });

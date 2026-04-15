@@ -308,8 +308,11 @@ export const organizationsApi = {
   getUsage: (orgId: string) =>
     api.get<ApiResponse<PlanUsage>>(`/v1/organizations/${orgId}/usage`),
 
-  upgradePlan: (orgId: string, plan: string) =>
-    api.post<ApiResponse<Subscription>>(`/v1/organizations/${orgId}/subscription/upgrade`, { plan }),
+  upgradePlan: (orgId: string, plan: string, cycle?: "monthly" | "annual") =>
+    api.post<ApiResponse<Subscription>>(
+      `/v1/organizations/${orgId}/subscription/upgrade`,
+      cycle ? { plan, cycle } : { plan },
+    ),
 
   downgradePlan: (orgId: string, plan: string, options: { immediate?: boolean } = {}) =>
     api.post<ApiResponse<{ scheduled: boolean; effectiveAt?: string }>>(

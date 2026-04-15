@@ -83,6 +83,17 @@ export const PlanSchema = z.object({
   description: LocalizedDescriptionSchema.nullable().optional(),
   pricingModel: PricingModelSchema.default("fixed"),
   priceXof: z.number().int().min(0),
+  // ── Annual billing (Phase 7+ item #3) ────────────────────────────────────
+  // `priceXof` above is the MONTHLY price. When this field is set, the plan
+  // also offers an annual cycle at the given total-year price (typically 15-
+  // 20% cheaper than priceXof × 12). When null/undefined, only monthly is
+  // offered. Only meaningful for pricingModel === "fixed".
+  //
+  // The monthly↔annual savings are displayed to users as the implicit
+  // difference (priceXof × 12 − annualPriceXof); storing two explicit prices
+  // keeps the arithmetic trivial and the rounding intuitive (no "XOF 2871.6"
+  // edge cases from percentage math).
+  annualPriceXof: z.number().int().min(0).nullable().optional(),
   currency: z.literal("XOF").default("XOF"),
   limits: PlanLimitsValueSchema,
   features: PlanFeaturesSchema,
@@ -129,6 +140,7 @@ export const CreatePlanSchema = z
     description: LocalizedDescriptionSchema.nullable().optional(),
     pricingModel: PricingModelSchema.default("fixed"),
     priceXof: z.number().int().min(0),
+    annualPriceXof: z.number().int().min(0).nullable().optional(),
     limits: PlanLimitsValueSchema,
     features: PlanFeaturesSchema,
     isPublic: z.boolean().default(true),
@@ -153,6 +165,7 @@ export const UpdatePlanSchema = z
     description: LocalizedDescriptionSchema.nullable(),
     pricingModel: PricingModelSchema,
     priceXof: z.number().int().min(0),
+    annualPriceXof: z.number().int().min(0).nullable(),
     limits: PlanLimitsValueSchema,
     features: PlanFeaturesSchema,
     isPublic: z.boolean(),

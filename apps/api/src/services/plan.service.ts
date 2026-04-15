@@ -54,6 +54,10 @@ const VERSION_MATERIAL_KEYS: ReadonlySet<keyof UpdatePlanDto> = new Set([
   // signs up under; existing trialing customers stay on their version so
   // their 14-day promise isn't silently extended or curtailed.
   "trialDays",
+  // Annual pricing is a first-class billing term (Phase 7+ item #3). Tuning
+  // it must mint a new version so annual subscribers keep the rate they
+  // committed to — no silent mid-year price bumps on their renewal.
+  "annualPriceXof",
 ]);
 
 function freshLineageId(): string {
@@ -113,6 +117,7 @@ export class PlanService extends BaseService {
       name: dto.name,
       description: dto.description ?? null,
       priceXof: dto.priceXof,
+      annualPriceXof: dto.annualPriceXof ?? null,
       currency: "XOF",
       limits: dto.limits,
       features: dto.features,
@@ -226,6 +231,10 @@ export class PlanService extends BaseService {
         versionPatch.description !== undefined ? versionPatch.description : existing.description,
       pricingModel: versionPatch.pricingModel ?? existing.pricingModel,
       priceXof: versionPatch.priceXof ?? existing.priceXof,
+      annualPriceXof:
+        "annualPriceXof" in versionPatch
+          ? (versionPatch.annualPriceXof ?? null)
+          : (existing.annualPriceXof ?? null),
       currency: existing.currency,
       limits: mergedLimits,
       features: mergedFeatures,
