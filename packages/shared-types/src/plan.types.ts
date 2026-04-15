@@ -239,6 +239,52 @@ export const AssignPlanSchema = z.object({
 
 export type AssignPlanDto = z.infer<typeof AssignPlanSchema>;
 
+// ─── Plan-change dry-run / impact preview (Phase 7+ item #6) ──────────────
+// Payload for POST /v1/admin/plans/:id/preview-change. Lets a superadmin
+// see *which* organisations would violate the new limits before pressing
+// Save — pairs with Phase 7 versioning (which prevents silent retightening
+// at runtime) by catching the mistake at compose-time instead.
+//
+// Scope (per the Phase 7+ roadmap §12 non-goals):
+//   - Only version-material changes trigger a real scan. Display-only
+//     edits (sortOrder, isPublic) short-circuit with `willMintNewVersion:
+//     false, affected: []`.
+//   - The scan walks every subscription pinned to ANY version in the same
+//     lineage (not just the current latest) — a superadmin editing pro@v2
+//     still wants to see the v1 grandfathers they'd affect if they
+//     migrated them later.
+//   - `maxParticipantsPerEvent` violations are NOT previewed (would
+//     require a per-event usage scan). Other limits (maxEvents,
+//     maxMembers) + feature removals are previewed.
+
+export const PreviewAffectedOrgSchema = z.object({
+  orgId: z.string(),
+  name: z.string(),
+  // The plan version this org's subscription is currently pinned to. Lets
+  // the UI say "3 affected on v1, 5 on v2".
+  currentVersion: z.number().int(),
+  // Whether the org is currently trialing — lets the UI soften the wording
+  // ("will apply when they convert").
+  isTrialing: z.boolean(),
+  billingCycle: z.enum(["monthly", "annual"]).nullable(),
+  // Human-readable French strings, one per violation. Empty array means
+  // the org is pinned to this lineage but the change wouldn't break them
+  // (e.g. a feature they don't use was removed). The UI still lists them
+  // grouped by version so the admin can see the cohort size.
+  violations: z.array(z.string()),
+});
+
+export type PreviewAffectedOrg = z.infer<typeof PreviewAffectedOrgSchema>;
+
+export const PreviewChangeResponseSchema = z.object({
+  willMintNewVersion: z.boolean(),
+  totalScanned: z.number().int(),
+  totalAffected: z.number().int(),
+  affected: z.array(PreviewAffectedOrgSchema),
+});
+
+export type PreviewChangeResponse = z.infer<typeof PreviewChangeResponseSchema>;
+
 // ─── Query / Listing ─────────────────────────────────────────────────────────
 
 export const PlanListQuerySchema = z.object({

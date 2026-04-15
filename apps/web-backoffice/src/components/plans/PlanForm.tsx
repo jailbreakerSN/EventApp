@@ -3,13 +3,14 @@
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   CreatePlanSchema,
   PLAN_LIMIT_UNLIMITED,
   type CreatePlanDto,
   type Plan,
   type PlanFeatures,
+  type PreviewChangeResponse,
   type PricingModel,
 } from "@teranga/shared-types";
 import {
@@ -24,9 +25,9 @@ import {
   Switch,
   Textarea,
 } from "@teranga/shared-ui";
-import { Lock } from "lucide-react";
+import { AlertTriangle, Info, Lock } from "lucide-react";
 import { toast } from "sonner";
-import { useCreatePlan, useUpdatePlan } from "@/hooks/use-admin";
+import { useCreatePlan, usePreviewPlanChange, useUpdatePlan } from "@/hooks/use-admin";
 
 // ─── Constants ────────────────────────────────────────────────────────────
 
@@ -135,6 +136,56 @@ export function PlanForm({ mode, plan }: PlanFormProps) {
     reset(defaultValues);
   }, [defaultValues, reset]);
 
+  // ── Phase 7+ item #6 — dry-run / impact preview ────────────────────────
+  // Whenever the form becomes dirty on an existing plan, debounce a call
+  // to the preview endpoint so the impact banner reflects the CURRENT
+  // form state. We watch a focused subset of version-material fields to
+  // avoid re-running on display-only nudges (sortOrder / isPublic).
+  const previewPlan = usePreviewPlanChange();
+  const [preview, setPreview] = useState<PreviewChangeResponse | null>(null);
+  const watchedPrice = watch("priceXof");
+  const watchedAnnual = watch("annualPriceXof");
+  const watchedLimits = watch("limits");
+  const watchedFeatures = watch("features");
+  const watchedTrial = watch("trialDays");
+  useEffect(() => {
+    if (mode !== "edit" || !plan || !isDirty) {
+      setPreview(null);
+      return;
+    }
+    const timer = setTimeout(async () => {
+      try {
+        const res = await previewPlan.mutateAsync({
+          planId: plan.id,
+          dto: {
+            priceXof: watchedPrice,
+            annualPriceXof: watchedAnnual ?? null,
+            limits: watchedLimits,
+            features: watchedFeatures,
+            trialDays: watchedTrial ?? null,
+          },
+        });
+        setPreview(res.data);
+      } catch {
+        // Silent: the UI only treats preview as advisory. The save
+        // button still works even if the preview fails.
+        setPreview(null);
+      }
+    }, 500);
+    return () => clearTimeout(timer);
+    // previewPlan.mutateAsync is stable; deliberately omitted from deps.
+  }, [
+    mode,
+    plan,
+    isDirty,
+    watchedPrice,
+    watchedAnnual,
+    watchedLimits,
+    watchedFeatures,
+    watchedTrial,
+    previewPlan,
+  ]);
+
   const onSubmit = async (data: PlanFormValues) => {
     try {
       // Normalize description: empty strings → null so the server doesn't get
@@ -189,6 +240,72 @@ export function PlanForm({ mode, plan }: PlanFormProps) {
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+      {/* Phase 7+ item #6 — impact preview banner. Renders when the admin
+          has made a version-material edit and the server's dry-run found
+          at least one affected subscriber. Advisory only: the Save button
+          is never blocked by it. */}
+      {preview && preview.willMintNewVersion && preview.totalScanned > 0 && (
+        <div
+          role="status"
+          className={
+            preview.totalAffected > 0
+              ? "flex items-start gap-3 rounded-xl border border-destructive/40 bg-destructive/5 p-4 text-sm"
+              : "flex items-start gap-3 rounded-xl border border-primary/30 bg-primary/5 p-4 text-sm"
+          }
+        >
+          {preview.totalAffected > 0 ? (
+            <AlertTriangle
+              className="mt-0.5 h-5 w-5 shrink-0 text-destructive"
+              aria-hidden="true"
+            />
+          ) : (
+            <Info className="mt-0.5 h-5 w-5 shrink-0 text-primary" aria-hidden="true" />
+          )}
+          <div className="space-y-2">
+            <p className="font-medium text-foreground">
+              {preview.totalAffected > 0
+                ? `${preview.totalAffected} organisation${preview.totalAffected > 1 ? "s" : ""} sur ${preview.totalScanned} ser${preview.totalAffected > 1 ? "ont" : "a"} impactée${preview.totalAffected > 1 ? "s" : ""} par cette modification`
+                : `${preview.totalScanned} organisation${preview.totalScanned > 1 ? "s abonnées" : " abonnée"} — aucune ne dépasse les nouvelles limites`}
+            </p>
+            {preview.totalAffected > 0 && (
+              <ul className="space-y-1.5 text-muted-foreground">
+                {preview.affected
+                  .filter((a) => a.violations.length > 0)
+                  .slice(0, 5)
+                  .map((a) => (
+                    <li key={a.orgId} className="text-xs">
+                      <span className="font-medium text-foreground">{a.name}</span>
+                      <span className="mx-1.5 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                        v{a.currentVersion}
+                      </span>
+                      {a.isTrialing && (
+                        <span className="mr-1.5 rounded-full bg-teranga-gold/15 px-1.5 py-0.5 text-[10px] font-medium text-teranga-gold">
+                          essai
+                        </span>
+                      )}
+                      {a.billingCycle === "annual" && (
+                        <span className="mr-1.5 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                          annuel
+                        </span>
+                      )}
+                      <span>— {a.violations.join(", ")}</span>
+                    </li>
+                  ))}
+                {preview.totalAffected > 5 && (
+                  <li className="text-xs italic">
+                    … et {preview.totalAffected - 5} autre
+                    {preview.totalAffected - 5 > 1 ? "s" : ""}.
+                  </li>
+                )}
+              </ul>
+            )}
+            <p className="text-xs text-muted-foreground">
+              Les abonnements existants restent sur leur version actuelle (droits préservés). Seules
+              les nouvelles souscriptions utiliseront la nouvelle version.
+            </p>
+          </div>
+        </div>
+      )}
       {/* Identity */}
       <Card>
         <CardHeader>

@@ -156,4 +156,42 @@ export const adminPlanRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.status(204).send();
     },
   );
+
+  // ─── Phase 7+ item #6: dry-run / impact preview ─────────────────────────
+  // POST because the payload is an UpdatePlanDto that the admin hasn't
+  // committed yet. No mutation, no audit event — just an aggregate that
+  // the PlanForm renders as an impact banner before Save is pressed.
+  //
+  // Tightened rate limit: the admin PlanForm debounces preview calls as
+  // the operator types, and each call can read up to a thousand
+  // subscriptions + per-subscriber org / events reads. Cap at 30/min per
+  // token so a misbehaving UI (or bulk script) can't exhaust Firestore
+  // quota. 30/min comfortably covers a human filling out a form; an
+  // automated scanner gets throttled.
+  fastify.post(
+    "/:planId/preview-change",
+    {
+      config: {
+        rateLimit: {
+          max: 30,
+          timeWindow: "1 minute",
+        },
+      },
+      preHandler: [...preHandler, validate({ params: ParamsWithPlanId, body: UpdatePlanSchema })],
+      schema: {
+        tags: ["Admin", "Plans"],
+        summary: "Preview the impact of a plan edit on subscribers",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const { planId } = request.params as z.infer<typeof ParamsWithPlanId>;
+      const preview = await planService.previewChange(
+        planId,
+        request.body as z.infer<typeof UpdatePlanSchema>,
+        request.user!,
+      );
+      return reply.send({ success: true, data: preview });
+    },
+  );
 };
