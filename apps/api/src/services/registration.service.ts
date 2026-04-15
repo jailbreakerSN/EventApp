@@ -250,18 +250,22 @@ export class RegistrationService extends BaseService {
         throw new ValidationError("Impossible d'annuler une inscription déjà vérifiée");
       }
 
-      const now = new Date().toISOString();
-      tx.update(regRef, {
-        status: "cancelled",
-        updatedAt: now,
-      });
-
-      // Read event inside tx to capture organizationId for audit trail
+      // Firestore transactions require all reads before any writes — capture
+      // the event (for organizationId + counter decrement) BEFORE mutating
+      // the registration. Skipping this ordering makes the emulator throw
+      // "all reads must precede writes" even though a lot of mocked unit
+      // tests happily pass.
       const eventRef = eventRepository.ref.doc(current.eventId);
       const eventSnap = await tx.get(eventRef);
       const organizationId = eventSnap.exists
         ? ((eventSnap.data() as Record<string, unknown>).organizationId as string)
         : "";
+
+      const now = new Date().toISOString();
+      tx.update(regRef, {
+        status: "cancelled",
+        updatedAt: now,
+      });
 
       // Decrement counter only for statuses that were counted
       if (current.status === "confirmed" || current.status === "pending") {
