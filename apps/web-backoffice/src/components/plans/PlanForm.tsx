@@ -90,6 +90,7 @@ export function PlanForm({ mode, plan }: PlanFormProps) {
         // Fallback for legacy plan docs without the field (pre-pricingModel).
         pricingModel: plan.pricingModel ?? (plan.priceXof > 0 ? "fixed" : "free"),
         priceXof: plan.priceXof,
+        annualPriceXof: plan.annualPriceXof ?? 0,
         limits: plan.limits,
         features: plan.features,
         isPublic: plan.isPublic,
@@ -103,6 +104,7 @@ export function PlanForm({ mode, plan }: PlanFormProps) {
       description: null,
       pricingModel: "fixed" as PricingModel,
       priceXof: 9900,
+      annualPriceXof: 0,
       limits: {
         maxEvents: 3,
         maxParticipantsPerEvent: 50,
@@ -145,9 +147,18 @@ export function PlanForm({ mode, plan }: PlanFormProps) {
       // would reject (free + priceXof>0).
       const normalizedPriceXof =
         data.pricingModel === "free" || data.pricingModel === "custom" ? 0 : data.priceXof;
+      // Annual price is only meaningful for "fixed" plans with priceXof > 0.
+      // `null` is the explicit "monthly only" signal the server expects.
+      const normalizedAnnualPriceXof =
+        data.pricingModel !== "fixed" || !data.annualPriceXof ? null : data.annualPriceXof;
 
       if (mode === "create") {
-        await createPlan.mutateAsync({ ...data, description, priceXof: normalizedPriceXof });
+        await createPlan.mutateAsync({
+          ...data,
+          description,
+          priceXof: normalizedPriceXof,
+          annualPriceXof: normalizedAnnualPriceXof,
+        });
         toast.success("Plan créé");
         router.push("/admin/plans");
       } else if (plan) {
@@ -160,6 +171,7 @@ export function PlanForm({ mode, plan }: PlanFormProps) {
             description,
             pricingModel: data.pricingModel,
             priceXof: normalizedPriceXof,
+            annualPriceXof: normalizedAnnualPriceXof,
             limits: data.limits,
             features: data.features,
             isPublic: data.isPublic,
@@ -310,6 +322,21 @@ export function PlanForm({ mode, plan }: PlanFormProps) {
                 step={100}
                 disabled={watch("pricingModel") === "free" || watch("pricingModel") === "custom"}
                 {...register("priceXof", { valueAsNumber: true })}
+              />
+            </FormField>
+            <FormField
+              label="Prix annuel (XOF)"
+              hint="0 = pas de facturation annuelle. Sinon, prix total pour 12 mois (l'économie vs. mensuel est calculée automatiquement)."
+              error={errors.annualPriceXof?.message}
+              htmlFor="annualPriceXof"
+            >
+              <Input
+                id="annualPriceXof"
+                type="number"
+                min={0}
+                step={100}
+                disabled={watch("pricingModel") !== "fixed"}
+                {...register("annualPriceXof", { valueAsNumber: true })}
               />
             </FormField>
             <FormField

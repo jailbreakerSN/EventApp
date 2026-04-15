@@ -3,6 +3,13 @@ import { OrganizationPlanSchema } from "./organization.types";
 import { PaymentMethodSchema } from "./payment.types";
 import { ScheduledChangeSchema, SubscriptionOverridesSchema } from "./plan.types";
 
+// ─── Billing Cycle (Phase 7+ item #3) ───────────────────────────────────────
+// A subscription renews on either a monthly or an annual cadence. Annual subs
+// typically get a 15-20% discount in exchange for upfront commitment — industry-
+// standard SaaS pattern.
+export const BillingCycleSchema = z.enum(["monthly", "annual"]);
+export type BillingCycle = z.infer<typeof BillingCycleSchema>;
+
 // ─── Subscription Status ────────────────────────────────────────────────────
 
 export const SubscriptionStatusSchema = z.enum([
@@ -27,6 +34,13 @@ export const SubscriptionSchema = z.object({
   cancelReason: z.string().nullable().optional(),
   paymentMethod: PaymentMethodSchema.nullable(),
   priceXof: z.number().int(),
+  // ── Billing cycle (Phase 7+ item #3) ──────────────────────────────────────
+  // Which cadence the customer pays on. `priceXof` above is whatever they are
+  // actually charged per period — if `billingCycle === "annual"`, priceXof
+  // equals the plan's annualPriceXof; if monthly, the plan's priceXof. The
+  // rollover worker reads this field when advancing currentPeriodEnd at the
+  // end of a trial or a scheduled plan change.
+  billingCycle: BillingCycleSchema.optional(),
   // ── Dynamic plan fields (Phase 2+) ────────────────────────────────────────
   // Optional during migration: when present, `planId` is the authoritative
   // reference to the plans/{id} catalog doc and `overrides` layers per-org
@@ -73,6 +87,11 @@ export const UpgradePlanSchema = z.object({
   plan: OrganizationPlanSchema.refine((p) => p !== "free", {
     message: "Impossible de passer au plan gratuit via upgrade",
   }),
+  // Phase 7+ item #3: which billing cycle to commit to. Defaults to monthly
+  // to preserve pre-#3 behaviour. Annual requires the target plan to carry
+  // an `annualPriceXof` — the service rejects annual upgrades on plans that
+  // only offer monthly.
+  cycle: BillingCycleSchema.optional(),
 });
 
 export type UpgradePlanDto = z.infer<typeof UpgradePlanSchema>;

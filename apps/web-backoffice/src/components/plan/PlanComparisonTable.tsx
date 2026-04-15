@@ -1,7 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import { Check, X, Minus, Loader2 } from "lucide-react";
 import {
+  type BillingCycle,
   type OrganizationPlan,
   type Plan,
   type PlanFeature,
@@ -52,8 +54,15 @@ function formatLimit(stored: number): string {
   return stored === PLAN_LIMIT_UNLIMITED ? "Illimité" : stored.toLocaleString("fr-FR");
 }
 
-function formatPrice(plan: Plan): string {
-  switch (plan.pricingModel ?? (plan.priceXof > 0 ? "fixed" : "free")) {
+function formatPrice(plan: Plan, cycle: BillingCycle): string {
+  const model = plan.pricingModel ?? (plan.priceXof > 0 ? "fixed" : "free");
+  // Annual price is only meaningful for fixed plans. If the viewer toggled to
+  // "annual" but the plan doesn't publish an annualPriceXof, fall back to the
+  // monthly display — the upgrade CTA next to this price will also be disabled.
+  if (cycle === "annual" && model === "fixed" && plan.annualPriceXof && plan.annualPriceXof > 0) {
+    return formatXof(plan.annualPriceXof);
+  }
+  switch (model) {
     case "free":
       return "Gratuit";
     case "custom":
@@ -74,9 +83,20 @@ function formatXof(priceXof: number): string {
   }).format(priceXof);
 }
 
+/**
+ * Compute the percent savings of the annual cadence vs. monthly × 12.
+ * Returns null when annual isn't offered (UI hides the badge).
+ */
+function annualSavingsPct(plan: Plan): number | null {
+  if (!plan.annualPriceXof || plan.annualPriceXof <= 0 || plan.priceXof <= 0) return null;
+  const monthlyYearly = plan.priceXof * 12;
+  if (plan.annualPriceXof >= monthlyYearly) return null;
+  return Math.round(((monthlyYearly - plan.annualPriceXof) / monthlyYearly) * 100);
+}
+
 interface PlanComparisonTableProps {
   currentPlan: OrganizationPlan;
-  onSelectPlan?: (plan: OrganizationPlan) => void;
+  onSelectPlan?: (plan: OrganizationPlan, cycle: BillingCycle) => void;
 }
 
 export function PlanComparisonTable({ currentPlan, onSelectPlan }: PlanComparisonTableProps) {
@@ -84,6 +104,8 @@ export function PlanComparisonTable({ currentPlan, onSelectPlan }: PlanCompariso
   const plans = (data?.data ?? []).slice().sort((a, b) => a.sortOrder - b.sortOrder);
   const currentIdx = plans.findIndex((p) => p.key === currentPlan);
   const features = Object.keys(FEATURE_LABELS) as PlanFeature[];
+  const [cycle, setCycle] = useState<BillingCycle>("monthly");
+  const anyPlanOffersAnnual = plans.some((p) => !!p.annualPriceXof && p.annualPriceXof > 0);
 
   if (isLoading) {
     return (
@@ -107,6 +129,48 @@ export function PlanComparisonTable({ currentPlan, onSelectPlan }: PlanCompariso
 
   return (
     <>
+      {/* Monthly / annual toggle (Phase 7+ item #3). Hidden when no plan in
+          the catalog publishes an annualPriceXof — no point offering the
+          choice if it can't actually be exercised. */}
+      {anyPlanOffersAnnual && (
+        <div
+          role="radiogroup"
+          aria-label="Fréquence de facturation"
+          className="mb-4 inline-flex rounded-lg border border-border bg-muted/30 p-1 text-sm"
+        >
+          <button
+            type="button"
+            role="radio"
+            aria-checked={cycle === "monthly"}
+            onClick={() => setCycle("monthly")}
+            className={cn(
+              "rounded-md px-3 py-1 font-medium transition-colors",
+              cycle === "monthly"
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            Mensuel
+          </button>
+          <button
+            type="button"
+            role="radio"
+            aria-checked={cycle === "annual"}
+            onClick={() => setCycle("annual")}
+            className={cn(
+              "rounded-md px-3 py-1 font-medium transition-colors",
+              cycle === "annual"
+                ? "bg-background text-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            Annuel
+            <span className="ml-1.5 rounded-full bg-teranga-gold/15 px-1.5 py-0.5 text-[10px] font-semibold text-teranga-gold">
+              −20%
+            </span>
+          </button>
+        </div>
+      )}
       {/* Desktop table */}
       <div className="hidden md:block overflow-x-auto">
         <table className="w-full text-sm">
@@ -118,8 +182,16 @@ export function PlanComparisonTable({ currentPlan, onSelectPlan }: PlanCompariso
               />
               {plans.map((plan, idx) => {
                 const isCurrent = plan.key === currentPlan;
-                const isFixedOrFree =
-                  (plan.pricingModel ?? (plan.priceXof > 0 ? "fixed" : "free")) !== "custom";
+                const model = plan.pricingModel ?? (plan.priceXof > 0 ? "fixed" : "free");
+                const isFixedOrFree = model !== "custom";
+                const offersAnnual = !!plan.annualPriceXof && plan.annualPriceXof > 0;
+                // If the user picked annual but this plan doesn't offer it,
+                // the CTA needs to fall back to monthly (the backend will
+                // otherwise throw ValidationError).
+                const effectiveCycle: BillingCycle =
+                  cycle === "annual" && offersAnnual ? "annual" : "monthly";
+                const periodLabel = effectiveCycle === "annual" ? "/ an" : "/ mois";
+                const savings = annualSavingsPct(plan);
                 return (
                   <th
                     key={plan.key}
@@ -138,9 +210,18 @@ export function PlanComparisonTable({ currentPlan, onSelectPlan }: PlanCompariso
                         </span>
                       )}
                       <p className="font-semibold text-foreground">{plan.name.fr}</p>
-                      <p className="text-lg font-bold text-primary mt-1">{formatPrice(plan)}</p>
+                      <p className="text-lg font-bold text-primary mt-1">
+                        {formatPrice(plan, effectiveCycle)}
+                      </p>
                       {plan.priceXof > 0 && isFixedOrFree && (
-                        <p className="text-xs text-muted-foreground">/ mois</p>
+                        <p className="text-xs text-muted-foreground">{periodLabel}</p>
+                      )}
+                      {/* Annual savings hint — only when the viewer is on the
+                          annual toggle AND the plan has an annual price. */}
+                      {cycle === "annual" && offersAnnual && savings && (
+                        <p className="mt-1 text-[11px] font-medium text-teranga-gold">
+                          Économisez {savings}% vs. mensuel
+                        </p>
                       )}
                       {/* Phase 7+ item #4: surface the trial offer. Only
                           meaningful for a user upgrading from free — a
@@ -155,7 +236,7 @@ export function PlanComparisonTable({ currentPlan, onSelectPlan }: PlanCompariso
                         )}
                       {onSelectPlan && !isCurrent && isFixedOrFree && (
                         <button
-                          onClick={() => onSelectPlan(plan.key as OrganizationPlan)}
+                          onClick={() => onSelectPlan(plan.key as OrganizationPlan, effectiveCycle)}
                           className="mt-3 w-full px-3 py-1.5 bg-primary text-primary-foreground text-xs font-medium rounded-lg hover:bg-primary/90 transition-colors"
                         >
                           {plan.trialDays && plan.trialDays > 0 && currentPlan === "free"
@@ -229,8 +310,12 @@ export function PlanComparisonTable({ currentPlan, onSelectPlan }: PlanCompariso
       <div className="md:hidden space-y-4">
         {plans.map((plan, idx) => {
           const isCurrent = plan.key === currentPlan;
-          const isFixedOrFree =
-            (plan.pricingModel ?? (plan.priceXof > 0 ? "fixed" : "free")) !== "custom";
+          const model = plan.pricingModel ?? (plan.priceXof > 0 ? "fixed" : "free");
+          const isFixedOrFree = model !== "custom";
+          const offersAnnual = !!plan.annualPriceXof && plan.annualPriceXof > 0;
+          const effectiveCycle: BillingCycle =
+            cycle === "annual" && offersAnnual ? "annual" : "monthly";
+          const periodLabel = effectiveCycle === "annual" ? "/ an" : "/ mois";
 
           return (
             <div
@@ -243,9 +328,11 @@ export function PlanComparisonTable({ currentPlan, onSelectPlan }: PlanCompariso
               <div className="flex items-center justify-between mb-3">
                 <div>
                   <p className="font-semibold text-foreground">{plan.name.fr}</p>
-                  <p className="text-lg font-bold text-primary">{formatPrice(plan)}</p>
+                  <p className="text-lg font-bold text-primary">
+                    {formatPrice(plan, effectiveCycle)}
+                  </p>
                   {plan.priceXof > 0 && isFixedOrFree && (
-                    <p className="text-xs text-muted-foreground">/ mois</p>
+                    <p className="text-xs text-muted-foreground">{periodLabel}</p>
                   )}
                 </div>
                 {isCurrent && (
@@ -280,7 +367,7 @@ export function PlanComparisonTable({ currentPlan, onSelectPlan }: PlanCompariso
 
               {onSelectPlan && !isCurrent && isFixedOrFree && (
                 <button
-                  onClick={() => onSelectPlan(plan.key as OrganizationPlan)}
+                  onClick={() => onSelectPlan(plan.key as OrganizationPlan, effectiveCycle)}
                   className="mt-4 w-full px-4 py-2 bg-primary text-primary-foreground text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors"
                 >
                   {idx > currentIdx ? "Passer à ce plan" : "Rétrograder"}

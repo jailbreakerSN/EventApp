@@ -94,6 +94,21 @@ const TRIAL_DAYS: Record<OrganizationPlan, number | null> = {
   enterprise: null,
 };
 
+// Annual pricing per system plan (Phase 7+ item #3). Null = monthly only.
+// Industry standard is a 15-20% discount for the upfront commitment; we pick
+// 20% for clarity of math on the XOF round numbers:
+//   - starter:  9 900 × 12 × 0.8 =  95 040 XOF / an (save 23 760)
+//   - pro:     29 900 × 12 × 0.8 = 287 040 XOF / an (save 71 760)
+// Free tiers aren't billed and enterprise is negotiated per deal, so both
+// stay null. Editing these in the admin UI mints a new plan version, so
+// existing annual subscribers keep the rate they signed up for.
+const ANNUAL_PRICE_XOF: Record<OrganizationPlan, number | null> = {
+  free: null,
+  starter: 95_040,
+  pro: 287_040,
+  enterprise: null,
+};
+
 function buildSystemPlanDoc(
   key: OrganizationPlan,
   sortOrder: number,
@@ -119,6 +134,7 @@ function buildSystemPlanDoc(
     description: DESCRIPTIONS[key],
     pricingModel: PRICING_MODEL[key],
     priceXof: display.priceXof,
+    annualPriceXof: ANNUAL_PRICE_XOF[key],
     currency: "XOF",
     limits: {
       maxEvents: toStoredLimit(limits.maxEvents),

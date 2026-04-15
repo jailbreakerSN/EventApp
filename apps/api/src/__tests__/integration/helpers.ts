@@ -107,6 +107,10 @@ function buildSystemPlanDoc(key: OrganizationPlan, sortOrder: number, now: strin
     description: { fr: `Plan ${key}`, en: `Plan ${key}` },
     pricingModel,
     priceXof: display.priceXof,
+    // Annual pricing (Phase 7+ item #3) — starter and pro ship with the
+    // same 20% discount the production seed uses, so integration tests
+    // exercise the real annual path.
+    annualPriceXof: key === "starter" ? 95_040 : key === "pro" ? 287_040 : null,
     currency: "XOF",
     limits: {
       maxEvents: toStored(limits.maxEvents),
