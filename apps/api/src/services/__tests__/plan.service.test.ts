@@ -61,6 +61,10 @@ function buildPlan(overrides: Partial<Plan> = {}): Plan {
     isPublic: true,
     isArchived: false,
     sortOrder: 0,
+    version: 1,
+    lineageId: "lin-free-system",
+    isLatest: true,
+    previousVersionId: null,
     createdBy: null,
     createdAt: now,
     updatedAt: now,
@@ -200,22 +204,85 @@ describe("PlanService.update", () => {
     );
   });
 
-  it("allows editing system plan price (not archiving)", async () => {
+  it("editing priceXof mints a NEW version and flips previous isLatest=false (Phase 7)", async () => {
     const user = buildSuperAdmin();
-    const existing = buildPlan({ isSystem: true, key: "pro" });
-    mockPlanRepo.findByIdOrThrow
-      .mockResolvedValueOnce(existing) // initial load
-      .mockResolvedValueOnce({ ...existing, priceXof: 34900 }); // after update
+    const existing = buildPlan({
+      id: "plan-pro-v1",
+      isSystem: true,
+      key: "pro",
+      priceXof: 29900,
+      version: 1,
+      lineageId: "lin-pro",
+      isLatest: true,
+    });
+    const newVersion = {
+      ...existing,
+      id: "plan-pro-v2",
+      priceXof: 34900,
+      version: 2,
+      previousVersionId: existing.id,
+    };
+    mockPlanRepo.findByIdOrThrow.mockResolvedValue(existing);
+    mockPlanRepo.create.mockResolvedValue(newVersion);
     mockPlanRepo.update.mockResolvedValue(undefined);
 
     const result = await service.update(existing.id, { priceXof: 34900 }, user);
 
+    // A fresh doc was minted — the returned plan is the new version.
+    expect(result.id).toBe("plan-pro-v2");
     expect(result.priceXof).toBe(34900);
-    expect(mockPlanRepo.update).toHaveBeenCalledWith(existing.id, { priceXof: 34900 });
+    expect(mockPlanRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        key: "pro",
+        priceXof: 34900,
+        version: 2,
+        lineageId: "lin-pro",
+        isLatest: true,
+        previousVersionId: existing.id,
+      }),
+    );
+    // Previous version is tombstoned as non-latest.
+    expect(mockPlanRepo.update).toHaveBeenCalledWith(existing.id, { isLatest: false });
     expect(mockEventBus.emit).toHaveBeenCalledWith(
       "plan.updated",
-      expect.objectContaining({ planId: existing.id, changes: ["priceXof"] }),
+      expect.objectContaining({ planId: "plan-pro-v2", changes: ["priceXof"] }),
     );
+  });
+
+  it("editing sortOrder only is an in-place patch — no new version (Phase 7)", async () => {
+    const user = buildSuperAdmin();
+    const existing = buildPlan({ id: "plan-pro", isSystem: true, key: "pro", sortOrder: 2 });
+    mockPlanRepo.findByIdOrThrow
+      .mockResolvedValueOnce(existing) // initial load
+      .mockResolvedValueOnce({ ...existing, sortOrder: 5 }); // after patch
+    mockPlanRepo.update.mockResolvedValue(undefined);
+
+    const result = await service.update(existing.id, { sortOrder: 5 }, user);
+
+    expect(result.sortOrder).toBe(5);
+    expect(mockPlanRepo.create).not.toHaveBeenCalled();
+    expect(mockPlanRepo.update).toHaveBeenCalledWith(existing.id, { sortOrder: 5 });
+    expect(mockEventBus.emit).toHaveBeenCalledWith(
+      "plan.updated",
+      expect.objectContaining({ planId: existing.id, changes: ["sortOrder"] }),
+    );
+  });
+
+  it("refuses to edit a historical (non-latest) version", async () => {
+    const user = buildSuperAdmin();
+    const historical = buildPlan({
+      id: "plan-pro-v1",
+      isSystem: true,
+      key: "pro",
+      isLatest: false,
+    });
+    mockPlanRepo.findByIdOrThrow.mockResolvedValue(historical);
+
+    await expect(service.update(historical.id, { priceXof: 1 }, user)).rejects.toThrow(
+      "version historique",
+    );
+    expect(mockPlanRepo.create).not.toHaveBeenCalled();
+    expect(mockPlanRepo.update).not.toHaveBeenCalled();
   });
 
   it("refuses to archive a system plan", async () => {
