@@ -4,11 +4,14 @@ import {
   type Subscription,
   type Plan,
   type PlanFeatures,
+  type Event,
+  type Registration,
   PLAN_LIMITS,
   PLAN_DISPLAY,
   PLAN_LIMIT_UNLIMITED,
 } from "@teranga/shared-types";
-import { db, COLLECTIONS } from "@/config/firebase";
+import { db, auth, COLLECTIONS } from "@/config/firebase";
+import { signQrPayload } from "@/services/qr-signing";
 
 // ── Emulator control ────────────────────────────────────────────────────────
 
@@ -29,6 +32,57 @@ export async function clearFirestore(): Promise<void> {
   if (!res.ok) {
     throw new Error(`Failed to clear Firestore emulator: ${res.status} ${await res.text()}`);
   }
+}
+
+/**
+ * Wipe every user record from the Firebase Auth emulator for the current
+ * project. Tests that exercise auth-integrated flows (invite accept,
+ * admin role updates) must run this alongside clearFirestore to stay
+ * hermetic — stale auth users leak custom claims between tests.
+ */
+export async function clearAuth(): Promise<void> {
+  const host = process.env.FIREBASE_AUTH_EMULATOR_HOST;
+  const projectId = process.env.FIREBASE_PROJECT_ID;
+  if (!host || !projectId) {
+    throw new Error("FIREBASE_AUTH_EMULATOR_HOST and FIREBASE_PROJECT_ID must be set");
+  }
+  const url = `http://${host}/emulator/v1/projects/${projectId}/accounts`;
+  const res = await fetch(url, { method: "DELETE" });
+  if (!res.ok) {
+    throw new Error(`Failed to clear Auth emulator: ${res.status} ${await res.text()}`);
+  }
+}
+
+/**
+ * Create a real Firebase Auth user in the emulator and return their uid.
+ * Needed for service paths that call `auth.getUser(uid)` or apply custom
+ * claims — e.g. `invite.acceptInvite` and `admin.updateUserRoles`.
+ *
+ * The uid in the returned AuthUser matches the Firestore user doc id
+ * pattern used by the services, so tests can pass the user straight to
+ * service methods that expect an `AuthUser`.
+ */
+export async function createAuthUser(opts: {
+  uid?: string;
+  email: string;
+  roles?: string[];
+  organizationId?: string;
+  disabled?: boolean;
+}): Promise<{ uid: string; email: string }> {
+  const uid = opts.uid ?? `auth-${Math.random().toString(36).slice(2, 10)}`;
+  await auth.createUser({
+    uid,
+    email: opts.email,
+    emailVerified: true,
+    disabled: opts.disabled ?? false,
+  });
+  if (opts.roles || opts.organizationId) {
+    await auth.setCustomUserClaims(uid, {
+      roles: opts.roles ?? ["participant"],
+      organizationId: opts.organizationId,
+    });
+  }
+  return { uid, email: opts.email };
 }
 
 // ── Plan catalog seeding ────────────────────────────────────────────────────
@@ -190,4 +244,158 @@ export async function readPlan(planId: string): Promise<Plan | null> {
   const snap = await db.collection(COLLECTIONS.PLANS).doc(planId).get();
   if (!snap.exists) return null;
   return { id: snap.id, ...(snap.data() as Omit<Plan, "id">) } as Plan;
+}
+
+export async function readEvent(eventId: string): Promise<Event | null> {
+  const snap = await db.collection(COLLECTIONS.EVENTS).doc(eventId).get();
+  if (!snap.exists) return null;
+  return { id: snap.id, ...(snap.data() as Omit<Event, "id">) } as Event;
+}
+
+export async function readRegistration(regId: string): Promise<Registration | null> {
+  const snap = await db.collection(COLLECTIONS.REGISTRATIONS).doc(regId).get();
+  if (!snap.exists) return null;
+  return { id: snap.id, ...(snap.data() as Omit<Registration, "id">) } as Registration;
+}
+
+/**
+ * Write a minimal user profile document to the `users` collection. Used
+ * by admin-management tests that mutate user roles + status: the service
+ * reads the Firestore user doc first, then syncs Firebase Auth claims.
+ */
+export async function createUserDoc(opts: {
+  uid: string;
+  email: string;
+  roles?: string[];
+  organizationId?: string | null;
+  isActive?: boolean;
+  displayName?: string | null;
+}): Promise<void> {
+  const now = new Date().toISOString();
+  await db
+    .collection(COLLECTIONS.USERS)
+    .doc(opts.uid)
+    .set({
+      id: opts.uid,
+      email: opts.email,
+      displayName: opts.displayName ?? opts.email,
+      roles: opts.roles ?? ["participant"],
+      organizationId: opts.organizationId ?? null,
+      isActive: opts.isActive ?? true,
+      createdAt: now,
+      updatedAt: now,
+    });
+}
+
+export async function readAuthUser(uid: string): Promise<{
+  disabled: boolean;
+  customClaims: Record<string, unknown>;
+}> {
+  const user = await auth.getUser(uid);
+  return {
+    disabled: user.disabled,
+    customClaims: (user.customClaims ?? {}) as Record<string, unknown>,
+  };
+}
+
+// ── Event / Registration factories (Firestore-backed) ──────────────────────
+
+/**
+ * Write a minimal published event under an org with one free ticket type.
+ * Callers can override any field (e.g. `status: "draft"`, `maxAttendees: 1`).
+ *
+ * Defaults are geared at registration/check-in integration tests:
+ *  - one ticket type `t1` with 100 capacity, 0 sold
+ *  - startDate = tomorrow (so the plan-limit grace period does NOT apply)
+ *  - status = "published"
+ */
+export async function createEvent(orgId: string, overrides: Partial<Event> = {}): Promise<Event> {
+  const id = overrides.id ?? `evt-${Math.random().toString(36).slice(2, 10)}`;
+  const now = new Date().toISOString();
+  const tomorrow = new Date(Date.now() + 86400000).toISOString();
+  const nextWeek = new Date(Date.now() + 7 * 86400000).toISOString();
+
+  const event: Event = {
+    id,
+    organizationId: orgId,
+    title: `Event ${id}`,
+    slug: `event-${id}`,
+    description: "Integration-seeded event",
+    shortDescription: null,
+    coverImageURL: null,
+    bannerImageURL: null,
+    category: "conference",
+    tags: [],
+    format: "in_person",
+    status: "published",
+    location: { name: "Test Venue", address: "1 Rue", city: "Dakar", country: "SN" },
+    startDate: tomorrow,
+    endDate: nextWeek,
+    timezone: "Africa/Dakar",
+    ticketTypes: [
+      {
+        id: "t1",
+        name: "Standard",
+        price: 0,
+        currency: "XOF",
+        totalQuantity: 100,
+        soldCount: 0,
+        accessZoneIds: [],
+        isVisible: true,
+      },
+    ],
+    accessZones: [],
+    maxAttendees: 100,
+    registeredCount: 0,
+    checkedInCount: 0,
+    isPublic: true,
+    isFeatured: false,
+    venueId: null,
+    venueName: null,
+    requiresApproval: false,
+    templateId: null,
+    createdBy: `owner-${orgId}`,
+    updatedBy: `owner-${orgId}`,
+    createdAt: now,
+    updatedAt: now,
+    publishedAt: now,
+    ...overrides,
+  } as Event;
+
+  await db.collection(COLLECTIONS.EVENTS).doc(id).set(event);
+  return event;
+}
+
+/**
+ * Write a registration doc with a validly-signed QR payload. The QR is
+ * signed using the same helper the production service uses so check-in
+ * flows can verify against the same secret.
+ */
+export async function createRegistration(
+  eventId: string,
+  userId: string,
+  overrides: Partial<Registration> = {},
+): Promise<Registration> {
+  const id = overrides.id ?? `reg-${Math.random().toString(36).slice(2, 10)}`;
+  const now = new Date().toISOString();
+  const qrCodeValue = overrides.qrCodeValue ?? signQrPayload(id, eventId, userId);
+
+  const reg: Registration = {
+    id,
+    eventId,
+    userId,
+    ticketTypeId: "t1",
+    status: "confirmed",
+    qrCodeValue,
+    checkedInAt: null,
+    checkedInBy: null,
+    accessZoneId: null,
+    notes: null,
+    createdAt: now,
+    updatedAt: now,
+    ...overrides,
+  } as Registration;
+
+  await db.collection(COLLECTIONS.REGISTRATIONS).doc(id).set(reg);
+  return reg;
 }

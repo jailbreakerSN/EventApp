@@ -14,6 +14,14 @@
 if (!process.env.FIRESTORE_EMULATOR_HOST) {
   process.env.FIRESTORE_EMULATOR_HOST = "127.0.0.1:8080";
 }
+// Firebase Auth emulator — required for service paths that call
+// `auth.setCustomUserClaims`, `auth.getUser`, etc. (invite accept, admin
+// role updates, organization membership transitions). Without this,
+// firebase-admin tries to reach the real Firebase Auth API and fails on
+// missing credentials.
+if (!process.env.FIREBASE_AUTH_EMULATOR_HOST) {
+  process.env.FIREBASE_AUTH_EMULATOR_HOST = "127.0.0.1:9099";
+}
 
 // Deterministic project id — the emulator keeps state per project.
 // Match the seed script's default so ad-hoc debugging against the same

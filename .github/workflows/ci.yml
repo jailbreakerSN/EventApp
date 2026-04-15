@@ -181,10 +181,10 @@ jobs:
           path: packages/shared-types/dist
       - name: Install firebase-tools
         run: npm install -g firebase-tools@13
-      - name: Run integration tests against Firestore emulator
+      - name: Run integration tests against Firestore + Auth emulators
         run: |
           firebase emulators:exec \
-            --only firestore \
+            --only firestore,auth \
             --project teranga-integration-test \
             "npm run test:integration --workspace=apps/api"
 
