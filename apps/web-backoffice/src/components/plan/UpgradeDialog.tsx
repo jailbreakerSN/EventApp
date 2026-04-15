@@ -6,9 +6,10 @@ import { ConfirmDialog } from "@teranga/shared-ui";
 import {
   type OrganizationPlan,
   type PlanFeature,
-  PLAN_DISPLAY,
-  PLAN_LIMITS,
+  type Plan,
+  type PlanFeatures,
 } from "@teranga/shared-types";
+import { usePlansCatalogMap, getPlanDisplay } from "@/hooks/use-plans-catalog";
 
 const FEATURE_LABELS: Record<PlanFeature, string> = {
   qrScanning: "Scan QR / Check-in",
@@ -24,13 +25,28 @@ const FEATURE_LABELS: Record<PlanFeature, string> = {
   promoCodes: "Codes promo",
 };
 
-function formatPrice(priceXof: number): string {
-  if (priceXof === 0) return "Gratuit";
-  return new Intl.NumberFormat("fr-SN", {
-    style: "currency",
-    currency: "XOF",
-    maximumFractionDigits: 0,
-  }).format(priceXof);
+function formatPlanCost(display: { priceXof: number; pricingModel: string }): string {
+  switch (display.pricingModel) {
+    case "free":
+      return "Gratuit";
+    case "custom":
+      return "Sur mesure";
+    case "metered":
+      return display.priceXof > 0
+        ? new Intl.NumberFormat("fr-SN", {
+            style: "currency",
+            currency: "XOF",
+            maximumFractionDigits: 0,
+          }).format(display.priceXof) + " + à l'usage"
+        : "À l'usage";
+    case "fixed":
+    default:
+      return new Intl.NumberFormat("fr-SN", {
+        style: "currency",
+        currency: "XOF",
+        maximumFractionDigits: 0,
+      }).format(display.priceXof);
+  }
 }
 
 interface UpgradeDialogProps {
@@ -49,13 +65,12 @@ export function UpgradeDialog({
   targetPlan,
 }: UpgradeDialogProps) {
   const [loading, setLoading] = useState(false);
+  const { map: catalog } = usePlansCatalogMap();
 
-  const currentDisplay = PLAN_DISPLAY[currentPlan];
-  const targetDisplay = PLAN_DISPLAY[targetPlan];
+  const currentDisplay = getPlanDisplay(currentPlan, catalog);
+  const targetDisplay = getPlanDisplay(targetPlan, catalog);
 
-  const isUpgrade =
-    ["free", "starter", "pro", "enterprise"].indexOf(targetPlan) >
-    ["free", "starter", "pro", "enterprise"].indexOf(currentPlan);
+  const isUpgrade = isUpgradeDirection(currentPlan, targetPlan, catalog);
 
   const handleConfirm = async () => {
     setLoading(true);
@@ -90,6 +105,17 @@ export function UpgradeDialog({
   );
 }
 
+function isUpgradeDirection(current: string, target: string, catalog: Map<string, Plan>): boolean {
+  const currentSort = catalog.get(current)?.sortOrder;
+  const targetSort = catalog.get(target)?.sortOrder;
+  if (currentSort !== undefined && targetSort !== undefined) {
+    return targetSort > currentSort;
+  }
+  // Fallback to legacy enum order when the catalog hasn't loaded.
+  const order = ["free", "starter", "pro", "enterprise"];
+  return order.indexOf(target) > order.indexOf(current);
+}
+
 /** Standalone upgrade preview panel — used inside the billing page */
 export function UpgradePreview({
   currentPlan,
@@ -104,21 +130,19 @@ export function UpgradePreview({
   onCancel: () => void;
   isPending: boolean;
 }) {
-  const currentDisplay = PLAN_DISPLAY[currentPlan];
-  const targetDisplay = PLAN_DISPLAY[targetPlan];
-  const currentFeatures = PLAN_LIMITS[currentPlan].features;
-  const targetFeatures = PLAN_LIMITS[targetPlan].features;
+  const { map: catalog } = usePlansCatalogMap();
+  const currentDisplay = getPlanDisplay(currentPlan, catalog);
+  const targetDisplay = getPlanDisplay(targetPlan, catalog);
+  const currentFeatures: Partial<PlanFeatures> =
+    catalog.get(currentPlan)?.features ?? ({} as PlanFeatures);
+  const targetFeatures: Partial<PlanFeatures> =
+    catalog.get(targetPlan)?.features ?? ({} as PlanFeatures);
 
-  const gainedFeatures = (Object.keys(targetFeatures) as PlanFeature[]).filter(
-    (f) => targetFeatures[f] && !currentFeatures[f],
-  );
-  const lostFeatures = (Object.keys(currentFeatures) as PlanFeature[]).filter(
-    (f) => currentFeatures[f] && !targetFeatures[f],
-  );
+  const featureKeys = Object.keys(FEATURE_LABELS) as PlanFeature[];
+  const gainedFeatures = featureKeys.filter((f) => targetFeatures[f] && !currentFeatures[f]);
+  const lostFeatures = featureKeys.filter((f) => currentFeatures[f] && !targetFeatures[f]);
 
-  const isUpgrade =
-    ["free", "starter", "pro", "enterprise"].indexOf(targetPlan) >
-    ["free", "starter", "pro", "enterprise"].indexOf(currentPlan);
+  const isUpgrade = isUpgradeDirection(currentPlan, targetPlan, catalog);
 
   return (
     <div className="bg-card rounded-xl border border-border p-6">
@@ -131,17 +155,13 @@ export function UpgradePreview({
         <div className="text-center">
           <p className="text-xs text-muted-foreground mb-1">Actuel</p>
           <p className="font-semibold text-foreground">{currentDisplay.name.fr}</p>
-          <p className="text-sm text-muted-foreground">
-            {formatPrice(currentDisplay.priceXof)}/mois
-          </p>
+          <p className="text-sm text-muted-foreground">{formatPlanCost(currentDisplay)}</p>
         </div>
         <ArrowRight className="h-5 w-5 text-primary" />
         <div className="text-center">
           <p className="text-xs text-primary mb-1 font-medium">Nouveau</p>
           <p className="font-semibold text-primary">{targetDisplay.name.fr}</p>
-          <p className="text-sm text-foreground font-medium">
-            {formatPrice(targetDisplay.priceXof)}/mois
-          </p>
+          <p className="text-sm text-foreground font-medium">{formatPlanCost(targetDisplay)}</p>
         </div>
       </div>
 

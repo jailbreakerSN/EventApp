@@ -271,6 +271,17 @@ const ENTERPRISE_FEATURES: PlanFeatures = {
   promoCodes: true,
 };
 
+/**
+ * @deprecated Phase 6 (Apr 2026): the catalog of plans is now stored in the
+ *   `plans` Firestore collection and managed by superadmins. Enforcement
+ *   reads `org.effectiveLimits` (denormalized at write time, see Phase 2/3),
+ *   the API's `BaseService.checkPlanLimit()` accepts an org and falls back
+ *   to this table only when an org predates the Phase 2 backfill, and the
+ *   web client reads from `usePlansCatalog()` / `getPlanDisplay()`. Keep
+ *   this constant exported as the canonical seed source for `seed-plans.ts`
+ *   and as a final fallback in the API and tests.
+ *   New code should NOT import this directly — use the catalog.
+ */
 export const PLAN_LIMITS: Record<OrganizationPlan, PlanLimits> = {
   free: { maxEvents: 3, maxParticipantsPerEvent: 50, maxMembers: 1, features: FREE_FEATURES },
   starter: {
@@ -300,6 +311,13 @@ export interface PlanDisplayInfo {
   limits: PlanLimits;
 }
 
+/**
+ * @deprecated Phase 6: see PLAN_LIMITS deprecation note. Web clients should
+ *   call `usePlansCatalog()` and pass the resolved map to `getPlanDisplay()`
+ *   so custom superadmin-created plans render correctly. Kept exported as
+ *   the seed source for the catalog (system plans) and as a UI fallback
+ *   when the catalog hasn't yet loaded on a cold page render.
+ */
 export const PLAN_DISPLAY: Record<OrganizationPlan, PlanDisplayInfo> = {
   free: {
     id: "free",

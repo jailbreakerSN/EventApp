@@ -13,20 +13,35 @@ import {
   useRevertScheduledChange,
 } from "@/hooks/use-organization";
 import { usePlanGating } from "@/hooks/use-plan-gating";
+import { usePlansCatalogMap, getPlanDisplay } from "@/hooks/use-plans-catalog";
 import { UsageMeter } from "@/components/plan/UsageMeter";
 import { PlanComparisonTable } from "@/components/plan/PlanComparisonTable";
 import { UpgradePreview } from "@/components/plan/UpgradeDialog";
 import type { OrganizationPlan } from "@teranga/shared-types";
-import { PLAN_DISPLAY } from "@teranga/shared-types";
 import { useTranslations } from "next-intl";
 
 function formatPrice(priceXof: number): string {
-  if (priceXof === 0) return "Gratuit";
   return new Intl.NumberFormat("fr-SN", {
     style: "currency",
     currency: "XOF",
     maximumFractionDigits: 0,
   }).format(priceXof);
+}
+
+function formatPlanCost(display: { priceXof: number; pricingModel: string }): string {
+  switch (display.pricingModel) {
+    case "free":
+      return "Gratuit";
+    case "custom":
+      return "Sur devis";
+    case "metered":
+      return display.priceXof > 0
+        ? `${formatPrice(display.priceXof)} de base + à l'usage`
+        : "À l'usage";
+    case "fixed":
+    default:
+      return `${formatPrice(display.priceXof)} / mois`;
+  }
 }
 
 const PLAN_ORDER: OrganizationPlan[] = ["free", "starter", "pro", "enterprise"];
@@ -42,12 +57,14 @@ export default function BillingPage() {
   const downgradePlan = useDowngradePlan();
   const cancelSubscription = useCancelSubscription();
   const revertScheduled = useRevertScheduledChange();
+  const { map: planCatalog } = usePlansCatalogMap();
 
   const [selectedPlan, setSelectedPlan] = useState<OrganizationPlan | null>(null);
 
   const org = orgData?.data;
   const subscription = subData?.data;
-  const display = PLAN_DISPLAY[plan];
+  const currentPlanKey = org?.effectivePlanKey ?? plan;
+  const display = getPlanDisplay(currentPlanKey, planCatalog);
   const events = checkLimit("events");
   const members = checkLimit("members");
   const scheduledChange = subscription?.scheduledChange;
@@ -69,7 +86,9 @@ export default function BillingPage() {
     try {
       if (isUpgrade) {
         await upgradePlan.mutateAsync(selectedPlan);
-        toast.success(`Plan mis à niveau vers ${PLAN_DISPLAY[selectedPlan].name.fr}`);
+        toast.success(
+          `Plan mis à niveau vers ${getPlanDisplay(selectedPlan, planCatalog).name.fr}`,
+        );
       } else {
         // Default: schedule at currentPeriodEnd (prepaid rights honored).
         const result = await downgradePlan.mutateAsync({ plan: selectedPlan });
@@ -83,7 +102,9 @@ export default function BillingPage() {
             `Rétrogradation programmée pour le ${date}. Vous conservez votre plan actuel jusqu'à cette date.`,
           );
         } else {
-          toast.success(`Plan rétrogradé vers ${PLAN_DISPLAY[selectedPlan].name.fr}`);
+          toast.success(
+            `Plan rétrogradé vers ${getPlanDisplay(selectedPlan, planCatalog).name.fr}`,
+          );
         }
       }
       setSelectedPlan(null);
@@ -219,11 +240,7 @@ export default function BillingPage() {
                   })}
                 </strong>
                 , puis basculement vers{" "}
-                <strong>
-                  {PLAN_DISPLAY[scheduledChange.toPlan as OrganizationPlan]?.name.fr ??
-                    scheduledChange.toPlan}
-                </strong>
-                .
+                <strong>{getPlanDisplay(scheduledChange.toPlan, planCatalog).name.fr}</strong>.
               </p>
             </div>
           </div>
@@ -247,9 +264,7 @@ export default function BillingPage() {
               <h2 className="text-lg font-semibold text-foreground">Plan actuel</h2>
             </div>
             <p className="text-2xl font-bold text-primary mt-2">{display.name.fr}</p>
-            <p className="text-muted-foreground text-sm mt-0.5">
-              {display.priceXof === 0 ? "Gratuit" : `${formatPrice(display.priceXof)} / mois`}
-            </p>
+            <p className="text-muted-foreground text-sm mt-0.5">{formatPlanCost(display)}</p>
           </div>
           {subscription?.currentPeriodEnd && plan !== "free" && (
             <div className="text-right text-sm text-muted-foreground">

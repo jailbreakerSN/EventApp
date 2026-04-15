@@ -570,6 +570,17 @@ export const adminApi = {
     api.get<ApiResponse<Subscription | null>>(`/v1/organizations/${orgId}/subscription`),
 };
 
+// ─── Public Plan Catalog (Phase 6) ──────────────────────────────────────────
+// The superadmin-managed Plans collection, exposed to any authenticated user
+// as a read-only list. Used by billing / upgrade / plan-gating UIs instead of
+// the hardcoded PLAN_DISPLAY constant so custom superadmin-created plans
+// render correctly.
+
+export const plansApi = {
+  listPublic: () => api.get<ApiResponse<Plan[]>>("/v1/plans"),
+  getByKey: (key: string) => api.get<ApiResponse<Plan>>(`/v1/plans/${key}`),
+};
+
 // ─── Venues ─────────────────────────────────────────────────────────────────
 
 export const venuesApi = {
