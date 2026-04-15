@@ -90,6 +90,22 @@ export const PlanSchema = z.object({
   isPublic: z.boolean().default(true),
   isArchived: z.boolean().default(false),
   sortOrder: z.number().int().default(0),
+  // ── Versioning (Phase 7) ───────────────────────────────────────────────────
+  // `lineageId` groups every version of the same logical plan (e.g. every
+  // generation of "pro"). `version` increments on each edit. `isLatest` is the
+  // mutable flag the catalog reader filters by — only the latest version of a
+  // lineage appears in the public catalog or on newly-assigned subscriptions.
+  // `previousVersionId` breadcrumbs the version chain so the admin UI can
+  // render a history timeline.
+  //
+  // Backward-compat: these fields are optional. Plans created before Phase 7
+  // rely on a one-time backfill to stamp `version: 1 / isLatest: true` with a
+  // fresh `lineageId`. The catalog readers treat "missing isLatest" as "true"
+  // during the migration window.
+  version: z.number().int().min(1).default(1),
+  lineageId: z.string(),
+  isLatest: z.boolean().default(true),
+  previousVersionId: z.string().nullable().optional(),
   createdBy: z.string().nullable(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),

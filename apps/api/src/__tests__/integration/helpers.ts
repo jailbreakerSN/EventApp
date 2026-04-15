@@ -118,6 +118,13 @@ function buildSystemPlanDoc(key: OrganizationPlan, sortOrder: number, now: strin
     isPublic: true,
     isArchived: false,
     sortOrder,
+    // Phase 7 versioning fields — keep system plans at v1 with a
+    // deterministic lineage. Edits go through planService.update() which
+    // mints v2+.
+    version: 1,
+    lineageId: `lin-${key}-system`,
+    isLatest: true,
+    previousVersionId: null,
     createdBy: null,
     createdAt: now,
     updatedAt: now,

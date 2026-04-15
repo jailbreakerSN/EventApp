@@ -12,7 +12,7 @@ import {
   QueryError,
   Spinner,
 } from "@teranga/shared-ui";
-import { CreditCard } from "lucide-react";
+import { CreditCard, History } from "lucide-react";
 import { useAdminPlan } from "@/hooks/use-admin";
 import { PlanForm } from "@/components/plans/PlanForm";
 
@@ -70,7 +70,33 @@ export default function AdminEditPlanPage() {
         />
       )}
 
-      {plan && <PlanForm mode="edit" plan={plan} />}
+      {plan && (
+        <>
+          {/* Phase 7: warn editors that price / limits / features edits mint a
+              NEW version. Existing subscribers stay on their current version
+              (grandfathered); only new signups get the new one. */}
+          <div
+            role="note"
+            className="flex items-start gap-3 rounded-xl border border-primary/30 bg-primary/5 p-4 text-sm"
+          >
+            <History className="mt-0.5 h-5 w-5 shrink-0 text-primary" aria-hidden="true" />
+            <div className="space-y-1">
+              <p className="font-medium text-foreground">Version actuelle : v{plan.version ?? 1}</p>
+              <p className="text-muted-foreground">
+                Modifier le prix, les limites ou les fonctionnalités créera une
+                <strong className="text-foreground"> nouvelle version</strong>. Les organisations
+                déjà abonnées restent sur leur version actuelle (droits préservés). Seuls les
+                nouveaux abonnements utiliseront la nouvelle version.
+              </p>
+              <p className="text-muted-foreground">
+                Les ajustements d&apos;ordre d&apos;affichage ou de visibilité n&apos;affectent pas
+                la version.
+              </p>
+            </div>
+          </div>
+          <PlanForm mode="edit" plan={plan} />
+        </>
+      )}
     </div>
   );
 }

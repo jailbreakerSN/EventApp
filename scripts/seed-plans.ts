@@ -86,6 +86,12 @@ function buildSystemPlanDoc(
 
   // Deterministic document ID = plan key. System plans have a stable id so
   // cross-references (Subscription.planId) don't change between seeds.
+  //
+  // Versioning (Phase 7): each system plan is seeded as `version: 1` with a
+  // deterministic `lineageId` (= `"lin-<key>-system"`) so re-running the seed
+  // is always an in-place merge on v1 — it never accidentally mints a new
+  // version. Actual version bumps come from `planService.update()` in
+  // response to a superadmin edit.
   return {
     id: key,
     key,
@@ -104,6 +110,10 @@ function buildSystemPlanDoc(
     isPublic: true,
     isArchived: false,
     sortOrder,
+    version: 1,
+    lineageId: `lin-${key}-system`,
+    isLatest: true,
+    previousVersionId: null,
     createdBy: null,
     createdAt: now,
     updatedAt: now,
@@ -121,11 +131,22 @@ export async function seedPlans(db: Firestore): Promise<number> {
     const snap = await ref.get();
 
     if (snap.exists) {
-      // Preserve createdAt; update everything else to match shared-types source.
+      // Preserve createdAt + existing versioning metadata. The seed must
+      // NEVER auto-bump version — that's the superadmin's call via
+      // `planService.update()`. If a staging/prod deploy tunes the source
+      // `PLAN_LIMITS` numbers, the seed merges them into v1 and the real
+      // cutover should go through the service (grandfathered on prod).
+      const current = snap.data() ?? {};
       await ref.set(
         {
           ...doc,
-          createdAt: (snap.data()?.createdAt as string) ?? now,
+          createdAt: (current.createdAt as string) ?? now,
+          // Preserve lineage identity across re-seeds if the doc was written
+          // by an older seeder that didn't stamp these fields.
+          version: (current.version as number | undefined) ?? 1,
+          lineageId: (current.lineageId as string | undefined) ?? doc.lineageId,
+          isLatest: (current.isLatest as boolean | undefined) ?? true,
+          previousVersionId: (current.previousVersionId as string | null | undefined) ?? null,
         },
         { merge: true },
       );
