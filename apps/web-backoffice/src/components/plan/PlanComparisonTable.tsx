@@ -142,12 +142,27 @@ export function PlanComparisonTable({ currentPlan, onSelectPlan }: PlanCompariso
                       {plan.priceXof > 0 && isFixedOrFree && (
                         <p className="text-xs text-muted-foreground">/ mois</p>
                       )}
+                      {/* Phase 7+ item #4: surface the trial offer. Only
+                          meaningful for a user upgrading from free — a
+                          second upgrade won't start a new trial server-side. */}
+                      {plan.trialDays &&
+                        plan.trialDays > 0 &&
+                        currentPlan === "free" &&
+                        !isCurrent && (
+                          <p className="mt-2 inline-block rounded-full bg-teranga-gold/15 px-2 py-0.5 text-[11px] font-medium text-teranga-gold">
+                            {plan.trialDays} jours d&apos;essai offerts
+                          </p>
+                        )}
                       {onSelectPlan && !isCurrent && isFixedOrFree && (
                         <button
                           onClick={() => onSelectPlan(plan.key as OrganizationPlan)}
                           className="mt-3 w-full px-3 py-1.5 bg-primary text-primary-foreground text-xs font-medium rounded-lg hover:bg-primary/90 transition-colors"
                         >
-                          {idx > currentIdx ? "Passer à ce plan" : "Rétrograder"}
+                          {plan.trialDays && plan.trialDays > 0 && currentPlan === "free"
+                            ? `Commencer l'essai ${plan.trialDays} jours`
+                            : idx > currentIdx
+                              ? "Passer à ce plan"
+                              : "Rétrograder"}
                         </button>
                       )}
                       {!isFixedOrFree && !isCurrent && (

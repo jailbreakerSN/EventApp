@@ -74,6 +74,26 @@ const PRICING_MODEL: Record<OrganizationPlan, PricingModel> = {
   enterprise: "custom",
 };
 
+// Default trial length (in days) per system plan. Phase 7+ item #4 — shipping
+// trials is the cheapest free→paid conversion lever available. A first-time
+// upgrade from free picks up this value; later upgrades from a paid tier skip
+// the trial entirely.
+//
+//   - `free` / `enterprise` → null (neither is a self-service trial target)
+//   - `starter` → 0 (cheapest tier — we want immediate activation)
+//   - `pro` → 14 (the growth-driver tier; 14 days is the conversion sweet spot
+//     per Stripe/Chargebee benchmarks for B2B SaaS)
+//
+// Operators can tune per-tier trial length via the admin UI — the change
+// mints a new plan version (grandfathering-safe) so existing trialing
+// customers keep their original promise.
+const TRIAL_DAYS: Record<OrganizationPlan, number | null> = {
+  free: null,
+  starter: 0,
+  pro: 14,
+  enterprise: null,
+};
+
 function buildSystemPlanDoc(
   key: OrganizationPlan,
   sortOrder: number,
@@ -110,6 +130,7 @@ function buildSystemPlanDoc(
     isPublic: true,
     isArchived: false,
     sortOrder,
+    trialDays: TRIAL_DAYS[key],
     version: 1,
     lineageId: `lin-${key}-system`,
     isLatest: true,

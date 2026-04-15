@@ -228,30 +228,54 @@ export default function BillingPage() {
               <p className="font-medium text-foreground">
                 {scheduledChange.reason === "cancel"
                   ? "Annulation programmée"
-                  : "Changement de plan programmé"}
+                  : scheduledChange.reason === "trial_ended"
+                    ? "Fin de votre essai gratuit"
+                    : "Changement de plan programmé"}
               </p>
               <p className="text-sm text-muted-foreground">
-                Vous conservez votre plan <strong>{display.name.fr}</strong> jusqu'au{" "}
-                <strong>
-                  {new Date(scheduledChange.effectiveAt).toLocaleDateString("fr-FR", {
-                    day: "numeric",
-                    month: "long",
-                    year: "numeric",
-                  })}
-                </strong>
-                , puis basculement vers{" "}
-                <strong>{getPlanDisplay(scheduledChange.toPlan, planCatalog).name.fr}</strong>.
+                {scheduledChange.reason === "trial_ended" ? (
+                  <>
+                    Votre essai gratuit se termine le{" "}
+                    <strong>
+                      {new Date(scheduledChange.effectiveAt).toLocaleDateString("fr-FR", {
+                        day: "numeric",
+                        month: "long",
+                        year: "numeric",
+                      })}
+                    </strong>
+                    . La facturation de votre plan <strong>{display.name.fr}</strong> démarrera
+                    automatiquement à cette date.
+                  </>
+                ) : (
+                  <>
+                    Vous conservez votre plan <strong>{display.name.fr}</strong> jusqu&apos;au{" "}
+                    <strong>
+                      {new Date(scheduledChange.effectiveAt).toLocaleDateString("fr-FR", {
+                        day: "numeric",
+                        month: "long",
+                        year: "numeric",
+                      })}
+                    </strong>
+                    , puis basculement vers{" "}
+                    <strong>{getPlanDisplay(scheduledChange.toPlan, planCatalog).name.fr}</strong>.
+                  </>
+                )}
               </p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={handleRevertScheduled}
-            disabled={revertScheduled.isPending}
-            className="self-start rounded-lg border border-teranga-gold/60 bg-background px-3 py-1.5 text-sm font-medium text-foreground hover:bg-teranga-gold/10 transition-colors disabled:opacity-60"
-          >
-            {revertScheduled.isPending ? "Annulation…" : "Annuler le changement"}
-          </button>
+          {/* Reverting a "trial_ended" schedule would mean "cancel the trial
+              and activate now" — not a user-facing action yet. Only offer the
+              revert button on cancel / downgrade scheduledChanges. */}
+          {scheduledChange.reason !== "trial_ended" && (
+            <button
+              type="button"
+              onClick={handleRevertScheduled}
+              disabled={revertScheduled.isPending}
+              className="self-start rounded-lg border border-teranga-gold/60 bg-background px-3 py-1.5 text-sm font-medium text-foreground hover:bg-teranga-gold/10 transition-colors disabled:opacity-60"
+            >
+              {revertScheduled.isPending ? "Annulation…" : "Annuler le changement"}
+            </button>
+          )}
         </div>
       )}
 
@@ -262,6 +286,11 @@ export default function BillingPage() {
             <div className="flex items-center gap-3">
               <CreditCard className="h-5 w-5 text-primary" />
               <h2 className="text-lg font-semibold text-foreground">Plan actuel</h2>
+              {subscription?.status === "trialing" && (
+                <span className="inline-flex items-center rounded-full bg-teranga-gold/15 px-2 py-0.5 text-[11px] font-medium text-teranga-gold">
+                  Essai en cours
+                </span>
+              )}
             </div>
             <p className="text-2xl font-bold text-primary mt-2">{display.name.fr}</p>
             <p className="text-muted-foreground text-sm mt-0.5">{formatPlanCost(display)}</p>

@@ -90,6 +90,13 @@ export const PlanSchema = z.object({
   isPublic: z.boolean().default(true),
   isArchived: z.boolean().default(false),
   sortOrder: z.number().int().default(0),
+  // ── Trial periods (Phase 7+ item #4) ──────────────────────────────────────
+  // When set (> 0), a first-time upgrade from a non-paying org onto this plan
+  // starts a trial: subscription.status = "trialing", priceXof is suspended
+  // until the trial expires, and a scheduledChange with reason="trial_ended"
+  // is queued so the daily rollover worker flips status → "active" at
+  // `currentPeriodStart + trialDays`. 0 / missing = no trial.
+  trialDays: z.number().int().min(0).max(365).nullable().optional(),
   // ── Versioning (Phase 7) ───────────────────────────────────────────────────
   // `lineageId` groups every version of the same logical plan (e.g. every
   // generation of "pro"). `version` increments on each edit. `isLatest` is the
@@ -126,6 +133,7 @@ export const CreatePlanSchema = z
     features: PlanFeaturesSchema,
     isPublic: z.boolean().default(true),
     sortOrder: z.number().int().default(0),
+    trialDays: z.number().int().min(0).max(365).nullable().optional(),
   })
   .refine((v) => !(v.pricingModel === "free" && v.priceXof > 0), {
     message: "Un plan 'free' ne peut pas avoir de priceXof > 0",
@@ -150,6 +158,7 @@ export const UpdatePlanSchema = z
     isPublic: z.boolean(),
     isArchived: z.boolean(),
     sortOrder: z.number().int(),
+    trialDays: z.number().int().min(0).max(365).nullable(),
   })
   .partial();
 
@@ -183,6 +192,7 @@ export const ScheduledChangeReasonSchema = z.enum([
   "cancel", // user-initiated cancellation (target = "free")
   "admin_override", // superadmin scheduled an override to land at period end
   "plan_archived", // catalog plan archived; scheduled migration to a fallback
+  "trial_ended", // trial period completed; flip status trialing → active (plan unchanged)
 ]);
 export type ScheduledChangeReason = z.infer<typeof ScheduledChangeReasonSchema>;
 

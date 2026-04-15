@@ -117,10 +117,8 @@ export class SubscriptionService extends BaseService {
     this.requireOrganizationAccess(user, orgId);
 
     const targetPlan = dto.plan;
-    const now = new Date().toISOString();
-    const periodEnd = new Date();
-    periodEnd.setMonth(periodEnd.getMonth() + 1);
-    const priceXof = PLAN_DISPLAY[targetPlan].priceXof;
+    const nowDate = new Date();
+    const now = nowDate.toISOString();
 
     // Resolve effective snapshot for the target plan from the catalog. Done
     // outside the transaction — the plans collection is slow-moving and not
@@ -132,6 +130,52 @@ export class SubscriptionService extends BaseService {
       targetPlan,
       existingSubscription?.overrides,
     );
+
+    // ── Trial enrolment (Phase 7+ item #4) ─────────────────────────────────
+    // A plan's catalog entry may carry `trialDays > 0`. A first-time upgrade
+    // from a non-paying org (no prior subscription, or current subscription
+    // on "free") starts a trial: status "trialing", priceXof suspended to 0,
+    // currentPeriodEnd = now + trialDays, and a scheduledChange with
+    // reason="trial_ended" queued so the daily rollover flips the sub to
+    // "active" at trial end. Once a customer has ever paid (any status !=
+    // "free"), trials no longer apply — matches the industry-standard
+    // "once per customer" semantic without a separate history collection.
+    const catalogPlan = effective ? await planRepository.findById(effective.planId) : null;
+    const trialDays = catalogPlan?.trialDays ?? 0;
+    const isFirstPaidUpgrade = !existingSubscription || existingSubscription.plan === "free";
+    const startsWithTrial = trialDays > 0 && isFirstPaidUpgrade;
+
+    // Trial: period ends at `now + trialDays`; monthly otherwise.
+    const periodEnd = new Date(nowDate);
+    if (startsWithTrial) {
+      periodEnd.setDate(periodEnd.getDate() + trialDays);
+    } else {
+      periodEnd.setMonth(periodEnd.getMonth() + 1);
+    }
+    const periodEndIso = periodEnd.toISOString();
+
+    const fullPriceXof = PLAN_DISPLAY[targetPlan].priceXof;
+    // During a trial the customer is not charged — store priceXof as 0 so
+    // billing summaries don't surface a mid-trial debit. After rollover
+    // flips status → active, the rollover worker rewrites priceXof from
+    // the catalog.
+    const priceXof = startsWithTrial ? 0 : fullPriceXof;
+
+    // Queue the end-of-trial flip as a scheduledChange — the daily rollover
+    // worker already scans that collection by effectiveAt, so we reuse the
+    // existing infra instead of adding a parallel trial-scanner. The
+    // rollover handler recognizes reason="trial_ended" and flips status
+    // without touching the plan (same target plan, just trialing → active).
+    const scheduledChange: Subscription["scheduledChange"] = startsWithTrial
+      ? {
+          toPlan: targetPlan,
+          toPlanId: effective?.planId,
+          effectiveAt: periodEndIso,
+          reason: "trial_ended",
+          scheduledBy: user.uid,
+          scheduledAt: now,
+        }
+      : null;
 
     // Transactional: read org plan + validate + update + denormalize atomically
     const previousPlan = await db.runTransaction(async (tx) => {
@@ -161,18 +205,21 @@ export class SubscriptionService extends BaseService {
 
     // Subscription doc update (outside transaction — not critical for atomicity).
     // Upgrading wipes any previously-queued scheduled downgrade — the user
-    // changed their mind and is strengthening their commitment.
+    // changed their mind and is strengthening their commitment. Trial enrolment
+    // writes its own scheduledChange (reason="trial_ended"), which is why we
+    // set it directly to `scheduledChange` rather than hardcoding null.
+    const status: Subscription["status"] = startsWithTrial ? "trialing" : "active";
     let subscription: Subscription;
     if (existingSubscription) {
       await subscriptionRepository.update(existingSubscription.id, {
         plan: targetPlan,
         planId: effective?.planId,
-        status: "active",
+        status,
         currentPeriodStart: now,
-        currentPeriodEnd: periodEnd.toISOString(),
+        currentPeriodEnd: periodEndIso,
         priceXof,
         cancelledAt: null,
-        scheduledChange: null,
+        scheduledChange,
         updatedAt: now,
       } as Partial<Subscription>);
       subscription = await subscriptionRepository.findByIdOrThrow(existingSubscription.id);
@@ -181,12 +228,13 @@ export class SubscriptionService extends BaseService {
         organizationId: orgId,
         plan: targetPlan,
         planId: effective?.planId,
-        status: "active",
+        status,
         currentPeriodStart: now,
-        currentPeriodEnd: periodEnd.toISOString(),
+        currentPeriodEnd: periodEndIso,
         cancelledAt: null,
         paymentMethod: null,
         priceXof,
+        scheduledChange,
       } as Omit<Subscription, "id" | "createdAt" | "updatedAt">);
     }
 

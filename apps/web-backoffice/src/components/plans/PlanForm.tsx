@@ -94,6 +94,7 @@ export function PlanForm({ mode, plan }: PlanFormProps) {
         features: plan.features,
         isPublic: plan.isPublic,
         sortOrder: plan.sortOrder,
+        trialDays: plan.trialDays ?? 0,
       };
     }
     return {
@@ -110,6 +111,7 @@ export function PlanForm({ mode, plan }: PlanFormProps) {
       features: DEFAULT_FEATURES,
       isPublic: true,
       sortOrder: 100,
+      trialDays: 0,
     };
   }, [plan]);
 
@@ -162,6 +164,7 @@ export function PlanForm({ mode, plan }: PlanFormProps) {
             features: data.features,
             isPublic: data.isPublic,
             sortOrder: data.sortOrder,
+            trialDays: data.trialDays ?? null,
           },
         });
         toast.success("Plan mis à jour");
@@ -319,6 +322,21 @@ export function PlanForm({ mode, plan }: PlanFormProps) {
                 id="sortOrder"
                 type="number"
                 {...register("sortOrder", { valueAsNumber: true })}
+              />
+            </FormField>
+            <FormField
+              label="Durée d'essai (jours)"
+              hint="0 = pas d'essai. Un premier passage du plan Gratuit ouvre automatiquement un essai de cette durée."
+              error={errors.trialDays?.message}
+              htmlFor="trialDays"
+            >
+              <Input
+                id="trialDays"
+                type="number"
+                min={0}
+                max={365}
+                step={1}
+                {...register("trialDays", { valueAsNumber: true })}
               />
             </FormField>
           </div>
