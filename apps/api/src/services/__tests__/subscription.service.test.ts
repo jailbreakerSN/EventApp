@@ -56,6 +56,7 @@ vi.mock("@/repositories/event.repository", () => ({
 // untouched. Phase 2 denormalization tests override this per-case.
 const mockPlanRepo = {
   findByKey: vi.fn().mockResolvedValue(null),
+  findByIdOrThrow: vi.fn(),
 };
 
 vi.mock("@/repositories/plan.repository", () => ({
@@ -1048,5 +1049,237 @@ describe("SubscriptionService.upgrade — clears any scheduled change", () => {
       "sub-1",
       expect.objectContaining({ scheduledChange: null }),
     );
+  });
+});
+
+// ── Phase 5: assignPlan (admin per-org override) ──────────────────────────
+
+describe("SubscriptionService.assignPlan", () => {
+  function buildCatalogPlanFull(overrides: Partial<Record<string, unknown>> = {}) {
+    const now = new Date().toISOString();
+    return {
+      id: "plan-custom",
+      key: "custom_acme",
+      name: { fr: "Acme", en: "Acme" },
+      description: null,
+      pricingModel: "custom" as const,
+      priceXof: 49900,
+      currency: "XOF" as const,
+      limits: { maxEvents: 999, maxParticipantsPerEvent: 500, maxMembers: 10 },
+      features: {
+        qrScanning: true,
+        paidTickets: true,
+        customBadges: true,
+        csvExport: true,
+        smsNotifications: true,
+        advancedAnalytics: true,
+        speakerPortal: true,
+        sponsorPortal: true,
+        apiAccess: false,
+        whiteLabel: false,
+        promoCodes: true,
+      },
+      isSystem: false,
+      isPublic: false,
+      isArchived: false,
+      sortOrder: 100,
+      createdBy: "admin-1",
+      createdAt: now,
+      updatedAt: now,
+      ...overrides,
+    };
+  }
+
+  it("rejects non-superadmin (organizer lacks subscription:override)", async () => {
+    const user = buildOrganizerUser("org-1");
+    await expect(service.assignPlan("org-1", { planId: "plan-custom" }, user)).rejects.toThrow(
+      "Permission manquante : subscription:override",
+    );
+  });
+
+  it("rejects participant (lacks manage_billing)", async () => {
+    const participant = buildAuthUser({ roles: ["participant"] });
+    await expect(
+      service.assignPlan("org-1", { planId: "plan-custom" }, participant),
+    ).rejects.toThrow("Permission manquante : organization:manage_billing");
+  });
+
+  it("assigns a catalog plan without overrides (superadmin)", async () => {
+    const admin = buildSuperAdmin();
+    mockPlanRepo.findByIdOrThrow.mockResolvedValue(buildCatalogPlanFull());
+
+    mockTxGet.mockResolvedValue({
+      exists: true,
+      data: () => ({ plan: "free", memberIds: [] }),
+    });
+    mockSubRepo.findByOrganization.mockResolvedValue(null);
+    mockSubRepo.create.mockResolvedValue({
+      id: "sub-new",
+      organizationId: "org-1",
+      plan: "custom_acme",
+      planId: "plan-custom",
+      status: "active",
+    });
+
+    const sub = await service.assignPlan("org-1", { planId: "plan-custom" }, admin);
+
+    expect(mockPlanRepo.findByIdOrThrow).toHaveBeenCalledWith("plan-custom");
+    // tx.update wrote org.plan + denormalized effective fields
+    const txArg = mockTxUpdate.mock.calls[0][1] as Record<string, unknown>;
+    expect(txArg.plan).toBe("custom_acme");
+    expect(txArg.effectivePlanKey).toBe("custom_acme");
+    expect((txArg.effectiveLimits as { maxEvents: number }).maxEvents).toBe(999);
+    // Subscription doc captures planId + assignedBy + assignedAt
+    expect(mockSubRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        planId: "plan-custom",
+        plan: "custom_acme",
+        assignedBy: admin.uid,
+      }),
+    );
+    expect(sub.plan).toBe("custom_acme");
+    // Domain event fires
+    expect(eventBus.emit).toHaveBeenCalledWith(
+      "subscription.overridden",
+      expect.objectContaining({
+        organizationId: "org-1",
+        newPlanId: "plan-custom",
+        newPlanKey: "custom_acme",
+        hasOverrides: false,
+        validUntil: null,
+      }),
+    );
+  });
+
+  it("assigns a plan with overrides (limits + validUntil + priceXof)", async () => {
+    const admin = buildSuperAdmin();
+    mockPlanRepo.findByIdOrThrow.mockResolvedValue(buildCatalogPlanFull());
+
+    mockTxGet.mockResolvedValue({
+      exists: true,
+      data: () => ({ plan: "pro", memberIds: ["u1"] }),
+    });
+    mockSubRepo.findByOrganization.mockResolvedValue({
+      id: "sub-1",
+      organizationId: "org-1",
+      plan: "pro",
+      status: "active",
+    });
+    mockSubRepo.update.mockResolvedValue(undefined);
+    mockSubRepo.findByIdOrThrow.mockResolvedValue({
+      id: "sub-1",
+      organizationId: "org-1",
+      plan: "custom_acme",
+      planId: "plan-custom",
+      status: "active",
+      priceXof: 250000,
+    });
+
+    await service.assignPlan(
+      "org-1",
+      {
+        planId: "plan-custom",
+        overrides: {
+          limits: { maxEvents: -1 }, // unlimited override
+          priceXof: 250000,
+          validUntil: "2099-12-31T00:00:00.000Z",
+          notes: "Deal Sonatel 2026",
+        },
+      },
+      admin,
+    );
+
+    // Override applied to effective snapshot written to the org
+    const txArg = mockTxUpdate.mock.calls[0][1] as Record<string, unknown>;
+    expect((txArg.effectiveLimits as { maxEvents: number }).maxEvents).toBe(-1); // stored form
+    // Subscription doc gets overrides + bespoke price
+    expect(mockSubRepo.update).toHaveBeenCalledWith(
+      "sub-1",
+      expect.objectContaining({
+        overrides: expect.objectContaining({
+          limits: { maxEvents: -1 },
+          priceXof: 250000,
+          validUntil: "2099-12-31T00:00:00.000Z",
+        }),
+        priceXof: 250000,
+        assignedBy: admin.uid,
+      }),
+    );
+    // Event carries hasOverrides + validUntil
+    expect(eventBus.emit).toHaveBeenCalledWith(
+      "subscription.overridden",
+      expect.objectContaining({
+        hasOverrides: true,
+        validUntil: "2099-12-31T00:00:00.000Z",
+      }),
+    );
+  });
+
+  it("wipes any previously scheduled change on assign", async () => {
+    const admin = buildSuperAdmin();
+    mockPlanRepo.findByIdOrThrow.mockResolvedValue(buildCatalogPlanFull());
+    mockTxGet.mockResolvedValue({
+      exists: true,
+      data: () => ({ plan: "pro", memberIds: [] }),
+    });
+    mockSubRepo.findByOrganization.mockResolvedValue({
+      id: "sub-1",
+      organizationId: "org-1",
+      plan: "pro",
+      status: "active",
+      scheduledChange: {
+        toPlan: "free",
+        effectiveAt: "2099-01-01T00:00:00.000Z",
+        reason: "cancel",
+        scheduledBy: admin.uid,
+        scheduledAt: new Date().toISOString(),
+      },
+    });
+    mockSubRepo.update.mockResolvedValue(undefined);
+    mockSubRepo.findByIdOrThrow.mockResolvedValue({
+      id: "sub-1",
+      organizationId: "org-1",
+      plan: "custom_acme",
+      status: "active",
+    });
+
+    await service.assignPlan("org-1", { planId: "plan-custom" }, admin);
+
+    expect(mockSubRepo.update).toHaveBeenCalledWith(
+      "sub-1",
+      expect.objectContaining({ scheduledChange: null }),
+    );
+  });
+
+  it("throws if the org doesn't exist", async () => {
+    const admin = buildSuperAdmin();
+    mockPlanRepo.findByIdOrThrow.mockResolvedValue(buildCatalogPlanFull());
+    mockTxGet.mockResolvedValue({ exists: false });
+
+    await expect(
+      service.assignPlan("missing-org", { planId: "plan-custom" }, admin),
+    ).rejects.toThrow("Organisation introuvable");
+  });
+
+  it("cross-tenant by design — superadmin can assign to any org without membership", async () => {
+    // Superadmin user has no organizationId set — proves we don't call
+    // requireOrganizationAccess.
+    const admin = buildSuperAdmin({ organizationId: undefined });
+    mockPlanRepo.findByIdOrThrow.mockResolvedValue(buildCatalogPlanFull());
+    mockTxGet.mockResolvedValue({
+      exists: true,
+      data: () => ({ plan: "free", memberIds: [] }),
+    });
+    mockSubRepo.findByOrganization.mockResolvedValue(null);
+    mockSubRepo.create.mockResolvedValue({
+      id: "sub-x",
+      organizationId: "any-org",
+      plan: "custom_acme",
+      status: "active",
+    });
+
+    await expect(
+      service.assignPlan("any-org", { planId: "plan-custom" }, admin),
+    ).resolves.toBeDefined();
   });
 });

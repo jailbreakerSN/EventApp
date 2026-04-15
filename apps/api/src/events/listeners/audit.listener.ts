@@ -824,4 +824,26 @@ export function registerAuditListeners(): void {
       },
     });
   });
+
+  // ── Subscription Override (Phase 5 — admin per-org assign) ─────────────
+
+  eventBus.on("subscription.overridden", async (payload) => {
+    await auditService.log({
+      action: "subscription.overridden",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "subscription",
+      resourceId: payload.organizationId,
+      eventId: null,
+      organizationId: payload.organizationId,
+      details: {
+        previousPlan: payload.previousPlan,
+        newPlanKey: payload.newPlanKey,
+        newPlanId: payload.newPlanId,
+        hasOverrides: payload.hasOverrides,
+        validUntil: payload.validUntil,
+      },
+    });
+  });
 }

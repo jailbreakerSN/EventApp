@@ -468,6 +468,15 @@ export interface SubscriptionPeriodRolledOverEvent extends BaseEventPayload {
   reason: string;
 }
 
+export interface SubscriptionOverriddenEvent extends BaseEventPayload {
+  organizationId: string;
+  previousPlan: string;
+  newPlanKey: string;
+  newPlanId: string;
+  hasOverrides: boolean;
+  validUntil: string | null;
+}
+
 // ── Plan Catalog ─────────────────────────────────────────────────────────────
 
 export interface PlanCreatedEvent extends BaseEventPayload {
@@ -559,6 +568,7 @@ export interface DomainEventMap {
   "subscription.change_scheduled": SubscriptionChangeScheduledEvent;
   "subscription.scheduled_reverted": SubscriptionScheduledRevertedEvent;
   "subscription.period_rolled_over": SubscriptionPeriodRolledOverEvent;
+  "subscription.overridden": SubscriptionOverriddenEvent;
   // Plan Catalog
   "plan.created": PlanCreatedEvent;
   "plan.updated": PlanUpdatedEvent;

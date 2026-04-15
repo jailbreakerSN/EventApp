@@ -7,6 +7,7 @@ import type {
   AdminAuditQuery,
   CreatePlanDto,
   UpdatePlanDto,
+  AssignPlanDto,
 } from "@teranga/shared-types";
 
 // ─── Stats ──────────────────────────────────────────────────────────────────
@@ -133,5 +134,29 @@ export function useArchivePlan() {
   return useMutation({
     mutationFn: (planId: string) => adminApi.archivePlan(planId),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["admin", "plans"] }),
+  });
+}
+
+// ─── Per-org subscription assign (Phase 5: admin override) ──────────────────
+
+export function useAdminOrgSubscription(orgId: string | undefined) {
+  return useQuery({
+    queryKey: ["admin", "organizations", "subscription", orgId],
+    queryFn: () => adminApi.getOrgSubscription(orgId!),
+    enabled: !!orgId,
+  });
+}
+
+export function useAssignPlan() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ orgId, dto }: { orgId: string; dto: AssignPlanDto }) =>
+      adminApi.assignPlan(orgId, dto),
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: ["admin", "organizations"] });
+      qc.invalidateQueries({
+        queryKey: ["admin", "organizations", "subscription", variables.orgId],
+      });
+    },
   });
 }

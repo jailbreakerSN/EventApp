@@ -23,9 +23,10 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@teranga/shared-ui";
-import { Building2, Search, ShieldCheck, Ban, CheckCircle, XCircle } from "lucide-react";
+import { Building2, Search, ShieldCheck, Ban, CheckCircle, XCircle, Sparkles } from "lucide-react";
 import type { Organization } from "@teranga/shared-types";
 import { useTranslations } from "next-intl";
+import { AssignPlanDialog } from "@/components/admin/AssignPlanDialog";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -72,7 +73,8 @@ const PLAN_OPTIONS = [
 // ─── Page ───────────────────────────────────────────────────────────────────
 
 export default function AdminOrganizationsPage() {
-  const tCommon = useTranslations("common"); void tCommon;
+  const tCommon = useTranslations("common");
+  void tCommon;
   const [search, setSearch] = useState("");
   const [planFilter, setPlanFilter] = useState("");
   const [verifiedFilter, setVerifiedFilter] = useState("");
@@ -92,6 +94,8 @@ export default function AdminOrganizationsPage() {
 
   const verifyOrg = useVerifyOrganization();
   const updateOrgStatus = useUpdateOrgStatus();
+
+  const [assignTarget, setAssignTarget] = useState<Organization | null>(null);
 
   const handleVerify = (org: Organization) => {
     if (!window.confirm(`Voulez-vous verifier l'organisation "${org.name}" ?`)) {
@@ -244,15 +248,9 @@ export default function AdminOrganizationsPage() {
                   header: "Verifie",
                   render: (org) =>
                     org.isVerified ? (
-                      <ShieldCheck
-                        className="h-5 w-5 text-teranga-green"
-                        aria-label="Verifie"
-                      />
+                      <ShieldCheck className="h-5 w-5 text-teranga-green" aria-label="Verifie" />
                     ) : (
-                      <XCircle
-                        className="h-5 w-5 text-muted-foreground"
-                        aria-label="Non verifie"
-                      />
+                      <XCircle className="h-5 w-5 text-muted-foreground" aria-label="Non verifie" />
                     ),
                 },
                 {
@@ -277,7 +275,7 @@ export default function AdminOrganizationsPage() {
                   key: "actions",
                   header: "Actions",
                   render: (org) => (
-                    <div className="flex items-center justify-end gap-2">
+                    <div className="flex items-center justify-end gap-2 flex-wrap">
                       {!org.isVerified && (
                         <Button
                           variant="outline"
@@ -290,6 +288,15 @@ export default function AdminOrganizationsPage() {
                           Verifier
                         </Button>
                       )}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setAssignTarget(org)}
+                        aria-label={`Assigner un plan à ${org.name}`}
+                      >
+                        <Sparkles className="h-3.5 w-3.5 mr-1" />
+                        Assigner plan
+                      </Button>
                       <Button
                         variant="outline"
                         size="sm"
@@ -348,6 +355,15 @@ export default function AdminOrganizationsPage() {
             </Button>
           </div>
         </div>
+      )}
+
+      {/* Assign-plan dialog (Phase 5: per-org override) */}
+      {assignTarget && (
+        <AssignPlanDialog
+          open={!!assignTarget}
+          org={assignTarget}
+          onClose={() => setAssignTarget(null)}
+        />
       )}
     </div>
   );

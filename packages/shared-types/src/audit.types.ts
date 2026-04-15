@@ -69,6 +69,8 @@ export const AuditActionSchema = z.enum([
   "subscription.change_scheduled",
   "subscription.scheduled_reverted",
   "subscription.period_rolled_over",
+  // ── Subscription override (Phase 5 — admin per-org assign) ────────────────
+  "subscription.overridden",
 ]);
 
 export type AuditAction = z.infer<typeof AuditActionSchema>;

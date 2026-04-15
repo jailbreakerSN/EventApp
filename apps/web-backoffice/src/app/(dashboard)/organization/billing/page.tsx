@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { CreditCard, Building2, Loader2, CalendarClock } from "lucide-react";
+import { CreditCard, Building2, Loader2, CalendarClock, Sparkles } from "lucide-react";
 import {
   useOrganization,
   useSubscription,
@@ -51,6 +51,9 @@ export default function BillingPage() {
   const events = checkLimit("events");
   const members = checkLimit("members");
   const scheduledChange = subscription?.scheduledChange;
+  const overrides = subscription?.overrides;
+  const overridesActive =
+    overrides && (!overrides.validUntil || new Date(overrides.validUntil).getTime() > Date.now());
 
   const handleSelectPlan = (target: OrganizationPlan) => {
     if (target === plan) {
@@ -151,6 +154,43 @@ export default function BillingPage() {
           Gérez votre abonnement et consultez votre utilisation.
         </p>
       </div>
+
+      {/* Custom-plan override banner (Phase 5: admin per-org assign) */}
+      {overridesActive && (
+        <div
+          role="status"
+          className="flex flex-col gap-3 rounded-xl border border-primary/40 bg-primary/5 p-4 sm:flex-row sm:items-start sm:justify-between"
+        >
+          <div className="flex items-start gap-3">
+            <Sparkles className="h-5 w-5 shrink-0 text-primary mt-0.5" aria-hidden="true" />
+            <div>
+              <p className="font-medium text-foreground">Plan personnalisé actif</p>
+              <p className="text-sm text-muted-foreground">
+                Un administrateur a appliqué des règles personnalisées à votre abonnement.
+                {overrides?.validUntil ? (
+                  <>
+                    {" "}
+                    Valide jusqu'au{" "}
+                    <strong>
+                      {new Date(overrides.validUntil).toLocaleDateString("fr-FR", {
+                        day: "numeric",
+                        month: "long",
+                        year: "numeric",
+                      })}
+                    </strong>
+                    .
+                  </>
+                ) : null}
+              </p>
+              {overrides?.notes && (
+                <p className="mt-1 text-xs text-muted-foreground italic">
+                  Note : {overrides.notes}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Scheduled change banner (Phase 4c: prepaid period honoring) */}
       {scheduledChange && (
