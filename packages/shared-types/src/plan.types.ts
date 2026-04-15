@@ -187,6 +187,19 @@ export const ScheduledChangeSchema = z.object({
 
 export type ScheduledChange = z.infer<typeof ScheduledChangeSchema>;
 
+// ─── Assign Plan DTO (Phase 5 — admin per-org override) ────────────────────
+// Payload for POST /v1/admin/organizations/:orgId/subscription/assign.
+// Replaces the "cleaner" upgrade/downgrade paths with a superadmin-only
+// mutation that accepts any catalog plan and optional per-subscription
+// overrides. Carries the same contract as `Subscription.overrides` so the
+// resolver can merge them identically.
+export const AssignPlanSchema = z.object({
+  planId: z.string().min(1),
+  overrides: SubscriptionOverridesSchema.optional(),
+});
+
+export type AssignPlanDto = z.infer<typeof AssignPlanSchema>;
+
 // ─── Query / Listing ─────────────────────────────────────────────────────────
 
 export const PlanListQuerySchema = z.object({

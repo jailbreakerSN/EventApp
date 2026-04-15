@@ -7,6 +7,7 @@ import {
   type UpgradePlanDto,
   type ScheduledChange,
   type ScheduledChangeReason,
+  type AssignPlanDto,
   PLAN_LIMITS,
   PLAN_DISPLAY,
   PLAN_LIMIT_UNLIMITED,
@@ -445,6 +446,115 @@ export class SubscriptionService extends BaseService {
       requestId: getRequestId(),
       timestamp: now,
     });
+  }
+
+  /**
+   * Admin-only: assign a catalog plan (optionally with per-subscription
+   * overrides) to an organization. Phase 5 of dynamic plan management.
+   *
+   * Unlike upgrade/downgrade — which enforce tier ordering and bill the
+   * full published price — assign lets a superadmin:
+   *  - Hand a specific org any catalog plan (including private ones),
+   *  - Attach `overrides` (custom limits/features/priceXof/validUntil),
+   *  - Flip immediately (no period-end scheduling — this is an admin
+   *    action, not a customer self-service one).
+   *
+   * Requires BOTH `organization:manage_billing` AND `subscription:override`
+   * because it bypasses upgrade/downgrade guardrails. Catalog plan lookup
+   * tolerates no fallback — the plan MUST exist in the catalog.
+   *
+   * Emits `subscription.overridden` for audit.
+   */
+  async assignPlan(orgId: string, dto: AssignPlanDto, user: AuthUser): Promise<Subscription> {
+    this.requirePermission(user, "organization:manage_billing");
+    this.requirePermission(user, "subscription:override");
+    // Superadmin-only in practice (those two perms are bundled via platform:manage).
+    // We don't call requireOrganizationAccess — this operation is explicitly
+    // cross-tenant by design.
+
+    const now = new Date().toISOString();
+    const periodEnd = new Date();
+    periodEnd.setMonth(periodEnd.getMonth() + 1);
+
+    // Resolve catalog plan by id (unlike resolveEffectiveForOrg which looks
+    // up by key). The UI should always pass a real catalog id.
+    const plan = await planRepository.findByIdOrThrow(dto.planId);
+    const effective = resolveEffective(plan, dto.overrides, new Date());
+    const stored = toStoredSnapshot(effective);
+    // The `plan` enum on org + subscription stays aligned with the catalog
+    // `key` for backward compat with pre-Phase-3 readers.
+    const planKeyForLegacy = plan.key as OrganizationPlan;
+
+    // Price reflects the override if present, else the catalog price. This
+    // keeps the "sur devis" use case sensible (priceXof set by the admin
+    // when assigning a custom plan).
+    const priceXof = dto.overrides?.priceXof !== undefined ? dto.overrides.priceXof : plan.priceXof;
+
+    // Transactional: org plan + denormalization atomically.
+    const previousPlan = await db.runTransaction(async (tx) => {
+      const orgRef = db.collection(COLLECTIONS.ORGANIZATIONS).doc(orgId);
+      const orgSnap = await tx.get(orgRef);
+      if (!orgSnap.exists) throw new ValidationError("Organisation introuvable");
+      const orgData = orgSnap.data() as Organization;
+
+      tx.update(orgRef, {
+        plan: planKeyForLegacy,
+        effectiveLimits: stored.limits,
+        effectiveFeatures: stored.features,
+        effectivePlanKey: stored.planKey,
+        effectiveComputedAt: stored.computedAt,
+        updatedAt: now,
+      });
+      return orgData.plan;
+    });
+
+    // Subscription doc (outside the tx — not critical for atomicity).
+    const existing = await subscriptionRepository.findByOrganization(orgId);
+    let subscription: Subscription;
+    if (existing) {
+      await subscriptionRepository.update(existing.id, {
+        plan: planKeyForLegacy,
+        planId: plan.id,
+        overrides: dto.overrides,
+        status: "active",
+        priceXof,
+        assignedBy: user.uid,
+        assignedAt: now,
+        cancelledAt: null,
+        scheduledChange: null,
+        updatedAt: now,
+      } as Partial<Subscription>);
+      subscription = await subscriptionRepository.findByIdOrThrow(existing.id);
+    } else {
+      subscription = await subscriptionRepository.create({
+        organizationId: orgId,
+        plan: planKeyForLegacy,
+        planId: plan.id,
+        overrides: dto.overrides,
+        status: "active",
+        currentPeriodStart: now,
+        currentPeriodEnd: periodEnd.toISOString(),
+        cancelledAt: null,
+        paymentMethod: null,
+        priceXof,
+        assignedBy: user.uid,
+        assignedAt: now,
+      } as Omit<Subscription, "id" | "createdAt" | "updatedAt">);
+    }
+
+    eventBus.emit("subscription.overridden", {
+      organizationId: orgId,
+      previousPlan,
+      newPlanKey: plan.key,
+      newPlanId: plan.id,
+      hasOverrides: !!dto.overrides,
+      validUntil: dto.overrides?.validUntil ?? null,
+      actorId: user.uid,
+      requestId: getRequestId(),
+      timestamp: now,
+    });
+
+    return subscription;
   }
 }
 

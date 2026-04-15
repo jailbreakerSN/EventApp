@@ -71,6 +71,7 @@ import type {
   Plan,
   CreatePlanDto,
   UpdatePlanDto,
+  AssignPlanDto,
 } from "@teranga/shared-types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
@@ -557,6 +558,16 @@ export const adminApi = {
     api.patch<ApiResponse<Plan>>(`/v1/admin/plans/${planId}`, dto),
 
   archivePlan: (planId: string) => api.delete(`/v1/admin/plans/${planId}`),
+
+  // ── Per-org plan assignment (Phase 5: admin override) ──────────────────
+  assignPlan: (orgId: string, dto: AssignPlanDto) =>
+    api.post<ApiResponse<Subscription>>(
+      `/v1/admin/organizations/${orgId}/subscription/assign`,
+      dto,
+    ),
+
+  getOrgSubscription: (orgId: string) =>
+    api.get<ApiResponse<Subscription | null>>(`/v1/organizations/${orgId}/subscription`),
 };
 
 // ─── Venues ─────────────────────────────────────────────────────────────────
