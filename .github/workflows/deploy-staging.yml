@@ -539,6 +539,36 @@ jobs:
           FIREBASE_PROJECT_ID: ${{ needs.setup.outputs.project_id }}
         run: npx tsx scripts/seed-emulators.ts
 
+  # ─── Seed QA fixture users (independent of the main seed guard) ──────────
+  # PR #59 introduced three role-coverage fixtures (staff / multirole /
+  # authonly) used to validate the admin users table after the
+  # onUserCreated trigger fix. The main `seed-staging` step above skips
+  # the user-creation block once any org exists in staging, so new
+  # fixture users added AFTER the first deploy never land without an
+  # explicit step. This job runs a dedicated idempotent script that
+  # upserts ONLY those three users — safe to re-run on every deploy,
+  # no impact on existing data.
+  seed-qa-fixtures:
+    name: Seed QA fixture users (PR #59)
+    runs-on: ubuntu-latest
+    needs: [setup, seed-staging]
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: Upsert QA fixture users (staff / multirole / authonly)
+        env:
+          SEED_TARGET: staging
+          FIREBASE_PROJECT_ID: ${{ needs.setup.outputs.project_id }}
+        run: npx tsx scripts/seed-qa-fixtures.ts
+
   # ─── Post-deploy smoke test ──────────────────────────────────────────────
   # Replaces the former 10-minute uptime cron: we only probe once after the
   # CD pipeline completes, which is enough signal in dev/staging and avoids
@@ -547,7 +577,15 @@ jobs:
   smoke-test:
     name: Smoke test staging endpoints
     runs-on: ubuntu-latest
-    needs: [setup, deploy-api, deploy-web-backoffice, deploy-web-participant, seed-staging]
+    needs:
+      [
+        setup,
+        deploy-api,
+        deploy-web-backoffice,
+        deploy-web-participant,
+        seed-staging,
+        seed-qa-fixtures,
+      ]
     environment: staging
     permissions:
       contents: read
