@@ -118,6 +118,9 @@ function buildSystemPlanDoc(key: OrganizationPlan, sortOrder: number, now: strin
     isPublic: true,
     isArchived: false,
     sortOrder,
+    // Trial policy — pro gets 14 days, other tiers none. Mirrors the
+    // production seed so integration tests exercise the real trial path.
+    trialDays: key === "pro" ? 14 : null,
     // Phase 7 versioning fields — keep system plans at v1 with a
     // deterministic lineage. Edits go through planService.update() which
     // mints v2+.

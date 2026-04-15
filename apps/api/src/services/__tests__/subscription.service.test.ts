@@ -57,6 +57,10 @@ vi.mock("@/repositories/event.repository", () => ({
 const mockPlanRepo = {
   findByKey: vi.fn().mockResolvedValue(null),
   findByIdOrThrow: vi.fn(),
+  // Phase 7+ item #4 (trials): `upgrade()` reads trialDays off the resolved
+  // catalog plan via findById. Default to null so upgrade tests that don't
+  // care about trials see the same behaviour they had pre-#4.
+  findById: vi.fn().mockResolvedValue(null),
 };
 
 vi.mock("@/repositories/plan.repository", () => ({

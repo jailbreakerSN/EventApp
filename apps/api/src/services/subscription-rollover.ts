@@ -154,6 +154,14 @@ export async function applyScheduledRollovers(
           catalogPlan?.priceXof ?? PLAN_DISPLAY[targetPlan as OrganizationPlan]?.priceXof ?? 0;
 
         // ── All writes AFTER all reads
+        //
+        // Trial ending (Phase 7+ item #4) is a special case: the rollover
+        // toPlan is the SAME as the current plan — we only flip status from
+        // "trialing" → "active" and re-enable billing (priceXof from the
+        // catalog). No denormalisation change on the org doc (effective
+        // limits already match).
+        const isTrialEnd = sc.reason === "trial_ended";
+
         const subUpdate: Record<string, unknown> = {
           plan: targetPlan,
           priceXof: targetPriceXof,
@@ -161,35 +169,43 @@ export async function applyScheduledRollovers(
           updatedAt: nowIso,
         };
         if (catalogPlan?.id) subUpdate.planId = catalogPlan.id;
-        if (targetPlan === "free") {
+        if (isTrialEnd) {
+          subUpdate.status = "active";
+        } else if (targetPlan === "free") {
           subUpdate.status = "cancelled";
           subUpdate.cancelledAt = nowIso;
         }
         tx.update(subRef, subUpdate);
 
-        const orgUpdate: Record<string, unknown> = {
-          plan: targetPlan,
-          updatedAt: nowIso,
-        };
-        if (targetFeatures) {
-          orgUpdate.effectiveFeatures = { ...targetFeatures };
-          orgUpdate.effectivePlanKey = targetPlanKey;
-          orgUpdate.effectiveLimits = {
-            maxEvents: targetLimits.maxEvents,
-            maxParticipantsPerEvent: targetLimits.maxParticipantsPerEvent,
-            maxMembers: targetLimits.maxMembers,
+        // Trial end: the org's denormalised snapshot already matches the
+        // trialing plan, so skip the org write entirely. Saves one tx write
+        // and keeps `effectiveComputedAt` pointing at the enrolment timestamp
+        // (meaningful for audit / support).
+        if (!isTrialEnd) {
+          const orgUpdate: Record<string, unknown> = {
+            plan: targetPlan,
+            updatedAt: nowIso,
           };
-          orgUpdate.effectiveComputedAt = nowIso;
-          // Convert any runtime Infinity present in legacy fallback to
-          // stored -1 for Firestore.
-          const limits = orgUpdate.effectiveLimits as Record<string, number>;
-          limits.maxEvents = runtimeToStored(storedToRuntime(limits.maxEvents));
-          limits.maxParticipantsPerEvent = runtimeToStored(
-            storedToRuntime(limits.maxParticipantsPerEvent),
-          );
-          limits.maxMembers = runtimeToStored(storedToRuntime(limits.maxMembers));
+          if (targetFeatures) {
+            orgUpdate.effectiveFeatures = { ...targetFeatures };
+            orgUpdate.effectivePlanKey = targetPlanKey;
+            orgUpdate.effectiveLimits = {
+              maxEvents: targetLimits.maxEvents,
+              maxParticipantsPerEvent: targetLimits.maxParticipantsPerEvent,
+              maxMembers: targetLimits.maxMembers,
+            };
+            orgUpdate.effectiveComputedAt = nowIso;
+            // Convert any runtime Infinity present in legacy fallback to
+            // stored -1 for Firestore.
+            const limits = orgUpdate.effectiveLimits as Record<string, number>;
+            limits.maxEvents = runtimeToStored(storedToRuntime(limits.maxEvents));
+            limits.maxParticipantsPerEvent = runtimeToStored(
+              storedToRuntime(limits.maxParticipantsPerEvent),
+            );
+            limits.maxMembers = runtimeToStored(storedToRuntime(limits.maxMembers));
+          }
+          tx.update(orgRef, orgUpdate);
         }
-        tx.update(orgRef, orgUpdate);
 
         return {
           status: "applied" as const,

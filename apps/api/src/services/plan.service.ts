@@ -50,6 +50,10 @@ const VERSION_MATERIAL_KEYS: ReadonlySet<keyof UpdatePlanDto> = new Set([
   "priceXof",
   "limits",
   "features",
+  // A change to `trialDays` affects the commercial terms a new customer
+  // signs up under; existing trialing customers stay on their version so
+  // their 14-day promise isn't silently extended or curtailed.
+  "trialDays",
 ]);
 
 function freshLineageId(): string {
@@ -116,6 +120,7 @@ export class PlanService extends BaseService {
       isPublic: dto.isPublic,
       isArchived: false,
       sortOrder: dto.sortOrder,
+      trialDays: dto.trialDays ?? null,
       version: 1,
       lineageId: freshLineageId(),
       isLatest: true,
@@ -231,6 +236,10 @@ export class PlanService extends BaseService {
       isArchived: false,
       sortOrder:
         "sortOrder" in patch ? (patch.sortOrder ?? existing.sortOrder) : existing.sortOrder,
+      trialDays:
+        "trialDays" in versionPatch
+          ? (versionPatch.trialDays ?? null)
+          : (existing.trialDays ?? null),
       // Guard against pre-Phase-7 plans that were written before versioning
       // landed — they may lack `version` / `lineageId`. Treat missing metadata
       // as "v1 with a self-lineage".
