@@ -12,14 +12,14 @@ Prerequisites: Node 22, Java 17+ (for the Firestore emulator), and
 the repo's normal `npm ci`.
 
 ```bash
-# One-shot — boots the emulator and tears it down on exit.
-npx firebase-tools@13 emulators:exec --only firestore \
+# One-shot — boots Firestore + Auth emulators and tears them down on exit.
+npx firebase-tools@13 emulators:exec --only firestore,auth \
   --project teranga-integration-test \
   "npm run test:integration --workspace=apps/api"
 
-# Or, with an already-running emulator (`firebase emulators:start`),
-# just run the suite:
+# Or, with already-running emulators (`firebase emulators:start`):
 FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 \
+  FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 \
   FIREBASE_PROJECT_ID=teranga-integration-test \
   npm run test:integration --workspace=apps/api
 ```
@@ -53,16 +53,18 @@ CI runs the same command in the `api-integration-test` job.
 
 ## Current coverage
 
-| File                            | Scenarios                                                                                                                                                 |
-| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `plan-catalog.test.ts`          | Plan CRUD, isSystem protection, public-catalog filtering                                                                                                  |
-| `assign-plan.test.ts`           | Phase 5 admin `assignPlan` + per-dimension overrides + scheduledChange clearing                                                                           |
-| `event-limit.test.ts`           | Phase 3 enforcement: `maxEvents` respects the denormalised snapshot, override raises the ceiling                                                          |
-| `scheduled-rollover.test.ts`    | Phase 4c rollover with fake clock; idempotency; `revertScheduledChange`                                                                                   |
-| `registration-flow.test.ts`     | Register / cancel counter consistency, duplicate detection, `maxParticipantsPerEvent` enforcement, draft-event gate                                       |
-| `checkin-flow.test.ts`          | QR verify, duplicate-scan idempotency, tampered payload rejection, cross-event replay defence, mixed-batch processing                                     |
-| `cross-tenant-security.test.ts` | Organizer / staff org isolation on `event.update/cancel/publish` + `checkin.bulkSync`; super_admin bypass; participant can't cancel others' registrations |
-| `invite-member-limit.test.ts`   | `createInvite` respects `maxMembers` (members + pending); admin override unblocks; duplicate email → ConflictError                                        |
+| File                            | Scenarios                                                                                                                                                                                             |
+| ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `plan-catalog.test.ts`          | Plan CRUD, isSystem protection, public-catalog filtering                                                                                                                                              |
+| `assign-plan.test.ts`           | Phase 5 admin `assignPlan` + per-dimension overrides + scheduledChange clearing                                                                                                                       |
+| `event-limit.test.ts`           | Phase 3 enforcement: `maxEvents` respects the denormalised snapshot, override raises the ceiling                                                                                                      |
+| `scheduled-rollover.test.ts`    | Phase 4c rollover with fake clock; idempotency; `revertScheduledChange`                                                                                                                               |
+| `registration-flow.test.ts`     | Register / cancel counter consistency, duplicate detection, `maxParticipantsPerEvent` enforcement, draft-event gate                                                                                   |
+| `checkin-flow.test.ts`          | QR verify, duplicate-scan idempotency, tampered payload rejection, cross-event replay defence, mixed-batch processing                                                                                 |
+| `cross-tenant-security.test.ts` | Organizer / staff org isolation on `event.update/cancel/publish` + `checkin.bulkSync`; super_admin bypass; participant can't cancel others' registrations                                             |
+| `invite-member-limit.test.ts`   | `createInvite` respects `maxMembers` (members + pending); admin override unblocks; duplicate email → ConflictError                                                                                    |
+| `invite-accept-flow.test.ts`    | End-to-end `acceptInvite`: invitee appended to `memberIds` transactionally AND `organizationId` written into Firebase Auth custom claims; email mismatch, expired invite, mid-flight maxMembers clamp |
+| `admin-user-management.test.ts` | Super admin `updateUserRoles` / `updateUserStatus` syncs both Firestore AND Firebase Auth (claims / `disabled` flag); self-demotion + self-suspension blocked; non-admin forbidden                    |
 
 ## Non-goals
 
@@ -70,10 +72,6 @@ CI runs the same command in the `api-integration-test` job.
   use `fastify.inject()`. Integration tests drive the service layer
   directly so permission / transaction logic is verified without the
   HTTP plumbing.
-- **No Firebase Auth flows yet.** `acceptInvite` calls
-  `auth.setCustomUserClaims` which requires the Auth emulator. Boot
-  it via `--only firestore,auth` + create users with `auth.createUser`
-  when the first scenario actually needs it.
 - **No payment-provider mocks.** When we integrate Wave / Orange Money
   properly, add a parallel `integration-payments/` folder against a
   provider-sandbox endpoint, not against the emulator.

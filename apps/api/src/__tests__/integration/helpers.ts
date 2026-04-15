@@ -10,7 +10,7 @@ import {
   PLAN_DISPLAY,
   PLAN_LIMIT_UNLIMITED,
 } from "@teranga/shared-types";
-import { db, COLLECTIONS } from "@/config/firebase";
+import { db, auth, COLLECTIONS } from "@/config/firebase";
 import { signQrPayload } from "@/services/qr-signing";
 
 // ── Emulator control ────────────────────────────────────────────────────────
@@ -32,6 +32,57 @@ export async function clearFirestore(): Promise<void> {
   if (!res.ok) {
     throw new Error(`Failed to clear Firestore emulator: ${res.status} ${await res.text()}`);
   }
+}
+
+/**
+ * Wipe every user record from the Firebase Auth emulator for the current
+ * project. Tests that exercise auth-integrated flows (invite accept,
+ * admin role updates) must run this alongside clearFirestore to stay
+ * hermetic — stale auth users leak custom claims between tests.
+ */
+export async function clearAuth(): Promise<void> {
+  const host = process.env.FIREBASE_AUTH_EMULATOR_HOST;
+  const projectId = process.env.FIREBASE_PROJECT_ID;
+  if (!host || !projectId) {
+    throw new Error("FIREBASE_AUTH_EMULATOR_HOST and FIREBASE_PROJECT_ID must be set");
+  }
+  const url = `http://${host}/emulator/v1/projects/${projectId}/accounts`;
+  const res = await fetch(url, { method: "DELETE" });
+  if (!res.ok) {
+    throw new Error(`Failed to clear Auth emulator: ${res.status} ${await res.text()}`);
+  }
+}
+
+/**
+ * Create a real Firebase Auth user in the emulator and return their uid.
+ * Needed for service paths that call `auth.getUser(uid)` or apply custom
+ * claims — e.g. `invite.acceptInvite` and `admin.updateUserRoles`.
+ *
+ * The uid in the returned AuthUser matches the Firestore user doc id
+ * pattern used by the services, so tests can pass the user straight to
+ * service methods that expect an `AuthUser`.
+ */
+export async function createAuthUser(opts: {
+  uid?: string;
+  email: string;
+  roles?: string[];
+  organizationId?: string;
+  disabled?: boolean;
+}): Promise<{ uid: string; email: string }> {
+  const uid = opts.uid ?? `auth-${Math.random().toString(36).slice(2, 10)}`;
+  await auth.createUser({
+    uid,
+    email: opts.email,
+    emailVerified: true,
+    disabled: opts.disabled ?? false,
+  });
+  if (opts.roles || opts.organizationId) {
+    await auth.setCustomUserClaims(uid, {
+      roles: opts.roles ?? ["participant"],
+      organizationId: opts.organizationId,
+    });
+  }
+  return { uid, email: opts.email };
 }
 
 // ── Plan catalog seeding ────────────────────────────────────────────────────
@@ -205,6 +256,46 @@ export async function readRegistration(regId: string): Promise<Registration | nu
   const snap = await db.collection(COLLECTIONS.REGISTRATIONS).doc(regId).get();
   if (!snap.exists) return null;
   return { id: snap.id, ...(snap.data() as Omit<Registration, "id">) } as Registration;
+}
+
+/**
+ * Write a minimal user profile document to the `users` collection. Used
+ * by admin-management tests that mutate user roles + status: the service
+ * reads the Firestore user doc first, then syncs Firebase Auth claims.
+ */
+export async function createUserDoc(opts: {
+  uid: string;
+  email: string;
+  roles?: string[];
+  organizationId?: string | null;
+  isActive?: boolean;
+  displayName?: string | null;
+}): Promise<void> {
+  const now = new Date().toISOString();
+  await db
+    .collection(COLLECTIONS.USERS)
+    .doc(opts.uid)
+    .set({
+      id: opts.uid,
+      email: opts.email,
+      displayName: opts.displayName ?? opts.email,
+      roles: opts.roles ?? ["participant"],
+      organizationId: opts.organizationId ?? null,
+      isActive: opts.isActive ?? true,
+      createdAt: now,
+      updatedAt: now,
+    });
+}
+
+export async function readAuthUser(uid: string): Promise<{
+  disabled: boolean;
+  customClaims: Record<string, unknown>;
+}> {
+  const user = await auth.getUser(uid);
+  return {
+    disabled: user.disabled,
+    customClaims: (user.customClaims ?? {}) as Record<string, unknown>,
+  };
 }
 
 // ── Event / Registration factories (Firestore-backed) ──────────────────────
