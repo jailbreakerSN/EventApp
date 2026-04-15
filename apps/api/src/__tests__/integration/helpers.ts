@@ -4,11 +4,14 @@ import {
   type Subscription,
   type Plan,
   type PlanFeatures,
+  type Event,
+  type Registration,
   PLAN_LIMITS,
   PLAN_DISPLAY,
   PLAN_LIMIT_UNLIMITED,
 } from "@teranga/shared-types";
 import { db, COLLECTIONS } from "@/config/firebase";
+import { signQrPayload } from "@/services/qr-signing";
 
 // ── Emulator control ────────────────────────────────────────────────────────
 
@@ -190,4 +193,118 @@ export async function readPlan(planId: string): Promise<Plan | null> {
   const snap = await db.collection(COLLECTIONS.PLANS).doc(planId).get();
   if (!snap.exists) return null;
   return { id: snap.id, ...(snap.data() as Omit<Plan, "id">) } as Plan;
+}
+
+export async function readEvent(eventId: string): Promise<Event | null> {
+  const snap = await db.collection(COLLECTIONS.EVENTS).doc(eventId).get();
+  if (!snap.exists) return null;
+  return { id: snap.id, ...(snap.data() as Omit<Event, "id">) } as Event;
+}
+
+export async function readRegistration(regId: string): Promise<Registration | null> {
+  const snap = await db.collection(COLLECTIONS.REGISTRATIONS).doc(regId).get();
+  if (!snap.exists) return null;
+  return { id: snap.id, ...(snap.data() as Omit<Registration, "id">) } as Registration;
+}
+
+// ── Event / Registration factories (Firestore-backed) ──────────────────────
+
+/**
+ * Write a minimal published event under an org with one free ticket type.
+ * Callers can override any field (e.g. `status: "draft"`, `maxAttendees: 1`).
+ *
+ * Defaults are geared at registration/check-in integration tests:
+ *  - one ticket type `t1` with 100 capacity, 0 sold
+ *  - startDate = tomorrow (so the plan-limit grace period does NOT apply)
+ *  - status = "published"
+ */
+export async function createEvent(orgId: string, overrides: Partial<Event> = {}): Promise<Event> {
+  const id = overrides.id ?? `evt-${Math.random().toString(36).slice(2, 10)}`;
+  const now = new Date().toISOString();
+  const tomorrow = new Date(Date.now() + 86400000).toISOString();
+  const nextWeek = new Date(Date.now() + 7 * 86400000).toISOString();
+
+  const event: Event = {
+    id,
+    organizationId: orgId,
+    title: `Event ${id}`,
+    slug: `event-${id}`,
+    description: "Integration-seeded event",
+    shortDescription: null,
+    coverImageURL: null,
+    bannerImageURL: null,
+    category: "conference",
+    tags: [],
+    format: "in_person",
+    status: "published",
+    location: { name: "Test Venue", address: "1 Rue", city: "Dakar", country: "SN" },
+    startDate: tomorrow,
+    endDate: nextWeek,
+    timezone: "Africa/Dakar",
+    ticketTypes: [
+      {
+        id: "t1",
+        name: "Standard",
+        price: 0,
+        currency: "XOF",
+        totalQuantity: 100,
+        soldCount: 0,
+        accessZoneIds: [],
+        isVisible: true,
+      },
+    ],
+    accessZones: [],
+    maxAttendees: 100,
+    registeredCount: 0,
+    checkedInCount: 0,
+    isPublic: true,
+    isFeatured: false,
+    venueId: null,
+    venueName: null,
+    requiresApproval: false,
+    templateId: null,
+    createdBy: `owner-${orgId}`,
+    updatedBy: `owner-${orgId}`,
+    createdAt: now,
+    updatedAt: now,
+    publishedAt: now,
+    ...overrides,
+  } as Event;
+
+  await db.collection(COLLECTIONS.EVENTS).doc(id).set(event);
+  return event;
+}
+
+/**
+ * Write a registration doc with a validly-signed QR payload. The QR is
+ * signed using the same helper the production service uses so check-in
+ * flows can verify against the same secret.
+ */
+export async function createRegistration(
+  eventId: string,
+  userId: string,
+  overrides: Partial<Registration> = {},
+): Promise<Registration> {
+  const id = overrides.id ?? `reg-${Math.random().toString(36).slice(2, 10)}`;
+  const now = new Date().toISOString();
+  const qrCodeValue = overrides.qrCodeValue ?? signQrPayload(id, eventId, userId);
+
+  const reg: Registration = {
+    id,
+    eventId,
+    userId,
+    ticketTypeId: "t1",
+    status: "confirmed",
+    qrCodeValue,
+    checkedInAt: null,
+    checkedInBy: null,
+    accessZoneId: null,
+    notes: null,
+    createdAt: now,
+    updatedAt: now,
+    ...overrides,
+  } as Registration;
+
+  await db.collection(COLLECTIONS.REGISTRATIONS).doc(id).set(reg);
+  return reg;
 }
