@@ -509,13 +509,17 @@ export class SubscriptionService extends BaseService {
     });
 
     // Subscription doc (outside the tx — not critical for atomicity).
+    // Firestore rejects `undefined` values on writes, so `overrides` must be
+    // either the concrete object or `null` (to explicitly clear a previous
+    // override on re-assign). Only pull overrides in when the caller
+    // actually provided them.
     const existing = await subscriptionRepository.findByOrganization(orgId);
     let subscription: Subscription;
     if (existing) {
       await subscriptionRepository.update(existing.id, {
         plan: planKeyForLegacy,
         planId: plan.id,
-        overrides: dto.overrides,
+        overrides: dto.overrides ?? null,
         status: "active",
         priceXof,
         assignedBy: user.uid,
@@ -530,7 +534,7 @@ export class SubscriptionService extends BaseService {
         organizationId: orgId,
         plan: planKeyForLegacy,
         planId: plan.id,
-        overrides: dto.overrides,
+        overrides: dto.overrides ?? null,
         status: "active",
         currentPeriodStart: now,
         currentPeriodEnd: periodEnd.toISOString(),

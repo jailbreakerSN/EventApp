@@ -132,6 +132,62 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
+  # ─── API: Integration Tests (Firestore emulator) ────────────────────────
+  # Runs the emulator-driven integration suite at
+  # apps/api/src/__tests__/integration/. Boots the Firestore emulator via
+  # `firebase emulators:exec` so transactions, queries, and denormalization
+  # are exercised against the real Firestore admin SDK — no mocks.
+  #
+  # Kept separate from `api-test` because:
+  #   - The emulator adds ~10s startup overhead per run.
+  #   - It requires Java (bundled with the Firebase emulator) + firebase-tools.
+  #   - Contributors running `npm test` locally should not need a running
+  #     emulator; this job covers the end-to-end path in CI only.
+  api-integration-test:
+    name: "API: Integration (Firestore emulator)"
+    runs-on: ubuntu-latest
+    needs: shared-types
+    env:
+      # The API config schema only accepts development | staging | production.
+      # NODE_ENV=test would crash the API's env validation at import time.
+      # The integration setup pins this to "development" but we keep it
+      # explicit here too for visibility.
+      NODE_ENV: development
+      FIREBASE_PROJECT_ID: teranga-integration-test
+      FIREBASE_STORAGE_BUCKET: teranga-integration-test.appspot.com
+      GOOGLE_APPLICATION_CREDENTIALS: ""
+      CORS_ORIGINS: "http://localhost:3001"
+      QR_SECRET: ci-integration-secret-minimum-32-chars-long-ok
+      LOG_LEVEL: silent
+      # firebase emulators:exec reads this to avoid any accidental Sentry
+      # or telemetry calls.
+      FIREBASE_CLI_PREVIEWS: ""
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      # Firebase emulator bundles require a JRE. actions/setup-java is the
+      # canonical source.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - run: npm ci
+      - uses: actions/download-artifact@v4
+        with:
+          name: shared-types-dist
+          path: packages/shared-types/dist
+      - name: Install firebase-tools
+        run: npm install -g firebase-tools@13
+      - name: Run integration tests against Firestore emulator
+        run: |
+          firebase emulators:exec \
+            --only firestore \
+            --project teranga-integration-test \
+            "npm run test:integration --workspace=apps/api"
+
   # ─── Dependency Audit ────────────────────────────────────────────────────
   audit:
     name: Dependency Audit
@@ -313,6 +369,7 @@ jobs:
       [
         api-lint,
         api-test,
+        api-integration-test,
         functions,
         web-backoffice,
         web-participant,
@@ -324,17 +381,18 @@ jobs:
       - name: Check results
         run: |
           failed=""
-          for job in api-lint api-test functions web-backoffice web-participant flutter firebase-rules firestore-indexes; do
+          for job in api-lint api-test api-integration-test functions web-backoffice web-participant flutter firebase-rules firestore-indexes; do
             result="${{ needs.api-lint.result }}"
             case "$job" in
-              api-lint)          result="${{ needs.api-lint.result }}" ;;
-              api-test)          result="${{ needs.api-test.result }}" ;;
-              functions)         result="${{ needs.functions.result }}" ;;
-              web-backoffice)    result="${{ needs.web-backoffice.result }}" ;;
-              web-participant)   result="${{ needs.web-participant.result }}" ;;
-              flutter)           result="${{ needs.flutter.result }}" ;;
-              firebase-rules)    result="${{ needs.firebase-rules.result }}" ;;
-              firestore-indexes) result="${{ needs.firestore-indexes.result }}" ;;
+              api-lint)              result="${{ needs.api-lint.result }}" ;;
+              api-test)              result="${{ needs.api-test.result }}" ;;
+              api-integration-test)  result="${{ needs.api-integration-test.result }}" ;;
+              functions)             result="${{ needs.functions.result }}" ;;
+              web-backoffice)        result="${{ needs.web-backoffice.result }}" ;;
+              web-participant)       result="${{ needs.web-participant.result }}" ;;
+              flutter)               result="${{ needs.flutter.result }}" ;;
+              firebase-rules)        result="${{ needs.firebase-rules.result }}" ;;
+              firestore-indexes)     result="${{ needs.firestore-indexes.result }}" ;;
             esac
             if [[ "$result" == "failure" ]]; then
               echo "::error::Job '$job' failed"
