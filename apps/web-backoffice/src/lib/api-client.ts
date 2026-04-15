@@ -310,11 +310,23 @@ export const organizationsApi = {
   upgradePlan: (orgId: string, plan: string) =>
     api.post<ApiResponse<Subscription>>(`/v1/organizations/${orgId}/subscription/upgrade`, { plan }),
 
-  downgradePlan: (orgId: string, plan: string) =>
-    api.post<ApiResponse<null>>(`/v1/organizations/${orgId}/subscription/downgrade`, { plan }),
+  downgradePlan: (orgId: string, plan: string, options: { immediate?: boolean } = {}) =>
+    api.post<ApiResponse<{ scheduled: boolean; effectiveAt?: string }>>(
+      `/v1/organizations/${orgId}/subscription/downgrade`,
+      { plan, immediate: options.immediate ?? false },
+    ),
 
-  cancelSubscription: (orgId: string) =>
-    api.post<ApiResponse<null>>(`/v1/organizations/${orgId}/subscription/cancel`, {}),
+  cancelSubscription: (orgId: string, options: { immediate?: boolean; reason?: string } = {}) =>
+    api.post<ApiResponse<{ scheduled: boolean; effectiveAt?: string }>>(
+      `/v1/organizations/${orgId}/subscription/cancel`,
+      { immediate: options.immediate ?? false, reason: options.reason },
+    ),
+
+  revertScheduledChange: (orgId: string) =>
+    api.post<ApiResponse<null>>(
+      `/v1/organizations/${orgId}/subscription/revert-scheduled`,
+      {},
+    ),
 };
 
 export const invitesApi = {

@@ -31,3 +31,6 @@ export { onPaymentTimeout, onPaymentSucceeded, onPaymentFailed } from "./trigger
 
 // ─── Scheduled Reminders ────────────────────────────────────────────────────
 export { sendEventReminders, sendSessionReminders } from "./triggers/reminder.triggers";
+
+// ─── Subscription Rollover (Phase 4c: honor prepaid periods) ────────────────
+export { applySubscriptionRollovers } from "./triggers/subscription-rollover.triggers";

@@ -65,6 +65,10 @@ export const AuditActionSchema = z.enum([
   "plan.created",
   "plan.updated",
   "plan.archived",
+  // ── Subscription lifecycle (Phase 4c) ─────────────────────────────────────
+  "subscription.change_scheduled",
+  "subscription.scheduled_reverted",
+  "subscription.period_rolled_over",
 ]);
 
 export type AuditAction = z.infer<typeof AuditActionSchema>;

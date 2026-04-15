@@ -5,6 +5,8 @@ import {
   type SubscriptionOverrides,
   type PlanUsage,
   type UpgradePlanDto,
+  type ScheduledChange,
+  type ScheduledChangeReason,
   PLAN_LIMITS,
   PLAN_DISPLAY,
   PLAN_LIMIT_UNLIMITED,
@@ -156,7 +158,9 @@ export class SubscriptionService extends BaseService {
       return orgData.plan;
     });
 
-    // Subscription doc update (outside transaction — not critical for atomicity)
+    // Subscription doc update (outside transaction — not critical for atomicity).
+    // Upgrading wipes any previously-queued scheduled downgrade — the user
+    // changed their mind and is strengthening their commitment.
     let subscription: Subscription;
     if (existingSubscription) {
       await subscriptionRepository.update(existingSubscription.id, {
@@ -167,6 +171,7 @@ export class SubscriptionService extends BaseService {
         currentPeriodEnd: periodEnd.toISOString(),
         priceXof,
         cancelledAt: null,
+        scheduledChange: null,
         updatedAt: now,
       } as Partial<Subscription>);
       subscription = await subscriptionRepository.findByIdOrThrow(existingSubscription.id);
@@ -198,11 +203,34 @@ export class SubscriptionService extends BaseService {
 
   /**
    * Downgrade an organization's plan.
-   * Validates that current usage fits within the target plan's limits.
+   *
+   * Default: SCHEDULED at `currentPeriodEnd` — the user keeps their paid
+   * rights until the end of the billing period they already paid for.
+   * A daily Cloud Function rollover applies the flip at that boundary.
+   *
+   * `immediate: true` flips right now. Requires `subscription:override`
+   * (admin emergency path). Used by the rollover job itself too, with the
+   * rollover actor bypassing the permission check.
+   *
+   * Validates that current usage fits within the target plan's limits
+   * (applies in both modes — you can't schedule a downgrade that would
+   * leave the org in an invalid state even at period end, because member
+   * count can't go down just because time passed).
    */
-  async downgrade(orgId: string, targetPlan: OrganizationPlan, user: AuthUser): Promise<void> {
+  async downgrade(
+    orgId: string,
+    targetPlan: OrganizationPlan,
+    user: AuthUser,
+    options: { immediate?: boolean; reason?: ScheduledChangeReason; note?: string } = {},
+  ): Promise<{ scheduled: boolean; effectiveAt?: string }> {
     this.requirePermission(user, "organization:manage_billing");
     this.requireOrganizationAccess(user, orgId);
+
+    if (options.immediate) {
+      // Admin emergency path — requires the override permission in addition
+      // to the standard billing permission the caller already passed.
+      this.requirePermission(user, "subscription:override");
+    }
 
     const now = new Date().toISOString();
 
@@ -216,6 +244,71 @@ export class SubscriptionService extends BaseService {
     const targetMaxEvents = effective
       ? effective.limits.maxEvents
       : PLAN_LIMITS[targetPlan].maxEvents;
+
+    // ── SCHEDULED downgrade path (default) ──────────────────────────────────
+    // If a paid period is still in force, queue the change instead of
+    // flipping. The user keeps their paid rights; the rollover job flips
+    // at currentPeriodEnd.
+    if (!options.immediate) {
+      const existingSub = await subscriptionRepository.findByOrganization(orgId);
+      const currentPeriodEnd = existingSub?.currentPeriodEnd;
+      const paidPeriodInForce =
+        existingSub &&
+        existingSub.status !== "cancelled" &&
+        currentPeriodEnd &&
+        new Date(currentPeriodEnd).getTime() > Date.now();
+
+      if (paidPeriodInForce) {
+        // Validate the downgrade path at SCHEDULE time so we don't let a
+        // customer queue something that would be rejected at rollover.
+        const org = await organizationRepository.findByIdOrThrow(orgId);
+        const validTargets = DOWNGRADE_PATHS[org.plan] ?? [];
+        if (!validTargets.includes(targetPlan)) {
+          throw new ValidationError(
+            `Impossible de passer du plan ${org.plan} au plan ${targetPlan}`,
+          );
+        }
+        // Validate fit (member count checked at schedule time; event count
+        // rechecked at rollover — events can grow before effectiveAt).
+        const memberCount = org.memberIds?.length ?? 0;
+        if (isFinite(targetMaxMembers) && memberCount > targetMaxMembers) {
+          throw new PlanLimitError(
+            `Utilisation actuelle dépasse les limites du plan ${targetPlan}: ${memberCount} membres (max ${targetMaxMembers})`,
+          );
+        }
+
+        const scheduledChange: ScheduledChange = {
+          toPlan: targetPlan,
+          toPlanId: effective?.planId,
+          effectiveAt: currentPeriodEnd,
+          reason: options.reason ?? (targetPlan === "free" ? "cancel" : "downgrade"),
+          scheduledBy: user.uid,
+          scheduledAt: now,
+          ...(options.note ? { note: options.note } : {}),
+        };
+        await subscriptionRepository.update(existingSub.id, {
+          scheduledChange,
+          updatedAt: now,
+        } as Partial<Subscription>);
+
+        eventBus.emit("subscription.change_scheduled", {
+          organizationId: orgId,
+          fromPlan: org.plan,
+          toPlan: targetPlan,
+          effectiveAt: currentPeriodEnd,
+          reason: scheduledChange.reason,
+          actorId: user.uid,
+          requestId: getRequestId(),
+          timestamp: now,
+        });
+
+        return { scheduled: true, effectiveAt: currentPeriodEnd };
+      }
+      // No paid period in force → fall through to the immediate path. This
+      // covers: free orgs (no subscription), already-cancelled subs, and
+      // subs whose currentPeriodEnd is already past. Either way the user
+      // has no prepaid rights to honor.
+    }
 
     // Transactional: read org + validate path + check usage + update + denormalize atomically
     const previousPlan = await db.runTransaction(async (tx) => {
@@ -269,7 +362,9 @@ export class SubscriptionService extends BaseService {
       );
     }
 
-    // Update subscription doc
+    // Update subscription doc. Any previously queued scheduledChange is
+    // cleared — we've just applied a flip, so a pending one (possibly
+    // stale) is no longer meaningful.
     const existing = await subscriptionRepository.findByOrganization(orgId);
     if (existing) {
       if (targetPlan === "free") {
@@ -278,6 +373,7 @@ export class SubscriptionService extends BaseService {
           plan: targetPlan,
           planId: effective?.planId,
           cancelledAt: now,
+          scheduledChange: null,
           updatedAt: now,
         } as Partial<Subscription>);
       } else {
@@ -285,6 +381,7 @@ export class SubscriptionService extends BaseService {
           plan: targetPlan,
           planId: effective?.planId,
           priceXof: PLAN_DISPLAY[targetPlan].priceXof,
+          scheduledChange: null,
           updatedAt: now,
         } as Partial<Subscription>);
       }
@@ -298,13 +395,56 @@ export class SubscriptionService extends BaseService {
       requestId: getRequestId(),
       timestamp: now,
     });
+
+    return { scheduled: false };
   }
 
   /**
-   * Cancel subscription — reverts to free plan.
+   * Cancel subscription — schedules a downgrade to free at the end of the
+   * current paid period (default) or flips immediately with `immediate: true`.
    */
-  async cancel(orgId: string, user: AuthUser): Promise<void> {
-    return this.downgrade(orgId, "free", user);
+  async cancel(
+    orgId: string,
+    user: AuthUser,
+    options: { immediate?: boolean; reason?: string } = {},
+  ): Promise<{ scheduled: boolean; effectiveAt?: string }> {
+    return this.downgrade(orgId, "free", user, {
+      immediate: options.immediate,
+      reason: "cancel",
+      note: options.reason,
+    });
+  }
+
+  /**
+   * Revert a previously-scheduled plan change. The user changed their mind
+   * before the rollover ran; wipe the scheduledChange so the period rolls
+   * over into the same plan (implicit renewal).
+   *
+   * No-op (returns without error) when there's no scheduled change to revert
+   * — idempotent for UI "cancel schedule" actions.
+   */
+  async revertScheduledChange(orgId: string, user: AuthUser): Promise<void> {
+    this.requirePermission(user, "organization:manage_billing");
+    this.requireOrganizationAccess(user, orgId);
+
+    const existing = await subscriptionRepository.findByOrganization(orgId);
+    if (!existing || !existing.scheduledChange) return;
+
+    const reverted = existing.scheduledChange;
+    const now = new Date().toISOString();
+    await subscriptionRepository.update(existing.id, {
+      scheduledChange: null,
+      updatedAt: now,
+    } as Partial<Subscription>);
+
+    eventBus.emit("subscription.scheduled_reverted", {
+      organizationId: orgId,
+      revertedToPlan: reverted.toPlan,
+      revertedEffectiveAt: reverted.effectiveAt,
+      actorId: user.uid,
+      requestId: getRequestId(),
+      timestamp: now,
+    });
   }
 }
 

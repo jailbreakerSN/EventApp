@@ -143,7 +143,8 @@ export function useDowngradePlan() {
   const qc = useQueryClient();
 
   return useMutation({
-    mutationFn: (plan: OrganizationPlan) => organizationsApi.downgradePlan(orgId!, plan),
+    mutationFn: (vars: { plan: OrganizationPlan; immediate?: boolean }) =>
+      organizationsApi.downgradePlan(orgId!, vars.plan, { immediate: vars.immediate }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["organization", orgId] });
       qc.invalidateQueries({ queryKey: ["subscription", orgId] });
@@ -158,11 +159,30 @@ export function useCancelSubscription() {
   const qc = useQueryClient();
 
   return useMutation({
-    mutationFn: () => organizationsApi.cancelSubscription(orgId!),
+    mutationFn: (vars: { immediate?: boolean; reason?: string } = {}) =>
+      organizationsApi.cancelSubscription(orgId!, vars),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["organization", orgId] });
       qc.invalidateQueries({ queryKey: ["subscription", orgId] });
       qc.invalidateQueries({ queryKey: ["plan-usage", orgId] });
+    },
+  });
+}
+
+/**
+ * Revert a previously-scheduled downgrade/cancel. User clicks
+ * "Annuler le changement" on the banner that appears when
+ * `subscription.scheduledChange` is present.
+ */
+export function useRevertScheduledChange() {
+  const { user } = useAuth();
+  const orgId = user?.organizationId;
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: () => organizationsApi.revertScheduledChange(orgId!),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["subscription", orgId] });
     },
   });
 }

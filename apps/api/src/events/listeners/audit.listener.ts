@@ -768,4 +768,60 @@ export function registerAuditListeners(): void {
       details: { key: payload.key },
     });
   });
+
+  // ── Subscription lifecycle (Phase 4c) ──────────────────────────────────
+
+  eventBus.on("subscription.change_scheduled", async (payload) => {
+    await auditService.log({
+      action: "subscription.change_scheduled",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "subscription",
+      resourceId: payload.organizationId,
+      eventId: null,
+      organizationId: payload.organizationId,
+      details: {
+        fromPlan: payload.fromPlan,
+        toPlan: payload.toPlan,
+        effectiveAt: payload.effectiveAt,
+        reason: payload.reason,
+      },
+    });
+  });
+
+  eventBus.on("subscription.scheduled_reverted", async (payload) => {
+    await auditService.log({
+      action: "subscription.scheduled_reverted",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "subscription",
+      resourceId: payload.organizationId,
+      eventId: null,
+      organizationId: payload.organizationId,
+      details: {
+        revertedToPlan: payload.revertedToPlan,
+        revertedEffectiveAt: payload.revertedEffectiveAt,
+      },
+    });
+  });
+
+  eventBus.on("subscription.period_rolled_over", async (payload) => {
+    await auditService.log({
+      action: "subscription.period_rolled_over",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "subscription",
+      resourceId: payload.organizationId,
+      eventId: null,
+      organizationId: payload.organizationId,
+      details: {
+        fromPlan: payload.fromPlan,
+        toPlan: payload.toPlan,
+        reason: payload.reason,
+      },
+    });
+  });
 }
