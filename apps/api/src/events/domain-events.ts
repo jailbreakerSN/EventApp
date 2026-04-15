@@ -445,6 +445,29 @@ export interface SubscriptionDowngradedEvent extends BaseEventPayload {
   newPlan: string;
 }
 
+// ── Subscription lifecycle (Phase 4c) ───────────────────────────────────────
+
+export interface SubscriptionChangeScheduledEvent extends BaseEventPayload {
+  organizationId: string;
+  fromPlan: string;
+  toPlan: string;
+  effectiveAt: string;
+  reason: string;
+}
+
+export interface SubscriptionScheduledRevertedEvent extends BaseEventPayload {
+  organizationId: string;
+  revertedToPlan: string;
+  revertedEffectiveAt: string;
+}
+
+export interface SubscriptionPeriodRolledOverEvent extends BaseEventPayload {
+  organizationId: string;
+  fromPlan: string;
+  toPlan: string;
+  reason: string;
+}
+
 // ── Plan Catalog ─────────────────────────────────────────────────────────────
 
 export interface PlanCreatedEvent extends BaseEventPayload {
@@ -533,6 +556,9 @@ export interface DomainEventMap {
   // Subscription
   "subscription.upgraded": SubscriptionUpgradedEvent;
   "subscription.downgraded": SubscriptionDowngradedEvent;
+  "subscription.change_scheduled": SubscriptionChangeScheduledEvent;
+  "subscription.scheduled_reverted": SubscriptionScheduledRevertedEvent;
+  "subscription.period_rolled_over": SubscriptionPeriodRolledOverEvent;
   // Plan Catalog
   "plan.created": PlanCreatedEvent;
   "plan.updated": PlanUpdatedEvent;

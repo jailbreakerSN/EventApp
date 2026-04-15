@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { OrganizationPlanSchema } from "./organization.types";
 import { PaymentMethodSchema } from "./payment.types";
-import { SubscriptionOverridesSchema } from "./plan.types";
+import { ScheduledChangeSchema, SubscriptionOverridesSchema } from "./plan.types";
 
 // ─── Subscription Status ────────────────────────────────────────────────────
 
@@ -36,6 +36,13 @@ export const SubscriptionSchema = z.object({
   overrides: SubscriptionOverridesSchema.optional(),
   assignedBy: z.string().optional(),
   assignedAt: z.string().datetime().optional(),
+  // ── Prepaid period honoring (Phase 4c) ────────────────────────────────────
+  // A plan change queued for `effectiveAt` (usually currentPeriodEnd). While
+  // this field is set, the subscription's `plan` / `effectiveLimits` on the
+  // org doc remain unchanged — the user keeps their paid tier until the
+  // daily rollover job applies the scheduled flip. Upgrading, immediate
+  // downgrading, and the revert endpoint all clear it by writing `null`.
+  scheduledChange: ScheduledChangeSchema.nullable().optional(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 });
@@ -74,6 +81,18 @@ export const DowngradePlanSchema = z.object({
   plan: OrganizationPlanSchema.refine((p) => p !== "enterprise", {
     message: "Impossible de passer au plan enterprise via downgrade",
   }),
+  // Phase 4c: by default a downgrade is SCHEDULED for the end of the current
+  // paid period (prepaid rights honored). Set `immediate: true` to flip now
+  // — requires the `subscription:override` permission (admin emergency).
+  immediate: z.boolean().optional().default(false),
 });
 
 export type DowngradePlanDto = z.infer<typeof DowngradePlanSchema>;
+
+// Cancel body — same shape as downgrade minus the target (always "free").
+export const CancelSubscriptionSchema = z.object({
+  immediate: z.boolean().optional().default(false),
+  reason: z.string().max(500).optional(),
+});
+
+export type CancelSubscriptionDto = z.infer<typeof CancelSubscriptionSchema>;

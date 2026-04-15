@@ -151,6 +151,42 @@ export const SubscriptionOverridesSchema = z.object({
 
 export type SubscriptionOverrides = z.infer<typeof SubscriptionOverridesSchema>;
 
+// ─── Scheduled Plan Change (Phase 4c) ──────────────────────────────────────
+// Represents a plan transition scheduled to take effect at a specific point
+// in time (usually the end of the current paid billing period). Honors the
+// "prepaid rights survive a downgrade" principle: a user who paid for Pro
+// through 2026-12-31 keeps Pro until that date even after they hit
+// "downgrade", matching Stripe's `cancel_at_period_end` model.
+//
+// Written by subscription.service.downgrade() / .cancel() when a paid
+// period is still in force. Consumed by a daily rollover Cloud Function
+// that flips the subscription + re-denormalizes org.effectiveLimits at or
+// after `effectiveAt`.
+export const ScheduledChangeReasonSchema = z.enum([
+  "downgrade", // user-initiated downgrade to a lower tier
+  "cancel", // user-initiated cancellation (target = "free")
+  "admin_override", // superadmin scheduled an override to land at period end
+  "plan_archived", // catalog plan archived; scheduled migration to a fallback
+]);
+export type ScheduledChangeReason = z.infer<typeof ScheduledChangeReasonSchema>;
+
+export const ScheduledChangeSchema = z.object({
+  // Target plan — both the legacy enum key (for backward-compat reads) and
+  // the catalog id (for the forward-looking resolver path).
+  toPlan: z.string(), // OrganizationPlan enum value or custom plan key
+  toPlanId: z.string().optional(),
+  toPlanOverrides: SubscriptionOverridesSchema.optional(),
+  effectiveAt: z.string().datetime(),
+  reason: ScheduledChangeReasonSchema,
+  scheduledBy: z.string(),
+  scheduledAt: z.string().datetime(),
+  // Free-text note surfaced in UI/audit (e.g. "downgrade to free — user
+  // opted out of paid tier").
+  note: z.string().max(500).optional(),
+});
+
+export type ScheduledChange = z.infer<typeof ScheduledChangeSchema>;
+
 // ─── Query / Listing ─────────────────────────────────────────────────────────
 
 export const PlanListQuerySchema = z.object({

@@ -3,13 +3,14 @@
 import { useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { CreditCard, Building2, Loader2 } from "lucide-react";
+import { CreditCard, Building2, Loader2, CalendarClock } from "lucide-react";
 import {
   useOrganization,
   useSubscription,
   useUpgradePlan,
   useDowngradePlan,
   useCancelSubscription,
+  useRevertScheduledChange,
 } from "@/hooks/use-organization";
 import { usePlanGating } from "@/hooks/use-plan-gating";
 import { UsageMeter } from "@/components/plan/UsageMeter";
@@ -31,7 +32,8 @@ function formatPrice(priceXof: number): string {
 const PLAN_ORDER: OrganizationPlan[] = ["free", "starter", "pro", "enterprise"];
 
 export default function BillingPage() {
-  const tCommon = useTranslations("common"); void tCommon;
+  const tCommon = useTranslations("common");
+  void tCommon;
   const { data: orgData, isLoading: orgLoading } = useOrganization();
   const { data: subData } = useSubscription();
   const { plan, checkLimit } = usePlanGating();
@@ -39,6 +41,7 @@ export default function BillingPage() {
   const upgradePlan = useUpgradePlan();
   const downgradePlan = useDowngradePlan();
   const cancelSubscription = useCancelSubscription();
+  const revertScheduled = useRevertScheduledChange();
 
   const [selectedPlan, setSelectedPlan] = useState<OrganizationPlan | null>(null);
 
@@ -47,6 +50,7 @@ export default function BillingPage() {
   const display = PLAN_DISPLAY[plan];
   const events = checkLimit("events");
   const members = checkLimit("members");
+  const scheduledChange = subscription?.scheduledChange;
 
   const handleSelectPlan = (target: OrganizationPlan) => {
     if (target === plan) {
@@ -62,14 +66,23 @@ export default function BillingPage() {
     try {
       if (isUpgrade) {
         await upgradePlan.mutateAsync(selectedPlan);
+        toast.success(`Plan mis à niveau vers ${PLAN_DISPLAY[selectedPlan].name.fr}`);
       } else {
-        await downgradePlan.mutateAsync(selectedPlan);
+        // Default: schedule at currentPeriodEnd (prepaid rights honored).
+        const result = await downgradePlan.mutateAsync({ plan: selectedPlan });
+        if (result?.data?.scheduled && result.data.effectiveAt) {
+          const date = new Date(result.data.effectiveAt).toLocaleDateString("fr-FR", {
+            day: "numeric",
+            month: "long",
+            year: "numeric",
+          });
+          toast.success(
+            `Rétrogradation programmée pour le ${date}. Vous conservez votre plan actuel jusqu'à cette date.`,
+          );
+        } else {
+          toast.success(`Plan rétrogradé vers ${PLAN_DISPLAY[selectedPlan].name.fr}`);
+        }
       }
-      toast.success(
-        isUpgrade
-          ? `Plan mis à niveau vers ${PLAN_DISPLAY[selectedPlan].name.fr}`
-          : `Plan rétrogradé vers ${PLAN_DISPLAY[selectedPlan].name.fr}`,
-      );
       setSelectedPlan(null);
     } catch (err) {
       toast.error((err as Error).message || "Erreur lors du changement de plan");
@@ -78,10 +91,30 @@ export default function BillingPage() {
 
   const handleCancel = async () => {
     try {
-      await cancelSubscription.mutateAsync();
-      toast.success("Abonnement annulé. Vous êtes maintenant sur le plan gratuit.");
+      const result = await cancelSubscription.mutateAsync({});
+      if (result?.data?.scheduled && result.data.effectiveAt) {
+        const date = new Date(result.data.effectiveAt).toLocaleDateString("fr-FR", {
+          day: "numeric",
+          month: "long",
+          year: "numeric",
+        });
+        toast.success(
+          `Annulation programmée pour le ${date}. Vous conservez votre abonnement jusqu'à cette date.`,
+        );
+      } else {
+        toast.success("Abonnement annulé. Vous êtes maintenant sur le plan gratuit.");
+      }
     } catch (err) {
       toast.error((err as Error).message || "Erreur lors de l'annulation");
+    }
+  };
+
+  const handleRevertScheduled = async () => {
+    try {
+      await revertScheduled.mutateAsync();
+      toast.success("Changement de plan annulé. Votre abonnement reste actif.");
+    } catch (err) {
+      toast.error((err as Error).message || "Erreur lors de l'annulation du changement");
     }
   };
 
@@ -118,6 +151,52 @@ export default function BillingPage() {
           Gérez votre abonnement et consultez votre utilisation.
         </p>
       </div>
+
+      {/* Scheduled change banner (Phase 4c: prepaid period honoring) */}
+      {scheduledChange && (
+        <div
+          role="status"
+          className="flex flex-col gap-3 rounded-xl border border-teranga-gold/40 bg-teranga-gold/10 p-4 sm:flex-row sm:items-start sm:justify-between"
+        >
+          <div className="flex items-start gap-3">
+            <CalendarClock
+              className="h-5 w-5 shrink-0 text-teranga-gold mt-0.5"
+              aria-hidden="true"
+            />
+            <div>
+              <p className="font-medium text-foreground">
+                {scheduledChange.reason === "cancel"
+                  ? "Annulation programmée"
+                  : "Changement de plan programmé"}
+              </p>
+              <p className="text-sm text-muted-foreground">
+                Vous conservez votre plan <strong>{display.name.fr}</strong> jusqu'au{" "}
+                <strong>
+                  {new Date(scheduledChange.effectiveAt).toLocaleDateString("fr-FR", {
+                    day: "numeric",
+                    month: "long",
+                    year: "numeric",
+                  })}
+                </strong>
+                , puis basculement vers{" "}
+                <strong>
+                  {PLAN_DISPLAY[scheduledChange.toPlan as OrganizationPlan]?.name.fr ??
+                    scheduledChange.toPlan}
+                </strong>
+                .
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={handleRevertScheduled}
+            disabled={revertScheduled.isPending}
+            className="self-start rounded-lg border border-teranga-gold/60 bg-background px-3 py-1.5 text-sm font-medium text-foreground hover:bg-teranga-gold/10 transition-colors disabled:opacity-60"
+          >
+            {revertScheduled.isPending ? "Annulation…" : "Annuler le changement"}
+          </button>
+        </div>
+      )}
 
       {/* Current plan card */}
       <div className="bg-card rounded-xl border border-border p-6">

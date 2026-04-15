@@ -769,3 +769,284 @@ describe("SubscriptionService.resolveEffectiveForOrg", () => {
     expect(result?.limits.maxEvents).toBe(Infinity); // runtime form
   });
 });
+
+// ── Phase 4c: prepaid period honoring ─────────────────────────────────────
+
+describe("SubscriptionService — Phase 4c scheduled downgrade", () => {
+  const inFuture = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+  const inPast = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+  it("SCHEDULES a downgrade when a paid period is still in force (no tx write)", async () => {
+    const user = buildOrganizerUser("org-1");
+
+    mockSubRepo.findByOrganization.mockResolvedValue({
+      id: "sub-1",
+      organizationId: "org-1",
+      plan: "pro",
+      status: "active",
+      currentPeriodEnd: inFuture,
+    });
+    mockOrgRepo.findByIdOrThrow.mockResolvedValue(
+      buildOrganization({ id: "org-1", plan: "pro", memberIds: ["u1"] }),
+    );
+    mockSubRepo.update.mockResolvedValue(undefined);
+
+    const result = await service.downgrade("org-1", "starter", user);
+
+    expect(result).toEqual({ scheduled: true, effectiveAt: inFuture });
+    // No org/tx flip on the scheduled path
+    expect(mockTxUpdate).not.toHaveBeenCalled();
+    // Scheduled change persisted on the subscription doc
+    expect(mockSubRepo.update).toHaveBeenCalledWith(
+      "sub-1",
+      expect.objectContaining({
+        scheduledChange: expect.objectContaining({
+          toPlan: "starter",
+          effectiveAt: inFuture,
+          reason: "downgrade",
+          scheduledBy: user.uid,
+        }),
+      }),
+    );
+    expect(eventBus.emit).toHaveBeenCalledWith(
+      "subscription.change_scheduled",
+      expect.objectContaining({
+        organizationId: "org-1",
+        fromPlan: "pro",
+        toPlan: "starter",
+        effectiveAt: inFuture,
+        reason: "downgrade",
+      }),
+    );
+  });
+
+  it("FLIPS IMMEDIATELY when currentPeriodEnd is in the past", async () => {
+    const user = buildOrganizerUser("org-1");
+
+    mockSubRepo.findByOrganization.mockResolvedValue({
+      id: "sub-1",
+      organizationId: "org-1",
+      plan: "pro",
+      status: "active",
+      currentPeriodEnd: inPast,
+    });
+    // Fall-through: transactional immediate path
+    mockTxGet.mockResolvedValue({
+      exists: true,
+      data: () => ({ plan: "pro", memberIds: ["u1"] }),
+    });
+    mockEventRepo.countActiveByOrganization.mockResolvedValue(0);
+    mockSubRepo.update.mockResolvedValue(undefined);
+
+    const result = await service.downgrade("org-1", "starter", user);
+
+    expect(result).toEqual({ scheduled: false });
+    expect(mockTxUpdate).toHaveBeenCalled(); // immediate tx write happened
+  });
+
+  it("FLIPS IMMEDIATELY when the org is already free (no paid rights to honor)", async () => {
+    const user = buildOrganizerUser("org-1");
+    mockSubRepo.findByOrganization.mockResolvedValue(null); // free org, no sub
+    mockTxGet.mockResolvedValue({
+      exists: true,
+      data: () => ({ plan: "starter", memberIds: [] }),
+    });
+    mockEventRepo.countActiveByOrganization.mockResolvedValue(0);
+    mockSubRepo.update.mockResolvedValue(undefined);
+
+    const result = await service.downgrade("org-1", "free", user);
+    expect(result).toEqual({ scheduled: false });
+  });
+
+  it("FLIPS IMMEDIATELY when caller passes { immediate: true } AND has subscription:override", async () => {
+    const admin = buildSuperAdmin(); // super_admin has all perms incl. subscription:override
+
+    mockSubRepo.findByOrganization.mockResolvedValue({
+      id: "sub-1",
+      organizationId: "org-1",
+      plan: "pro",
+      status: "active",
+      currentPeriodEnd: inFuture, // paid period still in force
+    });
+    mockTxGet.mockResolvedValue({
+      exists: true,
+      data: () => ({ plan: "pro", memberIds: ["u1"] }),
+    });
+    mockEventRepo.countActiveByOrganization.mockResolvedValue(0);
+    mockSubRepo.update.mockResolvedValue(undefined);
+
+    const result = await service.downgrade("org-1", "starter", admin, { immediate: true });
+
+    expect(result).toEqual({ scheduled: false });
+    expect(mockTxUpdate).toHaveBeenCalled(); // immediate path taken despite paid period
+  });
+
+  it("rejects { immediate: true } when caller lacks subscription:override", async () => {
+    const user = buildOrganizerUser("org-1"); // organizer has manage_billing but NOT subscription:override
+
+    mockSubRepo.findByOrganization.mockResolvedValue({
+      id: "sub-1",
+      organizationId: "org-1",
+      plan: "pro",
+      status: "active",
+      currentPeriodEnd: inFuture,
+    });
+
+    await expect(service.downgrade("org-1", "starter", user, { immediate: true })).rejects.toThrow(
+      "Permission manquante : subscription:override",
+    );
+  });
+
+  it("rejects scheduled downgrade when member count would exceed target", async () => {
+    const user = buildOrganizerUser("org-1");
+    mockPlanRepo.findByKey.mockResolvedValue(buildCatalogPlan("starter")); // starter maxMembers=3
+
+    mockSubRepo.findByOrganization.mockResolvedValue({
+      id: "sub-1",
+      organizationId: "org-1",
+      plan: "pro",
+      status: "active",
+      currentPeriodEnd: inFuture,
+    });
+    mockOrgRepo.findByIdOrThrow.mockResolvedValue(
+      buildOrganization({
+        id: "org-1",
+        plan: "pro",
+        memberIds: Array.from({ length: 10 }, (_, i) => `u${i}`),
+      }),
+    );
+
+    await expect(service.downgrade("org-1", "starter", user)).rejects.toThrow("Limite du plan");
+    expect(mockSubRepo.update).not.toHaveBeenCalled();
+  });
+
+  it("cancel() also schedules when a paid period is in force", async () => {
+    const user = buildOrganizerUser("org-1");
+
+    mockSubRepo.findByOrganization.mockResolvedValue({
+      id: "sub-1",
+      organizationId: "org-1",
+      plan: "pro",
+      status: "active",
+      currentPeriodEnd: inFuture,
+    });
+    mockOrgRepo.findByIdOrThrow.mockResolvedValue(
+      buildOrganization({ id: "org-1", plan: "pro", memberIds: [] }),
+    );
+    mockSubRepo.update.mockResolvedValue(undefined);
+
+    const result = await service.cancel("org-1", user);
+
+    expect(result).toEqual({ scheduled: true, effectiveAt: inFuture });
+    expect(mockSubRepo.update).toHaveBeenCalledWith(
+      "sub-1",
+      expect.objectContaining({
+        scheduledChange: expect.objectContaining({
+          toPlan: "free",
+          reason: "cancel",
+        }),
+      }),
+    );
+  });
+});
+
+describe("SubscriptionService.revertScheduledChange", () => {
+  it("clears scheduledChange and emits subscription.scheduled_reverted", async () => {
+    const user = buildOrganizerUser("org-1");
+    mockSubRepo.findByOrganization.mockResolvedValue({
+      id: "sub-1",
+      organizationId: "org-1",
+      plan: "pro",
+      status: "active",
+      scheduledChange: {
+        toPlan: "free",
+        effectiveAt: "2099-01-01T00:00:00.000Z",
+        reason: "cancel",
+        scheduledBy: user.uid,
+        scheduledAt: new Date().toISOString(),
+      },
+    });
+    mockSubRepo.update.mockResolvedValue(undefined);
+
+    await service.revertScheduledChange("org-1", user);
+
+    expect(mockSubRepo.update).toHaveBeenCalledWith(
+      "sub-1",
+      expect.objectContaining({ scheduledChange: null }),
+    );
+    expect(eventBus.emit).toHaveBeenCalledWith(
+      "subscription.scheduled_reverted",
+      expect.objectContaining({
+        organizationId: "org-1",
+        revertedToPlan: "free",
+      }),
+    );
+  });
+
+  it("is a no-op when no scheduled change exists", async () => {
+    const user = buildOrganizerUser("org-1");
+    mockSubRepo.findByOrganization.mockResolvedValue({
+      id: "sub-1",
+      organizationId: "org-1",
+      plan: "pro",
+      status: "active",
+    });
+
+    await expect(service.revertScheduledChange("org-1", user)).resolves.toBeUndefined();
+
+    expect(mockSubRepo.update).not.toHaveBeenCalled();
+    expect(eventBus.emit).not.toHaveBeenCalled();
+  });
+
+  it("is a no-op when no subscription exists at all (free org)", async () => {
+    const user = buildOrganizerUser("org-1");
+    mockSubRepo.findByOrganization.mockResolvedValue(null);
+
+    await expect(service.revertScheduledChange("org-1", user)).resolves.toBeUndefined();
+
+    expect(mockSubRepo.update).not.toHaveBeenCalled();
+  });
+
+  it("rejects non-organizer", async () => {
+    const user = buildAuthUser({ roles: ["participant"] });
+    await expect(service.revertScheduledChange("org-1", user)).rejects.toThrow(
+      "Permission manquante",
+    );
+  });
+});
+
+describe("SubscriptionService.upgrade — clears any scheduled change", () => {
+  it("wipes scheduledChange on upgrade (user changed mind)", async () => {
+    const user = buildOrganizerUser("org-1");
+
+    mockTxGet.mockResolvedValue({
+      exists: true,
+      data: () => ({ plan: "starter", memberIds: ["u1"] }),
+    });
+    mockSubRepo.findByOrganization.mockResolvedValue({
+      id: "sub-1",
+      organizationId: "org-1",
+      plan: "starter",
+      scheduledChange: {
+        toPlan: "free",
+        effectiveAt: "2099-01-01T00:00:00.000Z",
+        reason: "cancel",
+        scheduledBy: user.uid,
+        scheduledAt: new Date().toISOString(),
+      },
+    });
+    mockSubRepo.update.mockResolvedValue(undefined);
+    mockSubRepo.findByIdOrThrow.mockResolvedValue({
+      id: "sub-1",
+      plan: "pro",
+      status: "active",
+    });
+
+    await service.upgrade("org-1", { plan: "pro" }, user);
+
+    expect(mockSubRepo.update).toHaveBeenCalledWith(
+      "sub-1",
+      expect.objectContaining({ scheduledChange: null }),
+    );
+  });
+});
