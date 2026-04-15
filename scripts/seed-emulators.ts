@@ -86,6 +86,23 @@ const IDS = {
   venueManager: "venuemanager-uid-001",
   freeOrganizer: "freeorg-uid-001",
   enterpriseOrganizer: "enterprise-uid-001",
+  // Role-coverage fixtures added for PR #59 (fix: onUserCreated race) —
+  // each one validates a different branch of the role-display contract
+  // in the admin users table at /admin/users.
+  //   - `staffUser`: the only `staff` role in the platform, closes a
+  //     regression gap where no seeded user carried that role at all.
+  //   - `multiRoleUser`: carries two roles (organizer + speaker) — common
+  //     real-world shape (an organizer who also speaks at their own
+  //     event) and proves the admin UI renders the FULL `roles[]` array,
+  //     not just `roles[0]`.
+  //   - `authOnlyUser`: created via auth.createUser without a companion
+  //     Firestore profile write — exercises the trigger's "no existing
+  //     profile → default to participant" path. The admin UI should show
+  //     this one with the Participant badge, which is the ONE row where
+  //     that label is semantically correct.
+  staffUser: "staff-uid-001",
+  multiRoleUser: "multirole-uid-001",
+  authOnlyUser: "authonly-uid-001",
   // Events
   conference: "event-001",
   workshop: "event-002",
@@ -274,6 +291,39 @@ async function seed() {
     { roles: ["organizer"], organizationId: IDS.enterpriseOrgId },
   );
 
+  // ─── Role-coverage fixtures for PR #59 (onUserCreated race fix) ────────
+  // Covers three cases the pre-existing roster didn't exercise. After
+  // seeding, visit /admin/users and confirm each row shows its real role
+  // badge (no more "Participant" for everyone).
+
+  // 1. `staff` — QR check-in agent role. Not seeded before.
+  await ensureUser(
+    IDS.staffUser,
+    { email: "staff@teranga.dev", password: "password123", displayName: "Moussa Sy" },
+    { roles: ["staff"], organizationId: IDS.orgId },
+  );
+
+  // 2. Multi-role user (organizer + speaker) — the admin UI renders the
+  // full `roles[]` array; this row exposes any "only first role wins"
+  // regression. Common IRL shape: an organizer who also speaks at their
+  // own event.
+  await ensureUser(
+    IDS.multiRoleUser,
+    { email: "multirole@teranga.dev", password: "password123", displayName: "Khadija Diop" },
+    { roles: ["organizer", "speaker"], organizationId: IDS.orgId },
+  );
+
+  // 3. Auth-only user — created via auth.createUser with NO companion
+  // Firestore profile write below. Exercises the trigger's "no existing
+  // profile → default to participant" path. This is the ONE row in the
+  // admin table where the Participant badge is semantically correct
+  // (fresh signup with no provisioning metadata).
+  await ensureUser(
+    IDS.authOnlyUser,
+    { email: "authonly@teranga.dev", password: "password123", displayName: "Thierno Wade" },
+    {}, // no custom claims — trigger's default is what we're validating
+  );
+
   console.log("  ✓ organizer@teranga.dev / password123 (organizer, pro plan)");
   console.log("  ✓ coorganizer@teranga.dev / password123 (co_organizer)");
   console.log("  ✓ participant@teranga.dev / password123 (participant)");
@@ -284,6 +334,11 @@ async function seed() {
   console.log("  ✓ venue@teranga.dev / password123 (venue_manager, starter plan)");
   console.log("  ✓ free@teranga.dev / password123 (organizer, free plan)");
   console.log("  ✓ enterprise@teranga.dev / password123 (organizer, enterprise plan)");
+  console.log("  ✓ staff@teranga.dev / password123 (staff — PR #59 fixture)");
+  console.log("  ✓ multirole@teranga.dev / password123 (organizer+speaker — PR #59 fixture)");
+  console.log(
+    "  ✓ authonly@teranga.dev / password123 (auth-only, default participant — PR #59 fixture)",
+  );
 
   // ═══════════════════════════════════════════════════════════════════════════
   // 2. ORGANIZATION
@@ -482,6 +537,30 @@ async function seed() {
       organizationId: IDS.enterpriseOrgId,
       phone: "+221770006666",
       bio: "Head of Events, Groupe Sonatel — événements corporate pan-africains",
+    },
+    // ─── PR #59 role-coverage fixtures ──────────────────────────────────────
+    // See the IDS comment block above for the rationale per user.
+    // NOTE: `authOnlyUser` is intentionally absent from this array — we want
+    // the onUserCreated trigger to create its profile with the default
+    // `roles: ["participant"]`, exercising the "fresh signup" branch of the
+    // fix. If you add a Firestore doc here, you'll collapse the coverage.
+    {
+      uid: IDS.staffUser,
+      email: "staff@teranga.dev",
+      displayName: "Moussa Sy",
+      roles: ["staff"],
+      organizationId: IDS.orgId,
+      phone: "+221770003333",
+      bio: "Responsable contrôle d'accès — scans QR à l'entrée des événements",
+    },
+    {
+      uid: IDS.multiRoleUser,
+      email: "multirole@teranga.dev",
+      displayName: "Khadija Diop",
+      roles: ["organizer", "speaker"],
+      organizationId: IDS.orgId,
+      phone: "+221770004444",
+      bio: "Organise et intervient sur les meetups Flutter Dakar",
     },
   ];
 
