@@ -129,6 +129,21 @@ export function useUpdatePlan() {
   });
 }
 
+/**
+ * Phase 7+ item #6 — dry-run / impact preview hook.
+ *
+ * Call this with the current dirty form state to see how many (and which)
+ * organisations would be affected if the admin presses Save. Does not
+ * mutate anything. Debounce at the call site so we don't hammer the
+ * endpoint on every keystroke.
+ */
+export function usePreviewPlanChange() {
+  return useMutation({
+    mutationFn: ({ planId, dto }: { planId: string; dto: UpdatePlanDto }) =>
+      adminApi.previewPlanChange(planId, dto),
+  });
+}
+
 export function useArchivePlan() {
   const qc = useQueryClient();
   return useMutation({

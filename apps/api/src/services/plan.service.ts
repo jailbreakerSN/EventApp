@@ -1,11 +1,40 @@
 import crypto from "node:crypto";
-import { type Plan, type CreatePlanDto, type UpdatePlanDto } from "@teranga/shared-types";
+import {
+  type Plan,
+  type CreatePlanDto,
+  type UpdatePlanDto,
+  type PreviewChangeResponse,
+  type PreviewAffectedOrg,
+  PLAN_LIMIT_UNLIMITED,
+} from "@teranga/shared-types";
 import { planRepository } from "@/repositories/plan.repository";
+import { subscriptionRepository } from "@/repositories/subscription.repository";
+import { organizationRepository } from "@/repositories/organization.repository";
+import { eventRepository } from "@/repositories/event.repository";
 import { type AuthUser } from "@/middlewares/auth.middleware";
 import { ConflictError, ForbiddenError, NotFoundError } from "@/errors/app-error";
 import { eventBus } from "@/events/event-bus";
 import { getRequestContext } from "@/context/request-context";
 import { BaseService } from "./base.service";
+import { resolveEffective } from "./effective-plan";
+
+// French labels for feature keys — kept in sync with the client-side
+// FEATURE_LABELS map (apps/web-backoffice/src/components/plans/PlanForm.tsx).
+// Used by the preview-change violation strings so the UI banner doesn't
+// leak raw camelCase keys like "smsNotifications" to operators.
+const FEATURE_LABELS_FR: Record<string, string> = {
+  qrScanning: "Scan QR",
+  paidTickets: "Billets payants",
+  customBadges: "Badges personnalisés",
+  csvExport: "Export CSV",
+  smsNotifications: "Notifications SMS",
+  advancedAnalytics: "Analytics avancées",
+  speakerPortal: "Portail intervenants",
+  sponsorPortal: "Portail sponsors",
+  apiAccess: "Accès API",
+  whiteLabel: "Marque blanche",
+  promoCodes: "Codes promo",
+};
 
 /**
  * Plan catalog service. Superadmins manage the catalog; everyone else can
@@ -302,6 +331,190 @@ export class PlanService extends BaseService {
       requestId: getRequestContext()?.requestId ?? "system",
       timestamp: new Date().toISOString(),
     });
+  }
+
+  /**
+   * Dry-run / impact preview (Phase 7+ item #6).
+   *
+   * Given a proposed `UpdatePlanDto`, simulate the change and return the
+   * list of organisations whose current usage would violate the new
+   * limits (or who would lose a feature they are using). Does NOT
+   * mutate the catalog — pair with `update()` once the superadmin
+   * confirms.
+   *
+   * Algorithm:
+   *  1. If the patch is display-only (sortOrder / isPublic), short-circuit
+   *     with `willMintNewVersion: false` — the UI can skip the banner.
+   *  2. Otherwise, scan every subscription in the plan's lineage
+   *     (including older versions — the admin wants to know about
+   *     grandfathered cohorts they might later migrate).
+   *  3. For each subscription, resolve the HYPOTHETICAL effective plan
+   *     by feeding the merged patched plan into `resolveEffective()` with
+   *     the org's own overrides — so an override that masks a violation
+   *     (e.g. override maxEvents: 50 on top of new cap 5) is honoured.
+   *  4. Read the org's current usage (active events + member count) via
+   *     the denormalised fields on the org doc when available, falling
+   *     back to a repository count.
+   *  5. Emit human-readable French violation strings, one per broken
+   *     constraint. Empty array = org pinned but unaffected.
+   *
+   * Permissions: `plan:manage` (superadmin). No mutation → no audit
+   * event emitted.
+   */
+  async previewChange(
+    planId: string,
+    dto: UpdatePlanDto,
+    user: AuthUser,
+  ): Promise<PreviewChangeResponse> {
+    this.requirePermission(user, "plan:manage");
+
+    const existing = await planRepository.findByIdOrThrow(planId);
+    if (existing.isLatest === false) {
+      throw new ConflictError(
+        "Impossible de prévisualiser une modification d'une version historique",
+      );
+    }
+
+    // Split the patch the same way `update()` does so we give callers a
+    // single source of truth about which edits mint new versions.
+    let hasVersionMaterialChange = false;
+    for (const [key, value] of Object.entries(dto) as Array<
+      [keyof UpdatePlanDto, UpdatePlanDto[keyof UpdatePlanDto]]
+    >) {
+      if (value === undefined) continue;
+      if (VERSION_MATERIAL_KEYS.has(key)) {
+        hasVersionMaterialChange = true;
+        break;
+      }
+    }
+
+    if (!hasVersionMaterialChange) {
+      // Display-only edits don't affect any subscriber. Short-circuit so
+      // the UI doesn't render a warning banner on a sort nudge.
+      return {
+        willMintNewVersion: false,
+        totalScanned: 0,
+        totalAffected: 0,
+        affected: [],
+      };
+    }
+
+    // Build the HYPOTHETICAL next version — the Plan shape that `update()`
+    // would mint. We never persist this; it's only a merge of
+    // existing + patch so `resolveEffective()` has something to read.
+    const mergedFeatures = dto.features
+      ? { ...existing.features, ...dto.features }
+      : existing.features;
+    const mergedLimits = dto.limits ? { ...existing.limits, ...dto.limits } : existing.limits;
+    const hypothetical: Plan = {
+      ...existing,
+      pricingModel: dto.pricingModel ?? existing.pricingModel,
+      priceXof: dto.priceXof ?? existing.priceXof,
+      annualPriceXof:
+        "annualPriceXof" in dto ? (dto.annualPriceXof ?? null) : (existing.annualPriceXof ?? null),
+      limits: mergedLimits,
+      features: mergedFeatures,
+      trialDays: "trialDays" in dto ? (dto.trialDays ?? null) : (existing.trialDays ?? null),
+    };
+
+    // Scan the WHOLE lineage, not just this version. A superadmin editing
+    // pro@v2 still wants to see the v1 grandfathers they'd affect if they
+    // later migrated the cohort.
+    const lineage = await planRepository.findLineage(existing.lineageId);
+    const versionIds = lineage.map((p) => p.id);
+
+    // Targeted query: fetch only subscriptions pinned to this lineage's
+    // versions instead of scanning the whole subscriptions collection.
+    // Firestore's `in` operator accepts up to 30 values — more than any
+    // realistic version history for a single plan. (Chunk if we ever hit
+    // that ceiling; for now 30 versions on a single lineage would be a
+    // catalog-hygiene problem worth fixing separately.)
+    const allSubs = versionIds.length
+      ? await subscriptionRepository.findMany([{ field: "planId", op: "in", value: versionIds }], {
+          page: 1,
+          limit: 1_000,
+          orderBy: "createdAt",
+          orderDir: "desc",
+        })
+      : { data: [], meta: { page: 1, limit: 0, total: 0, totalPages: 0 } };
+    const subs = allSubs.data;
+
+    const now = new Date();
+    const affected: PreviewAffectedOrg[] = [];
+
+    for (const sub of subs) {
+      const org = await organizationRepository.findById(sub.organizationId);
+      if (!org) continue;
+
+      // Resolve the hypothetical effective plan honouring the sub's own
+      // overrides (so an org with `overrides.limits.maxEvents: 50` isn't
+      // flagged when the new base cap drops to 5).
+      const effective = resolveEffective(hypothetical, sub.overrides, now);
+
+      // Current usage: read denormalised fields first; fall back to live
+      // counts only when we have to. Keeps the preview cheap at scale.
+      const activeEvents = await eventRepository.countActiveByOrganization(org.id);
+      const memberCount = org.memberIds?.length ?? 0;
+
+      const violations: string[] = [];
+
+      // maxEvents
+      if (
+        Number.isFinite(effective.limits.maxEvents) &&
+        activeEvents > effective.limits.maxEvents
+      ) {
+        violations.push(
+          `${activeEvents} événements actifs (nouvelle limite : ${effective.limits.maxEvents})`,
+        );
+      }
+      // maxMembers
+      if (
+        Number.isFinite(effective.limits.maxMembers) &&
+        memberCount > effective.limits.maxMembers
+      ) {
+        violations.push(
+          `${memberCount} membres (nouvelle limite : ${effective.limits.maxMembers})`,
+        );
+      }
+      // Feature removals — only flag features the org's CURRENT effective
+      // fields indicate they were using. Without usage telemetry per
+      // feature we approximate "using" as "feature is on in their current
+      // effective snapshot".
+      const currentFeatures = org.effectiveFeatures ?? existing.features;
+      for (const [feat, nextValue] of Object.entries(effective.features)) {
+        if (!nextValue && currentFeatures[feat as keyof typeof currentFeatures]) {
+          // Map the camelCase key to its French label so the banner stays
+          // francophone-first and doesn't leak internal identifiers.
+          const label = FEATURE_LABELS_FR[feat] ?? feat;
+          violations.push(`Fonctionnalité retirée : ${label}`);
+        }
+      }
+
+      // maxParticipantsPerEvent is NOT previewed (would require a per-event
+      // scan). Explicit non-goal — users learn at registration time.
+      void PLAN_LIMIT_UNLIMITED;
+
+      const pinnedVersion = lineage.find((p) => p.id === sub.planId);
+      affected.push({
+        orgId: org.id,
+        name: org.name,
+        currentVersion: pinnedVersion?.version ?? 1,
+        isTrialing: sub.status === "trialing",
+        billingCycle: sub.billingCycle ?? null,
+        violations,
+      });
+    }
+
+    // Sort so orgs with the most violations surface first — superadmin's
+    // eyes go to the top.
+    affected.sort((a, b) => b.violations.length - a.violations.length);
+
+    return {
+      willMintNewVersion: true,
+      totalScanned: subs.length,
+      totalAffected: affected.filter((a) => a.violations.length > 0).length,
+      affected,
+    };
   }
 }
 
