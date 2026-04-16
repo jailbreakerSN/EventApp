@@ -565,16 +565,27 @@ async function seed() {
   ];
 
   for (const profile of userProfiles) {
+    // merge:true so we don't clobber fields the onUserCreated trigger
+    // wrote (preferredLanguage, fcmTokens, isEmailVerified). Post-PR #59
+    // the trigger is idempotent (skips if the doc already exists), but
+    // order of operations here is: auth.createUser → trigger fires and
+    // writes defaults → seed loop runs and would full-overwrite. Without
+    // merge the seeded docs silently lose those default fields, which
+    // then fail Zod parse on the API side the next time a listUsers
+    // call materialises them.
     await db
       .collection("users")
       .doc(profile.uid)
-      .set({
-        ...profile,
-        photoURL: null,
-        isActive: true,
-        createdAt: twoDaysAgo,
-        updatedAt: now,
-      });
+      .set(
+        {
+          ...profile,
+          photoURL: null,
+          isActive: true,
+          createdAt: twoDaysAgo,
+          updatedAt: now,
+        },
+        { merge: true },
+      );
   }
 
   console.log(`  ✓ ${userProfiles.length} user profiles created`);

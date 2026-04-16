@@ -129,24 +129,12 @@ class BalanceTransactionRepository extends BaseRepository<BalanceTransaction> {
     return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as BalanceTransaction);
   }
 
-  /**
-   * Used by the payment backfill script to skip entries that have already
-   * been rewritten. Idempotency key is (paymentId, kind) — never more than
-   * one `payment` entry + one `platform_fee` entry per payment.
-   */
-  async findByPaymentIdAndKind(
-    paymentId: string,
-    kind: BalanceTransaction["kind"],
-  ): Promise<BalanceTransaction | null> {
-    const snap = await this.collection
-      .where("paymentId", "==", paymentId)
-      .where("kind", "==", kind)
-      .limit(1)
-      .get();
-    if (snap.empty) return null;
-    const doc = snap.docs[0];
-    return { id: doc.id, ...doc.data() } as BalanceTransaction;
-  }
+  // NOTE: `findByPaymentIdAndKind` was used by the initial version of
+  // the backfill script to dedupe by query. That script now uses
+  // deterministic doc IDs (sha256(kind|sourceId) in
+  // scripts/backfill-balance-ledger.ts) so the query-based lookup is
+  // dead code. Removed to avoid misleading the next author about the
+  // dedup strategy.
 }
 
 export const balanceTransactionRepository = new BalanceTransactionRepository();
