@@ -13,7 +13,7 @@ vi.mock("@/config/firebase", () => ({
   },
 }));
 
-// ─── Mock event service ───────────────���───────────────────────────────────
+// ─── Mock event service ─────────────────────────────────────────────────────
 
 const mockEventService = {
   listPublished: vi.fn(),
@@ -53,7 +53,7 @@ vi.mock("@/services/event.service", () => ({
   ),
 }));
 
-// ─── Build app ──────���──────────────────────────────────────────────────────
+// ─── Build app ───────────────────────────────────────────────────────────────
 
 let app: FastifyInstance;
 
@@ -82,7 +82,7 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-// ─── Helpers ──────────────���────────────────────────────────────────────────
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function authHeaders(overrides: Record<string, unknown> = {}) {
   mockVerifyIdToken.mockResolvedValue({
@@ -96,7 +96,7 @@ function authHeaders(overrides: Record<string, unknown> = {}) {
   return { authorization: "Bearer valid-token" };
 }
 
-// ─── Tests ───────────────────────────────────────���─────────────────────────
+// ─── Tests ───────────────────────────────────────────────────────────────────
 
 describe("GET /v1/events", () => {
   it("returns paginated event list", async () => {

@@ -6,26 +6,27 @@ import { cn } from "../lib/utils";
 
 /**
  * LanguageSwitcher — a compact locale picker that writes a cookie and
- * triggers a router refresh so next-intl picks up the new messages on
- * the next server render.
+ * triggers a caller-provided refresh so next-intl picks up the new
+ * messages.
  *
- * Consumers pass the cookie name + a router-refresh callback so this
- * component stays framework-agnostic (no direct dep on next/navigation).
- * On a Next.js app the typical wiring is:
+ * Consumers pass the cookie name + a refresh callback so this component
+ * stays framework-agnostic (no direct dep on next/navigation). In a
+ * Next.js app, prefer `window.location.reload()` over `router.refresh()`:
+ * the latter only re-runs the server render and leaves any client
+ * components above the switcher with their cached state, which makes
+ * the UI appear to "stick" on the previous locale for end users.
  *
  * ```tsx
  * "use client";
- * import { useRouter } from "next/navigation";
  * import { useLocale } from "next-intl";
  * import { LanguageSwitcher } from "@teranga/shared-ui";
  *
  * export function Switcher() {
- *   const router = useRouter();
  *   const locale = useLocale();
  *   return (
  *     <LanguageSwitcher
  *       locale={locale}
- *       onChange={() => router.refresh()}
+ *       onChange={() => window.location.reload()}
  *     />
  *   );
  * }

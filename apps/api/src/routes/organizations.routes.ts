@@ -250,7 +250,7 @@ export const organizationRoutes: FastifyPluginAsync = async (fastify) => {
     },
   );
 
-  // ──��� Analytics ────────��─────────────────────────────────────────────────
+  // ───── Analytics ───────────────────────────────────────────────────────────
 
   fastify.get(
     "/:orgId/analytics",

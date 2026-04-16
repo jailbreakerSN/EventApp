@@ -351,7 +351,7 @@ function EventActions({ event }: { event: Event }) {
             className="inline-flex items-center gap-1.5 bg-yellow-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-yellow-700 disabled:opacity-50"
           >
             <GlobeLock className="h-4 w-4" />
-            {unpublish.isPending ? "..." : "D��publier"}
+            {unpublish.isPending ? "..." : "Dépublier"}
           </button>
         )}
         {(event.status === "draft" || event.status === "published") && (

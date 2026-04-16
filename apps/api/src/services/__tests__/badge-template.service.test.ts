@@ -3,7 +3,7 @@ import { BadgeTemplateService } from "../badge-template.service";
 import { buildOrganizerUser, buildAuthUser, buildOrganization } from "@/__tests__/factories";
 import { type BadgeTemplate, type CreateBadgeTemplateDto } from "@teranga/shared-types";
 
-// ─── Mocks ───────────────────────────────────────────────────���─────────────
+// ─── Mocks ───────────────────────────────────────────────────────────────────
 
 const mockTemplateRepo = {
   create: vi.fn(),
@@ -35,7 +35,7 @@ vi.mock("@/repositories/organization.repository", () => ({
   ),
 }));
 
-// ─── Helpers ────────��─────────────────────────────��────────────────────────
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function buildTemplate(overrides: Partial<BadgeTemplate> = {}): BadgeTemplate {
   const now = new Date().toISOString();
@@ -60,7 +60,7 @@ function buildTemplate(overrides: Partial<BadgeTemplate> = {}): BadgeTemplate {
   };
 }
 
-// ─── Tests ─────────���──────────────────────────────���────────────────────────
+// ─── Tests ─────────────────────────────────────────────────────────────────────
 
 const service = new BadgeTemplateService();
 
