@@ -13,22 +13,25 @@
     "confirm": "Confirm",
     "yes": "Yes",
     "no": "No",
+    "viewAll": "View all",
     "viewDetails": "View details",
     "date": "Date",
     "location": "Location",
     "price": "Price",
-    "status": "Status"
+    "status": "Status",
+    "free": "Free",
+    "fromPrice": "From {price}"
   },
   "auth": {
-    "login": "Sign in",
-    "logout": "Sign out",
+    "login": "Log in",
+    "logout": "Log out",
     "register": "Sign up",
     "email": "Email address",
     "password": "Password",
     "forgotPassword": "Forgot password?",
     "resetPassword": "Reset password",
     "sessionExpiring": "Your session will expire in 5 minutes due to inactivity.",
-    "sessionExpired": "Session expired. Please sign in again.",
+    "sessionExpired": "Session expired. Please log in again.",
     "verifyEmail": "Verify your email",
     "verificationSent": "A verification email has been sent.",
     "resendVerification": "Resend email",
@@ -41,18 +44,140 @@
     "home": "Home",
     "events": "Events",
     "myEvents": "My events",
+    "myRegistrations": "My registrations",
     "profile": "Profile",
+    "myProfile": "My profile",
     "settings": "Settings",
-    "notifications": "Notifications"
+    "notifications": "Notifications",
+    "brandHomeAria": "Teranga Events — home",
+    "mainAria": "Main navigation",
+    "mobileAria": "Mobile navigation",
+    "openMenu": "Open menu",
+    "closeMenu": "Close menu",
+    "skipToContent": "Skip to main content"
+  },
+  "theme": {
+    "groupLabel": "Interface theme",
+    "light": "Light",
+    "dark": "Dark",
+    "system": "System"
+  },
+  "footer": {
+    "ariaLabel": "Footer",
+    "tagline": "Senegal's event management platform.",
+    "social": {
+      "facebook": "Follow Teranga Events on Facebook",
+      "twitter": "Follow Teranga Events on Twitter / X",
+      "instagram": "Follow Teranga Events on Instagram",
+      "linkedin": "Follow Teranga Events on LinkedIn"
+    },
+    "discover": {
+      "heading": "Discover",
+      "allEvents": "All events",
+      "categories": "Popular categories",
+      "cities": "Cities",
+      "helpFaq": "Help & FAQ"
+    },
+    "organizers": {
+      "heading": "Organizers",
+      "createEvent": "Create an event",
+      "dashboard": "Dashboard",
+      "pricing": "Pricing"
+    },
+    "legal": {
+      "heading": "Legal",
+      "privacy": "Privacy policy",
+      "terms": "Terms of use",
+      "mentions": "Legal notice"
+    },
+    "copyright": "© 2026 Teranga Events. All rights reserved.",
+    "madeWithLove": "Made with ❤️ in Senegal",
+    "madeWithLoveSr": "love"
+  },
+  "home": {
+    "hero": {
+      "titleBefore": "Discover events in",
+      "titleHighlight": "Senegal",
+      "subtitle": "Conferences, concerts, workshops and more. Register in a few clicks and get your QR badge.",
+      "cta": "Explore events"
+    },
+    "values": {
+      "simpleReg": {
+        "title": "Simple registration",
+        "description": "Pick your ticket and register in seconds."
+      },
+      "qrBadge": {
+        "title": "Secure QR badge",
+        "description": "Your signed QR-coded digital badge for fast, reliable entry."
+      },
+      "community": {
+        "title": "Community",
+        "description": "Join the Senegalese and West African event community."
+      }
+    },
+    "categoriesHeading": "Browse by category",
+    "featuredHeading": "Featured events",
+    "latestHeading": "Latest events",
+    "howItWorks": {
+      "heading": "How it works",
+      "subheading": "Three simple steps to attend the best events in Senegal.",
+      "stepLabel": "Step {n}",
+      "step1": {
+        "title": "Discover",
+        "description": "Browse upcoming events in Dakar and across Senegal"
+      },
+      "step2": {
+        "title": "Register",
+        "description": "Pick your ticket and register in a few clicks"
+      },
+      "step3": { "title": "Attend", "description": "Show your QR badge and enjoy the event" }
+    },
+    "stats": {
+      "events": "events",
+      "participants": "participants",
+      "cities": "cities",
+      "satisfaction": "satisfaction"
+    },
+    "testimonialsHeading": "What our users say",
+    "organizerCta": {
+      "heading": "Organizing an event?",
+      "body": "Create it for free on Teranga and reach thousands of attendees",
+      "primary": "Get started for free",
+      "secondary": "Organizer portal"
+    }
+  },
+  "categories": {
+    "conference": "Conference",
+    "conference_plural": "Conferences",
+    "workshop": "Workshop",
+    "workshop_plural": "Workshops",
+    "concert": "Concert",
+    "concert_plural": "Concerts",
+    "festival": "Festival",
+    "festival_plural": "Festivals",
+    "networking": "Networking",
+    "sport": "Sport",
+    "exhibition": "Exhibition",
+    "exhibition_plural": "Exhibitions",
+    "ceremony": "Ceremony",
+    "ceremony_plural": "Ceremonies",
+    "training": "Training",
+    "training_plural": "Trainings",
+    "other": "Other"
+  },
+  "format": {
+    "in_person": "In person",
+    "online": "Online",
+    "hybrid": "Hybrid"
   },
   "events": {
     "title": "Events",
     "discover": "Discover events",
-    "noEvents": "No events available yet.",
+    "noEvents": "No events available at the moment.",
     "register": "Register",
     "registered": "Registered",
     "myEvents": "My events",
-    "noMyEvents": "You're not registered to any event.",
+    "noMyEvents": "You are not registered for any event.",
     "noResults": "No events found",
     "noResultsHint": "No events match your criteria. Try broadening your search.",
     "clearFilters": "Clear filters",
@@ -64,22 +189,38 @@
       "free": "Free",
       "paid": "Paid"
     },
+    "card": {
+      "attendeesCount": "{count} registered"
+    },
     "detail": {
+      "featured": "Featured",
+      "venueReferenced": "Referenced venue",
+      "timezone": "Timezone: {tz}",
       "about": "About",
       "speakers": "Speakers",
       "schedule": "Schedule",
       "sessions": "Sessions",
       "tickets": "Tickets",
+      "noTickets": "No tickets available.",
+      "registeredCount": "{count, plural, one {# person registered} other {# people registered}}",
+      "seatsCount": "{count} / {max} seats",
+      "remaining": "{count, plural, one {# left} other {# left}}",
       "registerFree": "Register for free",
       "registerPaid": "Register — from {price}",
       "approvalRequired": "Registration subject to organizer approval.",
       "soldOut": "Sold out",
-      "seatsLeft": "{count} seats left",
-      "lastSeats": "Only {count} seats left!",
+      "full": "Full",
+      "seatsLeft": "{count, plural, one {# seat left} other {# seats left}}",
+      "lastSeats": "{count, plural, one {Only 1 seat left!} other {Only # seats left!}}",
       "feedCommunity": "Community feed",
-      "feedHint": "Chat with attendees",
+      "feedHint": "Chat with other attendees",
       "onlineEvent": "Online event",
-      "onlineHint": "The access link will be shared after registration."
+      "onlineHint": "The access link will be shared after registration.",
+      "addToCalendar": "Add to calendar",
+      "similarEvents": "Similar events",
+      "seeOnMaps": "View on Google Maps",
+      "notFound": "Event not found",
+      "share": "Share"
     }
   },
   "badge": {
@@ -89,7 +230,7 @@
     "addToWallet": "Add to wallet"
   },
   "feed": {
-    "title": "Feed",
+    "title": "Activity feed",
     "writePost": "Write a post...",
     "noPostsYet": "No posts yet.",
     "beFirstToShare": "Be the first to share a post with attendees.",
@@ -121,8 +262,8 @@
     "profileUpdated": "Profile updated"
   },
   "newsletter": {
-    "heading": "Stay informed about Senegal events",
-    "description": "Get the best events near you delivered weekly.",
+    "heading": "Stay informed about events in Senegal",
+    "description": "Get the best events near you every week.",
     "placeholder": "your@email.com",
     "submit": "Subscribe",
     "submitting": "Subscribing…",

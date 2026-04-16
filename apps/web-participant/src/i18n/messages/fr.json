@@ -13,11 +13,14 @@
     "confirm": "Confirmer",
     "yes": "Oui",
     "no": "Non",
+    "viewAll": "Voir tout",
     "viewDetails": "Voir les détails",
     "date": "Date",
     "location": "Lieu",
     "price": "Prix",
-    "status": "Statut"
+    "status": "Statut",
+    "free": "Gratuit",
+    "fromPrice": "À partir de {price}"
   },
   "auth": {
     "login": "Connexion",
@@ -41,9 +44,134 @@
     "home": "Accueil",
     "events": "Événements",
     "myEvents": "Mes événements",
+    "myRegistrations": "Mes inscriptions",
     "profile": "Profil",
+    "myProfile": "Mon profil",
     "settings": "Paramètres",
-    "notifications": "Notifications"
+    "notifications": "Notifications",
+    "brandHomeAria": "Teranga Events — accueil",
+    "mainAria": "Navigation principale",
+    "mobileAria": "Navigation mobile",
+    "openMenu": "Ouvrir le menu",
+    "closeMenu": "Fermer le menu",
+    "skipToContent": "Aller au contenu principal"
+  },
+  "theme": {
+    "groupLabel": "Thème de l'interface",
+    "light": "Clair",
+    "dark": "Sombre",
+    "system": "Système"
+  },
+  "footer": {
+    "ariaLabel": "Pied de page",
+    "tagline": "La plateforme événementielle du Sénégal.",
+    "social": {
+      "facebook": "Suivez Teranga Events sur Facebook",
+      "twitter": "Suivez Teranga Events sur Twitter / X",
+      "instagram": "Suivez Teranga Events sur Instagram",
+      "linkedin": "Suivez Teranga Events sur LinkedIn"
+    },
+    "discover": {
+      "heading": "Découvrir",
+      "allEvents": "Tous les événements",
+      "categories": "Catégories populaires",
+      "cities": "Villes",
+      "helpFaq": "Aide & FAQ"
+    },
+    "organizers": {
+      "heading": "Organisateurs",
+      "createEvent": "Créer un événement",
+      "dashboard": "Tableau de bord",
+      "pricing": "Tarification"
+    },
+    "legal": {
+      "heading": "Légal",
+      "privacy": "Politique de confidentialité",
+      "terms": "Conditions d'utilisation",
+      "mentions": "Mentions légales"
+    },
+    "copyright": "© 2026 Teranga Events. Tous droits réservés.",
+    "madeWithLove": "Fait avec ❤️ au Sénégal",
+    "madeWithLoveSr": "amour"
+  },
+  "home": {
+    "hero": {
+      "titleBefore": "Découvrez les événements au",
+      "titleHighlight": "Sénégal",
+      "subtitle": "Conférences, concerts, ateliers et plus encore. Inscrivez-vous en quelques clics et recevez votre badge QR.",
+      "cta": "Explorer les événements"
+    },
+    "values": {
+      "simpleReg": {
+        "title": "Inscription simple",
+        "description": "Choisissez votre billet et inscrivez-vous en quelques secondes."
+      },
+      "qrBadge": {
+        "title": "Badge QR sécurisé",
+        "description": "Votre badge numérique avec QR code signé pour un accès rapide."
+      },
+      "community": {
+        "title": "Communauté",
+        "description": "Rejoignez la communauté événementielle du Sénégal et de l'Afrique de l'Ouest."
+      }
+    },
+    "categoriesHeading": "Explorer par catégorie",
+    "featuredHeading": "Événements à la une",
+    "latestHeading": "Derniers événements",
+    "howItWorks": {
+      "heading": "Comment ça marche",
+      "subheading": "En trois étapes simples, participez aux meilleurs événements du Sénégal.",
+      "stepLabel": "Étape {n}",
+      "step1": {
+        "title": "Découvrez",
+        "description": "Parcourez les événements à venir à Dakar et au Sénégal"
+      },
+      "step2": {
+        "title": "Inscrivez-vous",
+        "description": "Choisissez votre billet et inscrivez-vous en quelques clics"
+      },
+      "step3": {
+        "title": "Participez",
+        "description": "Présentez votre badge QR et profitez de l'événement"
+      }
+    },
+    "stats": {
+      "events": "événements",
+      "participants": "participants",
+      "cities": "villes",
+      "satisfaction": "satisfaction"
+    },
+    "testimonialsHeading": "Ce que disent nos utilisateurs",
+    "organizerCta": {
+      "heading": "Vous organisez un événement ?",
+      "body": "Créez-le gratuitement sur Teranga et atteignez des milliers de participants",
+      "primary": "Commencer gratuitement",
+      "secondary": "Espace organisateur"
+    }
+  },
+  "categories": {
+    "conference": "Conférence",
+    "conference_plural": "Conférences",
+    "workshop": "Atelier",
+    "workshop_plural": "Ateliers",
+    "concert": "Concert",
+    "concert_plural": "Concerts",
+    "festival": "Festival",
+    "festival_plural": "Festivals",
+    "networking": "Networking",
+    "sport": "Sport",
+    "exhibition": "Exposition",
+    "exhibition_plural": "Expositions",
+    "ceremony": "Cérémonie",
+    "ceremony_plural": "Cérémonies",
+    "training": "Formation",
+    "training_plural": "Formations",
+    "other": "Autre"
+  },
+  "format": {
+    "in_person": "Présentiel",
+    "online": "En ligne",
+    "hybrid": "Hybride"
   },
   "events": {
     "title": "Événements",
@@ -64,22 +192,38 @@
       "free": "Gratuit",
       "paid": "Payant"
     },
+    "card": {
+      "attendeesCount": "{count} inscrits"
+    },
     "detail": {
+      "featured": "À la une",
+      "venueReferenced": "Lieu référencé",
+      "timezone": "Fuseau : {tz}",
       "about": "À propos",
       "speakers": "Intervenants",
       "schedule": "Programme",
       "sessions": "Sessions",
       "tickets": "Billets",
+      "noTickets": "Aucun billet disponible.",
+      "registeredCount": "{count, plural, one {# personne inscrite} other {# personnes inscrites}}",
+      "seatsCount": "{count} / {max} places",
+      "remaining": "{count, plural, one {# restant} other {# restants}}",
       "registerFree": "S'inscrire gratuitement",
       "registerPaid": "S'inscrire — à partir de {price}",
       "approvalRequired": "Inscription soumise à approbation de l'organisateur.",
       "soldOut": "Complet",
-      "seatsLeft": "{count} places restantes",
-      "lastSeats": "Plus que {count} places !",
+      "full": "Complet",
+      "seatsLeft": "{count, plural, one {# place restante} other {# places restantes}}",
+      "lastSeats": "{count, plural, one {Plus qu'une place !} other {Plus que # places !}}",
       "feedCommunity": "Feed communautaire",
       "feedHint": "Échangez avec les participants",
       "onlineEvent": "Événement en ligne",
-      "onlineHint": "Le lien d'accès sera partagé après inscription."
+      "onlineHint": "Le lien d'accès sera partagé après inscription.",
+      "addToCalendar": "Ajouter au calendrier",
+      "similarEvents": "Événements similaires",
+      "seeOnMaps": "Voir sur Google Maps",
+      "notFound": "Événement introuvable",
+      "share": "Partager"
     }
   },
   "badge": {

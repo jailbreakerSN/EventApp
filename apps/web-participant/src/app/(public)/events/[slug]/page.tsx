@@ -25,6 +25,24 @@ import { AddToCalendar } from "@/components/add-to-calendar";
 import { EventCard } from "@/components/event-card";
 import type { Event, SpeakerProfile, Session } from "@teranga/shared-types";
 import ReactMarkdown from "react-markdown";
+import { getLocale, getTranslations } from "next-intl/server";
+
+// next-intl gives us locale codes like "fr"/"en"/"wo" but Intl.* expects
+// BCP-47 regional tags. The app targets Senegal, so map every supported
+// locale to its SN regional form; unknown locales fall back to the raw
+// code so new translations keep working without a code edit.
+function intlLocale(locale: string): string {
+  switch (locale) {
+    case "fr":
+      return "fr-SN";
+    case "en":
+      return "en-SN";
+    case "wo":
+      return "wo-SN";
+    default:
+      return locale;
+  }
+}
 
 // The root layout reads the NEXT_LOCALE cookie via next-intl's getLocale() /
 // getMessages(), which means any page under it inherently requires dynamic
@@ -121,10 +139,15 @@ async function getSimilarEvents(event: Event): Promise<Event[]> {
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { slug } = await params;
-  const event = await getEvent(slug);
-  if (!event) return { title: "Événement introuvable" };
+  const [event, tDetail, locale] = await Promise.all([
+    getEvent(slug),
+    getTranslations("events.detail"),
+    getLocale(),
+  ]);
+  if (!event) return { title: tDetail("notFound") };
 
   const description = event.shortDescription ?? event.description.slice(0, 160);
+  const ogLocale = locale === "en" ? "en_US" : locale === "wo" ? "wo_SN" : "fr_SN";
 
   return {
     title: event.title,
@@ -133,7 +156,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
       title: event.title,
       description,
       type: "website",
-      locale: "fr_SN",
+      locale: ogLocale,
       ...(event.coverImageURL
         ? { images: [{ url: event.coverImageURL, width: 1200, height: 630, alt: event.title }] }
         : {}),
@@ -147,35 +170,23 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   };
 }
 
-const FORMAT_LABELS: Record<string, string> = {
-  in_person: "Présentiel",
-  online: "En ligne",
-  hybrid: "Hybride",
-};
-
-const CATEGORY_LABELS: Record<string, string> = {
-  conference: "Conférence",
-  workshop: "Atelier",
-  concert: "Concert",
-  festival: "Festival",
-  networking: "Networking",
-  sport: "Sport",
-  exhibition: "Exposition",
-  ceremony: "Cérémonie",
-  training: "Formation",
-  other: "Autre",
-};
-
 export default async function EventDetailPage({ params }: PageProps) {
   const { slug } = await params;
   const event = await getEvent(slug);
   if (!event) notFound();
 
-  const [speakers, sessions, similarEvents] = await Promise.all([
-    getSpeakers(event.id),
-    getSessions(event.id),
-    getSimilarEvents(event),
-  ]);
+  const [speakers, sessions, similarEvents, locale, tDetail, tCommon, tCategories, tFormat] =
+    await Promise.all([
+      getSpeakers(event.id),
+      getSessions(event.id),
+      getSimilarEvents(event),
+      getLocale(),
+      getTranslations("events.detail"),
+      getTranslations("common"),
+      getTranslations("categories"),
+      getTranslations("format"),
+    ]);
+  const regional = intlLocale(locale);
 
   const speakerMap = new Map(speakers.map((s) => [s.id, s]));
   const sessionsByDate = groupSessionsByDate(sessions);
@@ -219,10 +230,13 @@ export default async function EventDetailPage({ params }: PageProps) {
             <div className="rounded-lg bg-card p-6 shadow-lg">
               <div className="flex flex-wrap items-center gap-2">
                 <Badge variant="secondary">
-                  {CATEGORY_LABELS[event.category] ?? event.category}
+                  {/* Category enum is fixed in shared-types; if a new value is
+                     added there without a matching translation key, the
+                     missing-key fallback will render the raw code. */}
+                  {tCategories(event.category as "conference")}
                 </Badge>
-                <Badge variant="outline">{FORMAT_LABELS[event.format] ?? event.format}</Badge>
-                {event.isFeatured && <Badge variant="warning">À la une</Badge>}
+                <Badge variant="outline">{tFormat(event.format as "in_person")}</Badge>
+                {event.isFeatured && <Badge variant="warning">{tDetail("featured")}</Badge>}
               </div>
 
               <h1 className="mt-4 text-3xl font-bold text-foreground sm:text-4xl">{event.title}</h1>
@@ -232,17 +246,19 @@ export default async function EventDetailPage({ params }: PageProps) {
                 <div className="flex items-center gap-3 text-muted-foreground">
                   <Calendar className="h-5 w-5 flex-shrink-0 text-teranga-gold" />
                   <div>
-                    <p className="font-medium text-foreground">{formatDate(event.startDate)}</p>
+                    <p className="font-medium text-foreground">
+                      {formatDate(event.startDate, regional)}
+                    </p>
                     <p className="text-sm">
-                      {formatDateTime(event.startDate).split(" ").pop()} —{" "}
-                      {formatDateTime(event.endDate).split(" ").pop()}
+                      {formatDateTime(event.startDate, regional).split(" ").pop()} —{" "}
+                      {formatDateTime(event.endDate, regional).split(" ").pop()}
                     </p>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-3 text-muted-foreground">
                   <Clock className="h-5 w-5 flex-shrink-0 text-teranga-gold" />
-                  <span className="text-sm">Fuseau : {event.timezone}</span>
+                  <span className="text-sm">{tDetail("timezone", { tz: event.timezone })}</span>
                 </div>
 
                 {/* Location */}
@@ -254,7 +270,7 @@ export default async function EventDetailPage({ params }: PageProps) {
                       {event.venueId && (
                         <Badge variant="outline" className="gap-1 text-[10px] px-1.5 py-0.5">
                           <Building2 className="h-3 w-3" aria-hidden="true" />
-                          Lieu référencé
+                          {tDetail("venueReferenced")}
                         </Badge>
                       )}
                     </div>
@@ -271,7 +287,8 @@ export default async function EventDetailPage({ params }: PageProps) {
                         rel="noopener noreferrer"
                         className="mt-1 inline-flex items-center gap-1 text-sm text-teranga-gold-dark hover:underline"
                       >
-                        Voir sur Google Maps <ExternalLink className="h-3 w-3" aria-hidden="true" />
+                        {tDetail("seeOnMaps")}{" "}
+                        <ExternalLink className="h-3 w-3" aria-hidden="true" />
                       </a>
                     )}
                   </div>
@@ -281,9 +298,7 @@ export default async function EventDetailPage({ params }: PageProps) {
                   <div className="flex items-center gap-3 text-muted-foreground">
                     <Users className="h-5 w-5 flex-shrink-0 text-teranga-gold" />
                     <span className="text-sm">
-                      {spotsLeft > 0
-                        ? `${spotsLeft} place${spotsLeft > 1 ? "s" : ""} restante${spotsLeft > 1 ? "s" : ""}`
-                        : "Complet"}
+                      {spotsLeft > 0 ? tDetail("seatsLeft", { count: spotsLeft }) : tDetail("full")}
                     </span>
                   </div>
                 )}
@@ -308,8 +323,7 @@ export default async function EventDetailPage({ params }: PageProps) {
                   <div className="flex items-center gap-2">
                     <Users className="h-5 w-5 text-teranga-gold" />
                     <span className="font-semibold">
-                      {event.registeredCount} personne{event.registeredCount > 1 ? "s" : ""}{" "}
-                      inscrite{event.registeredCount > 1 ? "s" : ""}
+                      {tDetail("registeredCount", { count: event.registeredCount })}
                     </span>
                   </div>
                   {event.maxAttendees &&
@@ -327,10 +341,13 @@ export default async function EventDetailPage({ params }: PageProps) {
                         <div className="mt-2">
                           <div className="flex items-center justify-between text-sm mb-1">
                             <span className="text-muted-foreground">
-                              {event.registeredCount} / {event.maxAttendees} places
+                              {tDetail("seatsCount", {
+                                count: event.registeredCount,
+                                max: event.maxAttendees,
+                              })}
                             </span>
                             {isFull ? (
-                              <Badge variant="destructive">Complet</Badge>
+                              <Badge variant="destructive">{tDetail("full")}</Badge>
                             ) : (
                               <span
                                 className={`text-xs font-medium ${pct >= 90 ? "text-red-600 dark:text-red-400" : pct >= 70 ? "text-amber-600 dark:text-amber-400" : "text-green-600 dark:text-green-400"}`}
@@ -349,7 +366,7 @@ export default async function EventDetailPage({ params }: PageProps) {
                             spotsLeft > 0 &&
                             spotsLeft <= event.maxAttendees * 0.2 && (
                               <p className="mt-1 text-xs font-medium text-orange-600">
-                                Plus que {spotsLeft} place{spotsLeft > 1 ? "s" : ""} !
+                                {tDetail("lastSeats", { count: spotsLeft })}
                               </p>
                             )}
                         </div>
@@ -362,7 +379,7 @@ export default async function EventDetailPage({ params }: PageProps) {
               <div className="mt-6">
                 <ShareButtons
                   title={event.title}
-                  date={formatDate(event.startDate)}
+                  date={formatDate(event.startDate, regional)}
                   url={`${process.env.NEXT_PUBLIC_APP_URL || "https://teranga.sn"}/events/${event.slug}`}
                   description={event.shortDescription ?? undefined}
                 />
@@ -380,7 +397,7 @@ export default async function EventDetailPage({ params }: PageProps) {
                     <div>
                       <div className="sr-only">
                         <Mic2 className="h-5 w-5 text-teranga-gold" aria-hidden="true" />
-                        <h2 className="text-xl font-semibold">Intervenants</h2>
+                        <h2 className="text-xl font-semibold">{tDetail("speakers")}</h2>
                       </div>
                       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                         {speakers.map((speaker) => (
@@ -475,7 +492,7 @@ export default async function EventDetailPage({ params }: PageProps) {
                     <div>
                       <div className="sr-only">
                         <Calendar className="h-5 w-5 text-teranga-gold" aria-hidden="true" />
-                        <h2 className="text-xl font-semibold">Programme</h2>
+                        <h2 className="text-xl font-semibold">{tDetail("schedule")}</h2>
                       </div>
                       <div className="space-y-6">
                         {Array.from(sessionsByDate.entries()).map(([dateLabel, daySessions]) => (
@@ -548,10 +565,10 @@ export default async function EventDetailPage({ params }: PageProps) {
           <div className="lg:col-span-1">
             <div className="sticky top-20 space-y-4">
               <div className="rounded-lg bg-card p-6 shadow-lg">
-                <h2 className="text-lg font-semibold">Billets</h2>
+                <h2 className="text-lg font-semibold">{tDetail("tickets")}</h2>
 
                 {visibleTickets.length === 0 ? (
-                  <p className="mt-3 text-sm text-muted-foreground">Aucun billet disponible.</p>
+                  <p className="mt-3 text-sm text-muted-foreground">{tDetail("noTickets")}</p>
                 ) : (
                   <div className="mt-4 space-y-3">
                     {visibleTickets.map((ticket) => {
@@ -582,8 +599,8 @@ export default async function EventDetailPage({ params }: PageProps) {
                             <span className="font-medium">{ticket.name}</span>
                             <span className="font-semibold text-teranga-gold">
                               {ticket.price === 0
-                                ? "Gratuit"
-                                : formatCurrency(ticket.price, ticket.currency)}
+                                ? tCommon("free")
+                                : formatCurrency(ticket.price, ticket.currency, regional)}
                             </span>
                           </div>
                           {ticket.description && (
@@ -595,18 +612,20 @@ export default async function EventDetailPage({ params }: PageProps) {
                             <div className="mt-2">
                               <div className="flex items-center justify-between text-xs mb-1">
                                 <span className="text-muted-foreground">
-                                  {ticket.soldCount} / {ticket.totalQuantity} places
+                                  {tDetail("seatsCount", {
+                                    count: ticket.soldCount,
+                                    max: ticket.totalQuantity,
+                                  })}
                                 </span>
                                 {soldOut ? (
                                   <Badge variant="destructive" className="text-[10px] px-1.5 py-0">
-                                    Complet
+                                    {tDetail("soldOut")}
                                   </Badge>
                                 ) : (
                                   <span
                                     className={`font-medium ${ticketPct !== null && ticketPct >= 90 ? "text-red-600 dark:text-red-400" : ticketPct !== null && ticketPct >= 70 ? "text-amber-600 dark:text-amber-400" : "text-green-600 dark:text-green-400"}`}
                                   >
-                                    {remaining} restant
-                                    {remaining !== null && remaining > 1 ? "s" : ""}
+                                    {tDetail("remaining", { count: remaining ?? 0 })}
                                   </span>
                                 )}
                               </div>
@@ -630,12 +649,14 @@ export default async function EventDetailPage({ params }: PageProps) {
                     className="block w-full rounded-lg bg-teranga-gold py-3 text-center text-base font-semibold text-white transition-colors hover:bg-teranga-gold/90"
                   >
                     {isFree
-                      ? "S'inscrire gratuitement"
-                      : `S'inscrire — à partir de ${formatCurrency(minPrice!)}`}
+                      ? tDetail("registerFree")
+                      : tDetail("registerPaid", {
+                          price: formatCurrency(minPrice!, "XOF", regional),
+                        })}
                   </Link>
                   {event.requiresApproval && (
                     <p className="mt-2 text-center text-xs text-muted-foreground">
-                      Inscription soumise à approbation de l&apos;organisateur.
+                      {tDetail("approvalRequired")}
                     </p>
                   )}
                 </div>
@@ -643,7 +664,7 @@ export default async function EventDetailPage({ params }: PageProps) {
 
               {/* Add to Calendar */}
               <div className="rounded-lg bg-card p-6 shadow-lg">
-                <h3 className="text-sm font-semibold mb-3">Ajouter au calendrier</h3>
+                <h3 className="text-sm font-semibold mb-3">{tDetail("addToCalendar")}</h3>
                 <AddToCalendar
                   title={event.title}
                   description={event.shortDescription ?? event.description.slice(0, 300)}
@@ -663,19 +684,17 @@ export default async function EventDetailPage({ params }: PageProps) {
                 </div>
                 <div>
                   <h3 className="text-sm font-semibold group-hover:text-primary transition-colors">
-                    Feed communautaire
+                    {tDetail("feedCommunity")}
                   </h3>
-                  <p className="text-xs text-muted-foreground">Échangez avec les participants</p>
+                  <p className="text-xs text-muted-foreground">{tDetail("feedHint")}</p>
                 </div>
               </Link>
 
               {/* Online event link */}
               {event.location.streamUrl && (
                 <div className="rounded-lg bg-card p-6 shadow-lg">
-                  <h3 className="text-sm font-semibold">Événement en ligne</h3>
-                  <p className="mt-2 text-sm text-muted-foreground">
-                    Le lien d&apos;accès sera partagé après inscription.
-                  </p>
+                  <h3 className="text-sm font-semibold">{tDetail("onlineEvent")}</h3>
+                  <p className="mt-2 text-sm text-muted-foreground">{tDetail("onlineHint")}</p>
                 </div>
               )}
             </div>
@@ -685,7 +704,7 @@ export default async function EventDetailPage({ params }: PageProps) {
 
       {similarEvents.length > 0 && (
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 mt-16">
-          <h2 className="text-2xl font-bold text-foreground mb-6">Événements similaires</h2>
+          <h2 className="text-2xl font-bold text-foreground mb-6">{tDetail("similarEvents")}</h2>
           <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
             {similarEvents.map((similar) => (
               <EventCard key={similar.id} event={similar} />
