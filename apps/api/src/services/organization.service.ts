@@ -244,7 +244,23 @@ export class OrganizationService extends BaseService {
       throw new ValidationError("Le rôle propriétaire ne peut pas être attribué de cette manière");
     }
 
-    // Update role in custom claims
+    // Mirror orgRole onto the user's Firestore doc BEFORE updating Auth
+    // claims. Same Class B drift fix as create/addMember/removeMember:
+    // anything that reads the user doc (Firestore rules, admin UI list,
+    // member-management screens) sees the new role immediately. Without
+    // this mirror the role lived only in claims and the UI showed the
+    // pre-change role until the user re-logged in. set(..., {merge:true})
+    // for the same reason as the other mirrors — invitee may not have a
+    // Firestore doc yet.
+    await db.collection(COLLECTIONS.USERS).doc(userId).set(
+      {
+        orgRole: role,
+        updatedAt: new Date().toISOString(),
+      },
+      { merge: true },
+    );
+
+    // Update role in custom claims AFTER the doc mirror committed.
     const existingUser = await auth.getUser(userId);
     const existingClaims = existingUser.customClaims ?? {};
     await auth.setCustomUserClaims(userId, {

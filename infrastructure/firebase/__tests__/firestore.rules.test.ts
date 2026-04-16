@@ -182,6 +182,46 @@ describe("Users", () => {
     const db = superAdmin().firestore();
     await assertFails(db.collection("users").doc(userId).delete());
   });
+
+  // ── Organizer cross-member reads (firestore.rules:59) ───────────────────
+  // Regression guard: this rule branch was de-facto dead before the
+  // Class B mirror PR (#64) started writing organizationId onto the
+  // member's user doc. These tests prove the branch is now live AND
+  // still correctly scoped to the organizer's own org.
+
+  describe("organizer read of a co-member's profile", () => {
+    const orgId = "org-acme";
+    const memberId = "member-2";
+    const memberData = {
+      ...userData,
+      roles: ["participant"],
+      organizationId: orgId, // mirrored by organization.service.addMember / invite.accept
+    };
+
+    beforeEach(async () => {
+      await seed("users", memberId, memberData);
+    });
+
+    it("allows an organizer of the same org to read a member's profile", async () => {
+      const db = orgUser("org-admin-1", orgId).firestore();
+      await assertSucceeds(db.collection("users").doc(memberId).get());
+    });
+
+    it("denies an organizer of a different org", async () => {
+      const db = orgUser("org-admin-2", "org-other").firestore();
+      await assertFails(db.collection("users").doc(memberId).get());
+    });
+
+    it("denies an organizer when the member doc has no organizationId (pre-mirror state)", async () => {
+      // Seed a member whose user doc has NOT been mirrored. The rule
+      // should now correctly reject — this is the state the Class B
+      // bug produced for every invitee, which is why PR #64 was
+      // required to make the rule actually enforceable.
+      await seed("users", "legacy-member", { ...userData, organizationId: null });
+      const db = orgUser("org-admin-1", orgId).firestore();
+      await assertFails(db.collection("users").doc("legacy-member").get());
+    });
+  });
 });
 
 describe("Organizations", () => {

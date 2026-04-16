@@ -315,3 +315,53 @@ describe("OrganizationService.removeMember", () => {
     await expect(service.removeMember("org-1", "owner-1", user)).rejects.toThrow("propriétaire");
   });
 });
+
+describe("OrganizationService.updateMemberRole", () => {
+  it("mirrors orgRole onto the member's Firestore user doc before updating claims", async () => {
+    // Regression guard for the Class B follow-up: member-role changes
+    // lived only in Auth custom claims, so admin UIs reading the user
+    // doc (and any Firestore rule keying on orgRole) saw stale data
+    // until the next login.
+    const org = buildOrganization({
+      id: "org-1",
+      ownerId: "owner-1",
+      memberIds: ["owner-1", "member-1"],
+    });
+    const user = buildOrganizerUser("org-1");
+    mockOrgRepo.findByIdOrThrow.mockResolvedValue(org);
+
+    await service.updateMemberRole("org-1", "member-1", "admin", user);
+
+    expect(mockDocSet).toHaveBeenCalledWith(expect.objectContaining({ orgRole: "admin" }), {
+      merge: true,
+    });
+  });
+
+  it("refuses assigning the owner role via this endpoint", async () => {
+    const org = buildOrganization({
+      id: "org-1",
+      ownerId: "owner-1",
+      memberIds: ["owner-1", "member-1"],
+    });
+    const user = buildOrganizerUser("org-1");
+    mockOrgRepo.findByIdOrThrow.mockResolvedValue(org);
+
+    await expect(service.updateMemberRole("org-1", "member-1", "owner", user)).rejects.toThrow(
+      "propriétaire ne peut pas être attribué",
+    );
+  });
+
+  it("refuses modifying the owner's role", async () => {
+    const org = buildOrganization({
+      id: "org-1",
+      ownerId: "owner-1",
+      memberIds: ["owner-1"],
+    });
+    const user = buildOrganizerUser("org-1");
+    mockOrgRepo.findByIdOrThrow.mockResolvedValue(org);
+
+    await expect(service.updateMemberRole("org-1", "owner-1", "admin", user)).rejects.toThrow(
+      "rôle du propriétaire",
+    );
+  });
+});
