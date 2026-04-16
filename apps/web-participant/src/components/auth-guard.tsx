@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { useAuth } from "@/hooks/use-auth";
 import { BrandedLoader } from "@/components/branded-loader";
 
@@ -21,6 +22,7 @@ export function getAndClearRedirectUrl(): string | null {
 }
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
+  const t = useTranslations("authGuard");
   const { user, loading } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
@@ -33,7 +35,7 @@ export function AuthGuard({ children }: { children: React.ReactNode }) {
   }, [user, loading, router, pathname]);
 
   if (loading) {
-    return <BrandedLoader label="Vérification..." className="min-h-[60vh]" />;
+    return <BrandedLoader label={t("checking")} className="min-h-[60vh]" />;
   }
 
   if (!user) return null;

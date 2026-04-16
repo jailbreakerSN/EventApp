@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Calendar, QrCode, XCircle, RotateCcw, ListOrdered, LogOut } from "lucide-react";
 import { toast } from "sonner";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useLocale, useTranslations } from "next-intl";
 import { useMyRegistrations, useCancelRegistration } from "@/hooks/use-registrations";
 import { paymentsApi } from "@/lib/api-client";
 import {
@@ -17,24 +18,48 @@ import {
   getErrorMessage,
 } from "@teranga/shared-ui";
 import type { Registration } from "@teranga/shared-types";
-import { useTranslations } from "next-intl";
 
-const STATUS_LABELS: Record<
-  string,
-  { label: string; variant: "default" | "success" | "warning" | "destructive" | "outline" }
+function intlLocale(locale: string): string {
+  switch (locale) {
+    case "fr":
+      return "fr-SN";
+    case "en":
+      return "en-SN";
+    case "wo":
+      return "wo-SN";
+    default:
+      return locale;
+  }
+}
+
+type StatusKey =
+  | "confirmed"
+  | "pending"
+  | "pending_payment"
+  | "waitlisted"
+  | "checked_in"
+  | "cancelled"
+  | "refund_requested"
+  | "refunded";
+
+const STATUS_VARIANTS: Record<
+  StatusKey,
+  "default" | "success" | "warning" | "destructive" | "outline"
 > = {
-  confirmed: { label: "Confirm\u00e9", variant: "success" },
-  pending: { label: "En attente", variant: "warning" },
-  pending_payment: { label: "Paiement en attente", variant: "warning" },
-  waitlisted: { label: "En liste d'attente", variant: "warning" },
-  checked_in: { label: "Enregistr\u00e9", variant: "default" },
-  cancelled: { label: "Annul\u00e9", variant: "destructive" },
-  refund_requested: { label: "Remboursement demand\u00e9", variant: "warning" },
-  refunded: { label: "Rembours\u00e9", variant: "outline" },
+  confirmed: "success",
+  pending: "warning",
+  pending_payment: "warning",
+  waitlisted: "warning",
+  checked_in: "default",
+  cancelled: "destructive",
+  refund_requested: "warning",
+  refunded: "outline",
 };
 
 export default function MyEventsPage() {
-  const tCommon = useTranslations("common"); void tCommon;
+  const t = useTranslations("myEvents");
+  const locale = useLocale();
+  const regional = intlLocale(locale);
   const [page, setPage] = useState(1);
   const { data, isLoading, error } = useMyRegistrations({ page, limit: 20 });
   const cancelMutation = useCancelRegistration();
@@ -49,11 +74,10 @@ export default function MyEventsPage() {
   const meta = data?.meta;
 
   const refundMutation = useMutation({
-    mutationFn: (paymentId: string) =>
-      paymentsApi.refund(paymentId, "Demande de remboursement par le participant"),
+    mutationFn: (paymentId: string) => paymentsApi.refund(paymentId, t("refundReason")),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["my-registrations"] });
-      toast.success("Demande de remboursement envoy\u00e9e");
+      toast.success(t("refundRequested"));
     },
     onError: (err: unknown) => {
       const code = (err as { code?: string })?.code;
@@ -66,7 +90,7 @@ export default function MyEventsPage() {
     if (!cancelTarget) return;
     try {
       await cancelMutation.mutateAsync(cancelTarget);
-      toast.success("Inscription annul\u00e9e avec succ\u00e8s.");
+      toast.success(t("cancelledSuccess"));
     } catch (err: unknown) {
       const code = (err as { code?: string })?.code;
       const message = (err as { message?: string })?.message;
@@ -85,13 +109,11 @@ export default function MyEventsPage() {
     }
   };
 
-  /** Registration with optional denormalized fields the API may include */
   type RegistrationWithExtras = Registration & {
     paymentId?: string;
     waitlistPosition?: number;
   };
 
-  /** Determine if a registration is eligible for a refund request */
   function canRequestRefund(reg: RegistrationWithExtras): boolean {
     const nonRefundableStatuses = [
       "cancelled",
@@ -108,9 +130,9 @@ export default function MyEventsPage() {
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">
-      <h1 className="text-2xl font-bold">Mes inscriptions</h1>
+      <h1 className="text-2xl font-bold">{t("title")}</h1>
       <p className="mt-1 text-muted-foreground">
-        {meta?.total !== undefined ? `${meta.total} inscription${meta.total > 1 ? "s" : ""}` : ""}
+        {meta?.total !== undefined ? t("countLabel", { count: meta.total }) : ""}
       </p>
 
       {isLoading && (
@@ -137,19 +159,19 @@ export default function MyEventsPage() {
 
       {error && (
         <div className="mt-8 rounded-md bg-destructive/10 p-4 text-sm text-destructive">
-          Impossible de charger vos inscriptions. Veuillez r\u00e9essayer.
+          {t("loadError")}
         </div>
       )}
 
       {registrations && registrations.length === 0 && (
         <EmptyState
           icon={Calendar}
-          title="Aucune inscription pour le moment"
-          description="Explorez les \u00e9v\u00e9nements \u00e0 venir et inscrivez-vous en quelques clics."
+          title={t("emptyTitle")}
+          description={t("emptyDescription")}
           action={
             <Link href="/events">
               <Button className="bg-teranga-gold hover:bg-teranga-gold/90">
-                D\u00e9couvrir les \u00e9v\u00e9nements
+                {t("discoverCta")}
               </Button>
             </Link>
           }
@@ -160,10 +182,10 @@ export default function MyEventsPage() {
         <div className="mt-6 space-y-4">
           {registrations.map((rawReg) => {
             const reg = rawReg as RegistrationWithExtras;
-            const status = STATUS_LABELS[reg.status] ?? {
-              label: reg.status,
-              variant: "outline" as const,
-            };
+            const statusKey =
+              (reg.status as StatusKey) in STATUS_VARIANTS ? (reg.status as StatusKey) : null;
+            const statusLabel = statusKey ? t(`status.${statusKey}` as const) : reg.status;
+            const statusVariant = statusKey ? STATUS_VARIANTS[statusKey] : "outline";
             const canCancel = ["confirmed", "pending"].includes(reg.status);
             const isWaitlisted = reg.status === "waitlisted";
             const showRefund = canRequestRefund(reg);
@@ -177,16 +199,16 @@ export default function MyEventsPage() {
                   <div className="flex-1">
                     <div className="flex items-center gap-2">
                       <h3 className="font-semibold">{reg.eventTitle ?? reg.eventId}</h3>
-                      <Badge variant={status.variant}>{status.label}</Badge>
+                      <Badge variant={statusVariant}>{statusLabel}</Badge>
                     </div>
                     <p className="mt-1 text-sm text-muted-foreground">
-                      Billet : {reg.ticketTypeName ?? reg.ticketTypeId} · Inscrit le{" "}
-                      {formatDate(reg.createdAt)}
+                      {t("ticketPrefix")} : {reg.ticketTypeName ?? reg.ticketTypeId} ·{" "}
+                      {t("registeredOn")} {formatDate(reg.createdAt, regional)}
                     </p>
                     {isWaitlisted && reg.waitlistPosition && (
                       <p className="mt-1 flex items-center gap-1 text-sm font-medium text-amber-600 dark:text-amber-400">
                         <ListOrdered className="h-4 w-4" />
-                        Position #{reg.waitlistPosition}
+                        {t("waitlistPosition", { n: reg.waitlistPosition })}
                       </p>
                     )}
                   </div>
@@ -196,7 +218,7 @@ export default function MyEventsPage() {
                       <Link href={`/my-events/${reg.id}/badge`}>
                         <Button variant="outline" size="sm">
                           <QrCode className="mr-1 h-4 w-4" />
-                          Badge
+                          {t("badge")}
                         </Button>
                       </Link>
                     )}
@@ -211,7 +233,7 @@ export default function MyEventsPage() {
                         disabled={refundMutation.isPending}
                       >
                         <RotateCcw className="mr-1 h-4 w-4" />
-                        Remboursement
+                        {t("refund")}
                       </Button>
                     )}
                     {isWaitlisted && (
@@ -223,7 +245,7 @@ export default function MyEventsPage() {
                         disabled={cancelMutation.isPending}
                       >
                         <LogOut className="mr-1 h-4 w-4" />
-                        Quitter la liste d&apos;attente
+                        {t("leaveWaitlist")}
                       </Button>
                     )}
                     {canCancel && (
@@ -235,11 +257,11 @@ export default function MyEventsPage() {
                         disabled={cancelMutation.isPending}
                       >
                         <XCircle className="mr-1 h-4 w-4" />
-                        Annuler
+                        {t("cancel")}
                       </Button>
                     )}
                     {reg.status === "cancelled" && (
-                      <span className="text-sm text-muted-foreground italic">Annul\u00e9</span>
+                      <span className="text-sm text-muted-foreground italic">{t("cancelled")}</span>
                     )}
                   </div>
                 </div>
@@ -255,10 +277,10 @@ export default function MyEventsPage() {
                 disabled={page <= 1}
                 onClick={() => setPage(page - 1)}
               >
-                Pr\u00e9c\u00e9dent
+                {t("paginationPrev")}
               </Button>
               <span className="flex items-center text-sm text-muted-foreground">
-                Page {page} / {meta.totalPages}
+                {t("paginationOf", { page, total: meta.totalPages })}
               </span>
               <Button
                 variant="outline"
@@ -266,34 +288,32 @@ export default function MyEventsPage() {
                 disabled={page >= meta.totalPages}
                 onClick={() => setPage(page + 1)}
               >
-                Suivant
+                {t("paginationNext")}
               </Button>
             </div>
           )}
         </div>
       )}
 
-      {/* Cancel confirmation dialog */}
       <ConfirmDialog
         open={cancelTarget !== null}
         onConfirm={handleCancel}
         onCancel={() => setCancelTarget(null)}
-        title="Annuler l'inscription"
-        description="\u00cates-vous s\u00fbr(e) de vouloir annuler cette inscription ? Cette action est irr\u00e9versible."
-        confirmLabel="Oui, annuler"
-        cancelLabel="Non, garder"
+        title={t("cancelDialog.title")}
+        description={t("cancelDialog.description")}
+        confirmLabel={t("cancelDialog.confirm")}
+        cancelLabel={t("cancelDialog.cancel")}
         variant="danger"
       />
 
-      {/* Refund confirmation dialog */}
       <ConfirmDialog
         open={refundTarget !== null}
         onConfirm={handleRefund}
         onCancel={() => setRefundTarget(null)}
-        title="Demander un remboursement"
-        description="Le remboursement sera trait\u00e9 selon la politique de l'organisateur. Le d\u00e9lai de traitement est g\u00e9n\u00e9ralement de 5-10 jours ouvr\u00e9s."
-        confirmLabel="Confirmer la demande"
-        cancelLabel="Annuler"
+        title={t("refundDialog.title")}
+        description={t("refundDialog.description")}
+        confirmLabel={t("refundDialog.confirm")}
+        cancelLabel={t("refundDialog.cancel")}
         variant="default"
       />
     </div>
