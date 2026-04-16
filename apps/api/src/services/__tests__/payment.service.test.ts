@@ -284,6 +284,44 @@ describe("PaymentService.initiatePayment", () => {
       service.initiatePayment("ev-1", "vip", "crypto" as never, undefined, user),
     ).rejects.toThrow("non disponible");
   });
+
+  it("rejects returnUrl pointing outside the platform allowlist (open-redirect guard)", async () => {
+    // Regression guard: previously any http/https URL was accepted as
+    // returnUrl, turning us into an open-redirect amplifier off a
+    // trusted Wave/OM checkout. The service now refuses hosts that
+    // aren't PARTICIPANT_WEB_URL / WEB_BACKOFFICE_URL / allowlisted.
+    mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
+    mockProvider.initiate.mockResolvedValue({
+      providerTransactionId: "mock_tx",
+      redirectUrl: "http://mock-checkout",
+    });
+    mockTxGet.mockResolvedValue({ empty: true });
+
+    await expect(
+      service.initiatePayment("ev-1", "vip", "mock", "https://attacker.example.com/phish", user),
+    ).rejects.toThrow(/n'est pas autorisée/);
+  });
+
+  it("accepts returnUrl on localhost in non-production (dev default)", async () => {
+    // Dev / emulator flows pass through localhost:300x; keep them
+    // working while locking down production hosts.
+    mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
+    mockProvider.initiate.mockResolvedValue({
+      providerTransactionId: "mock_tx",
+      redirectUrl: "http://mock-checkout",
+    });
+    mockTxGet.mockResolvedValue({ empty: true });
+
+    await expect(
+      service.initiatePayment(
+        "ev-1",
+        "vip",
+        "mock",
+        "http://localhost:3002/register/ev-1/payment-status",
+        user,
+      ),
+    ).resolves.toBeDefined();
+  });
 });
 
 // ─── handleWebhook ─────────────────────────────────────────────────────────
@@ -662,6 +700,30 @@ describe("PaymentService.refundPayment", () => {
     await expect(
       service.refundPayment(payment.id, undefined, undefined, organizer),
     ).rejects.toThrow("refusé");
+  });
+
+  it("surfaces the specific manual-refund message when provider tags reason", async () => {
+    // Orange Money returns {success:false, reason:"manual_refund_required"}
+    // because OM has no refund API. The service must surface a specific
+    // French message explaining the operator needs to refund via the OM
+    // merchant portal — the generic "refusé" string would leave the
+    // organizer without any actionable next step.
+    const payment = buildPayment({
+      status: "succeeded",
+      organizationId: orgId,
+      amount: 5000,
+      refundedAmount: 0,
+      method: "orange_money",
+    });
+    mockPaymentRepo.findByIdOrThrow.mockResolvedValue(payment);
+    mockProvider.refund.mockResolvedValue({
+      success: false,
+      reason: "manual_refund_required",
+    });
+
+    await expect(
+      service.refundPayment(payment.id, undefined, undefined, organizer),
+    ).rejects.toThrow(/remboursements automatiques|portail marchand/);
   });
 });
 

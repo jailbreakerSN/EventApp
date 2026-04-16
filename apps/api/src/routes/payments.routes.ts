@@ -1,17 +1,18 @@
-import type { FastifyPluginAsync } from "fastify";
+import type { FastifyPluginAsync, FastifyRequest } from "fastify";
 import { z } from "zod";
 import { authenticate, requireEmailVerified } from "@/middlewares/auth.middleware";
 import { validate } from "@/middlewares/validate.middleware";
 import { requirePermission } from "@/middlewares/permission.middleware";
 import {
   paymentService,
-  verifyWebhookSignature,
   signWebhookPayload,
+  getProviderForWebhook,
 } from "@/services/payment.service";
 import { MockPaymentProvider } from "@/providers/mock-payment.provider";
 import {
   InitiatePaymentSchema,
   PaymentWebhookSchema,
+  PaymentMethodSchema,
   RefundPaymentSchema,
   PaymentQuerySchema,
 } from "@teranga/shared-types";
@@ -73,30 +74,77 @@ export const paymentRoutes: FastifyPluginAsync = async (fastify) => {
     },
   );
 
+  // ─── Provider-specific raw-body parser ────────────────────────────────────
+  // Webhook signature verification MUST run over the exact bytes the
+  // provider signed. The default Fastify JSON parser reorders keys on
+  // re-serialise, breaking HMAC comparisons with Wave/OM. Register a
+  // content-type parser scoped to the webhook paths that attaches the
+  // raw string to `request.rawBody` AND still parses JSON into
+  // `request.body` so the route handlers keep working unchanged.
+  fastify.addContentTypeParser(
+    "application/json",
+    { parseAs: "string" },
+    (req, body: string, done) => {
+      try {
+        // Only attach rawBody on webhook paths — elsewhere the usual
+        // parsed-body flow is what downstream handlers expect.
+        if (req.url.startsWith("/webhook/") || req.url === "/webhook") {
+          (req as FastifyRequest & { rawBody?: string }).rawBody = body;
+        }
+        const parsed = body ? JSON.parse(body) : {};
+        done(null, parsed);
+      } catch (err) {
+        done(err as Error, undefined);
+      }
+    },
+  );
+
   // ─── Webhook (no auth — called by payment provider) ───────────────────────
-  // Verifies HMAC-SHA256 signature via X-Webhook-Signature header.
-  // Mock checkout page sends a valid signature; real providers use their own.
+  // Per-provider signature verification via `provider.verifyWebhook(...)`.
+  // Each provider knows its own scheme (Wave: HMAC; OM: pre-shared
+  // token; Mock: shared dev secret). Historically this route ran a
+  // single HMAC over a JSON.stringify of the already-parsed body — it
+  // would have rejected every real Wave/OM webhook in production
+  // because neither provider signs Teranga's arbitrary re-serialisation
+  // of their payload.
+  //
+  // Layered rate-limit: the global limiter still applies, but we also
+  // bound this endpoint tightly (600 req/min) to keep a single
+  // misbehaving provider gateway from exhausting the global bucket
+  // for regular API traffic.
+  const ParamsWithProvider = z.object({
+    provider: PaymentMethodSchema,
+  });
+
   fastify.post(
-    "/webhook",
+    "/webhook/:provider",
     {
-      preHandler: [validate({ body: PaymentWebhookSchema })],
+      config: {
+        rateLimit: {
+          max: 600,
+          timeWindow: "1 minute",
+        },
+      },
+      preHandler: [validate({ params: ParamsWithProvider, body: PaymentWebhookSchema })],
       schema: {
         tags: ["Payments"],
-        summary: "Payment provider webhook callback",
+        summary: "Payment provider webhook callback (per-provider signature verification)",
       },
     },
     async (request, reply) => {
-      // Verify webhook signature
-      const signature = request.headers["x-webhook-signature"] as string | undefined;
-      if (!signature) {
-        return reply.status(401).send({
+      const { provider: providerName } = request.params as z.infer<typeof ParamsWithProvider>;
+      const provider = getProviderForWebhook(providerName);
+      if (!provider) {
+        return reply.status(404).send({
           success: false,
-          error: { code: "UNAUTHORIZED", message: "Signature de webhook manquante" },
+          error: { code: "NOT_FOUND", message: `Fournisseur « ${providerName} » inconnu` },
         });
       }
 
-      const rawBody = JSON.stringify(request.body);
-      if (!verifyWebhookSignature(rawBody, signature)) {
+      const rawBody =
+        (request as FastifyRequest & { rawBody?: string }).rawBody ?? JSON.stringify(request.body);
+
+      if (!provider.verifyWebhook({ rawBody, headers: request.headers })) {
         return reply.status(403).send({
           success: false,
           error: { code: "FORBIDDEN", message: "Signature de webhook invalide" },
@@ -107,6 +155,67 @@ export const paymentRoutes: FastifyPluginAsync = async (fastify) => {
         typeof PaymentWebhookSchema
       >;
 
+      try {
+        await paymentService.handleWebhook(providerTransactionId, status, metadata);
+        return reply.send({ success: true });
+      } catch (err: unknown) {
+        if (err && typeof err === "object" && "name" in err && err.name === "NotFoundError") {
+          return reply.status(404).send({
+            success: false,
+            error: { code: "NOT_FOUND", message: "Transaction inconnue" },
+          });
+        }
+        throw err;
+      }
+    },
+  );
+
+  // ─── Webhook (legacy path — no provider specified) ───────────────────────
+  // Kept alive for the dev mock-checkout page that still POSTs to
+  // `/v1/payments/webhook`. Hard-coded to the mock provider so no
+  // unsigned path exists for real providers. Returns 400 in production
+  // if anything still hits it — real providers MUST post to
+  // `/webhook/:provider` going forward.
+  fastify.post(
+    "/webhook",
+    {
+      config: {
+        rateLimit: { max: 600, timeWindow: "1 minute" },
+      },
+      preHandler: [validate({ body: PaymentWebhookSchema })],
+      schema: {
+        tags: ["Payments"],
+        summary: "Legacy webhook (mock provider only — real providers must use /webhook/:provider)",
+      },
+    },
+    async (request, reply) => {
+      if (process.env.NODE_ENV === "production") {
+        return reply.status(404).send({
+          success: false,
+          error: {
+            code: "NOT_FOUND",
+            message: "Utilisez /v1/payments/webhook/:provider avec l'identifiant du fournisseur",
+          },
+        });
+      }
+      const provider = getProviderForWebhook("mock");
+      if (!provider) {
+        return reply.status(404).send({
+          success: false,
+          error: { code: "NOT_FOUND", message: "Mock provider indisponible" },
+        });
+      }
+      const rawBody =
+        (request as FastifyRequest & { rawBody?: string }).rawBody ?? JSON.stringify(request.body);
+      if (!provider.verifyWebhook({ rawBody, headers: request.headers })) {
+        return reply.status(403).send({
+          success: false,
+          error: { code: "FORBIDDEN", message: "Signature de webhook invalide" },
+        });
+      }
+      const { providerTransactionId, status, metadata } = request.body as z.infer<
+        typeof PaymentWebhookSchema
+      >;
       try {
         await paymentService.handleWebhook(providerTransactionId, status, metadata);
         return reply.send({ success: true });
@@ -234,12 +343,10 @@ export const paymentRoutes: FastifyPluginAsync = async (fastify) => {
         const state = MockPaymentProvider.getState(txId);
 
         if (!state) {
-          return reply
-            .status(404)
-            .send({
-              success: false,
-              error: { code: "NOT_FOUND", message: "Transaction inconnue" },
-            });
+          return reply.status(404).send({
+            success: false,
+            error: { code: "NOT_FOUND", message: "Transaction inconnue" },
+          });
         }
 
         const amount = new Intl.NumberFormat("fr-SN", {
@@ -367,12 +474,10 @@ export const paymentRoutes: FastifyPluginAsync = async (fastify) => {
         const body = request.body as { success: boolean };
         const state = MockPaymentProvider.simulateCallback(txId, body.success);
         if (!state) {
-          return reply
-            .status(404)
-            .send({
-              success: false,
-              error: { code: "NOT_FOUND", message: "Transaction inconnue" },
-            });
+          return reply.status(404).send({
+            success: false,
+            error: { code: "NOT_FOUND", message: "Transaction inconnue" },
+          });
         }
         return reply.send({ success: true, data: { status: state.status } });
       },

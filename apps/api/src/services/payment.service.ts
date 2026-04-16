@@ -61,6 +61,20 @@ function getProvider(method: PaymentMethod): PaymentProvider {
   return provider;
 }
 
+/**
+ * Route-facing lookup for the webhook verifier path. Returns `null` when
+ * the provider string doesn't match a registered provider — callers
+ * translate null into a 404 rather than leaking the registry shape via
+ * an exception. Allows mock in production only if `NODE_ENV !== "production"`,
+ * matching `getProvider` semantics.
+ */
+export function getProviderForWebhook(providerName: string): PaymentProvider | null {
+  const provider = providers[providerName as PaymentMethod];
+  if (!provider) return null;
+  if (IS_PROD && providerName === "mock") return null;
+  return provider;
+}
+
 // ─── Webhook Signature ──────────────────────────────────────────────────────
 
 const WEBHOOK_SECRET =
@@ -86,6 +100,61 @@ export function verifyWebhookSignature(body: string, signature: string): boolean
   const expected = signWebhookPayload(body);
   if (expected.length !== signature.length) return false;
   return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature));
+}
+
+// ─── returnUrl allowlist ────────────────────────────────────────────────────
+//
+// After the user completes payment, the provider redirects their browser
+// to `returnUrl`. Accepting any http(s) URL would turn us into an open
+// redirect chained off a trust-worthy Wave/OM checkout — a classic
+// phishing amplifier. Allow only hosts the platform itself owns:
+// PARTICIPANT_WEB_URL, WEB_BACKOFFICE_URL, plus anything explicitly
+// allow-listed via ALLOWED_RETURN_HOSTS (comma-separated).
+
+function getAllowedReturnHosts(): Set<string> {
+  const hosts = new Set<string>();
+  const add = (value: string | undefined): void => {
+    if (!value) return;
+    try {
+      hosts.add(new URL(value).host.toLowerCase());
+    } catch {
+      /* ignore malformed env values */
+    }
+  };
+  add(process.env.PARTICIPANT_WEB_URL);
+  add(process.env.WEB_BACKOFFICE_URL);
+  (process.env.ALLOWED_RETURN_HOSTS ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .forEach((h) => hosts.add(h.toLowerCase()));
+  // In dev the env vars may not be set; accept localhost so the
+  // emulator flow doesn't break.
+  if (process.env.NODE_ENV !== "production") {
+    hosts.add("localhost:3000");
+    hosts.add("localhost:3001");
+    hosts.add("localhost:3002");
+  }
+  return hosts;
+}
+
+function assertAllowedReturnUrl(returnUrl: string): string {
+  let parsed: URL;
+  try {
+    parsed = new URL(returnUrl);
+  } catch {
+    throw new ValidationError("L'URL de retour est mal formée");
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new ValidationError("L'URL de retour doit utiliser HTTP ou HTTPS");
+  }
+  const allowed = getAllowedReturnHosts();
+  if (!allowed.has(parsed.host.toLowerCase())) {
+    throw new ValidationError(
+      `L'URL de retour ${parsed.host} n'est pas autorisée. Utilisez un domaine de la plateforme.`,
+    );
+  }
+  return returnUrl;
 }
 
 // ─── Service ────────────────────────────────────────────────────────────────
@@ -139,10 +208,11 @@ export class PaymentService extends BaseService {
     const payId = payRef.id;
     const qrCodeValue = signQrPayload(regId, eventId, user.uid);
 
-    const callbackUrl = `${process.env.API_BASE_URL ?? "http://localhost:3000"}/v1/payments/webhook`;
-    const finalReturnUrl =
-      returnUrl ??
-      `${process.env.PARTICIPANT_WEB_URL ?? "http://localhost:3002"}/register/${eventId}/payment-status?paymentId=${payId}`;
+    // Webhook path encodes the provider so the endpoint can route to
+    // the correct signature verifier without a query-string sniff.
+    const callbackUrl = `${process.env.API_BASE_URL ?? "http://localhost:3000"}/v1/payments/webhook/${method}`;
+    const defaultReturnUrl = `${process.env.PARTICIPANT_WEB_URL ?? "http://localhost:3002"}/register/${eventId}/payment-status?paymentId=${payId}`;
+    const finalReturnUrl = returnUrl ? assertAllowedReturnUrl(returnUrl) : defaultReturnUrl;
 
     // Get provider and initiate (outside transaction — provider call is idempotent)
     const provider = getProvider(method);
@@ -515,6 +585,18 @@ export class PaymentService extends BaseService {
     const provider = getProvider(payment.method);
     const result = await provider.refund(payment.providerTransactionId!, refundAmount);
     if (!result.success) {
+      // Surface the specific reason when the provider tags it. Orange
+      // Money in particular never supports programmatic refunds — the
+      // operator has to process the refund via their OM merchant
+      // portal, so a generic "provider refused" error would be
+      // misleading and unhelpful.
+      if (result.reason === "manual_refund_required") {
+        throw new ValidationError(
+          "Ce fournisseur de paiement ne prend pas en charge les remboursements automatiques. " +
+            "Contactez votre point de vente Orange Money ou effectuez le remboursement manuel " +
+            "depuis le portail marchand. Marquez ensuite l'inscription comme annulée.",
+        );
+      }
       throw new ValidationError("Le remboursement a été refusé par le fournisseur");
     }
 

@@ -5,6 +5,7 @@ import {
   type InitiateResult,
   type VerifyResult,
   type RefundResult,
+  type VerifyWebhookParams,
 } from "./payment-provider.interface";
 
 /**
@@ -61,13 +62,10 @@ export class WavePaymentProvider implements PaymentProvider {
   }
 
   async verify(providerTransactionId: string): Promise<VerifyResult> {
-    const response = await fetch(
-      `${WAVE_API_URL}/checkout/sessions/${providerTransactionId}`,
-      {
-        headers: { Authorization: `Bearer ${WAVE_API_KEY}` },
-        signal: AbortSignal.timeout(30_000),
-      },
-    );
+    const response = await fetch(`${WAVE_API_URL}/checkout/sessions/${providerTransactionId}`, {
+      headers: { Authorization: `Bearer ${WAVE_API_KEY}` },
+      signal: AbortSignal.timeout(30_000),
+    });
 
     if (!response.ok) {
       return { status: "failed", metadata: { reason: `Wave verify failed: ${response.status}` } };
@@ -115,16 +113,41 @@ export class WavePaymentProvider implements PaymentProvider {
   /**
    * Verify Wave webhook signature.
    * Wave signs webhooks with HMAC-SHA256 using the API secret.
+   * Header: `X-Wave-Signature` carries a hex-encoded digest of the raw
+   * request body. HMAC MUST be computed against the raw payload — any
+   * re-serialisation via `JSON.stringify` changes key order and breaks
+   * the comparison even when the secret is correct.
+   */
+  verifyWebhook(params: VerifyWebhookParams): boolean {
+    if (!WAVE_API_SECRET) return false;
+    const signature = readHeader(params.headers, "x-wave-signature");
+    if (!signature) return false;
+    return verifyHmacHex(WAVE_API_SECRET, params.rawBody, signature);
+  }
+
+  /**
+   * Preserved for existing tests that import the static method directly.
+   * Delegates to the shared HMAC helper.
    */
   static verifySignature(body: string, signature: string): boolean {
     if (!WAVE_API_SECRET) return false;
-    const expected = crypto
-      .createHmac("sha256", WAVE_API_SECRET)
-      .update(body)
-      .digest("hex");
-    if (expected.length !== signature.length) return false;
-    return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature));
+    return verifyHmacHex(WAVE_API_SECRET, body, signature);
   }
+}
+
+function readHeader(
+  headers: Record<string, string | string[] | undefined>,
+  name: string,
+): string | null {
+  const v = headers[name];
+  if (Array.isArray(v)) return v[0] ?? null;
+  return v ?? null;
+}
+
+function verifyHmacHex(secret: string, body: string, signature: string): boolean {
+  const expected = crypto.createHmac("sha256", secret).update(body).digest("hex");
+  if (expected.length !== signature.length) return false;
+  return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature));
 }
 
 export const wavePaymentProvider = new WavePaymentProvider();
