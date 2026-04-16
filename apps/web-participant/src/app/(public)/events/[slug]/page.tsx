@@ -25,10 +25,15 @@ import { AddToCalendar } from "@/components/add-to-calendar";
 import { EventCard } from "@/components/event-card";
 import type { Event, SpeakerProfile, Session } from "@teranga/shared-types";
 import ReactMarkdown from "react-markdown";
-import { getTranslations } from "next-intl/server";
 
-export const revalidate = 60;
-export const dynamicParams = true;
+// The root layout reads the NEXT_LOCALE cookie via next-intl's getLocale() /
+// getMessages(), which means any page under it inherently requires dynamic
+// rendering. Declaring `revalidate` + `generateStaticParams` on top of that
+// put Next.js 15 into ISR mode at runtime and the subsequent cookie read
+// during background revalidation threw DYNAMIC_SERVER_USAGE → 500 on
+// /events/[slug]. Explicitly marking the route dynamic matches the real
+// rendering model and eliminates the crash.
+export const dynamic = "force-dynamic";
 
 interface PageProps {
   params: Promise<{ slug: string }>;
@@ -114,36 +119,6 @@ async function getSimilarEvents(event: Event): Promise<Event[]> {
   }
 }
 
-export async function generateStaticParams() {
-  const BATCH_SIZE = 100;
-  const MAX_EVENTS = 1000;
-
-  try {
-    // Fetch the first page to discover total page count
-    const first = await serverEventsApi.search({ page: 1, limit: BATCH_SIZE });
-    const totalPages = Math.min(first.meta.totalPages, Math.ceil(MAX_EVENTS / BATCH_SIZE));
-
-    // If there is only one page, return immediately
-    if (totalPages <= 1) {
-      return first.data.map((event) => ({ slug: event.slug }));
-    }
-
-    // Fetch remaining pages in parallel
-    const remainingPages = Array.from({ length: totalPages - 1 }, (_, i) => i + 2);
-    const rest = await Promise.all(
-      remainingPages.map((page) => serverEventsApi.search({ page, limit: BATCH_SIZE })),
-    );
-
-    const allEvents = [first, ...rest].flatMap((r) => r.data);
-    // Enforce hard cap in case totalPages arithmetic overshoots
-    return allEvents.slice(0, MAX_EVENTS).map((event) => ({ slug: event.slug }));
-  } catch {
-    // If the API is unreachable during build, fall back to on-demand generation
-    // via dynamicParams = true (already set above)
-    return [];
-  }
-}
-
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { slug } = await params;
   const event = await getEvent(slug);
@@ -192,7 +167,6 @@ const CATEGORY_LABELS: Record<string, string> = {
 };
 
 export default async function EventDetailPage({ params }: PageProps) {
-  const _t = await getTranslations("common"); void _t;
   const { slug } = await params;
   const event = await getEvent(slug);
   if (!event) notFound();
@@ -404,164 +378,166 @@ export default async function EventDetailPage({ params }: PageProps) {
                 speakers={
                   speakers.length > 0 ? (
                     <div>
-                  <div className="sr-only">
-                    <Mic2 className="h-5 w-5 text-teranga-gold" aria-hidden="true" />
-                    <h2 className="text-xl font-semibold">Intervenants</h2>
-                  </div>
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                    {speakers.map((speaker) => (
-                      <div
-                        key={speaker.id}
-                        className="rounded-lg border border-border bg-muted/30 p-4"
-                      >
-                        <div className="flex items-start gap-3">
-                          {speaker.photoURL ? (
-                            <Image
-                              src={speaker.photoURL}
-                              alt={speaker.name}
-                              width={48}
-                              height={48}
-                              className="h-12 w-12 rounded-full object-cover flex-shrink-0"
-                            />
-                          ) : (
-                            <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-teranga-gold/10 text-teranga-gold font-semibold text-lg">
-                              {speaker.name.charAt(0).toUpperCase()}
+                      <div className="sr-only">
+                        <Mic2 className="h-5 w-5 text-teranga-gold" aria-hidden="true" />
+                        <h2 className="text-xl font-semibold">Intervenants</h2>
+                      </div>
+                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                        {speakers.map((speaker) => (
+                          <div
+                            key={speaker.id}
+                            className="rounded-lg border border-border bg-muted/30 p-4"
+                          >
+                            <div className="flex items-start gap-3">
+                              {speaker.photoURL ? (
+                                <Image
+                                  src={speaker.photoURL}
+                                  alt={speaker.name}
+                                  width={48}
+                                  height={48}
+                                  className="h-12 w-12 rounded-full object-cover flex-shrink-0"
+                                />
+                              ) : (
+                                <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-teranga-gold/10 text-teranga-gold font-semibold text-lg">
+                                  {speaker.name.charAt(0).toUpperCase()}
+                                </div>
+                              )}
+                              <div className="min-w-0 flex-1">
+                                <p className="font-medium text-foreground truncate">
+                                  {speaker.name}
+                                </p>
+                                {(speaker.title || speaker.company) && (
+                                  <p className="text-sm text-muted-foreground truncate">
+                                    {[speaker.title, speaker.company].filter(Boolean).join(" — ")}
+                                  </p>
+                                )}
+                              </div>
                             </div>
-                          )}
-                          <div className="min-w-0 flex-1">
-                            <p className="font-medium text-foreground truncate">{speaker.name}</p>
-                            {(speaker.title || speaker.company) && (
-                              <p className="text-sm text-muted-foreground truncate">
-                                {[speaker.title, speaker.company].filter(Boolean).join(" — ")}
+                            {speaker.bio && (
+                              <p className="mt-3 text-sm text-muted-foreground line-clamp-2">
+                                {speaker.bio}
                               </p>
                             )}
-                          </div>
-                        </div>
-                        {speaker.bio && (
-                          <p className="mt-3 text-sm text-muted-foreground line-clamp-2">
-                            {speaker.bio}
-                          </p>
-                        )}
-                        {speaker.topics.length > 0 && (
-                          <div className="mt-2 flex flex-wrap gap-1">
-                            {speaker.topics.slice(0, 3).map((topic) => (
-                              <Badge key={topic} variant="outline" className="text-xs">
-                                {topic}
-                              </Badge>
-                            ))}
-                          </div>
-                        )}
-                        {speaker.socialLinks && (
-                          <div className="mt-3 flex items-center gap-2">
-                            {speaker.socialLinks.twitter && (
-                              <a
-                                href={speaker.socialLinks.twitter}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                aria-label={`Twitter de ${speaker.name}`}
-                                className="text-muted-foreground hover:text-foreground transition-colors"
-                              >
-                                <Twitter className="h-4 w-4" />
-                              </a>
+                            {speaker.topics.length > 0 && (
+                              <div className="mt-2 flex flex-wrap gap-1">
+                                {speaker.topics.slice(0, 3).map((topic) => (
+                                  <Badge key={topic} variant="outline" className="text-xs">
+                                    {topic}
+                                  </Badge>
+                                ))}
+                              </div>
                             )}
-                            {speaker.socialLinks.linkedin && (
-                              <a
-                                href={speaker.socialLinks.linkedin}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                aria-label={`LinkedIn de ${speaker.name}`}
-                                className="text-muted-foreground hover:text-foreground transition-colors"
-                              >
-                                <Linkedin className="h-4 w-4" />
-                              </a>
-                            )}
-                            {speaker.socialLinks.website && (
-                              <a
-                                href={speaker.socialLinks.website}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                aria-label={`Site web de ${speaker.name}`}
-                                className="text-muted-foreground hover:text-foreground transition-colors"
-                              >
-                                <Globe className="h-4 w-4" />
-                              </a>
+                            {speaker.socialLinks && (
+                              <div className="mt-3 flex items-center gap-2">
+                                {speaker.socialLinks.twitter && (
+                                  <a
+                                    href={speaker.socialLinks.twitter}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    aria-label={`Twitter de ${speaker.name}`}
+                                    className="text-muted-foreground hover:text-foreground transition-colors"
+                                  >
+                                    <Twitter className="h-4 w-4" />
+                                  </a>
+                                )}
+                                {speaker.socialLinks.linkedin && (
+                                  <a
+                                    href={speaker.socialLinks.linkedin}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    aria-label={`LinkedIn de ${speaker.name}`}
+                                    className="text-muted-foreground hover:text-foreground transition-colors"
+                                  >
+                                    <Linkedin className="h-4 w-4" />
+                                  </a>
+                                )}
+                                {speaker.socialLinks.website && (
+                                  <a
+                                    href={speaker.socialLinks.website}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    aria-label={`Site web de ${speaker.name}`}
+                                    className="text-muted-foreground hover:text-foreground transition-colors"
+                                  >
+                                    <Globe className="h-4 w-4" />
+                                  </a>
+                                )}
+                              </div>
                             )}
                           </div>
-                        )}
+                        ))}
                       </div>
-                    ))}
-                  </div>
-                </div>
+                    </div>
                   ) : null
                 }
                 sessions={
                   sessions.length > 0 ? (
                     <div>
-                  <div className="sr-only">
-                    <Calendar className="h-5 w-5 text-teranga-gold" aria-hidden="true" />
-                    <h2 className="text-xl font-semibold">Programme</h2>
-                  </div>
-                  <div className="space-y-6">
-                    {Array.from(sessionsByDate.entries()).map(([dateLabel, daySessions]) => (
-                      <div key={dateLabel}>
-                        {sessionsByDate.size > 1 && (
-                          <h3 className="text-sm font-semibold text-teranga-gold uppercase tracking-wide mb-3">
-                            {dateLabel}
-                          </h3>
-                        )}
-                        <div className="space-y-3">
-                          {daySessions.map((session) => {
-                            const sessionSpeakers = session.speakerIds
-                              .map((id) => speakerMap.get(id))
-                              .filter(Boolean) as SpeakerProfile[];
-                            return (
-                              <div
-                                key={session.id}
-                                className="flex gap-4 rounded-lg border border-border bg-muted/30 p-4"
-                              >
-                                <div className="flex-shrink-0 text-right w-24">
-                                  <p className="text-sm font-semibold text-foreground">
-                                    {formatSessionTime(session.startTime)}
-                                  </p>
-                                  <p className="text-xs text-muted-foreground">
-                                    {formatSessionTime(session.endTime)}
-                                  </p>
-                                </div>
-                                <div className="h-auto w-px bg-teranga-gold/30 flex-shrink-0" />
-                                <div className="min-w-0 flex-1">
-                                  <p className="font-medium text-foreground">{session.title}</p>
-                                  {sessionSpeakers.length > 0 && (
-                                    <p className="mt-1 text-sm text-muted-foreground">
-                                      {sessionSpeakers.map((s) => s.name).join(", ")}
-                                    </p>
-                                  )}
-                                  <div className="mt-2 flex flex-wrap items-center gap-2">
-                                    {session.location && (
-                                      <Badge variant="outline" className="text-xs gap-1">
-                                        <MapPin className="h-3 w-3" aria-hidden="true" />
-                                        {session.location}
-                                      </Badge>
-                                    )}
-                                    {session.tags.map((tag) => (
-                                      <Badge key={tag} variant="secondary" className="text-xs">
-                                        {tag}
-                                      </Badge>
-                                    ))}
-                                  </div>
-                                  {session.description && (
-                                    <p className="mt-2 text-sm text-muted-foreground line-clamp-2">
-                                      {session.description}
-                                    </p>
-                                  )}
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
+                      <div className="sr-only">
+                        <Calendar className="h-5 w-5 text-teranga-gold" aria-hidden="true" />
+                        <h2 className="text-xl font-semibold">Programme</h2>
                       </div>
-                    ))}
-                  </div>
-                </div>
+                      <div className="space-y-6">
+                        {Array.from(sessionsByDate.entries()).map(([dateLabel, daySessions]) => (
+                          <div key={dateLabel}>
+                            {sessionsByDate.size > 1 && (
+                              <h3 className="text-sm font-semibold text-teranga-gold uppercase tracking-wide mb-3">
+                                {dateLabel}
+                              </h3>
+                            )}
+                            <div className="space-y-3">
+                              {daySessions.map((session) => {
+                                const sessionSpeakers = session.speakerIds
+                                  .map((id) => speakerMap.get(id))
+                                  .filter(Boolean) as SpeakerProfile[];
+                                return (
+                                  <div
+                                    key={session.id}
+                                    className="flex gap-4 rounded-lg border border-border bg-muted/30 p-4"
+                                  >
+                                    <div className="flex-shrink-0 text-right w-24">
+                                      <p className="text-sm font-semibold text-foreground">
+                                        {formatSessionTime(session.startTime)}
+                                      </p>
+                                      <p className="text-xs text-muted-foreground">
+                                        {formatSessionTime(session.endTime)}
+                                      </p>
+                                    </div>
+                                    <div className="h-auto w-px bg-teranga-gold/30 flex-shrink-0" />
+                                    <div className="min-w-0 flex-1">
+                                      <p className="font-medium text-foreground">{session.title}</p>
+                                      {sessionSpeakers.length > 0 && (
+                                        <p className="mt-1 text-sm text-muted-foreground">
+                                          {sessionSpeakers.map((s) => s.name).join(", ")}
+                                        </p>
+                                      )}
+                                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                                        {session.location && (
+                                          <Badge variant="outline" className="text-xs gap-1">
+                                            <MapPin className="h-3 w-3" aria-hidden="true" />
+                                            {session.location}
+                                          </Badge>
+                                        )}
+                                        {session.tags.map((tag) => (
+                                          <Badge key={tag} variant="secondary" className="text-xs">
+                                            {tag}
+                                          </Badge>
+                                        ))}
+                                      </div>
+                                      {session.description && (
+                                        <p className="mt-2 text-sm text-muted-foreground line-clamp-2">
+                                          {session.description}
+                                        </p>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                   ) : null
                 }
               />

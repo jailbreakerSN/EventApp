@@ -2,10 +2,7 @@ import { Header } from "@/components/layouts/header";
 import { Footer } from "@/components/layouts/footer";
 import { AuthGuard } from "@/components/auth-guard";
 import { EmailVerificationBanner } from "@/components/email-verification-banner";
-import { getTranslations } from "next-intl/server";
-
 export default async function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
-  const _t = await getTranslations("common"); void _t;
   return (
     <div className="flex min-h-screen flex-col">
       {/* Skip to content link — WCAG 2.4.1 */}

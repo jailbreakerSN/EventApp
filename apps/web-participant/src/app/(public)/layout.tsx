@@ -1,9 +1,6 @@
 import { Header } from "@/components/layouts/header";
 import { Footer } from "@/components/layouts/footer";
-import { getTranslations } from "next-intl/server";
-
 export default async function PublicLayout({ children }: { children: React.ReactNode }) {
-  const _t = await getTranslations("common"); void _t;
   return (
     <div className="flex min-h-screen flex-col">
       {/* Skip to content link — WCAG 2.4.1 */}
@@ -14,7 +11,9 @@ export default async function PublicLayout({ children }: { children: React.React
         Aller au contenu principal
       </a>
       <Header />
-      <main id="main-content" className="flex-1" tabIndex={-1}>{children}</main>
+      <main id="main-content" className="flex-1" tabIndex={-1}>
+        {children}
+      </main>
       <Footer />
     </div>
   );
