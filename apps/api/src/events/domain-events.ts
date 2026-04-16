@@ -121,6 +121,23 @@ export interface WaitlistPromotedEvent extends BaseEventPayload {
   organizationId: string;
 }
 
+/**
+ * Emitted when a waitlist-promotion attempt fails AFTER a successful
+ * cancel. The cancel itself committed, but the event now has a
+ * reserved-but-unfilled slot and a waitlisted user who should have
+ * been promoted. Operators need visibility so they can investigate
+ * (firestore transient? stuck registration? bug?) and either retry
+ * manually or compensate.
+ */
+export interface WaitlistPromotionFailedEvent extends BaseEventPayload {
+  eventId: string;
+  organizationId: string;
+  /** The registration whose cancel triggered the promotion attempt. */
+  cancelledRegistrationId: string;
+  /** Short reason string from the caught error. Not user-facing. */
+  reason: string;
+}
+
 // ── Organization ─────────────────────────────────────────────────────────────
 
 export interface OrganizationCreatedEvent extends BaseEventPayload {
@@ -516,6 +533,7 @@ export interface DomainEventMap {
   "event.archived": EventArchivedEvent;
   "event.cloned": EventClonedEvent;
   "waitlist.promoted": WaitlistPromotedEvent;
+  "waitlist.promotion_failed": WaitlistPromotionFailedEvent;
   "ticket_type.added": TicketTypeAddedEvent;
   "ticket_type.updated": TicketTypeUpdatedEvent;
   "ticket_type.removed": TicketTypeRemovedEvent;

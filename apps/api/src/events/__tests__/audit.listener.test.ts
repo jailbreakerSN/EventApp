@@ -296,4 +296,39 @@ describe("Audit Listener", () => {
 
     expect(auditService.log).toHaveBeenCalledTimes(18);
   });
+
+  it("logs waitlist.promotion_failed with cancelledRegistrationId + reason", async () => {
+    // Regression guard for the Sprint 1 silent-error fix: when the
+    // cancel-triggered waitlist promotion fails after the cancel has
+    // already committed, the service emits this event so the audit
+    // trail records the stuck-slot state (event has a registered count
+    // 1 lower than expected, waitlisted user wasn't promoted). Without
+    // this listener the operator gets no visibility at all.
+    eventBus.emit("waitlist.promotion_failed", {
+      eventId: "ev-99",
+      organizationId: "org-1",
+      cancelledRegistrationId: "reg-cancelled-42",
+      reason: "Firestore unavailable: transaction retry exceeded",
+      actorId: "user-who-cancelled",
+      requestId: "req-failed",
+      timestamp: "2026-04-16T13:00:00.000Z",
+    });
+
+    await flush();
+
+    expect(auditService.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "waitlist.promotion_failed",
+        resourceType: "event",
+        resourceId: "ev-99",
+        eventId: "ev-99",
+        organizationId: "org-1",
+        actorId: "user-who-cancelled",
+        details: expect.objectContaining({
+          cancelledRegistrationId: "reg-cancelled-42",
+          reason: expect.stringContaining("Firestore unavailable"),
+        }),
+      }),
+    );
+  });
 });

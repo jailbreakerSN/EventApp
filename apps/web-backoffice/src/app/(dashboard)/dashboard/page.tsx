@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEvents } from "@/hooks/use-events";
+import { useOrgAnalytics } from "@/hooks/use-organization";
 import { formatDate } from "@/lib/utils";
 import { Calendar, Users, Ticket, TrendingUp, ArrowRight, Banknote } from "lucide-react";
 import {
@@ -16,16 +17,31 @@ const STATUS_LABELS: Record<string, string> = {
   draft: "Brouillon",
   published: "Publié",
   cancelled: "Annulé",
+  archived: "Archivé",
 };
 
 export default function DashboardPage() {
+  // Recent-events list for the bottom of the page — kept at 5 for a
+  // focused "last activity" panel.
   const { data, isLoading } = useEvents({ limit: 5, orderBy: "createdAt", orderDir: "desc" });
-
   const events = data?.data ?? [];
-  const total = data?.meta?.total ?? 0;
+
+  // Stat cards read from the org-analytics endpoint (timeframe=all)
+  // so the numbers aggregate across EVERY event, not just the 5 most
+  // recent. Previously the dashboard reduced over the 5-event page and
+  // silently underreported totals for any org with more than five
+  // events — the fix surfaces real org-wide figures.
+  const { data: analyticsData, isLoading: analyticsLoading } = useOrgAnalytics({
+    timeframe: "all",
+  });
+  const summary = analyticsData?.data?.summary;
+  const total = summary?.totalEvents ?? 0;
+  const totalRegistered = summary?.totalRegistrations ?? 0;
+  const totalCheckedIn = summary?.totalCheckedIn ?? 0;
+  // Published count is cheap to derive from the recent events page; an
+  // exact org-wide `publishedCount` would require extending the
+  // analytics summary, which we defer until someone actually asks.
   const publishedCount = events.filter((e) => e.status === "published").length;
-  const totalRegistered = events.reduce((sum, e) => sum + (e.registeredCount ?? 0), 0);
-  const totalCheckedIn = events.reduce((sum, e) => sum + (e.checkedInCount ?? 0), 0);
 
   const formatXOF = (amount: number) =>
     new Intl.NumberFormat("fr-SN", {
@@ -43,34 +59,33 @@ export default function DashboardPage() {
         <StatCard
           icon={<Calendar className="h-5 w-5 text-blue-600" />}
           label="Total événements"
-          value={isLoading ? undefined : String(total)}
+          value={analyticsLoading ? undefined : String(total)}
           bgColor="bg-blue-50 dark:bg-blue-900/20"
-          isLoading={isLoading}
+          isLoading={analyticsLoading}
         />
         <StatCard
           icon={<TrendingUp className="h-5 w-5 text-green-600" />}
-          label="Publiés"
+          label="Publiés (récents)"
           value={isLoading ? undefined : String(publishedCount)}
           bgColor="bg-green-50 dark:bg-green-900/20"
           isLoading={isLoading}
+          subtitle="Sur les 5 derniers"
         />
         <StatCard
           icon={<Users className="h-5 w-5 text-purple-600" />}
-          label="Inscrits récents"
-          value={isLoading ? undefined : String(totalRegistered)}
+          label="Total inscrits"
+          value={analyticsLoading ? undefined : String(totalRegistered)}
           bgColor="bg-purple-50 dark:bg-purple-900/20"
-          isLoading={isLoading}
-          trend="up"
-          trendLabel="vs dernier mois"
+          isLoading={analyticsLoading}
+          subtitle="Tous événements confondus"
         />
         <StatCard
           icon={<Ticket className="h-5 w-5 text-orange-600" />}
           label="Check-ins"
-          value={isLoading ? undefined : String(totalCheckedIn)}
+          value={analyticsLoading ? undefined : String(totalCheckedIn)}
           bgColor="bg-orange-50 dark:bg-orange-900/20"
-          isLoading={isLoading}
-          trend="up"
-          trendLabel="vs dernier mois"
+          isLoading={analyticsLoading}
+          subtitle="Tous événements confondus"
         />
         <StatCard
           icon={<Banknote className="h-5 w-5 text-amber-600" />}
