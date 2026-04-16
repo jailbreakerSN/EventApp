@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEvents } from "@/hooks/use-events";
 import { useOrgAnalytics } from "@/hooks/use-organization";
 import { formatDate } from "@/lib/utils";
+import { getEventStatusLabel } from "@/lib/event-status";
 import { Calendar, Users, Ticket, TrendingUp, ArrowRight, Banknote } from "lucide-react";
 import {
   Skeleton,
@@ -12,13 +13,6 @@ import {
   DataTable,
   type DataTableColumn,
 } from "@teranga/shared-ui";
-
-const STATUS_LABELS: Record<string, string> = {
-  draft: "Brouillon",
-  published: "Publié",
-  cancelled: "Annulé",
-  archived: "Archivé",
-};
 
 export default function DashboardPage() {
   // Recent-events list for the bottom of the page — kept at 5 for a
@@ -145,7 +139,7 @@ export default function DashboardPage() {
                 header: "Statut",
                 render: (event) => (
                   <Badge variant={getStatusVariant(event.status)}>
-                    {STATUS_LABELS[event.status] ?? STATUS_LABELS.draft}
+                    {getEventStatusLabel(event.status)}
                   </Badge>
                 ),
               },

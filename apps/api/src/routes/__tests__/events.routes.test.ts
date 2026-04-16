@@ -165,7 +165,41 @@ describe("GET /v1/events/org/:orgId", () => {
       "org-1",
       expect.objectContaining({ uid: "user-1" }),
       expect.objectContaining({ page: 1, limit: 20 }),
+      expect.objectContaining({ category: undefined, status: undefined }),
     );
+  });
+
+  it("passes category filter through to the service", async () => {
+    const headers = authHeaders();
+    mockEventService.listByOrganization.mockResolvedValue({
+      data: [],
+      meta: { page: 1, limit: 20, total: 0, totalPages: 0 },
+    });
+
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/events/org/org-1?category=workshop&status=published",
+      headers,
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(mockEventService.listByOrganization).toHaveBeenCalledWith(
+      "org-1",
+      expect.objectContaining({ uid: "user-1" }),
+      expect.any(Object),
+      expect.objectContaining({ category: "workshop", status: "published" }),
+    );
+  });
+
+  it("rejects unknown category with a 4xx validation error", async () => {
+    const headers = authHeaders();
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/events/org/org-1?category=not-a-category",
+      headers,
+    });
+    expect(res.statusCode).toBeGreaterThanOrEqual(400);
+    expect(res.statusCode).toBeLessThan(500);
   });
 
   it("returns 403 for participant without event:read permission", async () => {

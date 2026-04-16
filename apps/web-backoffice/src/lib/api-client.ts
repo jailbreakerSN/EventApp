@@ -205,7 +205,17 @@ export const eventsApi = {
   search: (query: Partial<EventSearchQuery> = {}) =>
     api.get<PaginatedResponse<Event>>(`/v1/events${buildQuery(query)}`),
 
-  listByOrg: (orgId: string, params: { page?: number; limit?: number; orderBy?: string; orderDir?: string } = {}) =>
+  listByOrg: (
+    orgId: string,
+    params: {
+      page?: number;
+      limit?: number;
+      orderBy?: string;
+      orderDir?: string;
+      category?: string;
+      status?: string;
+    } = {},
+  ) =>
     api.get<PaginatedResponse<Event>>(`/v1/events/org/${orgId}${buildQuery(params)}`),
 
   getById: (id: string) =>

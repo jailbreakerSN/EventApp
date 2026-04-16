@@ -42,6 +42,7 @@ import {
   usePromoteRegistration,
 } from "@/hooks/use-registrations";
 import { formatDate, formatCurrency } from "@/lib/utils";
+import { getEventStatusLabel } from "@/lib/event-status";
 import {
   Globe,
   GlobeLock,
@@ -111,14 +112,6 @@ const TABS = [
   "Promos",
 ] as const;
 type Tab = (typeof TABS)[number];
-
-const STATUS_LABELS: Record<string, string> = {
-  draft: "Brouillon",
-  published: "Publié",
-  cancelled: "Annulé",
-  archived: "Archivé",
-  completed: "Terminé",
-};
 
 const REG_STATUS: Record<string, string> = {
   confirmed: "Confirmé",
@@ -275,7 +268,7 @@ export default function EventDetailPage() {
 }
 
 function StatusBadge({ status }: { status: string }) {
-  return <Badge variant={getStatusVariant(status)}>{STATUS_LABELS[status] ?? status}</Badge>;
+  return <Badge variant={getStatusVariant(status)}>{getEventStatusLabel(status)}</Badge>;
 }
 
 function EventActions({ event }: { event: Event }) {
@@ -2142,8 +2135,10 @@ function PaymentsTab({ eventId }: { eventId: string }) {
 
       {/* Payments Table */}
       {paymentsLoading && (
-        <div className="flex justify-center py-12">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        <div className="space-y-2" role="status" aria-label="Chargement des paiements">
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-10 w-full" />
         </div>
       )}
 
@@ -2362,8 +2357,14 @@ function SpeakersTab({ eventId }: { eventId: string }) {
       )}
 
       {isLoading ? (
-        <div className="flex justify-center py-8">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        <div
+          className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3"
+          role="status"
+          aria-label="Chargement des intervenants"
+        >
+          {[0, 1, 2].map((i) => (
+            <Skeleton key={i} className="h-32 w-full rounded-lg" />
+          ))}
         </div>
       ) : speakers.length === 0 ? (
         <EmptyState
@@ -2541,8 +2542,14 @@ function SponsorsTab({ eventId }: { eventId: string }) {
       )}
 
       {isLoading ? (
-        <div className="flex justify-center py-8">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        <div
+          className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3"
+          role="status"
+          aria-label="Chargement des sponsors"
+        >
+          {[0, 1, 2].map((i) => (
+            <Skeleton key={i} className="h-32 w-full rounded-lg" />
+          ))}
         </div>
       ) : sponsors.length === 0 ? (
         <EmptyState

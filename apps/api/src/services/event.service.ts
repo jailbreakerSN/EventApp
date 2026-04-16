@@ -9,6 +9,7 @@ import {
   type CloneEventDto,
   type Event,
   type EventStatus,
+  type EventCategory,
   type EventSearchQuery,
   type Organization,
 } from "@teranga/shared-types";
@@ -146,6 +147,7 @@ export class EventService extends BaseService {
     organizationId: string,
     user: AuthUser,
     pagination: PaginationParams,
+    filters: { category?: EventCategory; status?: EventStatus } = {},
   ): Promise<PaginatedResult<Event>> {
     this.requirePermission(user, "event:read");
 
@@ -153,7 +155,7 @@ export class EventService extends BaseService {
       throw new ForbiddenError("Accès refusé aux événements de cette organisation");
     }
 
-    return eventRepository.findByOrganization(organizationId, pagination);
+    return eventRepository.findByOrganization(organizationId, pagination, filters);
   }
 
   async update(eventId: string, dto: UpdateEventDto, user: AuthUser): Promise<void> {

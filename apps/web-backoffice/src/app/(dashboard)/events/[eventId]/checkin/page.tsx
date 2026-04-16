@@ -21,6 +21,7 @@ import {
   TabsContent,
   EmptyState,
   DataTable,
+  Skeleton,
   type DataTableColumn,
 } from "@teranga/shared-ui";
 import {
@@ -63,14 +64,24 @@ export default function CheckinDashboardPage() {
   const { data: statsData, isLoading: statsLoading } = useCheckinStats(eventId);
   const { data: recentData } = useCheckinHistory(eventId, { limit: 10, page: 1 });
 
-  const event = (eventData as { data?: Record<string, unknown> })?.data as Record<string, unknown> | undefined;
-  const stats = (statsData as { data?: Record<string, unknown> })?.data as Record<string, unknown> | undefined;
+  const event = (eventData as { data?: Record<string, unknown> })?.data as
+    | Record<string, unknown>
+    | undefined;
+  const stats = (statsData as { data?: Record<string, unknown> })?.data as
+    | Record<string, unknown>
+    | undefined;
   const recentEntries = (recentData as { data?: Array<Record<string, unknown>> })?.data ?? [];
 
   if (eventLoading || statsLoading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      <div className="space-y-4" role="status" aria-label="Chargement du tableau de bord">
+        <Skeleton className="h-8 w-64" />
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <Skeleton className="h-24 w-full rounded-xl" />
+          <Skeleton className="h-24 w-full rounded-xl" />
+          <Skeleton className="h-24 w-full rounded-xl" />
+        </div>
+        <Skeleton className="h-64 w-full rounded-xl" />
       </div>
     );
   }
@@ -88,11 +99,29 @@ export default function CheckinDashboardPage() {
   const totalPending = (stats?.totalPending as number) ?? 0;
   const percentage = totalRegistered > 0 ? Math.round((totalCheckedIn / totalRegistered) * 100) : 0;
   const lastCheckinAt = stats?.lastCheckinAt as string | null;
-  const byZone = (stats?.byZone as Array<{ zoneId: string; zoneName: string; checkedIn: number; capacity: number | null }>) ?? [];
-  const byTicketType = (stats?.byTicketType as Array<{ ticketTypeId: string; ticketTypeName: string; registered: number; checkedIn: number }>) ?? [];
+  const byZone =
+    (stats?.byZone as Array<{
+      zoneId: string;
+      zoneName: string;
+      checkedIn: number;
+      capacity: number | null;
+    }>) ?? [];
+  const byTicketType =
+    (stats?.byTicketType as Array<{
+      ticketTypeId: string;
+      ticketTypeName: string;
+      registered: number;
+      checkedIn: number;
+    }>) ?? [];
 
   // Extract access zones from event data
-  const accessZones = (event.accessZones as Array<{ id: string; name: string; color: string; capacity?: number | null }>) ?? [];
+  const accessZones =
+    (event.accessZones as Array<{
+      id: string;
+      name: string;
+      color: string;
+      capacity?: number | null;
+    }>) ?? [];
 
   return (
     <div>
@@ -220,7 +249,9 @@ function ScannerTab({
         accessZoneId: selectedZone || undefined,
       });
 
-      const data = (response as { data?: Record<string, unknown> })?.data as Record<string, unknown> | undefined;
+      const data = (response as { data?: Record<string, unknown> })?.data as
+        | Record<string, unknown>
+        | undefined;
 
       setScanResult({
         status: "success",
@@ -269,9 +300,7 @@ function ScannerTab({
   );
 
   // Find zone stats for selected zone
-  const selectedZoneStats = selectedZone
-    ? byZone.find((z) => z.zoneId === selectedZone)
-    : null;
+  const selectedZoneStats = selectedZone ? byZone.find((z) => z.zoneId === selectedZone) : null;
 
   const percentage = totalRegistered > 0 ? Math.round((totalCheckedIn / totalRegistered) * 100) : 0;
 
@@ -286,7 +315,9 @@ function ScannerTab({
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Entrees</p>
-              <p className="text-lg font-bold text-foreground">{totalCheckedIn} / {totalRegistered}</p>
+              <p className="text-lg font-bold text-foreground">
+                {totalCheckedIn} / {totalRegistered}
+              </p>
             </div>
           </CardContent>
         </Card>
@@ -331,7 +362,10 @@ function ScannerTab({
           {/* Zone selector */}
           {accessZones.length > 0 && (
             <div>
-              <label htmlFor="zone-select" className="block text-sm font-medium text-foreground mb-1.5">
+              <label
+                htmlFor="zone-select"
+                className="block text-sm font-medium text-foreground mb-1.5"
+              >
                 Zone d&apos;acces
               </label>
               <Select
@@ -348,7 +382,8 @@ function ScannerTab({
                     : "";
                   return (
                     <option key={zone.id} value={zone.id}>
-                      {zone.name}{capacityLabel}
+                      {zone.name}
+                      {capacityLabel}
                     </option>
                   );
                 })}
@@ -391,7 +426,8 @@ function ScannerTab({
               </Button>
             </div>
             <p className="text-xs text-muted-foreground mt-1.5">
-              Utilisez l&apos;appareil photo de votre telephone pour scanner le QR code, puis collez la valeur ici. Appuyez sur Entree pour valider.
+              Utilisez l&apos;appareil photo de votre telephone pour scanner le QR code, puis collez
+              la valeur ici. Appuyez sur Entree pour valider.
             </p>
           </div>
 
@@ -428,7 +464,9 @@ function ScannerTab({
                   <div className="flex items-center gap-2 min-w-0">
                     <CheckCircle2 className="h-4 w-4 text-green-500 shrink-0" />
                     <span className="font-medium text-foreground truncate">
-                      {(entry.participantName as string) ?? (entry.participantEmail as string) ?? "Inconnu"}
+                      {(entry.participantName as string) ??
+                        (entry.participantEmail as string) ??
+                        "Inconnu"}
                     </span>
                     {(entry.ticketTypeName as string | undefined) ? (
                       <Badge variant="secondary" className="shrink-0 text-xs">
@@ -474,12 +512,8 @@ function ScanResultCard({ result }: { result: ScanResult }) {
               </p>
             )}
             <div className="flex flex-wrap gap-2 mt-2">
-              {result.ticketType && (
-                <Badge variant="success">{result.ticketType}</Badge>
-              )}
-              {result.accessZone && (
-                <Badge variant="outline">{result.accessZone}</Badge>
-              )}
+              {result.ticketType && <Badge variant="success">{result.ticketType}</Badge>}
+              {result.accessZone && <Badge variant="outline">{result.accessZone}</Badge>}
               {result.checkedInAt && (
                 <span className="text-sm text-green-600 dark:text-green-400">
                   {formatTime(result.checkedInAt)}
@@ -520,9 +554,7 @@ function ScanResultCard({ result }: { result: ScanResult }) {
             <XCircle className="h-8 w-8 text-red-600 dark:text-red-400" />
           </div>
           <div className="flex-1 min-w-0">
-            <h3 className="text-xl font-bold text-red-800 dark:text-red-300">
-              Echec du check-in
-            </h3>
+            <h3 className="text-xl font-bold text-red-800 dark:text-red-300">Echec du check-in</h3>
             <p className="text-sm text-red-700 dark:text-red-400 mt-1">
               {result.errorMessage ?? "QR code invalide"}
             </p>
@@ -555,7 +587,12 @@ function DashboardTab({
   percentage: number;
   lastCheckinAt: string | null;
   byZone: Array<{ zoneId: string; zoneName: string; checkedIn: number; capacity: number | null }>;
-  byTicketType: Array<{ ticketTypeId: string; ticketTypeName: string; registered: number; checkedIn: number }>;
+  byTicketType: Array<{
+    ticketTypeId: string;
+    ticketTypeName: string;
+    registered: number;
+    checkedIn: number;
+  }>;
   recentEntries: Array<Record<string, unknown>>;
 }) {
   return (
@@ -617,13 +654,16 @@ function DashboardTab({
               </h2>
               <div className="space-y-4">
                 {byZone.map((zone) => {
-                  const zonePercent = zone.capacity ? Math.round((zone.checkedIn / zone.capacity) * 100) : null;
+                  const zonePercent = zone.capacity
+                    ? Math.round((zone.checkedIn / zone.capacity) * 100)
+                    : null;
                   return (
                     <div key={zone.zoneId}>
                       <div className="flex items-center justify-between mb-1">
                         <span className="text-sm font-medium text-foreground">{zone.zoneName}</span>
                         <span className="text-sm text-muted-foreground">
-                          {zone.checkedIn}{zone.capacity ? ` / ${zone.capacity}` : ""}
+                          {zone.checkedIn}
+                          {zone.capacity ? ` / ${zone.capacity}` : ""}
                         </span>
                       </div>
                       {zone.capacity && (
@@ -707,20 +747,29 @@ function DashboardTab({
           ) : (
             <div className="space-y-2">
               {recentEntries.map((entry, i) => (
-                <div key={i} className="flex items-center justify-between py-2 border-b last:border-0">
+                <div
+                  key={i}
+                  className="flex items-center justify-between py-2 border-b last:border-0"
+                >
                   <div>
                     <span className="font-medium text-foreground">
-                      {(entry.participantName as string) ?? (entry.participantEmail as string) ?? "Inconnu"}
+                      {(entry.participantName as string) ??
+                        (entry.participantEmail as string) ??
+                        "Inconnu"}
                     </span>
                     <span className="text-muted-foreground mx-2">-</span>
-                    <span className="text-sm text-muted-foreground">{entry.ticketTypeName as string}</span>
+                    <span className="text-sm text-muted-foreground">
+                      {entry.ticketTypeName as string}
+                    </span>
                     {entry.accessZoneName ? (
                       <span className="ml-2 text-xs bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 px-2 py-0.5 rounded-full">
                         {entry.accessZoneName as string}
                       </span>
                     ) : null}
                   </div>
-                  <span className="text-xs text-muted-foreground">{formatTime(entry.checkedInAt as string)}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {formatTime(entry.checkedInAt as string)}
+                  </span>
                 </div>
               ))}
             </div>
@@ -733,7 +782,17 @@ function DashboardTab({
 
 // ─── Shared Components ──────────────────────────────────────────────────────
 
-function StatCard({ icon, label, value, bgColor }: { icon: React.ReactNode; label: string; value: string; bgColor: string }) {
+function StatCard({
+  icon,
+  label,
+  value,
+  bgColor,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+  bgColor: string;
+}) {
   return (
     <Card>
       <CardContent className="p-4">
