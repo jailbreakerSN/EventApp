@@ -65,10 +65,26 @@ export class OrganizationService extends BaseService {
 
     // Then update Firebase Auth custom claims (JWT source of truth for
     // middleware authorization on the API side).
-    await auth.setCustomUserClaims(user.uid, {
-      roles: newRoles,
-      organizationId: org.id,
-    });
+    //
+    // Rolling back `create` on claims failure is structurally hard: the
+    // `organizations/{id}` doc is already committed and deleting it
+    // races with any downstream listener. Instead we LOG the drift to
+    // stderr for alerting AND re-throw the Auth error. The MEDIUM-3
+    // drift-detection pill in /admin/users will surface the user
+    // visually, and the operator can re-invoke the mutation (which is
+    // idempotent: both the doc-mirror set(merge) and setCustomUserClaims
+    // produce the same end-state on retry).
+    try {
+      await auth.setCustomUserClaims(user.uid, {
+        roles: newRoles,
+        organizationId: org.id,
+      });
+    } catch (err) {
+      process.stderr.write(
+        `organization.create: setCustomUserClaims FAILED for uid=${user.uid} orgId=${org.id} — Firestore doc mirrored, JWT drift until retry. Error: ${String(err)}\n`,
+      );
+      throw err;
+    }
 
     eventBus.emit("organization.created", {
       organization: org,
@@ -162,15 +178,46 @@ export class OrganizationService extends BaseService {
     });
 
     // Update Firebase Auth custom claims AFTER the Firestore writes
-    // committed — rule checks passing now rely on the mirror above, so
-    // claim drift (if this Auth call transiently fails) degrades
-    // gracefully rather than silently denying the user access.
+    // committed. If the Auth call fails transiently we compensate by
+    // reverting the membership AND clearing the mirror we just wrote
+    // so the two stores stay aligned. Without the rollback the user
+    // would show up as a member (Firestore + doc mirror) while the
+    // JWT refuses all org-scoped endpoints — same Class C drift PR #65
+    // fixed for admin.service. We do a single-tx rollback because both
+    // the org doc and the user mirror are involved.
     const existingUser = await auth.getUser(userId);
     const existingClaims = existingUser.customClaims ?? {};
-    await auth.setCustomUserClaims(userId, {
-      ...existingClaims,
-      organizationId: orgId,
-    });
+    try {
+      await auth.setCustomUserClaims(userId, {
+        ...existingClaims,
+        organizationId: orgId,
+      });
+    } catch (err) {
+      try {
+        await db.runTransaction(async (tx) => {
+          const docRef = db.collection(COLLECTIONS.ORGANIZATIONS).doc(orgId);
+          const snap = await tx.get(docRef);
+          if (snap.exists) {
+            const current = snap.data() as Organization;
+            const next = (current.memberIds ?? []).filter((m) => m !== userId);
+            tx.update(docRef, { memberIds: next });
+          }
+          tx.set(
+            db.collection(COLLECTIONS.USERS).doc(userId),
+            {
+              organizationId: (existingClaims.organizationId as string | null | undefined) ?? null,
+              updatedAt: new Date().toISOString(),
+            },
+            { merge: true },
+          );
+        });
+      } catch (rollbackErr) {
+        process.stderr.write(
+          `organization.addMember: rollback FAILED for orgId=${orgId} userId=${userId} after setCustomUserClaims error: ${String(rollbackErr)}\n`,
+        );
+      }
+      throw err;
+    }
   }
 
   async removeMember(orgId: string, userId: string, user: AuthUser): Promise<void> {
@@ -209,13 +256,37 @@ export class OrganizationService extends BaseService {
       timestamp: new Date().toISOString(),
     });
 
-    // Clear organizationId from user's custom claims
+    // Clear organizationId from user's custom claims. Same rollback
+    // policy as addMember: if the Auth call fails, re-add the user to
+    // memberIds + restore the doc mirror so Firestore and claims stay
+    // aligned. Without it the user would show as removed in Firestore
+    // while the JWT still carries the old organizationId — granted
+    // access they shouldn't have until the next token refresh.
     const existingUser = await auth.getUser(userId);
     const existingClaims = existingUser.customClaims ?? {};
-    await auth.setCustomUserClaims(userId, {
-      ...existingClaims,
-      organizationId: null,
-    });
+    try {
+      await auth.setCustomUserClaims(userId, {
+        ...existingClaims,
+        organizationId: null,
+      });
+    } catch (err) {
+      try {
+        // Restore membership + mirror
+        await organizationRepository.addMember(orgId, userId);
+        await db.collection(COLLECTIONS.USERS).doc(userId).set(
+          {
+            organizationId: orgId,
+            updatedAt: new Date().toISOString(),
+          },
+          { merge: true },
+        );
+      } catch (rollbackErr) {
+        process.stderr.write(
+          `organization.removeMember: rollback FAILED for orgId=${orgId} userId=${userId} after setCustomUserClaims error: ${String(rollbackErr)}\n`,
+        );
+      }
+      throw err;
+    }
   }
 
   async updateMemberRole(
@@ -244,6 +315,14 @@ export class OrganizationService extends BaseService {
       throw new ValidationError("Le rôle propriétaire ne peut pas être attribué de cette manière");
     }
 
+    // Capture the previous orgRole BEFORE any write — both from the
+    // Firestore doc (current visible state) and from the Auth claims
+    // (current enforced state). On Auth failure we use the doc's
+    // previous value for compensation; if the doc was never mirrored
+    // before (field absent), we fall back to null.
+    const userDoc = await db.collection(COLLECTIONS.USERS).doc(userId).get();
+    const previousOrgRole = (userDoc.data()?.orgRole as string | null | undefined) ?? null;
+
     // Mirror orgRole onto the user's Firestore doc BEFORE updating Auth
     // claims. Same Class B drift fix as create/addMember/removeMember:
     // anything that reads the user doc (Firestore rules, admin UI list,
@@ -261,12 +340,32 @@ export class OrganizationService extends BaseService {
     );
 
     // Update role in custom claims AFTER the doc mirror committed.
+    // Same rollback-on-Auth-failure pattern as addMember / removeMember:
+    // restore the previous orgRole on the user doc if the claim call
+    // fails, so the two stores stay aligned rather than drifting.
     const existingUser = await auth.getUser(userId);
     const existingClaims = existingUser.customClaims ?? {};
-    await auth.setCustomUserClaims(userId, {
-      ...existingClaims,
-      orgRole: role,
-    });
+    try {
+      await auth.setCustomUserClaims(userId, {
+        ...existingClaims,
+        orgRole: role,
+      });
+    } catch (err) {
+      try {
+        await db.collection(COLLECTIONS.USERS).doc(userId).set(
+          {
+            orgRole: previousOrgRole,
+            updatedAt: new Date().toISOString(),
+          },
+          { merge: true },
+        );
+      } catch (rollbackErr) {
+        process.stderr.write(
+          `organization.updateMemberRole: rollback FAILED for orgId=${orgId} userId=${userId} after setCustomUserClaims error: ${String(rollbackErr)}\n`,
+        );
+      }
+      throw err;
+    }
 
     eventBus.emit("member.role_updated", {
       organizationId: orgId,

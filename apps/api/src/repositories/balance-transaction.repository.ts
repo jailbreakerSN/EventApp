@@ -108,6 +108,24 @@ class BalanceTransactionRepository extends BaseRepository<BalanceTransaction> {
     if (snap.size > MAX_BALANCE_ENTRIES) {
       throw new BalanceLedgerTooLargeError(organizationId, MAX_BALANCE_ENTRIES);
     }
+
+    // Pre-503 alerting: log structured warnings at 80% and 95% of the
+    // cap so operators can schedule the `balanceSummaries` materialised
+    // doc BEFORE an organization starts seeing 503s on /finance. Both
+    // thresholds use stderr (allowed per CLAUDE.md) so Cloud Logging
+    // picks them up and a metric-based alert can page the on-call when
+    // any org crosses 95%. Keeps the fold path silent for orgs well
+    // below the cap (the vast majority).
+    if (snap.size >= Math.floor(MAX_BALANCE_ENTRIES * 0.95)) {
+      process.stderr.write(
+        `balance-ledger: org=${organizationId} is at ${snap.size}/${MAX_BALANCE_ENTRIES} entries (>=95% cap). Materialised balanceSummaries doc required before next 5000 entries.\n`,
+      );
+    } else if (snap.size >= Math.floor(MAX_BALANCE_ENTRIES * 0.8)) {
+      process.stderr.write(
+        `balance-ledger: org=${organizationId} is at ${snap.size}/${MAX_BALANCE_ENTRIES} entries (>=80% cap). Plan materialised balanceSummaries work.\n`,
+      );
+    }
+
     return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as BalanceTransaction);
   }
 

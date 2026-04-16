@@ -170,11 +170,28 @@ export class InviteService extends BaseService {
     // Set custom claims for the new member AFTER the Firestore
     // mirror committed. Rule checks only need the doc; claims are
     // for the API middleware's JWT decoding.
+    //
+    // Unlike addMember / removeMember / updateMemberRole, we do NOT
+    // roll the transaction back on Auth failure: the tx already spans
+    // three docs (org memberIds, invite status, user mirror) and
+    // reversing all three outside of the original tx races with any
+    // concurrent listener. Instead we LOG the drift + re-throw so the
+    // MEDIUM-3 drift detection pill flags the user in /admin/users.
+    // The mutation is idempotent on retry — the user calls accept
+    // again and the outer `members.includes(user.uid)` short-circuit
+    // kicks in, then claims catch up.
     const existingClaims = (await auth.getUser(user.uid)).customClaims ?? {};
-    await auth.setCustomUserClaims(user.uid, {
-      ...existingClaims,
-      organizationId: invite.organizationId,
-    });
+    try {
+      await auth.setCustomUserClaims(user.uid, {
+        ...existingClaims,
+        organizationId: invite.organizationId,
+      });
+    } catch (err) {
+      process.stderr.write(
+        `invite.acceptInvite: setCustomUserClaims FAILED for uid=${user.uid} orgId=${invite.organizationId} — Firestore committed, JWT drift until retry. Error: ${String(err)}\n`,
+      );
+      throw err;
+    }
 
     eventBus.emit("invite.accepted", {
       inviteId: invite.id,
