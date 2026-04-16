@@ -38,7 +38,21 @@ export const notificationRoutes: FastifyPluginAsync = async (fastify) => {
         limit,
         unreadOnly,
       });
-      return reply.send({ success: true, data: result.data, meta: { total: result.total } });
+      // Full PaginatedResponse shape — matches every other paginated
+      // route in the API and unblocks the "page X of Y" UI that the
+      // notifications dropdown needs when we wire up pagination. Was
+      // previously returning only `{ total }`, forcing consumers to
+      // cast the meta to a narrower type.
+      return reply.send({
+        success: true,
+        data: result.data,
+        meta: {
+          page,
+          limit,
+          total: result.total,
+          totalPages: limit > 0 ? Math.ceil(result.total / limit) : 1,
+        },
+      });
     },
   );
 
@@ -54,7 +68,8 @@ export const notificationRoutes: FastifyPluginAsync = async (fastify) => {
       },
     },
     async (request, reply) => {
-      const snap = await db.collection(COLLECTIONS.NOTIFICATIONS)
+      const snap = await db
+        .collection(COLLECTIONS.NOTIFICATIONS)
         .where("userId", "==", request.user!.uid)
         .where("isRead", "==", false)
         .count()
@@ -115,7 +130,10 @@ export const notificationRoutes: FastifyPluginAsync = async (fastify) => {
       },
     },
     async (request, reply) => {
-      const doc = await db.collection(COLLECTIONS.NOTIFICATION_PREFERENCES).doc(request.user!.uid).get();
+      const doc = await db
+        .collection(COLLECTIONS.NOTIFICATION_PREFERENCES)
+        .doc(request.user!.uid)
+        .get();
       if (!doc.exists) {
         // Return defaults
         return reply.send({

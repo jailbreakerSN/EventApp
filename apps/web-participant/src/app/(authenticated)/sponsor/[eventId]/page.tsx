@@ -108,8 +108,29 @@ export default function SponsorPortalPage() {
   async function handleExportCSV() {
     if (!sponsor) return;
     try {
+      // API returns JSON array of lead objects. Convert to CSV client-
+      // side — previously this code assumed the API returned CSV text
+      // directly and produced a `[object Object]` download because
+      // `result.data` was an object array, not a string.
       const result = await sponsorsApi.exportLeads(sponsor.id);
-      const csvContent = result.data;
+      const leads = result.data;
+      const header = ["id", "name", "email", "phone", "notes", "tags", "scannedAt"];
+      const escapeCsv = (v: unknown): string => {
+        const s = v == null ? "" : String(v);
+        return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+      };
+      const rows = leads.map((l) =>
+        [
+          escapeCsv(l.id),
+          escapeCsv(l.name),
+          escapeCsv(l.email),
+          escapeCsv(l.phone),
+          escapeCsv(l.notes),
+          escapeCsv((l.tags ?? []).join("|")),
+          escapeCsv(l.scannedAt),
+        ].join(","),
+      );
+      const csvContent = [header.join(","), ...rows].join("\n");
       const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
       const link = document.createElement("a");
       link.href = URL.createObjectURL(blob);
