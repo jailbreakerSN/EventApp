@@ -66,6 +66,7 @@ import type {
   CreateBadgeTemplateDto,
   UpdateBadgeTemplateDto,
   GeneratedBadge,
+  UploadUrlResponse,
   Subscription,
   PlanUsage,
   Plan,
@@ -678,8 +679,11 @@ export const badgesApi = {
 // ─── Uploads ──────────────────────────────────────────────────────────────
 
 export const uploadsApi = {
-  getEventSignedUrl: (eventId: string, body: { fileName: string; contentType: string; purpose: string }) =>
-    api.post<ApiResponse<{ uploadUrl: string; publicUrl: string }>>(`/v1/events/${eventId}/upload-url`, body),
+  getEventSignedUrl: (
+    eventId: string,
+    body: { fileName: string; contentType: string; purpose: string },
+  ) =>
+    api.post<ApiResponse<UploadUrlResponse>>(`/v1/events/${eventId}/upload-url`, body),
 };
 
 export { ApiError };

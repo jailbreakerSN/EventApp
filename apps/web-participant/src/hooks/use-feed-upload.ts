@@ -98,12 +98,22 @@ export function useFeedUpload(eventId: string) {
             contentType: img.file.type,
           });
 
-          const { uploadUrl, publicUrl } = data;
+          const { uploadUrl, publicUrl, maxBytes, requiredHeaders } = data;
 
-          // Upload file to signed URL
+          if (maxBytes && img.file.size > maxBytes) {
+            const maxMB = Math.round(maxBytes / 1024 / 1024);
+            throw new Error(`Image trop volumineuse (max ${maxMB} Mo)`);
+          }
+
+          // Upload file to signed URL. Merge server-signed headers
+          // (x-goog-content-length-range) with Content-Type or GCS
+          // rejects with 403 SignatureDoesNotMatch.
           const uploadResponse = await fetch(uploadUrl, {
             method: "PUT",
-            headers: { "Content-Type": img.file.type },
+            headers: {
+              "Content-Type": img.file.type,
+              ...(requiredHeaders ?? {}),
+            },
             body: img.file,
           });
 

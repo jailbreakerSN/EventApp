@@ -27,7 +27,8 @@ const ALLOWED_SLIDE_TYPES = ["application/pdf", "image/jpeg", "image/png", "imag
 const MAX_SLIDE_SIZE = 20 * 1024 * 1024; // 20 Mo
 
 export default function SpeakerPortalPage() {
-  const _t = useTranslations("common"); void _t;
+  const _t = useTranslations("common");
+  void _t;
   const { eventId } = useParams<{ eventId: string }>();
   const [speaker, setSpeaker] = useState<SpeakerProfile | null>(null);
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -134,10 +135,20 @@ export default function SpeakerPortalPage() {
         });
         setUploadProgress(30);
 
-        // 2. Upload file directly to storage
+        if (data.maxBytes && file.size > data.maxBytes) {
+          const maxMB = Math.round(data.maxBytes / 1024 / 1024);
+          throw new Error(`Fichier trop volumineux (max ${maxMB} Mo)`);
+        }
+        // 2. Upload file directly to storage. Replay server-signed
+        // headers (x-goog-content-length-range) or GCS rejects with
+        // 403 SignatureDoesNotMatch. Server enforces size at the edge
+        // without relying on the client-side size check above.
         const uploadResponse = await fetch(data.uploadUrl, {
           method: "PUT",
-          headers: { "Content-Type": file.type },
+          headers: {
+            "Content-Type": file.type,
+            ...(data.requiredHeaders ?? {}),
+          },
           body: file,
         });
 
