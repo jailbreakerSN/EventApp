@@ -34,7 +34,13 @@ const mockTxSet = vi.fn();
 const mockTxGet = vi.fn();
 const mockDocUpdate = vi.fn().mockResolvedValue(undefined);
 const mockDocSet = vi.fn().mockResolvedValue(undefined);
-const mockDocRef = { id: "mock-doc", update: mockDocUpdate, set: mockDocSet };
+const mockDocGet = vi.fn().mockResolvedValue({ exists: true, data: () => ({}) });
+const mockDocRef = {
+  id: "mock-doc",
+  update: mockDocUpdate,
+  set: mockDocSet,
+  get: mockDocGet,
+};
 
 vi.mock("@/config/firebase", () => ({
   auth: {
@@ -363,5 +369,35 @@ describe("OrganizationService.updateMemberRole", () => {
     await expect(service.updateMemberRole("org-1", "owner-1", "admin", user)).rejects.toThrow(
       "rôle du propriétaire",
     );
+  });
+
+  it("rolls the Firestore orgRole mirror back when setCustomUserClaims fails (BUG-1)", async () => {
+    // Regression guard: the Class C rollback pattern from PR #65 must
+    // also apply here. Previous orgRole "member" must be restored on
+    // the doc when the Auth call fails, so the two stores stay aligned.
+    const org = buildOrganization({
+      id: "org-1",
+      ownerId: "owner-1",
+      memberIds: ["owner-1", "member-1"],
+    });
+    const user = buildOrganizerUser("org-1");
+    mockOrgRepo.findByIdOrThrow.mockResolvedValue(org);
+    // Previous state read inside updateMemberRole: orgRole = "member".
+    mockDocGet.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({ orgRole: "member" }),
+    });
+    const { auth } = await import("@/config/firebase");
+    vi.mocked(auth.setCustomUserClaims).mockRejectedValueOnce(new Error("Auth API down"));
+
+    await expect(service.updateMemberRole("org-1", "member-1", "admin", user)).rejects.toThrow(
+      "Auth API down",
+    );
+
+    // Forward write (admin) then rollback write (member) — in order.
+    const orgRoleWrites = mockDocSet.mock.calls
+      .map((c) => (c[0] as Record<string, unknown>).orgRole)
+      .filter((v) => v !== undefined);
+    expect(orgRoleWrites).toEqual(["admin", "member"]);
   });
 });

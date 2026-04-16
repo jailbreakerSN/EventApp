@@ -256,6 +256,55 @@ describe("AdminService.listUsers", () => {
 
     expect(result.data[0].claimsMatch).toBeNull();
   });
+
+  it("skips the drift signal for fresh users whose claims haven't propagated yet", async () => {
+    // Regression guard for BUG-2: onUserCreated trigger runs async after
+    // Auth user creation, so a brand-new account has no customClaims
+    // yet for ~seconds-to-minutes. Without the grace window, EVERY new
+    // user lights up an ⚠ JWT pill on first admin-page load, training
+    // operators to ignore the warning.
+    const admin = buildSuperAdmin();
+    const justCreated = { ...BASE_PROFILE, createdAt: new Date().toISOString() };
+    mockAdminRepo.listAllUsers.mockResolvedValue({
+      data: [justCreated],
+      meta: { page: 1, limit: 20, total: 1, totalPages: 1 },
+    });
+    vi.mocked(auth.getUser).mockResolvedValueOnce({
+      customClaims: undefined, // trigger hasn't set claims yet
+    } as never);
+
+    const result = await adminService.listUsers(admin, { page: 1, limit: 20 });
+
+    expect(result.data[0].claimsMatch).toEqual({
+      roles: true,
+      organizationId: true,
+      orgRole: true,
+    });
+  });
+
+  it("still flags drift for OLD users with empty claims (outside grace window)", async () => {
+    // Complement to the grace test: empty claims on a doc that's been
+    // around for 2 hours is a real drift (the trigger should have fired
+    // long ago). Must NOT get suppressed by the grace window.
+    const admin = buildSuperAdmin();
+    const old = {
+      ...BASE_PROFILE,
+      createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+      roles: ["organizer"],
+    };
+    mockAdminRepo.listAllUsers.mockResolvedValue({
+      data: [old],
+      meta: { page: 1, limit: 20, total: 1, totalPages: 1 },
+    });
+    vi.mocked(auth.getUser).mockResolvedValueOnce({
+      customClaims: {},
+    } as never);
+
+    const result = await adminService.listUsers(admin, { page: 1, limit: 20 });
+
+    // Roles drift — empty claim roles vs doc's ["organizer"].
+    expect(result.data[0].claimsMatch?.roles).toBe(false);
+  });
 });
 
 // ── listOrganizations ────────────────────────────────────────────────────

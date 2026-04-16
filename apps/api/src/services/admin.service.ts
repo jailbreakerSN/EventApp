@@ -29,6 +29,15 @@ import { computePlanAnalytics } from "./plan-analytics";
 // Platform-wide administration. Every method requires platform:manage permission.
 
 /**
+ * Grace window during which a fresh user (Firestore doc newly created)
+ * can have empty/undefined Auth custom claims without triggering a
+ * drift warning. Chosen so the onUserCreated trigger has enough time
+ * to run and write the initial claim set — 5 minutes is generous for
+ * both local emulators and Cloud Functions cold-starts in prod.
+ */
+const CLAIMS_PROPAGATION_GRACE_MS = 5 * 60 * 1000;
+
+/**
  * Set-equality for role arrays — the ordering differs between Firestore
  * (insertion order) and Auth custom claims (server-assigned), but the
  * semantic set is what matters for drift detection.
@@ -99,7 +108,29 @@ class AdminService extends BaseService {
 
     try {
       const record = await auth.getUser(profile.uid);
-      const claims = (record.customClaims ?? {}) as Record<string, unknown>;
+      const rawClaims = record.customClaims;
+      const claims = (rawClaims ?? {}) as Record<string, unknown>;
+
+      // Fresh-user grace window: if Auth has NO custom claims set yet
+      // (undefined or empty object) AND the Firestore doc was created
+      // less than CLAIMS_PROPAGATION_GRACE_MS ago, treat the two as in
+      // sync. Rationale: the onUserCreated Cloud Function trigger sets
+      // the initial claims asynchronously, so a brand-new account that
+      // hasn't had its first claim-write yet will otherwise light up
+      // a false-positive drift pill every single time. We don't want
+      // operators to develop habituation to a warning they should
+      // actually act on.
+      const claimsAreEmpty = rawClaims == null || Object.keys(claims).length === 0;
+      const createdAtMs = new Date(profile.createdAt).getTime();
+      const withinGraceWindow =
+        Number.isFinite(createdAtMs) && Date.now() - createdAtMs < CLAIMS_PROPAGATION_GRACE_MS;
+      if (claimsAreEmpty && withinGraceWindow) {
+        return {
+          ...base,
+          claimsMatch: { roles: true, organizationId: true, orgRole: true },
+        };
+      }
+
       const claimRoles = (claims.roles as string[] | undefined) ?? [];
       const claimOrgId = (claims.organizationId as string | null | undefined) ?? null;
       const claimOrgRole = (claims.orgRole as string | null | undefined) ?? null;
