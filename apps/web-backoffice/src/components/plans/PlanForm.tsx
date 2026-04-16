@@ -73,6 +73,22 @@ type PlanFormValues = CreatePlanDto & {
   description: { fr: string; en: string } | null;
 };
 
+// RHF number-input coercers. `valueAsNumber: true` emits NaN when the
+// input is momentarily empty (mid-edit backspace), which JSON-serialises
+// to `null` and trips the server's `z.number()` validation with a 400.
+// These helpers keep the form state as a finite number (or null, for
+// nullable fields) at all times.
+function numberOrZero(v: unknown): number {
+  if (v === "" || v === null || v === undefined) return 0;
+  const n = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+function numberOrNull(v: unknown): number | null {
+  if (v === "" || v === null || v === undefined) return null;
+  const n = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
 // ─── Component ────────────────────────────────────────────────────────────
 
 export function PlanForm({ mode, plan }: PlanFormProps) {
@@ -151,6 +167,25 @@ export function PlanForm({ mode, plan }: PlanFormProps) {
   useEffect(() => {
     if (mode !== "edit" || !plan || !isDirty) {
       setPreview(null);
+      return;
+    }
+    // Defensive guard: skip the preview call if any numeric field is
+    // non-finite (e.g. NaN from a half-edited input). The server's
+    // Zod schema rejects non-numbers with a 400 — previewing an
+    // intermediate form state would spam the endpoint with errors the
+    // user can't act on. The preview is advisory; waiting for a valid
+    // form state before firing is the right UX.
+    const isValidLimit = (v: number | undefined) =>
+      typeof v === "number" && Number.isFinite(v) && Number.isInteger(v);
+    const limitsValid =
+      watchedLimits &&
+      isValidLimit(watchedLimits.maxEvents) &&
+      isValidLimit(watchedLimits.maxParticipantsPerEvent) &&
+      isValidLimit(watchedLimits.maxMembers);
+    const priceValid = isValidLimit(watchedPrice);
+    const annualValid = watchedAnnual == null || isValidLimit(watchedAnnual);
+    const trialValid = watchedTrial == null || isValidLimit(watchedTrial);
+    if (!limitsValid || !priceValid || !annualValid || !trialValid) {
       return;
     }
     const timer = setTimeout(async () => {
@@ -438,7 +473,7 @@ export function PlanForm({ mode, plan }: PlanFormProps) {
                 min={0}
                 step={100}
                 disabled={watch("pricingModel") === "free" || watch("pricingModel") === "custom"}
-                {...register("priceXof", { valueAsNumber: true })}
+                {...register("priceXof", { setValueAs: numberOrZero })}
               />
             </FormField>
             <FormField
@@ -453,7 +488,7 @@ export function PlanForm({ mode, plan }: PlanFormProps) {
                 min={0}
                 step={100}
                 disabled={watch("pricingModel") !== "fixed"}
-                {...register("annualPriceXof", { valueAsNumber: true })}
+                {...register("annualPriceXof", { setValueAs: numberOrNull })}
               />
             </FormField>
             <FormField
@@ -465,7 +500,7 @@ export function PlanForm({ mode, plan }: PlanFormProps) {
               <Input
                 id="sortOrder"
                 type="number"
-                {...register("sortOrder", { valueAsNumber: true })}
+                {...register("sortOrder", { setValueAs: numberOrZero })}
               />
             </FormField>
             <FormField
@@ -480,7 +515,7 @@ export function PlanForm({ mode, plan }: PlanFormProps) {
                 min={0}
                 max={365}
                 step={1}
-                {...register("trialDays", { valueAsNumber: true })}
+                {...register("trialDays", { setValueAs: numberOrNull })}
               />
             </FormField>
           </div>
@@ -624,7 +659,12 @@ function LimitField({ name, label, hint, watch, setValue, register, error }: Lim
           id={htmlId}
           type="number"
           min={0}
-          {...register(fieldPath, { valueAsNumber: true })}
+          // `valueAsNumber: true` emits NaN when the input is cleared
+          // (e.g. user hits backspace mid-edit). NaN serialises to `null`
+          // in JSON and gets rejected by the server's
+          // `z.number().int()` limits schema with a 400. `numberOrZero`
+          // keeps the form state a finite integer at all times.
+          {...register(fieldPath, { setValueAs: numberOrZero })}
           disabled={isUnlimited}
           className="max-w-xs"
         />
