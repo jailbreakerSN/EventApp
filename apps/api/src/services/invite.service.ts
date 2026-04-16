@@ -151,10 +151,20 @@ export class InviteService extends BaseService {
       // invitee is granted access by their new custom claims but rules
       // still see them as unaffiliated — read-denials despite the
       // invite being accepted.
-      tx.update(db.collection(COLLECTIONS.USERS).doc(user.uid), {
-        organizationId: invite.organizationId,
-        updatedAt: new Date().toISOString(),
-      });
+      //
+      // Use tx.set(..., { merge: true }) not tx.update() — an invitee
+      // who just signed up may not have a Firestore user doc yet (the
+      // onUserCreated trigger can race with the accept-invite call),
+      // and .update() on a missing doc throws NOT_FOUND and rolls the
+      // whole tx back.
+      tx.set(
+        db.collection(COLLECTIONS.USERS).doc(user.uid),
+        {
+          organizationId: invite.organizationId,
+          updatedAt: new Date().toISOString(),
+        },
+        { merge: true },
+      );
     });
 
     // Set custom claims for the new member AFTER the Firestore

@@ -30,9 +30,11 @@ vi.mock("@/repositories/organization.repository", () => ({
 }));
 
 const mockTxUpdate = vi.fn();
+const mockTxSet = vi.fn();
 const mockTxGet = vi.fn();
 const mockDocUpdate = vi.fn().mockResolvedValue(undefined);
-const mockDocRef = { id: "mock-doc", update: mockDocUpdate };
+const mockDocSet = vi.fn().mockResolvedValue(undefined);
+const mockDocRef = { id: "mock-doc", update: mockDocUpdate, set: mockDocSet };
 
 vi.mock("@/config/firebase", () => ({
   auth: {
@@ -41,7 +43,7 @@ vi.mock("@/config/firebase", () => ({
   },
   db: {
     runTransaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => {
-      const tx = { get: mockTxGet, update: mockTxUpdate };
+      const tx = { get: mockTxGet, update: mockTxUpdate, set: mockTxSet };
       return fn(tx);
     }),
     collection: vi.fn(() => ({
@@ -112,14 +114,15 @@ describe("OrganizationService.create", () => {
     const admin = buildSuperAdmin();
     await service.create(dto, admin);
 
-    // Exactly one doc.update() call, targeting the user doc with both
-    // organizationId and the expanded roles set.
-    expect(mockDocUpdate).toHaveBeenCalledTimes(1);
-    expect(mockDocUpdate).toHaveBeenCalledWith(
+    // doc.set({...}, { merge: true }) — merge so the path survives the
+    // rare case of a missing user doc (Auth trigger race).
+    expect(mockDocSet).toHaveBeenCalledTimes(1);
+    expect(mockDocSet).toHaveBeenCalledWith(
       expect.objectContaining({
         organizationId: "org-mirror-1",
         roles: expect.arrayContaining(["super_admin", "organizer"]),
       }),
+      { merge: true },
     );
   });
 
@@ -229,12 +232,13 @@ describe("OrganizationService.addMember", () => {
 
     await service.addMember("org-1", "new-member-1", user);
 
-    // At least two tx.update() calls: the org doc (memberIds) + the user
-    // doc (organizationId). Both inside the same transaction.
-    const userDocCall = mockTxUpdate.mock.calls.find(
+    // Org doc update + user doc set (merge) — both inside the tx.
+    const userDocSet = mockTxSet.mock.calls.find(
       (call) => (call[1] as Record<string, unknown>).organizationId === "org-1",
     );
-    expect(userDocCall).toBeDefined();
+    expect(userDocSet).toBeDefined();
+    // merge:true flag — guards against NOT_FOUND on a missing user doc.
+    expect(userDocSet?.[2]).toEqual({ merge: true });
   });
 
   it("enforces plan member limit", async () => {
@@ -294,7 +298,9 @@ describe("OrganizationService.removeMember", () => {
 
     await service.removeMember("org-1", "member-1", user);
 
-    expect(mockDocUpdate).toHaveBeenCalledWith(expect.objectContaining({ organizationId: null }));
+    expect(mockDocSet).toHaveBeenCalledWith(expect.objectContaining({ organizationId: null }), {
+      merge: true,
+    });
   });
 
   it("prevents removing the organization owner", async () => {

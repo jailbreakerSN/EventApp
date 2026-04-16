@@ -63,6 +63,7 @@ vi.mock("@/context/request-context", () => ({
 }));
 
 const mockTxUpdate = vi.fn();
+const mockTxSet = vi.fn();
 const mockTxGet = vi.fn();
 
 vi.mock("@/config/firebase", () => ({
@@ -72,7 +73,7 @@ vi.mock("@/config/firebase", () => ({
   },
   db: {
     runTransaction: vi.fn((fn: (tx: unknown) => Promise<unknown>) =>
-      fn({ get: mockTxGet, update: mockTxUpdate }),
+      fn({ get: mockTxGet, update: mockTxUpdate, set: mockTxSet }),
     ),
     collection: vi.fn().mockReturnValue({
       doc: vi.fn().mockReturnValue({ id: "mock-doc" }),
@@ -246,10 +247,13 @@ describe("InviteService", () => {
 
       await service.acceptInvite(invite.token, acceptUser);
 
-      const userDocWrite = mockTxUpdate.mock.calls.find(
+      const userDocSet = mockTxSet.mock.calls.find(
         (call) => (call[1] as Record<string, unknown>).organizationId === orgId,
       );
-      expect(userDocWrite).toBeDefined();
+      expect(userDocSet).toBeDefined();
+      // merge:true — survives the case where the invitee's Firestore
+      // user doc hasn't been written yet by onUserCreated.
+      expect(userDocSet?.[2]).toEqual({ merge: true });
     });
 
     it("rejects if email does not match", async () => {
