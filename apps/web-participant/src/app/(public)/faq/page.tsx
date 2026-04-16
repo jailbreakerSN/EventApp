@@ -1,8 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowLeft, HelpCircle } from "lucide-react";
-import { getTranslations } from "next-intl/server";
-
 export const metadata: Metadata = {
   title: "Aide & FAQ | Teranga",
   description:
@@ -10,7 +8,6 @@ export const metadata: Metadata = {
 };
 
 export default async function FaqPage() {
-  const _t = await getTranslations("common"); void _t;
   return (
     <div className="mx-auto max-w-3xl px-4 py-12">
       <Link

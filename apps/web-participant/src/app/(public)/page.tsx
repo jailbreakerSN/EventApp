@@ -4,12 +4,9 @@ import { serverEventsApi } from "@/lib/server-api";
 import { EventCard } from "@/components/event-card";
 import { Card, CardContent } from "@teranga/shared-ui";
 import type { Event } from "@teranga/shared-types";
-import { getTranslations } from "next-intl/server";
-
 export const revalidate = 60;
 
 export default async function HomePage() {
-  const _t = await getTranslations("common"); void _t;
   let featuredEvents: Event[] = [];
   try {
     const result = await serverEventsApi.search({ isFeatured: true, limit: 6 });
@@ -20,7 +17,11 @@ export default async function HomePage() {
 
   let latestEvents: Event[] = [];
   try {
-    const result = await serverEventsApi.search({ limit: 6, orderBy: "createdAt", orderDir: "desc" });
+    const result = await serverEventsApi.search({
+      limit: 6,
+      orderBy: "createdAt",
+      orderDir: "desc",
+    });
     latestEvents = result.data;
   } catch {
     // fallback to empty
@@ -32,11 +33,11 @@ export default async function HomePage() {
       <section className="bg-gradient-to-br from-teranga-navy to-teranga-navy/90 px-4 py-20 text-white sm:px-6 lg:px-8">
         <div className="mx-auto max-w-4xl text-center">
           <h1 className="text-4xl font-bold tracking-tight sm:text-5xl lg:text-6xl">
-            Découvrez les événements au{" "}
-            <span className="text-teranga-gold">Sénégal</span>
+            Découvrez les événements au <span className="text-teranga-gold">Sénégal</span>
           </h1>
           <p className="mx-auto mt-4 max-w-2xl text-lg text-white/70">
-            Conférences, concerts, ateliers et plus encore. Inscrivez-vous en quelques clics et recevez votre badge QR.
+            Conférences, concerts, ateliers et plus encore. Inscrivez-vous en quelques clics et
+            recevez votre badge QR.
           </p>
           <div className="mt-8">
             <Link
@@ -77,7 +78,8 @@ export default async function HomePage() {
             </div>
             <h3 className="mt-4 text-lg font-semibold">Communauté</h3>
             <p className="mt-2 text-sm text-muted-foreground">
-              Rejoignez la communauté événementielle du Sénégal et de l&apos;Afrique de l&apos;Ouest.
+              Rejoignez la communauté événementielle du Sénégal et de l&apos;Afrique de
+              l&apos;Ouest.
             </p>
           </div>
         </div>
@@ -112,7 +114,10 @@ export default async function HomePage() {
         <section className="mx-auto max-w-7xl px-4 pb-16 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between">
             <h2 className="text-2xl font-bold">Événements à la une</h2>
-            <Link href="/events" className="text-sm font-medium text-teranga-gold-dark hover:underline">
+            <Link
+              href="/events"
+              className="text-sm font-medium text-teranga-gold-dark hover:underline"
+            >
               Voir tout
             </Link>
           </div>
@@ -129,7 +134,10 @@ export default async function HomePage() {
         <section className="mx-auto max-w-7xl px-4 pb-16 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between">
             <h2 className="text-2xl font-bold">Derniers événements</h2>
-            <Link href="/events" className="text-sm font-medium text-teranga-gold-dark hover:underline">
+            <Link
+              href="/events"
+              className="text-sm font-medium text-teranga-gold-dark hover:underline"
+            >
               Voir tout
             </Link>
           </div>
@@ -210,7 +218,9 @@ export default async function HomePage() {
       {/* Testimonials */}
       <section className="px-4 py-16 sm:px-6 lg:px-8">
         <div className="mx-auto max-w-7xl">
-          <h2 className="text-center text-2xl font-bold sm:text-3xl">Ce que disent nos utilisateurs</h2>
+          <h2 className="text-center text-2xl font-bold sm:text-3xl">
+            Ce que disent nos utilisateurs
+          </h2>
           <div className="mt-10 grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
             {[
               {
@@ -235,9 +245,7 @@ export default async function HomePage() {
               <Card key={name} className="border-none shadow-md">
                 <CardContent className="p-6">
                   <Quote className="h-8 w-8 text-teranga-gold/30" />
-                  <p className="mt-4 text-sm leading-relaxed text-muted-foreground">
-                    {quote}
-                  </p>
+                  <p className="mt-4 text-sm leading-relaxed text-muted-foreground">{quote}</p>
                   <div className="mt-6 flex items-center gap-3">
                     <div className="flex h-10 w-10 items-center justify-center rounded-full bg-teranga-gold/10 text-sm font-bold text-teranga-gold">
                       {name.charAt(0)}
