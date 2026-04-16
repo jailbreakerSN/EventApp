@@ -25,6 +25,7 @@ import type {
   UpdateNotificationPreferenceDto,
   SpeakerProfile,
   SponsorProfile,
+  UploadUrlResponse,
 } from "@teranga/shared-types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
@@ -231,10 +232,10 @@ export const feedApi = {
     api.delete<void>(`/v1/events/${eventId}/feed/${postId}/comments/${commentId}`),
 
   getUploadUrl: (eventId: string, body: { fileName: string; contentType: string }) =>
-    api.post<ApiResponse<{ uploadUrl: string; publicUrl: string }>>(
-      `/v1/events/${eventId}/feed/upload-url`,
-      { ...body, purpose: "feed" },
-    ),
+    api.post<ApiResponse<UploadUrlResponse>>(`/v1/events/${eventId}/feed/upload-url`, {
+      ...body,
+      purpose: "feed",
+    }),
 };
 
 export const messagingApi = {
@@ -311,8 +312,11 @@ export const notificationsApi = {
 };
 
 export const uploadsApi = {
-  getSpeakerSignedUrl: (speakerId: string, body: { fileName: string; contentType: string; purpose: string }) =>
-    api.post<ApiResponse<{ uploadUrl: string; publicUrl: string }>>(
+  getSpeakerSignedUrl: (
+    speakerId: string,
+    body: { fileName: string; contentType: string; purpose: string },
+  ) =>
+    api.post<ApiResponse<UploadUrlResponse>>(
       `/v1/events/speakers/${speakerId}/upload-url`,
       body,
     ),

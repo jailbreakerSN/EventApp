@@ -65,7 +65,8 @@ const emptyTicket: TicketDraft = {
 };
 
 export default function NewEventPage() {
-  const tCommon = useTranslations("common"); void tCommon;
+  const tCommon = useTranslations("common");
+  void tCommon;
   const router = useRouter();
   const { user } = useAuth();
   const createEvent = useCreateEvent();
@@ -106,9 +107,7 @@ export default function NewEventPage() {
   const [maxAttendees, setMaxAttendees] = useState("");
 
   function updateTicket(index: number, field: keyof TicketDraft, value: unknown) {
-    setTickets((prev) =>
-      prev.map((t, i) => (i === index ? { ...t, [field]: value } : t))
-    );
+    setTickets((prev) => prev.map((t, i) => (i === index ? { ...t, [field]: value } : t)));
   }
 
   function addTicket() {
@@ -158,27 +157,61 @@ export default function NewEventPage() {
   function validateStep(): boolean {
     setError("");
     if (step === 0) {
-      if (!title.trim()) { setError("Le titre est requis"); return false; }
-      if (title.trim().length < 3) { setError("Le titre doit faire au moins 3 caractères"); return false; }
-      if (!description.trim()) { setError("La description est requise"); return false; }
-      if (!startDate) { setError("La date de début est requise"); return false; }
-      if (!endDate) { setError("La date de fin est requise"); return false; }
-      if (new Date(endDate) <= new Date(startDate)) { setError("La date de fin doit être après la date de début"); return false; }
+      if (!title.trim()) {
+        setError("Le titre est requis");
+        return false;
+      }
+      if (title.trim().length < 3) {
+        setError("Le titre doit faire au moins 3 caractères");
+        return false;
+      }
+      if (!description.trim()) {
+        setError("La description est requise");
+        return false;
+      }
+      if (!startDate) {
+        setError("La date de début est requise");
+        return false;
+      }
+      if (!endDate) {
+        setError("La date de fin est requise");
+        return false;
+      }
+      if (new Date(endDate) <= new Date(startDate)) {
+        setError("La date de fin doit être après la date de début");
+        return false;
+      }
     }
     if (step === 1) {
       if (format !== "online") {
-        if (!locationName.trim()) { setError("Le nom du lieu est requis"); return false; }
-        if (!address.trim()) { setError("L'adresse est requise"); return false; }
-        if (!city.trim()) { setError("La ville est requise"); return false; }
+        if (!locationName.trim()) {
+          setError("Le nom du lieu est requis");
+          return false;
+        }
+        if (!address.trim()) {
+          setError("L'adresse est requise");
+          return false;
+        }
+        if (!city.trim()) {
+          setError("La ville est requise");
+          return false;
+        }
       }
       if ((format === "online" || format === "hybrid") && !streamUrl.trim()) {
-        setError("Le lien du stream est requis pour un événement en ligne"); return false;
+        setError("Le lien du stream est requis pour un événement en ligne");
+        return false;
       }
     }
     if (step === 2) {
-      if (tickets.length === 0) { setError("Ajoutez au moins un type de billet"); return false; }
+      if (tickets.length === 0) {
+        setError("Ajoutez au moins un type de billet");
+        return false;
+      }
       for (const t of tickets) {
-        if (!t.name.trim()) { setError("Chaque billet doit avoir un nom"); return false; }
+        if (!t.name.trim()) {
+          setError("Chaque billet doit avoir un nom");
+          return false;
+        }
       }
     }
     return true;
@@ -202,9 +235,23 @@ export default function NewEventPage() {
         purpose: "cover",
       });
 
+      // Short-circuit if the server says the file is too large rather
+      // than waiting for GCS to 400 after the full upload round-trip.
+      if (data.maxBytes && coverImageFile.size > data.maxBytes) {
+        const maxMB = Math.round(data.maxBytes / 1024 / 1024);
+        throw new Error(`Image trop volumineuse (max ${maxMB} Mo)`);
+      }
+
+      // Replay every header the server signed into the URL. The
+      // `x-goog-content-length-range` header is part of the v4
+      // signature — omitting it produces a 403 SignatureDoesNotMatch
+      // from GCS even when the file size is within the limit.
       const uploadResponse = await fetch(data.uploadUrl, {
         method: "PUT",
-        headers: { "Content-Type": coverImageFile.type },
+        headers: {
+          "Content-Type": coverImageFile.type,
+          ...(data.requiredHeaders ?? {}),
+        },
         body: coverImageFile,
       });
 
@@ -235,7 +282,10 @@ export default function NewEventPage() {
       startDate: new Date(startDate).toISOString(),
       endDate: new Date(endDate).toISOString(),
       timezone: "Africa/Dakar",
-      tags: tags.split(",").map((t) => t.trim()).filter(Boolean),
+      tags: tags
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean),
       location: {
         name: locationName.trim(),
         address: address.trim(),
@@ -290,11 +340,15 @@ export default function NewEventPage() {
       <Breadcrumb className="mb-4">
         <BreadcrumbList>
           <BreadcrumbItem>
-            <BreadcrumbLink asChild><Link href="/">Tableau de bord</Link></BreadcrumbLink>
+            <BreadcrumbLink asChild>
+              <Link href="/">Tableau de bord</Link>
+            </BreadcrumbLink>
           </BreadcrumbItem>
           <BreadcrumbSeparator />
           <BreadcrumbItem>
-            <BreadcrumbLink asChild><Link href="/events">Événements</Link></BreadcrumbLink>
+            <BreadcrumbLink asChild>
+              <Link href="/events">Événements</Link>
+            </BreadcrumbLink>
           </BreadcrumbItem>
           <BreadcrumbSeparator />
           <BreadcrumbItem>
@@ -311,7 +365,9 @@ export default function NewEventPage() {
           {STEPS.map((label, i) => (
             <li key={label} className="flex items-center gap-2">
               <button
-                onClick={() => { if (i < step) setStep(i); }}
+                onClick={() => {
+                  if (i < step) setStep(i);
+                }}
                 disabled={i > step}
                 aria-current={i === step ? "step" : undefined}
                 aria-label={`${i < step ? "Terminé : " : ""}Étape ${i + 1} sur ${STEPS.length} : ${label}`}
@@ -319,11 +375,15 @@ export default function NewEventPage() {
                   i === step
                     ? "bg-primary text-white"
                     : i < step
-                    ? "bg-green-100 text-green-700 cursor-pointer"
-                    : "bg-accent text-muted-foreground cursor-not-allowed"
+                      ? "bg-green-100 text-green-700 cursor-pointer"
+                      : "bg-accent text-muted-foreground cursor-not-allowed"
                 }`}
               >
-                {i < step ? <Check className="h-3.5 w-3.5" aria-hidden="true" /> : <span aria-hidden="true">{i + 1}</span>}
+                {i < step ? (
+                  <Check className="h-3.5 w-3.5" aria-hidden="true" />
+                ) : (
+                  <span aria-hidden="true">{i + 1}</span>
+                )}
                 {label}
               </button>
               {i < STEPS.length - 1 && <div className="w-8 h-px bg-border" aria-hidden="true" />}
@@ -333,7 +393,9 @@ export default function NewEventPage() {
       </nav>
 
       {error && (
-        <div role="alert" className="bg-red-50 text-red-700 text-sm px-4 py-3 rounded-lg mb-4">{error}</div>
+        <div role="alert" className="bg-red-50 text-red-700 text-sm px-4 py-3 rounded-lg mb-4">
+          {error}
+        </div>
       )}
 
       <div className="bg-card rounded-xl border border-border p-6">
@@ -341,8 +403,12 @@ export default function NewEventPage() {
         {step === 0 && (
           <div className="space-y-5">
             <div>
-              <label htmlFor="event-title" className="block text-sm font-medium text-foreground mb-1">
-                Titre <span aria-hidden="true">*</span><span className="sr-only">(requis)</span>
+              <label
+                htmlFor="event-title"
+                className="block text-sm font-medium text-foreground mb-1"
+              >
+                Titre <span aria-hidden="true">*</span>
+                <span className="sr-only">(requis)</span>
               </label>
               <input
                 id="event-title"
@@ -386,7 +452,9 @@ export default function NewEventPage() {
                   role="button"
                   tabIndex={0}
                   aria-label="Ajouter une image de couverture"
-                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") coverInputRef.current?.click(); }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") coverInputRef.current?.click();
+                  }}
                 >
                   <ImagePlus className="mx-auto h-8 w-8 text-muted-foreground" />
                   <p className="mt-2 text-sm text-muted-foreground">
@@ -410,8 +478,12 @@ export default function NewEventPage() {
             </div>
 
             <div>
-              <label htmlFor="event-description" className="block text-sm font-medium text-foreground mb-1">
-                Description <span aria-hidden="true">*</span><span className="sr-only">(requis)</span>
+              <label
+                htmlFor="event-description"
+                className="block text-sm font-medium text-foreground mb-1"
+              >
+                Description <span aria-hidden="true">*</span>
+                <span className="sr-only">(requis)</span>
               </label>
               <Textarea
                 id="event-description"
@@ -425,7 +497,12 @@ export default function NewEventPage() {
               />
             </div>
             <div>
-              <label htmlFor="event-short-description" className="block text-sm font-medium text-foreground mb-1">Description courte</label>
+              <label
+                htmlFor="event-short-description"
+                className="block text-sm font-medium text-foreground mb-1"
+              >
+                Description courte
+              </label>
               <input
                 id="event-short-description"
                 type="text"
@@ -438,8 +515,12 @@ export default function NewEventPage() {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label htmlFor="event-category" className="block text-sm font-medium text-foreground mb-1">
-                  Catégorie <span aria-hidden="true">*</span><span className="sr-only">(requis)</span>
+                <label
+                  htmlFor="event-category"
+                  className="block text-sm font-medium text-foreground mb-1"
+                >
+                  Catégorie <span aria-hidden="true">*</span>
+                  <span className="sr-only">(requis)</span>
                 </label>
                 <Select
                   id="event-category"
@@ -447,13 +528,19 @@ export default function NewEventPage() {
                   onChange={(e) => setCategory(e.target.value)}
                 >
                   {CATEGORY_OPTIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
                   ))}
                 </Select>
               </div>
               <div>
-                <label htmlFor="event-format" className="block text-sm font-medium text-foreground mb-1">
-                  Format <span aria-hidden="true">*</span><span className="sr-only">(requis)</span>
+                <label
+                  htmlFor="event-format"
+                  className="block text-sm font-medium text-foreground mb-1"
+                >
+                  Format <span aria-hidden="true">*</span>
+                  <span className="sr-only">(requis)</span>
                 </label>
                 <Select
                   id="event-format"
@@ -461,15 +548,21 @@ export default function NewEventPage() {
                   onChange={(e) => setFormat(e.target.value)}
                 >
                   {FORMAT_OPTIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
                   ))}
                 </Select>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label htmlFor="event-start-date" className="block text-sm font-medium text-foreground mb-1">
-                  Date de début <span aria-hidden="true">*</span><span className="sr-only">(requis)</span>
+                <label
+                  htmlFor="event-start-date"
+                  className="block text-sm font-medium text-foreground mb-1"
+                >
+                  Date de début <span aria-hidden="true">*</span>
+                  <span className="sr-only">(requis)</span>
                 </label>
                 <input
                   id="event-start-date"
@@ -482,8 +575,12 @@ export default function NewEventPage() {
                 />
               </div>
               <div>
-                <label htmlFor="event-end-date" className="block text-sm font-medium text-foreground mb-1">
-                  Date de fin <span aria-hidden="true">*</span><span className="sr-only">(requis)</span>
+                <label
+                  htmlFor="event-end-date"
+                  className="block text-sm font-medium text-foreground mb-1"
+                >
+                  Date de fin <span aria-hidden="true">*</span>
+                  <span className="sr-only">(requis)</span>
                 </label>
                 <input
                   id="event-end-date"
@@ -497,7 +594,12 @@ export default function NewEventPage() {
               </div>
             </div>
             <div>
-              <label htmlFor="event-tags" className="block text-sm font-medium text-foreground mb-1">Tags</label>
+              <label
+                htmlFor="event-tags"
+                className="block text-sm font-medium text-foreground mb-1"
+              >
+                Tags
+              </label>
               <input
                 id="event-tags"
                 type="text"
@@ -543,8 +645,12 @@ export default function NewEventPage() {
                 </div>
 
                 <div>
-                  <label htmlFor="event-location-name" className="block text-sm font-medium text-foreground mb-1">
-                    Nom du lieu <span aria-hidden="true">*</span><span className="sr-only">(requis)</span>
+                  <label
+                    htmlFor="event-location-name"
+                    className="block text-sm font-medium text-foreground mb-1"
+                  >
+                    Nom du lieu <span aria-hidden="true">*</span>
+                    <span className="sr-only">(requis)</span>
                   </label>
                   <input
                     id="event-location-name"
@@ -558,8 +664,12 @@ export default function NewEventPage() {
                   />
                 </div>
                 <div>
-                  <label htmlFor="event-address" className="block text-sm font-medium text-foreground mb-1">
-                    Adresse <span aria-hidden="true">*</span><span className="sr-only">(requis)</span>
+                  <label
+                    htmlFor="event-address"
+                    className="block text-sm font-medium text-foreground mb-1"
+                  >
+                    Adresse <span aria-hidden="true">*</span>
+                    <span className="sr-only">(requis)</span>
                   </label>
                   <input
                     id="event-address"
@@ -574,8 +684,12 @@ export default function NewEventPage() {
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label htmlFor="event-city" className="block text-sm font-medium text-foreground mb-1">
-                      Ville <span aria-hidden="true">*</span><span className="sr-only">(requis)</span>
+                    <label
+                      htmlFor="event-city"
+                      className="block text-sm font-medium text-foreground mb-1"
+                    >
+                      Ville <span aria-hidden="true">*</span>
+                      <span className="sr-only">(requis)</span>
                     </label>
                     <input
                       id="event-city"
@@ -588,7 +702,12 @@ export default function NewEventPage() {
                     />
                   </div>
                   <div>
-                    <label htmlFor="event-country" className="block text-sm font-medium text-foreground mb-1">Pays</label>
+                    <label
+                      htmlFor="event-country"
+                      className="block text-sm font-medium text-foreground mb-1"
+                    >
+                      Pays
+                    </label>
                     <Select
                       id="event-country"
                       value={country}
@@ -611,8 +730,12 @@ export default function NewEventPage() {
             )}
             {(format === "online" || format === "hybrid") && (
               <div>
-                <label htmlFor="event-stream-url" className="block text-sm font-medium text-foreground mb-1">
-                  Lien du stream <span aria-hidden="true">*</span><span className="sr-only">(requis)</span>
+                <label
+                  htmlFor="event-stream-url"
+                  className="block text-sm font-medium text-foreground mb-1"
+                >
+                  Lien du stream <span aria-hidden="true">*</span>
+                  <span className="sr-only">(requis)</span>
                 </label>
                 <input
                   id="event-stream-url"
@@ -634,7 +757,9 @@ export default function NewEventPage() {
           <div className="space-y-4">
             {tickets.map((ticket, i) => (
               <fieldset key={i} className="border border-border rounded-lg p-4 space-y-3">
-                <legend className="text-sm font-medium text-foreground px-1">Billet #{i + 1}</legend>
+                <legend className="text-sm font-medium text-foreground px-1">
+                  Billet #{i + 1}
+                </legend>
                 <div className="flex justify-end">
                   {tickets.length > 1 && (
                     <button
@@ -648,8 +773,12 @@ export default function NewEventPage() {
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label htmlFor={`ticket-name-${i}`} className="block text-xs text-muted-foreground mb-1">
-                      Nom <span aria-hidden="true">*</span><span className="sr-only">(requis)</span>
+                    <label
+                      htmlFor={`ticket-name-${i}`}
+                      className="block text-xs text-muted-foreground mb-1"
+                    >
+                      Nom <span aria-hidden="true">*</span>
+                      <span className="sr-only">(requis)</span>
                     </label>
                     <input
                       id={`ticket-name-${i}`}
@@ -663,7 +792,12 @@ export default function NewEventPage() {
                     />
                   </div>
                   <div>
-                    <label htmlFor={`ticket-price-${i}`} className="block text-xs text-muted-foreground mb-1">Prix (XOF)</label>
+                    <label
+                      htmlFor={`ticket-price-${i}`}
+                      className="block text-xs text-muted-foreground mb-1"
+                    >
+                      Prix (XOF)
+                    </label>
                     <input
                       id={`ticket-price-${i}`}
                       type="number"
@@ -676,19 +810,35 @@ export default function NewEventPage() {
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label htmlFor={`ticket-quantity-${i}`} className="block text-xs text-muted-foreground mb-1">Quantité (vide = illimité)</label>
+                    <label
+                      htmlFor={`ticket-quantity-${i}`}
+                      className="block text-xs text-muted-foreground mb-1"
+                    >
+                      Quantité (vide = illimité)
+                    </label>
                     <input
                       id={`ticket-quantity-${i}`}
                       type="number"
                       min={1}
                       value={ticket.totalQuantity ?? ""}
-                      onChange={(e) => updateTicket(i, "totalQuantity", e.target.value ? Number(e.target.value) : null)}
+                      onChange={(e) =>
+                        updateTicket(
+                          i,
+                          "totalQuantity",
+                          e.target.value ? Number(e.target.value) : null,
+                        )
+                      }
                       placeholder="Illimité"
                       className="w-full px-3 py-2 rounded-lg border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
                     />
                   </div>
                   <div>
-                    <label htmlFor={`ticket-description-${i}`} className="block text-xs text-muted-foreground mb-1">Description</label>
+                    <label
+                      htmlFor={`ticket-description-${i}`}
+                      className="block text-xs text-muted-foreground mb-1"
+                    >
+                      Description
+                    </label>
                     <input
                       id={`ticket-description-${i}`}
                       type="text"
@@ -725,13 +875,17 @@ export default function NewEventPage() {
                 aria-label="Événement public"
                 className={`relative w-11 h-6 rounded-full transition-colors ${isPublic ? "bg-primary" : "bg-muted"}`}
               >
-                <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform ${isPublic ? "translate-x-5" : ""}`} />
+                <span
+                  className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform ${isPublic ? "translate-x-5" : ""}`}
+                />
               </button>
             </div>
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-foreground">Approbation requise</p>
-                <p className="text-xs text-muted-foreground">Les inscriptions doivent être approuvées manuellement</p>
+                <p className="text-xs text-muted-foreground">
+                  Les inscriptions doivent être approuvées manuellement
+                </p>
               </div>
               <button
                 onClick={() => setRequiresApproval(!requiresApproval)}
@@ -740,11 +894,18 @@ export default function NewEventPage() {
                 aria-label="Approbation requise"
                 className={`relative w-11 h-6 rounded-full transition-colors ${requiresApproval ? "bg-primary" : "bg-muted"}`}
               >
-                <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform ${requiresApproval ? "translate-x-5" : ""}`} />
+                <span
+                  className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform ${requiresApproval ? "translate-x-5" : ""}`}
+                />
               </button>
             </div>
             <div>
-              <label htmlFor="event-max-attendees" className="block text-sm font-medium text-foreground mb-1">Nombre max de participants</label>
+              <label
+                htmlFor="event-max-attendees"
+                className="block text-sm font-medium text-foreground mb-1"
+              >
+                Nombre max de participants
+              </label>
               <input
                 id="event-max-attendees"
                 type="number"
@@ -766,11 +927,15 @@ export default function NewEventPage() {
                 </div>
                 <div className="flex justify-between">
                   <dt className="text-muted-foreground">Catégorie</dt>
-                  <dd className="text-foreground capitalize">{CATEGORY_OPTIONS.find((o) => o.value === category)?.label}</dd>
+                  <dd className="text-foreground capitalize">
+                    {CATEGORY_OPTIONS.find((o) => o.value === category)?.label}
+                  </dd>
                 </div>
                 <div className="flex justify-between">
                   <dt className="text-muted-foreground">Format</dt>
-                  <dd className="text-foreground">{FORMAT_OPTIONS.find((o) => o.value === format)?.label}</dd>
+                  <dd className="text-foreground">
+                    {FORMAT_OPTIONS.find((o) => o.value === format)?.label}
+                  </dd>
                 </div>
                 <div className="flex justify-between">
                   <dt className="text-muted-foreground">Lieu</dt>
@@ -778,11 +943,15 @@ export default function NewEventPage() {
                 </div>
                 <div className="flex justify-between">
                   <dt className="text-muted-foreground">Billets</dt>
-                  <dd className="text-foreground">{tickets.length} type{tickets.length > 1 ? "s" : ""}</dd>
+                  <dd className="text-foreground">
+                    {tickets.length} type{tickets.length > 1 ? "s" : ""}
+                  </dd>
                 </div>
                 <div className="flex justify-between">
                   <dt className="text-muted-foreground">Image de couverture</dt>
-                  <dd className="text-foreground">{coverImageFile ? coverImageFile.name : "Aucune"}</dd>
+                  <dd className="text-foreground">
+                    {coverImageFile ? coverImageFile.name : "Aucune"}
+                  </dd>
                 </div>
               </dl>
             </div>
@@ -813,9 +982,13 @@ export default function NewEventPage() {
             className="inline-flex items-center gap-2 bg-primary text-white rounded-lg px-6 py-2.5 text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-50"
           >
             {submitting ? (
-              <><Loader2 className="h-4 w-4 animate-spin" /> Création en cours...</>
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" /> Création en cours...
+              </>
             ) : (
-              <><Check className="h-4 w-4" /> Créer l&apos;événement</>
+              <>
+                <Check className="h-4 w-4" /> Créer l&apos;événement
+              </>
             )}
           </button>
         )}

@@ -18,7 +18,36 @@ const ALLOWED_CONTENT_TYPES = new Set([
   "application/pdf",
 ]);
 
+// Per-content-type upload size ceiling. GCS enforces this via
+// `x-goog-content-length-range` on the signed URL — any PUT that
+// declares a Content-Length above the max is rejected with 400 by
+// Cloud Storage itself (before the bytes stream), so we don't have
+// to trust the client-side size check. The content-type-driven split
+// is looser than tying the cap to `entityType` because the same
+// entity can take images (logo, cover) AND pdfs (speaker slides).
+const MAX_BYTES_BY_CONTENT_TYPE: Record<string, number> = {
+  "image/jpeg": 10 * 1024 * 1024,
+  "image/png": 10 * 1024 * 1024,
+  "image/webp": 10 * 1024 * 1024,
+  "image/gif": 10 * 1024 * 1024,
+  "application/pdf": 20 * 1024 * 1024,
+};
+
 type EntityType = "event" | "organization" | "speaker" | "sponsor" | "feed";
+
+export interface GeneratedUploadUrl {
+  uploadUrl: string;
+  publicUrl: string;
+  /** Max bytes GCS will accept; clients should reject larger files before PUT. */
+  maxBytes: number;
+  /**
+   * Headers the client MUST include on the PUT request. `x-goog-content-length-range`
+   * is signed into the URL — omitting it produces a signature-mismatch 403 from
+   * GCS. Keep the shape server-driven so clients don't drift from the
+   * server's enforcement.
+   */
+  requiredHeaders: Record<string, string>;
+}
 
 export class UploadService extends BaseService {
   /**
@@ -30,7 +59,7 @@ export class UploadService extends BaseService {
     entityId: string,
     dto: UploadUrlRequest,
     user: AuthUser,
-  ): Promise<{ uploadUrl: string; publicUrl: string }> {
+  ): Promise<GeneratedUploadUrl> {
     // Resolve permission and validate entity access
     await this.validateEntityAccess(entityType, entityId, user);
 
@@ -47,16 +76,37 @@ export class UploadService extends BaseService {
     const bucket = storage.bucket();
     const file = bucket.file(storagePath);
 
+    // Fallback to the image ceiling if we accept a new content type later
+    // and forget to register its max; safer than unbounded.
+    const maxBytes = MAX_BYTES_BY_CONTENT_TYPE[dto.contentType] ?? 10 * 1024 * 1024;
+    const contentLengthRangeHeader = `0,${maxBytes}`;
+
     const [uploadUrl] = await file.getSignedUrl({
       version: "v4",
       action: "write",
       expires: Date.now() + 15 * 60 * 1000, // 15 minutes
       contentType: dto.contentType,
+      // extensionHeaders become part of the v4 signature. The client's PUT
+      // MUST send the same header value or GCS returns 403 with
+      // `SignatureDoesNotMatch`. `x-goog-content-length-range: 0,N` tells
+      // GCS to reject the upload with 400 if the declared Content-Length
+      // exceeds N — bound-check happens server-side at the edge, without
+      // trusting the client-side size validation.
+      extensionHeaders: {
+        "x-goog-content-length-range": contentLengthRangeHeader,
+      },
     });
 
     const publicUrl = `https://storage.googleapis.com/${bucket.name}/${storagePath}`;
 
-    return { uploadUrl, publicUrl };
+    return {
+      uploadUrl,
+      publicUrl,
+      maxBytes,
+      requiredHeaders: {
+        "x-goog-content-length-range": contentLengthRangeHeader,
+      },
+    };
   }
 
   private async validateEntityAccess(
