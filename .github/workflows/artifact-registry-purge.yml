@@ -1,0 +1,128 @@
+name: Artifact Registry purge
+
+# Manually-triggered one-shot cleanup of old container images.
+#
+# The deploy workflow applies a declarative Cleanup Policy
+# (infrastructure/artifact-registry/cleanup-policy.json) that keeps the N
+# most recent versions of each package and deletes the rest. GCP evaluates
+# that policy every ~24h, so it eventually brings storage down to the
+# target — but not instantly.
+#
+# This workflow exists for when you want immediate cost relief: it runs
+# the exact same logic client-side, right now, and deletes the backlog
+# before the next GCP evaluation cycle. Safe to re-run; idempotent.
+#
+# Usage: Actions → Artifact Registry purge → Run workflow → enter
+# `keep_count` (default 3) and optionally `dry_run` (default false).
+
+on:
+  workflow_dispatch:
+    inputs:
+      keep_count:
+        description: "How many most recent versions to keep per package"
+        required: true
+        default: "3"
+        type: string
+      dry_run:
+        description: "Dry run — list deletions without actually deleting"
+        required: true
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+
+concurrency:
+  group: ar-purge
+  cancel-in-progress: false
+
+jobs:
+  purge:
+    name: Purge old Artifact Registry versions
+    runs-on: ubuntu-latest
+    environment: staging
+    permissions:
+      contents: read
+    steps:
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Purge versions beyond keep_count
+        env:
+          KEEP: ${{ inputs.keep_count }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+
+          PROJECT_ID=$(gcloud config get-value project 2>/dev/null)
+          if [ -z "$PROJECT_ID" ] || [ "$PROJECT_ID" = "(unset)" ]; then
+            PROJECT_ID=$(echo '${{ secrets.GCP_SA_KEY }}' | jq -r '.project_id')
+          fi
+          REGION=europe-west1
+          REPO=teranga
+          PACKAGES=(teranga-api teranga-backoffice teranga-participant)
+
+          echo "::notice::Project: $PROJECT_ID | Repo: $REPO | Keep: $KEEP | Dry run: $DRY_RUN"
+
+          TOTAL_DELETED=0
+          for PKG in "${PACKAGES[@]}"; do
+            FQN="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPO}/${PKG}"
+            echo ""
+            echo "── $PKG ──"
+
+            # Fetch versions sorted newest-first. `createTime.desc` gives us
+            # the exact ordering we need; we keep the first $KEEP and delete
+            # the rest. Skip the package entirely if it doesn't exist yet.
+            VERSIONS=$(gcloud artifacts versions list \
+              --package="$PKG" \
+              --repository="$REPO" \
+              --location="$REGION" \
+              --sort-by="~createTime" \
+              --format="value(name)" \
+              --limit=1000 2>/dev/null || true)
+
+            if [ -z "$VERSIONS" ]; then
+              echo "  (no versions — skipping)"
+              continue
+            fi
+
+            COUNT=$(echo "$VERSIONS" | wc -l)
+            echo "  total: $COUNT version(s)"
+
+            # Anything past index $KEEP gets deleted. tail gracefully returns
+            # nothing when the list is shorter than $KEEP.
+            TO_DELETE=$(echo "$VERSIONS" | tail -n +$((KEEP + 1)) || true)
+
+            if [ -z "$TO_DELETE" ]; then
+              echo "  nothing to delete (≤ $KEEP versions)"
+              continue
+            fi
+
+            DELETE_COUNT=$(echo "$TO_DELETE" | wc -l)
+            echo "  to delete: $DELETE_COUNT"
+
+            while IFS= read -r VERSION; do
+              [ -z "$VERSION" ] && continue
+              SHORT="${VERSION##*/}"
+              if [ "$DRY_RUN" = "true" ]; then
+                echo "  [dry-run] would delete: ${SHORT:0:12}…"
+              else
+                # --delete-tags also removes any tags pointing at the version,
+                # which is required before the version itself can be deleted.
+                gcloud artifacts versions delete "$VERSION" \
+                  --delete-tags \
+                  --quiet 2>&1 | sed 's/^/    /' || \
+                  echo "::warning::Failed to delete $SHORT"
+                TOTAL_DELETED=$((TOTAL_DELETED + 1))
+              fi
+            done <<< "$TO_DELETE"
+          done
+
+          echo ""
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "::notice::Dry run complete — no deletions performed"
+          else
+            echo "::notice::Purge complete — deleted $TOTAL_DELETED version(s)"
+          fi
