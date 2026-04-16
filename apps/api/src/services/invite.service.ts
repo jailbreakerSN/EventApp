@@ -145,9 +145,31 @@ export class InviteService extends BaseService {
         status: "accepted",
         updatedAt: new Date().toISOString(),
       });
+      // Mirror organizationId onto the accepting user's Firestore doc
+      // in the SAME transaction. Firestore rules read organizationId
+      // from the user doc (not claims), so without this mirror the
+      // invitee is granted access by their new custom claims but rules
+      // still see them as unaffiliated — read-denials despite the
+      // invite being accepted.
+      //
+      // Use tx.set(..., { merge: true }) not tx.update() — an invitee
+      // who just signed up may not have a Firestore user doc yet (the
+      // onUserCreated trigger can race with the accept-invite call),
+      // and .update() on a missing doc throws NOT_FOUND and rolls the
+      // whole tx back.
+      tx.set(
+        db.collection(COLLECTIONS.USERS).doc(user.uid),
+        {
+          organizationId: invite.organizationId,
+          updatedAt: new Date().toISOString(),
+        },
+        { merge: true },
+      );
     });
 
-    // Set custom claims for the new member
+    // Set custom claims for the new member AFTER the Firestore
+    // mirror committed. Rule checks only need the doc; claims are
+    // for the API middleware's JWT decoding.
     const existingClaims = (await auth.getUser(user.uid)).customClaims ?? {};
     await auth.setCustomUserClaims(user.uid, {
       ...existingClaims,

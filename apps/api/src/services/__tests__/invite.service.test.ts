@@ -63,6 +63,7 @@ vi.mock("@/context/request-context", () => ({
 }));
 
 const mockTxUpdate = vi.fn();
+const mockTxSet = vi.fn();
 const mockTxGet = vi.fn();
 
 vi.mock("@/config/firebase", () => ({
@@ -72,7 +73,7 @@ vi.mock("@/config/firebase", () => ({
   },
   db: {
     runTransaction: vi.fn((fn: (tx: unknown) => Promise<unknown>) =>
-      fn({ get: mockTxGet, update: mockTxUpdate }),
+      fn({ get: mockTxGet, update: mockTxUpdate, set: mockTxSet }),
     ),
     collection: vi.fn().mockReturnValue({
       doc: vi.fn().mockReturnValue({ id: "mock-doc" }),
@@ -218,6 +219,41 @@ describe("InviteService", () => {
       await service.acceptInvite(invite.token, acceptUser);
 
       expect(mockTxUpdate).toHaveBeenCalled();
+    });
+
+    it("mirrors organizationId onto the invitee's Firestore user doc inside the tx", async () => {
+      // Regression guard for the Class B drift fix: Firestore rules
+      // read organizationId from the user doc. Invite accept must commit
+      // the mirror in the same tx as the membership change, otherwise
+      // the user can't read org resources via the rules despite their
+      // claims granting access.
+      const invite = buildInvite({
+        organizationId: orgId,
+        email: "test@test.com",
+        status: "pending",
+      });
+      mockInviteRepo.findByToken.mockResolvedValue(invite);
+
+      const acceptUser = buildAuthUser({
+        uid: "new-user",
+        email: "test@test.com",
+        roles: ["participant"],
+      });
+      mockTxGet.mockResolvedValue({
+        exists: true,
+        id: orgId,
+        data: () => ({ ...org, plan: "starter", memberIds: ["owner-1"] }),
+      });
+
+      await service.acceptInvite(invite.token, acceptUser);
+
+      const userDocSet = mockTxSet.mock.calls.find(
+        (call) => (call[1] as Record<string, unknown>).organizationId === orgId,
+      );
+      expect(userDocSet).toBeDefined();
+      // merge:true — survives the case where the invitee's Firestore
+      // user doc hasn't been written yet by onUserCreated.
+      expect(userDocSet?.[2]).toEqual({ merge: true });
     });
 
     it("rejects if email does not match", async () => {
