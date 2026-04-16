@@ -19,8 +19,8 @@ import {
   DataTable,
   type DataTableColumn,
 } from "@teranga/shared-ui";
-import { Users, Shield, Search, Ban, CheckCircle } from "lucide-react";
-import type { UserProfile } from "@teranga/shared-types";
+import { Users, Shield, Search, Ban, CheckCircle, AlertTriangle } from "lucide-react";
+import type { AdminUserRow } from "@teranga/shared-types";
 import { useTranslations } from "next-intl";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
@@ -78,6 +78,32 @@ const ALL_ROLES = [
   "sponsor",
 ];
 
+// ─── JWT ↔ Firestore drift helpers ──────────────────────────────────────────
+//
+// API enriches each row with `claimsMatch`:
+//   - { roles, organizationId, orgRole } all true → in sync, no warning.
+//   - any of the three false → visible drift, render the badge.
+//   - null → Auth record couldn't be fetched (Auth user deleted / Admin
+//     SDK transient failure). Surface as drift too — admins need to
+//     reconcile or purge the orphaned Firestore doc.
+
+function hasClaimsDrift(user: AdminUserRow): boolean {
+  if (user.claimsMatch === null) return true;
+  const m = user.claimsMatch;
+  return !m.roles || !m.organizationId || !m.orgRole;
+}
+
+function driftAriaLabel(user: AdminUserRow): string {
+  if (user.claimsMatch === null) {
+    return "Avertissement : la fiche Firebase Auth de cet utilisateur est introuvable. L'UI affiche l'état Firestore, mais les permissions appliquent le JWT — à réconcilier.";
+  }
+  const mismatches: string[] = [];
+  if (!user.claimsMatch.roles) mismatches.push("rôles système");
+  if (!user.claimsMatch.organizationId) mismatches.push("organisation");
+  if (!user.claimsMatch.orgRole) mismatches.push("rôle dans l'organisation");
+  return `Désynchronisation entre le JWT et Firestore sur : ${mismatches.join(", ")}. L'utilisateur doit se reconnecter, ou relancer la dernière modification si elle a échoué à mi-course.`;
+}
+
 // ─── Role Editor Popover ────────────────────────────────────────────────────
 
 function RoleEditor({
@@ -85,7 +111,7 @@ function RoleEditor({
   onSave,
   isSaving,
 }: {
-  user: UserProfile;
+  user: AdminUserRow;
   onSave: (roles: string[]) => void;
   isSaving: boolean;
 }) {
@@ -171,7 +197,8 @@ function RoleEditor({
 // ─── Page ───────────────────────────────────────────────────────────────────
 
 export default function AdminUsersPage() {
-  const tCommon = useTranslations("common"); void tCommon;
+  const tCommon = useTranslations("common");
+  void tCommon;
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("");
   const [page, setPage] = useState(1);
@@ -184,13 +211,13 @@ export default function AdminUsersPage() {
     limit,
   });
 
-  const users: UserProfile[] = data?.data ?? [];
+  const users: AdminUserRow[] = data?.data ?? [];
   const meta = data?.meta ?? { page: 1, limit, total: 0, totalPages: 1 };
 
   const updateRoles = useUpdateUserRoles();
   const updateStatus = useUpdateUserStatus();
 
-  const handleToggleStatus = (user: UserProfile) => {
+  const handleToggleStatus = (user: AdminUserRow) => {
     const action = user.isActive ? "suspendre" : "reactiver";
     if (!window.confirm(`Voulez-vous ${action} l'utilisateur "${user.displayName}" ?`)) {
       return;
@@ -271,12 +298,12 @@ export default function AdminUsersPage() {
       {/* Data Table */}
       <Card>
         <CardContent className="p-0">
-          <DataTable<UserProfile & Record<string, unknown>>
+          <DataTable<AdminUserRow & Record<string, unknown>>
             aria-label="Liste des utilisateurs"
             emptyMessage="Aucun utilisateur trouve"
             responsiveCards
             loading={isLoading}
-            data={users as (UserProfile & Record<string, unknown>)[]}
+            data={users as (AdminUserRow & Record<string, unknown>)[]}
             columns={
               [
                 {
@@ -284,9 +311,22 @@ export default function AdminUsersPage() {
                   header: "Nom / Email",
                   primary: true,
                   render: (user) => (
-                    <div>
-                      <p className="font-medium text-foreground">{user.displayName}</p>
-                      <p className="text-xs text-muted-foreground">{user.email}</p>
+                    <div className="flex items-start gap-2">
+                      <div>
+                        <p className="font-medium text-foreground">{user.displayName}</p>
+                        <p className="text-xs text-muted-foreground">{user.email}</p>
+                      </div>
+                      {hasClaimsDrift(user) && (
+                        <span
+                          className="mt-0.5 inline-flex items-center gap-1 rounded-full border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400"
+                          role="img"
+                          aria-label={driftAriaLabel(user)}
+                          title={driftAriaLabel(user)}
+                        >
+                          <AlertTriangle className="h-3 w-3" aria-hidden />
+                          JWT
+                        </span>
+                      )}
                     </div>
                   ),
                 },
@@ -355,7 +395,7 @@ export default function AdminUsersPage() {
                     </div>
                   ),
                 },
-              ] as DataTableColumn<UserProfile & Record<string, unknown>>[]
+              ] as DataTableColumn<AdminUserRow & Record<string, unknown>>[]
             }
           />
         </CardContent>

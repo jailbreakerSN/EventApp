@@ -12,6 +12,8 @@ import type {
   AdminOrgQuery,
   AdminEventQuery,
   AdminAuditQuery,
+  AdminUserRow,
+  ClaimsMatch,
   UserProfile,
   Organization,
   Event,
@@ -26,6 +28,18 @@ import { computePlanAnalytics } from "./plan-analytics";
 // ─── Admin Service ──────────────────────────────────────────────────────────
 // Platform-wide administration. Every method requires platform:manage permission.
 
+/**
+ * Set-equality for role arrays — the ordering differs between Firestore
+ * (insertion order) and Auth custom claims (server-assigned), but the
+ * semantic set is what matters for drift detection.
+ */
+function arraysEqualAsSet(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  const aSet = new Set(a);
+  for (const item of b) if (!aSet.has(item)) return false;
+  return true;
+}
+
 class AdminService extends BaseService {
   // ── Platform Stats ────────────────────────────────────────────────────
 
@@ -36,12 +50,72 @@ class AdminService extends BaseService {
 
   // ── User Management ───────────────────────────────────────────────────
 
-  async listUsers(user: AuthUser, query: AdminUserQuery): Promise<PaginatedResult<UserProfile>> {
+  async listUsers(user: AuthUser, query: AdminUserQuery): Promise<PaginatedResult<AdminUserRow>> {
     this.requirePermission(user, "platform:manage");
-    return adminRepository.listAllUsers(
+    const page = await adminRepository.listAllUsers(
       { q: query.q, role: query.role, isActive: query.isActive },
       { page: query.page, limit: query.limit },
     );
+
+    // Enrich each row with a JWT ↔ Firestore drift check. Admin UI
+    // displays a visible warning on rows where the two disagree so
+    // operators don't apply mutations against stale state (see the
+    // `AdminUserRow` type comment in shared-types). Bounded cardinality
+    // — admin table pages at 20 rows — so N+1 `auth.getUser` is
+    // acceptable. Batching via `auth.getUsers([...])` would be cleaner
+    // but firebase-admin's batch identifier interface is clunky for
+    // our pagination pattern; defer until this becomes a latency issue.
+    const enriched = await Promise.all(
+      page.data.map(async (u): Promise<AdminUserRow> => this.attachClaimsMatch(u)),
+    );
+
+    return { ...page, data: enriched };
+  }
+
+  /**
+   * Compare a Firestore user doc's roles / organizationId / orgRole against
+   * the Firebase Auth custom claims for the same uid. Returns the row
+   * shape the admin UI consumes, with `claimsMatch: null` when the Auth
+   * record can't be fetched (user deleted in Auth but doc lingers, or
+   * transient Admin SDK failure — both worth surfacing visually).
+   */
+  private async attachClaimsMatch(profile: UserProfile): Promise<AdminUserRow> {
+    const base: Omit<AdminUserRow, "claimsMatch"> = {
+      uid: profile.uid,
+      email: profile.email,
+      displayName: profile.displayName,
+      photoURL: profile.photoURL ?? null,
+      phone: profile.phone ?? null,
+      bio: profile.bio ?? null,
+      roles: profile.roles,
+      organizationId: profile.organizationId ?? null,
+      orgRole: profile.orgRole ?? null,
+      preferredLanguage: profile.preferredLanguage,
+      isEmailVerified: profile.isEmailVerified,
+      isActive: profile.isActive,
+      createdAt: profile.createdAt,
+      updatedAt: profile.updatedAt,
+    };
+
+    try {
+      const record = await auth.getUser(profile.uid);
+      const claims = (record.customClaims ?? {}) as Record<string, unknown>;
+      const claimRoles = (claims.roles as string[] | undefined) ?? [];
+      const claimOrgId = (claims.organizationId as string | null | undefined) ?? null;
+      const claimOrgRole = (claims.orgRole as string | null | undefined) ?? null;
+
+      const match: ClaimsMatch = {
+        roles: arraysEqualAsSet(profile.roles, claimRoles),
+        organizationId: (profile.organizationId ?? null) === claimOrgId,
+        orgRole: (profile.orgRole ?? null) === claimOrgRole,
+      };
+      return { ...base, claimsMatch: match };
+    } catch {
+      // Auth fetch failed — surface visually via claimsMatch: null
+      // rather than hiding the row or throwing. The admin can still
+      // operate on the row and will see the warning badge.
+      return { ...base, claimsMatch: null };
+    }
   }
 
   async updateUserRoles(user: AuthUser, targetUserId: string, roles: string[]): Promise<void> {

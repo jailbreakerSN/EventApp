@@ -43,6 +43,7 @@ vi.mock("@/config/firebase", () => ({
   auth: {
     setCustomUserClaims: vi.fn().mockResolvedValue(undefined),
     updateUser: vi.fn().mockResolvedValue(undefined),
+    getUser: vi.fn().mockResolvedValue({ customClaims: {} }),
   },
   COLLECTIONS: {
     USERS: "users",
@@ -154,13 +155,24 @@ describe("AdminService.getStats", () => {
 // ── listUsers ────────────────────────────────────────────────────────────
 
 describe("AdminService.listUsers", () => {
+  const BASE_PROFILE = {
+    uid: "user-1",
+    email: "test@test.com",
+    displayName: "Test",
+    roles: ["participant"],
+    organizationId: null,
+    orgRole: null,
+    isActive: true,
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+  };
+
   it("returns paginated user list for super_admin", async () => {
     const admin = buildSuperAdmin();
-    const paginatedResult = {
-      data: [{ uid: "user-1", email: "test@test.com", roles: ["participant"] }],
+    mockAdminRepo.listAllUsers.mockResolvedValue({
+      data: [BASE_PROFILE],
       meta: { page: 1, limit: 20, total: 1, totalPages: 1 },
-    };
-    mockAdminRepo.listAllUsers.mockResolvedValue(paginatedResult);
+    });
 
     const result = await adminService.listUsers(admin, { page: 1, limit: 20, role: "participant" });
 
@@ -170,6 +182,79 @@ describe("AdminService.listUsers", () => {
       expect.objectContaining({ role: "participant" }),
       expect.objectContaining({ page: 1, limit: 20 }),
     );
+  });
+
+  it("attaches claimsMatch showing all fields in sync when JWT equals Firestore", async () => {
+    const admin = buildSuperAdmin();
+    mockAdminRepo.listAllUsers.mockResolvedValue({
+      data: [{ ...BASE_PROFILE, roles: ["organizer"], organizationId: "org-1" }],
+      meta: { page: 1, limit: 20, total: 1, totalPages: 1 },
+    });
+    vi.mocked(auth.getUser).mockResolvedValueOnce({
+      customClaims: { roles: ["organizer"], organizationId: "org-1" },
+    } as never);
+
+    const result = await adminService.listUsers(admin, { page: 1, limit: 20 });
+
+    expect(result.data[0].claimsMatch).toEqual({
+      roles: true,
+      organizationId: true,
+      orgRole: true,
+    });
+  });
+
+  it("flags drift when Firestore roles differ from JWT custom claims", async () => {
+    // Regression guard for MEDIUM-3: admin UI was showing Firestore
+    // state while permissions ran on JWT. The listUsers endpoint must
+    // now expose the comparison so the UI can render a warning badge.
+    const admin = buildSuperAdmin();
+    mockAdminRepo.listAllUsers.mockResolvedValue({
+      data: [{ ...BASE_PROFILE, roles: ["organizer"], organizationId: "org-1" }],
+      meta: { page: 1, limit: 20, total: 1, totalPages: 1 },
+    });
+    vi.mocked(auth.getUser).mockResolvedValueOnce({
+      // JWT still carries the old participant role — the classic
+      // mid-failure drift PR #65 aims to heal. Guard ensures we surface it.
+      customClaims: { roles: ["participant"], organizationId: "org-1" },
+    } as never);
+
+    const result = await adminService.listUsers(admin, { page: 1, limit: 20 });
+
+    expect(result.data[0].claimsMatch).toEqual({
+      roles: false,
+      organizationId: true,
+      orgRole: true,
+    });
+  });
+
+  it("treats role arrays as sets — order difference is not drift", async () => {
+    const admin = buildSuperAdmin();
+    mockAdminRepo.listAllUsers.mockResolvedValue({
+      data: [{ ...BASE_PROFILE, roles: ["organizer", "participant"] }],
+      meta: { page: 1, limit: 20, total: 1, totalPages: 1 },
+    });
+    vi.mocked(auth.getUser).mockResolvedValueOnce({
+      customClaims: { roles: ["participant", "organizer"] },
+    } as never);
+
+    const result = await adminService.listUsers(admin, { page: 1, limit: 20 });
+
+    expect(result.data[0].claimsMatch?.roles).toBe(true);
+  });
+
+  it("returns claimsMatch=null when the Auth record can't be fetched", async () => {
+    // Auth-record-missing (user deleted in Auth, doc lingers) — UI
+    // treats this as drift too so the admin notices the orphan.
+    const admin = buildSuperAdmin();
+    mockAdminRepo.listAllUsers.mockResolvedValue({
+      data: [BASE_PROFILE],
+      meta: { page: 1, limit: 20, total: 1, totalPages: 1 },
+    });
+    vi.mocked(auth.getUser).mockRejectedValueOnce(new Error("user-not-found"));
+
+    const result = await adminService.listUsers(admin, { page: 1, limit: 20 });
+
+    expect(result.data[0].claimsMatch).toBeNull();
   });
 });
 

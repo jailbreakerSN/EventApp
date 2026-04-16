@@ -77,6 +77,7 @@ import type {
   BalanceTransaction,
   BalanceTransactionQuery,
   OrganizationBalance,
+  AdminUserRow,
 } from "@teranga/shared-types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
@@ -539,7 +540,7 @@ export const adminApi = {
     api.get<ApiResponse<PlatformStats>>("/v1/admin/stats"),
 
   listUsers: (query: Partial<AdminUserQuery> = {}) =>
-    api.get<PaginatedResponse<UserProfile>>(`/v1/admin/users${buildQuery(query)}`),
+    api.get<PaginatedResponse<AdminUserRow>>(`/v1/admin/users${buildQuery(query)}`),
 
   updateUserRoles: (userId: string, roles: string[]) =>
     api.patch<void>(`/v1/admin/users/${userId}/roles`, { roles }),

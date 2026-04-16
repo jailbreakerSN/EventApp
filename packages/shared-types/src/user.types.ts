@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { SystemRoleSchema } from "./permissions.types";
+import { OrgMemberRoleSchema } from "./organization.types";
 
 // ─── Roles ────────────────────────────────────────────────────────────────────
 // Re-export SystemRole as UserRole for backward compatibility.
@@ -19,6 +20,11 @@ export const UserProfileSchema = z.object({
   bio: z.string().max(500).nullable().optional(),
   roles: z.array(UserRoleSchema).min(1),
   organizationId: z.string().nullable().optional(), // for organizers / staff
+  // Per-org role (owner / admin / member / viewer) mirrored from Auth
+  // custom claims so Firestore rules + admin UIs that read the user doc
+  // don't have to round-trip to Auth. Closes the Class B drift vector
+  // identified in the security audit.
+  orgRole: OrgMemberRoleSchema.nullable().optional(),
   preferredLanguage: z.enum(["fr", "en", "wo"]).default("fr"),
   fcmTokens: z.array(z.string()).optional(), // FCM device tokens for push notifications
   isEmailVerified: z.boolean().default(false),

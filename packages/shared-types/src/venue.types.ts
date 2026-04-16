@@ -135,6 +135,53 @@ export const AdminUserQuerySchema = z.object({
 
 export type AdminUserQuery = z.infer<typeof AdminUserQuerySchema>;
 
+// ─── Admin user row with JWT / Firestore drift detection ────────────────────
+//
+// The /admin/users table reads from the Firestore `users` doc while all
+// authorization on the API side reads from JWT custom claims. In normal
+// operation the two stay in sync (PR #64/#65 close every write-side
+// drift vector). A tail-latency / failed-rollback window could still
+// produce a divergence — in which case the admin needs to see a signal
+// rather than apply a mutation that "looks right in the UI but targets
+// stale state."
+//
+// `claimsMatch` is populated by the admin-list endpoint: it fetches each
+// row's Auth record alongside the Firestore doc and reports whether the
+// two agree on roles / organizationId / orgRole.
+//
+// When `claimsMatch == null`, the Auth record couldn't be fetched (user
+// deleted in Auth but doc lingers, or Admin SDK transient failure). UI
+// treats null as a soft warning — same color as drift, different copy.
+
+export const ClaimsMatchSchema = z.object({
+  roles: z.boolean(),
+  organizationId: z.boolean(),
+  orgRole: z.boolean(),
+});
+
+export type ClaimsMatch = z.infer<typeof ClaimsMatchSchema>;
+
+export const AdminUserRowSchema = z.object({
+  uid: z.string(),
+  email: z.string().email(),
+  displayName: z.string(),
+  photoURL: z.string().url().nullable().optional(),
+  phone: z.string().nullable().optional(),
+  bio: z.string().nullable().optional(),
+  roles: z.array(z.string()),
+  organizationId: z.string().nullable().optional(),
+  orgRole: z.string().nullable().optional(),
+  preferredLanguage: z.enum(["fr", "en", "wo"]).optional(),
+  isEmailVerified: z.boolean().optional(),
+  isActive: z.boolean(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+  /** null = Auth record couldn't be fetched. object = per-field agreement. */
+  claimsMatch: ClaimsMatchSchema.nullable(),
+});
+
+export type AdminUserRow = z.infer<typeof AdminUserRowSchema>;
+
 export const AdminOrgQuerySchema = z.object({
   q: z.string().max(200).optional(),
   plan: z.string().optional(),
