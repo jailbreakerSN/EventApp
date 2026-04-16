@@ -2,13 +2,30 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { buildAuthUser, buildOrganizerUser, buildSuperAdmin } from "@/__tests__/factories";
 import type { BalanceTransaction } from "@teranga/shared-types";
 
-const { mockRepo } = vi.hoisted(() => ({
-  mockRepo: {
-    findAllByOrganization: vi.fn(),
-    findByOrganization: vi.fn(),
-  },
-}));
+const { mockRepo, MockBalanceLedgerTooLargeError } = vi.hoisted(() => {
+  class _MockBalanceLedgerTooLargeError extends Error {
+    statusCode = 503;
+    constructor(orgId: string, limit: number) {
+      super(`ledger too large: ${orgId} > ${limit}`);
+      this.name = "BalanceLedgerTooLargeError";
+    }
+  }
+  return {
+    mockRepo: {
+      findAllByOrganization: vi.fn(),
+      findByOrganization: vi.fn(),
+    },
+    MockBalanceLedgerTooLargeError: _MockBalanceLedgerTooLargeError,
+  };
+});
 
+// `BalanceLedgerTooLargeError` re-exported from the mock so the 503
+// propagation test can throw + assert on it. Declared via vi.hoisted so
+// the class reference exists before vi.mock is hoisted to the top of
+// the module. We don't use `importOriginal()` because loading the real
+// repository module instantiates the Firestore singleton at module-eval
+// time — and `db` is mocked to `{}`, which would fail with a cryptic
+// error at import time.
 vi.mock("@/repositories/balance-transaction.repository", () => ({
   balanceTransactionRepository: new Proxy(
     {},
@@ -16,6 +33,7 @@ vi.mock("@/repositories/balance-transaction.repository", () => ({
       get: (_t, p) => (mockRepo as Record<string, unknown>)[p as string],
     },
   ),
+  BalanceLedgerTooLargeError: MockBalanceLedgerTooLargeError,
 }));
 
 vi.mock("@/config/firebase", () => ({
@@ -92,6 +110,20 @@ describe("BalanceService.getBalance", () => {
 
     expect(result.available).toBe(0);
     expect(result.lifetimeRevenue).toBe(0);
+  });
+
+  it("propagates the ledger-too-large 503 when the repo caps out", async () => {
+    // Repo throws when an org crosses MAX_BALANCE_ENTRIES — service must
+    // bubble it unchanged so the global error handler returns 503. If
+    // the service ever catches + rewraps, operators lose the distinct
+    // "need materialised summary" signal.
+    const { BalanceLedgerTooLargeError } =
+      await import("@/repositories/balance-transaction.repository");
+    mockRepo.findAllByOrganization.mockRejectedValue(new BalanceLedgerTooLargeError(orgId, 50_000));
+
+    await expect(balanceService.getBalance(orgId, organizer)).rejects.toBeInstanceOf(
+      BalanceLedgerTooLargeError,
+    );
   });
 });
 

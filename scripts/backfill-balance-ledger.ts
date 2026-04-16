@@ -34,6 +34,26 @@
  * the script write to the SAME docId, so the second call overwrites the
  * first with identical data. No transaction wrapper needed, no duplicate
  * entries. This is safer than a check-then-set with random IDs.
+ *
+ * AUDIT-EXEMPT: backfill writes do NOT emit `balance.entry_recorded` or
+ * equivalent domain events. Rationale:
+ *   - The backfill is an administrative one-off (plus safety-net re-run)
+ *     that recreates entries from the authoritative `payments` + `payouts`
+ *     collections — both already audited via their own domain events
+ *     (`payment.succeeded`, `payment.refunded`, `payout.created`). The
+ *     backfilled rows don't represent new money movements, just a
+ *     replay of events that were already audit-logged when they originally
+ *     happened.
+ *   - Emitting N events from a ~1000-row backfill would spam the
+ *     `auditLogs` collection with duplicates of entries already captured
+ *     by the originating event emissions.
+ *   - Observability of the backfill itself comes from the CI job log
+ *     (deploy-staging.yml → backfill-ledger → stdout counts), which is
+ *     where operators look when diagnosing finance-view discrepancies.
+ *   - `createdBy: "system:backfill"` on every entry means the
+ *     `balance_transactions` collection itself records that the row was
+ *     produced by the backfill, so the per-entry provenance is
+ *     recoverable when needed.
  */
 
 import { createHash } from "node:crypto";

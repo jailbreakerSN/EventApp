@@ -1,6 +1,28 @@
 import { type BalanceTransaction, type BalanceTransactionQuery } from "@teranga/shared-types";
 import { BaseRepository, type PaginatedResult } from "./base.repository";
 import { COLLECTIONS } from "@/config/firebase";
+import { AppError } from "@/errors/app-error";
+
+// Upper bound on entries a single /balance call will fold in memory.
+// Sized so a 512 MiB Cloud Run instance has generous headroom (each
+// entry ~= 500 B serialised; 50k entries ~= 25 MiB JSON). When an org
+// crosses this threshold the right move is a materialised
+// `balanceSummaries/{orgId}` doc, NOT lifting the cap.
+const MAX_BALANCE_ENTRIES = 50_000;
+
+export class BalanceLedgerTooLargeError extends AppError {
+  constructor(organizationId: string, limit: number) {
+    super({
+      code: "INTERNAL_ERROR",
+      // 503 — not 500. The server is healthy; this specific org's ledger
+      // is past the on-the-fly fold threshold and needs the materialised
+      // summary infrastructure before it can be served.
+      statusCode: 503,
+      message: `Le grand livre de l'organisation ${organizationId} dépasse la limite de calcul en ligne (${limit} entrées). Un résumé agrégé est requis.`,
+      details: { organizationId, limit },
+    });
+  }
+}
 
 // ─── Balance-Transaction Repository ──────────────────────────────────────────
 //
@@ -67,15 +89,25 @@ class BalanceTransactionRepository extends BaseRepository<BalanceTransaction> {
    * of entries worst-case) fits in memory comfortably, and a single
    * indexed-scan is cheaper than a count() + sum() fold over Firestore.
    *
-   * When this outgrows memory, the right move is a per-org aggregated
-   * `balanceSummaries/{orgId}` doc maintained by a Pub/Sub listener — NOT
-   * read-time pagination. Until then: keep it simple.
+   * Hard cap at MAX_BALANCE_ENTRIES to protect Cloud Run from an
+   * unbounded scan: a pathological org (or an abusive fixture) could
+   * otherwise exhaust the instance's 512 MiB memory. When we hit the
+   * cap, callers raise a 503 with a clear error telling the operator
+   * that a materialised summary doc is needed — forcing a conversation
+   * before we paper over real scaling debt. That materialised
+   * `balanceSummaries/{orgId}` doc (maintained by a Pub/Sub listener)
+   * is the right move BEFORE we lift this limit, NOT read-time
+   * pagination of the fold.
    */
   async findAllByOrganization(organizationId: string): Promise<BalanceTransaction[]> {
     const snap = await this.collection
       .where("organizationId", "==", organizationId)
       .orderBy("createdAt", "asc")
+      .limit(MAX_BALANCE_ENTRIES + 1) // +1 so we can detect overflow
       .get();
+    if (snap.size > MAX_BALANCE_ENTRIES) {
+      throw new BalanceLedgerTooLargeError(organizationId, MAX_BALANCE_ENTRIES);
+    }
     return snap.docs.map((d) => ({ id: d.id, ...d.data() }) as BalanceTransaction);
   }
 
