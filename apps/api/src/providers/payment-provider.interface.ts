@@ -12,6 +12,13 @@ export interface InitiateParams {
   description: string; // e.g., "Inscription : Conférence Dakar Tech 2026"
   callbackUrl: string; // webhook URL the provider will POST to
   returnUrl: string; // URL to redirect user after payment
+  /**
+   * The user-selected payment method (wave, orange_money, free_money, card, mock).
+   * Mock provider uses this to brand the simulated checkout screen so devs
+   * can visually verify which real provider they'd be hitting in prod.
+   * Real providers ignore it.
+   */
+  method?: string;
 }
 
 export interface InitiateResult {

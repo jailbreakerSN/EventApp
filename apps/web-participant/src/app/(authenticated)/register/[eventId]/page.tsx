@@ -33,18 +33,56 @@ import {
   formatCurrency,
   getErrorMessage,
 } from "@teranga/shared-ui";
-import type { Event, TicketType, Registration } from "@teranga/shared-types";
+import type { Event, TicketType, Registration, PaymentMethod } from "@teranga/shared-types";
 import { useTranslations } from "next-intl";
 
 type Step = "select" | "confirm" | "success";
 
+type PaymentMethodOption = {
+  id: PaymentMethod;
+  label: string;
+  description: string;
+  accent: string;
+};
+
+const PAYMENT_METHODS: PaymentMethodOption[] = [
+  {
+    id: "wave",
+    label: "Wave",
+    description: "Mobile Money — Sénégal",
+    accent: "#1DC8F1",
+  },
+  {
+    id: "orange_money",
+    label: "Orange Money",
+    description: "Paiement via #144#",
+    accent: "#FF7900",
+  },
+  {
+    id: "free_money",
+    label: "Free Money",
+    description: "Paiement mobile Free",
+    accent: "#CD0067",
+  },
+  {
+    id: "card",
+    label: "Carte bancaire",
+    description: "VISA / MasterCard",
+    accent: "#1F2937",
+  },
+];
+
 export default function RegisterPage() {
-  const _t = useTranslations("common"); void _t;
+  const _t = useTranslations("common");
+  void _t;
   const { eventId } = useParams<{ eventId: string }>();
   const router = useRouter();
   const [step, setStep] = useState<Step>("select");
   const [selectedTicket, setSelectedTicket] = useState<TicketType | null>(null);
   const [registration, setRegistration] = useState<Registration | null>(null);
+
+  // Selected payment method (only used for paid tickets)
+  const [selectedMethod, setSelectedMethod] = useState<PaymentMethod>("wave");
 
   // Promo code state
   const [promoOpen, setPromoOpen] = useState(false);
@@ -134,11 +172,31 @@ export default function RegisterPage() {
     if (!selectedTicket) return;
 
     if (isPaidTicket) {
+      // Fully-discounted paid ticket → skip payment, register directly
+      if (discountedPrice === 0) {
+        try {
+          const result = await registerMutation.mutateAsync({
+            eventId,
+            ticketTypeId: selectedTicket.id,
+          });
+          setRegistration((result as { data?: Registration })?.data as Registration);
+          setStep("success");
+          toast.success("Inscription confirmée !");
+          return;
+        } catch (err: unknown) {
+          const code = (err as { code?: string })?.code;
+          const message = (err as { message?: string })?.message;
+          toast.error(getErrorMessage(code, message));
+          return;
+        }
+      }
+
       // Paid ticket → initiate payment flow
       try {
         const result = await paymentMutation.mutateAsync({
           eventId,
           ticketTypeId: selectedTicket.id,
+          method: selectedMethod,
         });
         const data = (result as { data?: { paymentId: string; redirectUrl: string } })?.data;
         if (data?.redirectUrl) {
@@ -417,21 +475,60 @@ export default function RegisterPage() {
               </div>
             )}
 
-            {isPaidTicket && !hasDiscount && (
-              <div className="flex items-start gap-3 rounded-md border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/50">
-                <CreditCard className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-600 dark:text-amber-400" />
-                <p className="text-sm text-amber-800 dark:text-amber-200">
-                  Vous serez redirigé(e) vers la page de paiement pour finaliser votre inscription.
+            {isPaidTicket && discountedPrice > 0 && (
+              <div className="space-y-3">
+                <p className="text-sm font-semibold text-foreground">
+                  Choisissez votre moyen de paiement
                 </p>
-              </div>
-            )}
-
-            {hasDiscount && discountedPrice > 0 && (
-              <div className="flex items-start gap-3 rounded-md border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/50">
-                <CreditCard className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-600 dark:text-amber-400" />
-                <p className="text-sm text-amber-800 dark:text-amber-200">
-                  Vous serez redirigé(e) vers la page de paiement pour finaliser votre inscription.
-                </p>
+                <div
+                  role="radiogroup"
+                  aria-label="Moyen de paiement"
+                  className="grid gap-2 sm:grid-cols-2"
+                >
+                  {PAYMENT_METHODS.map((method) => {
+                    const isSelected = selectedMethod === method.id;
+                    return (
+                      <button
+                        key={method.id}
+                        type="button"
+                        role="radio"
+                        aria-checked={isSelected}
+                        onClick={() => setSelectedMethod(method.id)}
+                        className={`flex items-start gap-3 rounded-lg border p-3 text-left transition-all ${
+                          isSelected
+                            ? "border-teranga-gold bg-teranga-gold/5 shadow-sm"
+                            : "border-border hover:border-teranga-gold/50"
+                        }`}
+                      >
+                        <span
+                          aria-hidden="true"
+                          className="mt-0.5 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full border-2"
+                          style={{
+                            borderColor: isSelected ? method.accent : "#d1d5db",
+                            backgroundColor: isSelected ? method.accent : "transparent",
+                          }}
+                        >
+                          {isSelected && <span className="h-2 w-2 rounded-full bg-white" />}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-semibold" style={{ color: method.accent }}>
+                            {method.label}
+                          </p>
+                          <p className="text-xs text-muted-foreground">{method.description}</p>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="flex items-start gap-3 rounded-md border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/50">
+                  <CreditCard className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-600 dark:text-amber-400" />
+                  <p className="text-sm text-amber-800 dark:text-amber-200">
+                    Vous serez redirigé(e) vers{" "}
+                    {PAYMENT_METHODS.find((m) => m.id === selectedMethod)?.label ??
+                      "la page de paiement"}{" "}
+                    pour finaliser votre inscription.
+                  </p>
+                </div>
               </div>
             )}
 

@@ -42,6 +42,97 @@ function escapeJs(str: string): string {
     .replace(/<\//g, "<\\/");
 }
 
+// ─── Mock Branding (dev only) ────────────────────────────────────────────────
+//
+// Visual-only theming for the mock checkout page. Lets devs click through a
+// Wave-looking / OM-looking / Free-looking screen to spot-check the flow their
+// users will eventually see once the real provider is wired in. The mock
+// backend flow (HMAC-signed webhook → paymentService.handleWebhook) is
+// identical regardless of which method the user picked.
+
+interface MockBranding {
+  title: string;
+  name: string;
+  logo: string;
+  subtitle: string;
+  heading: string;
+  color: string;
+  payLabel: string;
+  showPhoneField: boolean;
+  phoneLabel: string;
+  processingMsg: string;
+}
+
+function getMockBranding(method: string): MockBranding {
+  switch (method) {
+    case "wave":
+      return {
+        title: "Wave",
+        name: "Wave",
+        logo: "Wave",
+        subtitle: "Mobile Money — Sénégal",
+        heading: "Confirmer votre paiement Wave",
+        color: "#1DC8F1",
+        payLabel: "Payer avec Wave",
+        showPhoneField: true,
+        phoneLabel: "Numéro Wave",
+        processingMsg: "Envoi de la demande Wave…",
+      };
+    case "orange_money":
+      return {
+        title: "Orange Money",
+        name: "Orange Money",
+        logo: "Orange Money",
+        subtitle: "Paiement sécurisé",
+        heading: "Confirmer votre paiement Orange Money",
+        color: "#FF7900",
+        payLabel: "Payer avec Orange Money",
+        showPhoneField: true,
+        phoneLabel: "Numéro Orange Money",
+        processingMsg: "Envoi du code USSD #144#…",
+      };
+    case "free_money":
+      return {
+        title: "Free Money",
+        name: "Free Money",
+        logo: "Free Money",
+        subtitle: "Paiement mobile",
+        heading: "Confirmer votre paiement Free Money",
+        color: "#CD0067",
+        payLabel: "Payer avec Free Money",
+        showPhoneField: true,
+        phoneLabel: "Numéro Free Money",
+        processingMsg: "Envoi de la demande Free Money…",
+      };
+    case "card":
+      return {
+        title: "Carte bancaire",
+        name: "Carte bancaire",
+        logo: "VISA / MasterCard",
+        subtitle: "Paiement sécurisé par carte",
+        heading: "Confirmer votre paiement par carte",
+        color: "#1F2937",
+        payLabel: "Payer par carte",
+        showPhoneField: false,
+        phoneLabel: "",
+        processingMsg: "Contact de la banque émettrice…",
+      };
+    default:
+      return {
+        title: "Paiement",
+        name: "Mode test",
+        logo: "Teranga",
+        subtitle: "Simulation de paiement",
+        heading: "Paiement (mode test)",
+        color: "#16A34A",
+        payLabel: "Payer",
+        showPhoneField: false,
+        phoneLabel: "",
+        processingMsg: "Traitement en cours…",
+      };
+  }
+}
+
 export const paymentRoutes: FastifyPluginAsync = async (fastify) => {
   // ─── Initiate Payment ─────────────────────────────────────────────────────
   fastify.post(
@@ -355,58 +446,101 @@ export const paymentRoutes: FastifyPluginAsync = async (fastify) => {
         }).format(state.amount);
         const callbackUrl = state.metadata.callbackUrl as string;
         const returnUrl = state.metadata.returnUrl as string;
+        const method = state.method;
 
         // Build the webhook body the checkout page will send
         // so we can pre-compute the HMAC signature for both pay/cancel
         const payBody = JSON.stringify({
           providerTransactionId: txId,
           status: "succeeded",
-          metadata: { source: "mock_checkout" },
+          metadata: { source: "mock_checkout", method },
         });
         const cancelBody = JSON.stringify({
           providerTransactionId: txId,
           status: "failed",
-          metadata: { source: "mock_checkout" },
+          metadata: {
+            source: "mock_checkout",
+            method,
+            reason: "Paiement annulé par l'utilisateur",
+          },
         });
         const paySignature = signWebhookPayload(payBody);
         const cancelSignature = signWebhookPayload(cancelBody);
+
+        // Method-aware branding so the dev preview matches what the user
+        // will eventually see in prod. Pure visual — the underlying mock
+        // flow is identical for every method.
+        const branding = getMockBranding(method);
 
         const html = `<!DOCTYPE html>
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Paiement — Teranga (Test)</title>
+  <title>${escapeHtml(branding.title)} — Teranga (Test)</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
-    .card { background: white; border-radius: 16px; padding: 2rem; max-width: 400px; width: 90%; box-shadow: 0 4px 24px rgba(0,0,0,0.1); text-align: center; }
-    .logo { font-size: 2rem; margin-bottom: 1rem; }
-    h1 { font-size: 1.25rem; color: #333; margin-bottom: 0.5rem; }
-    .amount { font-size: 2rem; font-weight: 700; color: #16a34a; margin: 1rem 0; }
-    .desc { color: #666; font-size: 0.9rem; margin-bottom: 1.5rem; }
-    .badge { display: inline-block; background: #fef3c7; color: #92400e; padding: 0.25rem 0.75rem; border-radius: 999px; font-size: 0.75rem; margin-bottom: 1.5rem; }
-    .buttons { display: flex; gap: 1rem; }
-    button { flex: 1; padding: 0.875rem; border: none; border-radius: 12px; font-size: 1rem; font-weight: 600; cursor: pointer; transition: opacity 0.2s; }
-    button:hover { opacity: 0.85; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 1rem; }
+    .card { background: white; border-radius: 16px; padding: 2rem; max-width: 420px; width: 100%; box-shadow: 0 4px 24px rgba(0,0,0,0.1); }
+    .brand { background: ${branding.color}; color: white; border-radius: 12px; padding: 1.25rem; text-align: center; margin-bottom: 1.25rem; }
+    .brand-logo { font-size: 1.75rem; font-weight: 800; letter-spacing: -0.5px; }
+    .brand-sub { font-size: 0.8rem; opacity: 0.9; margin-top: 0.25rem; }
+    h1 { font-size: 1.1rem; color: #111; margin-bottom: 0.35rem; text-align: center; }
+    .amount { font-size: 2.25rem; font-weight: 800; color: ${branding.color}; margin: 0.75rem 0; text-align: center; letter-spacing: -1px; }
+    .desc { color: #555; font-size: 0.9rem; margin-bottom: 1rem; text-align: center; }
+    .badge { display: block; width: fit-content; margin: 0 auto 1rem; background: #fef3c7; color: #92400e; padding: 0.3rem 0.8rem; border-radius: 999px; font-size: 0.72rem; font-weight: 600; }
+    .row { display: flex; justify-content: space-between; padding: 0.6rem 0; border-top: 1px solid #eee; font-size: 0.85rem; color: #444; }
+    .row:first-child { border-top: 0; }
+    .row strong { color: #111; font-weight: 600; }
+    label { display: block; font-size: 0.8rem; color: #333; font-weight: 600; margin-bottom: 0.35rem; }
+    input { width: 100%; padding: 0.75rem; border: 1.5px solid #e5e7eb; border-radius: 10px; font-size: 1rem; outline: none; transition: border-color 0.15s; }
+    input:focus { border-color: ${branding.color}; }
+    .hint { font-size: 0.72rem; color: #888; margin-top: 0.35rem; }
+    .buttons { display: flex; flex-direction: column; gap: 0.6rem; margin-top: 1.25rem; }
+    button { padding: 0.95rem; border: none; border-radius: 12px; font-size: 0.95rem; font-weight: 700; cursor: pointer; transition: opacity 0.15s, transform 0.1s; }
+    button:hover:not(:disabled) { opacity: 0.9; }
+    button:active:not(:disabled) { transform: scale(0.99); }
     button:disabled { opacity: 0.5; cursor: not-allowed; }
-    .pay { background: #16a34a; color: white; }
-    .cancel { background: #ef4444; color: white; }
-    .status { margin-top: 1rem; padding: 0.75rem; border-radius: 8px; font-weight: 500; display: none; }
+    .pay { background: ${branding.color}; color: white; }
+    .cancel { background: transparent; color: #666; border: 1.5px solid #e5e7eb; }
+    .status { margin-top: 1rem; padding: 0.9rem; border-radius: 10px; font-weight: 600; display: none; text-align: center; font-size: 0.9rem; }
+    .processing { background: #fef3c7; color: #92400e; }
     .success { background: #dcfce7; color: #166534; }
     .failed { background: #fee2e2; color: #991b1b; }
+    .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spin 0.7s linear infinite; vertical-align: middle; margin-right: 0.35rem; }
+    @keyframes spin { to { transform: rotate(360deg); } }
   </style>
 </head>
 <body>
   <div class="card">
-    <div class="logo">&#x1f3e6;</div>
-    <h1>Paiement Mobile Money</h1>
-    <div class="badge">&#x26a0;&#xfe0f; Environnement de test</div>
+    <div class="brand">
+      <div class="brand-logo">${escapeHtml(branding.logo)}</div>
+      <div class="brand-sub">${escapeHtml(branding.subtitle)}</div>
+    </div>
+
+    <span class="badge">&#x26a0;&#xfe0f; Environnement de test</span>
+
+    <h1>${escapeHtml(branding.heading)}</h1>
     <p class="desc">${escapeHtml(String(state.metadata.description ?? "Paiement"))}</p>
     <div class="amount">${escapeHtml(amount)}</div>
+
+    <div class="row"><span>Fournisseur</span><strong>${escapeHtml(branding.name)}</strong></div>
+    <div class="row"><span>Référence</span><strong>${escapeHtml(txId.slice(0, 18))}&hellip;</strong></div>
+
+    ${
+      branding.showPhoneField
+        ? `
+    <div style="margin-top: 1.25rem;">
+      <label for="phone">${escapeHtml(branding.phoneLabel)}</label>
+      <input id="phone" type="tel" placeholder="+221 77 123 45 67" value="+221 77 123 45 67" autocomplete="off">
+      <p class="hint">Simulation — aucun SMS ni USSD n'est envoyé.</p>
+    </div>`
+        : ""
+    }
+
     <div class="buttons">
-      <button class="pay" id="payBtn" onclick="complete(true)">&#x2713; Payer</button>
-      <button class="cancel" id="cancelBtn" onclick="complete(false)">&#x2717; Annuler</button>
+      <button class="pay" id="payBtn" onclick="complete(true)">&#x2713; ${escapeHtml(branding.payLabel)}</button>
+      <button class="cancel" id="cancelBtn" onclick="complete(false)">Annuler</button>
     </div>
     <div class="status" id="status"></div>
   </div>
@@ -417,12 +551,26 @@ export const paymentRoutes: FastifyPluginAsync = async (fastify) => {
       payBody: '${escapeJs(payBody)}',
       cancelBody: '${escapeJs(cancelBody)}',
       paySignature: '${escapeJs(paySignature)}',
-      cancelSignature: '${escapeJs(cancelSignature)}'
+      cancelSignature: '${escapeJs(cancelSignature)}',
+      processingMsg: '${escapeJs(branding.processingMsg)}'
     };
-    async function complete(success) {
-      document.getElementById('payBtn').disabled = true;
-      document.getElementById('cancelBtn').disabled = true;
+    function setStatus(cls, text) {
       var el = document.getElementById('status');
+      el.style.display = 'block';
+      el.className = 'status ' + cls;
+      el.innerHTML = text;
+    }
+    function disable(v) {
+      document.getElementById('payBtn').disabled = v;
+      document.getElementById('cancelBtn').disabled = v;
+    }
+    async function complete(success) {
+      disable(true);
+      if (success) {
+        setStatus('processing', '<span class="spinner"></span>' + CONFIG.processingMsg);
+        // Simulate realistic mobile-money processing delay (operator ACK)
+        await new Promise(function(r){ setTimeout(r, 1200); });
+      }
       try {
         var res = await fetch(CONFIG.callbackUrl, {
           method: 'POST',
@@ -433,23 +581,15 @@ export const paymentRoutes: FastifyPluginAsync = async (fastify) => {
           body: success ? CONFIG.payBody : CONFIG.cancelBody
         });
         if (res.ok) {
-          el.style.display = 'block';
-          el.className = 'status ' + (success ? 'success' : 'failed');
-          el.textContent = success ? 'Paiement confirmé !' : 'Paiement annulé.';
-          setTimeout(function() { window.location.href = CONFIG.returnUrl; }, 1500);
+          setStatus(success ? 'success' : 'failed', success ? '&#x2713; Paiement confirmé. Redirection&hellip;' : '&#x2717; Paiement annulé. Redirection&hellip;');
+          setTimeout(function() { window.location.href = CONFIG.returnUrl; }, 1200);
         } else {
-          el.style.display = 'block';
-          el.className = 'status failed';
-          el.textContent = 'Erreur du serveur. Réessayez.';
-          document.getElementById('payBtn').disabled = false;
-          document.getElementById('cancelBtn').disabled = false;
+          setStatus('failed', 'Erreur du serveur. Réessayez.');
+          disable(false);
         }
       } catch (e) {
-        el.style.display = 'block';
-        el.className = 'status failed';
-        el.textContent = 'Erreur réseau. Réessayez.';
-        document.getElementById('payBtn').disabled = false;
-        document.getElementById('cancelBtn').disabled = false;
+        setStatus('failed', 'Erreur réseau. Réessayez.');
+        disable(false);
       }
     }
   </script>
