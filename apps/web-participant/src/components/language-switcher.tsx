@@ -1,22 +1,30 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useLocale } from "next-intl";
 import { LanguageSwitcher as SharedLanguageSwitcher } from "@teranga/shared-ui";
 
 /**
  * Next.js wrapper around the framework-agnostic <LanguageSwitcher>
- * primitive from shared-ui. Wires the cookie change to router.refresh()
- * so next-intl picks up the new messages on the next server render.
+ * primitive from shared-ui.
+ *
+ * `router.refresh()` only re-runs the server render — any client
+ * component above the change (including the switcher itself) keeps its
+ * cached state, so users experienced the UI staying in French even
+ * after flipping the cookie. Forcing a full reload re-mounts every
+ * tree from scratch and guarantees next-intl picks up the new locale
+ * for both server- and client-rendered strings.
  */
 export function LanguageSwitcher({ className }: { className?: string }) {
-  const router = useRouter();
   const locale = useLocale();
 
   return (
     <SharedLanguageSwitcher
       locale={locale}
-      onChange={() => router.refresh()}
+      onChange={() => {
+        if (typeof window !== "undefined") {
+          window.location.reload();
+        }
+      }}
       className={className}
     />
   );

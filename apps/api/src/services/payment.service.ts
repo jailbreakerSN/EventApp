@@ -223,6 +223,7 @@ export class PaymentService extends BaseService {
       description: `Inscription : ${event.title} — ${ticketType.name}`,
       callbackUrl,
       returnUrl: finalReturnUrl,
+      method,
     });
 
     // ── Atomic: check duplicate + create registration + payment ──

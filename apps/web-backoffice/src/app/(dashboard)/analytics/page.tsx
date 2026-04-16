@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useTheme } from "next-themes";
 import { useOrgAnalytics } from "@/hooks/use-organization";
 import { EmptyState, DataTable, type DataTableColumn } from "@teranga/shared-ui";
 import { BarChart3, TrendingUp, Users, Ticket, CalendarCheck, Loader2 } from "lucide-react";
@@ -29,20 +30,74 @@ const TIMEFRAME_OPTIONS: { value: AnalyticsTimeframe; label: string }[] = [
   { value: "all", label: "Tout" },
 ];
 
-const PIE_COLORS = [
-  "#1A1A2E",
-  "#D4AF37",
-  "#2E8B57",
-  "#4169E1",
-  "#FF6347",
-  "#9370DB",
-  "#20B2AA",
-  "#FF8C00",
-];
+// ─── Theme-aware chart palette ──────────────────────────────────────────────
+//
+// Recharts reads stroke/fill as JS props (not CSS vars), so colors can't be
+// pulled from the shadcn design tokens directly. The hardcoded navy
+// (#1A1A2E) was invisible against the dark-mode card background (#152a20
+// forest). Below is a curated palette that hits AA contrast on both light
+// (white card) and dark (forest card) surfaces.
+
+type ChartPalette = {
+  registrations: string;
+  checkins: string;
+  barPrimary: string;
+  barSecondary: string;
+  grid: string;
+  axis: string;
+  tooltipBg: string;
+  tooltipBorder: string;
+  tooltipText: string;
+  pie: readonly string[];
+};
+
+const LIGHT_PALETTE: ChartPalette = {
+  registrations: "#1A1A2E", // Teranga navy on white
+  checkins: "#2E8B57", // Teranga green
+  barPrimary: "#1A1A2E",
+  barSecondary: "#D4AF37", // Teranga gold
+  grid: "#f0f0f0",
+  axis: "#6b7280",
+  tooltipBg: "#ffffff",
+  tooltipBorder: "#e5e7eb",
+  tooltipText: "#111827",
+  pie: ["#1A1A2E", "#D4AF37", "#2E8B57", "#4169E1", "#FF6347", "#9370DB", "#20B2AA", "#FF8C00"],
+};
+
+const DARK_PALETTE: ChartPalette = {
+  registrations: "#D4AF37", // gold pops on dark forest
+  checkins: "#86EFAC", // soft mint green, high-contrast on #152a20
+  barPrimary: "#D4AF37",
+  barSecondary: "#86EFAC",
+  grid: "#2b3f34", // matches --border dark
+  axis: "#9ca3af",
+  tooltipBg: "#152a20", // matches --card dark
+  tooltipBorder: "#2b3f34",
+  tooltipText: "#e8e2d6",
+  pie: ["#D4AF37", "#86EFAC", "#7DD3FC", "#FDA4AF", "#C4B5FD", "#FCD34D", "#5EEAD4", "#FDBA74"],
+};
+
+function usePalette(): ChartPalette {
+  const { resolvedTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  // Guard against SSR hydration flash — always render LIGHT until mounted.
+  if (!mounted) return LIGHT_PALETTE;
+  return resolvedTheme === "dark" ? DARK_PALETTE : LIGHT_PALETTE;
+}
 
 export default function AnalyticsPage() {
   const [timeframe, setTimeframe] = useState<AnalyticsTimeframe>("30d");
   const { data, isLoading } = useOrgAnalytics({ timeframe });
+  const palette = usePalette();
+
+  const tooltipStyle = {
+    fontSize: 12,
+    borderRadius: 8,
+    border: `1px solid ${palette.tooltipBorder}`,
+    backgroundColor: palette.tooltipBg,
+    color: palette.tooltipText,
+  } as const;
 
   const analytics = data?.data;
 
@@ -118,28 +173,31 @@ export default function AnalyticsPage() {
                 {analytics.registrationsOverTime.length > 0 ? (
                   <ResponsiveContainer width="100%" height={250}>
                     <AreaChart data={analytics.registrationsOverTime}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                      <CartesianGrid strokeDasharray="3 3" stroke={palette.grid} />
                       <XAxis
                         dataKey="date"
-                        tick={{ fontSize: 10 }}
+                        tick={{ fontSize: 10, fill: palette.axis }}
+                        stroke={palette.axis}
                         tickFormatter={(d) => d.slice(5)}
                       />
-                      <YAxis tick={{ fontSize: 10 }} allowDecimals={false} />
+                      <YAxis
+                        tick={{ fontSize: 10, fill: palette.axis }}
+                        stroke={palette.axis}
+                        allowDecimals={false}
+                      />
                       <Tooltip
                         labelFormatter={(d) => `Date: ${d}`}
-                        contentStyle={{
-                          fontSize: 12,
-                          borderRadius: 8,
-                          border: "1px solid #e5e7eb",
-                        }}
+                        contentStyle={tooltipStyle}
+                        itemStyle={{ color: palette.tooltipText }}
                       />
                       <Area
                         type="monotone"
                         dataKey="count"
                         name="Inscriptions"
-                        stroke="#1A1A2E"
-                        fill="#1A1A2E"
-                        fillOpacity={0.1}
+                        stroke={palette.registrations}
+                        fill={palette.registrations}
+                        fillOpacity={0.2}
+                        strokeWidth={2}
                       />
                     </AreaChart>
                   </ResponsiveContainer>
@@ -157,28 +215,31 @@ export default function AnalyticsPage() {
                 {analytics.checkinsOverTime.length > 0 ? (
                   <ResponsiveContainer width="100%" height={250}>
                     <AreaChart data={analytics.checkinsOverTime}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                      <CartesianGrid strokeDasharray="3 3" stroke={palette.grid} />
                       <XAxis
                         dataKey="date"
-                        tick={{ fontSize: 10 }}
+                        tick={{ fontSize: 10, fill: palette.axis }}
+                        stroke={palette.axis}
                         tickFormatter={(d) => d.slice(5)}
                       />
-                      <YAxis tick={{ fontSize: 10 }} allowDecimals={false} />
+                      <YAxis
+                        tick={{ fontSize: 10, fill: palette.axis }}
+                        stroke={palette.axis}
+                        allowDecimals={false}
+                      />
                       <Tooltip
                         labelFormatter={(d) => `Date: ${d}`}
-                        contentStyle={{
-                          fontSize: 12,
-                          borderRadius: 8,
-                          border: "1px solid #e5e7eb",
-                        }}
+                        contentStyle={tooltipStyle}
+                        itemStyle={{ color: palette.tooltipText }}
                       />
                       <Area
                         type="monotone"
                         dataKey="count"
                         name="Check-ins"
-                        stroke="#2E8B57"
-                        fill="#2E8B57"
-                        fillOpacity={0.1}
+                        stroke={palette.checkins}
+                        fill={palette.checkins}
+                        fillOpacity={0.2}
+                        strokeWidth={2}
                       />
                     </AreaChart>
                   </ResponsiveContainer>
@@ -210,10 +271,13 @@ export default function AnalyticsPage() {
                         labelLine={false}
                       >
                         {analytics.byCategory.map((_, index) => (
-                          <Cell key={index} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+                          <Cell key={index} fill={palette.pie[index % palette.pie.length]} />
                         ))}
                       </Pie>
-                      <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} />
+                      <Tooltip
+                        contentStyle={tooltipStyle}
+                        itemStyle={{ color: palette.tooltipText }}
+                      />
                     </PieChart>
                   </ResponsiveContainer>
                 ) : (
@@ -230,20 +294,31 @@ export default function AnalyticsPage() {
                 {analytics.byTicketType.length > 0 ? (
                   <ResponsiveContainer width="100%" height={250}>
                     <BarChart data={analytics.byTicketType}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                      <XAxis dataKey="ticketTypeName" tick={{ fontSize: 10 }} />
-                      <YAxis tick={{ fontSize: 10 }} allowDecimals={false} />
-                      <Tooltip contentStyle={{ fontSize: 12, borderRadius: 8 }} />
+                      <CartesianGrid strokeDasharray="3 3" stroke={palette.grid} />
+                      <XAxis
+                        dataKey="ticketTypeName"
+                        tick={{ fontSize: 10, fill: palette.axis }}
+                        stroke={palette.axis}
+                      />
+                      <YAxis
+                        tick={{ fontSize: 10, fill: palette.axis }}
+                        stroke={palette.axis}
+                        allowDecimals={false}
+                      />
+                      <Tooltip
+                        contentStyle={tooltipStyle}
+                        itemStyle={{ color: palette.tooltipText }}
+                      />
                       <Bar
                         dataKey="registered"
                         name="Inscrits"
-                        fill="#1A1A2E"
+                        fill={palette.barPrimary}
                         radius={[4, 4, 0, 0]}
                       />
                       <Bar
                         dataKey="checkedIn"
                         name="Check-ins"
-                        fill="#D4AF37"
+                        fill={palette.barSecondary}
                         radius={[4, 4, 0, 0]}
                       />
                     </BarChart>

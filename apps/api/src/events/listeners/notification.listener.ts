@@ -12,7 +12,7 @@ import { eventRepository } from "@/repositories/event.repository";
 import { registrationRepository } from "@/repositories/registration.repository";
 import { type RegistrationStatus } from "@teranga/shared-types";
 
-// ─── Helpers ────────────────��───────────────────────────────────────────────
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function formatDate(isoDate: string): string {
   return new Intl.DateTimeFormat("fr-SN", {
@@ -22,7 +22,7 @@ function formatDate(isoDate: string): string {
   }).format(new Date(isoDate));
 }
 
-// ─── Notification Listener ────────────────────��──────────────────────────────
+// ─── Notification Listener ────────────────────────────────────────────────────
 // Subscribes to domain events and sends notifications as side effects.
 // All operations are fire-and-forget — errors are logged, never propagated.
 
@@ -97,7 +97,7 @@ export function registerNotificationListeners(): void {
       // Fire-and-forget
     }
 
-    // Email ��� registration approved
+    // Email — registration approved
     try {
       const event = await eventRepository.findById(payload.eventId);
       if (event) {

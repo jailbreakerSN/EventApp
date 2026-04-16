@@ -29,6 +29,8 @@ const WEBHOOK_SECRET =
 interface MockPaymentState {
   status: "pending" | "succeeded" | "failed";
   amount: number;
+  /** User-selected payment method — drives the mock checkout branding. */
+  method: string;
   metadata: Record<string, unknown>;
 }
 
@@ -44,11 +46,13 @@ export class MockPaymentProvider implements PaymentProvider {
     paymentStore.set(providerTransactionId, {
       status: "pending",
       amount: params.amount,
+      method: params.method ?? "mock",
       metadata: {
         paymentId: params.paymentId,
         description: params.description,
         callbackUrl: params.callbackUrl,
         returnUrl: params.returnUrl,
+        method: params.method ?? "mock",
       },
     });
 
