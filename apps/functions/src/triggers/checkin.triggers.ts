@@ -27,9 +27,15 @@ export const onCheckinCompleted = onDocumentUpdated(
 
     logger.info(`Check-in completed for registration ${regId}`, { eventId, userId });
 
-    // Write a feed entry for real-time dashboard polling
+    // Write a feed entry for real-time dashboard polling.
+    //
+    // Deterministic doc ID derived from the registration id: Firebase
+    // Functions delivery is at-least-once, so a retry of the same
+    // check-in transition would otherwise create a duplicate feed row
+    // (the dashboard would show the participant checking in twice).
+    // One registration → one feed entry is the correct invariant.
     try {
-      const feedRef = db.collection(COLLECTIONS.CHECKIN_FEED).doc();
+      const feedRef = db.collection(COLLECTIONS.CHECKIN_FEED).doc(`checkin_${regId}`);
 
       // Fetch participant name for the feed entry
       let participantName: string | null = null;
