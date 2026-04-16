@@ -27,7 +27,9 @@
     "logout": "Déconnexion",
     "register": "Inscription",
     "email": "Adresse e-mail",
+    "emailPlaceholder": "votre@email.com",
     "password": "Mot de passe",
+    "passwordPlaceholder": "Votre mot de passe",
     "forgotPassword": "Mot de passe oublié ?",
     "resetPassword": "Réinitialiser le mot de passe",
     "sessionExpiring": "Votre session va expirer dans 5 minutes en raison d'inactivité.",
@@ -38,7 +40,46 @@
     "alreadyAccount": "Déjà un compte ?",
     "noAccount": "Pas encore de compte ?",
     "createAccount": "Créer un compte",
-    "continueWithGoogle": "Continuer avec Google"
+    "continueWithGoogle": "Continuer avec Google",
+    "or": "ou",
+    "loginSubtitle": "Connectez-vous pour accéder à vos événements",
+    "loginButton": "Se connecter",
+    "loginButtonLoading": "Connexion...",
+    "registerSubtitle": "Inscrivez-vous pour découvrir les événements",
+    "registerButton": "Créer mon compte",
+    "registerButtonLoading": "Inscription...",
+    "fullName": "Nom complet",
+    "fullNamePlaceholder": "Prénom Nom",
+    "passwordHint": "Au moins 8 caractères, 1 majuscule, 1 chiffre",
+    "forgotPasswordTitle": "Mot de passe oublié",
+    "forgotPasswordSubtitle": "Entrez votre adresse email pour recevoir un lien de réinitialisation",
+    "resetEmailSent": "Si un compte existe avec cet email, un lien de réinitialisation a été envoyé à {email}. Vérifiez votre boîte de réception.",
+    "sendResetLink": "Envoyer le lien de réinitialisation",
+    "sendingResetLink": "Envoi en cours...",
+    "backToLogin": "Retour à la connexion",
+    "verifyEmailSentTo": "Un email de vérification a été envoyé à {email}. Consultez votre boîte de réception (et vos spams).",
+    "verifyEmailSent": "Un email de vérification a été envoyé. Consultez votre boîte de réception.",
+    "resendVerificationButton": "Renvoyer l'email de vérification",
+    "resendingVerification": "Envoi en cours...",
+    "continueToEvents": "Continuer vers les événements",
+    "verificationEmailSentToast": "Email de vérification envoyé !",
+    "verificationSendFailedToast": "Impossible d'envoyer l'email. Réessayez dans quelques minutes.",
+    "validation": {
+      "required": "Ce champ est requis",
+      "invalidEmail": "Adresse email invalide",
+      "passwordMin6": "Le mot de passe doit contenir au moins 6 caractères",
+      "passwordMin8": "Le mot de passe doit contenir au moins 8 caractères",
+      "passwordUppercase": "Le mot de passe doit contenir au moins une majuscule",
+      "passwordDigit": "Le mot de passe doit contenir au moins un chiffre"
+    },
+    "errors": {
+      "loginGeneric": "Erreur de connexion",
+      "loginGoogle": "Erreur de connexion Google",
+      "invalidCredentials": "Email ou mot de passe incorrect.",
+      "registerGeneric": "Erreur lors de l'inscription",
+      "emailInUse": "Un compte existe déjà avec cet email.",
+      "weakPassword": "Le mot de passe est trop faible."
+    }
   },
   "nav": {
     "home": "Accueil",
@@ -175,6 +216,7 @@
   },
   "events": {
     "title": "Événements",
+    "metaDescription": "Découvrez les événements au Sénégal — conférences, concerts, ateliers, festivals et plus.",
     "discover": "Découvrez les événements",
     "noEvents": "Aucun événement disponible pour le moment.",
     "register": "S'inscrire",
@@ -184,13 +226,27 @@
     "noResults": "Aucun événement trouvé",
     "noResultsHint": "Aucun événement ne correspond à vos critères. Essayez d'élargir votre recherche.",
     "clearFilters": "Réinitialiser les filtres",
+    "list": {
+      "resultsCount": "{count, plural, one {# événement trouvé} other {# événements trouvés}}"
+    },
     "filters": {
       "today": "Aujourd'hui",
       "thisWeek": "Cette semaine",
       "thisWeekend": "Ce weekend",
       "thisMonth": "Ce mois",
       "free": "Gratuit",
-      "paid": "Payant"
+      "paid": "Payant",
+      "searchPlaceholder": "Rechercher un événement...",
+      "allCategories": "Toutes les catégories",
+      "allFormats": "Tous les formats",
+      "allCities": "Toutes les villes",
+      "filterByCity": "Filtrer par ville",
+      "filterByCategory": "Filtrer par catégorie",
+      "filterByFormat": "Filtrer par format",
+      "filterByDate": "Filtrer par date",
+      "filterByPrice": "Filtrer par prix",
+      "reset": "Réinitialiser les filtres",
+      "clear": "Effacer"
     },
     "card": {
       "attendeesCount": "{count} inscrits"
@@ -268,10 +324,27 @@
     "heading": "Restez informé des événements au Sénégal",
     "description": "Recevez chaque semaine les meilleurs événements près de chez vous.",
     "placeholder": "votre@email.com",
+    "emailAria": "Adresse e-mail pour la newsletter",
     "submit": "S'inscrire",
     "submitting": "Inscription…",
+    "submittingAria": "Inscription en cours",
     "success": "Merci ! Vous êtes inscrit.",
     "error": "Une erreur s'est produite. Veuillez réessayer.",
-    "privacyNote": "En vous inscrivant, vous acceptez notre politique de confidentialité."
+    "privacyPrefix": "En vous inscrivant, vous acceptez notre",
+    "privacyLink": "politique de confidentialité",
+    "privacyNote": "En vous inscrivant, vous acceptez notre politique de confidentialité.",
+    "validation": {
+      "required": "Veuillez saisir votre adresse e-mail.",
+      "invalidEmail": "Adresse e-mail invalide."
+    }
+  },
+  "share": {
+    "label": "Partager",
+    "signupCta": "Inscrivez-vous ici :",
+    "whatsapp": "Partager sur WhatsApp",
+    "facebook": "Partager sur Facebook",
+    "twitter": "Partager sur X (Twitter)",
+    "copyLink": "Copier le lien",
+    "copied": "Lien copié"
   }
 }
