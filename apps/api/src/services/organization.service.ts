@@ -40,9 +40,25 @@ export class OrganizationService extends BaseService {
       isActive: true,
     } as Omit<Organization, "id" | "createdAt" | "updatedAt">);
 
-    // Set custom claims so the user has organizer role + organizationId
+    const newRoles = [...new Set([...user.roles, "organizer"])];
+
+    // Mirror organizationId + roles onto the user's Firestore doc BEFORE
+    // updating Auth custom claims. Firestore security rules read
+    // `resource.data.organizationId` from the user doc (firestore.rules),
+    // so the doc must carry the new value at the moment the client starts
+    // using the updated claims — otherwise rules deny reads the user's
+    // claims already permit. Without this mirror, rules that rely on the
+    // user doc's organizationId are de-facto dead for every org creator.
+    await db.collection(COLLECTIONS.USERS).doc(user.uid).update({
+      roles: newRoles,
+      organizationId: org.id,
+      updatedAt: new Date().toISOString(),
+    });
+
+    // Then update Firebase Auth custom claims (JWT source of truth for
+    // middleware authorization on the API side).
     await auth.setCustomUserClaims(user.uid, {
-      roles: [...new Set([...user.roles, "organizer"])],
+      roles: newRoles,
       organizationId: org.id,
     });
 
@@ -111,6 +127,14 @@ export class OrganizationService extends BaseService {
       }
 
       tx.update(docRef, { memberIds: [...members, userId] });
+      // Mirror organizationId onto the new member's Firestore user doc
+      // in the SAME transaction so the org membership and the user's
+      // scope tag commit atomically. See the `create()` comment for why
+      // Firestore rules depend on this mirror.
+      tx.update(db.collection(COLLECTIONS.USERS).doc(userId), {
+        organizationId: orgId,
+        updatedAt: new Date().toISOString(),
+      });
     });
 
     eventBus.emit("member.added", {
@@ -121,7 +145,10 @@ export class OrganizationService extends BaseService {
       timestamp: new Date().toISOString(),
     });
 
-    // Set custom claims for the new member
+    // Update Firebase Auth custom claims AFTER the Firestore writes
+    // committed — rule checks passing now rely on the mirror above, so
+    // claim drift (if this Auth call transiently fails) degrades
+    // gracefully rather than silently denying the user access.
     const existingUser = await auth.getUser(userId);
     const existingClaims = existingUser.customClaims ?? {};
     await auth.setCustomUserClaims(userId, {
@@ -142,6 +169,15 @@ export class OrganizationService extends BaseService {
     }
 
     await organizationRepository.removeMember(orgId, userId);
+
+    // Clear organizationId on the user's Firestore doc in sync with the
+    // org membership removal. Without this, the Firestore rule keeps
+    // treating the user as a member of the (now-left) org for subsequent
+    // reads — drift between the doc and the claims.
+    await db.collection(COLLECTIONS.USERS).doc(userId).update({
+      organizationId: null,
+      updatedAt: new Date().toISOString(),
+    });
 
     eventBus.emit("member.removed", {
       organizationId: orgId,

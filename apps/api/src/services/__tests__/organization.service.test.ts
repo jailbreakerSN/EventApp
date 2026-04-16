@@ -31,7 +31,8 @@ vi.mock("@/repositories/organization.repository", () => ({
 
 const mockTxUpdate = vi.fn();
 const mockTxGet = vi.fn();
-const mockDocRef = { id: "mock-doc" };
+const mockDocUpdate = vi.fn().mockResolvedValue(undefined);
+const mockDocRef = { id: "mock-doc", update: mockDocUpdate };
 
 vi.mock("@/config/firebase", () => ({
   auth: {
@@ -47,7 +48,7 @@ vi.mock("@/config/firebase", () => ({
       doc: vi.fn(() => mockDocRef),
     })),
   },
-  COLLECTIONS: { ORGANIZATIONS: "organizations" },
+  COLLECTIONS: { ORGANIZATIONS: "organizations", USERS: "users" },
 }));
 
 vi.mock("@/events/event-bus", () => ({
@@ -97,6 +98,27 @@ describe("OrganizationService.create", () => {
         ownerId: admin.uid,
         memberIds: [admin.uid],
         isActive: true,
+      }),
+    );
+  });
+
+  it("mirrors organizationId + roles onto the creator's Firestore user doc", async () => {
+    // Regression guard: Firestore rules read organizationId from the user
+    // doc. Without this mirror, the rule is dead for every org creator.
+    mockOrgRepo.findBySlug.mockResolvedValue(null);
+    const created = buildOrganization({ id: "org-mirror-1" });
+    mockOrgRepo.create.mockResolvedValue(created);
+
+    const admin = buildSuperAdmin();
+    await service.create(dto, admin);
+
+    // Exactly one doc.update() call, targeting the user doc with both
+    // organizationId and the expanded roles set.
+    expect(mockDocUpdate).toHaveBeenCalledTimes(1);
+    expect(mockDocUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        organizationId: "org-mirror-1",
+        roles: expect.arrayContaining(["super_admin", "organizer"]),
       }),
     );
   });
@@ -193,6 +215,28 @@ describe("OrganizationService.addMember", () => {
     );
   });
 
+  it("mirrors organizationId onto the new member's user doc inside the same tx", async () => {
+    // Regression guard for the Class B drift fix: firestore.rules reads
+    // organizationId from the user doc, so the membership + mirror must
+    // commit atomically.
+    const org = buildOrganization({ id: "org-1", plan: "starter", memberIds: ["owner-1"] });
+    const user = buildOrganizerUser("org-1");
+    mockTxGet.mockResolvedValue({
+      exists: true,
+      id: org.id,
+      data: () => ({ ...org, id: undefined }),
+    });
+
+    await service.addMember("org-1", "new-member-1", user);
+
+    // At least two tx.update() calls: the org doc (memberIds) + the user
+    // doc (organizationId). Both inside the same transaction.
+    const userDocCall = mockTxUpdate.mock.calls.find(
+      (call) => (call[1] as Record<string, unknown>).organizationId === "org-1",
+    );
+    expect(userDocCall).toBeDefined();
+  });
+
   it("enforces plan member limit", async () => {
     // Free plan: maxMembers = 1 (from PLAN_LIMITS)
     const org = buildOrganization({
@@ -233,6 +277,24 @@ describe("OrganizationService.removeMember", () => {
     await service.removeMember("org-1", "member-1", user);
 
     expect(mockOrgRepo.removeMember).toHaveBeenCalledWith("org-1", "member-1");
+  });
+
+  it("clears organizationId on the removed user's Firestore doc", async () => {
+    // Regression guard: leaving organizationId stale on the user doc
+    // means the Firestore rule keeps granting read access to the
+    // former org's data long after the membership was revoked.
+    const org = buildOrganization({
+      id: "org-1",
+      ownerId: "owner-1",
+      memberIds: ["owner-1", "member-1"],
+    });
+    const user = buildOrganizerUser("org-1");
+    mockOrgRepo.findByIdOrThrow.mockResolvedValue(org);
+    mockOrgRepo.removeMember.mockResolvedValue(undefined);
+
+    await service.removeMember("org-1", "member-1", user);
+
+    expect(mockDocUpdate).toHaveBeenCalledWith(expect.objectContaining({ organizationId: null }));
   });
 
   it("prevents removing the organization owner", async () => {

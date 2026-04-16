@@ -220,6 +220,38 @@ describe("InviteService", () => {
       expect(mockTxUpdate).toHaveBeenCalled();
     });
 
+    it("mirrors organizationId onto the invitee's Firestore user doc inside the tx", async () => {
+      // Regression guard for the Class B drift fix: Firestore rules
+      // read organizationId from the user doc. Invite accept must commit
+      // the mirror in the same tx as the membership change, otherwise
+      // the user can't read org resources via the rules despite their
+      // claims granting access.
+      const invite = buildInvite({
+        organizationId: orgId,
+        email: "test@test.com",
+        status: "pending",
+      });
+      mockInviteRepo.findByToken.mockResolvedValue(invite);
+
+      const acceptUser = buildAuthUser({
+        uid: "new-user",
+        email: "test@test.com",
+        roles: ["participant"],
+      });
+      mockTxGet.mockResolvedValue({
+        exists: true,
+        id: orgId,
+        data: () => ({ ...org, plan: "starter", memberIds: ["owner-1"] }),
+      });
+
+      await service.acceptInvite(invite.token, acceptUser);
+
+      const userDocWrite = mockTxUpdate.mock.calls.find(
+        (call) => (call[1] as Record<string, unknown>).organizationId === orgId,
+      );
+      expect(userDocWrite).toBeDefined();
+    });
+
     it("rejects if email does not match", async () => {
       const invite = buildInvite({
         email: "correct@test.com",
