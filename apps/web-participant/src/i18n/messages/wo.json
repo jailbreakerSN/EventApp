@@ -3,27 +3,229 @@
     "locale": "wo",
     "name": "Wolof",
     "coverage": "partial",
-    "note": "Seed file — covers the highest-visibility keys (events, nav, auth). Long-tail translations land with TASK-P1-I1d."
+    "note": "Partial seed — covers the highest-visibility keys (nav, header, footer, theme, events, auth). Long-tail translations (profile, newsletter, feed, messages) fall back to French."
   },
   "common": {
     "loading": "Di yëngu...",
     "error": "Bënn mbir bu bon am na",
     "retry": "Jéem waaf",
     "back": "Dellu",
+    "close": "Tëj",
     "search": "Wut",
-    "close": "Tëj"
+    "save": "Denc",
+    "cancel": "Bayyi",
+    "delete": "Far",
+    "edit": "Coppite",
+    "confirm": "Nangu",
+    "yes": "Waaw",
+    "no": "Déedéet",
+    "viewAll": "Gis yépp",
+    "viewDetails": "Xam lu ëpp",
+    "date": "Bés",
+    "location": "Barab",
+    "price": "Ñaari xaalis",
+    "status": "Melo wi",
+    "free": "Ba neex",
+    "fromPrice": "Dale fi {price}"
   },
   "auth": {
     "login": "Dugg",
     "logout": "Génn",
     "register": "Bind sa tur",
     "email": "Imeyl",
-    "password": "Baatu-ruus"
+    "password": "Baatu-ruus",
+    "forgotPassword": "Fàtte nga sa baatu-ruus ?",
+    "alreadyAccount": "Am nga kont bi ba mu jëkk ?",
+    "noAccount": "Amoo kont bi ba fii ?",
+    "createAccount": "Sos kont bu bees"
+  },
+  "nav": {
+    "home": "Kër",
+    "events": "Xew-xew yi",
+    "myEvents": "Samay xew-xew",
+    "myRegistrations": "Samay bind",
+    "profile": "Profil",
+    "myProfile": "Sama profil",
+    "settings": "Paramet yi",
+    "notifications": "Xibaar yi",
+    "brandHomeAria": "Teranga Events — kër",
+    "mainAria": "Yoon wu am solo",
+    "mobileAria": "Yoon telefon",
+    "openMenu": "Ubbi menu bi",
+    "closeMenu": "Tëj menu bi",
+    "skipToContent": "Dem ci yëf yi"
+  },
+  "theme": {
+    "groupLabel": "Melo wi interface bi",
+    "light": "Leer",
+    "dark": "Lëndëm",
+    "system": "Sistem"
+  },
+  "footer": {
+    "ariaLabel": "Tànk",
+    "tagline": "Platform xew-xew yu Senegaal.",
+    "social": {
+      "facebook": "Toppal Teranga Events ci Facebook",
+      "twitter": "Toppal Teranga Events ci Twitter / X",
+      "instagram": "Toppal Teranga Events ci Instagram",
+      "linkedin": "Toppal Teranga Events ci LinkedIn"
+    },
+    "discover": {
+      "heading": "Xam",
+      "allEvents": "Xew-xew yépp",
+      "categories": "Kategoori yu ëpp solo",
+      "cities": "Dëkk yi",
+      "helpFaq": "Ndimbal & FAQ"
+    },
+    "organizers": {
+      "heading": "Ñi ko bokkal",
+      "createEvent": "Sos xew-xew",
+      "dashboard": "Tablo",
+      "pricing": "Njëg yi"
+    },
+    "legal": {
+      "heading": "Aada",
+      "privacy": "Politik ci kàddu gi",
+      "terms": "Sart yi",
+      "mentions": "Xibaar yu aada"
+    },
+    "copyright": "© 2026 Teranga Events. Yëf yépp ñuñu denc.",
+    "madeWithLove": "Def ko ak ❤️ ci Senegaal",
+    "madeWithLoveSr": "mbëggeel"
+  },
+  "home": {
+    "hero": {
+      "titleBefore": "Xam xew-xew yi ci",
+      "titleHighlight": "Senegaal",
+      "subtitle": "Konferans, konseer, atelye ak yeneen. Bind sa tur ci ay klik ak jot sa badge QR.",
+      "cta": "Saytu xew-xew yi"
+    },
+    "values": {
+      "simpleReg": {
+        "title": "Bind bu yomb",
+        "description": "Tann sa billet te bindal sa tur ci ay saañu."
+      },
+      "qrBadge": {
+        "title": "Badge QR bu kaaraange",
+        "description": "Sa badge dijital ak kood QR ngir gaaw dugg."
+      },
+      "community": {
+        "title": "Mbooloo",
+        "description": "Bokkul ci mbooloo xew-xew yu Senegaal ak Afrig Sowu."
+      }
+    },
+    "categoriesHeading": "Saytu ci kategoori",
+    "featuredHeading": "Xew-xew yu jiitu",
+    "latestHeading": "Xew-xew yu mujj",
+    "howItWorks": {
+      "heading": "Nu mu di dox",
+      "subheading": "Ñetti étap rekk ngir bokk ci xew-xew yi gën a neex ci Senegaal.",
+      "stepLabel": "Étap {n}",
+      "step1": {
+        "title": "Xam",
+        "description": "Xoolal xew-xew yu ëpp a ñëw ci Dakar ak Senegaal"
+      },
+      "step2": {
+        "title": "Bind sa tur",
+        "description": "Tann sa billet te bindal sa tur ci ay klik"
+      },
+      "step3": { "title": "Bokk", "description": "Wone sa badge QR te bokk ci xew-xew bi" }
+    },
+    "stats": {
+      "events": "xew-xew",
+      "participants": "ñi bokk",
+      "cities": "dëkk",
+      "satisfaction": "satisfaksion"
+    },
+    "testimonialsHeading": "Lu sunuy jëfandikoo wax",
+    "organizerCta": {
+      "heading": "Danga di defar xew-xew ?",
+      "body": "Defaral ko ba neex ci Teranga te jot ñu bari",
+      "primary": "Tàmbali ba neex",
+      "secondary": "Barab ñi ko bokkal"
+    }
+  },
+  "categories": {
+    "conference": "Konferans",
+    "conference_plural": "Konferans yi",
+    "workshop": "Atelye",
+    "workshop_plural": "Atelye yi",
+    "concert": "Konseer",
+    "concert_plural": "Konseer yi",
+    "festival": "Festival",
+    "festival_plural": "Festival yi",
+    "networking": "Networking",
+    "sport": "Sport",
+    "exhibition": "Exposition",
+    "exhibition_plural": "Exposition yi",
+    "ceremony": "Séréére",
+    "ceremony_plural": "Séréére yi",
+    "training": "Jàngale",
+    "training_plural": "Jàngale yi",
+    "other": "Yeneen"
+  },
+  "format": {
+    "in_person": "Ci barab",
+    "online": "Ci internet",
+    "hybrid": "Ñaari yoon"
   },
   "events": {
     "title": "Xew-xew yi",
+    "discover": "Xam xew-xew yi",
     "noEvents": "Amul xew-xew bu am fi muy jëkk.",
     "register": "Bind sa tur",
-    "details": "Xam lu ëpp"
+    "registered": "Bind na",
+    "myEvents": "Samay xew-xew",
+    "noMyEvents": "Binduloo ci xew-xew bu am.",
+    "noResults": "Gisul xew-xew",
+    "noResultsHint": "Xew-xew bu dëppoo ak say laaj amul. Jéemal yaatal sa wut.",
+    "clearFilters": "Delwal filt yi",
+    "filters": {
+      "today": "Tey",
+      "thisWeek": "Ayu-bés bii",
+      "thisWeekend": "Weekend bii",
+      "thisMonth": "Weer wii",
+      "free": "Ba neex",
+      "paid": "Fay"
+    },
+    "card": {
+      "attendeesCount": "{count} bind"
+    },
+    "detail": {
+      "featured": "Yu jiitu",
+      "venueReferenced": "Barab bu ñu fas",
+      "timezone": "Zoon waxtu : {tz}",
+      "about": "Ci mbir mi",
+      "speakers": "Ñi wax",
+      "schedule": "Programme",
+      "sessions": "Session yi",
+      "tickets": "Billet yi",
+      "noTickets": "Amul billet.",
+      "registeredCount": "{count, plural, one {# nit bind na} other {# ñu bind}}",
+      "seatsCount": "{count} / {max} seat",
+      "remaining": "{count, plural, one {# des} other {# des}}",
+      "registerFree": "Bindal sa tur ba neex",
+      "registerPaid": "Bind sa tur — dale fi {price}",
+      "approvalRequired": "Bindu bi laa ñu nangu ci ki ko bokkal.",
+      "soldOut": "Fees",
+      "full": "Fees",
+      "seatsLeft": "{count, plural, one {# seat des} other {# seat des}}",
+      "lastSeats": "{count, plural, one {Desul benn seat rekk !} other {Desul # seat rekk !}}",
+      "feedCommunity": "Feed mbooloo",
+      "feedHint": "Wax ak ñi bokk",
+      "onlineEvent": "Xew-xew ci internet",
+      "onlineHint": "Link bi ñuy yónnee ci biniir bi bind nañu.",
+      "addToCalendar": "Yokk ci kalander",
+      "similarEvents": "Xew-xew yu mel ni",
+      "seeOnMaps": "Gis ci Google Maps",
+      "notFound": "Xew-xew gisu ko",
+      "share": "Séddoo"
+    }
+  },
+  "badge": {
+    "title": "Sama badge",
+    "download": "Téelé",
+    "scanToCheckin": "Wonel kood QR bi ci buntu xew-xew bi.",
+    "addToWallet": "Yokk ci portefeuille"
   }
 }
