@@ -20,6 +20,7 @@ export const AuditActionSchema = z.enum([
   "member.removed",
   "badge.generated",
   "waitlist.promoted",
+  "waitlist.promotion_failed",
   "ticket_type.added",
   "ticket_type.updated",
   "ticket_type.removed",

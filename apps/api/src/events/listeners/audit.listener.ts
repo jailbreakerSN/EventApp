@@ -309,6 +309,28 @@ export function registerAuditListeners(): void {
     });
   });
 
+  // Promotion attempt ran but failed AFTER the cancel committed. We
+  // audit it so operators can see via /admin/audit that a slot is
+  // stuck in limbo — the event has a registered count 1 too low
+  // relative to what the cancel logic implied. No auto-retry is wired
+  // yet; this is pure visibility.
+  eventBus.on("waitlist.promotion_failed", async (payload) => {
+    await auditService.log({
+      action: "waitlist.promotion_failed",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "event",
+      resourceId: payload.eventId,
+      eventId: payload.eventId,
+      organizationId: payload.organizationId,
+      details: {
+        cancelledRegistrationId: payload.cancelledRegistrationId,
+        reason: payload.reason,
+      },
+    });
+  });
+
   // ── Organization Updated ───────────────────────────────────────────────
 
   eventBus.on("organization.updated", async (payload) => {

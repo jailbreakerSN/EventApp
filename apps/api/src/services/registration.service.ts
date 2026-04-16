@@ -292,12 +292,33 @@ export class RegistrationService extends BaseService {
       timestamp: new Date().toISOString(),
     });
 
-    // If a confirmed registration was cancelled, promote next waitlisted
-    // Fire-and-forget: promotion failure should not affect the cancel response
+    // If a confirmed registration was cancelled, promote next waitlisted.
+    // Fire-and-forget: promotion failure must not affect the cancel response,
+    // BUT a silent swallow was hiding data-drift from operators (waitlisted
+    // user still in limbo, event slot still open, zero observability).
+    // Structured log + dedicated domain event surfaces it in Cloud
+    // Logging metrics AND the audit log without blocking the caller.
     if (registration.status === "confirmed") {
       this.promoteNextWaitlisted(eventPayload.eventId, eventPayload.organizationId, user.uid).catch(
-        () => {
-          // Swallowed — audit listener will log the cancellation regardless
+        (err: unknown) => {
+          const reqId = getRequestId();
+          const reason = err instanceof Error ? err.message : String(err);
+          process.stderr.write(
+            `[RegistrationService] reqId=${reqId} waitlist promotion failed for ` +
+              `event=${eventPayload.eventId} org=${eventPayload.organizationId} after ` +
+              `cancel of reg=${registrationId}: ${reason}\n`,
+          );
+          // Emit the dedicated event so the audit listener records it and
+          // any ops metric on `waitlist.promotion_failed` can page.
+          eventBus.emit("waitlist.promotion_failed", {
+            eventId: eventPayload.eventId,
+            organizationId: eventPayload.organizationId,
+            cancelledRegistrationId: registrationId,
+            reason,
+            actorId: user.uid,
+            requestId: reqId,
+            timestamp: new Date().toISOString(),
+          });
         },
       );
     }
