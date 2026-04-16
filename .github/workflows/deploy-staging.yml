@@ -569,6 +569,50 @@ jobs:
           FIREBASE_PROJECT_ID: ${{ needs.setup.outputs.project_id }}
         run: npx tsx scripts/seed-qa-fixtures.ts
 
+  # ─── Backfill balance-transactions ledger (PR #62) ───────────────────────
+  # Replays every historical payment/payout into the balance_transactions
+  # ledger so the /finance page balance endpoint (PR 2) returns the
+  # correct lifetime totals on first load, instead of showing 0 until a
+  # new payment webhook fires.
+  #
+  # Idempotent by design: each entry gets a deterministic doc id derived
+  # from sha256(kind|sourceId), so concurrent or repeated runs converge
+  # on the same docs rather than creating duplicates. The script uses an
+  # `exists()` probe before every write, so subsequent deploys on an
+  # already-backfilled database are effectively no-ops (~1 Firestore read
+  # per payment and per payout, negligible at staging scale).
+  #
+  # Rationale for running on every deploy instead of once:
+  #   - A forgotten one-off job is a one-off regression waiting to happen.
+  #   - Idempotent script + cheap no-op means zero cost when there's
+  #     nothing new to backfill.
+  #   - If any live code path ever bypasses the ledger write (bug),
+  #     the next deploy's backfill catches the gap automatically.
+  backfill-ledger:
+    name: Backfill balance ledger (PR #62)
+    runs-on: ubuntu-latest
+    needs: [setup, seed-staging]
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: Build shared-types
+        # Required because the backfill script imports BalanceTransaction
+        # / Payment / Payout types from @teranga/shared-types.
+        run: npx turbo build --filter=@teranga/shared-types
+      - name: Replay payments + payouts into balance_transactions
+        env:
+          SEED_TARGET: staging
+          FIREBASE_PROJECT_ID: ${{ needs.setup.outputs.project_id }}
+        run: npx tsx scripts/backfill-balance-ledger.ts
+
   # ─── Post-deploy smoke test ──────────────────────────────────────────────
   # Replaces the former 10-minute uptime cron: we only probe once after the
   # CD pipeline completes, which is enough signal in dev/staging and avoids
@@ -585,6 +629,7 @@ jobs:
         deploy-web-participant,
         seed-staging,
         seed-qa-fixtures,
+        backfill-ledger,
       ]
     environment: staging
     permissions:
