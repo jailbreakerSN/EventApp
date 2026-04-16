@@ -353,6 +353,114 @@ describe("AdminService.updateUserStatus", () => {
   });
 });
 
+// ── Class C: dual-write rollback regression guards ───────────────────────
+//
+// PR #59 fixed onUserCreated drift between Firestore and Auth claims; these
+// guards close the same vector on the admin write path. If the second write
+// (Auth) fails after the first (Firestore) committed, the service must
+// roll the Firestore write back so the operator never sees admin UI showing
+// roles/status that the JWT doesn't carry.
+
+describe("AdminService.updateUserRoles — claims-failure rollback (Class C)", () => {
+  it("rolls Firestore back to oldRoles when setCustomUserClaims fails", async () => {
+    const admin = buildSuperAdmin();
+    const targetUserId = "drift-victim-1";
+
+    mockUserDocGet.mockResolvedValue({
+      exists: true,
+      data: () => ({ roles: ["participant"], organizationId: "org-1" }),
+    });
+    // First update (forward) succeeds, second update (rollback) succeeds.
+    mockUserDocUpdate.mockResolvedValueOnce(undefined).mockResolvedValueOnce(undefined);
+    vi.mocked(auth.setCustomUserClaims).mockRejectedValueOnce(new Error("Auth API down"));
+
+    await expect(adminService.updateUserRoles(admin, targetUserId, ["organizer"])).rejects.toThrow(
+      "Auth API down",
+    );
+
+    // Two update calls: forward then compensating rollback.
+    expect(mockUserDocUpdate).toHaveBeenCalledTimes(2);
+    expect(mockUserDocUpdate).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ roles: ["organizer"] }),
+    );
+    expect(mockUserDocUpdate).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ roles: ["participant"] }),
+    );
+    // Crucially: no domain event fired since the operation didn't succeed
+    // — listeners would have produced a misleading audit row.
+    expect(eventBus.emit).not.toHaveBeenCalled();
+  });
+
+  it("surfaces the original Auth error when the compensating rollback also fails", async () => {
+    const admin = buildSuperAdmin();
+    const targetUserId = "drift-victim-2";
+
+    mockUserDocGet.mockResolvedValue({
+      exists: true,
+      data: () => ({ roles: ["participant"], organizationId: null }),
+    });
+    mockUserDocUpdate
+      .mockResolvedValueOnce(undefined) // forward write succeeds
+      .mockRejectedValueOnce(new Error("Firestore rollback also down")); // rollback fails
+    vi.mocked(auth.setCustomUserClaims).mockRejectedValueOnce(new Error("Auth API down"));
+
+    // The operator must see the AUTH error (the cause), not the
+    // secondary rollback error — that's what tells them to retry.
+    await expect(adminService.updateUserRoles(admin, targetUserId, ["organizer"])).rejects.toThrow(
+      "Auth API down",
+    );
+  });
+});
+
+describe("AdminService.updateUserStatus — auth-failure rollback (Class C)", () => {
+  it("rolls Firestore back to previousIsActive when auth.updateUser fails", async () => {
+    const admin = buildSuperAdmin();
+    const targetUserId = "drift-victim-3";
+
+    mockUserDocGet.mockResolvedValue({
+      exists: true,
+      data: () => ({ isActive: true }),
+    });
+    mockUserDocUpdate.mockResolvedValueOnce(undefined).mockResolvedValueOnce(undefined);
+    vi.mocked(auth.updateUser).mockRejectedValueOnce(new Error("Auth disable failed"));
+
+    await expect(adminService.updateUserStatus(admin, targetUserId, false)).rejects.toThrow(
+      "Auth disable failed",
+    );
+
+    expect(mockUserDocUpdate).toHaveBeenCalledTimes(2);
+    expect(mockUserDocUpdate).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ isActive: false }),
+    );
+    expect(mockUserDocUpdate).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ isActive: true }),
+    );
+    expect(eventBus.emit).not.toHaveBeenCalled();
+  });
+
+  it("surfaces the original Auth error when the compensating rollback also fails", async () => {
+    const admin = buildSuperAdmin();
+    const targetUserId = "drift-victim-4";
+
+    mockUserDocGet.mockResolvedValue({
+      exists: true,
+      data: () => ({ isActive: true }),
+    });
+    mockUserDocUpdate
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error("Firestore rollback also down"));
+    vi.mocked(auth.updateUser).mockRejectedValueOnce(new Error("Auth disable failed"));
+
+    await expect(adminService.updateUserStatus(admin, targetUserId, false)).rejects.toThrow(
+      "Auth disable failed",
+    );
+  });
+});
+
 // ── verifyOrganization ───────────────────────────────────────────────────
 
 describe("AdminService.verifyOrganization", () => {

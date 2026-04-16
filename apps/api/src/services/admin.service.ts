@@ -59,17 +59,43 @@ class AdminService extends BaseService {
     const currentData = userDoc.data()!;
     const oldRoles = (currentData.roles as string[]) ?? ["participant"];
 
-    // Update Firestore user doc
+    // Update Firestore user doc FIRST.
     await db.collection(COLLECTIONS.USERS).doc(targetUserId).update({
       roles,
       updatedAt: new Date().toISOString(),
     });
 
-    // Update Firebase Auth custom claims (critical — JWT is source of truth for middleware)
-    await auth.setCustomUserClaims(targetUserId, {
-      roles,
-      organizationId: currentData.organizationId ?? undefined,
-    });
+    // Update Firebase Auth custom claims (critical — JWT is source of
+    // truth for middleware). If this fails (transient Auth API outage,
+    // Cloud Run cold-start to Auth, IAM revoke mid-request, etc.) we
+    // roll back the Firestore write so the two stores stay aligned.
+    // Without the rollback we'd recreate the exact symptom PR #59 fixed
+    // for the onUserCreated trigger — admin UI shows new roles, JWT
+    // still carries old ones, every endpoint denies the user, and the
+    // operator has no signal that anything went wrong.
+    try {
+      await auth.setCustomUserClaims(targetUserId, {
+        roles,
+        organizationId: currentData.organizationId ?? undefined,
+      });
+    } catch (err) {
+      // Compensating write — best-effort, but the original Auth error
+      // is what the operator needs to see, so we surface that.
+      try {
+        await db.collection(COLLECTIONS.USERS).doc(targetUserId).update({
+          roles: oldRoles,
+          updatedAt: new Date().toISOString(),
+        });
+      } catch (rollbackErr) {
+        // The compensating write itself failed — log + continue. The
+        // user doc is now in the new state but the claims are stale.
+        // Surface the original Auth error so the operator retries.
+        process.stderr.write(
+          `admin.updateUserRoles: rollback FAILED for user ${targetUserId} after setCustomUserClaims error: ${String(rollbackErr)}\n`,
+        );
+      }
+      throw err;
+    }
 
     eventBus.emit("user.role_changed", {
       actorId: user.uid,
@@ -92,14 +118,33 @@ class AdminService extends BaseService {
     const userDoc = await db.collection(COLLECTIONS.USERS).doc(targetUserId).get();
     if (!userDoc.exists) throw new NotFoundError("User", targetUserId);
 
+    const previousIsActive = (userDoc.data()?.isActive as boolean | undefined) ?? true;
+
     // Update Firestore
     await db.collection(COLLECTIONS.USERS).doc(targetUserId).update({
       isActive,
       updatedAt: new Date().toISOString(),
     });
 
-    // Disable/enable in Firebase Auth
-    await auth.updateUser(targetUserId, { disabled: !isActive });
+    // Disable/enable in Firebase Auth. Same drift-rollback story as
+    // updateUserRoles: a transient Auth failure here would leave the
+    // user marked inactive in Firestore (admin UI shows suspended) but
+    // still able to log in (Auth doesn't know they're disabled).
+    try {
+      await auth.updateUser(targetUserId, { disabled: !isActive });
+    } catch (err) {
+      try {
+        await db.collection(COLLECTIONS.USERS).doc(targetUserId).update({
+          isActive: previousIsActive,
+          updatedAt: new Date().toISOString(),
+        });
+      } catch (rollbackErr) {
+        process.stderr.write(
+          `admin.updateUserStatus: rollback FAILED for user ${targetUserId} after auth.updateUser error: ${String(rollbackErr)}\n`,
+        );
+      }
+      throw err;
+    }
 
     eventBus.emit("user.status_changed", {
       actorId: user.uid,
