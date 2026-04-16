@@ -90,45 +90,65 @@ export const onPaymentSucceeded = onDocumentWritten(
     if (!justSucceeded) return;
 
     try {
-      // Check if a badge already exists for this registration
-      const existingBadge = await db
-        .collection(COLLECTIONS.BADGES)
-        .where("registrationId", "==", after.registrationId)
-        .limit(1)
-        .get();
-
-      if (!existingBadge.empty) {
-        logger.info("Badge already exists for registration, skipping", {
-          registrationId: after.registrationId,
-        });
-        return;
-      }
-
-      // Create a badge document — the badge.triggers.ts will handle PDF generation
-      const badgeRef = db.collection(COLLECTIONS.BADGES).doc();
+      // Fetch the registration outside the transaction — we need it for
+      // the qrCodeValue / userId fields the badge doc copies. Safe to
+      // read once: the registration is immutable after confirmation.
       const reg = await db.collection(COLLECTIONS.REGISTRATIONS).doc(after.registrationId).get();
       const regData = reg.data();
       if (!regData) return;
 
-      await badgeRef.set({
-        id: badgeRef.id,
-        registrationId: after.registrationId,
-        eventId: after.eventId,
-        userId: after.userId ?? regData.userId,
-        qrCodeValue: regData.qrCodeValue,
-        status: "pending",
-        templateId: null,
-        pdfURL: null,
-        generatedAt: null,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+      // Atomic duplicate check + create inside a transaction. Previously
+      // this was a check-then-set pair of separate operations: two
+      // concurrent fires (API event-bus emit + Firestore payment-status
+      // trigger both reacting to the same payment.succeeded) could both
+      // pass the `existingBadge.empty` check and both call `set()`,
+      // producing two badge docs for one registration. The transaction
+      // forces the second caller to observe the first's write and skip.
+      //
+      // Mirrors the pattern already used by registration.triggers.ts:213
+      // so the two badge-creation paths (payment-completed and
+      // registration-confirmed for free events) stay safe against the
+      // same class of race.
+      const badgeRef = db.collection(COLLECTIONS.BADGES).doc();
+      let createdBadgeId: string | null = null;
+      await db.runTransaction(async (tx) => {
+        const existingBadge = await tx.get(
+          db
+            .collection(COLLECTIONS.BADGES)
+            .where("registrationId", "==", after.registrationId)
+            .limit(1),
+        );
+
+        if (!existingBadge.empty) {
+          logger.info("Badge already exists for registration, skipping", {
+            registrationId: after.registrationId,
+          });
+          return;
+        }
+
+        tx.set(badgeRef, {
+          id: badgeRef.id,
+          registrationId: after.registrationId,
+          eventId: after.eventId,
+          userId: after.userId ?? regData.userId,
+          qrCodeValue: regData.qrCodeValue,
+          status: "pending",
+          templateId: null,
+          pdfURL: null,
+          generatedAt: null,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        });
+        createdBadgeId = badgeRef.id;
       });
 
-      logger.info("Badge creation triggered by payment success", {
-        paymentId: event.data?.after?.id,
-        registrationId: after.registrationId,
-        badgeId: badgeRef.id,
-      });
+      if (createdBadgeId) {
+        logger.info("Badge creation triggered by payment success", {
+          paymentId: event.data?.after?.id,
+          registrationId: after.registrationId,
+          badgeId: createdBadgeId,
+        });
+      }
     } catch (err) {
       logger.error("Failed to trigger badge generation after payment", err);
     }
