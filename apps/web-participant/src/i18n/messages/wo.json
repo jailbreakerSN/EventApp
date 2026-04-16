@@ -33,11 +33,57 @@
     "logout": "Génn",
     "register": "Bind sa tur",
     "email": "Imeyl",
+    "emailPlaceholder": "sa@imeyl.com",
     "password": "Baatu-ruus",
+    "passwordPlaceholder": "Sa baatu-ruus",
     "forgotPassword": "Fàtte nga sa baatu-ruus ?",
+    "resetPassword": "Yeesalaat baatu-ruus",
+    "verifyEmail": "Gisal sa imeyl",
+    "verificationSent": "Imeyl verifikasion jot na la.",
+    "resendVerification": "Yonnee imeyl bi",
     "alreadyAccount": "Am nga kont bi ba mu jëkk ?",
     "noAccount": "Amoo kont bi ba fii ?",
-    "createAccount": "Sos kont bu bees"
+    "createAccount": "Sos kont bu bees",
+    "continueWithGoogle": "Jàllale ak Google",
+    "or": "walla",
+    "loginSubtitle": "Dugg ngir gis say xew-xew",
+    "loginButton": "Dugg",
+    "loginButtonLoading": "Di dugg...",
+    "registerSubtitle": "Bindal sa tur ngir xam xew-xew yi",
+    "registerButton": "Sos sama kont",
+    "registerButtonLoading": "Di bind...",
+    "fullName": "Tur bu mat",
+    "fullNamePlaceholder": "Tur ak Sant",
+    "passwordHint": "8 araf te yemoo la, 1 maajiskil, 1 nombor",
+    "forgotPasswordTitle": "Fàtte nga sa baatu-ruus",
+    "forgotPasswordSubtitle": "Bindal sa imeyl ngir jot link bu yeesalaat",
+    "resetEmailSent": "Soo amee kont bu nekk ak imeyl bii, link bu yeesalaat jot na la ci {email}. Xoolal sa bokso imeyl.",
+    "sendResetLink": "Yónnee link bu yeesalaat",
+    "sendingResetLink": "Di yónnee...",
+    "backToLogin": "Delloo dugg",
+    "verifyEmailSentTo": "Imeyl verifikasion jot na {email}. Xoolal sa bokso (ak spam).",
+    "verifyEmailSent": "Imeyl verifikasion jot na. Xoolal sa bokso imeyl.",
+    "resendVerificationButton": "Yonnaal imeyl verifikasion bi",
+    "resendingVerification": "Di yónnee...",
+    "continueToEvents": "Jàllale ci xew-xew yi",
+    "verificationEmailSentToast": "Imeyl verifikasion yónnee na !",
+    "verificationSendFailedToast": "Dunu mën a yónnee imeyl bi. Jéem ci ay saañu.",
+    "validation": {
+      "required": "Bii foom bi dafa laajtee",
+      "invalidEmail": "Imeyl bi baaxul",
+      "passwordMin6": "Baatu-ruus war na am 6 araf du yem",
+      "passwordMin8": "Baatu-ruus war na am 8 araf du yem",
+      "passwordUppercase": "Baatu-ruus war na am benn maajiskil ci ndoobin",
+      "passwordDigit": "Baatu-ruus war na am benn nombor ci ndoobin"
+    },
+    "errors": {
+      "loginGeneric": "Njumte ci dugg",
+      "loginGoogle": "Njumte ci dugg Google",
+      "invalidCredentials": "Imeyl walla baatu-ruus mooy juum.",
+      "registerGeneric": "Njumte ci bind",
+      "emailInUse": "Am na kont bu nekk ak imeyl bii.",
+      "weakPassword": "Baatu-ruus bi dafa néew doole."
+    }
   },
   "nav": {
     "home": "Kër",
@@ -171,6 +217,7 @@
   },
   "events": {
     "title": "Xew-xew yi",
+    "metaDescription": "Xamal xew-xew yu Senegaal — konferans, konseer, atelye, festival ak yeneen.",
     "discover": "Xam xew-xew yi",
     "noEvents": "Amul xew-xew bu am fi muy jëkk.",
     "register": "Bind sa tur",
@@ -180,13 +227,27 @@
     "noResults": "Gisul xew-xew",
     "noResultsHint": "Xew-xew bu dëppoo ak say laaj amul. Jéemal yaatal sa wut.",
     "clearFilters": "Delwal filt yi",
+    "list": {
+      "resultsCount": "{count, plural, one {# xew-xew gis na} other {# xew-xew gis nañu}}"
+    },
     "filters": {
       "today": "Tey",
       "thisWeek": "Ayu-bés bii",
       "thisWeekend": "Weekend bii",
       "thisMonth": "Weer wii",
       "free": "Ba neex",
-      "paid": "Fay"
+      "paid": "Fay",
+      "searchPlaceholder": "Wutal xew-xew...",
+      "allCategories": "Kategoori yépp",
+      "allFormats": "Furmaa yépp",
+      "allCities": "Dëkk yépp",
+      "filterByCity": "Filt ci dëkk",
+      "filterByCategory": "Filt ci kategoori",
+      "filterByFormat": "Filt ci furmaa",
+      "filterByDate": "Filt ci bés",
+      "filterByPrice": "Filt ci njëg",
+      "reset": "Delwal filt yi",
+      "clear": "Fomm"
     },
     "card": {
       "attendeesCount": "{count} bind"
@@ -227,5 +288,32 @@
     "download": "Téelé",
     "scanToCheckin": "Wonel kood QR bi ci buntu xew-xew bi.",
     "addToWallet": "Yokk ci portefeuille"
+  },
+  "newsletter": {
+    "heading": "Xam xew-xew yu Senegaal",
+    "description": "Jot ayu-bés bu nekk xew-xew yi gën a neex ci sa biir.",
+    "placeholder": "sa@imeyl.com",
+    "emailAria": "Imeyl ngir newsletter bi",
+    "submit": "Bindal sa tur",
+    "submitting": "Di bind…",
+    "submittingAria": "Di bind",
+    "success": "Jërëjëf ! Bind nga sa tur.",
+    "error": "Bënn mbir bu bon am na. Jéem waaf.",
+    "privacyPrefix": "Soo bindee sa tur, nanga nangu sunu",
+    "privacyLink": "politik ci kàddu gi",
+    "privacyNote": "Soo bindee sa tur, nanga nangu sunu politik ci kàddu gi.",
+    "validation": {
+      "required": "Bindal sa imeyl.",
+      "invalidEmail": "Imeyl bi baaxul."
+    }
+  },
+  "share": {
+    "label": "Séddoo",
+    "signupCta": "Bindal sa tur fii :",
+    "whatsapp": "Séddoo ci WhatsApp",
+    "facebook": "Séddoo ci Facebook",
+    "twitter": "Séddoo ci X (Twitter)",
+    "copyLink": "Duppilik link bi",
+    "copied": "Link duppi na"
   }
 }

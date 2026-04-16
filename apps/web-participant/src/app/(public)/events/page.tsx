@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Search } from "lucide-react";
+import { getTranslations } from "next-intl/server";
 import { EmptyState } from "@teranga/shared-ui";
 import { serverEventsApi } from "@/lib/server-api";
 import { EventCard } from "@/components/event-card";
@@ -7,13 +8,16 @@ import { EventFilters } from "@/components/event-filters";
 import { NewsletterSignup } from "@/components/newsletter-signup";
 import { getDateRange } from "@/lib/date-utils";
 import { Pagination } from "@/components/pagination";
-export const revalidate = 60;
 
-export const metadata: Metadata = {
-  title: "Événements",
-  description:
-    "Découvrez les événements au Sénégal — conférences, concerts, ateliers, festivals et plus.",
-};
+export const dynamic = "force-dynamic";
+
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("events");
+  return {
+    title: t("title"),
+    description: t("metaDescription"),
+  };
+}
 
 interface EventsPageProps {
   searchParams: Promise<{
@@ -30,7 +34,7 @@ interface EventsPageProps {
 }
 
 export default async function EventsPage({ searchParams }: EventsPageProps) {
-  const params = await searchParams;
+  const [params, tEvents] = await Promise.all([searchParams, getTranslations("events")]);
   const page = Number(params.page) || 1;
 
   // Resolve date range from shortcut or explicit params
@@ -62,7 +66,7 @@ export default async function EventsPage({ searchParams }: EventsPageProps) {
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
       <div className="mb-8">
-        <h1 className="text-3xl font-bold">Événements</h1>
+        <h1 className="text-3xl font-bold">{tEvents("title")}</h1>
         {/* aria-live announces count updates to screen readers when filters change */}
         <p
           className="mt-2 text-muted-foreground"
@@ -71,8 +75,8 @@ export default async function EventsPage({ searchParams }: EventsPageProps) {
           aria-atomic="true"
         >
           {meta.total > 0
-            ? `${meta.total} événement${meta.total > 1 ? "s" : ""} trouvé${meta.total > 1 ? "s" : ""}`
-            : "Aucun événement trouvé"}
+            ? tEvents("list.resultsCount", { count: meta.total })
+            : tEvents("noResults")}
         </p>
       </div>
 
@@ -94,14 +98,14 @@ export default async function EventsPage({ searchParams }: EventsPageProps) {
       ) : (
         <EmptyState
           icon={Search}
-          title="Aucun événement trouvé"
-          description="Aucun événement ne correspond à vos critères. Essayez d'élargir votre recherche."
+          title={tEvents("noResults")}
+          description={tEvents("noResultsHint")}
           action={
             <a
               href="/events"
               className="text-sm font-medium text-teranga-gold-dark hover:underline"
             >
-              Réinitialiser les filtres
+              {tEvents("clearFilters")}
             </a>
           }
         />

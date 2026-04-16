@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { useTranslations } from "next-intl";
 import { useAuth } from "@/hooks/use-auth";
 import { getAndClearRedirectUrl } from "@/components/auth-guard";
 import { ThemeLogo } from "@/components/theme-logo";
@@ -21,37 +22,45 @@ import {
   FormField,
 } from "@teranga/shared-ui";
 
-const registerSchema = z.object({
-  displayName: z
-    .string()
-    .trim()
-    .min(1, { message: "Ce champ est requis" }),
-  email: z
-    .string()
-    .trim()
-    .regex(/^[^\s@]+@[^\s@]+\.[^\s@]+$/, { message: "Adresse email invalide" }),
-  password: z
-    .string()
-    .min(8, { message: "Le mot de passe doit contenir au moins 8 caractères" })
-    .regex(/[A-Z]/, { message: "Le mot de passe doit contenir au moins une majuscule" })
-    .regex(/[0-9]/, { message: "Le mot de passe doit contenir au moins un chiffre" }),
-});
-
-type RegisterFormValues = z.infer<typeof registerSchema>;
-
 function safeRedirect(url: string | null): string {
   if (!url) return "/events";
-  // Only allow relative paths starting with / (block protocol-relative URLs like //evil.com)
   if (url.startsWith("/") && !url.startsWith("//")) return url;
   return "/events";
 }
 
 export function RegisterForm() {
+  const tAuth = useTranslations("auth");
+  const tValidation = useTranslations("auth.validation");
+  const tErrors = useTranslations("auth.errors");
   const { register: registerUser, loginWithGoogle } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   const [error, setError] = useState<string | null>(null);
   const [googleLoading, setGoogleLoading] = useState(false);
+
+  const registerSchema = useMemo(
+    () =>
+      z.object({
+        displayName: z
+          .string()
+          .trim()
+          .min(1, { message: tValidation("required") }),
+        email: z
+          .string()
+          .trim()
+          .regex(/^[^\s@]+@[^\s@]+\.[^\s@]+$/, {
+            message: tValidation("invalidEmail"),
+          }),
+        password: z
+          .string()
+          .min(8, { message: tValidation("passwordMin8") })
+          .regex(/[A-Z]/, { message: tValidation("passwordUppercase") })
+          .regex(/[0-9]/, { message: tValidation("passwordDigit") }),
+      }),
+    [tValidation],
+  );
+
+  type RegisterFormValues = z.infer<typeof registerSchema>;
 
   const {
     register,
@@ -77,13 +86,15 @@ export function RegisterForm() {
       await registerUser(values.email, values.password, values.displayName);
       router.push("/verify-email");
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Erreur lors de l'inscription";
-      if (message.includes("email-already-in-use")) {
-        setError("Un compte existe déjà avec cet email.");
-      } else if (message.includes("weak-password")) {
-        setError("Le mot de passe est trop faible.");
+      const raw = err instanceof Error ? err.message : "";
+      if (raw.includes("email-already-in-use")) {
+        setError(tErrors("emailInUse"));
+      } else if (raw.includes("weak-password")) {
+        setError(tErrors("weakPassword"));
+      } else if (raw) {
+        setError(raw);
       } else {
-        setError(message);
+        setError(tErrors("registerGeneric"));
       }
     }
   };
@@ -96,7 +107,8 @@ export function RegisterForm() {
       const savedUrl = safeRedirect(getAndClearRedirectUrl());
       router.push(savedUrl !== "/events" ? savedUrl : redirectTo);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Erreur de connexion Google");
+      const raw = err instanceof Error ? err.message : "";
+      setError(raw || tErrors("loginGoogle"));
     } finally {
       setGoogleLoading(false);
     }
@@ -115,8 +127,8 @@ export function RegisterForm() {
             priority
           />
         </Link>
-        <CardTitle className="text-2xl">Créer un compte</CardTitle>
-        <CardDescription>Inscrivez-vous pour découvrir les événements</CardDescription>
+        <CardTitle className="text-2xl">{tAuth("createAccount")}</CardTitle>
+        <CardDescription>{tAuth("registerSubtitle")}</CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
@@ -127,7 +139,7 @@ export function RegisterForm() {
           )}
 
           <FormField
-            label="Nom complet"
+            label={tAuth("fullName")}
             required
             htmlFor="displayName"
             error={errors.displayName?.message}
@@ -136,14 +148,14 @@ export function RegisterForm() {
             <Input
               id="displayName"
               type="text"
-              placeholder="Prénom Nom"
+              placeholder={tAuth("fullNamePlaceholder")}
               autoComplete="name"
               {...register("displayName")}
             />
           </FormField>
 
           <FormField
-            label="Email"
+            label={tAuth("email")}
             required
             htmlFor="email"
             error={errors.email?.message}
@@ -152,24 +164,24 @@ export function RegisterForm() {
             <Input
               id="email"
               type="email"
-              placeholder="votre@email.com"
+              placeholder={tAuth("emailPlaceholder")}
               autoComplete="email"
               {...register("email")}
             />
           </FormField>
 
           <FormField
-            label="Mot de passe"
+            label={tAuth("password")}
             required
             htmlFor="password"
             error={errors.password?.message}
             state={fieldState("password")}
-            hint="Au moins 8 caractères, 1 majuscule, 1 chiffre"
+            hint={tAuth("passwordHint")}
           >
             <Input
               id="password"
               type="password"
-              placeholder="Votre mot de passe"
+              placeholder={tAuth("passwordPlaceholder")}
               autoComplete="new-password"
               minLength={8}
               {...register("password")}
@@ -177,7 +189,7 @@ export function RegisterForm() {
           </FormField>
 
           <Button type="submit" className="w-full" disabled={loading}>
-            {isSubmitting ? "Inscription..." : "Créer mon compte"}
+            {isSubmitting ? tAuth("registerButtonLoading") : tAuth("registerButton")}
           </Button>
         </form>
 
@@ -186,22 +198,22 @@ export function RegisterForm() {
             <div className="w-full border-t" />
           </div>
           <div className="relative flex justify-center text-xs uppercase">
-            <span className="bg-card px-2 text-muted-foreground">ou</span>
+            <span className="bg-card px-2 text-muted-foreground">{tAuth("or")}</span>
           </div>
         </div>
 
         <Button variant="outline" className="w-full" onClick={handleGoogle} disabled={loading}>
-          Continuer avec Google
+          {tAuth("continueWithGoogle")}
         </Button>
       </CardContent>
       <CardFooter className="justify-center">
         <p className="text-sm text-muted-foreground">
-          Déjà un compte ?{" "}
+          {tAuth("alreadyAccount")}{" "}
           <Link
             href={`/login?redirect=${encodeURIComponent(redirectTo)}`}
             className="font-medium text-teranga-gold-dark hover:underline"
           >
-            Se connecter
+            {tAuth("login")}
           </Link>
         </p>
       </CardFooter>

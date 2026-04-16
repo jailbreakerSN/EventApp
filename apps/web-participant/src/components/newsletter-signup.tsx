@@ -1,26 +1,33 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { useTranslations } from "next-intl";
 import { Button, Input, Spinner } from "@teranga/shared-ui";
 import { newsletterApi } from "@/lib/api-client";
 
 type FormState = "idle" | "success" | "error";
 
-const schema = z.object({
-  email: z
-    .string()
-    .trim()
-    .min(1, { message: "Veuillez saisir votre adresse e-mail." })
-    .regex(/^[^\s@]+@[^\s@]+\.[^\s@]+$/, { message: "Adresse e-mail invalide." }),
-});
-
-type FormValues = z.infer<typeof schema>;
-
 export function NewsletterSignup() {
+  const t = useTranslations("newsletter");
+  const tValidation = useTranslations("newsletter.validation");
   const [formState, setFormState] = useState<FormState>("idle");
+
+  const schema = useMemo(
+    () =>
+      z.object({
+        email: z
+          .string()
+          .trim()
+          .min(1, { message: tValidation("required") })
+          .regex(/^[^\s@]+@[^\s@]+\.[^\s@]+$/, { message: tValidation("invalidEmail") }),
+      }),
+    [tValidation],
+  );
+
+  type FormValues = z.infer<typeof schema>;
 
   const {
     register,
@@ -49,46 +56,26 @@ export function NewsletterSignup() {
       className="rounded-2xl bg-gradient-to-r from-teranga-navy/5 to-teranga-gold/5 px-6 py-12 dark:from-teranga-navy/20 dark:to-teranga-gold/10"
     >
       <div className="mx-auto max-w-2xl text-center">
-        <h2
-          id="newsletter-heading"
-          className="text-2xl font-bold text-foreground sm:text-3xl"
-        >
-          Restez informé des événements au Sénégal
+        <h2 id="newsletter-heading" className="text-2xl font-bold text-foreground sm:text-3xl">
+          {t("heading")}
         </h2>
-        <p className="mt-3 text-muted-foreground">
-          Recevez chaque semaine les meilleurs événements près de chez vous.
-        </p>
+        <p className="mt-3 text-muted-foreground">{t("description")}</p>
 
-        {/* Status messages — announced to screen readers */}
-        <div
-          aria-live="polite"
-          aria-atomic="true"
-          className="mt-4 min-h-[1.5rem]"
-        >
+        <div aria-live="polite" aria-atomic="true" className="mt-4 min-h-[1.5rem]">
           {formState === "success" && (
-            <p className="font-medium text-teranga-green">
-              Merci&nbsp;! Vous êtes inscrit.
-            </p>
+            <p className="font-medium text-teranga-green">{t("success")}</p>
           )}
-          {formState === "error" && (
-            <p className="font-medium text-destructive">
-              Une erreur s&apos;est produite. Veuillez réessayer.
-            </p>
-          )}
+          {formState === "error" && <p className="font-medium text-destructive">{t("error")}</p>}
         </div>
 
         {formState !== "success" && (
-          <form
-            onSubmit={handleSubmit(onSubmit)}
-            noValidate
-            className="mt-6"
-          >
+          <form onSubmit={handleSubmit(onSubmit)} noValidate className="mt-6">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
               <div className="flex-1">
                 <Input
                   type="email"
-                  placeholder="votre@email.com"
-                  aria-label="Adresse e-mail pour la newsletter"
+                  placeholder={t("placeholder")}
+                  aria-label={t("emailAria")}
                   aria-describedby={errors.email ? "newsletter-email-error" : undefined}
                   aria-invalid={errors.email ? true : undefined}
                   disabled={isSubmitting}
@@ -114,11 +101,15 @@ export function NewsletterSignup() {
               >
                 {isSubmitting ? (
                   <>
-                    <Spinner size="sm" className="mr-2 text-white" aria-label="Inscription en cours" />
-                    Inscription…
+                    <Spinner
+                      size="sm"
+                      className="mr-2 text-white"
+                      aria-label={t("submittingAria")}
+                    />
+                    {t("submitting")}
                   </>
                 ) : (
-                  "S'inscrire"
+                  t("submit")
                 )}
               </Button>
             </div>
@@ -126,12 +117,9 @@ export function NewsletterSignup() {
         )}
 
         <p className="mt-4 text-xs text-muted-foreground">
-          En vous inscrivant, vous acceptez notre{" "}
-          <a
-            href="/privacy"
-            className="underline underline-offset-2 hover:text-foreground"
-          >
-            politique de confidentialité
+          {t("privacyPrefix")}{" "}
+          <a href="/privacy" className="underline underline-offset-2 hover:text-foreground">
+            {t("privacyLink")}
           </a>
           .
         </p>

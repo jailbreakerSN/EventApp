@@ -27,7 +27,9 @@
     "logout": "Log out",
     "register": "Sign up",
     "email": "Email address",
+    "emailPlaceholder": "your@email.com",
     "password": "Password",
+    "passwordPlaceholder": "Your password",
     "forgotPassword": "Forgot password?",
     "resetPassword": "Reset password",
     "sessionExpiring": "Your session will expire in 5 minutes due to inactivity.",
@@ -38,7 +40,46 @@
     "alreadyAccount": "Already have an account?",
     "noAccount": "No account yet?",
     "createAccount": "Create an account",
-    "continueWithGoogle": "Continue with Google"
+    "continueWithGoogle": "Continue with Google",
+    "or": "or",
+    "loginSubtitle": "Log in to access your events",
+    "loginButton": "Log in",
+    "loginButtonLoading": "Logging in...",
+    "registerSubtitle": "Sign up to discover events",
+    "registerButton": "Create my account",
+    "registerButtonLoading": "Signing up...",
+    "fullName": "Full name",
+    "fullNamePlaceholder": "First Last",
+    "passwordHint": "At least 8 characters, 1 uppercase letter, 1 digit",
+    "forgotPasswordTitle": "Forgot password",
+    "forgotPasswordSubtitle": "Enter your email to receive a reset link",
+    "resetEmailSent": "If an account exists with this email, a reset link has been sent to {email}. Check your inbox.",
+    "sendResetLink": "Send reset link",
+    "sendingResetLink": "Sending...",
+    "backToLogin": "Back to login",
+    "verifyEmailSentTo": "A verification email has been sent to {email}. Check your inbox (and spam folder).",
+    "verifyEmailSent": "A verification email has been sent. Check your inbox.",
+    "resendVerificationButton": "Resend verification email",
+    "resendingVerification": "Sending...",
+    "continueToEvents": "Continue to events",
+    "verificationEmailSentToast": "Verification email sent!",
+    "verificationSendFailedToast": "Could not send email. Please try again in a few minutes.",
+    "validation": {
+      "required": "This field is required",
+      "invalidEmail": "Invalid email address",
+      "passwordMin6": "Password must be at least 6 characters",
+      "passwordMin8": "Password must be at least 8 characters",
+      "passwordUppercase": "Password must contain at least one uppercase letter",
+      "passwordDigit": "Password must contain at least one digit"
+    },
+    "errors": {
+      "loginGeneric": "Login error",
+      "loginGoogle": "Google login error",
+      "invalidCredentials": "Incorrect email or password.",
+      "registerGeneric": "Sign-up error",
+      "emailInUse": "An account already exists with this email.",
+      "weakPassword": "Password is too weak."
+    }
   },
   "nav": {
     "home": "Home",
@@ -172,6 +213,7 @@
   },
   "events": {
     "title": "Events",
+    "metaDescription": "Discover events in Senegal — conferences, concerts, workshops, festivals and more.",
     "discover": "Discover events",
     "noEvents": "No events available at the moment.",
     "register": "Register",
@@ -181,13 +223,27 @@
     "noResults": "No events found",
     "noResultsHint": "No events match your criteria. Try broadening your search.",
     "clearFilters": "Clear filters",
+    "list": {
+      "resultsCount": "{count, plural, one {# event found} other {# events found}}"
+    },
     "filters": {
       "today": "Today",
       "thisWeek": "This week",
       "thisWeekend": "This weekend",
       "thisMonth": "This month",
       "free": "Free",
-      "paid": "Paid"
+      "paid": "Paid",
+      "searchPlaceholder": "Search an event...",
+      "allCategories": "All categories",
+      "allFormats": "All formats",
+      "allCities": "All cities",
+      "filterByCity": "Filter by city",
+      "filterByCategory": "Filter by category",
+      "filterByFormat": "Filter by format",
+      "filterByDate": "Filter by date",
+      "filterByPrice": "Filter by price",
+      "reset": "Reset filters",
+      "clear": "Clear"
     },
     "card": {
       "attendeesCount": "{count} registered"
@@ -265,10 +321,27 @@
     "heading": "Stay informed about events in Senegal",
     "description": "Get the best events near you every week.",
     "placeholder": "your@email.com",
+    "emailAria": "Email address for the newsletter",
     "submit": "Subscribe",
     "submitting": "Subscribing…",
+    "submittingAria": "Subscribing",
     "success": "Thanks! You're subscribed.",
     "error": "Something went wrong. Please try again.",
-    "privacyNote": "By subscribing, you accept our privacy policy."
+    "privacyPrefix": "By subscribing, you accept our",
+    "privacyLink": "privacy policy",
+    "privacyNote": "By subscribing, you accept our privacy policy.",
+    "validation": {
+      "required": "Please enter your email address.",
+      "invalidEmail": "Invalid email address."
+    }
+  },
+  "share": {
+    "label": "Share",
+    "signupCta": "Register here:",
+    "whatsapp": "Share on WhatsApp",
+    "facebook": "Share on Facebook",
+    "twitter": "Share on X (Twitter)",
+    "copyLink": "Copy link",
+    "copied": "Link copied"
   }
 }
