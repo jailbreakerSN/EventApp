@@ -74,6 +74,9 @@ import type {
   AssignPlanDto,
   PreviewChangeResponse,
   PlanAnalytics,
+  BalanceTransaction,
+  BalanceTransactionQuery,
+  OrganizationBalance,
 } from "@teranga/shared-types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
@@ -430,6 +433,16 @@ export const paymentsApi = {
 
   refund: (paymentId: string, body: { amount?: number; reason?: string } = {}) =>
     api.post<ApiResponse<Payment>>(`/v1/payments/${paymentId}/refund`, body),
+};
+
+export const balanceApi = {
+  getSummary: (orgId: string) =>
+    api.get<ApiResponse<OrganizationBalance>>(`/v1/organizations/${orgId}/balance`),
+
+  listTransactions: (orgId: string, query: Partial<BalanceTransactionQuery> = {}) =>
+    api.get<PaginatedResponse<BalanceTransaction>>(
+      `/v1/organizations/${orgId}/balance-transactions${buildQuery(query)}`,
+    ),
 };
 
 export const payoutsApi = {
