@@ -10,6 +10,24 @@ vi.mock("@/config/firebase", () => ({
   auth: {
     verifyIdToken: (...args: unknown[]) => mockVerifyIdToken(...args),
   },
+  // Phase 7+ item #5: the analytics route pulls adminService in, which
+  // imports `{ db, COLLECTIONS }` transitively. Stub enough of `db` for
+  // `db.collection(...)` to resolve without actually hitting Firestore.
+  db: {
+    collection: () => ({
+      limit: () => ({ get: () => Promise.resolve({ docs: [] }) }),
+      doc: () => ({ get: () => Promise.resolve({ exists: false, data: () => null }) }),
+      where: () => ({ get: () => Promise.resolve({ docs: [], empty: true }) }),
+      get: () => Promise.resolve({ docs: [], empty: true }),
+    }),
+  },
+  COLLECTIONS: {
+    USERS: "users",
+    ORGANIZATIONS: "organizations",
+    EVENTS: "events",
+    SUBSCRIPTIONS: "subscriptions",
+    PLANS: "plans",
+  },
 }));
 
 // ─── Mock plan service ─────────────────────────────────────────────────────

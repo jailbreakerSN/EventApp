@@ -7,6 +7,7 @@ import { getRequestId } from "@/context/request-context";
 import { NotFoundError, ForbiddenError } from "@/errors/app-error";
 import type {
   PlatformStats,
+  PlanAnalytics,
   AdminUserQuery,
   AdminOrgQuery,
   AdminEventQuery,
@@ -15,8 +16,12 @@ import type {
   Organization,
   Event,
   AuditLogEntry,
+  Plan,
+  Subscription,
 } from "@teranga/shared-types";
 import type { PaginatedResult } from "@/repositories/base.repository";
+import { eventRepository } from "@/repositories/event.repository";
+import { computePlanAnalytics } from "./plan-analytics";
 
 // ─── Admin Service ──────────────────────────────────────────────────────────
 // Platform-wide administration. Every method requires platform:manage permission.
@@ -31,10 +36,7 @@ class AdminService extends BaseService {
 
   // ── User Management ───────────────────────────────────────────────────
 
-  async listUsers(
-    user: AuthUser,
-    query: AdminUserQuery,
-  ): Promise<PaginatedResult<UserProfile>> {
+  async listUsers(user: AuthUser, query: AdminUserQuery): Promise<PaginatedResult<UserProfile>> {
     this.requirePermission(user, "platform:manage");
     return adminRepository.listAllUsers(
       { q: query.q, role: query.role, isActive: query.isActive },
@@ -42,11 +44,7 @@ class AdminService extends BaseService {
     );
   }
 
-  async updateUserRoles(
-    user: AuthUser,
-    targetUserId: string,
-    roles: string[],
-  ): Promise<void> {
+  async updateUserRoles(user: AuthUser, targetUserId: string, roles: string[]): Promise<void> {
     this.requirePermission(user, "platform:manage");
 
     // Prevent self-demotion from super_admin
@@ -83,11 +81,7 @@ class AdminService extends BaseService {
     });
   }
 
-  async updateUserStatus(
-    user: AuthUser,
-    targetUserId: string,
-    isActive: boolean,
-  ): Promise<void> {
+  async updateUserStatus(user: AuthUser, targetUserId: string, isActive: boolean): Promise<void> {
     this.requirePermission(user, "platform:manage");
 
     // Prevent self-suspension
@@ -148,11 +142,7 @@ class AdminService extends BaseService {
     });
   }
 
-  async updateOrgStatus(
-    user: AuthUser,
-    orgId: string,
-    isActive: boolean,
-  ): Promise<void> {
+  async updateOrgStatus(user: AuthUser, orgId: string, isActive: boolean): Promise<void> {
     this.requirePermission(user, "platform:manage");
 
     const orgDoc = await db.collection(COLLECTIONS.ORGANIZATIONS).doc(orgId).get();
@@ -174,10 +164,7 @@ class AdminService extends BaseService {
 
   // ── Event Oversight ───────────────────────────────────────────────────
 
-  async listEvents(
-    user: AuthUser,
-    query: AdminEventQuery,
-  ): Promise<PaginatedResult<Event>> {
+  async listEvents(user: AuthUser, query: AdminEventQuery): Promise<PaginatedResult<Event>> {
     this.requirePermission(user, "platform:manage");
     return adminRepository.listAllEvents(
       { q: query.q, status: query.status, organizationId: query.organizationId },
@@ -202,6 +189,54 @@ class AdminService extends BaseService {
       },
       { page: query.page, limit: query.limit, orderBy: "timestamp", orderDir: "desc" },
     );
+  }
+
+  // ── Plan Analytics (Phase 7+ item #5) ──────────────────────────────────
+  //
+  // Point-in-time aggregate for the superadmin dashboard. Runs one batched
+  // fetch over the three collections we need (subscriptions, organizations,
+  // plans) plus per-org event counts, folds them into a `PlanAnalytics`
+  // shape in memory, and returns it. No server-side caching — the
+  // numbers are small and operators want fresh data on refresh.
+  //
+  // The shape is described in detail by the `PlanAnalytics` type in
+  // shared-types. The pure fold lives in `./plan-analytics.ts` so it's
+  // unit-testable without the emulator.
+  async getPlanAnalytics(user: AuthUser): Promise<PlanAnalytics> {
+    this.requirePermission(user, "platform:manage");
+
+    // Fetch subs, orgs, plans in parallel. Each list is bounded by a
+    // generous `limit: 1000` — superadmins view this on fleets below that
+    // scale in practice; when we outgrow it, a BigQuery export pipeline
+    // is the right answer rather than paginated Firestore scans.
+    const [subsSnap, orgsSnap, plansSnap] = await Promise.all([
+      db.collection(COLLECTIONS.SUBSCRIPTIONS).limit(1000).get(),
+      db.collection(COLLECTIONS.ORGANIZATIONS).limit(1000).get(),
+      db.collection(COLLECTIONS.PLANS).get(),
+    ]);
+
+    const subscriptions = subsSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as Subscription);
+    const organizations = orgsSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as Organization);
+    const plans = plansSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as Plan);
+
+    // Parallel per-org event counts for the near-limit calculation. We
+    // use the existing repository helper so the count stays consistent
+    // with the runtime enforcement path (same `status IN` filter).
+    const activeEventsByOrgId = new Map<string, number>();
+    await Promise.all(
+      organizations.map(async (org) => {
+        const count = await eventRepository.countActiveByOrganization(org.id);
+        activeEventsByOrgId.set(org.id, count);
+      }),
+    );
+
+    return computePlanAnalytics({
+      subscriptions,
+      organizations,
+      plans,
+      activeEventsByOrgId,
+      now: new Date(),
+    });
   }
 }
 

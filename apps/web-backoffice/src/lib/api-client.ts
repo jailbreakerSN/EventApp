@@ -73,6 +73,7 @@ import type {
   UpdatePlanDto,
   AssignPlanDto,
   PreviewChangeResponse,
+  PlanAnalytics,
 } from "@teranga/shared-types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
@@ -562,6 +563,10 @@ export const adminApi = {
     api.patch<ApiResponse<Plan>>(`/v1/admin/plans/${planId}`, dto),
 
   archivePlan: (planId: string) => api.delete(`/v1/admin/plans/${planId}`),
+
+  // Phase 7+ item #5: MRR / cohort dashboard snapshot.
+  getPlanAnalytics: () =>
+    api.get<ApiResponse<PlanAnalytics>>("/v1/admin/plans/analytics"),
 
   // Phase 7+ item #6: dry-run / impact preview. POST because the body is
   // a proposed UpdatePlanDto the admin hasn't saved yet — no mutation.
