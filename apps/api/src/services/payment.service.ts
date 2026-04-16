@@ -27,6 +27,8 @@ import { type PaymentProvider } from "@/providers/payment-provider.interface";
 import { mockPaymentProvider } from "@/providers/mock-payment.provider";
 import { wavePaymentProvider } from "@/providers/wave-payment.provider";
 import { orangeMoneyPaymentProvider } from "@/providers/orange-money-payment.provider";
+import { computePlatformFee, computeAvailableOn } from "@/config/finance";
+import { appendLedgerEntry } from "./balance-ledger";
 
 // ─── Provider Registry ──────────────────────────────────────────────────────
 
@@ -310,6 +312,53 @@ export class PaymentService extends BaseService {
           );
           tx.update(eventRef, { ticketTypes: updatedTicketTypes });
         }
+
+        // ── Ledger entries ─────────────────────────────────────────────
+        // Writes `payment` (+amount) + `platform_fee` (−fee) inside the
+        // same transaction that confirms the payment. Two entries rather
+        // than one net entry so the UI can show gross revenue and total
+        // fees independently without recomputing from raw payments.
+        //
+        // Attribution fields read from `freshPayment` — the transactional
+        // re-read — so tenant scope (organizationId/eventId/paymentId)
+        // can never drift from whatever else the transaction commits.
+        const platformFee = computePlatformFee(freshPayment.amount);
+        const availableOn = computeAvailableOn(
+          now,
+          eventData?.endDate ?? eventData?.startDate ?? null,
+        );
+        const description = `Billet : ${eventData?.title ?? freshPayment.eventId}`;
+
+        appendLedgerEntry(tx, {
+          organizationId: freshPayment.organizationId,
+          eventId: freshPayment.eventId,
+          paymentId: freshPayment.id,
+          payoutId: null,
+          kind: "payment",
+          amount: freshPayment.amount,
+          status: "pending",
+          availableOn,
+          description,
+          createdBy: "system:payment.webhook",
+          createdAt: now,
+        });
+        if (platformFee > 0) {
+          appendLedgerEntry(tx, {
+            organizationId: freshPayment.organizationId,
+            eventId: freshPayment.eventId,
+            paymentId: freshPayment.id,
+            payoutId: null,
+            kind: "platform_fee",
+            amount: -platformFee,
+            status: "pending",
+            availableOn,
+            description: `Frais plateforme (${Math.round(
+              (platformFee / freshPayment.amount) * 100,
+            )}%)`,
+            createdBy: "system:payment.webhook",
+            createdAt: now,
+          });
+        }
       });
 
       eventBus.emit("payment.succeeded", {
@@ -470,30 +519,85 @@ export class PaymentService extends BaseService {
     }
 
     const now = new Date().toISOString();
-    const isFullRefund = refundAmount === payment.amount;
 
-    // Atomic update: payment + registration + event counter
+    // Atomic update: payment + registration + event counter + ledger
+    //
+    // Concurrency note: the guards above (`payment.refundedAmount + refundAmount`)
+    // ran against a doc read OUTSIDE the transaction — susceptible to lost
+    // updates under concurrent refund requests. We re-validate inside the
+    // transaction against a fresh read and bail if the state has drifted,
+    // which makes the DB + ledger writes consistent. A provider-side
+    // idempotency key (Wave 6 payment hardening) remains required to prevent
+    // the provider itself from being hit twice when two concurrent refund
+    // requests slip past the pre-tx guard.
+    let isFullRefund = false;
     await db.runTransaction(async (tx) => {
       const payRef = db.collection(COLLECTIONS.PAYMENTS).doc(paymentId);
+      const paySnap = await tx.get(payRef);
+      if (!paySnap.exists) throw new NotFoundError("Payment", paymentId);
+      const freshPayment = paySnap.data() as Payment;
+
+      // Re-validate against fresh state — a concurrent refund may have
+      // completed between the outer read and this transaction.
+      if (freshPayment.status === "refunded") {
+        throw new ValidationError("Ce paiement a déjà été intégralement remboursé");
+      }
+      if (freshPayment.status !== "succeeded") {
+        throw new ValidationError("Seul un paiement confirmé peut être remboursé");
+      }
+      const remaining = freshPayment.amount - freshPayment.refundedAmount;
+      if (refundAmount > remaining) {
+        throw new ValidationError("Le montant du remboursement dépasse le solde restant");
+      }
+
+      const newRefundedAmount = freshPayment.refundedAmount + refundAmount;
+      isFullRefund = newRefundedAmount === freshPayment.amount;
+
       tx.update(payRef, {
-        status: isFullRefund ? ("refunded" as PaymentStatus) : payment.status,
-        refundedAmount: payment.refundedAmount + refundAmount,
+        status: isFullRefund ? ("refunded" as PaymentStatus) : freshPayment.status,
+        refundedAmount: newRefundedAmount,
         updatedAt: now,
       });
 
       if (isFullRefund) {
-        const regRef = db.collection(COLLECTIONS.REGISTRATIONS).doc(payment.registrationId);
+        const regRef = db.collection(COLLECTIONS.REGISTRATIONS).doc(freshPayment.registrationId);
         tx.update(regRef, {
           status: "cancelled",
           updatedAt: now,
         });
 
-        const eventRef = db.collection(COLLECTIONS.EVENTS).doc(payment.eventId);
+        const eventRef = db.collection(COLLECTIONS.EVENTS).doc(freshPayment.eventId);
         tx.update(eventRef, {
           registeredCount: FieldValue.increment(-1),
           updatedAt: now,
         });
       }
+
+      // ── Ledger entry ───────────────────────────────────────────────────
+      // Refunds debit the balance immediately (status=available) — they
+      // don't wait for the T+N release window. Matches Stripe behaviour
+      // and matches operator intuition: if the customer got their money
+      // back, the org's balance went down RIGHT NOW.
+      //
+      // Attribution fields (organizationId, eventId, paymentId) come from
+      // `freshPayment` — the transactional re-read — not the outer stale
+      // snapshot. `organizationId` / `eventId` are immutable on payments
+      // today so this is belt-and-suspenders; it also matches the pattern
+      // established in handleWebhook() and keeps tenant-scope attribution
+      // defensible in the face of future Admin-SDK migrations.
+      appendLedgerEntry(tx, {
+        organizationId: freshPayment.organizationId,
+        eventId: freshPayment.eventId,
+        paymentId: freshPayment.id,
+        payoutId: null,
+        kind: "refund",
+        amount: -refundAmount,
+        status: "available",
+        availableOn: now,
+        description: reason ? `Remboursement : ${reason}` : "Remboursement",
+        createdBy: user.uid,
+        createdAt: now,
+      });
     });
 
     eventBus.emit("payment.refunded", {

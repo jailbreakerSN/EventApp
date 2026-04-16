@@ -24,6 +24,7 @@ export const COLLECTIONS = {
   PAYMENTS: "payments",
   RECEIPTS: "receipts",
   PAYOUTS: "payouts",
+  BALANCE_TRANSACTIONS: "balanceTransactions",
   CONVERSATIONS: "conversations",
   MESSAGES: "messages",
   FEED_POSTS: "feedPosts",

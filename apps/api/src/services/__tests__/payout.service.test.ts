@@ -10,20 +10,54 @@ import {
 
 // ─── Mocks (vi.hoisted so they're available inside vi.mock factories) ──────
 
-const { mockPayoutRepo, mockPaymentRepo, mockEventRepo, mockEventBus } = vi.hoisted(() => ({
-  mockPayoutRepo: {
-    findByIdOrThrow: vi.fn(),
-    findByOrganization: vi.fn(),
-    create: vi.fn(),
-  },
-  mockPaymentRepo: {
-    findByEvent: vi.fn(),
-  },
-  mockEventRepo: {
-    findByIdOrThrow: vi.fn(),
-  },
-  mockEventBus: { emit: vi.fn() },
-}));
+const {
+  mockPayoutRepo,
+  mockPaymentRepo,
+  mockEventRepo,
+  mockEventBus,
+  mockTxGet,
+  mockTxUpdate,
+  mockTxSet,
+  mockRunTransaction,
+  mockCollection,
+} = vi.hoisted(() => {
+  const _mockTxGet = vi.fn();
+  const _mockTxUpdate = vi.fn();
+  const _mockTxSet = vi.fn();
+  const _mockRunTransaction = vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => {
+    const tx = { get: _mockTxGet, update: _mockTxUpdate, set: _mockTxSet };
+    return fn(tx);
+  });
+  // Minimal chainable collection().doc()/where() mock that covers both
+  //   db.collection(X).doc()             — used for the new payoutRef
+  //   db.collection(X).where(...).where(...) — used by the linked-entry lookup
+  const _mockCollection = vi.fn((_name?: string) => {
+    const chain: Record<string, unknown> = {};
+    chain.doc = vi.fn(() => ({ id: `doc-${Math.random().toString(36).slice(2, 8)}` }));
+    chain.where = vi.fn(() => chain);
+    chain.limit = vi.fn(() => chain);
+    return chain;
+  });
+  return {
+    mockPayoutRepo: {
+      findByIdOrThrow: vi.fn(),
+      findByOrganization: vi.fn(),
+      create: vi.fn(),
+    },
+    mockPaymentRepo: {
+      findByEvent: vi.fn(),
+    },
+    mockEventRepo: {
+      findByIdOrThrow: vi.fn(),
+    },
+    mockEventBus: { emit: vi.fn() },
+    mockTxGet: _mockTxGet,
+    mockTxUpdate: _mockTxUpdate,
+    mockTxSet: _mockTxSet,
+    mockRunTransaction: _mockRunTransaction,
+    mockCollection: _mockCollection,
+  };
+});
 
 vi.mock("@/repositories/payout.repository", () => ({
   payoutRepository: new Proxy(
@@ -55,8 +89,16 @@ vi.mock("@/repositories/event.repository", () => ({
 vi.mock("@/events/event-bus", () => ({ eventBus: mockEventBus }));
 vi.mock("@/context/request-context", () => ({ getRequestId: () => "test-request-id" }));
 vi.mock("@/config/firebase", () => ({
-  db: {},
-  COLLECTIONS: { PAYOUTS: "payouts", PAYMENTS: "payments", EVENTS: "events" },
+  db: {
+    collection: (name: string) => mockCollection(name),
+    runTransaction: (fn: (tx: unknown) => Promise<unknown>) => mockRunTransaction(fn),
+  },
+  COLLECTIONS: {
+    PAYOUTS: "payouts",
+    PAYMENTS: "payments",
+    EVENTS: "events",
+    BALANCE_TRANSACTIONS: "balanceTransactions",
+  },
 }));
 
 // ─── Tests ─────────────────────────────────────────────────────────────────
@@ -212,7 +254,7 @@ describe("PayoutService.createPayout", () => {
   const event = buildEvent({ id: "ev-1", organizationId: orgId });
   const organizer = buildOrganizerUser(orgId);
 
-  it("creates a payout record and emits event", async () => {
+  it("creates a payout record atomically with ledger sweep and emits event", async () => {
     mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
     mockPaymentRepo.findByEvent.mockResolvedValue({
       data: [
@@ -233,10 +275,42 @@ describe("PayoutService.createPayout", () => {
       ],
       meta: { total: 2, page: 1, limit: 10000, totalPages: 1 },
     });
-    mockPayoutRepo.create.mockImplementation(async (data: unknown) => ({
-      ...(data as object),
-      id: "payout-new",
-    }));
+    // Linked ledger entries (written at payment.succeeded time) that should
+    // be swept into this payout.
+    mockTxGet.mockResolvedValueOnce({
+      docs: [
+        {
+          ref: { update: vi.fn() },
+          data: () => ({
+            id: "bt-1",
+            paymentId: "pay-1",
+            kind: "payment",
+            status: "available",
+            payoutId: null,
+          }),
+        },
+        {
+          ref: { update: vi.fn() },
+          data: () => ({
+            id: "bt-2",
+            paymentId: "pay-1",
+            kind: "platform_fee",
+            status: "available",
+            payoutId: null,
+          }),
+        },
+        {
+          ref: { update: vi.fn() },
+          data: () => ({
+            id: "bt-3",
+            paymentId: "pay-2",
+            kind: "payment",
+            status: "available",
+            payoutId: null,
+          }),
+        },
+      ],
+    });
 
     const result = await service.createPayout(
       "ev-1",
@@ -245,7 +319,7 @@ describe("PayoutService.createPayout", () => {
       organizer,
     );
 
-    expect(result.id).toBe("payout-new");
+    expect(result.id).toMatch(/^doc-/); // id comes from the mocked docRef
     expect(result.organizationId).toBe(orgId);
     expect(result.eventId).toBe("ev-1");
     expect(result.status).toBe("pending");
@@ -254,11 +328,25 @@ describe("PayoutService.createPayout", () => {
     expect(result.totalAmount).toBe(14500);
     expect(result.platformFeeRate).toBe(0.05);
 
-    expect(mockPayoutRepo.create).toHaveBeenCalledTimes(1);
+    // Transaction writes: payout doc (set) + payout ledger entry (set) +
+    // 3 source-entry flips (update).
+    expect(mockRunTransaction).toHaveBeenCalledTimes(1);
+    expect(mockTxSet).toHaveBeenCalledTimes(2);
+    expect(mockTxUpdate).toHaveBeenCalledTimes(3);
+
+    // Verify the payout ledger entry has the correct shape
+    const ledgerEntry = mockTxSet.mock.calls
+      .map((call) => call[1])
+      .find((e: { kind?: string }) => e.kind === "payout") as
+      | { amount: number; status: string; payoutId: string }
+      | undefined;
+    expect(ledgerEntry).toBeDefined();
+    expect(ledgerEntry!.amount).toBe(-13775); // −netAmount = −(14500 − 725)
+    expect(ledgerEntry!.status).toBe("paid_out");
+
     expect(mockEventBus.emit).toHaveBeenCalledWith(
       "payout.created",
       expect.objectContaining({
-        payoutId: "payout-new",
         eventId: "ev-1",
         organizationId: orgId,
         actorId: organizer.uid,
