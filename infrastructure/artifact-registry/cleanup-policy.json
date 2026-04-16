@@ -1,0 +1,26 @@
+[
+  {
+    "name": "keep-3-most-recent",
+    "action": { "type": "Keep" },
+    "mostRecentVersions": {
+      "packageNamePrefixes": ["teranga-api", "teranga-backoffice", "teranga-participant"],
+      "keepCount": 3
+    }
+  },
+  {
+    "name": "delete-untagged-quickly",
+    "action": { "type": "Delete" },
+    "condition": {
+      "tagState": "UNTAGGED",
+      "olderThan": "1d"
+    }
+  },
+  {
+    "name": "delete-everything-else-after-1d",
+    "action": { "type": "Delete" },
+    "condition": {
+      "tagState": "ANY",
+      "olderThan": "1d"
+    }
+  }
+]
