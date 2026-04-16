@@ -22,7 +22,7 @@
     "@fastify/swagger-ui": "^5.2.5",
     "@sentry/node": "^8.55.1",
     "@teranga/shared-types": "*",
-    "fastify": "^5.8.4",
+    "fastify": "^5.8.5",
     "firebase-admin": "^12.7.0",
     "pdf-lib": "^1.17.1",
     "pino": "^9.6.0",
