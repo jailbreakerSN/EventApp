@@ -101,6 +101,21 @@ export function useAdminPlans(params: { includeArchived?: boolean } = {}) {
   });
 }
 
+/**
+ * Phase 7+ item #5 — MRR / cohort dashboard data hook.
+ *
+ * Point-in-time snapshot. 5-min client staleTime matches the operator's
+ * refresh cadence without hammering the endpoint (each call fans out
+ * orgs × event-count reads on the server).
+ */
+export function useAdminPlanAnalytics() {
+  return useQuery({
+    queryKey: ["admin", "plans", "analytics"],
+    queryFn: () => adminApi.getPlanAnalytics(),
+    staleTime: 5 * 60_000,
+  });
+}
+
 export function useAdminPlan(planId: string | undefined) {
   return useQuery({
     queryKey: ["admin", "plans", "detail", planId],

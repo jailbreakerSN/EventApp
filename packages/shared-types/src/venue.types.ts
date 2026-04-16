@@ -16,12 +16,7 @@ export const VenueTypeSchema = z.enum([
 
 export type VenueType = z.infer<typeof VenueTypeSchema>;
 
-export const VenueStatusSchema = z.enum([
-  "pending",
-  "approved",
-  "suspended",
-  "archived",
-]);
+export const VenueStatusSchema = z.enum(["pending", "approved", "suspended", "archived"]);
 
 export type VenueStatus = z.infer<typeof VenueStatusSchema>;
 
@@ -196,4 +191,85 @@ export interface PlatformStats {
   totalRegistrations: number;
   totalRevenue: number;
   activeVenues: number;
+}
+
+// ─── Plan Analytics (Phase 7+ item #5) ──────────────────────────────────────
+// Superadmin dashboard snapshot. Computed on-demand from live subscriptions
+// + organizations — no caching, no pre-aggregation, no snapshotting job.
+// A point-in-time view is enough for the superadmin's decision-making use
+// case (who's near a limit? how many on pro vs enterprise? trials ending
+// this week?). Historical time-series is deferred until BigQuery export.
+//
+// Design calls (per the Plan-agent review of the feature spec):
+//   - MRR normalises annual subs as priceXof / 12 so the tile compares
+//     apples to apples. Separate `bookings` field exposes the raw cash
+//     recognition for the same period — different business question.
+//   - `trialingMRR` is the pipeline — what we'd collect if every current
+//     trial converts. Held separate from `mrr` so conversion rate math is
+//     trivial later.
+//   - Tier mix groups by `lineageId` + `version` so the admin can see how
+//     many orgs are on pro@v1 vs pro@v2 — tells them when they can retire
+//     v1 safely (Phase 7 payoff).
+//   - `overrideCount` is its own field: orgs with active `subscription.overrides`
+//     effectively belong to neither the base tier nor a custom tier, so
+//     bucketing them in `tierMix` would skew the picture.
+//   - `nearLimitOrgs` covers `maxEvents` + `maxMembers` only. Per-event
+//     `maxParticipantsPerEvent` would require a scan of every event's
+//     registeredCount; skipped until there's a `usage` subcollection.
+
+export interface PlanAnalyticsTier {
+  /** Number of orgs on this tier (excluding those with active overrides). */
+  count: number;
+  /** Version→count map so the admin sees how many are on v1 vs v2 etc. */
+  byVersion: Record<number, number>;
+}
+
+export interface PlanAnalyticsMoney {
+  /** Sum across all tiers, in XOF. */
+  total: number;
+  /** Plan-key → amount in XOF. */
+  byTier: Record<string, number>;
+}
+
+export interface PlanAnalyticsNearLimit {
+  orgId: string;
+  orgName: string;
+  tier: string;
+  resource: "events" | "members";
+  current: number;
+  limit: number;
+  /** 0-100 integer. */
+  pct: number;
+}
+
+export interface PlanAnalyticsTrialEnding {
+  orgId: string;
+  orgName: string;
+  tier: string;
+  /** ISO 8601. */
+  trialEndAt: string;
+}
+
+export interface PlanAnalytics {
+  /**
+   * ISO timestamp this snapshot was computed at. The UI shows "mise à
+   * jour à HH:MM" so operators know freshness.
+   */
+  computedAt: string;
+  /** Monthly recurring revenue. Annual subs normalised as priceXof/12. */
+  mrr: PlanAnalyticsMoney;
+  /** Pipeline MRR — what trialing subs would contribute after conversion. */
+  trialingMRR: PlanAnalyticsMoney;
+  /** Raw cash recognised this period (annual billed at full year up-front). */
+  bookings: PlanAnalyticsMoney;
+  /** Active (non-trialing, non-cancelled) orgs grouped by tier + version. */
+  tierMix: Record<string, PlanAnalyticsTier>;
+  /** Split of active subs by billing cadence. */
+  annualVsMonthly: { monthly: number; annual: number };
+  /** Number of orgs with an active (non-expired) subscription.overrides. */
+  overrideCount: number;
+  /** Trials ending in the next 7 days, ordered by `trialEndAt` asc. */
+  trialsEndingSoon: PlanAnalyticsTrialEnding[];
+  /** Orgs at ≥80% of their effective event or member limit, desc by pct. */
+  nearLimitOrgs: PlanAnalyticsNearLimit[];
 }

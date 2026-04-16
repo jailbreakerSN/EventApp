@@ -115,13 +115,21 @@ export default function AdminPlansPage() {
             </p>
           </div>
         </div>
-        <Link
-          href="/admin/plans/new"
-          className="inline-flex items-center gap-1 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
-        >
-          <Plus className="h-4 w-4" />
-          Nouveau plan
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/admin/plans/analytics"
+            className="inline-flex items-center gap-1 rounded-lg border border-primary/40 bg-background px-4 py-2 text-sm font-medium text-primary hover:bg-primary/5 transition-colors"
+          >
+            Voir l&apos;analytique
+          </Link>
+          <Link
+            href="/admin/plans/new"
+            className="inline-flex items-center gap-1 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+          >
+            <Plus className="h-4 w-4" />
+            Nouveau plan
+          </Link>
+        </div>
       </div>
 
       {/* Filter toggle */}

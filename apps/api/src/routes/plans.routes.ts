@@ -4,6 +4,7 @@ import { authenticate } from "@/middlewares/auth.middleware";
 import { validate } from "@/middlewares/validate.middleware";
 import { requirePermission } from "@/middlewares/permission.middleware";
 import { planService } from "@/services/plan.service";
+import { adminService } from "@/services/admin.service";
 import { CreatePlanSchema, UpdatePlanSchema } from "@teranga/shared-types";
 
 const ParamsWithPlanId = z.object({ planId: z.string() });
@@ -63,6 +64,26 @@ export const planRoutes: FastifyPluginAsync = async (fastify) => {
  */
 export const adminPlanRoutes: FastifyPluginAsync = async (fastify) => {
   const preHandler = [authenticate, requirePermission("plan:manage")];
+
+  // ─── Phase 7+ item #5: MRR / cohort dashboard ───────────────────────────
+  // Registered FIRST so the literal path /analytics isn't shadowed by the
+  // /:planId param route below. Requires platform:manage (superadmin-only)
+  // because the payload exposes every org's plan + near-limit usage.
+  fastify.get(
+    "/analytics",
+    {
+      preHandler: [authenticate, requirePermission("platform:manage")],
+      schema: {
+        tags: ["Admin", "Plans"],
+        summary: "Point-in-time MRR / cohort / near-limit aggregate",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const data = await adminService.getPlanAnalytics(request.user!);
+      return reply.send({ success: true, data });
+    },
+  );
 
   fastify.get(
     "/",
