@@ -228,6 +228,20 @@ jobs:
             --location=europe-west1 \
             --description="Teranga Events container images" \
             --quiet
+      - name: Apply Artifact Registry cleanup policy
+        # Cost control: every deploy pushes 3 new images tagged with the commit
+        # SHA, and nothing ever deletes them. Storage grows forever at
+        # ~€0.10/GB·month. The policy (infrastructure/artifact-registry/
+        # cleanup-policy.json) keeps the 3 most recent versions of each
+        # package and deletes the rest — server-side, runs every ~24h.
+        # Idempotent: re-applying the same policy is a no-op.
+        run: |
+          set -euo pipefail
+          gcloud artifacts repositories set-cleanup-policies teranga \
+            --location=europe-west1 \
+            --policy=infrastructure/artifact-registry/cleanup-policy.json \
+            --no-dry-run \
+            --quiet
       - name: Configure Docker for Artifact Registry
         run: gcloud auth configure-docker europe-west1-docker.pkg.dev --quiet
       - name: Set up Docker Buildx
