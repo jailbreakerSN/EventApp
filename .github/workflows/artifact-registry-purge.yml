@@ -105,17 +105,30 @@ jobs:
 
             while IFS= read -r VERSION; do
               [ -z "$VERSION" ] && continue
+              # `gcloud versions list --format="value(name)"` returns just the
+              # version id (e.g. `sha256:abc…`), not the full resource path.
+              # Previous revision passed it directly to `versions delete`, but
+              # that call needs --location/--repository/--package to be set
+              # explicitly when the arg isn't a fully-qualified resource name —
+              # otherwise gcloud errors with "Failed to find attribute
+              # [location]". Normalise to the short id and pass the scope as
+              # flags so delete works regardless of what the list format emits.
               SHORT="${VERSION##*/}"
               if [ "$DRY_RUN" = "true" ]; then
-                echo "  [dry-run] would delete: ${SHORT:0:12}…"
+                echo "  [dry-run] would delete: ${SHORT:0:20}…"
               else
                 # --delete-tags also removes any tags pointing at the version,
                 # which is required before the version itself can be deleted.
-                gcloud artifacts versions delete "$VERSION" \
+                if gcloud artifacts versions delete "$SHORT" \
+                  --location="$REGION" \
+                  --repository="$REPO" \
+                  --package="$PKG" \
                   --delete-tags \
-                  --quiet 2>&1 | sed 's/^/    /' || \
+                  --quiet 2>&1 | sed 's/^/    /'; then
+                  TOTAL_DELETED=$((TOTAL_DELETED + 1))
+                else
                   echo "::warning::Failed to delete $SHORT"
-                TOTAL_DELETED=$((TOTAL_DELETED + 1))
+                fi
               fi
             done <<< "$TO_DELETE"
           done
