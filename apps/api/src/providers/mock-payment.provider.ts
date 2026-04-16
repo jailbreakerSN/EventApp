@@ -1,5 +1,18 @@
 import crypto from "crypto";
-import { type PaymentProvider, type InitiateParams, type InitiateResult, type VerifyResult, type RefundResult } from "./payment-provider.interface";
+import {
+  type PaymentProvider,
+  type InitiateParams,
+  type InitiateResult,
+  type VerifyResult,
+  type RefundResult,
+  type VerifyWebhookParams,
+} from "./payment-provider.interface";
+
+// Re-declared locally to avoid a circular import via payment.service.
+// Must stay in sync with payment.service.WEBHOOK_SECRET.
+const WEBHOOK_SECRET =
+  process.env.PAYMENT_WEBHOOK_SECRET ??
+  (process.env.NODE_ENV === "production" ? "" : "dev-webhook-secret-change-in-prod");
 
 /**
  * Mock payment provider for development and testing.
@@ -61,14 +74,20 @@ export class MockPaymentProvider implements PaymentProvider {
     }
     // Don't change status here — PaymentService handles status transitions
     state.metadata.refundedAmount = amount;
-    return { success: true, providerRefundId: `mock_refund_${crypto.randomBytes(6).toString("hex")}` };
+    return {
+      success: true,
+      providerRefundId: `mock_refund_${crypto.randomBytes(6).toString("hex")}`,
+    };
   }
 
   /**
    * Simulate a payment completion (called by mock checkout route).
    * In production, this is handled by the provider's webhook.
    */
-  static simulateCallback(providerTransactionId: string, success: boolean): MockPaymentState | null {
+  static simulateCallback(
+    providerTransactionId: string,
+    success: boolean,
+  ): MockPaymentState | null {
     const state = paymentStore.get(providerTransactionId);
     if (!state) return null;
     state.status = success ? "succeeded" : "failed";
@@ -79,6 +98,34 @@ export class MockPaymentProvider implements PaymentProvider {
   static getState(providerTransactionId: string): MockPaymentState | null {
     return paymentStore.get(providerTransactionId) ?? null;
   }
+
+  /**
+   * Mock-provider webhook verification — HMAC of raw body keyed by
+   * PAYMENT_WEBHOOK_SECRET, passed as `X-Webhook-Signature`. This is
+   * what the dev-only mock-checkout page uses. Never enabled in
+   * production: the `getProvider("mock")` path throws in production
+   * before this is even called.
+   */
+  verifyWebhook(params: VerifyWebhookParams): boolean {
+    if (!WEBHOOK_SECRET) return false;
+    const signature = readMockHeader(params.headers, "x-webhook-signature");
+    if (!signature) return false;
+    const expected = crypto
+      .createHmac("sha256", WEBHOOK_SECRET)
+      .update(params.rawBody)
+      .digest("hex");
+    if (expected.length !== signature.length) return false;
+    return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature));
+  }
+}
+
+function readMockHeader(
+  headers: Record<string, string | string[] | undefined>,
+  name: string,
+): string | null {
+  const v = headers[name];
+  if (Array.isArray(v)) return v[0] ?? null;
+  return v ?? null;
 }
 
 export const mockPaymentProvider = new MockPaymentProvider();
