@@ -7,6 +7,11 @@ node_modules/
 dist/
 build/
 lib/
+# Web source directories share the `lib/` name but are NOT build output —
+# re-include them so new files (e.g. apps/web-backoffice/src/lib/event-status.ts)
+# aren't silently ignored.
+!apps/**/src/lib/
+!apps/**/src/lib/**
 venv/
 .next/
 out/

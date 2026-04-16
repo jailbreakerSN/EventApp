@@ -24,6 +24,8 @@ import {
   CloneEventSchema,
   UploadUrlRequestSchema,
   PaginationSchema,
+  EventCategorySchema,
+  EventStatusSchema,
 } from "@teranga/shared-types";
 
 const ParamsWithEventId = z.object({ eventId: z.string() });
@@ -46,13 +48,21 @@ export const eventRoutes: FastifyPluginAsync = async (fastify) => {
   );
 
   // ─── List Organization Events (backoffice — all statuses) ──────────────
+  // Query params: PaginationSchema + optional `category` and `status` for
+  // server-side filtering. Keeping the filter on the server lets the UI
+  // paginate correctly when a filter is applied (client-side filtering
+  // over a single page silently hides matching records on later pages).
+  const OrgEventsQuerySchema = PaginationSchema.extend({
+    category: EventCategorySchema.optional(),
+    status: EventStatusSchema.optional(),
+  });
   fastify.get(
     "/org/:orgId",
     {
       preHandler: [
         authenticate,
         requirePermission("event:read"),
-        validate({ params: z.object({ orgId: z.string() }), query: PaginationSchema }),
+        validate({ params: z.object({ orgId: z.string() }), query: OrgEventsQuerySchema }),
       ],
       schema: {
         tags: ["Events"],
@@ -62,8 +72,13 @@ export const eventRoutes: FastifyPluginAsync = async (fastify) => {
     },
     async (request, reply) => {
       const { orgId } = request.params as { orgId: string };
-      const pagination = request.query as z.infer<typeof PaginationSchema>;
-      const result = await eventService.listByOrganization(orgId, request.user!, pagination);
+      const { category, status, ...pagination } = request.query as z.infer<
+        typeof OrgEventsQuerySchema
+      >;
+      const result = await eventService.listByOrganization(orgId, request.user!, pagination, {
+        category,
+        status,
+      });
       return reply.send({ success: true, data: result.data, meta: result.meta });
     },
   );

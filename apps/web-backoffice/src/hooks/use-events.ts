@@ -8,13 +8,24 @@ import type {
   UpdateEventDto,
   CreateTicketTypeDto,
   UpdateTicketTypeDto,
+  EventCategory,
+  EventStatus,
 } from "@teranga/shared-types";
 
 /**
  * Fetch events scoped to the current user's organization.
  * Falls back to public search only if no organizationId is set (should not happen in backoffice).
  */
-export function useEvents(params: { page?: number; limit?: number; orderBy?: string; orderDir?: string } = {}) {
+export function useEvents(
+  params: {
+    page?: number;
+    limit?: number;
+    orderBy?: string;
+    orderDir?: string;
+    category?: EventCategory | "";
+    status?: EventStatus | "";
+  } = {},
+) {
   const { user } = useAuth();
   const orgId = user?.organizationId;
 
@@ -22,7 +33,9 @@ export function useEvents(params: { page?: number; limit?: number; orderBy?: str
     queryKey: ["events", "org", orgId, params],
     queryFn: () => {
       if (!orgId) {
-        throw new Error("Organization ID is missing. Please contact your administrator to ensure your account is assigned to an organization.");
+        throw new Error(
+          "Organization ID is missing. Please contact your administrator to ensure your account is assigned to an organization.",
+        );
       }
       return eventsApi.listByOrg(orgId, params);
     },
@@ -92,8 +105,13 @@ export function useAddTicketType(eventId: string) {
 export function useUpdateTicketType(eventId: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ ticketTypeId, dto }: { ticketTypeId: string; dto: Partial<UpdateTicketTypeDto> }) =>
-      eventsApi.updateTicketType(eventId, ticketTypeId, dto),
+    mutationFn: ({
+      ticketTypeId,
+      dto,
+    }: {
+      ticketTypeId: string;
+      dto: Partial<UpdateTicketTypeDto>;
+    }) => eventsApi.updateTicketType(eventId, ticketTypeId, dto),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["events", eventId] }),
   });
 }

@@ -1,5 +1,10 @@
 import { COLLECTIONS } from "@/config/firebase";
-import { BaseRepository, type PaginatedResult, type PaginationParams } from "./base.repository";
+import {
+  BaseRepository,
+  type PaginatedResult,
+  type PaginationParams,
+  type WhereClause,
+} from "./base.repository";
 import {
   type Event,
   type EventStatus,
@@ -61,11 +66,18 @@ export class EventRepository extends BaseRepository<Event> {
   async findByOrganization(
     organizationId: string,
     pagination: PaginationParams,
+    filters: { category?: EventCategory; status?: EventStatus } = {},
   ): Promise<PaginatedResult<Event>> {
-    return this.findMany(
-      [{ field: "organizationId", op: "==", value: organizationId }],
-      pagination,
-    );
+    const whereFilters: WhereClause[] = [
+      { field: "organizationId", op: "==", value: organizationId },
+    ];
+    if (filters.category) {
+      whereFilters.push({ field: "category", op: "==", value: filters.category });
+    }
+    if (filters.status) {
+      whereFilters.push({ field: "status", op: "==", value: filters.status });
+    }
+    return this.findMany(whereFilters, pagination);
   }
 
   /**
