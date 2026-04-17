@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { toast } from "sonner";
+import { useLocale, useTranslations } from "next-intl";
 import { eventsApi, registrationsApi } from "@/lib/api-client";
 import { useRegister } from "@/hooks/use-registrations";
 import { useInitiatePayment, useValidatePromoCode } from "@/hooks/use-payments";
@@ -34,57 +35,70 @@ import {
   getErrorMessage,
 } from "@teranga/shared-ui";
 import type { Event, TicketType, Registration, PaymentMethod } from "@teranga/shared-types";
-import { useTranslations } from "next-intl";
+
+function intlLocale(locale: string): string {
+  switch (locale) {
+    case "fr":
+      return "fr-SN";
+    case "en":
+      return "en-SN";
+    case "wo":
+      return "wo-SN";
+    default:
+      return locale;
+  }
+}
 
 type Step = "select" | "confirm" | "success";
 
-type PaymentMethodOption = {
-  id: PaymentMethod;
-  label: string;
-  description: string;
-  accent: string;
-};
-
-const PAYMENT_METHODS: PaymentMethodOption[] = [
-  {
-    id: "wave",
-    label: "Wave",
-    description: "Mobile Money — Sénégal",
-    accent: "#1DC8F1",
-  },
-  {
-    id: "orange_money",
-    label: "Orange Money",
-    description: "Paiement via #144#",
-    accent: "#FF7900",
-  },
-  {
-    id: "free_money",
-    label: "Free Money",
-    description: "Paiement mobile Free",
-    accent: "#CD0067",
-  },
-  {
-    id: "card",
-    label: "Carte bancaire",
-    description: "VISA / MasterCard",
-    accent: "#1F2937",
-  },
-];
+type StatusKey = "confirmed" | "pending" | "pending_payment" | "waitlisted" | "checked_in";
 
 export default function RegisterPage() {
-  const _t = useTranslations("common");
-  void _t;
+  const t = useTranslations("registerFlow");
+  const tMethods = useTranslations("registerFlow.methods");
+  const tStatus = useTranslations("registerFlow.statusLabels");
+  const tCommon = useTranslations("common");
+  const locale = useLocale();
+  const regional = intlLocale(locale);
   const { eventId } = useParams<{ eventId: string }>();
   const router = useRouter();
   const [step, setStep] = useState<Step>("select");
   const [selectedTicket, setSelectedTicket] = useState<TicketType | null>(null);
   const [registration, setRegistration] = useState<Registration | null>(null);
 
-  // Selected payment method (only used for paid tickets)
   const [selectedMethod, setSelectedMethod] = useState<PaymentMethod>("wave");
 
-  // Promo code state
+  const paymentMethods = useMemo(
+    () =>
+      [
+        {
+          id: "wave" as PaymentMethod,
+          label: tMethods("wave"),
+          description: tMethods("waveDescription"),
+          accent: "#1DC8F1",
+        },
+        {
+          id: "orange_money" as PaymentMethod,
+          label: tMethods("orange_money"),
+          description: tMethods("orangeMoneyDescription"),
+          accent: "#FF7900",
+        },
+        {
+          id: "free_money" as PaymentMethod,
+          label: tMethods("free_money"),
+          description: tMethods("freeMoneyDescription"),
+          accent: "#CD0067",
+        },
+        {
+          id: "card" as PaymentMethod,
+          label: tMethods("card"),
+          description: tMethods("cardDescription"),
+          accent: "#1F2937",
+        },
+      ] as const,
+    [tMethods],
+  );
+
   const [promoOpen, setPromoOpen] = useState(false);
   const [promoInput, setPromoInput] = useState("");
   const [promoResult, setPromoResult] = useState<{
@@ -102,7 +116,6 @@ export default function RegisterPage() {
     staleTime: 5 * 60_000,
   });
 
-  // Check if already registered for this event
   const { data: myRegsData, isLoading: regsLoading } = useQuery({
     queryKey: ["my-registrations-check", eventId],
     queryFn: () => registrationsApi.getMyRegistrations({ limit: 100 }),
@@ -121,7 +134,6 @@ export default function RegisterPage() {
   const isPaidTicket = selectedTicket && selectedTicket.price > 0;
   const isSubmitting = registerMutation.isPending || paymentMutation.isPending;
 
-  // Calculate discounted price
   const getDiscountedPrice = (originalPrice: number) => {
     if (!promoResult || originalPrice === 0) return originalPrice;
     if (promoResult.discountType === "percentage") {
@@ -153,11 +165,11 @@ export default function RegisterPage() {
       )?.data;
       if (data) {
         setPromoResult({ ...data, code: promoInput.trim().toUpperCase() });
-        toast.success("Code promo appliqué !");
+        toast.success(t("promoApplied"));
       }
     } catch (err: unknown) {
       const message = (err as { message?: string })?.message;
-      setPromoError(message ?? "Code invalide");
+      setPromoError(message ?? t("promoInvalid"));
       setPromoResult(null);
     }
   };
@@ -172,7 +184,6 @@ export default function RegisterPage() {
     if (!selectedTicket) return;
 
     if (isPaidTicket) {
-      // Fully-discounted paid ticket → skip payment, register directly
       if (discountedPrice === 0) {
         try {
           const result = await registerMutation.mutateAsync({
@@ -181,7 +192,7 @@ export default function RegisterPage() {
           });
           setRegistration((result as { data?: Registration })?.data as Registration);
           setStep("success");
-          toast.success("Inscription confirmée !");
+          toast.success(t("successSubmit"));
           return;
         } catch (err: unknown) {
           const code = (err as { code?: string })?.code;
@@ -191,7 +202,6 @@ export default function RegisterPage() {
         }
       }
 
-      // Paid ticket → initiate payment flow
       try {
         const result = await paymentMutation.mutateAsync({
           eventId,
@@ -200,7 +210,6 @@ export default function RegisterPage() {
         });
         const data = (result as { data?: { paymentId: string; redirectUrl: string } })?.data;
         if (data?.redirectUrl) {
-          // Redirect to payment provider (mock checkout in dev)
           window.location.href = data.redirectUrl;
         }
       } catch (err: unknown) {
@@ -209,7 +218,6 @@ export default function RegisterPage() {
         toast.error(getErrorMessage(code, message));
       }
     } else {
-      // Free ticket → direct registration
       try {
         const result = await registerMutation.mutateAsync({
           eventId,
@@ -217,7 +225,7 @@ export default function RegisterPage() {
         });
         setRegistration((result as { data?: Registration })?.data as Registration);
         setStep("success");
-        toast.success("Inscription confirmée !");
+        toast.success(t("successSubmit"));
       } catch (err: unknown) {
         const code = (err as { code?: string })?.code;
         const message = (err as { message?: string })?.message;
@@ -237,24 +245,21 @@ export default function RegisterPage() {
   if (!event) {
     return (
       <div className="mx-auto max-w-lg px-4 py-16 text-center">
-        <p className="text-muted-foreground">Événement introuvable.</p>
+        <p className="text-muted-foreground">{t("notFound")}</p>
         <Link href="/events" className="mt-4 inline-block text-teranga-gold hover:underline">
-          Retour aux événements
+          {t("backToEvents")}
         </Link>
       </div>
     );
   }
 
-  // Already registered — show status instead of form
   if (existingRegistration) {
-    const statusLabels: Record<string, string> = {
-      confirmed: "confirmée",
-      pending: "en attente d'approbation",
-      pending_payment: "en attente de paiement",
-      waitlisted: "en liste d'attente",
-      checked_in: "enregistrée (check-in effectué)",
-    };
-    const statusLabel = statusLabels[existingRegistration.status] ?? existingRegistration.status;
+    const statusKey = existingRegistration.status as StatusKey;
+    const statusLabel = ["confirmed", "pending", "pending_payment", "waitlisted", "checked_in"].includes(
+      statusKey,
+    )
+      ? tStatus(statusKey)
+      : existingRegistration.status;
 
     return (
       <div className="mx-auto max-w-lg px-4 py-8">
@@ -263,7 +268,7 @@ export default function RegisterPage() {
           className="mb-6 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
         >
           <ArrowLeft className="h-4 w-4" />
-          Retour à l&apos;événement
+          {t("backToEvent")}
         </button>
 
         <h1 className="text-2xl font-bold">{event.title}</h1>
@@ -273,9 +278,9 @@ export default function RegisterPage() {
             <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-teranga-green/10">
               <CalendarCheck className="h-10 w-10 text-teranga-green" />
             </div>
-            <h2 className="mt-4 text-xl font-bold">Vous êtes déjà inscrit(e)</h2>
+            <h2 className="mt-4 text-xl font-bold">{t("alreadyRegistered")}</h2>
             <p className="mt-2 text-center text-muted-foreground">
-              Votre inscription est {statusLabel}.
+              {t("statusPrefix", { status: statusLabel })}
             </p>
 
             {existingRegistration.qrCodeValue && (
@@ -291,11 +296,11 @@ export default function RegisterPage() {
 
             <div className="mt-6 flex flex-col gap-3 sm:flex-row">
               <Link href={`/my-events/${existingRegistration.id}/badge`}>
-                <Button variant="outline">Voir mon badge</Button>
+                <Button variant="outline">{t("viewBadge")}</Button>
               </Link>
               <Link href="/my-events">
                 <Button className="bg-teranga-gold hover:bg-teranga-gold/90">
-                  Mes inscriptions
+                  {t("myRegistrations")}
                 </Button>
               </Link>
             </div>
@@ -305,26 +310,24 @@ export default function RegisterPage() {
     );
   }
 
-  const visibleTickets = event.ticketTypes.filter((t) => t.isVisible);
+  const visibleTickets = event.ticketTypes.filter((x) => x.isVisible);
 
   return (
     <div className="mx-auto max-w-lg px-4 py-8">
-      {/* Back link */}
       <button
         onClick={() => (step === "select" ? router.back() : setStep("select"))}
         className="mb-6 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
       >
         <ArrowLeft className="h-4 w-4" />
-        {step === "success" ? "Retour" : "Retour à l'événement"}
+        {step === "success" ? t("back") : t("backToEvent")}
       </button>
 
       <h1 className="text-2xl font-bold">{event.title}</h1>
-      <p className="mt-1 text-sm text-muted-foreground">Inscription</p>
+      <p className="mt-1 text-sm text-muted-foreground">{t("subtitle")}</p>
 
-      {/* Step 1: Select ticket */}
       {step === "select" && (
         <div className="mt-6 space-y-3">
-          <h2 className="text-lg font-semibold">Choisissez votre billet</h2>
+          <h2 className="text-lg font-semibold">{t("selectHeading")}</h2>
           {visibleTickets.map((ticket) => {
             const remaining = ticket.totalQuantity ? ticket.totalQuantity - ticket.soldCount : null;
             const soldOut = remaining !== null && remaining <= 0;
@@ -349,7 +352,9 @@ export default function RegisterPage() {
                     <span className="font-medium">{ticket.name}</span>
                   </div>
                   <span className="font-semibold text-teranga-gold">
-                    {ticket.price === 0 ? "Gratuit" : formatCurrency(ticket.price, ticket.currency)}
+                    {ticket.price === 0
+                      ? tCommon("free")
+                      : formatCurrency(ticket.price, ticket.currency, regional)}
                   </span>
                 </div>
                 {ticket.description && (
@@ -357,12 +362,12 @@ export default function RegisterPage() {
                 )}
                 {soldOut && (
                   <Badge variant="destructive" className="mt-2">
-                    Épuisé
+                    {t("soldOut")}
                   </Badge>
                 )}
                 {remaining !== null && !soldOut && (
                   <p className="mt-1 text-xs text-muted-foreground">
-                    {remaining} place{remaining > 1 ? "s" : ""} restante{remaining > 1 ? "s" : ""}
+                    {t("seatsLeft", { count: remaining })}
                   </p>
                 )}
               </button>
@@ -371,11 +376,10 @@ export default function RegisterPage() {
         </div>
       )}
 
-      {/* Step 2: Confirm */}
       {step === "confirm" && selectedTicket && (
         <Card className="mt-6">
           <CardHeader>
-            <CardTitle className="text-lg">Confirmer votre inscription</CardTitle>
+            <CardTitle className="text-lg">{t("confirmHeading")}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="rounded-md bg-muted p-4">
@@ -385,19 +389,19 @@ export default function RegisterPage() {
                   {hasDiscount ? (
                     <>
                       <span className="text-sm text-muted-foreground line-through mr-2">
-                        {formatCurrency(selectedTicket.price, selectedTicket.currency)}
+                        {formatCurrency(selectedTicket.price, selectedTicket.currency, regional)}
                       </span>
                       <span className="font-semibold text-teranga-green">
                         {discountedPrice === 0
-                          ? "Gratuit"
-                          : formatCurrency(discountedPrice, selectedTicket.currency)}
+                          ? tCommon("free")
+                          : formatCurrency(discountedPrice, selectedTicket.currency, regional)}
                       </span>
                     </>
                   ) : (
                     <span className="font-semibold text-teranga-gold">
                       {selectedTicket.price === 0
-                        ? "Gratuit"
-                        : formatCurrency(selectedTicket.price, selectedTicket.currency)}
+                        ? tCommon("free")
+                        : formatCurrency(selectedTicket.price, selectedTicket.currency, regional)}
                     </span>
                   )}
                 </div>
@@ -412,7 +416,7 @@ export default function RegisterPage() {
                     {promoResult.code} :{" "}
                     {promoResult.discountType === "percentage"
                       ? `-${promoResult.discountValue}%`
-                      : `-${formatCurrency(promoResult.discountValue, "XOF")}`}
+                      : `-${formatCurrency(promoResult.discountValue, "XOF", regional)}`}
                   </Badge>
                   <button
                     type="button"
@@ -425,7 +429,6 @@ export default function RegisterPage() {
               )}
             </div>
 
-            {/* Promo Code Section */}
             {selectedTicket.price > 0 && (
               <div className="rounded-lg border border-border">
                 <button
@@ -435,7 +438,7 @@ export default function RegisterPage() {
                 >
                   <span className="flex items-center gap-2">
                     <Tag className="h-4 w-4" />
-                    Code promo
+                    {t("promoHeading")}
                   </span>
                   {promoOpen ? (
                     <ChevronUp className="h-4 w-4" />
@@ -447,7 +450,7 @@ export default function RegisterPage() {
                   <div className="border-t border-border px-4 py-3 space-y-3">
                     <div className="flex gap-2">
                       <Input
-                        placeholder="Entrez votre code"
+                        placeholder={t("promoPlaceholder")}
                         value={promoInput}
                         onChange={(e) => {
                           setPromoInput(e.target.value);
@@ -465,7 +468,7 @@ export default function RegisterPage() {
                         {validatePromo.isPending ? (
                           <Loader2 className="h-4 w-4 animate-spin" />
                         ) : (
-                          "Appliquer"
+                          t("promoApply")
                         )}
                       </Button>
                     </div>
@@ -477,15 +480,13 @@ export default function RegisterPage() {
 
             {isPaidTicket && discountedPrice > 0 && (
               <div className="space-y-3">
-                <p className="text-sm font-semibold text-foreground">
-                  Choisissez votre moyen de paiement
-                </p>
+                <p className="text-sm font-semibold text-foreground">{t("chooseMethod")}</p>
                 <div
                   role="radiogroup"
-                  aria-label="Moyen de paiement"
+                  aria-label={t("methodAria")}
                   className="grid gap-2 sm:grid-cols-2"
                 >
-                  {PAYMENT_METHODS.map((method) => {
+                  {paymentMethods.map((method) => {
                     const isSelected = selectedMethod === method.id;
                     return (
                       <button
@@ -523,19 +524,18 @@ export default function RegisterPage() {
                 <div className="flex items-start gap-3 rounded-md border border-amber-200 bg-amber-50 p-3 dark:border-amber-800 dark:bg-amber-950/50">
                   <CreditCard className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-600 dark:text-amber-400" />
                   <p className="text-sm text-amber-800 dark:text-amber-200">
-                    Vous serez redirigé(e) vers{" "}
-                    {PAYMENT_METHODS.find((m) => m.id === selectedMethod)?.label ??
-                      "la page de paiement"}{" "}
-                    pour finaliser votre inscription.
+                    {t("redirectNotice", {
+                      method:
+                        paymentMethods.find((m) => m.id === selectedMethod)?.label ??
+                        t("redirectNoticeFallback"),
+                    })}
                   </p>
                 </div>
               </div>
             )}
 
             {event.requiresApproval && !isPaidTicket && (
-              <p className="text-sm text-amber-600 dark:text-amber-400">
-                Cette inscription est soumise à l&apos;approbation de l&apos;organisateur.
-              </p>
+              <p className="text-sm text-amber-600 dark:text-amber-400">{t("approvalNotice")}</p>
             )}
 
             <div className="flex gap-3">
@@ -548,7 +548,7 @@ export default function RegisterPage() {
                 }}
                 disabled={isSubmitting}
               >
-                Retour
+                {t("back")}
               </Button>
               <Button
                 className="flex-1 bg-teranga-gold hover:bg-teranga-gold/90"
@@ -559,19 +559,23 @@ export default function RegisterPage() {
                   <span className="flex items-center gap-2">
                     <Loader2 className="h-4 w-4 animate-spin" />
                     {isPaidTicket && (!hasDiscount || discountedPrice > 0)
-                      ? "Redirection..."
-                      : "Inscription..."}
+                      ? t("redirecting")
+                      : t("registering")}
                   </span>
                 ) : hasDiscount ? (
                   discountedPrice === 0 ? (
-                    "Confirmer (gratuit)"
+                    t("confirmFree")
                   ) : (
-                    `Payer ${formatCurrency(discountedPrice, selectedTicket.currency)}`
+                    t("payAmount", {
+                      amount: formatCurrency(discountedPrice, selectedTicket.currency, regional),
+                    })
                   )
                 ) : isPaidTicket ? (
-                  `Payer ${formatCurrency(selectedTicket.price, selectedTicket.currency)}`
+                  t("payAmount", {
+                    amount: formatCurrency(selectedTicket.price, selectedTicket.currency, regional),
+                  })
                 ) : (
-                  "Confirmer"
+                  t("confirm")
                 )}
               </Button>
             </div>
@@ -579,17 +583,14 @@ export default function RegisterPage() {
         </Card>
       )}
 
-      {/* Step 3: Success (free tickets only) */}
       {step === "success" && registration && (
         <div className="mt-6 text-center">
           <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-teranga-green/10">
             <CheckCircle className="h-10 w-10 text-teranga-green" />
           </div>
-          <h2 className="mt-4 text-xl font-bold">Inscription confirmée !</h2>
+          <h2 className="mt-4 text-xl font-bold">{t("successTitle")}</h2>
           <p className="mt-2 text-muted-foreground">
-            {event.requiresApproval
-              ? "Votre inscription est en attente d'approbation."
-              : "Votre badge QR a été généré."}
+            {event.requiresApproval ? t("successPendingApproval") : t("successQrReady")}
           </p>
 
           {registration.qrCodeValue && (
@@ -600,11 +601,11 @@ export default function RegisterPage() {
 
           <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center">
             <Link href="/my-events">
-              <Button variant="outline">Mes inscriptions</Button>
+              <Button variant="outline">{t("myRegistrations")}</Button>
             </Link>
             <Link href="/events">
               <Button className="bg-teranga-gold hover:bg-teranga-gold/90">
-                Explorer d&apos;autres événements
+                {t("exploreOthers")}
               </Button>
             </Link>
           </div>

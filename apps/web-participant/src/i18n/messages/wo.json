@@ -296,6 +296,49 @@
     "backToMyEvents": "Dellu ci samay bind",
     "addToWallet": "Yokk ci portefeuille"
   },
+  "registerFlow": {
+    "subtitle": "Bind",
+    "notFound": "Xew-xew gisu ko.",
+    "backToEvents": "Dellu ci xew-xew yi",
+    "backToEvent": "Dellu ci xew-xew bi",
+    "back": "Dellu",
+    "alreadyRegistered": "Bind nga ba jàllee",
+    "selectHeading": "Tann sa billet",
+    "soldOut": "Mat na",
+    "seatsLeft": "{count, plural, one {# seat des} other {# seat des}}",
+    "confirmHeading": "Nangu sa bindu",
+    "chooseMethod": "Tann sa moy paye",
+    "confirmFree": "Nangu (ba neex)",
+    "payAmount": "Paye {amount}",
+    "confirm": "Nangu",
+    "registering": "Di bind...",
+    "redirecting": "Di jàllale...",
+    "successTitle": "Bindu nangu nañu ko !",
+    "exploreOthers": "Xam yeneen xew-xew"
+  },
+  "paymentStatus": {
+    "processingHeading": "Paye bi di dox…",
+    "processingHint": "Sa paye bi di traite. Xët bi di yeesal mu bu nekk.",
+    "successHeading": "Paye nangu nañu ko !",
+    "successHint": "Sa bindu nangu nañu ko te sa badge QR fi am na.",
+    "failedHeading": "Paye fàllee na",
+    "retry": "Jéem waaf",
+    "errorHeading": "Njumte",
+    "myRegistrations": "Samay bind",
+    "viewBadge": "Gis sama badge"
+  },
+  "offlinePage": {
+    "title": "Ci biti internet",
+    "heading": "Nga ci biti internet",
+    "hint": "Xoolal sa konesion internet te jéem waaf.",
+    "retry": "Jéem waaf"
+  },
+  "addToCalendar": {
+    "google": "Google Agenda",
+    "googleAria": "Yokk ci Google Agenda",
+    "downloadIcs": "Téelé (.ics)",
+    "downloadIcsAria": "Téelé fiche kalander"
+  },
   "myEvents": {
     "title": "Samay bind",
     "countLabel": "{count, plural, one {# bind} other {# bind}}",

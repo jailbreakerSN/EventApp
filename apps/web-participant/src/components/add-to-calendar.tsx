@@ -1,6 +1,7 @@
 "use client";
 
 import { CalendarPlus } from "lucide-react";
+import { useTranslations } from "next-intl";
 
 interface AddToCalendarProps {
   title: string;
@@ -14,7 +15,13 @@ function toIcsDate(isoDate: string): string {
   return new Date(isoDate).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
 }
 
-function generateIcsContent({ title, description, location, startDate, endDate }: AddToCalendarProps): string {
+function generateIcsContent({
+  title,
+  description,
+  location,
+  startDate,
+  endDate,
+}: AddToCalendarProps): string {
   const cleanDesc = description.replace(/\n/g, "\\n").slice(0, 500);
   return [
     "BEGIN:VCALENDAR",
@@ -34,7 +41,13 @@ function generateIcsContent({ title, description, location, startDate, endDate }
   ].join("\r\n");
 }
 
-function getGoogleCalendarUrl({ title, description, location, startDate, endDate }: AddToCalendarProps): string {
+function getGoogleCalendarUrl({
+  title,
+  description,
+  location,
+  startDate,
+  endDate,
+}: AddToCalendarProps): string {
   const params = new URLSearchParams({
     action: "TEMPLATE",
     text: title,
@@ -46,6 +59,8 @@ function getGoogleCalendarUrl({ title, description, location, startDate, endDate
 }
 
 export function AddToCalendar(props: AddToCalendarProps) {
+  const t = useTranslations("addToCalendar");
+
   const downloadIcs = () => {
     const content = generateIcsContent(props);
     const blob = new Blob([content], { type: "text/calendar;charset=utf-8" });
@@ -66,19 +81,19 @@ export function AddToCalendar(props: AddToCalendarProps) {
         target="_blank"
         rel="noopener noreferrer"
         className="inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted"
-        aria-label="Ajouter à Google Agenda"
+        aria-label={t("googleAria")}
       >
         <CalendarPlus className="h-4 w-4 text-teranga-gold" />
-        Google Agenda
+        {t("google")}
       </a>
 
       <button
         onClick={downloadIcs}
         className="inline-flex items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted"
-        aria-label="Télécharger le fichier calendrier"
+        aria-label={t("downloadIcsAria")}
       >
         <CalendarPlus className="h-4 w-4 text-teranga-gold" />
-        Télécharger (.ics)
+        {t("downloadIcs")}
       </button>
     </div>
   );
