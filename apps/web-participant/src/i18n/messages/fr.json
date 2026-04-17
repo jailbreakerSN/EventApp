@@ -138,16 +138,18 @@
   "home": {
     "hero": {
       "kicker": "✦ Teranga · Dakar · Printemps 2026",
+      "srTitle": "Découvrez les événements au Sénégal — conférences, concerts, ateliers et festivals",
       "titleLead": "L'événementiel africain,",
       "titleItalicOne": "connecté",
       "titleGlue": "et",
       "titleItalicTwo": "mémorable.",
       "titleBefore": "Découvrez les événements au",
       "titleHighlight": "Sénégal",
-      "subtitle": "Conférences, concerts, ateliers et rencontres. Découvrez ce qui se passe cette saison à Dakar, Thiès, Saly et ailleurs.",
+      "subtitle": "Conférences, concerts, ateliers et rencontres partout au Sénégal. Découvrez ce qui se passe cette saison à Dakar, Thiès, Saly et ailleurs.",
       "searchPlaceholder": "Rechercher un événement, un organisateur, une ville…",
       "searchCta": "Explorer",
-      "cta": "Explorer les événements"
+      "cta": "Voir tous les événements",
+      "secondaryCta": "Comment ça marche"
     },
     "heroStats": {
       "events": "événements",
@@ -215,8 +217,9 @@
     "featuredHeading": "Événements à la une",
     "latestHeading": "Derniers événements",
     "howItWorks": {
-      "heading": "Comment ça marche",
-      "subheading": "En trois étapes simples, participez aux meilleurs événements du Sénégal.",
+      "kicker": "— Comment ça marche",
+      "heading": "Trois étapes, un badge",
+      "subheading": "Du premier clic au passage de la porte : tout est pensé pour que rien ne se mette entre vous et l'événement.",
       "stepLabel": "Étape {n}",
       "step1": {
         "title": "Découvrez",
@@ -283,6 +286,11 @@
     "clearFilters": "Réinitialiser les filtres",
     "list": {
       "resultsCount": "{count, plural, one {# événement trouvé} other {# événements trouvés}}"
+    },
+    "card": {
+      "registeredCount": "{count, plural, one {# inscrit} other {# inscrits}}",
+      "registeredWithFill": "{count, plural, one {# inscrit} other {# inscrits}} · {pct}% rempli",
+      "remainingSeats": "{count, plural, one {Plus qu'# place} other {Plus que # places}}"
     },
     "filters": {
       "today": "Aujourd'hui",

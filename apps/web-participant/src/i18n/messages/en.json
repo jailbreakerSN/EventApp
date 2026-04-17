@@ -138,16 +138,18 @@
   "home": {
     "hero": {
       "kicker": "✦ Teranga · Dakar · Spring 2026",
+      "srTitle": "Discover events across Senegal — conferences, concerts, workshops and festivals",
       "titleLead": "African events,",
       "titleItalicOne": "connected",
       "titleGlue": "and",
       "titleItalicTwo": "memorable.",
       "titleBefore": "Discover events in",
       "titleHighlight": "Senegal",
-      "subtitle": "Conferences, concerts, workshops and meetups. See what's happening this season in Dakar, Thiès, Saly and beyond.",
+      "subtitle": "Conferences, concerts, workshops and meetups across Senegal. See what's happening this season in Dakar, Thiès, Saly and beyond.",
       "searchPlaceholder": "Search an event, an organiser, a city…",
       "searchCta": "Explore",
-      "cta": "Explore events"
+      "cta": "Browse all events",
+      "secondaryCta": "How it works"
     },
     "heroStats": {
       "events": "events",
@@ -215,8 +217,9 @@
     "featuredHeading": "Featured events",
     "latestHeading": "Latest events",
     "howItWorks": {
-      "heading": "How it works",
-      "subheading": "Three simple steps to attend the best events in Senegal.",
+      "kicker": "— How it works",
+      "heading": "Three steps, one badge",
+      "subheading": "From the first click to the door: everything is tuned so nothing stands between you and the event.",
       "stepLabel": "Step {n}",
       "step1": {
         "title": "Discover",
@@ -280,6 +283,11 @@
     "clearFilters": "Clear filters",
     "list": {
       "resultsCount": "{count, plural, one {# event found} other {# events found}}"
+    },
+    "card": {
+      "registeredCount": "{count, plural, one {# registered} other {# registered}}",
+      "registeredWithFill": "{count, plural, one {# registered} other {# registered}} · {pct}% full",
+      "remainingSeats": "{count, plural, one {Only # seat left} other {Only # seats left}}"
     },
     "filters": {
       "today": "Today",

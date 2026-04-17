@@ -142,16 +142,18 @@
   "home": {
     "hero": {
       "kicker": "✦ Teranga · Dakar · Noor 2026",
+      "srTitle": "Xam xew-xew yi ci Senegaal — konferans, konseer, atelye ak festival",
       "titleLead": "Xew-xew yu Afrig,",
       "titleItalicOne": "connecté",
       "titleGlue": "ak",
       "titleItalicTwo": "yu nu dul fàtte.",
       "titleBefore": "Xam xew-xew yi ci",
       "titleHighlight": "Senegaal",
-      "subtitle": "Konferans, konseer, atelye ak mbooloo. Xamal lu am ci jamono ji ci Dakar, Cees, Saly ak yeneen.",
+      "subtitle": "Konferans, konseer, atelye ak mbooloo ci Senegaal gépp. Xamal lu am ci jamono ji ci Dakar, Cees, Saly ak yeneen.",
       "searchPlaceholder": "Seet xew-xew, jëfandikukat, wala dëkk…",
       "searchCta": "Saytu",
-      "cta": "Saytu xew-xew yi"
+      "cta": "Xool xew-xew yépp",
+      "secondaryCta": "Nu mu di dox"
     },
     "heroStats": {
       "events": "xew-xew",
@@ -219,8 +221,9 @@
     "featuredHeading": "Xew-xew yu jiitu",
     "latestHeading": "Xew-xew yu mujj",
     "howItWorks": {
-      "heading": "Nu mu di dox",
-      "subheading": "Ñetti étap rekk ngir bokk ci xew-xew yi gën a neex ci Senegaal.",
+      "kicker": "— Nu mu di dox",
+      "heading": "Ñetti étap, benn badge",
+      "subheading": "Ca klik ba buntu bi : ñu defar ko ngir dara du teg ci diggante yaw ak xew-xew bi.",
       "stepLabel": "Étap {n}",
       "step1": {
         "title": "Xam",
@@ -284,6 +287,11 @@
     "clearFilters": "Delwal filt yi",
     "list": {
       "resultsCount": "{count, plural, one {# xew-xew gis na} other {# xew-xew gis nañu}}"
+    },
+    "card": {
+      "registeredCount": "{count, plural, one {# bind na} other {# bind nañu}}",
+      "registeredWithFill": "{count, plural, one {# bind na} other {# bind nañu}} · {pct}% fees",
+      "remainingSeats": "{count, plural, one {Des na # palaas} other {Des nañu # palaas}}"
     },
     "filters": {
       "today": "Tey",

@@ -3,7 +3,7 @@ import Image from "next/image";
 import { Search, ArrowRight, ArrowUpRight } from "lucide-react";
 import { getTranslations, getLocale } from "next-intl/server";
 import { serverEventsApi } from "@/lib/server-api";
-import { EventCard } from "@/components/event-card";
+import { EditorialEventCard } from "@/components/editorial-event-card";
 import { formatCurrency, formatDate } from "@teranga/shared-ui";
 import type { Event } from "@teranga/shared-types";
 
@@ -53,7 +53,7 @@ export default async function HomePage() {
   return (
     <>
       {/* ——— Hero ——— */}
-      <section className="relative overflow-hidden bg-gradient-to-br from-teranga-navy via-[#16213E] to-teranga-forest text-white">
+      <section className="relative overflow-hidden bg-gradient-to-br from-teranga-navy via-teranga-navy-2 to-teranga-forest text-white">
         <div aria-hidden className="absolute inset-0 teranga-hero-texture" />
 
         <div className="container relative mx-auto max-w-[1280px] px-6 pt-16 pb-20 lg:px-8 lg:pt-20 lg:pb-24">
@@ -64,19 +64,44 @@ export default async function HomePage() {
                 {tHome("hero.kicker")}
               </p>
               <h1 className="font-serif-display mt-5 text-5xl font-medium leading-[0.98] tracking-[-0.03em] sm:text-6xl lg:text-[76px]">
-                {tHome("hero.titleLead")}
-                <br />
-                <em className="not-italic font-medium text-teranga-gold-light [font-style:italic]">
-                  {tHome("hero.titleItalicOne")}
-                </em>{" "}
-                {tHome("hero.titleGlue")}{" "}
-                <em className="not-italic font-medium text-teranga-gold-light [font-style:italic]">
-                  {tHome("hero.titleItalicTwo")}
-                </em>
+                {/* Keyword-rich heading for search engines and screen readers.
+                    Kept visually hidden so the editorial display headline
+                    below reads as the primary composition. */}
+                <span className="sr-only">{tHome("hero.srTitle")}</span>
+                <span aria-hidden="true">
+                  {tHome("hero.titleLead")}
+                  <br />
+                  <em className="italic font-medium text-teranga-gold-light">
+                    {tHome("hero.titleItalicOne")}
+                  </em>{" "}
+                  {tHome("hero.titleGlue")}{" "}
+                  <em className="italic font-medium text-teranga-gold-light">
+                    {tHome("hero.titleItalicTwo")}
+                  </em>
+                </span>
               </h1>
               <p className="mt-6 max-w-xl text-base leading-relaxed text-white/75 sm:text-lg">
                 {tHome("hero.subtitle")}
               </p>
+
+              {/* Primary CTA (the prototype's "Explorer" search-pill submit
+                  is the secondary action; this restores the one-click browse
+                  path for visitors without a query in mind). */}
+              <div className="mt-7 flex flex-wrap items-center gap-3">
+                <Link
+                  href="/events"
+                  className="inline-flex items-center gap-2 rounded-full bg-teranga-gold px-7 py-3.5 text-sm font-semibold text-teranga-navy shadow-lg shadow-teranga-gold/20 transition-colors hover:bg-teranga-gold-light"
+                >
+                  {tHome("hero.cta")}
+                  <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                </Link>
+                <Link
+                  href="#comment-ca-marche"
+                  className="inline-flex items-center gap-2 rounded-full border border-white/20 px-5 py-3 text-sm font-medium text-white/90 transition-colors hover:bg-white/10"
+                >
+                  {tHome("hero.secondaryCta")}
+                </Link>
+              </div>
 
               {/* Search pill */}
               <form
@@ -126,8 +151,11 @@ export default async function HomePage() {
               </dl>
             </div>
 
-            {/* Right column — decorative ticket stub */}
-            <div className="hidden lg:block">
+            {/* Right column — decorative ticket stub.
+                Purely illustrative; the real pass is rendered in the
+                registration success flow. Hide from AT to avoid
+                reading out made-up names and codes. */}
+            <div className="hidden lg:block" aria-hidden="true">
               <TicketStub
                 kicker={tHome("ticketStub.kicker")}
                 title={tHome("ticketStub.defaultTitle")}
@@ -214,8 +242,13 @@ export default async function HomePage() {
         {/* Event grid */}
         {latestEvents.length > 0 ? (
           <div className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {latestEvents.map((event) => (
-              <EventCard key={event.id} event={event} />
+            {latestEvents.map((event, i) => (
+              <EditorialEventCard
+                key={event.id}
+                event={event}
+                index={i + 1}
+                total={latestEvents.length}
+              />
             ))}
           </div>
         ) : (
@@ -263,6 +296,44 @@ export default async function HomePage() {
             </div>
           ))}
         </div>
+      </section>
+
+      {/* ——— How it works — editorial onboarding signpost ——— */}
+      <section
+        id="comment-ca-marche"
+        className="mx-auto mt-24 max-w-[1280px] px-6 lg:px-8"
+      >
+        <SectionHeader
+          kicker={tHome("howItWorks.kicker")}
+          title={tHome("howItWorks.heading")}
+          subtitle={tHome("howItWorks.subheading")}
+        />
+        <ol className="mt-10 grid gap-5 md:grid-cols-3">
+          {(["step1", "step2", "step3"] as const).map((key, i) => (
+            <li
+              key={key}
+              className="group relative flex flex-col justify-between gap-6 rounded-card border bg-card p-7 transition-shadow hover:shadow-lg"
+            >
+              <div>
+                <span className="font-mono-kicker text-[11px] font-medium uppercase tracking-[0.14em] text-teranga-gold-dark">
+                  {tHome("howItWorks.stepLabel", { n: i + 1 })}
+                </span>
+                <h3 className="font-serif-display mt-3 text-2xl font-semibold leading-snug tracking-[-0.015em]">
+                  {tHome(`howItWorks.${key}.title`)}
+                </h3>
+                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                  {tHome(`howItWorks.${key}.description`)}
+                </p>
+              </div>
+              <span
+                aria-hidden="true"
+                className="font-serif-display text-5xl font-semibold text-teranga-gold/30 transition-colors group-hover:text-teranga-gold/50"
+              >
+                0{i + 1}
+              </span>
+            </li>
+          ))}
+        </ol>
       </section>
 
       {/* ——— Organizer CTA ——— */}
