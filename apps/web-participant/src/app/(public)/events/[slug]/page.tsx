@@ -570,13 +570,8 @@ export default async function EventDetailPage({ params }: PageProps) {
                     ? ticket.totalQuantity - ticket.soldCount
                     : null;
                   const soldOut = remaining !== null && remaining <= 0;
-                  return (
-                    <li
-                      key={ticket.id}
-                      className={`rounded-card border p-4 transition-colors ${
-                        soldOut ? "opacity-50" : "hover:border-foreground/30"
-                      }`}
-                    >
+                  const ticketBody = (
+                    <>
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <p className="text-sm font-semibold">{ticket.name}</p>
@@ -605,6 +600,25 @@ export default async function EventDetailPage({ params }: PageProps) {
                         <p className="mt-2.5 text-[11px] font-medium text-muted-foreground">
                           {tDetail("soldOut")}
                         </p>
+                      )}
+                    </>
+                  );
+                  return (
+                    <li key={ticket.id}>
+                      {soldOut ? (
+                        <div
+                          aria-disabled="true"
+                          className="block rounded-card border p-4 opacity-50"
+                        >
+                          {ticketBody}
+                        </div>
+                      ) : (
+                        <Link
+                          href={`/register/${event.id}?ticket=${ticket.id}`}
+                          className="block rounded-card border p-4 transition-colors hover:border-foreground/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teranga-gold"
+                        >
+                          {ticketBody}
+                        </Link>
                       )}
                     </li>
                   );
