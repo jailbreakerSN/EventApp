@@ -2,13 +2,28 @@
 
 import { useState } from "react";
 import { Bell, CheckCheck, Circle } from "lucide-react";
+import { useLocale, useTranslations } from "next-intl";
 import { useNotifications, useMarkAsRead, useMarkAllAsRead } from "@/hooks/use-notifications";
 import { Button, Card, CardContent, QueryError } from "@teranga/shared-ui";
 import type { Notification } from "@teranga/shared-types";
-import { useTranslations } from "next-intl";
+
+function intlLocale(locale: string): string {
+  switch (locale) {
+    case "fr":
+      return "fr-SN";
+    case "en":
+      return "en-SN";
+    case "wo":
+      return "wo-SN";
+    default:
+      return locale;
+  }
+}
 
 export default function NotificationsPage() {
-  const _t = useTranslations("common"); void _t;
+  const t = useTranslations("notifications");
+  const locale = useLocale();
+  const regional = intlLocale(locale);
   const [page, setPage] = useState(1);
   const [unreadOnly, setUnreadOnly] = useState(false);
 
@@ -23,14 +38,12 @@ export default function NotificationsPage() {
     <div className="mx-auto max-w-2xl px-4 py-8">
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Notifications</h1>
-          <p className="text-sm text-muted-foreground">
-            {total} notification{total > 1 ? "s" : ""}
-          </p>
+          <h1 className="text-2xl font-bold">{t("title")}</h1>
+          <p className="text-sm text-muted-foreground">{t("count", { count: total })}</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={() => setUnreadOnly(!unreadOnly)}>
-            {unreadOnly ? "Toutes" : "Non lues"}
+            {unreadOnly ? t("filterAll") : t("filterUnread")}
           </Button>
           <Button
             variant="outline"
@@ -39,7 +52,7 @@ export default function NotificationsPage() {
             disabled={markAllAsRead.isPending}
           >
             <CheckCheck className="mr-1 h-4 w-4" />
-            Tout lire
+            {t("markAllRead")}
           </Button>
         </div>
       </div>
@@ -65,9 +78,7 @@ export default function NotificationsPage() {
         <Card>
           <CardContent className="flex flex-col items-center py-12">
             <Bell className="mb-3 h-10 w-10 text-muted-foreground" />
-            <p className="text-muted-foreground">
-              {unreadOnly ? "Aucune notification non lue" : "Aucune notification"}
-            </p>
+            <p className="text-muted-foreground">{unreadOnly ? t("emptyUnread") : t("empty")}</p>
           </CardContent>
         </Card>
       ) : (
@@ -90,7 +101,7 @@ export default function NotificationsPage() {
                   <p className="font-medium">{n.title}</p>
                   <p className="text-sm text-muted-foreground">{n.body}</p>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    {new Date(n.createdAt).toLocaleDateString("fr-FR", {
+                    {new Date(n.createdAt).toLocaleDateString(regional, {
                       day: "numeric",
                       month: "short",
                       hour: "2-digit",
@@ -112,10 +123,10 @@ export default function NotificationsPage() {
             disabled={page <= 1}
             onClick={() => setPage(page - 1)}
           >
-            Précédent
+            {t("paginationPrev")}
           </Button>
           <span className="text-sm text-muted-foreground">
-            Page {page} sur {Math.ceil(total / 20)}
+            {t("paginationOf", { page, total: Math.ceil(total / 20) })}
           </span>
           <Button
             variant="outline"
@@ -123,7 +134,7 @@ export default function NotificationsPage() {
             disabled={page * 20 >= total}
             onClick={() => setPage(page + 1)}
           >
-            Suivant
+            {t("paginationNext")}
           </Button>
         </div>
       )}

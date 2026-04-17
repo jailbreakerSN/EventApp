@@ -282,8 +282,114 @@
   "badge": {
     "title": "My badge",
     "download": "Download",
+    "downloadPdf": "Download PDF badge",
+    "downloadPdfAria": "Download PDF badge",
+    "generatingPdf": "Generating...",
+    "pdfError": "PDF badge generation failed. Please try again in a few moments.",
     "scanToCheckin": "Show this QR code at the event entrance.",
+    "notYetAvailable": "Your badge isn't available yet.",
+    "registrationNotFound": "Registration not found.",
+    "backToMyEvents": "Back to my registrations",
     "addToWallet": "Add to wallet"
+  },
+  "myEvents": {
+    "title": "My registrations",
+    "countLabel": "{count, plural, one {# registration} other {# registrations}}",
+    "loadError": "Unable to load your registrations. Please try again.",
+    "emptyTitle": "No registrations yet",
+    "emptyDescription": "Explore upcoming events and register in a few clicks.",
+    "discoverCta": "Discover events",
+    "ticketPrefix": "Ticket",
+    "registeredOn": "Registered on",
+    "waitlistPosition": "Position #{n}",
+    "badge": "Badge",
+    "refund": "Refund",
+    "refundRequested": "Refund request sent",
+    "refundReason": "Refund request by the participant",
+    "leaveWaitlist": "Leave waitlist",
+    "cancel": "Cancel",
+    "cancelled": "Cancelled",
+    "cancelledSuccess": "Registration cancelled successfully.",
+    "paginationPrev": "Previous",
+    "paginationNext": "Next",
+    "paginationOf": "Page {page} / {total}",
+    "cancelDialog": {
+      "title": "Cancel registration",
+      "description": "Are you sure you want to cancel this registration? This action is irreversible.",
+      "confirm": "Yes, cancel",
+      "cancel": "No, keep"
+    },
+    "refundDialog": {
+      "title": "Request a refund",
+      "description": "The refund will be processed according to the organizer's policy. Processing typically takes 5-10 business days.",
+      "confirm": "Confirm request",
+      "cancel": "Cancel"
+    },
+    "status": {
+      "confirmed": "Confirmed",
+      "pending": "Pending",
+      "pending_payment": "Pending payment",
+      "waitlisted": "Waitlisted",
+      "checked_in": "Checked in",
+      "cancelled": "Cancelled",
+      "refund_requested": "Refund requested",
+      "refunded": "Refunded"
+    }
+  },
+  "settings": {
+    "title": "Settings",
+    "notifications": {
+      "heading": "Notifications",
+      "description": "Choose how you receive notifications",
+      "push": "Push notifications",
+      "pushDescription": "Receive real-time alerts on your device",
+      "sms": "SMS",
+      "smsDescription": "Receive notifications by SMS",
+      "email": "Email",
+      "emailDescription": "Receive summaries and confirmations by email",
+      "reminders": "Event reminders",
+      "remindersDescription": "Get a reminder before your events start"
+    },
+    "privacy": {
+      "heading": "Privacy",
+      "description": "Control your profile visibility and interactions",
+      "profileVisible": "Profile visible to other attendees",
+      "profileVisibleDescription": "Other attendees will be able to see your name and profile at events",
+      "profileVisibleOn": "Your profile is now visible",
+      "profileVisibleOff": "Your profile is now hidden",
+      "dmAllowed": "Allow direct messages",
+      "dmAllowedDescription": "Other attendees will be able to send you messages",
+      "dmAllowedOn": "Direct messages enabled",
+      "dmAllowedOff": "Direct messages disabled"
+    },
+    "account": {
+      "heading": "Account",
+      "description": "Irreversible actions on your account",
+      "delete": "Delete my account",
+      "deleteConfirmQuestion": "Are you sure you want to delete your account?",
+      "deleteConfirmWarning": "This action is irreversible. All your data, registrations and messages will be permanently deleted.",
+      "deleteConfirm": "Confirm deletion",
+      "deleteCancel": "Cancel",
+      "deleteContactSupport": "Please contact support to delete your account: support@teranga-events.com"
+    }
+  },
+  "pagination": {
+    "nav": "Pagination",
+    "prev": "Previous page",
+    "next": "Next page",
+    "pageN": "Page {n}"
+  },
+  "offline": {
+    "indicator": "You are offline"
+  },
+  "emailVerificationBanner": {
+    "notVerified": "Your email address isn't verified.",
+    "resendLink": "Resend email",
+    "sending": "Sending...",
+    "close": "Close"
+  },
+  "authGuard": {
+    "checking": "Checking..."
   },
   "feed": {
     "title": "Activity feed",
@@ -301,21 +407,59 @@
   "notifications": {
     "title": "Notifications",
     "markAllRead": "Mark all read",
-    "empty": "No notifications"
+    "empty": "No notifications",
+    "emptyUnread": "No unread notifications",
+    "count": "{count, plural, one {# notification} other {# notifications}}",
+    "filterAll": "All",
+    "filterUnread": "Unread",
+    "paginationPrev": "Previous",
+    "paginationNext": "Next",
+    "paginationOf": "Page {page} of {total}"
   },
   "messages": {
     "title": "Messages",
-    "noConversations": "No conversations.",
-    "writeMessage": "Write a message..."
+    "listHeading": "Conversations",
+    "backToMyEvents": "My events",
+    "noConversations": "No conversations",
+    "selectConversation": "Select a conversation",
+    "noMessages": "No messages yet. Start the conversation!",
+    "errorConversations": "Failed to load conversations.",
+    "errorMessages": "Failed to load messages.",
+    "you": "You",
+    "unknownParticipant": "Unknown",
+    "writeMessage": "Write a message...",
+    "sendAria": "Send message",
+    "relative": {
+      "now": "Just now",
+      "minutesShort": "{n}m ago",
+      "hoursShort": "{n}h ago",
+      "yesterday": "Yesterday",
+      "daysShort": "{n}d ago"
+    }
   },
   "profile": {
     "title": "My profile",
+    "personalInfoHeading": "Personal information",
     "displayName": "Full name",
+    "displayNamePlaceholder": "First Last",
+    "phone": "Phone",
+    "phonePlaceholder": "+221 77 123 45 67",
     "bio": "Bio",
+    "bioPlaceholder": "Tell us about yourself...",
     "company": "Organization",
     "jobTitle": "Job title",
-    "saveProfile": "Save profile",
-    "profileUpdated": "Profile updated"
+    "preferredLanguage": "Preferred language",
+    "saveProfile": "Save",
+    "savingProfile": "Saving...",
+    "profileUpdated": "Profile updated successfully.",
+    "changePhotoAria": "Change profile photo",
+    "photoAlt": "Profile photo",
+    "photoHint": "Click to change photo (JPG, PNG, WebP - max 5 MB)",
+    "photoInvalidType": "Unsupported file type. Accepted formats: JPG, PNG, WebP.",
+    "photoTooLarge": "File exceeds the 5 MB maximum size.",
+    "photoUploadError": "Failed to upload the photo.",
+    "photoUploaded": "Profile photo updated.",
+    "notAuthenticated": "Not authenticated"
   },
   "newsletter": {
     "heading": "Stay informed about events in Senegal",

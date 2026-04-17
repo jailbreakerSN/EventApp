@@ -2,6 +2,7 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { Button } from "@teranga/shared-ui";
 
 interface PaginationProps {
@@ -10,6 +11,7 @@ interface PaginationProps {
 }
 
 export function Pagination({ currentPage, totalPages }: PaginationProps) {
+  const t = useTranslations("pagination");
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -22,27 +24,29 @@ export function Pagination({ currentPage, totalPages }: PaginationProps) {
   const pages = getVisiblePages(currentPage, totalPages);
 
   return (
-    <nav className="flex items-center justify-center gap-1" aria-label="Pagination">
+    <nav className="flex items-center justify-center gap-1" aria-label={t("nav")}>
       <Button
         variant="outline"
         size="icon"
         disabled={currentPage <= 1}
         onClick={() => goToPage(currentPage - 1)}
-        aria-label="Page précédente"
+        aria-label={t("prev")}
       >
         <ChevronLeft className="h-4 w-4" />
       </Button>
 
       {pages.map((page, i) =>
         page === "..." ? (
-          <span key={`ellipsis-${i}`} className="px-2 text-muted-foreground">...</span>
+          <span key={`ellipsis-${i}`} className="px-2 text-muted-foreground">
+            ...
+          </span>
         ) : (
           <Button
             key={page}
             variant={page === currentPage ? "default" : "outline"}
             size="icon"
             onClick={() => goToPage(page as number)}
-            aria-label={`Page ${page}`}
+            aria-label={t("pageN", { n: page })}
             aria-current={page === currentPage ? "page" : undefined}
           >
             {page}
@@ -55,7 +59,7 @@ export function Pagination({ currentPage, totalPages }: PaginationProps) {
         size="icon"
         disabled={currentPage >= totalPages}
         onClick={() => goToPage(currentPage + 1)}
-        aria-label="Page suivante"
+        aria-label={t("next")}
       >
         <ChevronRight className="h-4 w-4" />
       </Button>

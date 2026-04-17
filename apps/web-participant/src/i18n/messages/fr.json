@@ -285,8 +285,114 @@
   "badge": {
     "title": "Mon badge",
     "download": "Télécharger",
+    "downloadPdf": "Télécharger le badge PDF",
+    "downloadPdfAria": "Télécharger le badge PDF",
+    "generatingPdf": "Génération en cours...",
+    "pdfError": "La génération du badge PDF a échoué. Réessayez dans quelques instants.",
     "scanToCheckin": "Présentez ce QR code à l'entrée de l'événement.",
+    "notYetAvailable": "Votre badge n'est pas encore disponible.",
+    "registrationNotFound": "Inscription introuvable.",
+    "backToMyEvents": "Retour à mes inscriptions",
     "addToWallet": "Ajouter au portefeuille"
+  },
+  "myEvents": {
+    "title": "Mes inscriptions",
+    "countLabel": "{count, plural, one {# inscription} other {# inscriptions}}",
+    "loadError": "Impossible de charger vos inscriptions. Veuillez réessayer.",
+    "emptyTitle": "Aucune inscription pour le moment",
+    "emptyDescription": "Explorez les événements à venir et inscrivez-vous en quelques clics.",
+    "discoverCta": "Découvrir les événements",
+    "ticketPrefix": "Billet",
+    "registeredOn": "Inscrit le",
+    "waitlistPosition": "Position #{n}",
+    "badge": "Badge",
+    "refund": "Remboursement",
+    "refundRequested": "Demande de remboursement envoyée",
+    "refundReason": "Demande de remboursement par le participant",
+    "leaveWaitlist": "Quitter la liste d'attente",
+    "cancel": "Annuler",
+    "cancelled": "Annulé",
+    "cancelledSuccess": "Inscription annulée avec succès.",
+    "paginationPrev": "Précédent",
+    "paginationNext": "Suivant",
+    "paginationOf": "Page {page} / {total}",
+    "cancelDialog": {
+      "title": "Annuler l'inscription",
+      "description": "Êtes-vous sûr(e) de vouloir annuler cette inscription ? Cette action est irréversible.",
+      "confirm": "Oui, annuler",
+      "cancel": "Non, garder"
+    },
+    "refundDialog": {
+      "title": "Demander un remboursement",
+      "description": "Le remboursement sera traité selon la politique de l'organisateur. Le délai de traitement est généralement de 5-10 jours ouvrés.",
+      "confirm": "Confirmer la demande",
+      "cancel": "Annuler"
+    },
+    "status": {
+      "confirmed": "Confirmé",
+      "pending": "En attente",
+      "pending_payment": "Paiement en attente",
+      "waitlisted": "En liste d'attente",
+      "checked_in": "Enregistré",
+      "cancelled": "Annulé",
+      "refund_requested": "Remboursement demandé",
+      "refunded": "Remboursé"
+    }
+  },
+  "settings": {
+    "title": "Paramètres",
+    "notifications": {
+      "heading": "Notifications",
+      "description": "Choisissez comment recevoir vos notifications",
+      "push": "Notifications push",
+      "pushDescription": "Recevez des alertes en temps réel sur votre appareil",
+      "sms": "SMS",
+      "smsDescription": "Recevez des notifications par SMS",
+      "email": "Email",
+      "emailDescription": "Recevez des résumés et confirmations par email",
+      "reminders": "Rappels d'événements",
+      "remindersDescription": "Recevez un rappel avant le début de vos événements"
+    },
+    "privacy": {
+      "heading": "Confidentialité",
+      "description": "Contrôlez la visibilité de votre profil et vos interactions",
+      "profileVisible": "Profil visible par les autres participants",
+      "profileVisibleDescription": "Les autres participants pourront voir votre nom et votre profil lors des événements",
+      "profileVisibleOn": "Votre profil est maintenant visible",
+      "profileVisibleOff": "Votre profil est maintenant masqué",
+      "dmAllowed": "Autoriser les messages directs",
+      "dmAllowedDescription": "Les autres participants pourront vous envoyer des messages",
+      "dmAllowedOn": "Messages directs activés",
+      "dmAllowedOff": "Messages directs désactivés"
+    },
+    "account": {
+      "heading": "Compte",
+      "description": "Actions irréversibles concernant votre compte",
+      "delete": "Supprimer mon compte",
+      "deleteConfirmQuestion": "Êtes-vous sûr(e) de vouloir supprimer votre compte ?",
+      "deleteConfirmWarning": "Cette action est irréversible. Toutes vos données, inscriptions et messages seront définitivement supprimés.",
+      "deleteConfirm": "Confirmer la suppression",
+      "deleteCancel": "Annuler",
+      "deleteContactSupport": "Veuillez contacter le support pour supprimer votre compte : support@teranga-events.com"
+    }
+  },
+  "pagination": {
+    "nav": "Pagination",
+    "prev": "Page précédente",
+    "next": "Page suivante",
+    "pageN": "Page {n}"
+  },
+  "offline": {
+    "indicator": "Vous êtes hors ligne"
+  },
+  "emailVerificationBanner": {
+    "notVerified": "Votre adresse email n'est pas vérifiée.",
+    "resendLink": "Renvoyer l'email",
+    "sending": "Envoi...",
+    "close": "Fermer"
+  },
+  "authGuard": {
+    "checking": "Vérification..."
   },
   "feed": {
     "title": "Fil d'actualité",
@@ -304,21 +410,59 @@
   "notifications": {
     "title": "Notifications",
     "markAllRead": "Tout lire",
-    "empty": "Aucune notification"
+    "empty": "Aucune notification",
+    "emptyUnread": "Aucune notification non lue",
+    "count": "{count, plural, one {# notification} other {# notifications}}",
+    "filterAll": "Toutes",
+    "filterUnread": "Non lues",
+    "paginationPrev": "Précédent",
+    "paginationNext": "Suivant",
+    "paginationOf": "Page {page} sur {total}"
   },
   "messages": {
     "title": "Messages",
-    "noConversations": "Aucune conversation.",
-    "writeMessage": "Écrire un message..."
+    "listHeading": "Conversations",
+    "backToMyEvents": "Mes événements",
+    "noConversations": "Aucune conversation",
+    "selectConversation": "Sélectionnez une conversation",
+    "noMessages": "Aucun message. Commencez la conversation !",
+    "errorConversations": "Erreur de chargement des conversations.",
+    "errorMessages": "Erreur de chargement des messages.",
+    "you": "Vous",
+    "unknownParticipant": "Inconnu",
+    "writeMessage": "Écrire un message...",
+    "sendAria": "Envoyer le message",
+    "relative": {
+      "now": "À l'instant",
+      "minutesShort": "Il y a {n}min",
+      "hoursShort": "Il y a {n}h",
+      "yesterday": "Hier",
+      "daysShort": "Il y a {n}j"
+    }
   },
   "profile": {
     "title": "Mon profil",
+    "personalInfoHeading": "Informations personnelles",
     "displayName": "Nom complet",
+    "displayNamePlaceholder": "Prénom Nom",
+    "phone": "Téléphone",
+    "phonePlaceholder": "+221 77 123 45 67",
     "bio": "Biographie",
+    "bioPlaceholder": "Parlez-nous de vous...",
     "company": "Organisation",
     "jobTitle": "Poste",
-    "saveProfile": "Enregistrer le profil",
-    "profileUpdated": "Profil mis à jour"
+    "preferredLanguage": "Langue préférée",
+    "saveProfile": "Enregistrer",
+    "savingProfile": "Enregistrement...",
+    "profileUpdated": "Profil mis à jour avec succès.",
+    "changePhotoAria": "Changer la photo de profil",
+    "photoAlt": "Photo de profil",
+    "photoHint": "Cliquez pour changer la photo (JPG, PNG, WebP - max 5 Mo)",
+    "photoInvalidType": "Type de fichier non autorisé. Formats acceptés : JPG, PNG, WebP.",
+    "photoTooLarge": "Le fichier dépasse la taille maximale de 5 Mo.",
+    "photoUploadError": "Erreur lors du téléversement de la photo.",
+    "photoUploaded": "Photo de profil mise à jour.",
+    "notAuthenticated": "Non authentifié"
   },
   "newsletter": {
     "heading": "Restez informé des événements au Sénégal",
