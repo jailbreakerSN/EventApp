@@ -373,7 +373,8 @@
     "notYetAvailable": "Votre badge n'est pas encore disponible.",
     "registrationNotFound": "Inscription introuvable.",
     "backToMyEvents": "Retour à mes inscriptions",
-    "addToWallet": "Ajouter au portefeuille"
+    "addToWallet": "Ajouter au portefeuille",
+    "offlineHint": "Disponible hors-ligne"
   },
   "registerFlow": {
     "subtitle": "Inscription",
@@ -486,11 +487,26 @@
   },
   "myEvents": {
     "title": "Mes inscriptions",
+    "kicker": "✦ Bonjour {name}",
+    "headline": "Vos prochains rendez-vous",
     "countLabel": "{count, plural, one {# inscription} other {# inscriptions}}",
+    "countLabelWithPast": "{count, plural, one {# à venir} other {# à venir}} · {past, plural, one {# passé} other {# passés}}",
     "loadError": "Impossible de charger vos inscriptions. Veuillez réessayer.",
     "emptyTitle": "Aucune inscription pour le moment",
     "emptyDescription": "Explorez les événements à venir et inscrivez-vous en quelques clics.",
     "discoverCta": "Découvrir les événements",
+    "tabs": {
+      "upcoming": "À venir",
+      "past": "Passés",
+      "saved": "Sauvegardés"
+    },
+    "savedEmptyTitle": "Aucun événement sauvegardé",
+    "savedEmptyDescription": "Cliquez sur l'icône signet d'un événement pour le retrouver ici.",
+    "pastEmptyTitle": "Aucun événement passé",
+    "pastEmptyDescription": "Les événements auxquels vous avez participé apparaîtront ici.",
+    "details": "Détails",
+    "settings": "Paramètres",
+    "browseCta": "Parcourir",
     "ticketPrefix": "Billet",
     "registeredOn": "Inscrit le",
     "waitlistPosition": "Position #{n}",

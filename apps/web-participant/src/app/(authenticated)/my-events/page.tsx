@@ -2,15 +2,24 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Calendar, QrCode, XCircle, RotateCcw, ListOrdered, LogOut } from "lucide-react";
+import {
+  Calendar,
+  QrCode,
+  XCircle,
+  RotateCcw,
+  ListOrdered,
+  LogOut,
+  Settings,
+  ArrowRight,
+} from "lucide-react";
 import { toast } from "sonner";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocale, useTranslations } from "next-intl";
 import { useMyRegistrations, useCancelRegistration } from "@/hooks/use-registrations";
+import { useAuth } from "@/hooks/use-auth";
 import { paymentsApi } from "@/lib/api-client";
 import {
   Button,
-  Badge,
   Card,
   EmptyState,
   formatDate,
@@ -18,6 +27,7 @@ import {
   getErrorMessage,
 } from "@teranga/shared-ui";
 import type { Registration } from "@teranga/shared-types";
+import { getCoverGradient } from "@/lib/cover-gradient";
 
 function intlLocale(locale: string): string {
   switch (locale) {
@@ -42,25 +52,28 @@ type StatusKey =
   | "refund_requested"
   | "refunded";
 
-const STATUS_VARIANTS: Record<
-  StatusKey,
-  "default" | "success" | "warning" | "destructive" | "outline"
-> = {
-  confirmed: "success",
-  pending: "warning",
-  pending_payment: "warning",
-  waitlisted: "warning",
-  checked_in: "default",
-  cancelled: "destructive",
-  refund_requested: "warning",
-  refunded: "outline",
+type StatusPillTone = "green" | "gold" | "muted" | "clay" | "navy";
+
+const STATUS_TONES: Record<StatusKey, StatusPillTone> = {
+  confirmed: "green",
+  pending: "gold",
+  pending_payment: "gold",
+  waitlisted: "gold",
+  checked_in: "navy",
+  cancelled: "clay",
+  refund_requested: "gold",
+  refunded: "muted",
 };
+
+type TabId = "upcoming" | "past" | "saved";
 
 export default function MyEventsPage() {
   const t = useTranslations("myEvents");
   const locale = useLocale();
   const regional = intlLocale(locale);
+  const { user } = useAuth();
   const [page, setPage] = useState(1);
+  const [tab, setTab] = useState<TabId>("upcoming");
   const { data, isLoading, error } = useMyRegistrations({ page, limit: 20 });
   const cancelMutation = useCancelRegistration();
   const queryClient = useQueryClient();
@@ -128,28 +141,98 @@ export default function MyEventsPage() {
     return true;
   }
 
-  return (
-    <div className="mx-auto max-w-3xl px-4 py-8">
-      <h1 className="text-2xl font-bold">{t("title")}</h1>
-      <p className="mt-1 text-muted-foreground">
-        {meta?.total !== undefined ? t("countLabel", { count: meta.total }) : ""}
-      </p>
+  // Partition by rough "upcoming" vs "past". Registration has no event
+  // end-date denormalized, so we bucket by status: checked-in registrations
+  // are treated as past, everything else (confirmed / pending / waitlisted
+  // / refunded / cancelled) stays on the upcoming tab. Saved events are a
+  // future feature — the tab is rendered for parity with the prototype.
+  const upcoming = (registrations ?? []).filter((r) => r.status !== "checked_in");
+  const past = (registrations ?? []).filter((r) => r.status === "checked_in");
 
+  const firstName = (user?.displayName ?? user?.email ?? "").split(" ")[0];
+
+  return (
+    <div className="mx-auto max-w-[1120px] px-6 pt-10 pb-20 lg:px-8">
+      {/* Editorial hero */}
+      <header className="mb-7 flex flex-wrap items-end justify-between gap-5">
+        <div>
+          <p className="font-mono-kicker text-[11px] font-medium uppercase tracking-[0.14em] text-teranga-gold-dark">
+            {t("kicker", { name: firstName })}
+          </p>
+          <h1 className="font-serif-display mt-2.5 text-[40px] font-semibold leading-[1.05] tracking-[-0.025em] sm:text-[48px]">
+            {t("headline")}
+          </h1>
+          <p className="mt-2.5 text-[15px] text-muted-foreground">
+            {meta?.total !== undefined
+              ? t("countLabelWithPast", { count: upcoming.length, past: past.length })
+              : ""}
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <Link href="/settings">
+            <Button variant="outline" className="rounded-full">
+              <Settings className="mr-1.5 h-4 w-4" aria-hidden="true" />
+              {t("settings")}
+            </Button>
+          </Link>
+          <Link href="/events">
+            <Button className="rounded-full bg-teranga-navy text-white hover:bg-teranga-navy/90 dark:bg-teranga-gold dark:text-teranga-navy dark:hover:bg-teranga-gold-light">
+              {t("browseCta")}
+              <ArrowRight className="ml-1.5 h-4 w-4" aria-hidden="true" />
+            </Button>
+          </Link>
+        </div>
+      </header>
+
+      {/* Tab bar */}
+      <div
+        role="tablist"
+        aria-label={t("title")}
+        className="mb-8 flex gap-1 border-b"
+      >
+        {(
+          [
+            { id: "upcoming" as const, label: t("tabs.upcoming"), count: upcoming.length },
+            { id: "past" as const, label: t("tabs.past"), count: past.length },
+            { id: "saved" as const, label: t("tabs.saved"), count: 0 },
+          ]
+        ).map((ti) => {
+          const active = tab === ti.id;
+          return (
+            <button
+              key={ti.id}
+              role="tab"
+              aria-selected={active}
+              aria-controls={`panel-${ti.id}`}
+              onClick={() => setTab(ti.id)}
+              className={`-mb-px px-4 py-3 text-sm font-semibold transition-colors ${
+                active
+                  ? "border-b-2 border-teranga-navy text-foreground dark:border-teranga-gold"
+                  : "border-b-2 border-transparent text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {ti.label}
+              <span className="ml-1.5 font-medium text-muted-foreground">{ti.count}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Loading skeleton */}
       {isLoading && (
-        <div className="mt-6 space-y-4">
-          {[1, 2, 3, 4].map((i) => (
-            <Card key={i} className="p-4">
-              <div className="animate-pulse flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex-1 space-y-2">
-                  <div className="flex items-center gap-2">
-                    <div className="h-5 bg-muted rounded w-1/3"></div>
-                    <div className="h-5 bg-muted rounded w-16"></div>
-                  </div>
-                  <div className="h-4 bg-muted rounded w-2/3"></div>
+        <div className="space-y-4">
+          {[1, 2, 3].map((i) => (
+            <Card key={i} className="p-0 overflow-hidden">
+              <div className="animate-pulse grid grid-cols-[220px_1fr_auto] gap-0">
+                <div className="h-[180px] bg-muted" />
+                <div className="space-y-3 p-6">
+                  <div className="h-4 bg-muted rounded w-1/3" />
+                  <div className="h-6 bg-muted rounded w-2/3" />
+                  <div className="h-3 bg-muted rounded w-1/2" />
                 </div>
-                <div className="flex gap-2">
-                  <div className="h-8 bg-muted rounded w-20"></div>
-                  <div className="h-8 bg-muted rounded w-20"></div>
+                <div className="space-y-2 p-5">
+                  <div className="h-9 bg-muted rounded w-28" />
+                  <div className="h-8 bg-muted rounded w-28" />
                 </div>
               </div>
             </Card>
@@ -158,140 +241,144 @@ export default function MyEventsPage() {
       )}
 
       {error && (
-        <div className="mt-8 rounded-md bg-destructive/10 p-4 text-sm text-destructive">
+        <div className="rounded-card bg-destructive/10 p-4 text-sm text-destructive">
           {t("loadError")}
         </div>
       )}
 
-      {registrations && registrations.length === 0 && (
-        <EmptyState
-          icon={Calendar}
-          title={t("emptyTitle")}
-          description={t("emptyDescription")}
-          action={
-            <Link href="/events">
-              <Button className="bg-teranga-gold hover:bg-teranga-gold/90">
-                {t("discoverCta")}
-              </Button>
-            </Link>
-          }
-        />
-      )}
-
-      {registrations && registrations.length > 0 && (
-        <div className="mt-6 space-y-4">
-          {registrations.map((rawReg) => {
+      {/* Upcoming panel */}
+      {tab === "upcoming" && (
+        <div
+          role="tabpanel"
+          id="panel-upcoming"
+          className="flex flex-col gap-4"
+        >
+          {registrations && upcoming.length === 0 && !isLoading && (
+            <EmptyState
+              icon={Calendar}
+              title={t("emptyTitle")}
+              description={t("emptyDescription")}
+              action={
+                <Link href="/events">
+                  <Button className="rounded-full bg-teranga-navy text-white hover:bg-teranga-navy/90 dark:bg-teranga-gold dark:text-teranga-navy dark:hover:bg-teranga-gold-light">
+                    {t("discoverCta")}
+                  </Button>
+                </Link>
+              }
+            />
+          )}
+          {upcoming.map((rawReg) => {
             const reg = rawReg as RegistrationWithExtras;
-            const statusKey =
-              (reg.status as StatusKey) in STATUS_VARIANTS ? (reg.status as StatusKey) : null;
-            const statusLabel = statusKey ? t(`status.${statusKey}` as const) : reg.status;
-            const statusVariant = statusKey ? STATUS_VARIANTS[statusKey] : "outline";
-            const canCancel = ["confirmed", "pending"].includes(reg.status);
-            const isWaitlisted = reg.status === "waitlisted";
-            const showRefund = canRequestRefund(reg);
-
             return (
-              <Card
+              <UpcomingRow
                 key={reg.id}
-                className={`p-4 ${isWaitlisted ? "border-amber-300 dark:border-amber-600" : ""}`}
-              >
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-semibold">{reg.eventTitle ?? reg.eventId}</h3>
-                      <Badge variant={statusVariant}>{statusLabel}</Badge>
-                    </div>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      {t("ticketPrefix")} : {reg.ticketTypeName ?? reg.ticketTypeId} ·{" "}
-                      {t("registeredOn")} {formatDate(reg.createdAt, regional)}
-                    </p>
-                    {isWaitlisted && reg.waitlistPosition && (
-                      <p className="mt-1 flex items-center gap-1 text-sm font-medium text-amber-600 dark:text-amber-400">
-                        <ListOrdered className="h-4 w-4" />
-                        {t("waitlistPosition", { n: reg.waitlistPosition })}
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="flex gap-2 flex-wrap">
-                    {reg.status === "confirmed" && reg.qrCodeValue && (
-                      <Link href={`/my-events/${reg.id}/badge`}>
-                        <Button variant="outline" size="sm">
-                          <QrCode className="mr-1 h-4 w-4" />
-                          {t("badge")}
-                        </Button>
-                      </Link>
-                    )}
-                    {showRefund && reg.paymentId && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="text-amber-600 hover:text-amber-700 border-amber-300 hover:border-amber-400 dark:text-amber-400 dark:hover:text-amber-300 dark:border-amber-700 dark:hover:border-amber-600"
-                        onClick={() =>
-                          setRefundTarget({ registrationId: reg.id, paymentId: reg.paymentId! })
-                        }
-                        disabled={refundMutation.isPending}
-                      >
-                        <RotateCcw className="mr-1 h-4 w-4" />
-                        {t("refund")}
-                      </Button>
-                    )}
-                    {isWaitlisted && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="text-amber-600 hover:text-amber-700 border-amber-300 hover:border-amber-400 dark:text-amber-400 dark:hover:text-amber-300 dark:border-amber-700 dark:hover:border-amber-600"
-                        onClick={() => setCancelTarget(reg.id)}
-                        disabled={cancelMutation.isPending}
-                      >
-                        <LogOut className="mr-1 h-4 w-4" />
-                        {t("leaveWaitlist")}
-                      </Button>
-                    )}
-                    {canCancel && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="text-destructive hover:text-destructive"
-                        onClick={() => setCancelTarget(reg.id)}
-                        disabled={cancelMutation.isPending}
-                      >
-                        <XCircle className="mr-1 h-4 w-4" />
-                        {t("cancel")}
-                      </Button>
-                    )}
-                    {reg.status === "cancelled" && (
-                      <span className="text-sm text-muted-foreground italic">{t("cancelled")}</span>
-                    )}
-                  </div>
-                </div>
-              </Card>
+                reg={reg}
+                regional={regional}
+                t={t}
+                canCancel={["confirmed", "pending"].includes(reg.status)}
+                isWaitlisted={reg.status === "waitlisted"}
+                showRefund={canRequestRefund(reg)}
+                onCancel={() => setCancelTarget(reg.id)}
+                onRefund={() => {
+                  if (reg.paymentId) {
+                    setRefundTarget({ registrationId: reg.id, paymentId: reg.paymentId });
+                  }
+                }}
+                isCancelling={cancelMutation.isPending}
+                isRefunding={refundMutation.isPending}
+              />
             );
           })}
+        </div>
+      )}
 
-          {meta && meta.totalPages > 1 && (
-            <div className="flex justify-center gap-2 pt-4">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={page <= 1}
-                onClick={() => setPage(page - 1)}
-              >
-                {t("paginationPrev")}
-              </Button>
-              <span className="flex items-center text-sm text-muted-foreground">
-                {t("paginationOf", { page, total: meta.totalPages })}
-              </span>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={page >= meta.totalPages}
-                onClick={() => setPage(page + 1)}
-              >
-                {t("paginationNext")}
-              </Button>
+      {/* Past panel */}
+      {tab === "past" && (
+        <div role="tabpanel" id="panel-past">
+          {past.length === 0 ? (
+            <EmptyEditorialPanel
+              title={t("pastEmptyTitle")}
+              description={t("pastEmptyDescription")}
+            />
+          ) : (
+            <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+              {past.map((rawReg) => {
+                const reg = rawReg as RegistrationWithExtras;
+                const gradient = getCoverGradient(reg.eventId).bg;
+                return (
+                  <article
+                    key={reg.id}
+                    className="overflow-hidden rounded-card border bg-card"
+                  >
+                    <div
+                      aria-hidden="true"
+                      className="teranga-cover relative h-[140px]"
+                      style={{ background: gradient }}
+                    >
+                      <span className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full bg-teranga-navy/90 px-2.5 py-1 text-[11px] font-semibold text-white">
+                        ✓ {t("status.checked_in")}
+                      </span>
+                    </div>
+                    <div className="p-5">
+                      <p className="font-mono-kicker text-[11px] uppercase tracking-[0.08em] text-muted-foreground">
+                        {formatDate(reg.createdAt, regional)}
+                      </p>
+                      <h3 className="font-serif-display mt-1.5 text-lg font-semibold tracking-[-0.015em]">
+                        {reg.eventTitle ?? reg.eventId}
+                      </h3>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {reg.ticketTypeName ?? reg.ticketTypeId}
+                      </p>
+                    </div>
+                  </article>
+                );
+              })}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Saved panel — placeholder until the feature lands */}
+      {tab === "saved" && (
+        <div role="tabpanel" id="panel-saved">
+          <EmptyEditorialPanel
+            title={t("savedEmptyTitle")}
+            description={t("savedEmptyDescription")}
+            action={
+              <Link href="/events">
+                <Button className="rounded-full bg-teranga-navy text-white hover:bg-teranga-navy/90 dark:bg-teranga-gold dark:text-teranga-navy dark:hover:bg-teranga-gold-light">
+                  {t("discoverCta")}
+                </Button>
+              </Link>
+            }
+          />
+        </div>
+      )}
+
+      {/* Pagination */}
+      {meta && meta.totalPages > 1 && tab === "upcoming" && (
+        <div className="mt-8 flex items-center justify-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page <= 1}
+            onClick={() => setPage(page - 1)}
+            className="rounded-full"
+          >
+            {t("paginationPrev")}
+          </Button>
+          <span className="flex items-center text-sm text-muted-foreground">
+            {t("paginationOf", { page, total: meta.totalPages })}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={page >= meta.totalPages}
+            onClick={() => setPage(page + 1)}
+            className="rounded-full"
+          >
+            {t("paginationNext")}
+          </Button>
         </div>
       )}
 
@@ -316,6 +403,174 @@ export default function MyEventsPage() {
         cancelLabel={t("refundDialog.cancel")}
         variant="default"
       />
+    </div>
+  );
+}
+
+// Editorial upcoming row — 220px cover column + main content + action column.
+// Cover gradient rotates per event.id via getCoverGradient.
+function UpcomingRow({
+  reg,
+  regional,
+  t,
+  canCancel,
+  isWaitlisted,
+  showRefund,
+  onCancel,
+  onRefund,
+  isCancelling,
+  isRefunding,
+}: {
+  reg: Registration & { paymentId?: string; waitlistPosition?: number };
+  regional: string;
+  t: ReturnType<typeof useTranslations<"myEvents">>;
+  canCancel: boolean;
+  isWaitlisted: boolean;
+  showRefund: boolean;
+  onCancel: () => void;
+  onRefund: () => void;
+  isCancelling: boolean;
+  isRefunding: boolean;
+}) {
+  const statusKey =
+    (reg.status as StatusKey) in STATUS_TONES ? (reg.status as StatusKey) : null;
+  const statusLabel = statusKey ? t(`status.${statusKey}` as const) : reg.status;
+  const tone: StatusPillTone = statusKey ? STATUS_TONES[statusKey] : "muted";
+
+  const toneClasses: Record<StatusPillTone, string> = {
+    green: "bg-teranga-green/10 text-teranga-green border-teranga-green/30",
+    gold: "bg-teranga-gold-whisper text-teranga-gold-dark border-teranga-gold/30",
+    navy: "bg-teranga-navy text-white border-teranga-navy",
+    clay: "bg-teranga-clay/10 text-teranga-clay border-teranga-clay/30",
+    muted: "bg-muted text-muted-foreground border-border",
+  };
+
+  const gradient = getCoverGradient(reg.eventId).bg;
+
+  return (
+    <article className="overflow-hidden rounded-card border bg-card transition-shadow hover:shadow-md">
+      <div className="grid gap-0 md:grid-cols-[220px_1fr_auto]">
+        <div
+          aria-hidden="true"
+          className="teranga-cover relative min-h-[160px] md:min-h-[180px]"
+          style={{ background: gradient }}
+        >
+          <span className="absolute bottom-3 left-3 font-mono-kicker text-[11px] font-medium uppercase tracking-[0.08em] text-white/90">
+            {reg.ticketTypeName ?? ""}
+          </span>
+        </div>
+
+        <div className="p-6">
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            <span className="font-mono-kicker text-[11px] uppercase tracking-[0.08em] text-teranga-gold-dark">
+              {formatDate(reg.createdAt, regional)}
+            </span>
+            <span
+              className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${toneClasses[tone]}`}
+            >
+              {statusLabel}
+            </span>
+          </div>
+          <h3 className="font-serif-display text-[22px] font-semibold leading-[1.2] tracking-[-0.015em]">
+            {reg.eventTitle ?? reg.eventId}
+          </h3>
+          <p className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-muted-foreground">
+            <span className="font-semibold text-foreground">
+              {reg.ticketTypeName ?? reg.ticketTypeId}
+            </span>
+            <span aria-hidden="true">·</span>
+            <span className="font-mono-kicker tracking-[0.04em]">
+              {reg.qrCodeValue?.slice(0, 18) ?? reg.id.slice(0, 12)}
+            </span>
+            <span aria-hidden="true">·</span>
+            <span>
+              {t("registeredOn")} {formatDate(reg.createdAt, regional)}
+            </span>
+          </p>
+          {isWaitlisted && reg.waitlistPosition && (
+            <p className="mt-2 inline-flex items-center gap-1 text-[13px] font-medium text-teranga-gold-dark">
+              <ListOrdered className="h-4 w-4" aria-hidden="true" />
+              {t("waitlistPosition", { n: reg.waitlistPosition })}
+            </p>
+          )}
+        </div>
+
+        <div className="flex flex-col justify-center gap-2 border-t p-5 md:border-l md:border-t-0">
+          {reg.status === "confirmed" && reg.qrCodeValue && (
+            <Link href={`/my-events/${reg.id}/badge`}>
+              <Button className="w-full rounded-full bg-teranga-navy text-white hover:bg-teranga-navy/90 dark:bg-teranga-gold dark:text-teranga-navy dark:hover:bg-teranga-gold-light">
+                <QrCode className="mr-1.5 h-4 w-4" aria-hidden="true" />
+                {t("badge")}
+              </Button>
+            </Link>
+          )}
+          <Link href={`/events/${reg.eventId}`}>
+            <Button variant="outline" size="sm" className="w-full rounded-full">
+              {t("details")}
+            </Button>
+          </Link>
+          {showRefund && reg.paymentId && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onRefund}
+              disabled={isRefunding}
+              className="w-full rounded-full text-teranga-clay hover:bg-teranga-clay/10 hover:text-teranga-clay"
+            >
+              <RotateCcw className="mr-1.5 h-4 w-4" aria-hidden="true" />
+              {t("refund")}
+            </Button>
+          )}
+          {isWaitlisted && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onCancel}
+              disabled={isCancelling}
+              className="w-full rounded-full text-teranga-gold-dark hover:bg-teranga-gold-whisper hover:text-teranga-gold-dark"
+            >
+              <LogOut className="mr-1.5 h-4 w-4" aria-hidden="true" />
+              {t("leaveWaitlist")}
+            </Button>
+          )}
+          {canCancel && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onCancel}
+              disabled={isCancelling}
+              className="w-full rounded-full text-destructive hover:bg-destructive/10 hover:text-destructive"
+            >
+              <XCircle className="mr-1.5 h-4 w-4" aria-hidden="true" />
+              {t("cancel")}
+            </Button>
+          )}
+          {reg.status === "cancelled" && (
+            <p className="text-center text-sm italic text-muted-foreground">{t("cancelled")}</p>
+          )}
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function EmptyEditorialPanel({
+  title,
+  description,
+  action,
+}: {
+  title: string;
+  description: string;
+  action?: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-tile border border-dashed px-6 py-16 text-center">
+      <div aria-hidden="true" className="mb-3.5 text-4xl">
+        ♡
+      </div>
+      <h3 className="font-serif-display text-2xl font-semibold tracking-[-0.015em]">{title}</h3>
+      <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">{description}</p>
+      {action && <div className="mt-5">{action}</div>}
     </div>
   );
 }

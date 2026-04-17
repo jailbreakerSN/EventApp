@@ -374,7 +374,8 @@
     "notYetAvailable": "Sa badge mënagul nekk.",
     "registrationNotFound": "Bindu bi gisu ko.",
     "backToMyEvents": "Dellu ci samay bind",
-    "addToWallet": "Yokk ci portefeuille"
+    "addToWallet": "Yokk ci portefeuille",
+    "offlineHint": "Am na ci dul laaj rezo"
   },
   "registerFlow": {
     "subtitle": "Bind",
@@ -447,11 +448,26 @@
   },
   "myEvents": {
     "title": "Samay bind",
+    "kicker": "✦ Nanga def {name}",
+    "headline": "Xew-xew yi lay fekk ca kanam",
     "countLabel": "{count, plural, one {# bind} other {# bind}}",
+    "countLabelWithPast": "{count, plural, one {# di ñëw} other {# di ñëw}} · {past, plural, one {# weesoon} other {# weesoon}}",
     "loadError": "Dunu mën a jox say bind. Jéem waaf.",
     "emptyTitle": "Amul bind fi muy jëkk",
     "emptyDescription": "Xamal xew-xew yu ëpp a ñëw ak bindal sa tur.",
     "discoverCta": "Xam xew-xew yi",
+    "tabs": {
+      "upcoming": "Di ñëw",
+      "past": "Weesoon",
+      "saved": "Denc"
+    },
+    "savedEmptyTitle": "Amul xew-xew bu nga denc",
+    "savedEmptyDescription": "Bésal ikon signet bu xew-xew ngir gisaat ko fii.",
+    "pastEmptyTitle": "Amul xew-xew bu weesoon",
+    "pastEmptyDescription": "Xew-xew yi nga bokk di feeñ fii.",
+    "details": "Sitt",
+    "settings": "Paramètres",
+    "browseCta": "Saytu",
     "ticketPrefix": "Billet",
     "registeredOn": "Bind ci",
     "waitlistPosition": "Palaas #{n}",
