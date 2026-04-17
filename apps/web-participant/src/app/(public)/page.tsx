@@ -1,6 +1,6 @@
 import Link from "next/link";
 import Image from "next/image";
-import { Search, MapPin, Calendar, Users, ArrowRight, ArrowUpRight } from "lucide-react";
+import { Search, ArrowRight, ArrowUpRight } from "lucide-react";
 import { getTranslations, getLocale } from "next-intl/server";
 import { serverEventsApi } from "@/lib/server-api";
 import { EventCard } from "@/components/event-card";
