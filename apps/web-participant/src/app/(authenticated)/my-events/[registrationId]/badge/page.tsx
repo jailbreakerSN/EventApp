@@ -10,9 +10,8 @@ import { useLocale, useTranslations } from "next-intl";
 import { registrationsApi, badgesApi } from "@/lib/api-client";
 import { cacheBadgeInServiceWorker } from "@/hooks/use-badges";
 import { useAuth } from "@/hooks/use-auth";
-import { Button, Spinner, formatDate } from "@teranga/shared-ui";
+import { Button, Spinner, TicketPass, formatDate } from "@teranga/shared-ui";
 import type { Registration, GeneratedBadge } from "@teranga/shared-types";
-import { getCoverGradient } from "@/lib/cover-gradient";
 
 function intlLocale(locale: string): string {
   switch (locale) {
@@ -35,12 +34,6 @@ export default function BadgePage() {
   const { user } = useAuth();
   const { registrationId } = useParams<{ registrationId: string }>();
   const [pdfState, setPdfState] = useState<"idle" | "loading" | "error">("idle");
-  const [revealed, setRevealed] = useState(false);
-
-  useEffect(() => {
-    const t = setTimeout(() => setRevealed(true), 150);
-    return () => clearTimeout(t);
-  }, []);
 
   const { data: regData, isLoading } = useQuery({
     queryKey: ["my-registrations"],
@@ -97,9 +90,16 @@ export default function BadgePage() {
   }
 
   const isConfirmed = registration.status === "confirmed" || registration.status === "checked_in";
-  const tint = getCoverGradient(registration.eventId).tint;
   const holderName =
     registration.participantName ?? user?.displayName ?? user?.email ?? "";
+
+  const passFields = [
+    { label: tSuccess("dateLabel"), value: formatDate(registration.createdAt, regional) },
+    { label: tSuccess("passTypeLabel"), value: registration.ticketTypeName ?? "—" },
+    ...(holderName
+      ? [{ label: tSuccess("placeLabel"), value: holderName.split(" ")[0] }]
+      : []),
+  ];
 
   return (
     <div className="mx-auto max-w-[560px] px-6 pt-10 pb-16 lg:px-8">
@@ -115,93 +115,38 @@ export default function BadgePage() {
         {t("title")}
       </h1>
 
-      {/* Editorial navy pass — rounded-pass, gradient tint header,
-          perforation notches, QR panel. Mirrors the prototype's
-          BadgeModal treatment (my-events.jsx). */}
-      <div
-        className="mt-8 overflow-hidden rounded-pass bg-teranga-navy text-white shadow-[0_40px_80px_-30px_rgba(0,0,0,0.6)] transition-all duration-500"
-        style={{
-          transform: revealed ? "translateY(0) scale(1)" : "translateY(16px) scale(0.98)",
-          opacity: revealed ? 1 : 0,
-        }}
-      >
-        {/* Gradient header — uses the event's rotated tint */}
-        <div
-          className="relative px-7 pb-5 pt-7"
-          style={{
-            background: `linear-gradient(135deg, ${tint} 0%, #1A1A2E 120%)`,
-            borderBottom: "1px dashed rgba(255,255,255,.25)",
-          }}
-        >
-          <p className="font-mono-kicker text-[10px] font-medium uppercase tracking-[0.18em] text-white/85">
-            {tSuccess("passLabel")}
-          </p>
-          <p className="font-serif-display mt-4 text-balance text-[26px] font-semibold leading-[1.05] tracking-[-0.02em]">
-            {registration.eventTitle ?? registration.eventId}
-          </p>
-          <div className="mt-5 flex gap-6 text-left">
-            <PassField
-              label={tSuccess("dateLabel")}
-              value={formatDate(registration.createdAt, regional)}
+      {/* Editorial navy pass — shared editorial primitive, same gradient
+          tint + perforation + QR panel + offline strip as the prototype
+          BadgeModal treatment in my-events.jsx. */}
+      {registration.qrCodeValue ? (
+        <TicketPass
+          className="mt-8"
+          coverKey={registration.eventId}
+          kicker={tSuccess("passLabel")}
+          eventTitle={registration.eventTitle ?? registration.eventId}
+          fields={passFields}
+          qr={
+            <QRCodeSVG
+              value={registration.qrCodeValue}
+              size={210}
+              level="M"
+              includeMargin={false}
             />
-            <PassField
-              label={tSuccess("passTypeLabel")}
-              value={registration.ticketTypeName ?? "—"}
-            />
-            {holderName && (
-              <PassField label={tSuccess("placeLabel")} value={holderName.split(" ")[0]} />
-            )}
-          </div>
-          <span
-            aria-hidden="true"
-            className="absolute -bottom-2.5 -left-2.5 h-5 w-5 rounded-full bg-background"
-          />
-          <span
-            aria-hidden="true"
-            className="absolute -bottom-2.5 -right-2.5 h-5 w-5 rounded-full bg-background"
-          />
+          }
+          codeLabel={tSuccess("codeLabel")}
+          codeValue={registration.qrCodeValue.slice(0, 24)}
+          holderLine={holderName ? `${holderName} · ${registration.ticketTypeName ?? ""}` : undefined}
+          validAccessLabel={tSuccess("accessValid")}
+          scanHint={t("scanToCheckin")}
+          offlineHint={`⚡ ${t("offlineHint")}`}
+          footerVariant="stack"
+          animateReveal
+        />
+      ) : (
+        <div className="mt-8 overflow-hidden rounded-pass bg-teranga-navy px-6 py-10 text-center text-white/70">
+          {t("notYetAvailable")}
         </div>
-
-        {/* QR panel */}
-        <div className="flex flex-col items-center px-6 py-7">
-          {registration.qrCodeValue ? (
-            <div className="rounded-[14px] bg-white p-2.5">
-              <QRCodeSVG
-                value={registration.qrCodeValue}
-                size={210}
-                level="M"
-                includeMargin={false}
-              />
-            </div>
-          ) : (
-            <p className="text-center text-white/70">{t("notYetAvailable")}</p>
-          )}
-
-          {registration.qrCodeValue && (
-            <>
-              <p className="font-mono-kicker mt-5 text-[11px] tracking-[0.1em] text-white/60">
-                {registration.qrCodeValue.slice(0, 24)}
-              </p>
-              {holderName && (
-                <p className="mt-2 text-[13px] text-white/80">
-                  {holderName} · {registration.ticketTypeName ?? ""}
-                </p>
-              )}
-              <span className="mt-5 inline-flex items-center rounded-full bg-teranga-gold px-2.5 py-0.5 text-[10px] font-bold tracking-[0.04em] text-teranga-navy">
-                {tSuccess("accessValid")}
-              </span>
-              <p className="mt-5 text-center text-[11px] text-white/60">
-                {t("scanToCheckin")}
-              </p>
-            </>
-          )}
-        </div>
-
-        {/* Offline hint */}
-        <div className="border-t border-white/10 bg-white/[0.02] px-6 py-3.5 text-center text-[11px] text-white/60">
-          ⚡ {t("offlineHint")}
-        </div>
-      </div>
+      )}
 
       {/* Actions */}
       {isConfirmed && (
@@ -229,13 +174,3 @@ export default function BadgePage() {
   );
 }
 
-function PassField({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <p className="font-mono-kicker text-[9px] font-medium uppercase tracking-[0.12em] text-white/60">
-        {label}
-      </p>
-      <p className="mt-1 text-[13px] font-semibold">{value}</p>
-    </div>
-  );
-}

@@ -24,7 +24,10 @@ import {
   EmptyState,
   formatDate,
   ConfirmDialog,
+  SectionHeader,
+  StatusPill,
   getErrorMessage,
+  type StatusPillTone,
 } from "@teranga/shared-ui";
 import type { Registration } from "@teranga/shared-types";
 import { getCoverGradient } from "@/lib/cover-gradient";
@@ -52,17 +55,15 @@ type StatusKey =
   | "refund_requested"
   | "refunded";
 
-type StatusPillTone = "green" | "gold" | "muted" | "clay" | "navy";
-
 const STATUS_TONES: Record<StatusKey, StatusPillTone> = {
-  confirmed: "green",
-  pending: "gold",
-  pending_payment: "gold",
-  waitlisted: "gold",
-  checked_in: "navy",
+  confirmed: "success",
+  pending: "warning",
+  pending_payment: "warning",
+  waitlisted: "warning",
+  checked_in: "info",
   cancelled: "clay",
-  refund_requested: "gold",
-  refunded: "muted",
+  refund_requested: "warning",
+  refunded: "neutral",
 };
 
 type TabId = "upcoming" | "past" | "saved";
@@ -154,35 +155,34 @@ export default function MyEventsPage() {
   return (
     <div className="mx-auto max-w-[1120px] px-6 pt-10 pb-20 lg:px-8">
       {/* Editorial hero */}
-      <header className="mb-7 flex flex-wrap items-end justify-between gap-5">
-        <div>
-          <p className="font-mono-kicker text-[11px] font-medium uppercase tracking-[0.14em] text-teranga-gold-dark">
-            {t("kicker", { name: firstName })}
-          </p>
-          <h1 className="font-serif-display mt-2.5 text-[40px] font-semibold leading-[1.05] tracking-[-0.025em] sm:text-[48px]">
-            {t("headline")}
-          </h1>
-          <p className="mt-2.5 text-[15px] text-muted-foreground">
-            {meta?.total !== undefined
-              ? t("countLabelWithPast", { count: upcoming.length, past: past.length })
-              : ""}
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Link href="/settings">
-            <Button variant="outline" className="rounded-full">
-              <Settings className="mr-1.5 h-4 w-4" aria-hidden="true" />
-              {t("settings")}
-            </Button>
-          </Link>
-          <Link href="/events">
-            <Button className="rounded-full bg-teranga-navy text-white hover:bg-teranga-navy/90 dark:bg-teranga-gold dark:text-teranga-navy dark:hover:bg-teranga-gold-light">
-              {t("browseCta")}
-              <ArrowRight className="ml-1.5 h-4 w-4" aria-hidden="true" />
-            </Button>
-          </Link>
-        </div>
-      </header>
+      <SectionHeader
+        as="h1"
+        size="hero"
+        className="mb-7 items-end gap-5"
+        kicker={t("kicker", { name: firstName })}
+        title={t("headline")}
+        subtitle={
+          meta?.total !== undefined
+            ? t("countLabelWithPast", { count: upcoming.length, past: past.length })
+            : undefined
+        }
+        action={
+          <div className="flex gap-2">
+            <Link href="/settings">
+              <Button variant="outline" className="rounded-full">
+                <Settings className="mr-1.5 h-4 w-4" aria-hidden="true" />
+                {t("settings")}
+              </Button>
+            </Link>
+            <Link href="/events">
+              <Button className="rounded-full bg-teranga-navy text-white hover:bg-teranga-navy/90 dark:bg-teranga-gold dark:text-teranga-navy dark:hover:bg-teranga-gold-light">
+                {t("browseCta")}
+                <ArrowRight className="ml-1.5 h-4 w-4" aria-hidden="true" />
+              </Button>
+            </Link>
+          </div>
+        }
+      />
 
       {/* Tab bar */}
       <div
@@ -435,15 +435,7 @@ function UpcomingRow({
   const statusKey =
     (reg.status as StatusKey) in STATUS_TONES ? (reg.status as StatusKey) : null;
   const statusLabel = statusKey ? t(`status.${statusKey}` as const) : reg.status;
-  const tone: StatusPillTone = statusKey ? STATUS_TONES[statusKey] : "muted";
-
-  const toneClasses: Record<StatusPillTone, string> = {
-    green: "bg-teranga-green/10 text-teranga-green border-teranga-green/30",
-    gold: "bg-teranga-gold-whisper text-teranga-gold-dark border-teranga-gold/30",
-    navy: "bg-teranga-navy text-white border-teranga-navy",
-    clay: "bg-teranga-clay/10 text-teranga-clay border-teranga-clay/30",
-    muted: "bg-muted text-muted-foreground border-border",
-  };
+  const tone: StatusPillTone = statusKey ? STATUS_TONES[statusKey] : "neutral";
 
   const gradient = getCoverGradient(reg.eventId).bg;
 
@@ -465,11 +457,7 @@ function UpcomingRow({
             <span className="font-mono-kicker text-[11px] uppercase tracking-[0.08em] text-teranga-gold-dark">
               {formatDate(reg.createdAt, regional)}
             </span>
-            <span
-              className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${toneClasses[tone]}`}
-            >
-              {statusLabel}
-            </span>
+            <StatusPill tone={tone} label={statusLabel} />
           </div>
           <h3 className="font-serif-display text-[22px] font-semibold leading-[1.2] tracking-[-0.015em]">
             {reg.eventTitle ?? reg.eventId}

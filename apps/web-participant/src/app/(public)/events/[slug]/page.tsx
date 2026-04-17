@@ -14,7 +14,7 @@ import {
   ArrowRight,
 } from "lucide-react";
 import { serverEventsApi, serverSpeakersApi, serverSessionsApi } from "@/lib/server-api";
-import { formatDate, formatDateTime, formatCurrency } from "@teranga/shared-ui";
+import { formatDate, formatDateTime, formatCurrency, CapacityBar } from "@teranga/shared-ui";
 import { EventJsonLd } from "@/components/event-detail/event-jsonld";
 import { ShareButtons } from "@/components/share-buttons";
 import { AddToCalendar } from "@/components/add-to-calendar";
@@ -540,23 +540,18 @@ export default async function EventDetailPage({ params }: PageProps) {
                 </div>
               </div>
 
-              {capacityPct !== null && event.maxAttendees && (
-                <div className="mt-5">
-                  <div className="h-1.5 overflow-hidden rounded-full bg-muted">
-                    <div
-                      className="h-full rounded-full bg-gradient-to-r from-teranga-gold to-teranga-clay transition-all"
-                      style={{ width: `${capacityPct}%` }}
-                    />
-                  </div>
-                  <div className="mt-2 flex justify-between text-xs text-muted-foreground">
-                    <span>{tDetail("pricing.percentFull", { pct: capacityPct })}</span>
-                    <span>
-                      {spotsLeft !== null && spotsLeft > 0
-                        ? tDetail("pricing.seatsRemaining", { count: spotsLeft })
-                        : tDetail("full")}
-                    </span>
-                  </div>
-                </div>
+              {event.maxAttendees && (
+                <CapacityBar
+                  className="mt-5"
+                  registered={event.registeredCount}
+                  capacity={event.maxAttendees}
+                  percentLabel={tDetail("pricing.percentFull", { pct: capacityPct ?? 0 })}
+                  seatsLabel={
+                    spotsLeft !== null && spotsLeft > 0
+                      ? tDetail("pricing.seatsRemaining", { count: spotsLeft })
+                      : tDetail("full")
+                  }
+                />
               )}
             </div>
 

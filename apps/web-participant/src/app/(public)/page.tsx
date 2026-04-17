@@ -5,7 +5,7 @@ import { getTranslations, getLocale } from "next-intl/server";
 import { serverEventsApi } from "@/lib/server-api";
 import { EditorialEventCard } from "@/components/editorial-event-card";
 import { getCoverGradient } from "@/lib/cover-gradient";
-import { formatCurrency, formatDate } from "@teranga/shared-ui";
+import { formatCurrency, formatDate, SectionHeader } from "@teranga/shared-ui";
 import type { Event } from "@teranga/shared-types";
 
 export default async function HomePage() {
@@ -366,38 +366,6 @@ export default async function HomePage() {
         </div>
       </section>
     </>
-  );
-}
-
-// —————————————————————————————————————————————
-// Editorial section header — mono kicker + serif title + sub + right action.
-// —————————————————————————————————————————————
-function SectionHeader({
-  kicker,
-  title,
-  subtitle,
-  action,
-}: {
-  kicker: string;
-  title: string;
-  subtitle?: string;
-  action?: React.ReactNode;
-}) {
-  return (
-    <div className="flex flex-wrap items-end justify-between gap-6">
-      <div className="max-w-[640px]">
-        <p className="font-mono-kicker text-[11px] font-medium uppercase tracking-[0.14em] text-teranga-gold-dark">
-          {kicker}
-        </p>
-        <h2 className="font-serif-display mt-2.5 text-3xl font-semibold leading-[1.08] tracking-[-0.02em] sm:text-4xl lg:text-[36px]">
-          {title}
-        </h2>
-        {subtitle && (
-          <p className="mt-3 text-[15px] leading-relaxed text-muted-foreground">{subtitle}</p>
-        )}
-      </div>
-      {action && <div className="shrink-0">{action}</div>}
-    </div>
   );
 }
 
