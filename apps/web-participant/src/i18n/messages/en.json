@@ -339,7 +339,26 @@
       "similarEvents": "Similar events",
       "seeOnMaps": "View on Google Maps",
       "notFound": "Event not found",
-      "share": "Share"
+      "share": "Share",
+      "ctaRegister": "Register for this event",
+      "allEvents": "All events",
+      "meta": {
+        "dates": "Dates",
+        "times": "Times",
+        "location": "Location",
+        "format": "Format"
+      },
+      "pricing": {
+        "from": "From",
+        "attendees": "Attendees",
+        "percentFull": "{pct}% full",
+        "seatsRemaining": "{count, plural, one {# seat left} other {# seats left}}",
+        "onlyLeft": "{count, plural, one {Only # seat left} other {Only # seats left}}",
+        "paymentSecured": "Secure checkout · Wave · Orange Money"
+      },
+      "speakerTwitter": "Twitter of {name}",
+      "speakerLinkedin": "LinkedIn of {name}",
+      "speakerWebsite": "Website of {name}"
     }
   },
   "badge": {

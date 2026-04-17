@@ -329,6 +329,7 @@
       "remaining": "{count, plural, one {# restant} other {# restants}}",
       "registerFree": "S'inscrire gratuitement",
       "registerPaid": "S'inscrire — à partir de {price}",
+      "ctaRegister": "S'inscrire à l'événement",
       "approvalRequired": "Inscription soumise à approbation de l'organisateur.",
       "soldOut": "Complet",
       "full": "Complet",
@@ -342,7 +343,25 @@
       "similarEvents": "Événements similaires",
       "seeOnMaps": "Voir sur Google Maps",
       "notFound": "Événement introuvable",
-      "share": "Partager"
+      "share": "Partager",
+      "allEvents": "Tous les événements",
+      "meta": {
+        "dates": "Dates",
+        "times": "Horaires",
+        "location": "Lieu",
+        "format": "Format"
+      },
+      "pricing": {
+        "from": "À partir de",
+        "attendees": "Inscrits",
+        "percentFull": "{pct}% rempli",
+        "seatsRemaining": "{count, plural, one {# place restante} other {# places restantes}}",
+        "onlyLeft": "{count, plural, one {Plus qu'# place} other {Plus que # places}}",
+        "paymentSecured": "Paiement sécurisé · Wave · Orange Money"
+      },
+      "speakerTwitter": "Twitter de {name}",
+      "speakerLinkedin": "LinkedIn de {name}",
+      "speakerWebsite": "Site web de {name}"
     }
   },
   "badge": {

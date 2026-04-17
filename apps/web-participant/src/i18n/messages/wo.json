@@ -343,7 +343,26 @@
       "similarEvents": "Xew-xew yu mel ni",
       "seeOnMaps": "Gis ci Google Maps",
       "notFound": "Xew-xew gisu ko",
-      "share": "Séddoo"
+      "share": "Séddoo",
+      "ctaRegister": "Bind ci xew-xew bi",
+      "allEvents": "Xew-xew yépp",
+      "meta": {
+        "dates": "Bés yi",
+        "times": "Waxtu yi",
+        "location": "Barab",
+        "format": "Tariikh"
+      },
+      "pricing": {
+        "from": "Dale fi",
+        "attendees": "Ñi bind",
+        "percentFull": "{pct}% fees",
+        "seatsRemaining": "{count, plural, one {# seat des} other {# seat des}}",
+        "onlyLeft": "{count, plural, one {Des na # palaas} other {Des na # palaas}}",
+        "paymentSecured": "Paye bu kaaraange · Wave · Orange Money"
+      },
+      "speakerTwitter": "Twitter bu {name}",
+      "speakerLinkedin": "LinkedIn bu {name}",
+      "speakerWebsite": "Sit web bu {name}"
     }
   },
   "badge": {
