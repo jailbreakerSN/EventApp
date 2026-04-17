@@ -137,10 +137,67 @@
   },
   "home": {
     "hero": {
+      "kicker": "✦ Teranga · Dakar · Printemps 2026",
+      "srTitle": "Découvrez les événements au Sénégal — conférences, concerts, ateliers et festivals",
+      "titleLead": "L'événementiel africain,",
+      "titleItalicOne": "connecté",
+      "titleGlue": "et",
+      "titleItalicTwo": "mémorable.",
       "titleBefore": "Découvrez les événements au",
       "titleHighlight": "Sénégal",
-      "subtitle": "Conférences, concerts, ateliers et plus encore. Inscrivez-vous en quelques clics et recevez votre badge QR.",
-      "cta": "Explorer les événements"
+      "subtitle": "Conférences, concerts, ateliers et rencontres partout au Sénégal. Découvrez ce qui se passe cette saison à Dakar, Thiès, Saly et ailleurs.",
+      "searchPlaceholder": "Rechercher un événement, un organisateur, une ville…",
+      "searchCta": "Explorer",
+      "cta": "Voir tous les événements",
+      "secondaryCta": "Comment ça marche"
+    },
+    "heroStats": {
+      "events": "événements",
+      "registrations": "inscriptions",
+      "cities": "villes",
+      "rating": "avis moyen"
+    },
+    "ticketStub": {
+      "kicker": "Admit One · Pass Nominatif",
+      "labelDate": "Date",
+      "labelPass": "Pass",
+      "labelZone": "Zone",
+      "defaultTitle": "Dakar Tech Summit 2026",
+      "defaultDate": "14 — 16 mai",
+      "defaultPass": "Standard",
+      "defaultZone": "A · CICAD",
+      "defaultHolder": "Aïssatou Diallo",
+      "defaultCode": "TER-DTS26-4F2A1C",
+      "holderLabel": "Porteur"
+    },
+    "featured": {
+      "kicker": "— À la une cette saison",
+      "title": "Trois événements qu'on ne manquerait pour rien au monde",
+      "subtitle": "Sélectionnés par la rédaction Teranga, parmi les événements les plus attendus du printemps 2026 à Dakar et sur la Petite Côte.",
+      "cta": "Voir les détails"
+    },
+    "browse": {
+      "kicker": "— Tous les événements",
+      "title": "Parcourir la saison",
+      "subtitle": "Filtrez par catégorie, ville ou budget.",
+      "countLabel": "{count, plural, one {# événement} other {# événements}}"
+    },
+    "promises": {
+      "one": {
+        "num": "01",
+        "title": "Inscription en 45 secondes",
+        "description": "Un numéro, un billet. Wave et Orange Money acceptés, paiement à l'arrivée possible selon l'événement."
+      },
+      "two": {
+        "num": "02",
+        "title": "Badge QR hors-ligne",
+        "description": "Votre billet reste accessible sans réseau. Pratique à l'entrée, pratique en brousse."
+      },
+      "three": {
+        "num": "03",
+        "title": "Rappels sur WhatsApp",
+        "description": "Un message 24h avant, un autre à H-1. Rien de plus, rien de moins."
+      }
     },
     "values": {
       "simpleReg": {
@@ -160,8 +217,9 @@
     "featuredHeading": "Événements à la une",
     "latestHeading": "Derniers événements",
     "howItWorks": {
-      "heading": "Comment ça marche",
-      "subheading": "En trois étapes simples, participez aux meilleurs événements du Sénégal.",
+      "kicker": "— Comment ça marche",
+      "heading": "Trois étapes, un badge",
+      "subheading": "Du premier clic au passage de la porte : tout est pensé pour que rien ne se mette entre vous et l'événement.",
       "stepLabel": "Étape {n}",
       "step1": {
         "title": "Découvrez",
@@ -228,6 +286,11 @@
     "clearFilters": "Réinitialiser les filtres",
     "list": {
       "resultsCount": "{count, plural, one {# événement trouvé} other {# événements trouvés}}"
+    },
+    "card": {
+      "registeredCount": "{count, plural, one {# inscrit} other {# inscrits}}",
+      "registeredWithFill": "{count, plural, one {# inscrit} other {# inscrits}} · {pct}% rempli",
+      "remainingSeats": "{count, plural, one {Plus qu'# place} other {Plus que # places}}"
     },
     "filters": {
       "today": "Aujourd'hui",
