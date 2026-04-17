@@ -73,6 +73,11 @@ export {
   type PaymentMethodCardProps,
 } from "./components/payment-method-card";
 export { CapacityBar, type CapacityBarProps } from "./components/capacity-bar";
+export {
+  StatusPill,
+  type StatusPillProps,
+  type StatusPillTone,
+} from "./components/status-pill";
 
 // ─── i18n ─────────────────────────────────────────────────────────────────
 export {
