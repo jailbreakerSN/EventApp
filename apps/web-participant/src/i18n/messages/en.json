@@ -287,7 +287,8 @@
     "card": {
       "registeredCount": "{count, plural, one {# registered} other {# registered}}",
       "registeredWithFill": "{count, plural, one {# registered} other {# registered}} · {pct}% full",
-      "remainingSeats": "{count, plural, one {Only # seat left} other {Only # seats left}}"
+      "remainingSeats": "{count, plural, one {Only # seat left} other {Only # seats left}}",
+      "attendeesCount": "{count} registered"
     },
     "filters": {
       "today": "Today",
@@ -307,9 +308,6 @@
       "filterByPrice": "Filter by price",
       "reset": "Reset filters",
       "clear": "Clear"
-    },
-    "card": {
-      "attendeesCount": "{count} registered"
     },
     "detail": {
       "featured": "Featured",

@@ -4,6 +4,7 @@ import { Search, ArrowRight, ArrowUpRight } from "lucide-react";
 import { getTranslations, getLocale } from "next-intl/server";
 import { serverEventsApi } from "@/lib/server-api";
 import { EditorialEventCard } from "@/components/editorial-event-card";
+import { getCoverGradient } from "@/lib/cover-gradient";
 import { formatCurrency, formatDate } from "@teranga/shared-ui";
 import type { Event } from "@teranga/shared-types";
 
@@ -447,9 +448,7 @@ function FeaturedTile({
         aria-label={event.title}
         className="teranga-cover relative block min-h-[280px] md:min-h-[380px]"
         style={{
-          background: event.coverImageURL
-            ? undefined
-            : "linear-gradient(135deg, #1A1A2E 0%, #2a473c 55%, #c59e4b 110%)",
+          background: event.coverImageURL ? undefined : getCoverGradient(event.id).bg,
         }}
       >
         {event.coverImageURL && (

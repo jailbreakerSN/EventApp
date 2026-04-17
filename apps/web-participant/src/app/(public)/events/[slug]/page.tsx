@@ -19,6 +19,7 @@ import { EventJsonLd } from "@/components/event-detail/event-jsonld";
 import { ShareButtons } from "@/components/share-buttons";
 import { AddToCalendar } from "@/components/add-to-calendar";
 import { EditorialEventCard } from "@/components/editorial-event-card";
+import { getCoverGradient } from "@/lib/cover-gradient";
 import type { Event, SpeakerProfile, Session } from "@teranga/shared-types";
 import ReactMarkdown from "react-markdown";
 import { getLocale, getTranslations } from "next-intl/server";
@@ -235,9 +236,7 @@ export default async function EventDetailPage({ params }: PageProps) {
       <section
         className="teranga-cover relative h-[380px] w-full overflow-hidden sm:h-[420px] lg:h-[440px]"
         style={{
-          background: event.coverImageURL
-            ? undefined
-            : "linear-gradient(135deg, #1A1A2E 0%, #2a473c 55%, #c59e4b 110%)",
+          background: event.coverImageURL ? undefined : getCoverGradient(event.id).bg,
         }}
       >
         {event.coverImageURL && (

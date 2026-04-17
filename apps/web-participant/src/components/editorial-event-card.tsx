@@ -6,6 +6,7 @@ import { ArrowUpRight } from "lucide-react";
 import { formatDate, formatCurrency } from "@teranga/shared-ui";
 import { useLocale, useTranslations } from "next-intl";
 import type { Event } from "@teranga/shared-types";
+import { getCoverGradient } from "@/lib/cover-gradient";
 
 interface EditorialEventCardProps {
   event: Event;
@@ -63,13 +64,13 @@ export function EditorialEventCard({ event, index = 1, total = 1 }: EditorialEve
       aria-label={ariaLabel}
       className="group flex h-full flex-col overflow-hidden rounded-card border bg-card transition-all hover:-translate-y-0.5 hover:border-border hover:shadow-[0_22px_50px_-30px_rgba(15,15,28,0.25),0_2px_6px_-2px_rgba(15,15,28,0.06)]"
     >
-      {/* Cover */}
+      {/* Cover — no image → rotate through one of 8 brand gradient
+          palettes deterministically keyed off event.id so the same
+          event always picks the same palette. */}
       <div
         className="teranga-cover relative aspect-[16/10] w-full"
         style={{
-          background: event.coverImageURL
-            ? undefined
-            : "linear-gradient(135deg, #1A1A2E 0%, #2a473c 55%, #c59e4b 110%)",
+          background: event.coverImageURL ? undefined : getCoverGradient(event.id).bg,
         }}
       >
         {event.coverImageURL && (

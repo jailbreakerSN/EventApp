@@ -291,7 +291,8 @@
     "card": {
       "registeredCount": "{count, plural, one {# bind na} other {# bind nañu}}",
       "registeredWithFill": "{count, plural, one {# bind na} other {# bind nañu}} · {pct}% fees",
-      "remainingSeats": "{count, plural, one {Des na # palaas} other {Des nañu # palaas}}"
+      "remainingSeats": "{count, plural, one {Des na # palaas} other {Des nañu # palaas}}",
+      "attendeesCount": "{count} bind"
     },
     "filters": {
       "today": "Tey",
@@ -311,9 +312,6 @@
       "filterByPrice": "Filt ci njëg",
       "reset": "Delwal filt yi",
       "clear": "Fomm"
-    },
-    "card": {
-      "attendeesCount": "{count} bind"
     },
     "detail": {
       "featured": "Yu jiitu",

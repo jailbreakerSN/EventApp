@@ -290,7 +290,8 @@
     "card": {
       "registeredCount": "{count, plural, one {# inscrit} other {# inscrits}}",
       "registeredWithFill": "{count, plural, one {# inscrit} other {# inscrits}} · {pct}% rempli",
-      "remainingSeats": "{count, plural, one {Plus qu'# place} other {Plus que # places}}"
+      "remainingSeats": "{count, plural, one {Plus qu'# place} other {Plus que # places}}",
+      "attendeesCount": "{count} inscrits"
     },
     "filters": {
       "today": "Aujourd'hui",
@@ -310,9 +311,6 @@
       "filterByPrice": "Filtrer par prix",
       "reset": "Réinitialiser les filtres",
       "clear": "Effacer"
-    },
-    "card": {
-      "attendeesCount": "{count} inscrits"
     },
     "detail": {
       "featured": "À la une",
