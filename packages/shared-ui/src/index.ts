@@ -63,6 +63,11 @@ export {
   type OrderSummaryProps,
   type OrderSummaryLabels,
 } from "./components/order-summary";
+export {
+  TicketPass,
+  type TicketPassProps,
+  type TicketPassField,
+} from "./components/ticket-pass";
 
 // ─── i18n ─────────────────────────────────────────────────────────────────
 export {
