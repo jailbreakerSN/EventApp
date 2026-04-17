@@ -25,12 +25,15 @@ import {
   Button,
   Input,
   Spinner,
+  Stepper,
+  OrderSummary,
+  TicketPass,
+  PaymentMethodCard,
   formatCurrency,
   formatDate,
   getErrorMessage,
 } from "@teranga/shared-ui";
 import type { Event, TicketType, Registration, PaymentMethod } from "@teranga/shared-types";
-import { getCoverGradient } from "@/lib/cover-gradient";
 
 function intlLocale(locale: string): string {
   switch (locale) {
@@ -349,46 +352,17 @@ export default function RegisterPage() {
             <ArrowLeft className="h-3.5 w-3.5" />
             {step === "success" ? t("back") : t("backToEvent")}
           </button>
-          <div className="mx-auto flex items-center gap-2.5">
-            {([1, 2, 3] as const).map((n, i) => {
-              const done = currentStepNum > n;
-              const active = currentStepNum === n;
-              const label =
-                n === 1
-                  ? tStepper("step1")
-                  : n === 2
-                    ? tStepper("step2")
-                    : tStepper("step3");
-              return (
-                <div key={n} className="flex items-center gap-2.5">
-                  <span
-                    className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold transition-colors ${
-                      done
-                        ? "bg-teranga-green text-white"
-                        : active
-                          ? "bg-teranga-navy text-white ring-[3px] ring-teranga-navy/20"
-                          : "bg-muted text-muted-foreground"
-                    }`}
-                  >
-                    {done ? <Check className="h-3.5 w-3.5" strokeWidth={3} /> : n}
-                  </span>
-                  <span
-                    className={`hidden text-sm sm:block ${
-                      active
-                        ? "font-semibold text-foreground"
-                        : "font-medium text-muted-foreground"
-                    }`}
-                  >
-                    {label}
-                  </span>
-                  {i < 2 && <span className="h-px w-8 bg-border" />}
-                </div>
-              );
-            })}
-          </div>
-          <span className="font-mono-kicker text-[11px] tracking-[0.1em] text-muted-foreground">
-            {tStepper("kicker", { step: currentStepNum, total: 3 })}
-          </span>
+          <Stepper
+            className="flex-1"
+            steps={[
+              { label: tStepper("step1") },
+              { label: tStepper("step2") },
+              { label: tStepper("step3") },
+            ]}
+            currentStep={currentStepNum}
+            kickerFormatter={(step, total) => tStepper("kicker", { step, total })}
+            ariaLabel={tStepper("step1")}
+          />
         </div>
 
         {/* Step 1: Ticket selection */}
@@ -472,45 +446,17 @@ export default function RegisterPage() {
                   aria-label={t("methodAria")}
                   className="mt-6 flex flex-col gap-2.5"
                 >
-                  {paymentMethods.map((method) => {
-                    const isSelected = selectedMethod === method.id;
-                    return (
-                      <button
-                        key={method.id}
-                        type="button"
-                        role="radio"
-                        aria-checked={isSelected}
-                        onClick={() => setSelectedMethod(method.id)}
-                        className={`flex items-center gap-4 rounded-card border p-4 text-left transition-all ${
-                          isSelected
-                            ? "border-2 border-teranga-navy bg-muted/40"
-                            : "border hover:border-foreground/30"
-                        }`}
-                      >
-                        <span
-                          aria-hidden="true"
-                          className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-[10px] text-sm font-bold text-white"
-                          style={{ backgroundColor: method.accent }}
-                        >
-                          {method.glyph}
-                        </span>
-                        <span className="min-w-0 flex-1">
-                          <span className="block text-[15px] font-semibold">{method.label}</span>
-                          <span className="block text-xs text-muted-foreground">
-                            {method.description}
-                          </span>
-                        </span>
-                        <span
-                          aria-hidden="true"
-                          className={`h-5 w-5 flex-shrink-0 rounded-full transition-all ${
-                            isSelected
-                              ? "border-[6px] border-teranga-navy"
-                              : "border-2 border-border"
-                          }`}
-                        />
-                      </button>
-                    );
-                  })}
+                  {paymentMethods.map((method) => (
+                    <PaymentMethodCard
+                      key={method.id}
+                      glyph={method.glyph}
+                      accent={method.accent}
+                      name={method.label}
+                      description={method.description}
+                      selected={selectedMethod === method.id}
+                      onClick={() => setSelectedMethod(method.id)}
+                    />
+                  ))}
                 </div>
               )}
 
@@ -660,70 +606,27 @@ export default function RegisterPage() {
 
             {/* Order summary sticky sidebar — editorial, matches prototype. */}
             <aside className="lg:sticky lg:top-24 lg:self-start">
-              <div className="overflow-hidden rounded-tile border bg-card">
-                {/* Event cover thumb */}
-                <div
-                  aria-hidden="true"
-                  className="teranga-cover relative h-[120px] w-full"
-                  style={{
-                    background: event.coverImageURL
-                      ? `url(${event.coverImageURL}) center/cover`
-                      : getCoverGradient(event.id).bg,
-                  }}
-                >
-                  <div
-                    aria-hidden="true"
-                    className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/50 to-transparent"
-                  />
-                  <div className="absolute bottom-3.5 left-4 right-4 text-white">
-                    <p className="font-mono-kicker text-[10px] font-medium uppercase tracking-[0.12em] opacity-85">
-                      {formatDate(event.startDate, regional)}
-                    </p>
-                    <p className="font-serif-display mt-1 line-clamp-2 text-[18px] font-semibold leading-[1.15]">
-                      {event.title}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="p-5">
-                  <p className="font-mono-kicker mb-3 text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-                    {tSummary("kicker")}
-                  </p>
-                  <SummaryRow
-                    label={selectedTicket.name}
-                    value={
-                      selectedTicket.price === 0
-                        ? tCommon("free")
-                        : formatCurrency(selectedTicket.price, selectedTicket.currency, regional)
-                    }
-                  />
-                  {hasDiscount && discountAmount > 0 && (
-                    <SummaryRow
-                      label={tSummary("discount")}
-                      value={`−${formatCurrency(discountAmount, selectedTicket.currency, regional)}`}
-                      tone="discount"
-                    />
-                  )}
-                  <SummaryRow
-                    label={tSummary("serviceFees")}
-                    value={tSummary("included")}
-                    tone="muted"
-                  />
-                  <div className="my-3.5 h-px bg-border" />
-                  <SummaryRow
-                    label={tSummary("total")}
-                    value={
-                      discountedPrice === 0
-                        ? tCommon("free")
-                        : formatCurrency(discountedPrice, selectedTicket.currency, regional)
-                    }
-                    tone="total"
-                  />
-                  <p className="mt-3.5 text-[11px] leading-relaxed text-muted-foreground">
-                    {tSummary("refundNote")}
-                  </p>
-                </div>
-              </div>
+              <OrderSummary
+                coverKey={event.id}
+                coverImageURL={event.coverImageURL ?? null}
+                eventStartDate={event.startDate}
+                eventTitle={event.title}
+                ticketName={selectedTicket.name}
+                subtotal={selectedTicket.price}
+                discount={hasDiscount ? discountAmount : 0}
+                total={discountedPrice}
+                currency={selectedTicket.currency}
+                locale={regional}
+                refundNote={tSummary("refundNote")}
+                labels={{
+                  kicker: tSummary("kicker"),
+                  serviceFees: tSummary("serviceFees"),
+                  serviceFeesValue: tSummary("included"),
+                  discount: tSummary("discount"),
+                  total: tSummary("total"),
+                  free: tCommon("free"),
+                }}
+              />
             </aside>
           </div>
         )}
@@ -743,68 +646,32 @@ export default function RegisterPage() {
             <p className="mt-4 text-base text-muted-foreground">{tSuccess("body")}</p>
 
             {/* Ticket reveal */}
-            <div className="mx-auto mt-8 max-w-[440px] overflow-hidden rounded-pass bg-teranga-navy text-white shadow-[0_30px_60px_-25px_rgba(15,15,28,0.45)] animate-[slideUp_.6s_cubic-bezier(.2,.7,.2,1)_both]">
-              <div
-                className="relative px-7 pb-5 pt-6"
-                style={{
-                  background:
-                    "linear-gradient(135deg, var(--tw-gradient-from), var(--tw-gradient-to))",
-                  // @ts-expect-error — CSS custom properties
-                  "--tw-gradient-from": "#1A1A2E",
-                  "--tw-gradient-to": "#16213E",
-                }}
-              >
-                <p className="font-mono-kicker text-[10px] font-medium uppercase tracking-[0.18em] text-teranga-gold-light">
-                  {tSuccess("passLabel")}
-                </p>
-                <p className="font-serif-display mt-3.5 text-[24px] font-semibold leading-[1.1] tracking-[-0.018em]">
-                  {event.title}
-                </p>
-                <div className="mt-5 flex gap-6 text-left">
-                  <TicketField
-                    label={tSuccess("dateLabel")}
-                    value={formatDate(event.startDate, regional)}
+            <TicketPass
+              className="mx-auto mt-8 max-w-[440px] shadow-[0_30px_60px_-25px_rgba(15,15,28,0.45)]"
+              coverKey={event.id}
+              kicker={tSuccess("passLabel")}
+              eventTitle={event.title}
+              fields={[
+                { label: tSuccess("dateLabel"), value: formatDate(event.startDate, regional) },
+                { label: tSuccess("passTypeLabel"), value: selectedTicket!.name },
+                { label: tSuccess("placeLabel"), value: event.location.city },
+              ]}
+              qr={
+                registration.qrCodeValue ? (
+                  <QRCodeSVG
+                    value={registration.qrCodeValue}
+                    size={104}
+                    level="M"
+                    includeMargin={false}
                   />
-                  <TicketField label={tSuccess("passTypeLabel")} value={selectedTicket!.name} />
-                  <TicketField label={tSuccess("placeLabel")} value={event.location.city} />
-                </div>
-                <span
-                  aria-hidden="true"
-                  className="absolute -bottom-2.5 -left-2.5 h-5 w-5 rounded-full bg-background"
-                />
-                <span
-                  aria-hidden="true"
-                  className="absolute -bottom-2.5 -right-2.5 h-5 w-5 rounded-full bg-background"
-                />
-                <span
-                  aria-hidden="true"
-                  className="absolute bottom-0 left-0 right-0 border-b border-dashed border-white/25"
-                />
-              </div>
-              <div className="flex items-center gap-4 p-6">
-                {registration.qrCodeValue && (
-                  <span className="rounded-[10px] bg-white p-2">
-                    <QRCodeSVG
-                      value={registration.qrCodeValue}
-                      size={104}
-                      level="M"
-                      includeMargin={false}
-                    />
-                  </span>
-                )}
-                <div className="min-w-0 flex-1 text-left">
-                  <p className="font-mono-kicker text-[9px] font-medium uppercase tracking-[0.12em] text-white/60">
-                    {tSuccess("codeLabel")}
-                  </p>
-                  <p className="font-mono-kicker mt-1 truncate text-[13px] font-semibold tracking-[0.04em]">
-                    {registration.qrCodeValue ?? registration.id}
-                  </p>
-                  <span className="mt-3.5 inline-flex items-center rounded-full bg-teranga-gold px-2 py-0.5 text-[10px] font-bold tracking-[0.04em] text-teranga-navy">
-                    {tSuccess("accessValid")}
-                  </span>
-                </div>
-              </div>
-            </div>
+                ) : null
+              }
+              codeLabel={tSuccess("codeLabel")}
+              codeValue={registration.qrCodeValue ?? registration.id}
+              validAccessLabel={tSuccess("accessValid")}
+              footerVariant="inline"
+              animateReveal
+            />
 
             {/* Actions */}
             <div className="mt-8 flex flex-wrap justify-center gap-3">
@@ -835,58 +702,10 @@ export default function RegisterPage() {
                   transform: scale(1);
                 }
               }
-              @keyframes slideUp {
-                from {
-                  opacity: 0;
-                  transform: translateY(16px) scale(0.98);
-                }
-                to {
-                  opacity: 1;
-                  transform: translateY(0) scale(1);
-                }
-              }
             `}</style>
           </div>
         )}
       </div>
-    </div>
-  );
-}
-
-function SummaryRow({
-  label,
-  value,
-  tone,
-}: {
-  label: string;
-  value: string;
-  tone?: "muted" | "discount" | "total";
-}) {
-  const toneClasses =
-    tone === "muted"
-      ? "text-muted-foreground"
-      : tone === "discount"
-        ? "text-teranga-green"
-        : tone === "total"
-          ? "text-foreground font-bold text-[16px]"
-          : "text-foreground";
-  return (
-    <div
-      className={`flex items-center justify-between py-1.5 text-sm font-medium tabular-nums ${toneClasses}`}
-    >
-      <span>{label}</span>
-      <span>{value}</span>
-    </div>
-  );
-}
-
-function TicketField({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <p className="font-mono-kicker text-[9px] font-medium uppercase tracking-[0.12em] text-white/55">
-        {label}
-      </p>
-      <p className="mt-1 text-[13px] font-semibold">{value}</p>
     </div>
   );
 }
