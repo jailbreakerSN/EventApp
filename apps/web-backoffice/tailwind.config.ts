@@ -11,12 +11,17 @@ const config: Config = {
       colors: {
         teranga: {
           navy: "#1A1A2E",
+          "navy-2": "#16213E",        // mid-navy, hero gradient stop
+          "navy-3": "#0F0F1C",        // deepest navy, rare use
           gold: "#c59e4b",            // aligned with logo muted gold
           "gold-light": "#d1b372",    // light sand accent
           "gold-dark": "#a78336",     // darker gold for text on white (WCAG AA)
+          "gold-soft": "#f0e6ce",     // pale gold, surfaces & chips
+          "gold-whisper": "#faf6ee",  // cream, ticket paper
           green: "#0F9B58",           // for success/confirmed states
           forest: "#2a473c",          // deep teal green from logo
           "forest-dark": "#172721",   // near-black, dark backgrounds
+          clay: "#c86f4b",            // urgency / warning / accent
         },
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
@@ -60,6 +65,12 @@ const config: Config = {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
+        // Editorial radii — larger, softer corners matching the Teranga
+        // participant prototype. Use "card" for event cards, "tile" for
+        // featured tiles and sticky panels.
+        card: "14px",
+        tile: "20px",
+        pass: "22px",
       },
     },
   },
