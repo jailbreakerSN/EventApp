@@ -57,6 +57,7 @@ export { FileUpload, type FileUploadProps } from "./components/file-upload";
 export { DataTable, type DataTableProps, type DataTableColumn } from "./components/data-table";
 export { RadioGroup, type RadioGroupProps, type RadioOption } from "./components/radio-group";
 export { SectionHeader, type SectionHeaderProps } from "./components/section-header";
+export { Stepper, type StepperProps, type StepperStep } from "./components/stepper";
 
 // ─── i18n ─────────────────────────────────────────────────────────────────
 export {
