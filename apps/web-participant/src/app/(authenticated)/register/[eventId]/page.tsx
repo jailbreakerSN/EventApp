@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -64,6 +64,8 @@ export default function RegisterPage() {
   const regional = intlLocale(locale);
   const { eventId } = useParams<{ eventId: string }>();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const ticketParam = searchParams.get("ticket");
   const [step, setStep] = useState<Step>("select");
   const [selectedTicket, setSelectedTicket] = useState<TicketType | null>(null);
   const [registration, setRegistration] = useState<Registration | null>(null);
@@ -139,6 +141,21 @@ export default function RegisterPage() {
 
   const isPaidTicket = selectedTicket && selectedTicket.price > 0;
   const isSubmitting = registerMutation.isPending || paymentMutation.isPending;
+
+  // Pre-select a ticket when the user arrives via a deep link from the event
+  // detail sidebar (e.g. /register/:eventId?ticket=:ticketTypeId). We only
+  // apply it once on initial mount while the user is still on Step 1, and
+  // only if the ticket is visible and not sold out — otherwise we fall back
+  // to the existing default behaviour.
+  useEffect(() => {
+    if (!event || !ticketParam || selectedTicket || step !== "select") return;
+    const match = event.ticketTypes.find((t) => t.id === ticketParam);
+    if (!match || !match.isVisible) return;
+    const remaining = match.totalQuantity ? match.totalQuantity - match.soldCount : null;
+    const soldOut = remaining !== null && remaining <= 0;
+    if (soldOut) return;
+    setSelectedTicket(match);
+  }, [event, ticketParam, selectedTicket, step]);
 
   const getDiscountedPrice = (originalPrice: number) => {
     if (!promoResult || originalPrice === 0) return originalPrice;
