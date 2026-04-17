@@ -141,10 +141,65 @@
   },
   "home": {
     "hero": {
+      "kicker": "✦ Teranga · Dakar · Noor 2026",
+      "titleLead": "Xew-xew yu Afrig,",
+      "titleItalicOne": "connecté",
+      "titleGlue": "ak",
+      "titleItalicTwo": "yu nu dul fàtte.",
       "titleBefore": "Xam xew-xew yi ci",
       "titleHighlight": "Senegaal",
-      "subtitle": "Konferans, konseer, atelye ak yeneen. Bind sa tur ci ay klik ak jot sa badge QR.",
+      "subtitle": "Konferans, konseer, atelye ak mbooloo. Xamal lu am ci jamono ji ci Dakar, Cees, Saly ak yeneen.",
+      "searchPlaceholder": "Seet xew-xew, jëfandikukat, wala dëkk…",
+      "searchCta": "Saytu",
       "cta": "Saytu xew-xew yi"
+    },
+    "heroStats": {
+      "events": "xew-xew",
+      "registrations": "bind yi",
+      "cities": "dëkk",
+      "rating": "noote ci digg-dóom"
+    },
+    "ticketStub": {
+      "kicker": "Admit One · Pass bu tur",
+      "labelDate": "Bés",
+      "labelPass": "Pass",
+      "labelZone": "Zoon",
+      "defaultTitle": "Dakar Tech Summit 2026",
+      "defaultDate": "14 — 16 mee",
+      "defaultPass": "Standard",
+      "defaultZone": "A · CICAD",
+      "defaultHolder": "Aïssatou Diallo",
+      "defaultCode": "TER-DTS26-4F2A1C",
+      "holderLabel": "Ki ko moom"
+    },
+    "featured": {
+      "kicker": "— Ci jamono ji",
+      "title": "Ñetti xew-xew yu nu dul yombal",
+      "subtitle": "Ñi nu tànn ci Teranga, ci xew-xew yi gën a neex ci Noor 2026 ci Dakar ak Petite Côte.",
+      "cta": "Xool lu gën a jaar"
+    },
+    "browse": {
+      "kicker": "— Xew-xew yépp",
+      "title": "Saytu jamono ji",
+      "subtitle": "Tànnal ci kategoori, dëkk, wala budget.",
+      "countLabel": "{count, plural, one {# xew-xew} other {# xew-xew}}"
+    },
+    "promises": {
+      "one": {
+        "num": "01",
+        "title": "Bind ci 45 saãu",
+        "description": "Benn nimero, benn billet. Wave ak Orange Money ñu nangu ko; man nga fay ci bës bi ci beneen xew-xew."
+      },
+      "two": {
+        "num": "02",
+        "title": "Badge QR bu dul laaj rezo",
+        "description": "Sa billet bi am na bu yaa doon ci rezo. Baax ci dugg, baax ci àll bi."
+      },
+      "three": {
+        "num": "03",
+        "title": "Fàttali ci WhatsApp",
+        "description": "Benn mesaas 24h bi jiitu, benn beneen H-1. Lenn lu ëpp, lenn lu wàññi."
+      }
     },
     "values": {
       "simpleReg": {
