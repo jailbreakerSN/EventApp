@@ -394,7 +394,33 @@
     "registering": "Di bind...",
     "redirecting": "Di jàllale...",
     "successTitle": "Bindu nangu nañu ko !",
-    "exploreOthers": "Xam yeneen xew-xew"
+    "exploreOthers": "Xam yeneen xew-xew",
+    "stepper": {
+      "kicker": "Étap {step}/{total}",
+      "step1": "Billet",
+      "step2": "Paye",
+      "step3": "Nangu"
+    },
+    "summary": {
+      "kicker": "Wax ci mbir mi",
+      "ticketLabel": "Billet",
+      "serviceFees": "Servis",
+      "included": "Bokk na",
+      "discount": "Remiis",
+      "total": "Lepp lu",
+      "refundNote": "Man nga fàttali fi 48h ca biniir xew-xew bi, banneex frais yi."
+    },
+    "success": {
+      "kicker": "✦ Bindu bi nangu nañu ko",
+      "headline": "Sa palaas fas nañu ko. Ba ci kanam.",
+      "body": "Benn imeyl ak benn SMS dañu leen yónnee. Wone QR code bi ci buntu xew-xew bi.",
+      "passLabel": "Teranga · Pass bu tur",
+      "accessValid": "ACCÈS VALIDE",
+      "codeLabel": "Kód",
+      "dateLabel": "Bés",
+      "passTypeLabel": "Pass",
+      "placeLabel": "Barab"
+    }
   },
   "paymentStatus": {
     "processingHeading": "Paye bi di dox…",

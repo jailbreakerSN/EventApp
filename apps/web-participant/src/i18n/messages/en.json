@@ -422,7 +422,33 @@
     "successPendingApproval": "Your registration is awaiting approval.",
     "successQrReady": "Your QR badge has been generated.",
     "successSubmit": "Registration confirmed!",
-    "exploreOthers": "Explore other events"
+    "exploreOthers": "Explore other events",
+    "stepper": {
+      "kicker": "Step {step}/{total}",
+      "step1": "Ticket",
+      "step2": "Payment",
+      "step3": "Confirmation"
+    },
+    "summary": {
+      "kicker": "Order summary",
+      "ticketLabel": "Ticket",
+      "serviceFees": "Service fees",
+      "included": "Included",
+      "discount": "Discount",
+      "total": "Total",
+      "refundNote": "Refundable up to 48h before the event, minus fees."
+    },
+    "success": {
+      "kicker": "✦ Registration confirmed",
+      "headline": "Your spot is reserved. See you soon.",
+      "body": "A confirmation email and SMS have been sent. Show this QR code at the event entrance.",
+      "passLabel": "Teranga · Personal Pass",
+      "accessValid": "ACCESS VALID",
+      "codeLabel": "Code",
+      "dateLabel": "Date",
+      "passTypeLabel": "Pass",
+      "placeLabel": "Location"
+    }
   },
   "paymentStatus": {
     "noPaymentSpecified": "No payment specified.",

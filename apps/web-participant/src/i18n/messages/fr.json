@@ -425,7 +425,33 @@
     "successPendingApproval": "Votre inscription est en attente d'approbation.",
     "successQrReady": "Votre badge QR a été généré.",
     "successSubmit": "Inscription confirmée !",
-    "exploreOthers": "Explorer d'autres événements"
+    "exploreOthers": "Explorer d'autres événements",
+    "stepper": {
+      "kicker": "Étape {step}/{total}",
+      "step1": "Billet",
+      "step2": "Paiement",
+      "step3": "Confirmation"
+    },
+    "summary": {
+      "kicker": "Récapitulatif",
+      "ticketLabel": "Billet",
+      "serviceFees": "Frais de service",
+      "included": "Inclus",
+      "discount": "Remise",
+      "total": "Total",
+      "refundNote": "Remboursable jusqu'à 48h avant le début, hors frais."
+    },
+    "success": {
+      "kicker": "✦ Inscription confirmée",
+      "headline": "Votre place est réservée. À très bientôt.",
+      "body": "Un email et un SMS de confirmation viennent d'être envoyés. Présentez ce QR code à l'entrée de l'événement.",
+      "passLabel": "Teranga · Pass Nominatif",
+      "accessValid": "ACCÈS VALIDE",
+      "codeLabel": "Code",
+      "dateLabel": "Date",
+      "passTypeLabel": "Pass",
+      "placeLabel": "Lieu"
+    }
   },
   "paymentStatus": {
     "noPaymentSpecified": "Aucun paiement spécifié.",
