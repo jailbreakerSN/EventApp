@@ -72,6 +72,7 @@ export {
   PaymentMethodCard,
   type PaymentMethodCardProps,
 } from "./components/payment-method-card";
+export { CapacityBar, type CapacityBarProps } from "./components/capacity-bar";
 
 // ─── i18n ─────────────────────────────────────────────────────────────────
 export {
