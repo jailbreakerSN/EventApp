@@ -64,6 +64,9 @@ ui-debug.log
 # Coverage
 coverage/
 
+# Storybook static build output
+storybook-static/
+
 # Flutter
 apps/mobile/.dart_tool/
 apps/mobile/.flutter-plugins
