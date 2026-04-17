@@ -373,7 +373,8 @@
     "notYetAvailable": "Votre badge n'est pas encore disponible.",
     "registrationNotFound": "Inscription introuvable.",
     "backToMyEvents": "Retour à mes inscriptions",
-    "addToWallet": "Ajouter au portefeuille"
+    "addToWallet": "Ajouter au portefeuille",
+    "offlineHint": "Disponible hors-ligne"
   },
   "registerFlow": {
     "subtitle": "Inscription",
@@ -425,7 +426,33 @@
     "successPendingApproval": "Votre inscription est en attente d'approbation.",
     "successQrReady": "Votre badge QR a été généré.",
     "successSubmit": "Inscription confirmée !",
-    "exploreOthers": "Explorer d'autres événements"
+    "exploreOthers": "Explorer d'autres événements",
+    "stepper": {
+      "kicker": "Étape {step}/{total}",
+      "step1": "Billet",
+      "step2": "Paiement",
+      "step3": "Confirmation"
+    },
+    "summary": {
+      "kicker": "Récapitulatif",
+      "ticketLabel": "Billet",
+      "serviceFees": "Frais de service",
+      "included": "Inclus",
+      "discount": "Remise",
+      "total": "Total",
+      "refundNote": "Remboursable jusqu'à 48h avant le début, hors frais."
+    },
+    "success": {
+      "kicker": "✦ Inscription confirmée",
+      "headline": "Votre place est réservée. À très bientôt.",
+      "body": "Un email et un SMS de confirmation viennent d'être envoyés. Présentez ce QR code à l'entrée de l'événement.",
+      "passLabel": "Teranga · Pass Nominatif",
+      "accessValid": "ACCÈS VALIDE",
+      "codeLabel": "Code",
+      "dateLabel": "Date",
+      "passTypeLabel": "Pass",
+      "placeLabel": "Lieu"
+    }
   },
   "paymentStatus": {
     "noPaymentSpecified": "Aucun paiement spécifié.",
@@ -460,11 +487,26 @@
   },
   "myEvents": {
     "title": "Mes inscriptions",
+    "kicker": "✦ Bonjour {name}",
+    "headline": "Vos prochains rendez-vous",
     "countLabel": "{count, plural, one {# inscription} other {# inscriptions}}",
+    "countLabelWithPast": "{count, plural, one {# à venir} other {# à venir}} · {past, plural, one {# passé} other {# passés}}",
     "loadError": "Impossible de charger vos inscriptions. Veuillez réessayer.",
     "emptyTitle": "Aucune inscription pour le moment",
     "emptyDescription": "Explorez les événements à venir et inscrivez-vous en quelques clics.",
     "discoverCta": "Découvrir les événements",
+    "tabs": {
+      "upcoming": "À venir",
+      "past": "Passés",
+      "saved": "Sauvegardés"
+    },
+    "savedEmptyTitle": "Aucun événement sauvegardé",
+    "savedEmptyDescription": "Cliquez sur l'icône signet d'un événement pour le retrouver ici.",
+    "pastEmptyTitle": "Aucun événement passé",
+    "pastEmptyDescription": "Les événements auxquels vous avez participé apparaîtront ici.",
+    "details": "Détails",
+    "settings": "Paramètres",
+    "browseCta": "Parcourir",
     "ticketPrefix": "Billet",
     "registeredOn": "Inscrit le",
     "waitlistPosition": "Position #{n}",

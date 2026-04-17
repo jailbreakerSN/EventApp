@@ -1,6 +1,8 @@
 # Component Patterns
 
-Reusable UI patterns used across both web applications. These will be implemented in `packages/shared-ui/` as the shared component library.
+> **Editorial v2 (2026-04-17)** — after the Teranga Participant handoff, buttons default to **pill-shaped** (`rounded-full`) and the dark primary is navy on light / gold on dark. The backoffice still uses `rounded-lg` for dense table-adjacent actions; the participant app uses `rounded-full` throughout.
+
+Reusable UI patterns used across both web applications. Editorial primitives live in `apps/web-participant/src/components/` today; promoting them to `packages/shared-ui/` is the next phase so the backoffice can reuse them directly.
 
 ---
 
@@ -10,87 +12,98 @@ Reusable UI patterns used across both web applications. These will be implemente
 
 | Variant | Appearance | Usage |
 |---------|-----------|-------|
-| **Primary** | Navy background, white text | Main actions: "Creer", "S'inscrire", "Publier" |
-| **Secondary** | White background, navy border | Secondary actions: "Annuler", "Retour" |
-| **Ghost** | Transparent, gray text | Tertiary actions: "Voir plus", icon-only buttons |
-| **Destructive** | Red background, white text | Dangerous actions: "Supprimer", "Annuler l'evenement" |
-| **Gold** | Gold background, navy text | Feature CTAs: "Mettre a niveau", "Fonctionnalite premium" |
+| **Primary (light)** | Navy background, white text, pill | Main actions in the participant app |
+| **Primary (dark)** | Gold background, navy text, pill | Same actions on `.dark` theme |
+| **Outline** | Transparent, 1px border, pill | Secondary actions: "Détails", "Partager" |
+| **Ghost** | Transparent, muted text, pill | Tertiary actions, icon-only, back links |
+| **Gold** | Gold background, navy text, pill | Marketing CTAs, hero search submit, homepage "Voir tous les événements" |
+| **Destructive ghost** | `text-destructive` + `hover:bg-destructive/10` | Cancel registration, cancel event |
 
 ### Sizes
 
 | Size | Height | Padding | Font Size | Touch Target |
 |------|--------|---------|-----------|-------------|
-| `sm` | 32px | `px-3 py-1.5` | 12px (text-xs) | 32px min |
-| `md` | 40px | `px-4 py-2.5` | 14px (text-sm) | 44px (with spacing) |
-| `lg` | 48px | `px-6 py-3` | 16px (text-base) | 48px |
+| `sm` | 32px | `px-3 py-1.5` | 13px | 32px min |
+| `md` | 40px | `px-5 py-2.5` | 14px | 44px (with spacing) |
+| `lg` | 48px | `px-7 py-3` | 15px | 48px |
+| `cta` | 52px | `px-8 py-3.5` | 15px | 52px — use for hero + success actions |
 
 ### States
 
-- **Default**: Solid background
-- **Hover**: Slightly lighter (`#16213E` for navy)
-- **Focus**: 2px ring with `ring-[#1A1A2E]/20` offset
-- **Disabled**: `opacity-60`, `cursor-not-allowed`
-- **Loading**: Spinner replaces text, maintains button width
+- **Default**: Solid background.
+- **Hover**: Navy → `teranga-navy-2`; gold → `teranga-gold-light`; outline → `bg-muted`.
+- **Focus**: 2px `teranga-gold` outline with 2px offset (global `:focus-visible` rule).
+- **Disabled**: `pointer-events-none` (not `cursor-not-allowed`) + muted background + `text-muted-foreground`.
+- **Loading**: Spinner replaces leading icon; label stays.
 
-### Implementation
+### Canonical primary (participant)
 
 ```tsx
-// Primary button pattern (current in backoffice)
-<button className="inline-flex items-center gap-2 bg-[#1A1A2E] text-white rounded-lg px-4 py-2.5 text-sm font-semibold hover:bg-[#16213E] transition-colors disabled:opacity-60">
-  <Icon className="h-4 w-4" />
-  Label
-</button>
+<Link
+  href="/events"
+  className="inline-flex items-center gap-2 rounded-full bg-teranga-navy px-7 py-3.5 text-sm font-semibold text-white transition-colors hover:bg-teranga-navy/90 dark:bg-teranga-gold dark:text-teranga-navy dark:hover:bg-teranga-gold-light"
+>
+  Voir tous les événements
+  <ArrowRight className="h-4 w-4" aria-hidden="true" />
+</Link>
 ```
 
 ---
 
-## Cards
+## Cards & Editorial Tiles
 
-### Event Card (Participant)
+### Editorial Event Card (Participant)
 
-Used in event discovery listings. Mobile-first responsive.
-
-```
-+----------------------------------+
-| [Cover Image - 16:9 ratio]      |
-+----------------------------------+
-| Category Badge    Status Badge   |
-| Event Title (h3, semibold)       |
-| 📅 Date  📍 Location             |
-| 🏷️ Price (or "Gratuit")          |
-| [Register CTA Button]           |
-+----------------------------------+
-```
-
-- **Image**: `aspect-[16/9]`, `object-cover`, rounded top corners
-- **Loading**: Skeleton placeholder with `animate-pulse`
-- **Hover**: Subtle shadow increase (`shadow-sm` → `shadow`)
-
-### Event Card (Backoffice)
-
-Used in organizer event list. Table row style.
+Canonical card for event grids. Implemented in `components/editorial-event-card.tsx`.
 
 ```
-| Title | Status Badge | Date | Location | Registered | Actions |
++-------------------------------------+
+|  [Cover 16:10 — gradient or image]  |
+|  CONFÉRENCE            TER · 001/003|
++-------------------------------------+
+| 14 MAI 2026            Dakar        |
+| Dakar Tech Summit 2026 (Fraunces 22)|
+| Trois jours pour repenser l'éco…    |
+|                                     |
+| 15 000 FCFA              (→) pill  |
+| 847 inscrits · 71% rempli           |
++-------------------------------------+
 ```
 
-- Status badge uses semantic colors from design tokens
-- Actions: Edit, Publish/Unpublish, View, Archive
+- **Radius**: `rounded-card` (14px).
+- **Cover**: `aspect-[16/10]`. Uses `coverImageURL` if set; otherwise `getCoverGradient(event.id).bg` (8-palette rotation) + `.teranga-cover` grain/stripe texture.
+- **Scarcity pill**: when `registeredCount / maxAttendees ≥ 85%`, replace the category kicker with a clay "Plus que N places" pill.
+- **Index chip** (top-right): mono 10px `TER · 001/008`. From `{ index, total }` props.
+- **Hover**: `-translate-y-0.5` + shadow (`0_22px_50px_-30px_rgba(15,15,28,0.25)`). Cover image scales 1.03.
 
-### Stat Card (Dashboard)
+### Featured Tile (Home `isFeatured` events)
 
-```
-+------------------+
-| Icon    Label    |
-| VALUE (text-3xl) |
-| +12% vs last     |
-+------------------+
-```
+- Split grid `md:grid-cols-[1.1fr_1fr]`.
+- Left: cover ≥380px tall; mono category kicker + index chip; title on top of a `bg-gradient-to-b to-black/45` overlay for legibility.
+- Right: tag chips + teaser copy + 2×2 meta grid (Dates / Lieu / Tarif / Affluence with a live `.teranga-pulse-dot`) + two pill CTAs ("S'inscrire" primary + "Détails" outline).
 
-- Background: White, border, rounded-xl
-- Icon: 40px circle with muted brand color background
-- Value: Large bold number
-- Trend: Green up / Red down indicator
+### Upcoming Row (My Events)
+
+- `md:grid-cols-[220px_1fr_auto]`.
+- Left: 180–220px branded gradient column with a bottom-left mono kicker (ticket-name or category).
+- Middle: mono date kicker + status pill + Fraunces 22px title + inline meta row.
+- Right: action stack of pill buttons (Badge primary / Détails outline / Annuler or Remboursement ghost-destructive).
+
+### Past Event Card (My Events)
+
+`h-[140px]` cover + body for `status: "checked_in"`. Navy "✓ Enregistré" overlay pill, Fraunces title, muted meta.
+
+### Stat Card (Backoffice dashboard)
+
+`rounded-xl` white, 40px icon circle, large numeric, green/red trend indicator. Unchanged from v1.
+
+### Order Summary (Registration step 2)
+
+Sticky (`lg:sticky top-24`) tile on the right column of the Paiement step.
+
+- Radius `rounded-tile` (20px).
+- Top band: 120px event cover (gradient fallback via `getCoverGradient`), `bg-gradient-to-t to-black/50` overlay, mono date kicker + Fraunces event title in white.
+- Body: mono "Récapitulatif" kicker, line items (ticket name, optional discount in `teranga-green`, service fees "Inclus", 1px divider, bold total), 48h refund microcopy.
 
 ---
 
@@ -111,19 +124,21 @@ Same styling as input, with native `<select>` element and `bg-white` to ensure a
 
 ### Multi-step Forms (Wizard)
 
-For complex flows (event creation, registration with payment):
+Canonical implementation: `/register/[eventId]` in the participant app.
 
 ```
-Step 1        Step 2        Step 3        Step 4
-[●]──────────[○]──────────[○]──────────[○]
-Details     Tickets     Parametres   Apercu
+Step 1 (Billet)     Step 2 (Paiement)    Step 3 (Confirmation)
+  [1]─────────────── [2]─────────────── [3]
+  active (navy ring) muted                muted
 ```
 
-- **Active step**: Navy circle with white number
-- **Completed step**: Green checkmark
-- **Upcoming step**: Gray circle with gray number
-- **Step labels**: `text-xs` below circles
-- **Navigation**: "Precedent" (secondary) + "Suivant" (primary) buttons
+- **Active step**: Navy `bg-teranga-navy` circle 28×28px with white number, 3px `ring-teranga-navy/20` offset ring. Label `font-semibold text-foreground`.
+- **Completed step**: `bg-teranga-green` circle with a white 3.5×3.5 `Check` icon (strokeWidth 3).
+- **Upcoming step**: `bg-muted` circle with muted-foreground number.
+- **Step labels**: right of each circle (`hidden sm:block`), mono `text-sm`, active bolded.
+- **Connectors**: `h-px w-8 bg-border` between consecutive circles.
+- **Right-hand kicker**: `font-mono-kicker text-[11px] tracking-[0.1em]` showing `"Étape N/3"`.
+- **Navigation** (per step): outline "Retour" pill + primary pill ("Payer X FCFA →", "Confirmer", etc.).
 
 ### Form Layout
 
@@ -132,6 +147,78 @@ Details     Tickets     Parametres   Apercu
 - **Required fields**: Red asterisk after label text
 - **Help text**: `text-xs text-gray-500` below input
 - **Error text**: `text-xs text-red-500 mt-1` below input, replaces help text
+
+---
+
+## Editorial Primitives
+
+New primitives introduced in Editorial v2. Currently co-located with the participant app; next phase is promotion to `packages/shared-ui`.
+
+### SectionHeader
+
+```
+— À LA UNE CETTE SAISON
+Trois événements qu'on ne manquerait pour rien au monde
+Sélectionnés par la rédaction Teranga…                       [right action]
+```
+
+- Mono kicker: `text-[11px]`, `tracking-[0.14em]`, uppercase, `text-teranga-gold-dark`.
+- Title: `.font-serif-display`, `text-[36px]`, `leading-[1.08]`, `tracking-[-0.02em]`, semibold.
+- Sub: `text-[15px] leading-relaxed text-muted-foreground`, max-w 640px.
+- Right action (optional): pill chip or filter count.
+
+### Ticket Stub (decorative)
+
+Homepage hero's tactile pass. Rendered `aria-hidden` because every field is illustrative.
+
+- `rounded-[18px]`, `bg-teranga-gold-whisper`, `-rotate-[4deg]`, shadow `0_40px_80px_-30px_rgba(0,0,0,0.5)`.
+- Header mono kicker ("Admit One · Pass Nominatif") + Fraunces 28px event title + 3-up meta fields.
+- Perforation: `border-t-2 border-dashed border-teranga-navy/15` with two `bg-teranga-navy` notches sized 20×20 at each edge.
+- QR: deterministic SVG pattern (`DecorativeQR`) — not a real signed QR.
+
+### Ticket Pass (badge + success)
+
+Canonical ticket used in two places: the `/register/:id` success step and the `/my-events/:id/badge` page.
+
+- `rounded-pass` (22px), `bg-teranga-navy`, `text-white`, shadow `0_40px_80px_-30px_rgba(0,0,0,0.6)`.
+- Header gradient uses `linear-gradient(135deg, ${tint} 0%, #1A1A2E 120%)` where `tint` comes from `getCoverGradient(event.id).tint`.
+- Dashed separator `border-b border-dashed border-white/25` with two paper-colour notches (`bg-background`) positioned `-bottom-2.5 -left-2.5 / -right-2.5`.
+- Footer: QR on white `rounded-[14px]` tile + truncated mono code + optional holder + gold `ACCÈS VALIDE` pill.
+- Reveal animation: `transform: translateY(16px) scale(.98) → translateY(0) scale(1)` over `600ms cubic-bezier(.2,.7,.2,1)`.
+
+### Payment Method Card (Wave / OM / Free Money / Card)
+
+Used in the `/register/:id` Paiement step.
+
+- Row layout: 44px colored `rounded-[10px]` glyph tile (W / OM / F / CB) + name + description + 5×5px radio indicator.
+- Selected state: `border-2 border-teranga-navy`, `bg-muted/40`, radio becomes a 6px navy ring.
+- Each brand's accent color (Wave `#1DC8F1`, Orange Money `#FF7900`, Free Money `#CD0067`, Card `#635bff`) is confined to the glyph tile; labels and borders stay in the Teranga palette.
+
+### Capacity Bar
+
+Used on event detail sticky sidebar + order summary + my-events panels.
+
+- Track: `h-1.5` (sidebar) or `h-2` (emphasis), `bg-muted`, `rounded-full`.
+- Fill: `bg-gradient-to-r from-teranga-gold to-teranga-clay` — never use single-color green/amber/red. Scarcity is conveyed by the clay end stop plus the accompanying "Plus que N places" pill.
+
+### Pulse Dot
+
+`inline-block h-1.5 w-1.5 rounded-full bg-teranga-green teranga-pulse-dot`. Paired with a tabular-nums counter (`event.registeredCount`) to signal live data. Respects `prefers-reduced-motion`.
+
+### Pills & Status chips
+
+Replaces the hex-gradient "status" table from v1 — editorial pills use semantic tokens and sit closer to 11px.
+
+| Tone | Light classes | Dark classes | Typical use |
+|------|---------------|--------------|-------------|
+| `green` | `bg-teranga-green/10 text-teranga-green border-teranga-green/30` | same | Confirmed, present |
+| `gold` | `bg-teranga-gold-whisper text-teranga-gold-dark border-teranga-gold/30` | `bg-teranga-gold/15 text-teranga-gold-light border-teranga-gold/30` | Pending, pending-payment, waitlisted |
+| `navy` | `bg-teranga-navy text-white border-teranga-navy` | `bg-teranga-gold text-teranga-navy` | Checked-in, emphasized filter chip |
+| `clay` | `bg-teranga-clay/10 text-teranga-clay border-teranga-clay/30` | same | Urgency, cancelled, overdue |
+| `muted` | `bg-muted text-muted-foreground border-border` | same | Archived, refunded |
+| `destructive` | `bg-destructive/10 text-destructive` | same | Sold-out, error |
+
+All pills: `inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-medium`.
 
 ---
 
