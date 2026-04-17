@@ -7,7 +7,8 @@ export type StatusPillTone =
   | "danger"
   | "info"
   | "neutral"
-  | "gold";
+  | "gold"
+  | "clay";
 
 export interface StatusPillProps
   extends Omit<React.HTMLAttributes<HTMLSpanElement>, "children"> {
@@ -32,10 +33,12 @@ export interface StatusPillProps
  * Tone mapping (aligns with the participant app's historical palette):
  * - success → teranga-green      (confirmed, paid)
  * - warning → teranga-gold        (pending, pending_payment, waitlisted, refund_requested)
- * - danger  → destructive         (errors, cancellations that should alarm)
+ * - danger  → destructive         (errors that should alarm — refused, failed)
  * - info    → teranga-navy        (filled navy pill, e.g. checked_in)
  * - neutral → muted               (refunded, archived)
- * - gold    → teranga-gold-soft   (filled bright gold for VIP / ACCÈS VALIDE context)
+ * - gold    → teranga-gold        (filled bright gold for VIP / ACCÈS VALIDE context)
+ * - clay    → teranga-clay        (editorial cancelled / soft-alert, matches the
+ *                                  existing my-events cancelled pill)
  *
  * Parent owns i18n — the primitive never guesses labels from status strings.
  */
@@ -46,6 +49,7 @@ const TONE_CLASSES: Record<StatusPillTone, string> = {
   info: "bg-teranga-navy text-white border-teranga-navy",
   neutral: "bg-muted text-muted-foreground border-border",
   gold: "bg-teranga-gold text-teranga-navy border-teranga-gold",
+  clay: "bg-teranga-clay/10 text-teranga-clay border-teranga-clay/30",
 };
 
 const StatusPill = React.forwardRef<HTMLSpanElement, StatusPillProps>(
