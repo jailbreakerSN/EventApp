@@ -58,6 +58,11 @@ export { DataTable, type DataTableProps, type DataTableColumn } from "./componen
 export { RadioGroup, type RadioGroupProps, type RadioOption } from "./components/radio-group";
 export { SectionHeader, type SectionHeaderProps } from "./components/section-header";
 export { Stepper, type StepperProps, type StepperStep } from "./components/stepper";
+export {
+  OrderSummary,
+  type OrderSummaryProps,
+  type OrderSummaryLabels,
+} from "./components/order-summary";
 
 // ─── i18n ─────────────────────────────────────────────────────────────────
 export {
