@@ -68,6 +68,10 @@ export {
   type TicketPassProps,
   type TicketPassField,
 } from "./components/ticket-pass";
+export {
+  PaymentMethodCard,
+  type PaymentMethodCardProps,
+} from "./components/payment-method-card";
 
 // ─── i18n ─────────────────────────────────────────────────────────────────
 export {
