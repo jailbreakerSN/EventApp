@@ -3,14 +3,15 @@
 import { useState } from "react";
 import Link from "next/link";
 import {
+  ArrowRight,
   Calendar,
-  QrCode,
-  XCircle,
-  RotateCcw,
+  Check,
   ListOrdered,
   LogOut,
+  QrCode,
+  RotateCcw,
   Settings,
-  ArrowRight,
+  XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -154,7 +155,7 @@ export default function MyEventsPage() {
   const firstName = (user?.displayName ?? user?.email ?? "").split(" ")[0];
 
   return (
-    <div className="mx-auto max-w-[1120px] px-6 pt-10 pb-20 lg:px-8">
+    <div className="mx-auto max-w-7xl px-6 pt-10 pb-20 lg:px-8">
       {/* Editorial hero — shared-ui EditorialHero (default variant) */}
       <EditorialHero
         className="mb-7"
@@ -294,6 +295,12 @@ export default function MyEventsPage() {
               {past.map((rawReg) => {
                 const reg = rawReg as RegistrationWithExtras;
                 const gradient = getCoverGradient(reg.eventId).bg;
+                const statusKey =
+                  (reg.status as StatusKey) in STATUS_TONES ? (reg.status as StatusKey) : null;
+                const statusTone: StatusPillTone = statusKey
+                  ? STATUS_TONES[statusKey]
+                  : "neutral";
+                const statusLabel = statusKey ? t(`status.${statusKey}` as const) : reg.status;
                 return (
                   <article key={reg.id} className="overflow-hidden rounded-card border bg-card">
                     <div
@@ -301,9 +308,17 @@ export default function MyEventsPage() {
                       className="teranga-cover relative h-[140px]"
                       style={{ background: gradient }}
                     >
-                      <span className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full bg-teranga-navy/90 px-2.5 py-1 text-[11px] font-semibold text-white">
-                        ✓ {t("status.checked_in")}
-                      </span>
+                      <div className="absolute right-3 top-3">
+                        <StatusPill
+                          tone={statusTone}
+                          label={statusLabel}
+                          icon={
+                            reg.status === "checked_in" ? (
+                              <Check className="h-3 w-3" strokeWidth={3} aria-hidden="true" />
+                            ) : undefined
+                          }
+                        />
+                      </div>
                     </div>
                     <div className="p-5">
                       <p className="font-mono-kicker text-[11px] uppercase tracking-[0.08em] text-muted-foreground">

@@ -58,7 +58,7 @@ export default async function HomePage() {
       <section className="relative overflow-hidden bg-gradient-to-br from-teranga-navy via-teranga-navy-2 to-teranga-forest text-white">
         <div aria-hidden className="absolute inset-0 teranga-hero-texture" />
 
-        <div className="container relative mx-auto max-w-[1280px] px-6 pt-16 pb-20 lg:px-8 lg:pt-20 lg:pb-24">
+        <div className="container relative mx-auto max-w-7xl px-6 pt-16 pb-20 lg:px-8 lg:pt-20 lg:pb-24">
           <div className="grid gap-12 lg:grid-cols-[1.3fr_1fr] lg:items-center lg:gap-14">
             {/* Left column — hero copy */}
             <div>
@@ -178,7 +178,7 @@ export default async function HomePage() {
 
       {/* ——— Featured editorial ——— */}
       {featuredEvents.length > 0 && (
-        <section className="mx-auto max-w-[1280px] px-6 pt-20 pb-4 lg:px-8 lg:pt-24">
+        <section className="mx-auto max-w-7xl px-6 pt-20 pb-4 lg:px-8 lg:pt-24">
           <SectionHeader
             kicker={tHome("featured.kicker")}
             title={tHome("featured.title")}
@@ -207,7 +207,7 @@ export default async function HomePage() {
       )}
 
       {/* ——— Browse all events ——— */}
-      <section className="mx-auto max-w-[1280px] px-6 pt-20 pb-4 lg:px-8 lg:pt-24">
+      <section className="mx-auto max-w-7xl px-6 pt-20 pb-4 lg:px-8 lg:pt-24">
         <SectionHeader
           kicker={tHome("browse.kicker")}
           title={tHome("browse.title")}
@@ -282,7 +282,7 @@ export default async function HomePage() {
       </section>
 
       {/* ——— Value prop band ——— */}
-      <section className="mx-auto mt-24 max-w-[1280px] px-6 lg:px-8">
+      <section className="mx-auto mt-24 max-w-7xl px-6 lg:px-8">
         <div className="grid border-y md:grid-cols-3">
           {[tHome.raw("promises.one"), tHome.raw("promises.two"), tHome.raw("promises.three")].map(
             (p: { num: string; title: string; description: string }, i) => (
@@ -308,7 +308,7 @@ export default async function HomePage() {
       </section>
 
       {/* ——— How it works — editorial onboarding signpost ——— */}
-      <section id="comment-ca-marche" className="mx-auto mt-24 max-w-[1280px] px-6 lg:px-8">
+      <section id="comment-ca-marche" className="mx-auto mt-24 max-w-7xl px-6 lg:px-8">
         <SectionHeader
           kicker={tHome("howItWorks.kicker")}
           title={tHome("howItWorks.heading")}

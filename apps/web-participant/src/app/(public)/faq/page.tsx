@@ -30,7 +30,7 @@ export default async function FaqPage() {
 
       <div className="space-y-8 text-foreground leading-relaxed">
         <section className="rounded-lg border border-dashed border-muted-foreground/30 bg-muted/30 p-6">
-          <h2 className="text-xl font-semibold mb-3">Bientôt disponible</h2>
+          <h2 className="font-serif-display text-2xl font-semibold mb-3">Bientôt disponible</h2>
           <p className="text-muted-foreground">
             Nous préparons une FAQ complète pour répondre à toutes vos questions sur les
             inscriptions, les paiements, les QR badges et plus encore.
@@ -44,7 +44,7 @@ export default async function FaqPage() {
         </section>
 
         <section>
-          <h2 className="text-xl font-semibold mb-3">Sections à venir</h2>
+          <h2 className="font-serif-display text-2xl font-semibold mb-3">Sections à venir</h2>
           <ul className="list-disc pl-6 space-y-2 text-muted-foreground">
             <li>Comment m&apos;inscrire à un événement&nbsp;?</li>
             <li>Comment fonctionne le QR badge&nbsp;?</li>

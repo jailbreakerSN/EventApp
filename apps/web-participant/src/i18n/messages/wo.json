@@ -493,6 +493,14 @@
     "privacy": { "heading": "Kàddu gi" },
     "account": { "heading": "Kont", "delete": "Fomm sama kont" }
   },
+  "notifications": {
+    "errorTitle": "Mënul a xéy xibaar yi",
+    "errorDescription": "Mënul a xéy sa xibaar yi. Jéem waaf ci kanam gu gàtt.",
+    "retry": "Jéem waaf"
+  },
+  "messages": {
+    "retry": "Jéem waaf"
+  },
   "pagination": {
     "nav": "Pagination",
     "prev": "Paas bu jiitu",

@@ -76,7 +76,10 @@ export function Header() {
                 </Button>
               </Link>
               <Link href="/register">
-                <Button size="sm" className="bg-teranga-gold text-white hover:bg-teranga-gold/90">
+                <Button
+                  size="sm"
+                  className="bg-teranga-gold text-teranga-navy hover:bg-teranga-gold/90 dark:bg-teranga-gold-light dark:text-teranga-navy dark:hover:bg-teranga-gold"
+                >
                   {tAuth("register")}
                 </Button>
               </Link>
@@ -149,7 +152,7 @@ export function Header() {
                 <Link href="/register" className="flex-1">
                   <Button
                     size="sm"
-                    className="w-full bg-teranga-gold text-white hover:bg-teranga-gold/90"
+                    className="w-full bg-teranga-gold text-teranga-navy hover:bg-teranga-gold/90 dark:bg-teranga-gold-light dark:text-teranga-navy dark:hover:bg-teranga-gold"
                   >
                     {tAuth("register")}
                   </Button>

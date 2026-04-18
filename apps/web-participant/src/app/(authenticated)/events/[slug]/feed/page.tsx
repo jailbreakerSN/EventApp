@@ -5,8 +5,8 @@ import { useQuery } from "@tanstack/react-query";
 import { eventsApi } from "@/lib/api-client";
 import { useAuth } from "@/hooks/use-auth";
 import { useFeed } from "@/hooks/use-feed";
-import { MessageSquare, ArrowLeft, Loader2 } from "lucide-react";
-import { QueryError, EmptyStateEditorial, SectionHeader } from "@teranga/shared-ui";
+import { AlertTriangle, ArrowLeft, Loader2, MessageSquare, RotateCcw } from "lucide-react";
+import { Button, EmptyStateEditorial, SectionHeader } from "@teranga/shared-ui";
 import Link from "next/link";
 import { CreatePostForm } from "@/components/feed/CreatePostForm";
 import { FeedPostCard } from "@/components/feed/FeedPostCard";
@@ -101,7 +101,18 @@ export default function FeedPage() {
           <span className="sr-only">Chargement du feed...</span>
         </div>
       ) : feedError ? (
-        <QueryError message="Impossible de charger le feed." onRetry={refresh} />
+        <EmptyStateEditorial
+          icon={AlertTriangle}
+          kicker="— ERREUR"
+          title="Impossible de charger le feed"
+          description="Vérifiez votre connexion et réessayez dans un instant."
+          action={
+            <Button variant="outline" onClick={refresh}>
+              <RotateCcw className="mr-2 h-4 w-4" aria-hidden="true" />
+              Réessayer
+            </Button>
+          }
+        />
       ) : posts.length === 0 ? (
         <EmptyStateEditorial
           icon={MessageSquare}

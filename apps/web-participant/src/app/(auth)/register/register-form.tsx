@@ -118,6 +118,7 @@ export function RegisterForm() {
 
   return (
     <Card>
+      <h1 className="sr-only">{tAuth("createAccount")}</h1>
       <CardHeader className="text-center">
         <Link href="/" className="mx-auto mb-2 block">
           <ThemeLogo

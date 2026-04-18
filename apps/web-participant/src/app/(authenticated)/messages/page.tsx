@@ -5,8 +5,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocale, useTranslations } from "next-intl";
 import { messagingApi } from "@/lib/api-client";
 import { useAuth } from "@/hooks/use-auth";
-import { Send, Loader2, ArrowLeft } from "lucide-react";
-import { QueryError, SectionHeader } from "@teranga/shared-ui";
+import { AlertTriangle, ArrowLeft, Loader2, RotateCcw, Send } from "lucide-react";
+import { Button, EmptyStateEditorial, SectionHeader } from "@teranga/shared-ui";
 import Link from "next/link";
 import type { Conversation, Message } from "@teranga/shared-types";
 
@@ -178,10 +178,23 @@ export default function MessagesPage() {
             <h2 className="text-sm font-semibold text-foreground">{t("listHeading")}</h2>
           </div>
           {convError ? (
-            <QueryError
-              message={t("errorConversations")}
-              onRetry={() => qc.invalidateQueries({ queryKey: ["conversations"] })}
-            />
+            <div className="p-6">
+              <EmptyStateEditorial
+                icon={AlertTriangle}
+                kicker="— ERREUR"
+                title={t("errorConversations")}
+                action={
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => qc.invalidateQueries({ queryKey: ["conversations"] })}
+                  >
+                    <RotateCcw className="mr-2 h-4 w-4" aria-hidden="true" />
+                    {t("retry")}
+                  </Button>
+                }
+              />
+            </div>
           ) : loadingConvs ? (
             <div className="animate-pulse divide-y divide-border">
               {[1, 2, 3, 4, 5].map((i) => (
@@ -273,9 +286,22 @@ export default function MessagesPage() {
 
               <div className="flex-1 overflow-y-auto p-4 space-y-4">
                 {msgsError ? (
-                  <QueryError
-                    message={t("errorMessages")}
-                    onRetry={() => qc.invalidateQueries({ queryKey: ["messages", selectedConv] })}
+                  <EmptyStateEditorial
+                    icon={AlertTriangle}
+                    kicker="— ERREUR"
+                    title={t("errorMessages")}
+                    action={
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                          qc.invalidateQueries({ queryKey: ["messages", selectedConv] })
+                        }
+                      >
+                        <RotateCcw className="mr-2 h-4 w-4" aria-hidden="true" />
+                        {t("retry")}
+                      </Button>
+                    }
                   />
                 ) : loadingMsgs ? (
                   <div className="animate-pulse space-y-4 py-4">

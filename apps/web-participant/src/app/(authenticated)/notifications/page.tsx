@@ -1,13 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { Bell, CheckCheck, Circle } from "lucide-react";
+import { AlertTriangle, Bell, CheckCheck, Circle, RotateCcw } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import { useNotifications, useMarkAsRead, useMarkAllAsRead } from "@/hooks/use-notifications";
 import {
   Button,
   EmptyStateEditorial,
-  QueryError,
   SectionHeader,
 } from "@teranga/shared-ui";
 import type { Notification } from "@teranga/shared-types";
@@ -66,7 +65,18 @@ export default function NotificationsPage() {
       />
 
       {isError ? (
-        <QueryError onRetry={refetch} />
+        <EmptyStateEditorial
+          icon={AlertTriangle}
+          kicker="— ERREUR"
+          title={t("errorTitle")}
+          description={t("errorDescription")}
+          action={
+            <Button variant="outline" onClick={() => refetch()}>
+              <RotateCcw className="mr-2 h-4 w-4" aria-hidden="true" />
+              {t("retry")}
+            </Button>
+          }
+        />
       ) : isLoading ? (
         <div className="space-y-2">
           {[1, 2, 3, 4, 5].map((i) => (
@@ -97,7 +107,9 @@ export default function NotificationsPage() {
                 if (!n.isRead) markAsRead.mutate(n.id);
               }}
               className={`w-full rounded-lg border p-4 text-left transition-colors ${
-                n.isRead ? "bg-card" : "border-teranga-gold/30 bg-teranga-gold/5"
+                n.isRead
+                  ? "bg-card"
+                  : "border-teranga-gold/30 bg-teranga-gold/5 dark:border-teranga-gold/40 dark:bg-teranga-gold/15"
               }`}
             >
               <div className="flex items-start gap-3">
