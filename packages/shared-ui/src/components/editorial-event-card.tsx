@@ -173,7 +173,6 @@ function EditorialEventCard({
               sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
             />
           ) : (
-            // eslint-disable-next-line @next/next/no-img-element
             <img
               src={coverImageUrl}
               alt=""

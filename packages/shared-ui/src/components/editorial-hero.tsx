@@ -45,6 +45,14 @@ export interface EditorialHeroProps extends Omit<React.HTMLAttributes<HTMLElemen
    * the lead copy.
    */
   actions?: React.ReactNode;
+  /**
+   * Optional full-bleed background node rendered UNDER the navy texture
+   * overlay (navy variant only). Intended for an event cover image —
+   * consumers inject their framework's image component (e.g. next/image
+   * with `fill`) so the primitive stays framework-agnostic. Ignored on
+   * the default variant.
+   */
+  backgroundNode?: React.ReactNode;
   /** Additional classes appended to the outer `<section>`. */
   className?: string;
 }
@@ -76,7 +84,18 @@ const TITLE_SIZE: Record<"default" | "navy", string> = {
  */
 const EditorialHero = React.forwardRef<HTMLElement, EditorialHeroProps>(
   (
-    { kicker, title, lead, variant = "default", pills, stats, actions, className, ...rest },
+    {
+      kicker,
+      title,
+      lead,
+      variant = "default",
+      pills,
+      stats,
+      actions,
+      backgroundNode,
+      className,
+      ...rest
+    },
     ref,
   ) => {
     const isNavy = variant === "navy";
@@ -94,6 +113,11 @@ const EditorialHero = React.forwardRef<HTMLElement, EditorialHeroProps>(
           )}
           {...rest}
         >
+          {backgroundNode && (
+            <div aria-hidden="true" className="absolute inset-0 z-0 overflow-hidden">
+              {backgroundNode}
+            </div>
+          )}
           <div aria-hidden="true" className="teranga-hero-texture absolute inset-0" />
           <div
             aria-hidden="true"
@@ -113,9 +137,7 @@ const EditorialHero = React.forwardRef<HTMLElement, EditorialHeroProps>(
                   {lead}
                 </p>
               )}
-              {actions && (
-                <div className="mt-7 flex flex-wrap items-center gap-3">{actions}</div>
-              )}
+              {actions && <div className="mt-7 flex flex-wrap items-center gap-3">{actions}</div>}
               {stats && stats.length > 0 && (
                 <dl className="mt-9 grid grid-cols-2 gap-y-5 border-t border-white/10 pt-6 sm:flex sm:flex-wrap sm:gap-x-10 sm:gap-y-0">
                   {stats.map((stat) => (
@@ -140,11 +162,7 @@ const EditorialHero = React.forwardRef<HTMLElement, EditorialHeroProps>(
     // Default variant — light bg, gold kicker, navy type. Suitable for
     // in-page editorial heroes such as /my-events.
     return (
-      <section
-        ref={ref}
-        className={cn("mx-auto max-w-6xl", className)}
-        {...rest}
-      >
+      <section ref={ref} className={cn("mx-auto max-w-6xl", className)} {...rest}>
         <div className="flex flex-wrap items-end justify-between gap-6">
           <div className="max-w-[760px]">
             {kicker && (
@@ -153,12 +171,7 @@ const EditorialHero = React.forwardRef<HTMLElement, EditorialHeroProps>(
               </p>
             )}
             {pills && <div className="mt-3 flex flex-wrap gap-2">{pills}</div>}
-            <h1
-              className={cn(
-                "font-serif-display mt-3 text-balance text-foreground",
-                titleClass,
-              )}
-            >
+            <h1 className={cn("font-serif-display mt-3 text-balance text-foreground", titleClass)}>
               {title}
             </h1>
             {lead && (
