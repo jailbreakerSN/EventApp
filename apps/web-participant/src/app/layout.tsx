@@ -5,6 +5,7 @@ import { getLocale, getMessages } from "next-intl/server";
 import { Providers } from "./providers";
 import { Toaster } from "@teranga/shared-ui";
 import { OfflineIndicator } from "@/components/offline-indicator";
+import { PwaInstallBanner } from "@/components/pwa-install-banner";
 import { SwRegister } from "@/components/sw-register";
 import "./globals.css";
 
@@ -74,6 +75,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           <OfflineIndicator />
           <Providers>{children}</Providers>
           <Toaster />
+          <PwaInstallBanner />
           <SwRegister />
         </NextIntlClientProvider>
       </body>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useCreateEvent } from "@/hooks/use-events";
 import { useAuth } from "@/hooks/use-auth";
@@ -44,6 +44,64 @@ const FORMAT_OPTIONS = [
   { value: "hybrid", label: "Hybride" },
 ];
 
+const DRAFT_KEY = "teranga-new-event-draft";
+
+function TagInput({ tags, onChange }: { tags: string[]; onChange: (tags: string[]) => void }) {
+  const [inputValue, setInputValue] = useState("");
+
+  const addTag = (raw: string) => {
+    const trimmed = raw.trim().toLowerCase();
+    if (trimmed && !tags.includes(trimmed)) onChange([...tags, trimmed]);
+    setInputValue("");
+  };
+
+  const removeTag = (index: number) => onChange(tags.filter((_, i) => i !== index));
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" || e.key === ",") {
+      e.preventDefault();
+      addTag(inputValue);
+    } else if (e.key === "Backspace" && !inputValue && tags.length > 0) {
+      removeTag(tags.length - 1);
+    }
+  };
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const v = e.target.value;
+    if (v.endsWith(",")) { addTag(v.slice(0, -1)); } else { setInputValue(v); }
+  };
+
+  return (
+    <div className="flex flex-wrap gap-1.5 p-2 min-h-[44px] rounded-lg border border-border focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary">
+      {tags.map((tag, i) => (
+        <span
+          key={i}
+          className="inline-flex items-center gap-1 px-2 py-0.5 bg-primary/10 text-primary rounded-md text-sm font-medium"
+        >
+          {tag}
+          <button
+            type="button"
+            onClick={() => removeTag(i)}
+            aria-label={`Supprimer le tag ${tag}`}
+            className="hover:text-primary/60 transition-colors"
+          >
+            <X className="h-3 w-3" />
+          </button>
+        </span>
+      ))}
+      <input
+        type="text"
+        value={inputValue}
+        onChange={handleChange}
+        onKeyDown={handleKeyDown}
+        onBlur={() => { if (inputValue.trim()) addTag(inputValue); }}
+        placeholder={tags.length === 0 ? "tech, dakar, startup…" : ""}
+        className="flex-1 min-w-[120px] outline-none text-sm bg-transparent"
+        aria-label="Ajouter un tag"
+      />
+    </div>
+  );
+}
 const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10 Mo
 
@@ -83,7 +141,20 @@ export default function NewEventPage() {
   const [format, setFormat] = useState("in_person");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
-  const [tags, setTags] = useState("");
+  const [tags, setTags] = useState<string[]>([]);
+
+  // Draft autosave — check once on mount using lazy initialiser to avoid flash
+  const [hasDraft, setHasDraft] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      const saved = localStorage.getItem(DRAFT_KEY);
+      if (!saved) return false;
+      const d = JSON.parse(saved) as { title?: string };
+      return !!(d.title?.trim());
+    } catch {
+      return false;
+    }
+  });
 
   // Cover image
   const [coverImageFile, setCoverImageFile] = useState<File | null>(null);
@@ -154,6 +225,73 @@ export default function NewEventPage() {
     }
     if (coverInputRef.current) coverInputRef.current.value = "";
   }, [coverImagePreview]);
+
+  // Autosave to localStorage whenever meaningful content is present
+  useEffect(() => {
+    if (!title.trim()) return;
+    try {
+      localStorage.setItem(
+        DRAFT_KEY,
+        JSON.stringify({
+          title,
+          description,
+          shortDescription,
+          category,
+          format,
+          startDate,
+          endDate,
+          tags,
+          locationName,
+          address,
+          city,
+          country,
+          streamUrl,
+          tickets,
+          isPublic,
+          requiresApproval,
+          maxAttendees,
+        }),
+      );
+    } catch {
+      // Quota exceeded or private mode — silently skip
+    }
+  }, [
+    title, description, shortDescription, category, format, startDate, endDate, tags,
+    locationName, address, city, country, streamUrl, tickets, isPublic, requiresApproval, maxAttendees,
+  ]);
+
+  const restoreDraft = useCallback(() => {
+    try {
+      const saved = localStorage.getItem(DRAFT_KEY);
+      if (!saved) return;
+      const d = JSON.parse(saved) as Record<string, unknown>;
+      if (d.title) setTitle(d.title as string);
+      if (d.description) setDescription(d.description as string);
+      if (d.shortDescription) setShortDescription(d.shortDescription as string);
+      if (d.category) setCategory(d.category as string);
+      if (d.format) setFormat(d.format as string);
+      if (d.startDate) setStartDate(d.startDate as string);
+      if (d.endDate) setEndDate(d.endDate as string);
+      if (Array.isArray(d.tags)) setTags(d.tags as string[]);
+      if (d.locationName) setLocationName(d.locationName as string);
+      if (d.address) setAddress(d.address as string);
+      if (d.city) setCity(d.city as string);
+      if (d.country) setCountry(d.country as string);
+      if (d.streamUrl) setStreamUrl(d.streamUrl as string);
+      if (Array.isArray(d.tickets)) setTickets(d.tickets as typeof tickets);
+      if (typeof d.isPublic === "boolean") setIsPublic(d.isPublic);
+      if (typeof d.requiresApproval === "boolean") setRequiresApproval(d.requiresApproval);
+      if (d.maxAttendees) setMaxAttendees(d.maxAttendees as string);
+    } catch {
+      // Corrupted draft — ignore
+    }
+    setHasDraft(false);
+  }, []);
+
+  const discardDraft = useCallback(() => {
+    try { localStorage.removeItem(DRAFT_KEY); } catch {}
+    setHasDraft(false);
+  }, []);
 
   function validateStep(): boolean {
     setError("");
@@ -283,10 +421,7 @@ export default function NewEventPage() {
       startDate: new Date(startDate).toISOString(),
       endDate: new Date(endDate).toISOString(),
       timezone: "Africa/Dakar",
-      tags: tags
-        .split(",")
-        .map((t) => t.trim())
-        .filter(Boolean),
+      tags,
       location: {
         name: locationName.trim(),
         address: address.trim(),
@@ -328,6 +463,7 @@ export default function NewEventPage() {
         }
       }
 
+      try { localStorage.removeItem(DRAFT_KEY); } catch {}
       router.push(`/events/${eventId}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erreur lors de la création");
@@ -359,6 +495,29 @@ export default function NewEventPage() {
       </Breadcrumb>
 
       <h1 className="text-2xl font-bold text-foreground mb-6">Créer un événement</h1>
+
+      {/* Draft restore banner */}
+      {hasDraft && (
+        <div className="flex items-center justify-between bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg px-4 py-3 mb-4 text-sm">
+          <span className="text-amber-800 dark:text-amber-300">
+            Un brouillon a été trouvé. Voulez-vous reprendre là où vous vous étiez arrêté ?
+          </span>
+          <div className="flex items-center gap-3 ml-4 shrink-0">
+            <button
+              onClick={restoreDraft}
+              className="font-semibold text-amber-700 hover:text-amber-900 dark:text-amber-400 dark:hover:text-amber-200"
+            >
+              Reprendre
+            </button>
+            <button
+              onClick={discardDraft}
+              className="text-amber-600 hover:text-amber-800 dark:text-amber-500 dark:hover:text-amber-300"
+            >
+              Ignorer
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Step indicator */}
       <nav aria-label="Étapes de création d'événement" className="flex items-center gap-2 mb-8">
@@ -595,20 +754,11 @@ export default function NewEventPage() {
               </div>
             </div>
             <div>
-              <label
-                htmlFor="event-tags"
-                className="block text-sm font-medium text-foreground mb-1"
-              >
-                Tags
-              </label>
-              <input
-                id="event-tags"
-                type="text"
-                value={tags}
-                onChange={(e) => setTags(e.target.value)}
-                placeholder="tech, dakar, startup (séparés par des virgules)"
-                className="w-full px-4 py-2.5 rounded-lg border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-              />
+              <label className="block text-sm font-medium text-foreground mb-1">Tags</label>
+              <TagInput tags={tags} onChange={setTags} />
+              <p className="text-xs text-muted-foreground mt-1">
+                Appuyez sur Entrée ou virgule pour ajouter un tag.
+              </p>
             </div>
           </div>
         )}
