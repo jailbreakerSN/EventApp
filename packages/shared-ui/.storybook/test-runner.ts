@@ -2,6 +2,7 @@ import type { TestRunnerConfig } from "@storybook/test-runner";
 import { getStoryContext } from "@storybook/test-runner";
 import { AxeBuilder } from "@axe-core/playwright";
 import { toMatchImageSnapshot } from "jest-image-snapshot";
+import fs from "node:fs";
 import path from "node:path";
 
 /**
@@ -215,8 +216,6 @@ const config: TestRunnerConfig = {
       return;
     }
 
-    ensureMatcher();
-
     const image = await page.screenshot({
       fullPage: true,
       animations: "disabled",
@@ -231,6 +230,33 @@ const config: TestRunnerConfig = {
       .replace(/\//g, "-")
       .replace(/[^a-zA-Z0-9_-]/g, "")
       .toLowerCase();
+
+    // Auto-seed a missing baseline with the current screenshot and return
+    // without failing the assertion. This bypasses jest's `--ci` refusal
+    // to write new snapshots, which we intentionally disable for *missing*
+    // baselines only — a first CI run on a new story (or on a baseline
+    // that was deleted because it drifted in a different render env)
+    // should produce a reference image rather than fail.
+    //
+    // The workflow detects newly-seeded PNGs via `git status` after the
+    // run, uploads them as an artifact, and fails the job with a message
+    // telling the dev to commit the baselines. Subsequent runs compare
+    // against the committed baseline as usual.
+    //
+    // This makes baselines captured locally (where fonts render
+    // differently) safe to delete — they re-materialise from the CI env
+    // on the next run with no manual workflow_dispatch step needed.
+    const baselineFile = path.join(SNAPSHOT_DIR, `${identifier}.png`);
+    if (!fs.existsSync(baselineFile)) {
+      fs.mkdirSync(SNAPSHOT_DIR, { recursive: true });
+      fs.writeFileSync(baselineFile, image);
+      process.stderr.write(
+        `[snapshot:seed] created new baseline ${identifier}.png — commit before merging\n`,
+      );
+      return;
+    }
+
+    ensureMatcher();
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (expect(image) as any).toMatchImageSnapshot({

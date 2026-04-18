@@ -153,6 +153,61 @@ jobs:
             "npx http-server storybook-static --port 6006 --silent" \
             "npx wait-on tcp:127.0.0.1:6006 && npx test-storybook $CI_FLAG --url http://127.0.0.1:6006 --maxWorkers=2 --no-index-json"
 
+      # ── Auto-seeded baselines ────────────────────────────────────────
+      # The test-runner auto-writes a baseline for any story that doesn't
+      # have one yet (see .storybook/test-runner.ts). Those files appear
+      # as untracked PNGs under `__image_snapshots__/`. Detect them, fail
+      # the job with a clear message, and upload the baselines as an
+      # artifact so the dev can download + commit them in the PR.
+      #
+      # Running *after* the test-runner step with `if: always()` so this
+      # fires whether the test-runner passed or failed for other reasons.
+      - name: Detect auto-seeded baselines
+        id: seeded
+        if: always()
+        run: |
+          set -euo pipefail
+          # Match only top-level baseline PNGs (i.e. not the
+          # `__diff_output__/` or `__received_output__/` renders that
+          # jest-image-snapshot writes when a diff fires). Without the
+          # `[^/]+` constraint the artifact would also pick up diff
+          # images and the `Fail job` step would trip on any mismatch.
+          new_pngs=$(git status --porcelain packages/shared-ui/__image_snapshots__ \
+            | awk '/^\?\? packages\/shared-ui\/__image_snapshots__\/[^/]+\.png$/ {print $2}')
+          if [ -n "$new_pngs" ]; then
+            count=$(echo "$new_pngs" | wc -l | tr -d ' ')
+            echo "count=$count" >> "$GITHUB_OUTPUT"
+            {
+              echo "files<<EOF"
+              echo "$new_pngs"
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+            echo "::warning::$count baseline(s) were auto-seeded in this run. Download the 'shared-ui-seeded-baselines' artifact and commit the PNGs to this PR branch."
+          else
+            echo "count=0" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload auto-seeded baselines (artifact)
+        if: always() && steps.seeded.outputs.count != '0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: shared-ui-seeded-baselines
+          path: packages/shared-ui/__image_snapshots__/*.png
+          retention-days: 14
+          if-no-files-found: error
+
+      # Fail the job when baselines were auto-seeded so merging requires
+      # the dev to download + commit them. The artifact step above will
+      # have already succeeded, so the PNGs are recoverable.
+      - name: Fail job when baselines were seeded
+        if: always() && steps.seeded.outputs.count != '0' && github.event.inputs.bootstrap_baselines != 'true'
+        run: |
+          echo "::error::${{ steps.seeded.outputs.count }} baseline(s) were auto-seeded during this run. Download the 'shared-ui-seeded-baselines' artifact, copy the PNGs into packages/shared-ui/__image_snapshots__/, and push the commit. The next CI run will then compare against them normally."
+          echo ""
+          echo "Seeded files:"
+          echo "${{ steps.seeded.outputs.files }}"
+          exit 1
+
       # ── Failure artifacts ────────────────────────────────────────────
       # jest-image-snapshot writes diff PNGs + actual renders to
       # `__image_snapshots__/__diff_output__/` on mismatch. Upload them
