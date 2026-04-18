@@ -6,19 +6,25 @@ import { sessionsApi, eventsApi } from "@/lib/api-client";
 import { Calendar, Clock, Mic, Bookmark, Loader2, ArrowLeft, AlertTriangle } from "lucide-react";
 import { EmptyStateEditorial, SectionHeader } from "@teranga/shared-ui";
 import Link from "next/link";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
+import { intlLocale } from "@/lib/intl-locale";
 
-function formatTime(iso: string) {
-  return new Date(iso).toLocaleString("fr-FR", {
+function formatTime(iso: string, regional: string) {
+  return new Date(iso).toLocaleString(regional, {
     hour: "2-digit",
     minute: "2-digit",
     day: "numeric",
     month: "short",
+    timeZone: "Africa/Dakar",
   });
 }
 
 export default function SchedulePage() {
-  const tCommon = useTranslations("common"); void tCommon;
+  const t = useTranslations("schedule");
+  const tCommon = useTranslations("common");
+  void tCommon;
+  const locale = useLocale();
+  const regional = intlLocale(locale);
   const { slug } = useParams<{ slug: string }>();
   const qc = useQueryClient();
 
@@ -84,14 +90,14 @@ export default function SchedulePage() {
       <div className="max-w-3xl mx-auto px-4 py-16">
         <EmptyStateEditorial
           icon={AlertTriangle}
-          kicker="— ERREUR"
-          title="Impossible de charger le programme"
+          kicker={t("errorKicker")}
+          title={t("errorTitle")}
           action={
             <button
               onClick={() => qc.invalidateQueries({ queryKey: ["sessions", eventId] })}
               className="text-sm font-medium text-teranga-gold-dark hover:underline"
             >
-              Réessayer
+              {t("retry")}
             </button>
           }
         />
@@ -105,23 +111,26 @@ export default function SchedulePage() {
         href={event ? `/events/${event.slug}` : "/events"}
         className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
       >
-        <ArrowLeft className="h-4 w-4" /> Retour
+        <ArrowLeft className="h-4 w-4" /> {t("back")}
       </Link>
 
       <SectionHeader
-        kicker="— PROGRAMME"
-        title="Programme"
+        kicker={t("kicker")}
+        title={t("title")}
         subtitle={event?.title}
         size="hero"
         as="h1"
       />
+      <p className="font-mono-kicker text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+        — {t("timezone")}
+      </p>
 
       {sessions.length === 0 ? (
         <EmptyStateEditorial
           icon={Calendar}
-          kicker="— AUCUNE SESSION"
-          title="Aucune session programmée"
-          description="Le programme sera disponible prochainement. Revenez bientôt."
+          kicker={t("emptyKicker")}
+          title={t("emptyTitle")}
+          description={t("emptyDescription")}
         />
       ) : (
         <div className="space-y-4">
@@ -138,7 +147,7 @@ export default function SchedulePage() {
                     <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground mb-2">
                       <span className="flex items-center gap-1">
                         <Clock className="h-3.5 w-3.5" />
-                        {formatTime(session.startTime)} — {formatTime(session.endTime)}
+                        {formatTime(session.startTime, regional)} — {formatTime(session.endTime, regional)}
                       </span>
                       {session.location && (
                         <span className="bg-accent text-muted-foreground text-xs px-2 py-0.5 rounded-full">
@@ -148,7 +157,7 @@ export default function SchedulePage() {
                       {session.speakerIds.length > 0 && (
                         <span className="flex items-center gap-1">
                           <Mic className="h-3.5 w-3.5" />
-                          {session.speakerIds.length} intervenant(s)
+                          {t("speakersCount", { count: session.speakerIds.length })}
                         </span>
                       )}
                     </div>
@@ -163,13 +172,9 @@ export default function SchedulePage() {
                       onClick={() => toggleBookmark.mutate({ sessionId: session.id, isBookmarked })}
                       className={`p-2 rounded-lg transition-colors ${isBookmarked ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-foreground hover:bg-muted"}`}
                       title={
-                        isBookmarked ? "Retirer du programme perso" : "Ajouter au programme perso"
+                        isBookmarked ? t("removeBookmarkShort") : t("addBookmarkShort")
                       }
-                      aria-label={
-                        isBookmarked
-                          ? "Retirer du programme personnel"
-                          : "Ajouter au programme personnel"
-                      }
+                      aria-label={isBookmarked ? t("removeBookmarkAria") : t("addBookmarkAria")}
                     >
                       <Bookmark className={`h-5 w-5 ${isBookmarked ? "fill-current" : ""}`} />
                     </button>

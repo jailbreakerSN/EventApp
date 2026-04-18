@@ -26,7 +26,14 @@
     "price": "Ñaari xaalis",
     "status": "Melo wi",
     "free": "Ba neex",
-    "fromPrice": "Dale fi {price}"
+    "fromPrice": "Dale fi {price}",
+    "errorBoundary": {
+      "kicker": "— NJUMTE",
+      "title": "Am na njumte",
+      "description": "Mënunoo yónnee xët bi. Jéemal ay saañu.",
+      "retry": "Jéem waaf",
+      "home": "Kër"
+    }
   },
   "auth": {
     "login": "Dugg",
@@ -499,6 +506,7 @@
     "ticketPrefix": "Billet",
     "registeredOn": "Bind ci",
     "waitlistPosition": "Palaas #{n}",
+    "waitlistPositionAria": "Nga ci palaas {n} ci liste d'attente bi",
     "badge": "Badge",
     "refund": "Delloo ñaari xaalis",
     "leaveWaitlist": "Génn liste d'attente bi",
@@ -546,6 +554,23 @@
   },
   "authGuard": {
     "checking": "Di verife..."
+  },
+  "schedule": {
+    "kicker": "— PROGRAMME",
+    "title": "Programme",
+    "timezone": "Waxtu yi ci waxtu Dakar (WAIST, UTC+0)",
+    "back": "Dellu",
+    "errorKicker": "— NJUMTE",
+    "errorTitle": "Mënunoo yónnee programme bi",
+    "retry": "Jéem waaf",
+    "emptyKicker": "— AMUL SESYOŊ",
+    "emptyTitle": "Amul sesyoŋ bu nu planeel",
+    "emptyDescription": "Programme bi dina jot fi kanam. Deluwaat fi yàgg.",
+    "speakersCount": "{count, plural, one {# waxtaankat} other {# waxtaankat}}",
+    "addBookmarkShort": "Dencal ci sama programme",
+    "removeBookmarkShort": "Jële ci sama programme",
+    "addBookmarkAria": "Dencal sesyoŋ bi ci sa programme bu tur",
+    "removeBookmarkAria": "Jële sesyoŋ bi ci sa programme bu tur"
   },
   "newsletter": {
     "heading": "Xam xew-xew yu Senegaal",

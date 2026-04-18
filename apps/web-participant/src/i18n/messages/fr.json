@@ -20,7 +20,14 @@
     "price": "Prix",
     "status": "Statut",
     "free": "Gratuit",
-    "fromPrice": "À partir de {price}"
+    "fromPrice": "À partir de {price}",
+    "errorBoundary": {
+      "kicker": "— ERREUR",
+      "title": "Une erreur est survenue",
+      "description": "Impossible de charger cette page. Veuillez réessayer.",
+      "retry": "Réessayer",
+      "home": "Accueil"
+    }
   },
   "auth": {
     "login": "Connexion",
@@ -538,6 +545,7 @@
     "ticketPrefix": "Billet",
     "registeredOn": "Inscrit le",
     "waitlistPosition": "Position #{n}",
+    "waitlistPositionAria": "Vous êtes en position {n} sur la liste d'attente",
     "badge": "Badge",
     "refund": "Remboursement",
     "refundRequested": "Demande de remboursement envoyée",
@@ -700,6 +708,23 @@
     "photoUploadError": "Erreur lors du téléversement de la photo.",
     "photoUploaded": "Photo de profil mise à jour.",
     "notAuthenticated": "Non authentifié"
+  },
+  "schedule": {
+    "kicker": "— PROGRAMME",
+    "title": "Programme",
+    "timezone": "Horaires en heure de Dakar (WAIST, UTC+0)",
+    "back": "Retour",
+    "errorKicker": "— ERREUR",
+    "errorTitle": "Impossible de charger le programme",
+    "retry": "Réessayer",
+    "emptyKicker": "— AUCUNE SESSION",
+    "emptyTitle": "Aucune session programmée",
+    "emptyDescription": "Le programme sera disponible prochainement. Revenez bientôt.",
+    "speakersCount": "{count, plural, one {# intervenant} other {# intervenants}}",
+    "addBookmarkShort": "Ajouter au programme perso",
+    "removeBookmarkShort": "Retirer du programme perso",
+    "addBookmarkAria": "Ajouter cette session à votre programme personnel",
+    "removeBookmarkAria": "Retirer cette session de votre programme personnel"
   },
   "newsletter": {
     "heading": "Restez informé des événements au Sénégal",

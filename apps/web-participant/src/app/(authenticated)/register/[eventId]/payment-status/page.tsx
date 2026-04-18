@@ -149,7 +149,11 @@ export default function PaymentStatusPage() {
               </p>
 
               {registration && redirectCountdown !== null && redirectCountdown > 0 && (
-                <p className="mt-3 text-sm text-primary animate-pulse">
+                <p
+                  role="status"
+                  aria-live="polite"
+                  className="mt-3 text-sm text-primary animate-pulse"
+                >
                   {t("redirectIn", { seconds: redirectCountdown })}
                 </p>
               )}

@@ -20,7 +20,14 @@
     "price": "Price",
     "status": "Status",
     "free": "Free",
-    "fromPrice": "From {price}"
+    "fromPrice": "From {price}",
+    "errorBoundary": {
+      "kicker": "— ERROR",
+      "title": "Something went wrong",
+      "description": "We couldn’t load this page. Please try again.",
+      "retry": "Retry",
+      "home": "Home"
+    }
   },
   "auth": {
     "login": "Log in",
@@ -535,6 +542,7 @@
     "ticketPrefix": "Ticket",
     "registeredOn": "Registered on",
     "waitlistPosition": "Position #{n}",
+    "waitlistPositionAria": "You are number {n} on the waitlist",
     "badge": "Badge",
     "refund": "Refund",
     "refundRequested": "Refund request sent",
@@ -697,6 +705,23 @@
     "photoUploadError": "Failed to upload the photo.",
     "photoUploaded": "Profile photo updated.",
     "notAuthenticated": "Not authenticated"
+  },
+  "schedule": {
+    "kicker": "— SCHEDULE",
+    "title": "Schedule",
+    "timezone": "Times shown in Dakar time (WAIST, UTC+0)",
+    "back": "Back",
+    "errorKicker": "— ERROR",
+    "errorTitle": "Couldn’t load the schedule",
+    "retry": "Retry",
+    "emptyKicker": "— NO SESSIONS",
+    "emptyTitle": "No sessions scheduled",
+    "emptyDescription": "The programme will be published soon. Check back later.",
+    "speakersCount": "{count, plural, one {# speaker} other {# speakers}}",
+    "addBookmarkShort": "Save to my schedule",
+    "removeBookmarkShort": "Remove from my schedule",
+    "addBookmarkAria": "Add this session to your personal schedule",
+    "removeBookmarkAria": "Remove this session from your personal schedule"
   },
   "newsletter": {
     "heading": "Stay informed about events in Senegal",
