@@ -87,6 +87,12 @@ export {
   type EditorialHeroProps,
   type EditorialHeroStat,
 } from "./components/editorial-hero";
+export {
+  EditorialEventCard,
+  type EditorialEventCardProps,
+  type EditorialEventCardLinkComponent,
+  type EditorialEventCardImageComponent,
+} from "./components/editorial-event-card";
 
 // ─── i18n ─────────────────────────────────────────────────────────────────
 export {
