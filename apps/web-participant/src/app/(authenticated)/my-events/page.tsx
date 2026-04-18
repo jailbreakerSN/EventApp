@@ -21,12 +21,13 @@ import { paymentsApi } from "@/lib/api-client";
 import {
   Button,
   Card,
-  EmptyState,
-  formatDate,
   ConfirmDialog,
-  SectionHeader,
-  StatusPill,
+  EditorialHero,
+  EmptyState,
+  EmptyStateEditorial,
+  formatDate,
   getErrorMessage,
+  StatusPill,
   type StatusPillTone,
 } from "@teranga/shared-ui";
 import type { Registration } from "@teranga/shared-types";
@@ -154,19 +155,17 @@ export default function MyEventsPage() {
 
   return (
     <div className="mx-auto max-w-[1120px] px-6 pt-10 pb-20 lg:px-8">
-      {/* Editorial hero */}
-      <SectionHeader
-        as="h1"
-        size="hero"
-        className="mb-7 items-end gap-5"
+      {/* Editorial hero — shared-ui EditorialHero (default variant) */}
+      <EditorialHero
+        className="mb-7"
         kicker={t("kicker", { name: firstName })}
         title={t("headline")}
-        subtitle={
+        lead={
           meta?.total !== undefined
             ? t("countLabelWithPast", { count: upcoming.length, past: past.length })
             : undefined
         }
-        action={
+        actions={
           <div className="flex gap-2">
             <Link href="/settings">
               <Button variant="outline" className="rounded-full">
@@ -185,18 +184,12 @@ export default function MyEventsPage() {
       />
 
       {/* Tab bar */}
-      <div
-        role="tablist"
-        aria-label={t("title")}
-        className="mb-8 flex gap-1 border-b"
-      >
-        {(
-          [
-            { id: "upcoming" as const, label: t("tabs.upcoming"), count: upcoming.length },
-            { id: "past" as const, label: t("tabs.past"), count: past.length },
-            { id: "saved" as const, label: t("tabs.saved"), count: 0 },
-          ]
-        ).map((ti) => {
+      <div role="tablist" aria-label={t("title")} className="mb-8 flex gap-1 border-b">
+        {[
+          { id: "upcoming" as const, label: t("tabs.upcoming"), count: upcoming.length },
+          { id: "past" as const, label: t("tabs.past"), count: past.length },
+          { id: "saved" as const, label: t("tabs.saved"), count: 0 },
+        ].map((ti) => {
           const active = tab === ti.id;
           return (
             <button
@@ -248,11 +241,7 @@ export default function MyEventsPage() {
 
       {/* Upcoming panel */}
       {tab === "upcoming" && (
-        <div
-          role="tabpanel"
-          id="panel-upcoming"
-          className="flex flex-col gap-4"
-        >
+        <div role="tabpanel" id="panel-upcoming" className="flex flex-col gap-4">
           {registrations && upcoming.length === 0 && !isLoading && (
             <EmptyState
               icon={Calendar}
@@ -296,7 +285,7 @@ export default function MyEventsPage() {
       {tab === "past" && (
         <div role="tabpanel" id="panel-past">
           {past.length === 0 ? (
-            <EmptyEditorialPanel
+            <EmptyStateEditorial
               title={t("pastEmptyTitle")}
               description={t("pastEmptyDescription")}
             />
@@ -306,10 +295,7 @@ export default function MyEventsPage() {
                 const reg = rawReg as RegistrationWithExtras;
                 const gradient = getCoverGradient(reg.eventId).bg;
                 return (
-                  <article
-                    key={reg.id}
-                    className="overflow-hidden rounded-card border bg-card"
-                  >
+                  <article key={reg.id} className="overflow-hidden rounded-card border bg-card">
                     <div
                       aria-hidden="true"
                       className="teranga-cover relative h-[140px]"
@@ -341,7 +327,7 @@ export default function MyEventsPage() {
       {/* Saved panel — placeholder until the feature lands */}
       {tab === "saved" && (
         <div role="tabpanel" id="panel-saved">
-          <EmptyEditorialPanel
+          <EmptyStateEditorial
             title={t("savedEmptyTitle")}
             description={t("savedEmptyDescription")}
             action={
@@ -432,8 +418,7 @@ function UpcomingRow({
   isCancelling: boolean;
   isRefunding: boolean;
 }) {
-  const statusKey =
-    (reg.status as StatusKey) in STATUS_TONES ? (reg.status as StatusKey) : null;
+  const statusKey = (reg.status as StatusKey) in STATUS_TONES ? (reg.status as StatusKey) : null;
   const statusLabel = statusKey ? t(`status.${statusKey}` as const) : reg.status;
   const tone: StatusPillTone = statusKey ? STATUS_TONES[statusKey] : "neutral";
 
@@ -539,26 +524,5 @@ function UpcomingRow({
         </div>
       </div>
     </article>
-  );
-}
-
-function EmptyEditorialPanel({
-  title,
-  description,
-  action,
-}: {
-  title: string;
-  description: string;
-  action?: React.ReactNode;
-}) {
-  return (
-    <div className="rounded-tile border border-dashed px-6 py-16 text-center">
-      <div aria-hidden="true" className="mb-3.5 text-4xl">
-        ♡
-      </div>
-      <h3 className="font-serif-display text-2xl font-semibold tracking-[-0.015em]">{title}</h3>
-      <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">{description}</p>
-      {action && <div className="mt-5">{action}</div>}
-    </div>
   );
 }

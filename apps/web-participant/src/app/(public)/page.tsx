@@ -3,16 +3,17 @@ import Image from "next/image";
 import { Search, ArrowRight, ArrowUpRight } from "lucide-react";
 import { getTranslations, getLocale } from "next-intl/server";
 import { serverEventsApi } from "@/lib/server-api";
-import { EditorialEventCard } from "@/components/editorial-event-card";
 import { getCoverGradient } from "@/lib/cover-gradient";
-import { formatCurrency, formatDate, SectionHeader } from "@teranga/shared-ui";
+import { mapEventToEditorialCardProps } from "@/lib/editorial-card-props";
+import { EditorialEventCard, formatCurrency, formatDate, SectionHeader } from "@teranga/shared-ui";
 import type { Event } from "@teranga/shared-types";
 
 export default async function HomePage() {
-  const [tHome, tCommon, tCategories, locale] = await Promise.all([
+  const [tHome, tCommon, tCategories, tEventsCard, locale] = await Promise.all([
     getTranslations("home"),
     getTranslations("common"),
     getTranslations("categories"),
+    getTranslations("events.card"),
     getLocale(),
   ]);
 
@@ -191,9 +192,7 @@ export default async function HomePage() {
                 index={i + 1}
                 total={featuredEvents.length}
                 locale={intlLocale}
-                categoryLabel={tCategories(
-                  `${event.category}` as "conference",
-                )}
+                categoryLabel={tCategories(`${event.category}` as "conference")}
                 detailsCta={tHome("featured.cta")}
                 registerCta={tCommon("viewDetails")}
                 dateLabel={tCommon("date")}
@@ -246,17 +245,28 @@ export default async function HomePage() {
             {latestEvents.map((event, i) => (
               <EditorialEventCard
                 key={event.id}
-                event={event}
-                index={i + 1}
-                total={latestEvents.length}
+                {...mapEventToEditorialCardProps({
+                  event,
+                  index: i + 1,
+                  total: latestEvents.length,
+                  locale: intlLocale,
+                  t: {
+                    common: (k) => tCommon(k),
+                    categories: (k) => tCategories(k as "conference"),
+                    remainingSeats: (count) => tEventsCard("remainingSeats", { count }),
+                    registeredWithFill: (count, pct) =>
+                      tEventsCard("registeredWithFill", { count, pct }),
+                    registeredCount: (count) => tEventsCard("registeredCount", { count }),
+                  },
+                })}
+                linkComponent={Link}
+                imageComponent={Image}
               />
             ))}
           </div>
         ) : (
           <div className="mt-8 rounded-2xl border border-dashed px-6 py-16 text-center">
-            <p className="font-serif-display text-2xl font-semibold">
-              {tCommon("loading")}
-            </p>
+            <p className="font-serif-display text-2xl font-semibold">{tCommon("loading")}</p>
           </div>
         )}
 
@@ -274,36 +284,31 @@ export default async function HomePage() {
       {/* ——— Value prop band ——— */}
       <section className="mx-auto mt-24 max-w-[1280px] px-6 lg:px-8">
         <div className="grid border-y md:grid-cols-3">
-          {[
-            tHome.raw("promises.one"),
-            tHome.raw("promises.two"),
-            tHome.raw("promises.three"),
-          ].map((p: { num: string; title: string; description: string }, i) => (
-            <div
-              key={p.num}
-              className={`px-6 py-10 lg:px-8 lg:py-12 ${
-                i > 0 ? "border-t md:border-t-0 md:border-l" : ""
-              }`}
-            >
-              <p className="font-mono-kicker text-[11px] font-medium uppercase tracking-[0.14em] text-teranga-gold-dark">
-                {p.num}
-              </p>
-              <h3 className="font-serif-display mt-3 text-[22px] font-semibold leading-snug tracking-[-0.015em]">
-                {p.title}
-              </h3>
-              <p className="mt-2.5 text-sm leading-relaxed text-muted-foreground">
-                {p.description}
-              </p>
-            </div>
-          ))}
+          {[tHome.raw("promises.one"), tHome.raw("promises.two"), tHome.raw("promises.three")].map(
+            (p: { num: string; title: string; description: string }, i) => (
+              <div
+                key={p.num}
+                className={`px-6 py-10 lg:px-8 lg:py-12 ${
+                  i > 0 ? "border-t md:border-t-0 md:border-l" : ""
+                }`}
+              >
+                <p className="font-mono-kicker text-[11px] font-medium uppercase tracking-[0.14em] text-teranga-gold-dark">
+                  {p.num}
+                </p>
+                <h3 className="font-serif-display mt-3 text-[22px] font-semibold leading-snug tracking-[-0.015em]">
+                  {p.title}
+                </h3>
+                <p className="mt-2.5 text-sm leading-relaxed text-muted-foreground">
+                  {p.description}
+                </p>
+              </div>
+            ),
+          )}
         </div>
       </section>
 
       {/* ——— How it works — editorial onboarding signpost ——— */}
-      <section
-        id="comment-ca-marche"
-        className="mx-auto mt-24 max-w-[1280px] px-6 lg:px-8"
-      >
+      <section id="comment-ca-marche" className="mx-auto mt-24 max-w-[1280px] px-6 lg:px-8">
         <SectionHeader
           kicker={tHome("howItWorks.kicker")}
           title={tHome("howItWorks.heading")}
@@ -475,7 +480,12 @@ function FeaturedTile({
             <FeaturedMeta
               label={attendeesLabel}
               value={new Intl.NumberFormat("fr-FR").format(event.registeredCount ?? 0)}
-              icon={<span aria-hidden className="ml-1.5 inline-block h-1.5 w-1.5 rounded-full bg-teranga-green teranga-pulse-dot align-middle" />}
+              icon={
+                <span
+                  aria-hidden
+                  className="ml-1.5 inline-block h-1.5 w-1.5 rounded-full bg-teranga-green teranga-pulse-dot align-middle"
+                />
+              }
             />
           </dl>
         </div>
