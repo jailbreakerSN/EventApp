@@ -3,14 +3,21 @@
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useState, useEffect } from "react";
-import { ArrowLeft, Download, Loader2 } from "lucide-react";
+import { ArrowLeft, Download, Loader2, AlertTriangle } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocale, useTranslations } from "next-intl";
 import { registrationsApi, badgesApi } from "@/lib/api-client";
 import { cacheBadgeInServiceWorker } from "@/hooks/use-badges";
 import { useAuth } from "@/hooks/use-auth";
-import { Button, Spinner, TicketPass, formatDate } from "@teranga/shared-ui";
+import {
+  Button,
+  EmptyStateEditorial,
+  SectionHeader,
+  Spinner,
+  TicketPass,
+  formatDate,
+} from "@teranga/shared-ui";
 import type { Registration, GeneratedBadge } from "@teranga/shared-types";
 
 function intlLocale(locale: string): string {
@@ -77,14 +84,20 @@ export default function BadgePage() {
 
   if (!registration) {
     return (
-      <div className="mx-auto max-w-lg px-6 py-16 text-center">
-        <p className="text-muted-foreground">{t("registrationNotFound")}</p>
-        <Link
-          href="/my-events"
-          className="mt-4 inline-block text-teranga-gold-dark hover:underline"
-        >
-          {t("backToMyEvents")}
-        </Link>
+      <div className="mx-auto max-w-lg px-6 py-16">
+        <EmptyStateEditorial
+          icon={AlertTriangle}
+          kicker="— INTROUVABLE"
+          title={t("registrationNotFound")}
+          action={
+            <Link
+              href="/my-events"
+              className="text-sm font-medium text-teranga-gold-dark hover:underline"
+            >
+              {t("backToMyEvents")}
+            </Link>
+          }
+        />
       </div>
     );
   }
@@ -102,18 +115,16 @@ export default function BadgePage() {
   ];
 
   return (
-    <div className="mx-auto max-w-[560px] px-6 pt-10 pb-16 lg:px-8">
+    <div className="mx-auto max-w-[560px] px-6 pt-10 pb-16 lg:px-8 space-y-6">
       <Link
         href="/my-events"
-        className="mb-6 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
       >
         <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
         {t("backToMyEvents")}
       </Link>
 
-      <h1 className="font-serif-display text-3xl font-semibold tracking-[-0.02em]">
-        {t("title")}
-      </h1>
+      <SectionHeader kicker="— BADGE" title={t("title")} size="hero" as="h1" />
 
       {/* Editorial navy pass — shared editorial primitive, same gradient
           tint + perforation + QR panel + offline strip as the prototype

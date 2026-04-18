@@ -17,10 +17,11 @@ import {
   Trash2,
   Download,
   ArrowLeft,
+  AlertTriangle,
 } from "lucide-react";
 import Link from "next/link";
 import type { SpeakerProfile, Session } from "@teranga/shared-types";
-import { Skeleton, EmptyState } from "@teranga/shared-ui";
+import { Skeleton, EmptyStateEditorial, SectionHeader } from "@teranga/shared-ui";
 import { useTranslations } from "next-intl";
 
 const ALLOWED_SLIDE_TYPES = ["application/pdf", "image/jpeg", "image/png", "image/webp"];
@@ -231,27 +232,34 @@ export default function SpeakerPortalPage() {
 
   if (error || !speaker) {
     return (
-      <div className="mx-auto max-w-3xl px-4 py-16 text-center">
-        <p className="text-destructive">{error ?? "Profil introuvable."}</p>
+      <div className="mx-auto max-w-3xl px-4 py-16">
+        <EmptyStateEditorial
+          icon={AlertTriangle}
+          kicker="— INTROUVABLE"
+          title={error ?? "Profil introuvable."}
+        />
       </div>
     );
   }
 
   return (
-    <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6">
+    <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6 space-y-6">
       <Link
         href="/my-events"
-        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground mb-4"
+        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
       >
         <ArrowLeft className="h-4 w-4" /> Mes événements
       </Link>
-      <h1 className="text-2xl font-bold text-foreground">Espace Intervenant</h1>
-      <p className="mt-1 text-sm text-muted-foreground">
-        Gérez votre profil et consultez votre programme.
-      </p>
+      <SectionHeader
+        kicker="— ESPACE INTERVENANT"
+        title="Espace Intervenant"
+        subtitle="Gérez votre profil et consultez votre programme."
+        size="hero"
+        as="h1"
+      />
 
       {/* Profile Section */}
-      <section className="mt-8 rounded-lg border bg-card p-6 shadow-sm">
+      <section className="rounded-lg border bg-card p-6 shadow-sm">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-lg font-semibold">Mon profil</h2>
           {!editing ? (
@@ -430,18 +438,18 @@ export default function SpeakerPortalPage() {
       </section>
 
       {/* Sessions Section */}
-      <section className="mt-6 rounded-lg border bg-card p-6 shadow-sm">
+      <section className="rounded-lg border bg-card p-6 shadow-sm">
         <h2 className="text-lg font-semibold mb-4">
           <Calendar className="inline h-5 w-5 mr-1.5 text-teranga-gold" aria-hidden="true" />
           Mon programme ({sessions.length})
         </h2>
 
         {sessions.length === 0 ? (
-          <EmptyState
+          <EmptyStateEditorial
             icon={Calendar}
+            kicker="— AUCUNE SESSION"
             title="Aucune session assignée"
             description="Votre programme apparaîtra ici dès que l'organisateur vous attribuera des sessions."
-            className="py-4"
           />
         ) : (
           <div className="space-y-3">
@@ -477,7 +485,7 @@ export default function SpeakerPortalPage() {
       </section>
 
       {/* Slides Upload Section */}
-      <section className="mt-6 rounded-lg border bg-card p-6 shadow-sm">
+      <section className="rounded-lg border bg-card p-6 shadow-sm">
         <h2 className="text-lg font-semibold mb-4">
           <FileText className="inline h-5 w-5 mr-1.5 text-teranga-gold" aria-hidden="true" />
           Mes présentations

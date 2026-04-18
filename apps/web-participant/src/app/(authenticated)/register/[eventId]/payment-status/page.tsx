@@ -9,7 +9,15 @@ import { useQuery } from "@tanstack/react-query";
 import { useLocale, useTranslations } from "next-intl";
 import { eventsApi, registrationsApi } from "@/lib/api-client";
 import { usePaymentStatus } from "@/hooks/use-payments";
-import { Button, Card, CardContent, Spinner, formatCurrency } from "@teranga/shared-ui";
+import {
+  Button,
+  Card,
+  CardContent,
+  EmptyStateEditorial,
+  SectionHeader,
+  Spinner,
+  formatCurrency,
+} from "@teranga/shared-ui";
 import type { Event, Payment, Registration } from "@teranga/shared-types";
 
 function intlLocale(locale: string): string {
@@ -81,11 +89,20 @@ export default function PaymentStatusPage() {
 
   if (!paymentId) {
     return (
-      <div className="mx-auto max-w-lg px-4 py-16 text-center">
-        <p className="text-muted-foreground">{t("noPaymentSpecified")}</p>
-        <Link href="/events" className="mt-4 inline-block text-teranga-gold hover:underline">
-          {t("backToEvents")}
-        </Link>
+      <div className="mx-auto max-w-lg px-4 py-16">
+        <EmptyStateEditorial
+          icon={XCircle}
+          kicker="— PAIEMENT"
+          title={t("noPaymentSpecified")}
+          action={
+            <Link
+              href="/events"
+              className="text-sm font-medium text-teranga-gold-dark hover:underline"
+            >
+              {t("backToEvents")}
+            </Link>
+          }
+        />
       </div>
     );
   }
@@ -99,18 +116,23 @@ export default function PaymentStatusPage() {
   }
 
   return (
-    <div className="mx-auto max-w-lg px-4 py-8">
+    <div className="mx-auto max-w-lg px-4 py-8 space-y-6">
       <Link
         href={event ? `/events/${eventId}` : "/events"}
-        className="mb-6 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
       >
         <ArrowLeft className="h-4 w-4" />
         {event ? t("backToEventPrefix", { title: event.title }) : t("backToEvents")}
       </Link>
 
-      <h1 className="text-2xl font-bold">{event?.title ?? t("pageTitleFallback")}</h1>
+      <SectionHeader
+        kicker="— PAIEMENT"
+        title={event?.title ?? t("pageTitleFallback")}
+        size="hero"
+        as="h1"
+      />
 
-      <Card className="mt-6">
+      <Card>
         <CardContent className="flex flex-col items-center py-8">
           {!isTerminal && (
             <>

@@ -4,7 +4,12 @@ import { useState } from "react";
 import { Bell, CheckCheck, Circle } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import { useNotifications, useMarkAsRead, useMarkAllAsRead } from "@/hooks/use-notifications";
-import { Button, Card, CardContent, QueryError } from "@teranga/shared-ui";
+import {
+  Button,
+  EmptyStateEditorial,
+  QueryError,
+  SectionHeader,
+} from "@teranga/shared-ui";
 import type { Notification } from "@teranga/shared-types";
 
 function intlLocale(locale: string): string {
@@ -35,27 +40,30 @@ export default function NotificationsPage() {
   const markAllAsRead = useMarkAllAsRead();
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-8">
-      <div className="mb-6 flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">{t("title")}</h1>
-          <p className="text-sm text-muted-foreground">{t("count", { count: total })}</p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => setUnreadOnly(!unreadOnly)}>
-            {unreadOnly ? t("filterAll") : t("filterUnread")}
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => markAllAsRead.mutate()}
-            disabled={markAllAsRead.isPending}
-          >
-            <CheckCheck className="mr-1 h-4 w-4" />
-            {t("markAllRead")}
-          </Button>
-        </div>
-      </div>
+    <div className="mx-auto max-w-2xl px-4 py-8 space-y-6">
+      <SectionHeader
+        kicker="— ALERTES"
+        title={t("title")}
+        subtitle={t("count", { count: total })}
+        size="hero"
+        as="h1"
+        action={
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => setUnreadOnly(!unreadOnly)}>
+              {unreadOnly ? t("filterAll") : t("filterUnread")}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => markAllAsRead.mutate()}
+              disabled={markAllAsRead.isPending}
+            >
+              <CheckCheck className="mr-1 h-4 w-4" />
+              {t("markAllRead")}
+            </Button>
+          </div>
+        }
+      />
 
       {isError ? (
         <QueryError onRetry={refetch} />
@@ -75,12 +83,11 @@ export default function NotificationsPage() {
           ))}
         </div>
       ) : notifications.length === 0 ? (
-        <Card>
-          <CardContent className="flex flex-col items-center py-12">
-            <Bell className="mb-3 h-10 w-10 text-muted-foreground" />
-            <p className="text-muted-foreground">{unreadOnly ? t("emptyUnread") : t("empty")}</p>
-          </CardContent>
-        </Card>
+        <EmptyStateEditorial
+          icon={Bell}
+          kicker="— AUCUNE NOTIFICATION"
+          title={unreadOnly ? t("emptyUnread") : t("empty")}
+        />
       ) : (
         <div className="space-y-2">
           {notifications.map((n: Notification) => (

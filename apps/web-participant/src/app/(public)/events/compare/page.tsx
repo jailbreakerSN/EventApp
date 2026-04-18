@@ -15,7 +15,13 @@ import {
   AlertTriangle,
   Search,
 } from "lucide-react";
-import { Button, Badge, formatDate } from "@teranga/shared-ui";
+import {
+  Button,
+  Badge,
+  formatDate,
+  EmptyStateEditorial,
+  SectionHeader,
+} from "@teranga/shared-ui";
 
 function Skeleton({ className = "" }: { className?: string }) {
   return <div className={`bg-muted animate-pulse rounded-md ${className}`} />;
@@ -208,18 +214,21 @@ function CompareContent() {
   // Empty state: no IDs
   if (ids.length === 0) {
     return (
-      <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8 text-center">
-        <Search className="mx-auto h-12 w-12 text-muted-foreground/50" />
-        <h1 className="mt-4 text-2xl font-bold">Comparer des evenements</h1>
-        <p className="mt-2 text-muted-foreground">
-          Selectionnez des evenements a comparer depuis la liste des evenements.
-        </p>
-        <Link href="/events">
-          <Button variant="outline" className="mt-6">
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Parcourir les evenements
-          </Button>
-        </Link>
+      <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
+        <EmptyStateEditorial
+          icon={Search}
+          kicker="— COMPARAISON"
+          title="Comparer des événements"
+          description="Sélectionnez des événements à comparer depuis la liste des événements."
+          action={
+            <Link href="/events">
+              <Button variant="outline">
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                Parcourir les événements
+              </Button>
+            </Link>
+          }
+        />
       </div>
     );
   }
@@ -227,16 +236,21 @@ function CompareContent() {
   // Error state
   if (error) {
     return (
-      <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8 text-center">
-        <AlertTriangle className="mx-auto h-12 w-12 text-destructive" />
-        <h1 className="mt-4 text-2xl font-bold">Erreur</h1>
-        <p className="mt-2 text-muted-foreground">{error}</p>
-        <Link href="/events">
-          <Button variant="outline" className="mt-6">
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Retour aux evenements
-          </Button>
-        </Link>
+      <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8">
+        <EmptyStateEditorial
+          icon={AlertTriangle}
+          kicker="— ERREUR"
+          title="Erreur"
+          description={error}
+          action={
+            <Link href="/events">
+              <Button variant="outline">
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                Retour aux événements
+              </Button>
+            </Link>
+          }
+        />
       </div>
     );
   }
@@ -266,21 +280,23 @@ function CompareContent() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+    <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 space-y-8">
       {/* Header */}
-      <div className="mb-8">
+      <div className="space-y-4">
         <Link
           href="/events"
-          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors mb-4"
+          className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
         >
           <ArrowLeft className="h-4 w-4" />
-          Retour aux evenements
+          Retour aux événements
         </Link>
-        <h1 className="text-2xl font-bold sm:text-3xl">Comparaison d&apos;evenements</h1>
-        <p className="mt-1 text-muted-foreground">
-          {events.length} evenement{events.length > 1 ? "s" : ""} compare
-          {events.length > 1 ? "s" : ""}
-        </p>
+        <SectionHeader
+          kicker="— COMPARAISON"
+          title="Comparaison d'événements"
+          size="hero"
+          as="h1"
+          subtitle={`${events.length} événement${events.length > 1 ? "s" : ""} comparé${events.length > 1 ? "s" : ""}`}
+        />
       </div>
 
       {/* Desktop: table layout */}

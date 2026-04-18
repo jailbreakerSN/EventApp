@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { WifiOff } from "lucide-react";
 import { getTranslations } from "next-intl/server";
+import { EmptyStateEditorial } from "@teranga/shared-ui";
 import { RetryButton } from "./retry-button";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -12,11 +13,14 @@ export default async function OfflinePage() {
   const t = await getTranslations("offlinePage");
   return (
     <div className="flex min-h-screen items-center justify-center p-6 bg-background">
-      <div className="max-w-md w-full text-center">
-        <WifiOff className="mx-auto h-16 w-16 text-muted-foreground/50 mb-6" />
-        <h1 className="text-xl font-semibold text-foreground mb-2">{t("heading")}</h1>
-        <p className="text-sm text-muted-foreground mb-8">{t("hint")}</p>
-        <RetryButton />
+      <div className="max-w-md w-full">
+        <EmptyStateEditorial
+          icon={WifiOff}
+          kicker="— HORS LIGNE"
+          title={t("heading")}
+          description={t("hint")}
+          action={<RetryButton />}
+        />
       </div>
     </div>
   );

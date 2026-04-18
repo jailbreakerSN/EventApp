@@ -5,8 +5,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocale, useTranslations } from "next-intl";
 import { messagingApi } from "@/lib/api-client";
 import { useAuth } from "@/hooks/use-auth";
-import { MessageSquare, Send, Loader2, ArrowLeft } from "lucide-react";
-import { QueryError } from "@teranga/shared-ui";
+import { Send, Loader2, ArrowLeft } from "lucide-react";
+import { QueryError, SectionHeader } from "@teranga/shared-ui";
 import Link from "next/link";
 import type { Conversation, Message } from "@teranga/shared-types";
 
@@ -162,18 +162,15 @@ export default function MessagesPage() {
   const selectedConvData = sortedConversations.find((c) => c.id === selectedConv);
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-8">
+    <div className="max-w-4xl mx-auto px-4 py-8 space-y-6">
       <Link
         href="/my-events"
-        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground mb-6"
+        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
       >
         <ArrowLeft className="h-4 w-4" /> {t("backToMyEvents")}
       </Link>
 
-      <h1 className="text-2xl font-bold text-foreground mb-6 flex items-center gap-3">
-        <MessageSquare className="h-6 w-6 text-primary" />
-        {t("title")}
-      </h1>
+      <SectionHeader kicker="— MESSAGERIE" title={t("title")} size="hero" as="h1" />
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 min-h-[500px]">
         <div className="bg-card rounded-xl border border-border overflow-hidden">
