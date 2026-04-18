@@ -199,8 +199,11 @@ export default function PaymentStatusPage() {
                     {t("retry")}
                   </Button>
                 </Link>
+                <a href="mailto:contact@teranga.sn?subject=Paiement%20%C3%A9chou%C3%A9">
+                  <Button variant="outline">{t("contactSupport")}</Button>
+                </a>
                 <Link href="/events">
-                  <Button variant="outline">{t("backToEvents")}</Button>
+                  <Button variant="ghost">{t("backToEvents")}</Button>
                 </Link>
               </div>
             </>

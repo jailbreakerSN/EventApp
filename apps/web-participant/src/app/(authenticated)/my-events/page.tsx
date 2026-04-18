@@ -485,6 +485,12 @@ function UpcomingRow({
               {t("details")}
             </Button>
           </Link>
+          <Link href={`/events/${reg.eventSlug ?? reg.eventId}/schedule`}>
+            <Button variant="ghost" size="sm" className="w-full rounded-full">
+              <Calendar className="mr-1.5 h-4 w-4" aria-hidden="true" />
+              {t("viewSchedule")}
+            </Button>
+          </Link>
           {showRefund && reg.paymentId && (
             <Button
               variant="ghost"

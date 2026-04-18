@@ -58,7 +58,21 @@ export default function RegisterPage() {
   const tBadge = useTranslations("badge");
   const locale = useLocale();
   const regional = intlLocale(locale);
-  const { user } = useAuth();
+  const { user, resendVerification } = useAuth();
+  const [resendingVerification, setResendingVerification] = useState(false);
+
+  const handleResendVerification = async () => {
+    if (resendingVerification) return;
+    setResendingVerification(true);
+    try {
+      await resendVerification();
+      toast.success(t("verificationResent"));
+    } catch {
+      toast.error(t("verificationResendError"));
+    } finally {
+      setResendingVerification(false);
+    }
+  };
   const { eventId } = useParams<{ eventId: string }>();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -66,6 +80,7 @@ export default function RegisterPage() {
   const [step, setStep] = useState<Step>("select");
   const [selectedTicket, setSelectedTicket] = useState<TicketType | null>(null);
   const [registration, setRegistration] = useState<Registration | null>(null);
+  const [emailNotVerified, setEmailNotVerified] = useState(false);
 
   const [selectedMethod, setSelectedMethod] = useState<PaymentMethod>("wave");
 
@@ -235,6 +250,7 @@ export default function RegisterPage() {
         } catch (err: unknown) {
           const code = (err as { code?: string })?.code;
           const message = (err as { message?: string })?.message;
+          if (code === "EMAIL_NOT_VERIFIED") setEmailNotVerified(true);
           toast.error(getErrorMessage(code, message));
           return;
         }
@@ -253,6 +269,7 @@ export default function RegisterPage() {
       } catch (err: unknown) {
         const code = (err as { code?: string })?.code;
         const message = (err as { message?: string })?.message;
+        if (code === "EMAIL_NOT_VERIFIED") setEmailNotVerified(true);
         toast.error(getErrorMessage(code, message));
       }
     } else {
@@ -267,6 +284,7 @@ export default function RegisterPage() {
       } catch (err: unknown) {
         const code = (err as { code?: string })?.code;
         const message = (err as { message?: string })?.message;
+        if (code === "EMAIL_NOT_VERIFIED") setEmailNotVerified(true);
         toast.error(getErrorMessage(code, message));
       }
     }
@@ -363,6 +381,40 @@ export default function RegisterPage() {
   return (
     <div className="bg-muted/20">
       <div className="mx-auto max-w-4xl px-6 pt-10 pb-20 lg:px-8">
+        {/* Email-not-verified panel — fires when the API rejects a paid
+            registration because the user hasn't clicked the verification
+            link yet. Inline + actionable beats a toast-only failure. */}
+        {emailNotVerified && (
+          <div
+            role="alert"
+            className="mb-6 flex flex-wrap items-start gap-3 rounded-card border border-teranga-clay/30 bg-teranga-clay/5 p-4 dark:border-teranga-clay/40 dark:bg-teranga-clay/15"
+          >
+            <AlertTriangle
+              className="mt-0.5 h-5 w-5 flex-shrink-0 text-teranga-clay"
+              aria-hidden="true"
+            />
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-teranga-clay">
+                {t("verifyEmailTitle")}
+              </p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {t("verifyEmailBody", { email: user?.email ?? "" })}
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleResendVerification}
+                disabled={resendingVerification}
+                className="mt-3"
+              >
+                {resendingVerification
+                  ? t("verificationResending")
+                  : t("resendVerification")}
+              </Button>
+            </div>
+          </div>
+        )}
+
         {/* Stepper — editorial numbered circles matching the prototype. */}
         <div className="mb-9 flex flex-wrap items-center gap-3">
           <button
@@ -706,6 +758,51 @@ export default function RegisterPage() {
                 <span>⚡ {tBadge("savedOfflineChip")}</span>
               </div>
             )}
+
+            {/* Next-step cue — drives verified-email rate + offline-ready
+                rate + programme engagement by making the next three
+                actions explicit right at the moment of conversion. */}
+            <div className="mx-auto mt-10 grid max-w-xl gap-3 text-left sm:grid-cols-3">
+              {[
+                {
+                  num: "01",
+                  label: tSuccess("nextStep.verifyEmail"),
+                  description: tSuccess("nextStep.verifyEmailHint"),
+                  href: "/settings",
+                  done: user?.emailVerified ?? false,
+                },
+                {
+                  num: "02",
+                  label: tSuccess("nextStep.downloadBadge"),
+                  description: tSuccess("nextStep.downloadBadgeHint"),
+                  href: `/my-events/${registration.id}/badge`,
+                  done: false,
+                },
+                {
+                  num: "03",
+                  label: tSuccess("nextStep.exploreSchedule"),
+                  description: tSuccess("nextStep.exploreScheduleHint"),
+                  href: `/events/${event.slug}/schedule`,
+                  done: false,
+                },
+              ].map((step) => (
+                <Link
+                  key={step.num}
+                  href={step.href}
+                  className="group rounded-card border bg-card p-4 transition-colors hover:border-teranga-navy/30 hover:bg-muted/40 dark:hover:border-teranga-gold/40"
+                >
+                  <p className="font-mono-kicker text-[11px] font-medium uppercase tracking-[0.12em] text-teranga-gold-dark">
+                    {step.done ? `✓ ${step.num}` : step.num}
+                  </p>
+                  <p className="mt-1.5 text-sm font-semibold text-foreground">
+                    {step.label}
+                  </p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    {step.description}
+                  </p>
+                </Link>
+              ))}
+            </div>
 
             {/* Actions */}
             <div className="mt-8 flex flex-wrap justify-center gap-3">

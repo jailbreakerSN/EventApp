@@ -124,6 +124,17 @@ export class RegistrationClosedError extends AppError {
   }
 }
 
+export class EmailNotVerifiedError extends AppError {
+  constructor() {
+    super({
+      message:
+        "Votre adresse e-mail n'est pas vérifiée. Vérifiez votre boîte de réception pour confirmer votre compte avant de vous inscrire à un événement payant.",
+      code: ERROR_CODES.EMAIL_NOT_VERIFIED,
+      statusCode: 403,
+    });
+  }
+}
+
 export class QrInvalidError extends AppError {
   constructor(reason: string) {
     super({
