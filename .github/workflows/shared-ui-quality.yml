@@ -38,7 +38,7 @@ on:
     inputs:
       bootstrap_baselines:
         description: "Regenerate baseline snapshots (disables --ci strict mode, uploads updated images as artifact)"
-        required: false
+        required: true
         default: "false"
         type: choice
         options:
