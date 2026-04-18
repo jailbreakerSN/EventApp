@@ -97,7 +97,9 @@ export default function NotificationsPage() {
                 if (!n.isRead) markAsRead.mutate(n.id);
               }}
               className={`w-full rounded-lg border p-4 text-left transition-colors ${
-                n.isRead ? "bg-card" : "border-teranga-gold/30 bg-teranga-gold/5"
+                n.isRead
+                  ? "bg-card"
+                  : "border-teranga-gold/30 bg-teranga-gold/5 dark:border-teranga-gold/40 dark:bg-teranga-gold/15"
               }`}
             >
               <div className="flex items-start gap-3">

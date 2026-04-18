@@ -8,7 +8,7 @@ import {
   useNotificationPreferences,
   useUpdateNotificationPreferences,
 } from "@/hooks/use-notifications";
-import { Card, CardContent, SectionHeader } from "@teranga/shared-ui";
+import { Button, Card, CardContent, SectionHeader } from "@teranga/shared-ui";
 
 function Toggle({
   checked,
@@ -38,7 +38,7 @@ function Toggle({
         aria-label={label}
         onClick={() => onChange(!checked)}
         className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors flex-shrink-0 ${
-          checked ? "bg-teranga-gold" : "bg-muted"
+          checked ? "bg-teranga-gold dark:bg-teranga-gold-light" : "bg-muted"
         }`}
       >
         <span
@@ -212,12 +212,13 @@ export default function SettingsPage() {
           <p className="text-sm text-muted-foreground">{tAccount("description")}</p>
 
           {!showDeleteConfirm ? (
-            <button
+            <Button
+              variant="outline"
               onClick={() => setShowDeleteConfirm(true)}
-              className="w-full rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm font-medium text-destructive hover:bg-destructive/10 transition-colors"
+              className="w-full border-destructive/30 bg-destructive/5 text-destructive hover:bg-destructive/10 hover:text-destructive"
             >
               {tAccount("delete")}
-            </button>
+            </Button>
           ) : (
             <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 space-y-3">
               <p className="text-sm text-destructive font-medium">
@@ -225,21 +226,23 @@ export default function SettingsPage() {
               </p>
               <p className="text-xs text-muted-foreground">{tAccount("deleteConfirmWarning")}</p>
               <div className="flex gap-2">
-                <button
+                <Button
+                  variant="destructive"
                   onClick={() => {
                     setShowDeleteConfirm(false);
                     toast.info(tAccount("deleteContactSupport"));
                   }}
-                  className="flex-1 rounded-lg bg-destructive px-4 py-2 text-sm font-medium text-white hover:bg-destructive/90 transition-colors"
+                  className="flex-1"
                 >
                   {tAccount("deleteConfirm")}
-                </button>
-                <button
+                </Button>
+                <Button
+                  variant="outline"
                   onClick={() => setShowDeleteConfirm(false)}
-                  className="flex-1 rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-muted transition-colors"
+                  className="flex-1"
                 >
                   {tAccount("deleteCancel")}
-                </button>
+                </Button>
               </div>
             </div>
           )}

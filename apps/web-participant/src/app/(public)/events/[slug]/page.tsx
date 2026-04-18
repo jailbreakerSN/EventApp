@@ -231,7 +231,7 @@ export default async function EventDetailPage({ params }: PageProps) {
           "Tous les événements" top chrome. Keeps share/save close to
           the headline without competing for attention with the hero. */}
       <div className="border-b bg-card">
-        <div className="mx-auto flex max-w-[1280px] flex-wrap items-center justify-between gap-3 px-6 py-3.5 lg:px-8">
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-6 py-3.5 lg:px-8">
           <Link
             href="/events"
             className="inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
@@ -300,7 +300,7 @@ export default async function EventDetailPage({ params }: PageProps) {
       />
 
       {/* Body grid: 1fr / 380px — matches prototype's asymmetric layout. */}
-      <div className="mx-auto grid max-w-[1280px] gap-10 px-6 pb-20 pt-12 lg:grid-cols-[1fr_380px] lg:gap-14 lg:px-8 lg:pt-14">
+      <div className="mx-auto grid max-w-7xl gap-10 px-6 pb-20 pt-12 lg:grid-cols-[1fr_380px] lg:gap-14 lg:px-8 lg:pt-14">
         <main>
           {/* Meta row — 4 columns divided by vertical rules. */}
           <dl className="mb-12 grid grid-cols-2 gap-y-5 border-y py-6 md:grid-cols-4 md:divide-x md:gap-y-0">
@@ -694,7 +694,7 @@ export default async function EventDetailPage({ params }: PageProps) {
 
       {/* Similar events — editorial card grid. */}
       {similarEvents.length > 0 && (
-        <section className="mx-auto max-w-[1280px] px-6 pb-16 lg:px-8">
+        <section className="mx-auto max-w-7xl px-6 pb-16 lg:px-8">
           <h2 className="font-serif-display mb-8 text-3xl font-semibold tracking-[-0.02em]">
             {tDetail("similarEvents")}
           </h2>

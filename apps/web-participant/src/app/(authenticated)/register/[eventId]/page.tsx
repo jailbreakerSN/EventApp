@@ -353,7 +353,7 @@ export default function RegisterPage() {
 
   return (
     <div className="bg-muted/20">
-      <div className="mx-auto max-w-[880px] px-6 pt-10 pb-20 lg:px-8">
+      <div className="mx-auto max-w-4xl px-6 pt-10 pb-20 lg:px-8">
         {/* Stepper — editorial numbered circles matching the prototype. */}
         <div className="mb-9 flex flex-wrap items-center gap-3">
           <button
@@ -644,7 +644,7 @@ export default function RegisterPage() {
 
         {/* Step 3: Success — editorial navy ticket reveal */}
         {step === "success" && registration && (
-          <div className="mx-auto max-w-[560px] text-center">
+          <div className="mx-auto max-w-xl text-center">
             <span className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-teranga-green text-white animate-[pop_.4s_cubic-bezier(.2,.9,.2,1.2)_both]">
               <Check className="h-8 w-8" strokeWidth={3} aria-hidden="true" />
             </span>
@@ -658,7 +658,7 @@ export default function RegisterPage() {
 
             {/* Ticket reveal */}
             <TicketPass
-              className="mx-auto mt-8 max-w-[440px] shadow-[0_30px_60px_-25px_rgba(15,15,28,0.45)]"
+              className="mx-auto mt-8 max-w-md shadow-[0_30px_60px_-25px_rgba(15,15,28,0.45)]"
               coverKey={event.id}
               kicker={tSuccess("passLabel")}
               eventTitle={event.title}

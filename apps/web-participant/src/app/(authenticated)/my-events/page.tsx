@@ -154,7 +154,7 @@ export default function MyEventsPage() {
   const firstName = (user?.displayName ?? user?.email ?? "").split(" ")[0];
 
   return (
-    <div className="mx-auto max-w-[1120px] px-6 pt-10 pb-20 lg:px-8">
+    <div className="mx-auto max-w-7xl px-6 pt-10 pb-20 lg:px-8">
       {/* Editorial hero — shared-ui EditorialHero (default variant) */}
       <EditorialHero
         className="mb-7"

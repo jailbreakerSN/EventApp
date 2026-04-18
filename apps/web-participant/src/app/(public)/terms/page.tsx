@@ -31,7 +31,7 @@ export default function TermsPage() {
       <div className="space-y-8 text-foreground leading-relaxed">
         {/* Objet et acceptation */}
         <section>
-          <h2 className="text-xl font-semibold mb-3">
+          <h2 className="font-serif-display text-2xl font-semibold mb-3">
             1. Objet et acceptation
           </h2>
           <p>
@@ -46,7 +46,7 @@ export default function TermsPage() {
 
         {/* Inscription et compte */}
         <section>
-          <h2 className="text-xl font-semibold mb-3">
+          <h2 className="font-serif-display text-2xl font-semibold mb-3">
             2. Inscription et compte
           </h2>
           <p className="mb-2">
@@ -71,7 +71,7 @@ export default function TermsPage() {
 
         {/* Rôles */}
         <section>
-          <h2 className="text-xl font-semibold mb-3">
+          <h2 className="font-serif-display text-2xl font-semibold mb-3">
             3. Rôles sur la Plateforme
           </h2>
           <p className="mb-2">
@@ -103,7 +103,7 @@ export default function TermsPage() {
 
         {/* Utilisation */}
         <section>
-          <h2 className="text-xl font-semibold mb-3">
+          <h2 className="font-serif-display text-2xl font-semibold mb-3">
             4. Utilisation de la Plateforme
           </h2>
           <p className="mb-2">Vous vous engagez à :</p>
@@ -137,7 +137,7 @@ export default function TermsPage() {
 
         {/* Billets et paiements */}
         <section>
-          <h2 className="text-xl font-semibold mb-3">
+          <h2 className="font-serif-display text-2xl font-semibold mb-3">
             5. Billets et paiements
           </h2>
           <p className="mb-2">
@@ -166,7 +166,7 @@ export default function TermsPage() {
 
         {/* Propriété intellectuelle */}
         <section>
-          <h2 className="text-xl font-semibold mb-3">
+          <h2 className="font-serif-display text-2xl font-semibold mb-3">
             6. Propri&eacute;t&eacute; intellectuelle
           </h2>
           <p>
@@ -182,7 +182,7 @@ export default function TermsPage() {
 
         {/* Responsabilités */}
         <section>
-          <h2 className="text-xl font-semibold mb-3">7. Responsabilités</h2>
+          <h2 className="font-serif-display text-2xl font-semibold mb-3">7. Responsabilités</h2>
           <p className="mb-2">
             <strong>Teranga Events en tant qu&apos;intermédiaire
             technique :</strong>
@@ -209,7 +209,7 @@ export default function TermsPage() {
 
         {/* Données personnelles */}
         <section>
-          <h2 className="text-xl font-semibold mb-3">
+          <h2 className="font-serif-display text-2xl font-semibold mb-3">
             8. Donn&eacute;es personnelles
           </h2>
           <p>
@@ -223,7 +223,7 @@ export default function TermsPage() {
 
         {/* Modification des conditions */}
         <section>
-          <h2 className="text-xl font-semibold mb-3">
+          <h2 className="font-serif-display text-2xl font-semibold mb-3">
             9. Modification des conditions
           </h2>
           <p>
@@ -238,7 +238,7 @@ export default function TermsPage() {
 
         {/* Droit applicable */}
         <section>
-          <h2 className="text-xl font-semibold mb-3">10. Droit applicable</h2>
+          <h2 className="font-serif-display text-2xl font-semibold mb-3">10. Droit applicable</h2>
           <p>
             Les présentes CGU sont soumises au droit sénégalais. En cas de
             litige relatif à leur interprétation ou à leur exécution, les
@@ -249,7 +249,7 @@ export default function TermsPage() {
 
         {/* Contact */}
         <section>
-          <h2 className="text-xl font-semibold mb-3">11. Contact</h2>
+          <h2 className="font-serif-display text-2xl font-semibold mb-3">11. Contact</h2>
           <p>
             Pour toute question relative aux présentes conditions, vous pouvez
             nous contacter :

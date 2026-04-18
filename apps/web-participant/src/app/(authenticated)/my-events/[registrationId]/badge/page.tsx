@@ -115,7 +115,7 @@ export default function BadgePage() {
   ];
 
   return (
-    <div className="mx-auto max-w-[560px] px-6 pt-10 pb-16 lg:px-8 space-y-6">
+    <div className="mx-auto max-w-xl px-6 pt-10 pb-16 lg:px-8 space-y-6">
       <Link
         href="/my-events"
         className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"

@@ -31,7 +31,7 @@ export default async function LegalPage() {
       <div className="space-y-8 text-foreground leading-relaxed">
         {/* Éditeur */}
         <section>
-          <h2 className="text-xl font-semibold mb-3">1. &Eacute;diteur</h2>
+          <h2 className="font-serif-display text-2xl font-semibold mb-3">1. &Eacute;diteur</h2>
           <p>Le site et la plateforme Teranga Events sont édités par :</p>
           <ul className="list-none pl-0 mt-3 space-y-1">
             <li>
@@ -63,7 +63,7 @@ export default async function LegalPage() {
 
         {/* Directeur de la publication */}
         <section>
-          <h2 className="text-xl font-semibold mb-3">2. Directeur de la publication</h2>
+          <h2 className="font-serif-display text-2xl font-semibold mb-3">2. Directeur de la publication</h2>
           <p>
             Le directeur de la publication est : <strong>[à compléter]</strong>, en qualité de [à
             compléter] de Teranga Events.
@@ -72,7 +72,7 @@ export default async function LegalPage() {
 
         {/* Hébergeur */}
         <section>
-          <h2 className="text-xl font-semibold mb-3">3. H&eacute;bergeur</h2>
+          <h2 className="font-serif-display text-2xl font-semibold mb-3">3. H&eacute;bergeur</h2>
           <p>Le site est hébergé par :</p>
           <ul className="list-none pl-0 mt-3 space-y-1">
             <li>
@@ -106,7 +106,7 @@ export default async function LegalPage() {
 
         {/* Contact */}
         <section>
-          <h2 className="text-xl font-semibold mb-3">4. Contact</h2>
+          <h2 className="font-serif-display text-2xl font-semibold mb-3">4. Contact</h2>
           <p>Pour toute question relative au site ou à son contenu, vous pouvez nous contacter :</p>
           <ul className="list-none pl-0 mt-2 space-y-1">
             <li>
@@ -123,7 +123,7 @@ export default async function LegalPage() {
 
         {/* Propriété intellectuelle */}
         <section>
-          <h2 className="text-xl font-semibold mb-3">5. Propri&eacute;t&eacute; intellectuelle</h2>
+          <h2 className="font-serif-display text-2xl font-semibold mb-3">5. Propri&eacute;t&eacute; intellectuelle</h2>
           <p>
             L&apos;ensemble du contenu du site (textes, images, logos, graphismes, icônes,
             logiciels) est la propriété exclusive de Teranga Events ou de ses partenaires et est
@@ -136,7 +136,7 @@ export default async function LegalPage() {
 
         {/* Liens utiles */}
         <section>
-          <h2 className="text-xl font-semibold mb-3">6. Liens utiles</h2>
+          <h2 className="font-serif-display text-2xl font-semibold mb-3">6. Liens utiles</h2>
           <ul className="list-disc pl-6 space-y-1">
             <li>
               <Link href="/privacy" className="text-primary hover:underline">
