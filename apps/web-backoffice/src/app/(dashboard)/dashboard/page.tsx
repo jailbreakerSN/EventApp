@@ -11,6 +11,7 @@ import {
   Badge,
   getStatusVariant,
   DataTable,
+  SectionHeader,
   type DataTableColumn,
 } from "@teranga/shared-ui";
 
@@ -45,11 +46,17 @@ export default function DashboardPage() {
     }).format(amount);
 
   return (
-    <div>
-      <h1 className="text-2xl font-bold text-foreground mb-6">Tableau de bord</h1>
+    <div className="space-y-8">
+      <SectionHeader
+        kicker="— TABLEAU DE BORD"
+        title="Vue d'ensemble"
+        subtitle="Pilotez vos événements et suivez l'activité de votre organisation."
+        size="hero"
+        as="h1"
+      />
 
       {/* Stats cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
         <StatCard
           icon={<Calendar className="h-5 w-5 text-blue-600" />}
           label="Total événements"
@@ -92,18 +99,23 @@ export default function DashboardPage() {
       </div>
 
       {/* Recent events */}
-      <div className="bg-card rounded-xl border border-border">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
-          <h2 className="text-sm font-semibold text-foreground">Événements récents</h2>
-          <Link
-            href="/events"
-            className="text-sm text-primary hover:underline inline-flex items-center gap-1"
-          >
-            Tout voir <ArrowRight className="h-3.5 w-3.5" />
-          </Link>
-        </div>
+      <section className="space-y-4">
+        <SectionHeader
+          kicker="— DERNIÈRE ACTIVITÉ"
+          title="Événements récents"
+          size="section"
+          action={
+            <Link
+              href="/events"
+              className="inline-flex items-center gap-1 font-mono-kicker text-[11px] font-medium uppercase tracking-[0.14em] text-teranga-gold-dark hover:text-teranga-navy transition-colors"
+            >
+              Tout voir <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
+          }
+        />
 
-        <DataTable<(typeof events)[number] & Record<string, unknown>>
+        <div className="bg-card rounded-xl border border-border">
+          <DataTable<(typeof events)[number] & Record<string, unknown>>
           aria-label="Événements récents"
           emptyMessage="Aucun événement pour le moment."
           responsiveCards
@@ -155,14 +167,15 @@ export default function DashboardPage() {
             ] as DataTableColumn<(typeof events)[number] & Record<string, unknown>>[]
           }
         />
-        {events.length === 0 && !isLoading && (
-          <div className="p-8 text-center text-muted-foreground">
-            <Link href="/events/new" className="text-primary hover:underline">
-              Créer votre premier événement
-            </Link>
-          </div>
-        )}
-      </div>
+          {events.length === 0 && !isLoading && (
+            <div className="p-8 text-center text-muted-foreground">
+              <Link href="/events/new" className="text-primary hover:underline">
+                Créer votre premier événement
+              </Link>
+            </div>
+          )}
+        </div>
+      </section>
     </div>
   );
 }

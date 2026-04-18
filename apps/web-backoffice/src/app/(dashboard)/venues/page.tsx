@@ -6,7 +6,6 @@ import { toast } from "sonner";
 import {
   Card,
   CardContent,
-  Badge,
   Button,
   Skeleton,
   Breadcrumb,
@@ -16,6 +15,10 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
   QueryError,
+  SectionHeader,
+  StatusPill,
+  EmptyStateEditorial,
+  type StatusPillTone,
 } from "@teranga/shared-ui";
 import { MapPin, Plus, Calendar, Users, ExternalLink } from "lucide-react";
 import { useMyVenues, useCreateVenue } from "@/hooks/use-venues";
@@ -38,14 +41,14 @@ const VENUE_TYPE_LABELS: Record<string, string> = {
 const STATUS_STYLES: Record<
   string,
   {
-    variant: "default" | "secondary" | "destructive" | "success" | "warning" | "outline";
+    tone: StatusPillTone;
     label: string;
   }
 > = {
-  pending: { variant: "warning", label: "En attente" },
-  approved: { variant: "success", label: "Approuv\u00e9" },
-  suspended: { variant: "destructive", label: "Suspendu" },
-  archived: { variant: "outline", label: "Archiv\u00e9" },
+  pending: { tone: "warning", label: "En attente" },
+  approved: { tone: "success", label: "Approuv\u00e9" },
+  suspended: { tone: "danger", label: "Suspendu" },
+  archived: { tone: "neutral", label: "Archiv\u00e9" },
 };
 
 // ─── Page ───────────────────────────────────────────────────────────────────
@@ -105,18 +108,19 @@ export default function VenuesPage() {
       </Breadcrumb>
 
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Mes Lieux</h1>
-          <p className="text-muted-foreground text-sm mt-1">
-            G\u00e9rez vos espaces \u00e9v\u00e9nementiels et suivez leur activit\u00e9
-          </p>
-        </div>
-        <Button onClick={() => setShowCreate(!showCreate)} size="sm">
-          <Plus size={16} className="mr-1.5" />
-          Ajouter un lieu
-        </Button>
-      </div>
+      <SectionHeader
+        kicker="— ESPACES"
+        title="Mes Lieux"
+        subtitle="G\u00e9rez vos espaces \u00e9v\u00e9nementiels et suivez leur activit\u00e9."
+        size="hero"
+        as="h1"
+        action={
+          <Button onClick={() => setShowCreate(!showCreate)} size="sm">
+            <Plus size={16} className="mr-1.5" />
+            Ajouter un lieu
+          </Button>
+        }
+      />
 
       {/* Create form */}
       {showCreate && (
@@ -218,15 +222,18 @@ export default function VenuesPage() {
 
       {/* Empty */}
       {!isLoading && !isError && venues.length === 0 && (
-        <Card>
-          <CardContent className="p-12 text-center">
-            <MapPin size={48} className="mx-auto text-muted-foreground/30 mb-4" />
-            <h3 className="text-lg font-semibold text-foreground mb-1">Aucun lieu</h3>
-            <p className="text-muted-foreground text-sm">
-              Ajoutez votre premier espace \u00e9v\u00e9nementiel pour commencer
-            </p>
-          </CardContent>
-        </Card>
+        <EmptyStateEditorial
+          icon={MapPin}
+          kicker="— AUCUN LIEU"
+          title="D\u00e9marrez votre catalogue"
+          description="Ajoutez votre premier espace \u00e9v\u00e9nementiel pour commencer \u00e0 organiser des \u00e9v\u00e9nements."
+          action={
+            <Button onClick={() => setShowCreate(true)} size="sm">
+              <Plus size={16} className="mr-1.5" />
+              Ajouter un lieu
+            </Button>
+          }
+        />
       )}
 
       {/* Venue cards */}
@@ -246,9 +253,11 @@ export default function VenuesPage() {
                           {venue.address?.city && ` \u2014 ${venue.address.city}`}
                         </p>
                       </div>
-                      <Badge variant={status.variant} className="ml-2 shrink-0 text-[10px]">
-                        {status.label}
-                      </Badge>
+                      <StatusPill
+                        tone={status.tone}
+                        label={status.label}
+                        className="ml-2 shrink-0"
+                      />
                     </div>
 
                     <div className="flex items-center gap-4 text-xs text-muted-foreground mt-4">
