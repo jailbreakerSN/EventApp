@@ -33,19 +33,7 @@ import {
 } from "@teranga/shared-ui";
 import type { Registration } from "@teranga/shared-types";
 import { getCoverGradient } from "@/lib/cover-gradient";
-
-function intlLocale(locale: string): string {
-  switch (locale) {
-    case "fr":
-      return "fr-SN";
-    case "en":
-      return "en-SN";
-    case "wo":
-      return "wo-SN";
-    default:
-      return locale;
-  }
-}
+import { intlLocale } from "@/lib/intl-locale";
 
 type StatusKey =
   | "confirmed"

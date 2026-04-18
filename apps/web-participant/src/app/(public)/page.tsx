@@ -5,6 +5,7 @@ import { getTranslations, getLocale } from "next-intl/server";
 import { serverEventsApi } from "@/lib/server-api";
 import { getCoverGradient } from "@/lib/cover-gradient";
 import { mapEventToEditorialCardProps } from "@/lib/editorial-card-props";
+import { intlLocale } from "@/lib/intl-locale";
 import { EditorialEventCard, formatCurrency, formatDate, SectionHeader } from "@teranga/shared-ui";
 import type { Event } from "@teranga/shared-types";
 
@@ -50,7 +51,7 @@ export default async function HomePage() {
     { slug: "training", glyph: "◈", labelKey: "training_plural" },
   ];
 
-  const intlLocale = locale === "fr" ? "fr-SN" : locale === "wo" ? "wo-SN" : "en-SN";
+  const regional = intlLocale(locale);
 
   return (
     <>
@@ -191,7 +192,7 @@ export default async function HomePage() {
                 event={event}
                 index={i + 1}
                 total={featuredEvents.length}
-                locale={intlLocale}
+                locale={regional}
                 categoryLabel={tCategories(`${event.category}` as "conference")}
                 detailsCta={tHome("featured.cta")}
                 registerCta={tCommon("viewDetails")}
@@ -249,7 +250,7 @@ export default async function HomePage() {
                   event,
                   index: i + 1,
                   total: latestEvents.length,
-                  locale: intlLocale,
+                  locale: regional,
                   t: {
                     common: (k) => tCommon(k),
                     categories: (k) => tCategories(k as "conference"),

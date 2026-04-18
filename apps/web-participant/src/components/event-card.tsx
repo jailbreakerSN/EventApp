@@ -6,6 +6,7 @@ import { Calendar, MapPin, Users } from "lucide-react";
 import { Badge, formatDate, formatCurrency } from "@teranga/shared-ui";
 import { useLocale, useTranslations } from "next-intl";
 import type { Event } from "@teranga/shared-types";
+import { intlLocale } from "@/lib/intl-locale";
 
 interface EventCardProps {
   event: Event;
@@ -87,21 +88,4 @@ export function EventCard({ event }: EventCardProps) {
       </div>
     </Link>
   );
-}
-
-// next-intl gives us locale codes like "fr" / "en" / "wo" but Intl.*
-// expects BCP-47 regional tags. The app targets Senegal, so map every
-// supported locale to its SN regional form; unknown locales fall back
-// to the raw code so new translations keep working without a code edit.
-function intlLocale(locale: string): string {
-  switch (locale) {
-    case "fr":
-      return "fr-SN";
-    case "en":
-      return "en-SN";
-    case "wo":
-      return "wo-SN";
-    default:
-      return locale;
-  }
 }

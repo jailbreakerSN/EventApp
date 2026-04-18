@@ -36,19 +36,7 @@ import {
 } from "@teranga/shared-ui";
 import { AlertTriangle } from "lucide-react";
 import type { Event, TicketType, Registration, PaymentMethod } from "@teranga/shared-types";
-
-function intlLocale(locale: string): string {
-  switch (locale) {
-    case "fr":
-      return "fr-SN";
-    case "en":
-      return "en-SN";
-    case "wo":
-      return "wo-SN";
-    default:
-      return locale;
-  }
-}
+import { intlLocale } from "@/lib/intl-locale";
 
 type Step = "select" | "confirm" | "success";
 type StepNum = 1 | 2 | 3;

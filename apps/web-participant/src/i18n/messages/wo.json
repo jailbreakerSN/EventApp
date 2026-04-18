@@ -545,5 +545,25 @@
     "twitter": "Séddoo ci X (Twitter)",
     "copyLink": "Duppilik link bi",
     "copied": "Link duppi na"
+  },
+  "faq": {
+    "metaTitle": "Ndimbal & FAQ | Teranga",
+    "metaDescription": "Tontu ci laaj yi ëppal ñu laaj ci Teranga Events : bind, billet, QR badge, delloo ak yeneen.",
+    "back": "Dellu",
+    "kicker": "— NDIMBAL",
+    "title": "Ndimbal & FAQ",
+    "subtitle": "Tontu ci laaj yi ëppal ñu laaj ci plaatform bi.",
+    "comingSoonHeading": "Damay ñëw",
+    "comingSoonBody": "Dañuy waajal ab FAQ yu mat ngir tontu sa laaj yépp ci bind, paye, QR badge ak yeneen.",
+    "contactPrefix": "Bu loolu lépp déjj, jokkoo ak ñun bu am laaj :",
+    "upcomingSectionsHeading": "Xët yi nar a ñëw",
+    "upcomingSections": {
+      "register": "Naka laa war a bind ci ab xew-xew ?",
+      "qr": "Nan la QR badge bi di jëfe ?",
+      "cancel": "Mën naa bayyi sama bind ?",
+      "contact": "Naka laa war a jokkoo ak organisateur bi ?",
+      "payments": "Paye ak delloo",
+      "confirmationEmail": "Lu ma war a def bu ma jotul sama imeyl confirmation ?"
+    }
   }
 }
