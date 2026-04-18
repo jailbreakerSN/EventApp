@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
-import { Search } from "lucide-react";
+import Link from "next/link";
+import { ArrowRight, Scale, Search } from "lucide-react";
 import { getTranslations } from "next-intl/server";
 import { EmptyStateEditorial, SectionHeader } from "@teranga/shared-ui";
 import { serverEventsApi } from "@/lib/server-api";
@@ -75,6 +76,16 @@ export default async function EventsPage({ searchParams }: EventsPageProps) {
           meta.total > 0
             ? tEvents("list.resultsCount", { count: meta.total })
             : tEvents("noResults")
+        }
+        action={
+          <Link
+            href="/events/compare"
+            className="inline-flex items-center gap-2 rounded-full border border-teranga-navy/15 bg-card px-4 py-2 text-sm font-medium text-teranga-navy transition-colors hover:bg-teranga-navy hover:text-white dark:border-teranga-gold/30 dark:text-foreground dark:hover:bg-teranga-gold dark:hover:text-teranga-navy"
+          >
+            <Scale className="h-4 w-4" aria-hidden="true" />
+            {tEvents("compareCta")}
+            <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+          </Link>
         }
       />
       <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">

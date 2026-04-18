@@ -24,6 +24,7 @@ import {
 } from "@teranga/shared-ui";
 import { EventJsonLd } from "@/components/event-detail/event-jsonld";
 import { ShareButtons } from "@/components/share-buttons";
+import { SaveEventButton } from "@/components/save-event-button";
 import { AddToCalendar } from "@/components/add-to-calendar";
 import { mapEventToEditorialCardProps } from "@/lib/editorial-card-props";
 import { getCoverGradient } from "@/lib/cover-gradient";
@@ -223,12 +224,15 @@ export default async function EventDetailPage({ params }: PageProps) {
             <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" />
             {tDetail("allEvents")}
           </Link>
-          <ShareButtons
-            title={event.title}
-            date={formatDate(event.startDate, regional)}
-            url={`${process.env.NEXT_PUBLIC_APP_URL || "https://teranga.sn"}/events/${event.slug}`}
-            description={event.shortDescription ?? undefined}
-          />
+          <div className="flex items-center gap-1">
+            <SaveEventButton eventId={event.id} />
+            <ShareButtons
+              title={event.title}
+              date={formatDate(event.startDate, regional)}
+              url={`${process.env.NEXT_PUBLIC_APP_URL || "https://teranga.sn"}/events/${event.slug}`}
+              description={event.shortDescription ?? undefined}
+            />
+          </div>
         </div>
       </div>
 
@@ -270,6 +274,19 @@ export default async function EventDetailPage({ params }: PageProps) {
               spotsLeft <= event.maxAttendees * 0.15 && (
                 <span className="inline-flex items-center rounded-full bg-teranga-clay px-3 py-1 text-xs font-semibold text-white">
                   ⚠ {tDetail("lastSeats", { count: spotsLeft })}
+                </span>
+              )}
+            {/* Popular signal — fires at 70%+ capacity but stops once the
+                "last seats" urgency pill above has taken over, so the two
+                are mutually exclusive from the participant's point of view. */}
+            {capacityPct !== null &&
+              capacityPct >= 70 &&
+              spotsLeft !== null &&
+              event.maxAttendees &&
+              spotsLeft > event.maxAttendees * 0.15 &&
+              !isFull && (
+                <span className="inline-flex items-center rounded-full bg-teranga-gold/15 px-3 py-1 text-xs font-semibold text-teranga-gold-dark dark:bg-teranga-gold/25">
+                  ✦ {tDetail("popular")}
                 </span>
               )}
             {isFull && (
@@ -341,9 +358,12 @@ export default async function EventDetailPage({ params }: PageProps) {
           {/* Programme — grouped day cards with mono day kicker. */}
           {sessions.length > 0 && (
             <section className="mb-12">
-              <h2 className="font-serif-display mb-6 text-[28px] font-semibold tracking-[-0.02em]">
+              <h2 className="font-serif-display mb-1.5 text-[28px] font-semibold tracking-[-0.02em]">
                 {tDetail("schedule")}
               </h2>
+              <p className="font-mono-kicker mb-6 text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+                — {tDetail("scheduleTimezone")}
+              </p>
               <div className="flex flex-col gap-8">
                 {Array.from(sessionsByDate.entries()).map(([dateLabel, daySessions]) => (
                   <div key={dateLabel}>

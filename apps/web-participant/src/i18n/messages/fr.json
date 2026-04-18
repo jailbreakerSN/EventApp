@@ -284,6 +284,7 @@
     "noResults": "Aucun événement trouvé",
     "noResultsHint": "Aucun événement ne correspond à vos critères. Essayez d'élargir votre recherche.",
     "clearFilters": "Réinitialiser les filtres",
+    "compareCta": "Comparer des événements",
     "list": {
       "resultsCount": "{count, plural, one {# événement trouvé} other {# événements trouvés}}"
     },
@@ -333,6 +334,10 @@
       "full": "Complet",
       "seatsLeft": "{count, plural, one {# place restante} other {# places restantes}}",
       "lastSeats": "{count, plural, one {Plus qu'une place !} other {Plus que # places !}}",
+      "popular": "Événement populaire",
+      "scheduleTimezone": "Horaires en heure de Dakar (WAIST, UTC+0)",
+      "save": "Sauvegarder",
+      "saved": "Sauvegardé",
       "feedCommunity": "Feed communautaire",
       "feedHint": "Échangez avec les participants",
       "onlineEvent": "Événement en ligne",
@@ -389,6 +394,12 @@
     "backToEvents": "Retour aux événements",
     "backToEvent": "Retour à l'événement",
     "back": "Retour",
+    "verifyEmailTitle": "Vérifiez votre adresse e-mail",
+    "verifyEmailBody": "Nous avons envoyé un lien de vérification à {email}. Cliquez dessus pour débloquer les inscriptions payantes.",
+    "resendVerification": "Renvoyer le lien de vérification",
+    "verificationResending": "Envoi en cours…",
+    "verificationResent": "Lien de vérification renvoyé. Consultez votre boîte de réception.",
+    "verificationResendError": "Impossible d'envoyer l'email. Réessayez dans quelques minutes.",
     "alreadyRegistered": "Vous êtes déjà inscrit(e)",
     "statusPrefix": "Votre inscription est {status}.",
     "viewBadge": "Voir mon badge",
@@ -458,7 +469,15 @@
       "codeLabel": "Code",
       "dateLabel": "Date",
       "passTypeLabel": "Pass",
-      "placeLabel": "Lieu"
+      "placeLabel": "Lieu",
+      "nextStep": {
+        "verifyEmail": "Vérifier l'e-mail",
+        "verifyEmailHint": "Confirmez votre adresse pour sécuriser votre compte.",
+        "downloadBadge": "Télécharger le badge",
+        "downloadBadgeHint": "Sauvegardez-le hors ligne pour le jour J.",
+        "exploreSchedule": "Explorer le programme",
+        "exploreScheduleHint": "Marquez les sessions qui vous intéressent."
+      }
     }
   },
   "paymentStatus": {
@@ -477,6 +496,7 @@
     "failedHeading": "Paiement échoué",
     "failedFallback": "Le paiement n'a pas pu être traité. Veuillez réessayer.",
     "retry": "Réessayer",
+    "contactSupport": "Contacter le support",
     "errorHeading": "Erreur",
     "errorHint": "Impossible de récupérer le statut du paiement."
   },
@@ -512,6 +532,7 @@
     "pastEmptyTitle": "Aucun événement passé",
     "pastEmptyDescription": "Les événements auxquels vous avez participé apparaîtront ici.",
     "details": "Détails",
+    "viewSchedule": "Programme",
     "settings": "Paramètres",
     "browseCta": "Parcourir",
     "ticketPrefix": "Billet",
