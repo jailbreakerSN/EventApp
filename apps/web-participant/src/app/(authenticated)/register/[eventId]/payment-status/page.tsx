@@ -106,7 +106,7 @@ export default function PaymentStatusPage() {
   return (
     <div className="mx-auto max-w-lg px-4 py-8 space-y-6">
       <Link
-        href={event ? `/events/${eventId}` : "/events"}
+        href={event ? `/events/${event.slug}` : "/events"}
         className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
       >
         <ArrowLeft className="h-4 w-4" />

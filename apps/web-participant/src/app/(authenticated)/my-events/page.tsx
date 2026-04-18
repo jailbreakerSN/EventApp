@@ -480,7 +480,7 @@ function UpcomingRow({
               </Button>
             </Link>
           )}
-          <Link href={`/events/${reg.eventId}`}>
+          <Link href={`/events/${reg.eventSlug ?? reg.eventId}`}>
             <Button variant="outline" size="sm" className="w-full rounded-full">
               {t("details")}
             </Button>
