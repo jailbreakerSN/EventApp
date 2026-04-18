@@ -129,6 +129,18 @@ jobs:
               --condition=None --quiet >/dev/null || \
               echo "::warning::Failed to bind $role to $member (may already exist or SA lacks Project IAM Admin)"
           done
+
+          # Grant the Cloud Run runtime SA Token Creator on ITSELF so that
+          # Firebase Admin SDK's getSignedUrl() can call iamcredentials.signBlob
+          # when no private key is present in the environment (Workload
+          # Identity path). Without this, badge PDF downloads 500 with
+          # "Permission 'iam.serviceAccounts.signBlob' denied".
+          gcloud iam service-accounts add-iam-policy-binding "$COMPUTE_SA" \
+            --member="serviceAccount:${COMPUTE_SA}" \
+            --role="roles/iam.serviceAccountTokenCreator" \
+            --project="$PROJECT_ID" \
+            --condition=None --quiet >/dev/null || \
+            echo "::warning::Failed to grant Token Creator on ${COMPUTE_SA} (may already exist or SA lacks Service Account Admin)"
         env:
           SA_KEY: ${{ secrets.GCP_SA_KEY }}
 

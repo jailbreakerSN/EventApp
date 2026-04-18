@@ -120,7 +120,14 @@ export class EventService extends BaseService {
   }
 
   async getBySlug(slug: string, user?: AuthUser): Promise<Event> {
-    const event = await eventRepository.findBySlug(slug);
+    // Try strict slug lookup first, then fall back to ID lookup so links
+    // built from `event.id` (e.g. historical registrations that predate
+    // the eventSlug denormalization) still resolve to the right event
+    // instead of 404'ing.
+    let event = await eventRepository.findBySlug(slug);
+    if (!event) {
+      event = await eventRepository.findById(slug);
+    }
     if (!event) {
       const { NotFoundError } = await import("@/errors/app-error");
       throw new NotFoundError("Event", slug);
