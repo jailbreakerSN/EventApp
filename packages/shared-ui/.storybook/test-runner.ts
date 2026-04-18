@@ -59,15 +59,45 @@ const config: TestRunnerConfig = {
     // Wait for webfonts to be fully loaded before taking screenshots.
     // document.fonts.ready resolves once every declared @font-face has
     // finished downloading and decoding. Without this wait, the first
-    // runs on CI produce fallback-font screenshots and the next warm run
-    // shows Fraunces / Inter — a classic flaky-diff source.
+    // runs on CI produce fallback-font screenshots and the next warm
+    // run shows Fraunces / Inter — a classic flaky-diff source.
+    //
+    // We also force-load the three display faces we actually use (they
+    // are declared via a <link> stylesheet in preview-head.html, so the
+    // browser only fetches them lazily when a DOM node requests them,
+    // and document.fonts.ready only resolves for *requested* faces).
+    // Calling `document.fonts.load()` kicks off the fetch eagerly and
+    // resolves when the variant is ready, so the subsequent
+    // `document.fonts.ready` catches every display face too.
     await page.evaluate(async () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const fonts = (document as any).fonts as FontFaceSet | undefined;
-      if (fonts && typeof fonts.ready?.then === "function") {
+      if (!fonts) return;
+      try {
+        await Promise.all([
+          fonts.load("400 16px Inter"),
+          fonts.load("500 16px Inter"),
+          fonts.load("600 16px Inter"),
+          fonts.load("700 16px Inter"),
+          fonts.load("600 32px Fraunces"),
+          fonts.load("700 48px Fraunces"),
+          fonts.load("500 12px 'JetBrains Mono'"),
+          fonts.load("600 12px 'JetBrains Mono'"),
+        ]);
+      } catch {
+        // load() rejects if the face isn't declared (rare) — that's
+        // fine, fall back to whatever fonts.ready knows about.
+      }
+      if (typeof fonts.ready?.then === "function") {
         await fonts.ready;
       }
     });
+
+    // Small settle delay after fonts resolve — gives the layout engine
+    // one frame to reflow text at the final face. Matters for
+    // Fraunces's wide optical-size range where the initial paint uses
+    // the fallback's metrics until the variable font is swapped in.
+    await page.waitForTimeout(150);
 
     // Disable CSS animations + caret blinking to stabilise the snapshot.
     await page.addStyleTag({
