@@ -371,7 +371,14 @@
     "registrationNotFound": "Registration not found.",
     "backToMyEvents": "Back to my registrations",
     "addToWallet": "Add to wallet",
-    "offlineHint": "Available offline"
+    "offlineHint": "Available offline",
+    "saveOffline": "Save for event day",
+    "saveOfflineAria": "Save this badge for offline access on event day",
+    "savingOffline": "Saving…",
+    "savedOfflineToast": "Badge saved offline ⚡",
+    "savedOfflineChip": "Saved offline",
+    "saveOfflineError": "Couldn’t save offline. Please retry.",
+    "cachedNotice": "You’re offline. This badge is loaded from the local cache."
   },
   "registerFlow": {
     "subtitle": "Registration",
