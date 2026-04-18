@@ -464,7 +464,11 @@ function UpcomingRow({
             </span>
           </p>
           {isWaitlisted && reg.waitlistPosition && (
-            <p className="mt-2 inline-flex items-center gap-1 text-[13px] font-medium text-teranga-gold-dark">
+            <p
+              role="status"
+              aria-label={t("waitlistPositionAria", { n: reg.waitlistPosition })}
+              className="mt-2 inline-flex items-center gap-1 text-[13px] font-medium text-teranga-gold-dark"
+            >
               <ListOrdered className="h-4 w-4" aria-hidden="true" />
               {t("waitlistPosition", { n: reg.waitlistPosition })}
             </p>
@@ -483,6 +487,12 @@ function UpcomingRow({
           <Link href={`/events/${reg.eventSlug ?? reg.eventId}`}>
             <Button variant="outline" size="sm" className="w-full rounded-full">
               {t("details")}
+            </Button>
+          </Link>
+          <Link href={`/events/${reg.eventSlug ?? reg.eventId}/schedule`}>
+            <Button variant="ghost" size="sm" className="w-full rounded-full">
+              <Calendar className="mr-1.5 h-4 w-4" aria-hidden="true" />
+              {t("viewSchedule")}
             </Button>
           </Link>
           {showRefund && reg.paymentId && (

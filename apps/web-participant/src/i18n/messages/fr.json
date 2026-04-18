@@ -20,7 +20,14 @@
     "price": "Prix",
     "status": "Statut",
     "free": "Gratuit",
-    "fromPrice": "À partir de {price}"
+    "fromPrice": "À partir de {price}",
+    "errorBoundary": {
+      "kicker": "— ERREUR",
+      "title": "Une erreur est survenue",
+      "description": "Impossible de charger cette page. Veuillez réessayer.",
+      "retry": "Réessayer",
+      "home": "Accueil"
+    }
   },
   "auth": {
     "login": "Connexion",
@@ -284,6 +291,7 @@
     "noResults": "Aucun événement trouvé",
     "noResultsHint": "Aucun événement ne correspond à vos critères. Essayez d'élargir votre recherche.",
     "clearFilters": "Réinitialiser les filtres",
+    "compareCta": "Comparer des événements",
     "list": {
       "resultsCount": "{count, plural, one {# événement trouvé} other {# événements trouvés}}"
     },
@@ -333,6 +341,10 @@
       "full": "Complet",
       "seatsLeft": "{count, plural, one {# place restante} other {# places restantes}}",
       "lastSeats": "{count, plural, one {Plus qu'une place !} other {Plus que # places !}}",
+      "popular": "Événement populaire",
+      "scheduleTimezone": "Horaires en heure de Dakar (WAIST, UTC+0)",
+      "save": "Sauvegarder",
+      "saved": "Sauvegardé",
       "feedCommunity": "Feed communautaire",
       "feedHint": "Échangez avec les participants",
       "onlineEvent": "Événement en ligne",
@@ -389,6 +401,12 @@
     "backToEvents": "Retour aux événements",
     "backToEvent": "Retour à l'événement",
     "back": "Retour",
+    "verifyEmailTitle": "Vérifiez votre adresse e-mail",
+    "verifyEmailBody": "Nous avons envoyé un lien de vérification à {email}. Cliquez dessus pour débloquer les inscriptions payantes.",
+    "resendVerification": "Renvoyer le lien de vérification",
+    "verificationResending": "Envoi en cours…",
+    "verificationResent": "Lien de vérification renvoyé. Consultez votre boîte de réception.",
+    "verificationResendError": "Impossible d'envoyer l'email. Réessayez dans quelques minutes.",
     "alreadyRegistered": "Vous êtes déjà inscrit(e)",
     "statusPrefix": "Votre inscription est {status}.",
     "viewBadge": "Voir mon badge",
@@ -458,7 +476,15 @@
       "codeLabel": "Code",
       "dateLabel": "Date",
       "passTypeLabel": "Pass",
-      "placeLabel": "Lieu"
+      "placeLabel": "Lieu",
+      "nextStep": {
+        "verifyEmail": "Vérifier l'e-mail",
+        "verifyEmailHint": "Confirmez votre adresse pour sécuriser votre compte.",
+        "downloadBadge": "Télécharger le badge",
+        "downloadBadgeHint": "Sauvegardez-le hors ligne pour le jour J.",
+        "exploreSchedule": "Explorer le programme",
+        "exploreScheduleHint": "Marquez les sessions qui vous intéressent."
+      }
     }
   },
   "paymentStatus": {
@@ -477,6 +503,7 @@
     "failedHeading": "Paiement échoué",
     "failedFallback": "Le paiement n'a pas pu être traité. Veuillez réessayer.",
     "retry": "Réessayer",
+    "contactSupport": "Contacter le support",
     "errorHeading": "Erreur",
     "errorHint": "Impossible de récupérer le statut du paiement."
   },
@@ -512,11 +539,13 @@
     "pastEmptyTitle": "Aucun événement passé",
     "pastEmptyDescription": "Les événements auxquels vous avez participé apparaîtront ici.",
     "details": "Détails",
+    "viewSchedule": "Programme",
     "settings": "Paramètres",
     "browseCta": "Parcourir",
     "ticketPrefix": "Billet",
     "registeredOn": "Inscrit le",
     "waitlistPosition": "Position #{n}",
+    "waitlistPositionAria": "Vous êtes en position {n} sur la liste d'attente",
     "badge": "Badge",
     "refund": "Remboursement",
     "refundRequested": "Demande de remboursement envoyée",
@@ -679,6 +708,23 @@
     "photoUploadError": "Erreur lors du téléversement de la photo.",
     "photoUploaded": "Photo de profil mise à jour.",
     "notAuthenticated": "Non authentifié"
+  },
+  "schedule": {
+    "kicker": "— PROGRAMME",
+    "title": "Programme",
+    "timezone": "Horaires en heure de Dakar (WAIST, UTC+0)",
+    "back": "Retour",
+    "errorKicker": "— ERREUR",
+    "errorTitle": "Impossible de charger le programme",
+    "retry": "Réessayer",
+    "emptyKicker": "— AUCUNE SESSION",
+    "emptyTitle": "Aucune session programmée",
+    "emptyDescription": "Le programme sera disponible prochainement. Revenez bientôt.",
+    "speakersCount": "{count, plural, one {# intervenant} other {# intervenants}}",
+    "addBookmarkShort": "Ajouter au programme perso",
+    "removeBookmarkShort": "Retirer du programme perso",
+    "addBookmarkAria": "Ajouter cette session à votre programme personnel",
+    "removeBookmarkAria": "Retirer cette session de votre programme personnel"
   },
   "newsletter": {
     "heading": "Restez informé des événements au Sénégal",

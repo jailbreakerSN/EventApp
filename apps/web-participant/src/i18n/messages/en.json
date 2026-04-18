@@ -20,7 +20,14 @@
     "price": "Price",
     "status": "Status",
     "free": "Free",
-    "fromPrice": "From {price}"
+    "fromPrice": "From {price}",
+    "errorBoundary": {
+      "kicker": "— ERROR",
+      "title": "Something went wrong",
+      "description": "We couldn’t load this page. Please try again.",
+      "retry": "Retry",
+      "home": "Home"
+    }
   },
   "auth": {
     "login": "Log in",
@@ -281,6 +288,7 @@
     "noResults": "No events found",
     "noResultsHint": "No events match your criteria. Try broadening your search.",
     "clearFilters": "Clear filters",
+    "compareCta": "Compare events",
     "list": {
       "resultsCount": "{count, plural, one {# event found} other {# events found}}"
     },
@@ -329,6 +337,10 @@
       "full": "Full",
       "seatsLeft": "{count, plural, one {# seat left} other {# seats left}}",
       "lastSeats": "{count, plural, one {Only 1 seat left!} other {Only # seats left!}}",
+      "popular": "Popular event",
+      "scheduleTimezone": "Times shown in Dakar time (WAIST, UTC+0)",
+      "save": "Save",
+      "saved": "Saved",
       "feedCommunity": "Community feed",
       "feedHint": "Chat with other attendees",
       "onlineEvent": "Online event",
@@ -386,6 +398,12 @@
     "backToEvents": "Back to events",
     "backToEvent": "Back to the event",
     "back": "Back",
+    "verifyEmailTitle": "Verify your email address",
+    "verifyEmailBody": "We sent a verification link to {email}. Click it to unlock paid registrations.",
+    "resendVerification": "Resend verification link",
+    "verificationResending": "Sending…",
+    "verificationResent": "Verification link resent. Check your inbox.",
+    "verificationResendError": "Couldn’t send the email. Please try again in a few minutes.",
     "alreadyRegistered": "You are already registered",
     "statusPrefix": "Your registration is {status}.",
     "viewBadge": "View my badge",
@@ -455,7 +473,15 @@
       "codeLabel": "Code",
       "dateLabel": "Date",
       "passTypeLabel": "Pass",
-      "placeLabel": "Location"
+      "placeLabel": "Location",
+      "nextStep": {
+        "verifyEmail": "Verify email",
+        "verifyEmailHint": "Confirm your address to secure your account.",
+        "downloadBadge": "Download badge",
+        "downloadBadgeHint": "Save it offline for event day.",
+        "exploreSchedule": "Explore the programme",
+        "exploreScheduleHint": "Bookmark the sessions you care about."
+      }
     }
   },
   "paymentStatus": {
@@ -474,6 +500,7 @@
     "failedHeading": "Payment failed",
     "failedFallback": "The payment could not be processed. Please try again.",
     "retry": "Try again",
+    "contactSupport": "Contact support",
     "errorHeading": "Error",
     "errorHint": "Unable to fetch the payment status."
   },
@@ -509,11 +536,13 @@
     "pastEmptyTitle": "No past events",
     "pastEmptyDescription": "Events you attended will show up here.",
     "details": "Details",
+    "viewSchedule": "Schedule",
     "settings": "Settings",
     "browseCta": "Browse",
     "ticketPrefix": "Ticket",
     "registeredOn": "Registered on",
     "waitlistPosition": "Position #{n}",
+    "waitlistPositionAria": "You are number {n} on the waitlist",
     "badge": "Badge",
     "refund": "Refund",
     "refundRequested": "Refund request sent",
@@ -676,6 +705,23 @@
     "photoUploadError": "Failed to upload the photo.",
     "photoUploaded": "Profile photo updated.",
     "notAuthenticated": "Not authenticated"
+  },
+  "schedule": {
+    "kicker": "— SCHEDULE",
+    "title": "Schedule",
+    "timezone": "Times shown in Dakar time (WAIST, UTC+0)",
+    "back": "Back",
+    "errorKicker": "— ERROR",
+    "errorTitle": "Couldn’t load the schedule",
+    "retry": "Retry",
+    "emptyKicker": "— NO SESSIONS",
+    "emptyTitle": "No sessions scheduled",
+    "emptyDescription": "The programme will be published soon. Check back later.",
+    "speakersCount": "{count, plural, one {# speaker} other {# speakers}}",
+    "addBookmarkShort": "Save to my schedule",
+    "removeBookmarkShort": "Remove from my schedule",
+    "addBookmarkAria": "Add this session to your personal schedule",
+    "removeBookmarkAria": "Remove this session from your personal schedule"
   },
   "newsletter": {
     "heading": "Stay informed about events in Senegal",
