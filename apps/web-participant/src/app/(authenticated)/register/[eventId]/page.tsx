@@ -34,9 +34,11 @@ import {
   formatDate,
   getErrorMessage,
 } from "@teranga/shared-ui";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, CheckCircle2 } from "lucide-react";
 import type { Event, TicketType, Registration, PaymentMethod } from "@teranga/shared-types";
 import { intlLocale } from "@/lib/intl-locale";
+import { saveBadge } from "@/lib/badge-store";
+import { useAuth } from "@/hooks/use-auth";
 
 type Step = "select" | "confirm" | "success";
 type StepNum = 1 | 2 | 3;
@@ -53,8 +55,10 @@ export default function RegisterPage() {
   const tSuccess = useTranslations("registerFlow.success");
   const tStatus = useTranslations("registerFlow.statusLabels");
   const tCommon = useTranslations("common");
+  const tBadge = useTranslations("badge");
   const locale = useLocale();
   const regional = intlLocale(locale);
+  const { user } = useAuth();
   const { eventId } = useParams<{ eventId: string }>();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -149,6 +153,23 @@ export default function RegisterPage() {
     if (soldOut) return;
     setSelectedTicket(match);
   }, [event, ticketParam, selectedTicket, step]);
+
+  // Persist the freshly-minted badge to IndexedDB as soon as we reach
+  // the success step so day-of check-in works even if the participant
+  // drops connectivity before re-opening the app.
+  useEffect(() => {
+    if (step !== "success" || !registration?.qrCodeValue || !event) return;
+    saveBadge({
+      registrationId: registration.id,
+      qrCodeValue: registration.qrCodeValue,
+      eventId: event.id,
+      eventTitle: event.title,
+      holderName:
+        registration.participantName ?? user?.displayName ?? user?.email ?? "",
+      ticketTypeName: selectedTicket?.name ?? registration.ticketTypeName ?? "",
+      cachedAt: new Date().toISOString(),
+    });
+  }, [step, registration, event, selectedTicket, user?.displayName, user?.email]);
 
   const getDiscountedPrice = (originalPrice: number) => {
     if (!promoResult || originalPrice === 0) return originalPrice;
@@ -671,6 +692,20 @@ export default function RegisterPage() {
               footerVariant="inline"
               animateReveal
             />
+
+            {/* Offline-saved chip — makes the core differentiator visible
+                the moment registration completes so the participant knows
+                the badge works on day-of even without connectivity. */}
+            {registration.qrCodeValue && (
+              <div
+                role="status"
+                aria-live="polite"
+                className="mt-4 inline-flex items-center gap-1.5 text-xs font-medium text-teranga-green"
+              >
+                <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
+                <span>⚡ {tBadge("savedOfflineChip")}</span>
+              </div>
+            )}
 
             {/* Actions */}
             <div className="mt-8 flex flex-wrap justify-center gap-3">

@@ -374,7 +374,14 @@
     "registrationNotFound": "Inscription introuvable.",
     "backToMyEvents": "Retour à mes inscriptions",
     "addToWallet": "Ajouter au portefeuille",
-    "offlineHint": "Disponible hors-ligne"
+    "offlineHint": "Disponible hors-ligne",
+    "saveOffline": "Sauvegarder pour le jour J",
+    "saveOfflineAria": "Sauvegarder ce badge pour un accès hors ligne le jour de l'événement",
+    "savingOffline": "Sauvegarde en cours…",
+    "savedOfflineToast": "Badge sauvegardé hors ligne ⚡",
+    "savedOfflineChip": "Sauvegardé hors ligne",
+    "saveOfflineError": "Impossible de sauvegarder hors ligne. Réessayez.",
+    "cachedNotice": "Vous êtes hors ligne. Ce badge est affiché depuis le cache local."
   },
   "registerFlow": {
     "subtitle": "Inscription",

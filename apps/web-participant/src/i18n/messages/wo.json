@@ -375,7 +375,14 @@
     "registrationNotFound": "Bindu bi gisu ko.",
     "backToMyEvents": "Dellu ci samay bind",
     "addToWallet": "Yokk ci portefeuille",
-    "offlineHint": "Am na ci dul laaj rezo"
+    "offlineHint": "Am na ci dul laaj rezo",
+    "saveOffline": "Denc ngir bés xew-xew bi",
+    "saveOfflineAria": "Denc badge bi ngir jëfandikoo ko ci dul laaj rezo",
+    "savingOffline": "Di denc…",
+    "savedOfflineToast": "Badge denc nañu ko ci dul laaj rezo ⚡",
+    "savedOfflineChip": "Denc nañu ci dul laaj rezo",
+    "saveOfflineError": "Mënul a denc. Jéemal ay saañu.",
+    "cachedNotice": "Nga ci biti internet. Badge bi dafa jóge ci sa téléfoon."
   },
   "registerFlow": {
     "subtitle": "Bind",
