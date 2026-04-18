@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { AlertTriangle, RotateCcw } from "lucide-react";
 import { Button, EmptyStateEditorial } from "@teranga/shared-ui";
 
@@ -24,9 +25,9 @@ export default function GlobalError({
                 <RotateCcw className="mr-2 h-4 w-4" aria-hidden="true" />
                 Réessayer
               </Button>
-              <a href="/events">
+              <Link href="/events">
                 <Button variant="outline">Accueil</Button>
-              </a>
+              </Link>
             </div>
           }
         />

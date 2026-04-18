@@ -3,14 +3,15 @@
 import { useState } from "react";
 import Link from "next/link";
 import {
+  ArrowRight,
   Calendar,
-  QrCode,
-  XCircle,
-  RotateCcw,
+  Check,
   ListOrdered,
   LogOut,
+  QrCode,
+  RotateCcw,
   Settings,
-  ArrowRight,
+  XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -308,7 +309,15 @@ export default function MyEventsPage() {
                       style={{ background: gradient }}
                     >
                       <div className="absolute right-3 top-3">
-                        <StatusPill tone={statusTone} label={statusLabel} />
+                        <StatusPill
+                          tone={statusTone}
+                          label={statusLabel}
+                          icon={
+                            reg.status === "checked_in" ? (
+                              <Check className="h-3 w-3" strokeWidth={3} aria-hidden="true" />
+                            ) : undefined
+                          }
+                        />
                       </div>
                     </div>
                     <div className="p-5">
