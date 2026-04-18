@@ -14,11 +14,18 @@ import {
   ArrowRight,
 } from "lucide-react";
 import { serverEventsApi, serverSpeakersApi, serverSessionsApi } from "@/lib/server-api";
-import { formatDate, formatDateTime, formatCurrency, CapacityBar } from "@teranga/shared-ui";
+import {
+  CapacityBar,
+  EditorialEventCard,
+  EditorialHero,
+  formatCurrency,
+  formatDate,
+  formatDateTime,
+} from "@teranga/shared-ui";
 import { EventJsonLd } from "@/components/event-detail/event-jsonld";
 import { ShareButtons } from "@/components/share-buttons";
 import { AddToCalendar } from "@/components/add-to-calendar";
-import { EditorialEventCard } from "@/components/editorial-event-card";
+import { mapEventToEditorialCardProps } from "@/lib/editorial-card-props";
 import { getCoverGradient } from "@/lib/cover-gradient";
 import type { Event, SpeakerProfile, Session } from "@teranga/shared-types";
 import ReactMarkdown from "react-markdown";
@@ -172,17 +179,27 @@ export default async function EventDetailPage({ params }: PageProps) {
   const event = await getEvent(slug);
   if (!event) notFound();
 
-  const [speakers, sessions, similarEvents, locale, tDetail, tCommon, tCategories, tFormat] =
-    await Promise.all([
-      getSpeakers(event.id),
-      getSessions(event.id),
-      getSimilarEvents(event),
-      getLocale(),
-      getTranslations("events.detail"),
-      getTranslations("common"),
-      getTranslations("categories"),
-      getTranslations("format"),
-    ]);
+  const [
+    speakers,
+    sessions,
+    similarEvents,
+    locale,
+    tDetail,
+    tCommon,
+    tCategories,
+    tFormat,
+    tEventsCard,
+  ] = await Promise.all([
+    getSpeakers(event.id),
+    getSessions(event.id),
+    getSimilarEvents(event),
+    getLocale(),
+    getTranslations("events.detail"),
+    getTranslations("common"),
+    getTranslations("categories"),
+    getTranslations("format"),
+    getTranslations("events.card"),
+  ]);
   const regional = intlLocale(locale);
 
   const speakerMap = new Map(speakers.map((s) => [s.id, s]));
@@ -232,64 +249,55 @@ export default async function EventDetailPage({ params }: PageProps) {
       </div>
 
       {/* Editorial hero — 440px navy cover with pills, Fraunces serif
-          title and tagline. Matches prototype event-detail.jsx. */}
-      <section
-        className="teranga-cover relative h-[380px] w-full overflow-hidden sm:h-[420px] lg:h-[440px]"
-        style={{
-          background: event.coverImageURL ? undefined : getCoverGradient(event.id).bg,
-        }}
-      >
-        {event.coverImageURL && (
-          <Image
-            src={event.coverImageURL}
-            alt=""
-            fill
-            priority
-            sizes="100vw"
-            className="z-0 object-cover"
-          />
-        )}
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/70 via-black/25 to-transparent"
-        />
-        <div className="container-wide relative z-10 mx-auto flex h-full max-w-[1280px] flex-col justify-end px-6 pb-10 lg:px-8 lg:pb-12">
-          <div className="max-w-[820px] text-white">
-            <div className="mb-5 flex flex-wrap gap-2">
-              <span className="inline-flex items-center rounded-full bg-teranga-gold px-3 py-1 text-xs font-semibold text-teranga-navy">
-                {tCategories(event.category as "conference")}
+          title and tagline. Matches prototype event-detail.jsx.
+          Uses shared-ui EditorialHero (navy variant) with an injected
+          backgroundNode so the event cover image (or fallback gradient)
+          sits under the texture overlay. */}
+      <EditorialHero
+        variant="navy"
+        className="teranga-cover w-full"
+        style={event.coverImageURL ? undefined : { background: getCoverGradient(event.id).bg }}
+        backgroundNode={
+          event.coverImageURL ? (
+            <Image
+              src={event.coverImageURL}
+              alt=""
+              fill
+              priority
+              sizes="100vw"
+              className="object-cover"
+            />
+          ) : null
+        }
+        pills={
+          <>
+            <span className="inline-flex items-center rounded-full bg-teranga-gold px-3 py-1 text-xs font-semibold text-teranga-navy">
+              {tCategories(event.category as "conference")}
+            </span>
+            {event.venueId && (
+              <span className="inline-flex items-center gap-1 rounded-full border border-white/25 bg-white/10 px-3 py-1 text-xs font-medium text-white backdrop-blur-sm">
+                <Building2 className="h-3 w-3" aria-hidden="true" />
+                {tDetail("venueReferenced")}
               </span>
-              {event.venueId && (
-                <span className="inline-flex items-center gap-1 rounded-full border border-white/25 bg-white/10 px-3 py-1 text-xs font-medium text-white backdrop-blur-sm">
-                  <Building2 className="h-3 w-3" aria-hidden="true" />
-                  {tDetail("venueReferenced")}
-                </span>
-              )}
-              {spotsLeft !== null &&
-                spotsLeft > 0 &&
-                event.maxAttendees &&
-                spotsLeft <= event.maxAttendees * 0.15 && (
-                  <span className="inline-flex items-center rounded-full bg-teranga-clay px-3 py-1 text-xs font-semibold text-white">
-                    ⚠ {tDetail("lastSeats", { count: spotsLeft })}
-                  </span>
-                )}
-              {isFull && (
-                <span className="inline-flex items-center rounded-full bg-destructive px-3 py-1 text-xs font-semibold text-white">
-                  {tDetail("full")}
-                </span>
-              )}
-            </div>
-            <h1 className="font-serif-display text-4xl font-medium leading-[1] tracking-[-0.028em] text-balance sm:text-5xl lg:text-[68px]">
-              {event.title}
-            </h1>
-            {event.shortDescription && (
-              <p className="mt-4 max-w-[640px] text-lg leading-relaxed text-white/85 text-pretty lg:text-xl">
-                {event.shortDescription}
-              </p>
             )}
-          </div>
-        </div>
-      </section>
+            {spotsLeft !== null &&
+              spotsLeft > 0 &&
+              event.maxAttendees &&
+              spotsLeft <= event.maxAttendees * 0.15 && (
+                <span className="inline-flex items-center rounded-full bg-teranga-clay px-3 py-1 text-xs font-semibold text-white">
+                  ⚠ {tDetail("lastSeats", { count: spotsLeft })}
+                </span>
+              )}
+            {isFull && (
+              <span className="inline-flex items-center rounded-full bg-destructive px-3 py-1 text-xs font-semibold text-white">
+                {tDetail("full")}
+              </span>
+            )}
+          </>
+        }
+        title={event.title}
+        lead={event.shortDescription ?? undefined}
+      />
 
       {/* Body grid: 1fr / 380px — matches prototype's asymmetric layout. */}
       <div className="mx-auto grid max-w-[1280px] gap-10 px-6 pb-20 pt-12 lg:grid-cols-[1fr_380px] lg:gap-14 lg:px-8 lg:pt-14">
@@ -694,9 +702,22 @@ export default async function EventDetailPage({ params }: PageProps) {
             {similarEvents.map((similar, i) => (
               <EditorialEventCard
                 key={similar.id}
-                event={similar}
-                index={i + 1}
-                total={similarEvents.length}
+                {...mapEventToEditorialCardProps({
+                  event: similar,
+                  index: i + 1,
+                  total: similarEvents.length,
+                  locale: regional,
+                  t: {
+                    common: (k) => tCommon(k),
+                    categories: (k) => tCategories(k as "conference"),
+                    remainingSeats: (count) => tEventsCard("remainingSeats", { count }),
+                    registeredWithFill: (count, pct) =>
+                      tEventsCard("registeredWithFill", { count, pct }),
+                    registeredCount: (count) => tEventsCard("registeredCount", { count }),
+                  },
+                })}
+                linkComponent={Link}
+                imageComponent={Image}
               />
             ))}
           </div>

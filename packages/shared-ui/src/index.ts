@@ -82,6 +82,21 @@ export {
   type StatusPillProps,
   type StatusPillTone,
 } from "./components/status-pill";
+export {
+  EditorialHero,
+  type EditorialHeroProps,
+  type EditorialHeroStat,
+} from "./components/editorial-hero";
+export {
+  EditorialEventCard,
+  type EditorialEventCardProps,
+  type EditorialEventCardLinkComponent,
+  type EditorialEventCardImageComponent,
+} from "./components/editorial-event-card";
+export {
+  EmptyStateEditorial,
+  type EmptyStateEditorialProps,
+} from "./components/empty-state-editorial";
 
 // ─── i18n ─────────────────────────────────────────────────────────────────
 export {
