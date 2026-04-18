@@ -93,6 +93,10 @@ export {
   type EditorialEventCardLinkComponent,
   type EditorialEventCardImageComponent,
 } from "./components/editorial-event-card";
+export {
+  EmptyStateEditorial,
+  type EmptyStateEditorialProps,
+} from "./components/empty-state-editorial";
 
 // ─── i18n ─────────────────────────────────────────────────────────────────
 export {
