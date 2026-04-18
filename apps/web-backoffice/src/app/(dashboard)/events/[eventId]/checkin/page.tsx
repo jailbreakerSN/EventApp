@@ -39,7 +39,10 @@ import {
   XCircle,
   AlertTriangle,
   Search,
+  Camera,
+  Keyboard,
 } from "lucide-react";
+import { QrScanner } from "@/components/qr-scanner";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -89,7 +92,7 @@ export default function CheckinDashboardPage() {
   if (!event) {
     return (
       <div className="text-center py-12">
-        <p className="text-muted-foreground">Evenement introuvable</p>
+        <p className="text-muted-foreground">Événement introuvable</p>
       </div>
     );
   }
@@ -131,7 +134,7 @@ export default function CheckinDashboardPage() {
           <button
             onClick={() => router.push(`/events/${eventId}`)}
             className="p-2 rounded-lg hover:bg-accent"
-            aria-label="Retour a l'evenement"
+            aria-label="Retour à l'événement"
           >
             <ArrowLeft className="h-5 w-5" />
           </button>
@@ -210,15 +213,26 @@ function ScannerTab({
   const [qrInput, setQrInput] = useState("");
   const [selectedZone, setSelectedZone] = useState<string>("");
   const [scanResult, setScanResult] = useState<ScanResult>({ status: "idle" });
+  const [scanMode, setScanMode] = useState<"camera" | "manual">(() => {
+    if (typeof window !== "undefined") {
+      return (localStorage.getItem("checkin-scan-mode") as "camera" | "manual") ?? "camera";
+    }
+    return "camera";
+  });
   const inputRef = useRef<HTMLInputElement>(null);
   const clearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const checkinMutation = usePerformCheckin(eventId);
 
-  // Auto-focus the input on mount and after each scan
+  const handleScanModeChange = useCallback((mode: "camera" | "manual") => {
+    setScanMode(mode);
+    localStorage.setItem("checkin-scan-mode", mode);
+  }, []);
+
+  // Auto-focus the manual input after each scan or when switching to manual mode
   useEffect(() => {
-    inputRef.current?.focus();
-  }, [scanResult.status]);
+    if (scanMode === "manual") inputRef.current?.focus();
+  }, [scanResult.status, scanMode]);
 
   // Clear result after 4 seconds, ready for next scan
   const scheduleClear = useCallback(() => {
@@ -237,8 +251,8 @@ function ScannerTab({
     };
   }, []);
 
-  const handleCheckin = useCallback(async () => {
-    const trimmed = qrInput.trim();
+  const handleCheckin = useCallback(async (overrideValue?: string) => {
+    const trimmed = (overrideValue ?? qrInput).trim();
     if (!trimmed) return;
 
     setScanResult({ status: "loading" });
@@ -261,8 +275,8 @@ function ScannerTab({
         checkedInAt: data?.checkedInAt as string | null,
       });
 
-      toast.success("Check-in reussi !", {
-        description: (data?.participantName as string) ?? "Participant enregistre",
+      toast.success("Check-in réussi !", {
+        description: (data?.participantName as string) ?? "Participant enregistré",
       });
 
       scheduleClear();
@@ -276,13 +290,13 @@ function ScannerTab({
           status: "already_checked_in",
           errorMessage: message,
         });
-        toast.warning("Deja enregistre", { description: message });
+        toast.warning("Déjà enregistré", { description: message });
       } else {
         setScanResult({
           status: "error",
           errorMessage: message,
         });
-        toast.error("Echec du check-in", { description: message });
+        toast.error("Échec du check-in", { description: message });
       }
 
       scheduleClear();
@@ -295,6 +309,14 @@ function ScannerTab({
         e.preventDefault();
         handleCheckin();
       }
+    },
+    [handleCheckin],
+  );
+
+  const handleCameraScan = useCallback(
+    (value: string) => {
+      setQrInput(value);
+      handleCheckin(value);
     },
     [handleCheckin],
   );
@@ -314,7 +336,7 @@ function ScannerTab({
               <UserCheck className="h-5 w-5 text-green-600 dark:text-green-400" />
             </div>
             <div>
-              <p className="text-xs text-muted-foreground">Entrees</p>
+              <p className="text-xs text-muted-foreground">Entrées</p>
               <p className="text-lg font-bold text-foreground">
                 {totalCheckedIn} / {totalRegistered}
               </p>
@@ -353,10 +375,43 @@ function ScannerTab({
       {/* Scanner Card */}
       <Card>
         <CardHeader className="pb-4">
-          <CardTitle className="text-lg flex items-center gap-2">
-            <QrCode className="h-5 w-5" />
-            Scanner un badge
-          </CardTitle>
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <CardTitle className="text-lg flex items-center gap-2">
+              <QrCode className="h-5 w-5" />
+              Scanner un badge
+            </CardTitle>
+            {/* Scan mode toggle */}
+            <div
+              className="flex rounded-lg overflow-hidden border border-border"
+              role="group"
+              aria-label="Mode de saisie"
+            >
+              <button
+                onClick={() => handleScanModeChange("camera")}
+                aria-pressed={scanMode === "camera"}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium transition-colors ${
+                  scanMode === "camera"
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-background text-muted-foreground hover:text-foreground hover:bg-muted"
+                }`}
+              >
+                <Camera className="h-4 w-4" />
+                Caméra
+              </button>
+              <button
+                onClick={() => handleScanModeChange("manual")}
+                aria-pressed={scanMode === "manual"}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium transition-colors border-l border-border ${
+                  scanMode === "manual"
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-background text-muted-foreground hover:text-foreground hover:bg-muted"
+                }`}
+              >
+                <Keyboard className="h-4 w-4" />
+                Manuel
+              </button>
+            </div>
+          </div>
         </CardHeader>
         <CardContent className="space-y-4">
           {/* Zone selector */}
@@ -366,7 +421,7 @@ function ScannerTab({
                 htmlFor="zone-select"
                 className="block text-sm font-medium text-foreground mb-1.5"
               >
-                Zone d&apos;acces
+                Zone d&apos;accès
               </label>
               <Select
                 id="zone-select"
@@ -391,45 +446,63 @@ function ScannerTab({
             </div>
           )}
 
-          {/* QR Input */}
-          <div>
-            <label htmlFor="qr-input" className="block text-sm font-medium text-foreground mb-1.5">
-              Code QR ou ID d&apos;inscription
-            </label>
-            <div className="flex gap-3">
-              <Input
-                ref={inputRef}
-                id="qr-input"
-                type="text"
-                value={qrInput}
-                onChange={(e) => setQrInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="Scannez ou collez le code QR ici..."
-                className="flex-1 h-14 text-lg px-4"
-                disabled={scanResult.status === "loading"}
-                autoComplete="off"
-                autoFocus
+          {/* Camera mode */}
+          {scanMode === "camera" && (
+            <div className="space-y-3">
+              <QrScanner
+                onScan={handleCameraScan}
+                paused={scanResult.status === "loading"}
               />
-              <Button
-                onClick={handleCheckin}
-                disabled={!qrInput.trim() || scanResult.status === "loading"}
-                className="h-14 px-6 text-base min-w-[120px]"
-              >
-                {scanResult.status === "loading" ? (
-                  <Loader2 className="h-5 w-5 animate-spin" />
-                ) : (
-                  <>
-                    <Search className="h-5 w-5 mr-2" />
-                    Verifier
-                  </>
-                )}
-              </Button>
+              <p className="text-xs text-muted-foreground text-center">
+                Pointez la caméra vers le QR code du badge. La lecture est automatique.
+              </p>
             </div>
-            <p className="text-xs text-muted-foreground mt-1.5">
-              Utilisez l&apos;appareil photo de votre telephone pour scanner le QR code, puis collez
-              la valeur ici. Appuyez sur Entree pour valider.
-            </p>
-          </div>
+          )}
+
+          {/* Manual mode */}
+          {scanMode === "manual" && (
+            <div>
+              <label
+                htmlFor="qr-input"
+                className="block text-sm font-medium text-foreground mb-1.5"
+              >
+                Code QR ou ID d&apos;inscription
+              </label>
+              <div className="flex gap-3">
+                <Input
+                  ref={inputRef}
+                  id="qr-input"
+                  type="text"
+                  value={qrInput}
+                  onChange={(e) => setQrInput(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder="Collez ou saisissez le code QR ici..."
+                  className="flex-1 h-14 text-lg px-4"
+                  disabled={scanResult.status === "loading"}
+                  autoComplete="off"
+                  autoFocus
+                />
+                <Button
+                  onClick={() => handleCheckin()}
+                  disabled={!qrInput.trim() || scanResult.status === "loading"}
+                  className="h-14 px-6 text-base min-w-[120px]"
+                >
+                  {scanResult.status === "loading" ? (
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                  ) : (
+                    <>
+                      <Search className="h-5 w-5 mr-2" />
+                      Vérifier
+                    </>
+                  )}
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground mt-1.5">
+                Collez la valeur du QR code ou saisissez l&apos;ID d&apos;inscription. Appuyez sur
+                Entrée pour valider.
+              </p>
+            </div>
+          )}
 
           {/* Scan Result */}
           {scanResult.status !== "idle" && scanResult.status !== "loading" && (
@@ -504,7 +577,7 @@ function ScanResultCard({ result }: { result: ScanResult }) {
           </div>
           <div className="flex-1 min-w-0">
             <h3 className="text-xl font-bold text-green-800 dark:text-green-300">
-              Check-in reussi
+              Check-in réussi
             </h3>
             {result.participantName && (
               <p className="text-lg font-semibold text-green-700 dark:text-green-400 mt-1">
@@ -535,10 +608,10 @@ function ScanResultCard({ result }: { result: ScanResult }) {
           </div>
           <div className="flex-1 min-w-0">
             <h3 className="text-xl font-bold text-amber-800 dark:text-amber-300">
-              Deja enregistre
+              Déjà enregistré
             </h3>
             <p className="text-sm text-amber-700 dark:text-amber-400 mt-1">
-              {result.errorMessage ?? "Ce badge a deja ete scanne"}
+              {result.errorMessage ?? "Ce badge a déjà été scanné"}
             </p>
           </div>
         </div>
@@ -554,7 +627,7 @@ function ScanResultCard({ result }: { result: ScanResult }) {
             <XCircle className="h-8 w-8 text-red-600 dark:text-red-400" />
           </div>
           <div className="flex-1 min-w-0">
-            <h3 className="text-xl font-bold text-red-800 dark:text-red-300">Echec du check-in</h3>
+            <h3 className="text-xl font-bold text-red-800 dark:text-red-300">Échec du check-in</h3>
             <p className="text-sm text-red-700 dark:text-red-400 mt-1">
               {result.errorMessage ?? "QR code invalide"}
             </p>
@@ -607,7 +680,7 @@ function DashboardTab({
         />
         <StatCard
           icon={<UserCheck className="h-5 w-5 text-green-600" />}
-          label="Entrees"
+          label="Entrées"
           value={`${totalCheckedIn} (${percentage}%)`}
           bgColor="bg-green-50 dark:bg-green-900/30"
         />
@@ -650,7 +723,7 @@ function DashboardTab({
           <Card>
             <CardContent className="p-6">
               <h2 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
-                <MapPin className="h-5 w-5" /> Zones d&apos;acces
+                <MapPin className="h-5 w-5" /> Zones d&apos;accès
               </h2>
               <div className="space-y-4">
                 {byZone.map((zone) => {
@@ -707,7 +780,7 @@ function DashboardTab({
                     },
                     {
                       key: "checkedIn",
-                      header: "Entrees",
+                      header: "Entrées",
                       render: (tt) => (tt.checkedIn as number) ?? 0,
                     },
                     {
@@ -732,7 +805,7 @@ function DashboardTab({
         <CardContent className="p-6">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
-              <History className="h-5 w-5" /> Check-ins recents
+              <History className="h-5 w-5" /> Check-ins récents
             </h2>
             <Link
               href={`/events/${eventId}/checkin/history`}

@@ -10,6 +10,7 @@ import { ArrowLeft, ArrowRight, Check, Loader2, ImagePlus, X } from "lucide-reac
 import Link from "next/link";
 import {
   Select,
+  Switch,
   Textarea,
   Breadcrumb,
   BreadcrumbList,
@@ -868,17 +869,11 @@ export default function NewEventPage() {
                 <p className="text-sm font-medium text-foreground">Événement public</p>
                 <p className="text-xs text-muted-foreground">Visible dans la recherche publique</p>
               </div>
-              <button
-                onClick={() => setIsPublic(!isPublic)}
-                role="switch"
-                aria-checked={isPublic}
-                aria-label="Événement public"
-                className={`relative w-11 h-6 rounded-full transition-colors ${isPublic ? "bg-primary" : "bg-muted"}`}
-              >
-                <span
-                  className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform ${isPublic ? "translate-x-5" : ""}`}
-                />
-              </button>
+              <Switch
+                checked={isPublic}
+                onCheckedChange={setIsPublic}
+                label="Événement public"
+              />
             </div>
             <div className="flex items-center justify-between">
               <div>
@@ -887,17 +882,11 @@ export default function NewEventPage() {
                   Les inscriptions doivent être approuvées manuellement
                 </p>
               </div>
-              <button
-                onClick={() => setRequiresApproval(!requiresApproval)}
-                role="switch"
-                aria-checked={requiresApproval}
-                aria-label="Approbation requise"
-                className={`relative w-11 h-6 rounded-full transition-colors ${requiresApproval ? "bg-primary" : "bg-muted"}`}
-              >
-                <span
-                  className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform ${requiresApproval ? "translate-x-5" : ""}`}
-                />
-              </button>
+              <Switch
+                checked={requiresApproval}
+                onCheckedChange={setRequiresApproval}
+                label="Approbation requise"
+              />
             </div>
             <div>
               <label
