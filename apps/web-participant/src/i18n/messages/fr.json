@@ -699,5 +699,25 @@
     "twitter": "Partager sur X (Twitter)",
     "copyLink": "Copier le lien",
     "copied": "Lien copié"
+  },
+  "faq": {
+    "metaTitle": "Aide & FAQ | Teranga",
+    "metaDescription": "Réponses aux questions fréquentes sur Teranga Events : inscriptions, billets, QR badges, remboursements et plus.",
+    "back": "Retour",
+    "kicker": "— AIDE",
+    "title": "Aide & FAQ",
+    "subtitle": "Réponses aux questions fréquentes sur la plateforme.",
+    "comingSoonHeading": "Bientôt disponible",
+    "comingSoonBody": "Nous préparons une FAQ complète pour répondre à toutes vos questions sur les inscriptions, les paiements, les QR badges et plus encore.",
+    "contactPrefix": "En attendant, n'hésitez pas à nous contacter si vous avez des questions :",
+    "upcomingSectionsHeading": "Sections à venir",
+    "upcomingSections": {
+      "register": "Comment m'inscrire à un événement ?",
+      "qr": "Comment fonctionne le QR badge ?",
+      "cancel": "Puis-je annuler mon inscription ?",
+      "contact": "Comment contacter l'organisateur ?",
+      "payments": "Paiements et remboursements",
+      "confirmationEmail": "Que faire si je ne reçois pas mon email de confirmation ?"
+    }
   }
 }

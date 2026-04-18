@@ -4,25 +4,13 @@ import { useState } from "react";
 import { AlertTriangle, Bell, CheckCheck, Circle, RotateCcw } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import { useNotifications, useMarkAsRead, useMarkAllAsRead } from "@/hooks/use-notifications";
+import { intlLocale } from "@/lib/intl-locale";
 import {
   Button,
   EmptyStateEditorial,
   SectionHeader,
 } from "@teranga/shared-ui";
 import type { Notification } from "@teranga/shared-types";
-
-function intlLocale(locale: string): string {
-  switch (locale) {
-    case "fr":
-      return "fr-SN";
-    case "en":
-      return "en-SN";
-    case "wo":
-      return "wo-SN";
-    default:
-      return locale;
-  }
-}
 
 export default function NotificationsPage() {
   const t = useTranslations("notifications");

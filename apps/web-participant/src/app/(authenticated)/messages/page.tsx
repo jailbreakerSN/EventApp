@@ -5,23 +5,11 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocale, useTranslations } from "next-intl";
 import { messagingApi } from "@/lib/api-client";
 import { useAuth } from "@/hooks/use-auth";
+import { intlLocale } from "@/lib/intl-locale";
 import { AlertTriangle, ArrowLeft, Loader2, RotateCcw, Send } from "lucide-react";
 import { Button, EmptyStateEditorial, SectionHeader } from "@teranga/shared-ui";
 import Link from "next/link";
 import type { Conversation, Message } from "@teranga/shared-types";
-
-function intlLocale(locale: string): string {
-  switch (locale) {
-    case "fr":
-      return "fr-SN";
-    case "en":
-      return "en-SN";
-    case "wo":
-      return "wo-SN";
-    default:
-      return locale;
-  }
-}
 
 function truncateId(id: string, fallback: string): string {
   if (!id) return fallback;

@@ -19,19 +19,7 @@ import {
   formatCurrency,
 } from "@teranga/shared-ui";
 import type { Event, Payment, Registration } from "@teranga/shared-types";
-
-function intlLocale(locale: string): string {
-  switch (locale) {
-    case "fr":
-      return "fr-SN";
-    case "en":
-      return "en-SN";
-    case "wo":
-      return "wo-SN";
-    default:
-      return locale;
-  }
-}
+import { intlLocale } from "@/lib/intl-locale";
 
 export default function PaymentStatusPage() {
   const t = useTranslations("paymentStatus");

@@ -27,26 +27,10 @@ import { ShareButtons } from "@/components/share-buttons";
 import { AddToCalendar } from "@/components/add-to-calendar";
 import { mapEventToEditorialCardProps } from "@/lib/editorial-card-props";
 import { getCoverGradient } from "@/lib/cover-gradient";
+import { intlLocale } from "@/lib/intl-locale";
 import type { Event, SpeakerProfile, Session } from "@teranga/shared-types";
 import ReactMarkdown from "react-markdown";
 import { getLocale, getTranslations } from "next-intl/server";
-
-// next-intl gives us locale codes like "fr"/"en"/"wo" but Intl.* expects
-// BCP-47 regional tags. The app targets Senegal, so map every supported
-// locale to its SN regional form; unknown locales fall back to the raw
-// code so new translations keep working without a code edit.
-function intlLocale(locale: string): string {
-  switch (locale) {
-    case "fr":
-      return "fr-SN";
-    case "en":
-      return "en-SN";
-    case "wo":
-      return "wo-SN";
-    default:
-      return locale;
-  }
-}
 
 // The root layout reads the NEXT_LOCALE cookie via next-intl's getLocale() /
 // getMessages(), which means any page under it inherently requires dynamic

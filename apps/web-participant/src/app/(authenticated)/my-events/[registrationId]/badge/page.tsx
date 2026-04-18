@@ -19,19 +19,7 @@ import {
   formatDate,
 } from "@teranga/shared-ui";
 import type { Registration, GeneratedBadge } from "@teranga/shared-types";
-
-function intlLocale(locale: string): string {
-  switch (locale) {
-    case "fr":
-      return "fr-SN";
-    case "en":
-      return "en-SN";
-    case "wo":
-      return "wo-SN";
-    default:
-      return locale;
-  }
-}
+import { intlLocale } from "@/lib/intl-locale";
 
 export default function BadgePage() {
   const t = useTranslations("badge");

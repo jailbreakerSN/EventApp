@@ -696,5 +696,25 @@
     "twitter": "Share on X (Twitter)",
     "copyLink": "Copy link",
     "copied": "Link copied"
+  },
+  "faq": {
+    "metaTitle": "Help & FAQ | Teranga",
+    "metaDescription": "Answers to frequently asked questions about Teranga Events: registrations, tickets, QR badges, refunds and more.",
+    "back": "Back",
+    "kicker": "— HELP",
+    "title": "Help & FAQ",
+    "subtitle": "Answers to common questions about the platform.",
+    "comingSoonHeading": "Coming soon",
+    "comingSoonBody": "We’re putting together a full FAQ covering registrations, payments, QR badges and more.",
+    "contactPrefix": "In the meantime, reach out if you have questions:",
+    "upcomingSectionsHeading": "Upcoming sections",
+    "upcomingSections": {
+      "register": "How do I register for an event?",
+      "qr": "How does the QR badge work?",
+      "cancel": "Can I cancel my registration?",
+      "contact": "How do I contact the organizer?",
+      "payments": "Payments and refunds",
+      "confirmationEmail": "What if I don’t receive my confirmation email?"
+    }
   }
 }
