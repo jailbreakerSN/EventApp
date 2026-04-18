@@ -619,7 +619,10 @@
     "filterUnread": "Unread",
     "paginationPrev": "Previous",
     "paginationNext": "Next",
-    "paginationOf": "Page {page} of {total}"
+    "paginationOf": "Page {page} of {total}",
+    "errorTitle": "Couldn’t load notifications",
+    "errorDescription": "We couldn’t fetch your notifications. Please try again in a moment.",
+    "retry": "Retry"
   },
   "messages": {
     "title": "Messages",
@@ -630,6 +633,7 @@
     "noMessages": "No messages yet. Start the conversation!",
     "errorConversations": "Failed to load conversations.",
     "errorMessages": "Failed to load messages.",
+    "retry": "Retry",
     "you": "You",
     "unknownParticipant": "Unknown",
     "writeMessage": "Write a message...",

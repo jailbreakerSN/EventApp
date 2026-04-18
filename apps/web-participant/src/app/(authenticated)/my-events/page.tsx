@@ -294,6 +294,12 @@ export default function MyEventsPage() {
               {past.map((rawReg) => {
                 const reg = rawReg as RegistrationWithExtras;
                 const gradient = getCoverGradient(reg.eventId).bg;
+                const statusKey =
+                  (reg.status as StatusKey) in STATUS_TONES ? (reg.status as StatusKey) : null;
+                const statusTone: StatusPillTone = statusKey
+                  ? STATUS_TONES[statusKey]
+                  : "neutral";
+                const statusLabel = statusKey ? t(`status.${statusKey}` as const) : reg.status;
                 return (
                   <article key={reg.id} className="overflow-hidden rounded-card border bg-card">
                     <div
@@ -301,9 +307,9 @@ export default function MyEventsPage() {
                       className="teranga-cover relative h-[140px]"
                       style={{ background: gradient }}
                     >
-                      <span className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full bg-teranga-navy/90 px-2.5 py-1 text-[11px] font-semibold text-white">
-                        ✓ {t("status.checked_in")}
-                      </span>
+                      <div className="absolute right-3 top-3">
+                        <StatusPill tone={statusTone} label={statusLabel} />
+                      </div>
                     </div>
                     <div className="p-5">
                       <p className="font-mono-kicker text-[11px] uppercase tracking-[0.08em] text-muted-foreground">

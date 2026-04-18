@@ -43,8 +43,9 @@ export default function VerifyEmailPage() {
 
   return (
     <Card>
+      <h1 className="sr-only">{tAuth("verifyEmail")}</h1>
       <CardHeader className="text-center">
-        <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-teranga-gold/10">
+        <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-teranga-gold/10 dark:bg-teranga-gold/20">
           <Mail className="h-8 w-8 text-teranga-gold-dark" aria-hidden="true" />
         </div>
         <CardTitle className="text-2xl">{tAuth("verifyEmail")}</CardTitle>

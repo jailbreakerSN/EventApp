@@ -70,6 +70,7 @@ export function ForgotPasswordForm() {
 
   return (
     <Card>
+      <h1 className="sr-only">{tAuth("forgotPasswordTitle")}</h1>
       <CardHeader className="text-center">
         <Link href="/" className="mx-auto mb-2 block">
           <ThemeLogo
@@ -84,7 +85,10 @@ export function ForgotPasswordForm() {
       </CardHeader>
       <CardContent>
         {success ? (
-          <div className="rounded-md bg-green-500/10 p-4 text-sm text-green-700 dark:text-green-400">
+          <div
+            role="status"
+            className="rounded-md bg-teranga-green/10 p-4 text-sm text-teranga-green dark:bg-teranga-green/20"
+          >
             {tAuth("resetEmailSent", { email: submittedEmail })}
           </div>
         ) : (
