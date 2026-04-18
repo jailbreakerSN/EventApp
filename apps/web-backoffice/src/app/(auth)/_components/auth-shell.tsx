@@ -1,6 +1,6 @@
 import * as React from "react";
+import Image from "next/image";
 import { EditorialHero } from "@teranga/shared-ui";
-import { ThemeLogo } from "@/components/theme-logo";
 
 export interface AuthShellProps {
   /** Fraunces serif title rendered in the hero column. */
@@ -49,8 +49,13 @@ export function AuthShell({
         {/* Brand mark pinned top-left of the navy pane — sits above the
             hero texture so it is legible regardless of copy length. */}
         <div className="pointer-events-none absolute left-6 top-6 z-20 flex items-center gap-3 lg:left-8 lg:top-8">
+          {/* White pill contrasts with the always-navy hero in both themes,
+              so we pin the coloured logo regardless of the page theme —
+              ThemeLogo would swap to the white mark and disappear here. */}
           <div className="rounded-full bg-white/95 px-3 py-1.5 shadow-sm">
-            <ThemeLogo
+            <Image
+              src="/logo-color.svg"
+              alt="Teranga Event"
               width={120}
               height={72}
               className="h-8 w-auto"
