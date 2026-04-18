@@ -3,8 +3,8 @@
 import { useParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { sessionsApi, eventsApi } from "@/lib/api-client";
-import { Calendar, Clock, Mic, Bookmark, Loader2, ArrowLeft } from "lucide-react";
-import { EmptyState } from "@teranga/shared-ui";
+import { Calendar, Clock, Mic, Bookmark, Loader2, ArrowLeft, AlertTriangle } from "lucide-react";
+import { EmptyStateEditorial, SectionHeader } from "@teranga/shared-ui";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 
@@ -81,38 +81,45 @@ export default function SchedulePage() {
 
   if (sessionsError) {
     return (
-      <div className="max-w-3xl mx-auto px-4 py-16 text-center">
-        <p className="text-destructive">Impossible de charger le programme.</p>
-        <button
-          onClick={() => qc.invalidateQueries({ queryKey: ["sessions", eventId] })}
-          className="mt-3 text-sm text-primary hover:underline"
-        >
-          Réessayer
-        </button>
+      <div className="max-w-3xl mx-auto px-4 py-16">
+        <EmptyStateEditorial
+          icon={AlertTriangle}
+          kicker="— ERREUR"
+          title="Impossible de charger le programme"
+          action={
+            <button
+              onClick={() => qc.invalidateQueries({ queryKey: ["sessions", eventId] })}
+              className="text-sm font-medium text-teranga-gold-dark hover:underline"
+            >
+              Réessayer
+            </button>
+          }
+        />
       </div>
     );
   }
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-8">
+    <div className="max-w-3xl mx-auto px-4 py-8 space-y-6">
       <Link
         href={event ? `/events/${event.slug}` : "/events"}
-        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground mb-6"
+        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
       >
         <ArrowLeft className="h-4 w-4" /> Retour
       </Link>
 
-      <div className="flex items-center gap-3 mb-6">
-        <Calendar className="h-6 w-6 text-primary" />
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Programme</h1>
-          {event && <p className="text-sm text-muted-foreground">{event.title}</p>}
-        </div>
-      </div>
+      <SectionHeader
+        kicker="— PROGRAMME"
+        title="Programme"
+        subtitle={event?.title}
+        size="hero"
+        as="h1"
+      />
 
       {sessions.length === 0 ? (
-        <EmptyState
+        <EmptyStateEditorial
           icon={Calendar}
+          kicker="— AUCUNE SESSION"
           title="Aucune session programmée"
           description="Le programme sera disponible prochainement. Revenez bientôt."
         />

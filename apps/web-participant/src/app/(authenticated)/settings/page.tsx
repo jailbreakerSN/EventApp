@@ -8,7 +8,7 @@ import {
   useNotificationPreferences,
   useUpdateNotificationPreferences,
 } from "@/hooks/use-notifications";
-import { Card, CardContent } from "@teranga/shared-ui";
+import { Card, CardContent, SectionHeader } from "@teranga/shared-ui";
 
 function Toggle({
   checked,
@@ -107,8 +107,8 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-lg px-4 py-8">
-      <h1 className="mb-6 text-2xl font-bold">{t("title")}</h1>
+    <div className="mx-auto max-w-lg px-4 py-8 space-y-6">
+      <SectionHeader kicker="— RÉGLAGES" title={t("title")} size="hero" as="h1" />
 
       {/* Notification Preferences */}
       <Card>
@@ -153,7 +153,7 @@ export default function SettingsPage() {
       </Card>
 
       {/* Privacy */}
-      <Card className="mt-6">
+      <Card>
         <CardContent className="space-y-4 py-6">
           <h2 className="text-lg font-semibold flex items-center gap-2">
             <Shield className="h-5 w-5 text-teranga-gold" />
@@ -203,7 +203,7 @@ export default function SettingsPage() {
       </Card>
 
       {/* Account / Danger Zone */}
-      <Card className="mt-6 border-destructive/30">
+      <Card className="border-destructive/30">
         <CardContent className="space-y-4 py-6">
           <h2 className="text-lg font-semibold flex items-center gap-2 text-destructive">
             <Trash2 className="h-5 w-5" />

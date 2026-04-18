@@ -19,10 +19,16 @@ import {
   TrendingUp,
   Info,
   ArrowLeft,
+  AlertTriangle,
 } from "lucide-react";
 import Link from "next/link";
 import type { SponsorProfile } from "@teranga/shared-types";
-import { Skeleton, DataTable, type DataTableColumn } from "@teranga/shared-ui";
+import {
+  Skeleton,
+  DataTable,
+  EmptyStateEditorial,
+  type DataTableColumn,
+} from "@teranga/shared-ui";
 
 interface Lead {
   id: string;
@@ -172,8 +178,12 @@ export default function SponsorPortalPage() {
 
   if (error || !sponsor) {
     return (
-      <div className="mx-auto max-w-3xl px-4 py-16 text-center">
-        <p className="text-destructive">{error ?? "Profil introuvable."}</p>
+      <div className="mx-auto max-w-3xl px-4 py-16">
+        <EmptyStateEditorial
+          icon={AlertTriangle}
+          kicker="— INTROUVABLE"
+          title={error ?? "Profil introuvable."}
+        />
       </div>
     );
   }
@@ -423,15 +433,12 @@ export default function SponsorPortalPage() {
           </div>
 
           {leads.length === 0 ? (
-            <div className="rounded-lg border bg-card p-8 text-center shadow-sm">
-              <Users className="mx-auto h-10 w-10 text-muted-foreground" />
-              <p className="mt-3 text-sm text-muted-foreground">
-                Aucun lead collecté pour le moment.
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Les leads apparaîtront ici quand les participants scanneront votre QR code.
-              </p>
-            </div>
+            <EmptyStateEditorial
+              icon={Users}
+              kicker="— AUCUN LEAD"
+              title="Aucun lead collecté pour le moment"
+              description="Les leads apparaîtront ici quand les participants scanneront votre QR code."
+            />
           ) : (
             <DataTable<Lead & Record<string, unknown>>
               aria-label="Leads collectés"

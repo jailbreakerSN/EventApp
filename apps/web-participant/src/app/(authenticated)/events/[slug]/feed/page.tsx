@@ -6,7 +6,7 @@ import { eventsApi } from "@/lib/api-client";
 import { useAuth } from "@/hooks/use-auth";
 import { useFeed } from "@/hooks/use-feed";
 import { MessageSquare, ArrowLeft, Loader2 } from "lucide-react";
-import { QueryError, EmptyState } from "@teranga/shared-ui";
+import { QueryError, EmptyStateEditorial, SectionHeader } from "@teranga/shared-ui";
 import Link from "next/link";
 import { CreatePostForm } from "@/components/feed/CreatePostForm";
 import { FeedPostCard } from "@/components/feed/FeedPostCard";
@@ -56,32 +56,40 @@ export default function FeedPage() {
   // Event not found
   if (!event || !eventId) {
     return (
-      <div className="max-w-2xl mx-auto px-4 py-8 text-center">
-        <MessageSquare className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-30" />
-        <p className="text-lg text-muted-foreground">Événement introuvable</p>
-        <Link href="/events" className="mt-4 inline-block text-sm text-primary hover:underline">
-          Retour aux événements
-        </Link>
+      <div className="max-w-2xl mx-auto px-4 py-8">
+        <EmptyStateEditorial
+          icon={MessageSquare}
+          kicker="— INTROUVABLE"
+          title="Événement introuvable"
+          action={
+            <Link
+              href="/events"
+              className="text-sm font-medium text-teranga-gold-dark hover:underline"
+            >
+              Retour aux événements
+            </Link>
+          }
+        />
       </div>
     );
   }
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-8">
+    <div className="max-w-2xl mx-auto px-4 py-8 space-y-6">
       <Link
         href={`/events/${event.slug}`}
-        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground mb-6"
+        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
       >
         <ArrowLeft className="h-4 w-4" /> Retour à l&apos;événement
       </Link>
 
-      <div className="flex items-center gap-3 mb-6">
-        <MessageSquare className="h-6 w-6 text-primary" />
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Feed</h1>
-          <p className="text-sm text-muted-foreground">{event.title}</p>
-        </div>
-      </div>
+      <SectionHeader
+        kicker="— FIL D'ACTUALITÉ"
+        title="Feed"
+        subtitle={event.title}
+        size="hero"
+        as="h1"
+      />
 
       <CreatePostForm eventId={eventId} user={user} />
 
@@ -95,8 +103,9 @@ export default function FeedPage() {
       ) : feedError ? (
         <QueryError message="Impossible de charger le feed." onRetry={refresh} />
       ) : posts.length === 0 ? (
-        <EmptyState
+        <EmptyStateEditorial
           icon={MessageSquare}
+          kicker="— AUCUNE PUBLICATION"
           title="Aucune publication pour le moment"
           description="Soyez le premier à partager une publication avec les participants."
         />

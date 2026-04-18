@@ -23,6 +23,7 @@ import { useRegister } from "@/hooks/use-registrations";
 import { useInitiatePayment, useValidatePromoCode } from "@/hooks/use-payments";
 import {
   Button,
+  EmptyStateEditorial,
   Input,
   Spinner,
   Stepper,
@@ -33,6 +34,7 @@ import {
   formatDate,
   getErrorMessage,
 } from "@teranga/shared-ui";
+import { AlertTriangle } from "lucide-react";
 import type { Event, TicketType, Registration, PaymentMethod } from "@teranga/shared-types";
 
 function intlLocale(locale: string): string {
@@ -271,11 +273,20 @@ export default function RegisterPage() {
 
   if (!event) {
     return (
-      <div className="mx-auto max-w-lg px-4 py-16 text-center">
-        <p className="text-muted-foreground">{t("notFound")}</p>
-        <Link href="/events" className="mt-4 inline-block text-teranga-gold hover:underline">
-          {t("backToEvents")}
-        </Link>
+      <div className="mx-auto max-w-lg px-4 py-16">
+        <EmptyStateEditorial
+          icon={AlertTriangle}
+          kicker="— INTROUVABLE"
+          title={t("notFound")}
+          action={
+            <Link
+              href="/events"
+              className="text-sm font-medium text-teranga-gold-dark hover:underline"
+            >
+              {t("backToEvents")}
+            </Link>
+          }
+        />
       </div>
     );
   }

@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
+import { SectionHeader } from "@teranga/shared-ui";
+
 export const metadata: Metadata = {
   title: "Mentions légales | Teranga",
   description:
@@ -9,17 +11,22 @@ export const metadata: Metadata = {
 
 export default async function LegalPage() {
   return (
-    <div className="mx-auto max-w-3xl px-4 py-12">
+    <div className="mx-auto max-w-3xl px-4 py-12 space-y-10">
       <Link
         href="/"
-        className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors mb-8"
+        className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
       >
         <ArrowLeft size={16} />
         Retour
       </Link>
 
-      <h1 className="text-3xl font-bold tracking-tight mb-2">Mentions l&eacute;gales</h1>
-      <p className="text-sm text-muted-foreground mb-10">Dernière mise à jour : 9 avril 2026</p>
+      <SectionHeader
+        kicker="— LÉGAL"
+        title="Mentions légales"
+        subtitle="Dernière mise à jour : 9 avril 2026."
+        size="hero"
+        as="h1"
+      />
 
       <div className="space-y-8 text-foreground leading-relaxed">
         {/* Éditeur */}

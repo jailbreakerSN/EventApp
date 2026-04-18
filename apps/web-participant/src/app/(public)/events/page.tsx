@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Search } from "lucide-react";
 import { getTranslations } from "next-intl/server";
-import { EmptyState } from "@teranga/shared-ui";
+import { EmptyStateEditorial, SectionHeader } from "@teranga/shared-ui";
 import { serverEventsApi } from "@/lib/server-api";
 import { EventCard } from "@/components/event-card";
 import { EventFilters } from "@/components/event-filters";
@@ -64,21 +64,24 @@ export default async function EventsPage({ searchParams }: EventsPageProps) {
   const meta = result.meta;
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold">{tEvents("title")}</h1>
-        {/* aria-live announces count updates to screen readers when filters change */}
-        <p
-          className="mt-2 text-muted-foreground"
-          role="status"
-          aria-live="polite"
-          aria-atomic="true"
-        >
-          {meta.total > 0
+    <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 space-y-8">
+      {/* aria-live announces count updates to screen readers when filters change */}
+      <SectionHeader
+        kicker="— ÉVÉNEMENTS"
+        title={tEvents("title")}
+        size="hero"
+        as="h1"
+        subtitle={
+          meta.total > 0
             ? tEvents("list.resultsCount", { count: meta.total })
-            : tEvents("noResults")}
-        </p>
-      </div>
+            : tEvents("noResults")
+        }
+      />
+      <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {meta.total > 0
+          ? tEvents("list.resultsCount", { count: meta.total })
+          : tEvents("noResults")}
+      </span>
 
       <EventFilters />
 
@@ -96,8 +99,9 @@ export default async function EventsPage({ searchParams }: EventsPageProps) {
           )}
         </>
       ) : (
-        <EmptyState
+        <EmptyStateEditorial
           icon={Search}
+          kicker="— AUCUN RÉSULTAT"
           title={tEvents("noResults")}
           description={tEvents("noResultsHint")}
           action={

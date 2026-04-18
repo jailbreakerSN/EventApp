@@ -17,6 +17,7 @@ import {
   CardTitle,
   CardContent,
   Spinner,
+  SectionHeader,
   getErrorMessage,
 } from "@teranga/shared-ui";
 import { Camera, Loader2 } from "lucide-react";
@@ -119,10 +120,10 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="mx-auto max-w-lg px-4 py-8">
-      <h1 className="text-2xl font-bold">{t("title")}</h1>
+    <div className="mx-auto max-w-lg px-4 py-8 space-y-6">
+      <SectionHeader kicker="— PROFIL" title={t("title")} size="hero" as="h1" />
 
-      <Card className="mt-6">
+      <Card>
         <CardHeader>
           <CardTitle className="text-lg">{t("personalInfoHeading")}</CardTitle>
         </CardHeader>

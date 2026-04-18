@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowLeft, HelpCircle } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
+import { SectionHeader } from "@teranga/shared-ui";
+
 export const metadata: Metadata = {
   title: "Aide & FAQ | Teranga",
   description:
@@ -9,22 +11,22 @@ export const metadata: Metadata = {
 
 export default async function FaqPage() {
   return (
-    <div className="mx-auto max-w-3xl px-4 py-12">
+    <div className="mx-auto max-w-3xl px-4 py-12 space-y-10">
       <Link
         href="/"
-        className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors mb-8"
+        className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
       >
         <ArrowLeft size={16} />
         Retour
       </Link>
 
-      <div className="flex items-center gap-3 mb-2">
-        <HelpCircle className="h-8 w-8 text-teranga-gold" />
-        <h1 className="text-3xl font-bold tracking-tight">Aide & FAQ</h1>
-      </div>
-      <p className="text-sm text-muted-foreground mb-10">
-        Réponses aux questions fréquentes sur la plateforme
-      </p>
+      <SectionHeader
+        kicker="— AIDE"
+        title="Aide & FAQ"
+        subtitle="Réponses aux questions fréquentes sur la plateforme."
+        size="hero"
+        as="h1"
+      />
 
       <div className="space-y-8 text-foreground leading-relaxed">
         <section className="rounded-lg border border-dashed border-muted-foreground/30 bg-muted/30 p-6">
