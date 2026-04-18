@@ -181,7 +181,6 @@ const config: TestRunnerConfig = {
       const warnings = results.violations.filter((v) => !BLOCKING_IMPACTS.has(String(v.impact)));
 
       if (warnings.length > 0) {
-         
         console.warn(
           `[a11y:warn] ${context.title} / ${context.name} → ${warnings
             .map((v) => `${v.id}(${v.impact})`)
@@ -238,10 +237,12 @@ const config: TestRunnerConfig = {
       customSnapshotsDir: SNAPSHOT_DIR,
       customDiffDir: path.join(SNAPSHOT_DIR, "__diff_output__"),
       customSnapshotIdentifier: identifier,
-      // 1% pixel mismatch tolerance — absorbs sub-pixel font rendering
-      // jitter that still survives the font-load wait above without
-      // hiding genuine layout regressions.
-      failureThreshold: snapshotParameters.threshold ?? 0.01,
+      // 3% pixel mismatch tolerance — absorbs sub-pixel font rendering
+      // jitter between the dev machine (local WSL/mac) and the CI Ubuntu
+      // runner. Story-level parameters can override this per-fixture
+      // when tighter enforcement is warranted (e.g. 0.5% for CapacityBar
+      // fills where pixel precision matters).
+      failureThreshold: snapshotParameters.threshold ?? 0.03,
       failureThresholdType: "percent",
       // SSIM is slower but much more forgiving of font anti-aliasing
       // differences between the dev machine and the GitHub Actions runner.

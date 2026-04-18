@@ -141,14 +141,13 @@ const EditorialHero = React.forwardRef<HTMLElement, EditorialHeroProps>(
               {stats && stats.length > 0 && (
                 <dl className="mt-9 grid grid-cols-2 gap-y-5 border-t border-white/10 pt-6 sm:flex sm:flex-wrap sm:gap-x-10 sm:gap-y-0">
                   {stats.map((stat) => (
-                    <div key={stat.label}>
-                      <dt className="sr-only">{stat.label}</dt>
+                    <div key={stat.label} className="flex flex-col-reverse">
+                      <dt className="font-mono-kicker mt-1 text-[10px] uppercase tracking-[0.1em] text-white/55">
+                        {stat.label}
+                      </dt>
                       <dd className="font-serif-display text-[26px] font-semibold leading-none text-white">
                         {stat.value}
                       </dd>
-                      <p className="font-mono-kicker mt-1 text-[10px] uppercase tracking-[0.1em] text-white/55">
-                        {stat.label}
-                      </p>
                     </div>
                   ))}
                 </dl>
@@ -185,14 +184,13 @@ const EditorialHero = React.forwardRef<HTMLElement, EditorialHeroProps>(
         {stats && stats.length > 0 && (
           <dl className="mt-9 grid grid-cols-2 gap-y-5 border-t pt-6 sm:flex sm:flex-wrap sm:gap-x-10 sm:gap-y-0">
             {stats.map((stat) => (
-              <div key={stat.label}>
-                <dt className="sr-only">{stat.label}</dt>
+              <div key={stat.label} className="flex flex-col-reverse">
+                <dt className="font-mono-kicker mt-1 text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
+                  {stat.label}
+                </dt>
                 <dd className="font-serif-display text-[26px] font-semibold leading-none text-foreground">
                   {stat.value}
                 </dd>
-                <p className="font-mono-kicker mt-1 text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
-                  {stat.label}
-                </p>
               </div>
             ))}
           </dl>

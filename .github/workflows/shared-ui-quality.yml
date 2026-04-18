@@ -28,6 +28,22 @@ on:
     paths:
       - "packages/shared-ui/**"
       - ".github/workflows/shared-ui-quality.yml"
+  # Manual trigger for baseline regeneration. When `bootstrap_baselines`
+  # is true, the test-runner is invoked WITHOUT `--ci`, so jest-image-
+  # snapshot auto-writes missing + mismatched baselines. The resulting
+  # `__image_snapshots__/` tree is then uploaded as an artifact for the
+  # dev to download + commit. Use sparingly — it bypasses regression
+  # detection for the duration of that run.
+  workflow_dispatch:
+    inputs:
+      bootstrap_baselines:
+        description: "Regenerate baseline snapshots (disables --ci strict mode, uploads updated images as artifact)"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -117,17 +133,35 @@ jobs:
       # `concurrently -k -s first` kills both processes when the first
       # one exits, so the http-server is torn down cleanly when the
       # test-runner completes (pass or fail).
+      #
+      # When `bootstrap_baselines=true` (workflow_dispatch), the `--ci`
+      # flag is omitted so Jest runs in default update-new mode and
+      # jest-image-snapshot writes missing baselines on first encounter.
+      # The updated tree is then uploaded as an artifact below.
       - name: Run Storybook quality gate (a11y + visual regression)
         working-directory: packages/shared-ui
+        env:
+          BOOTSTRAP: ${{ github.event.inputs.bootstrap_baselines }}
         run: |
+          if [ "$BOOTSTRAP" = "true" ]; then
+            CI_FLAG=""
+            echo "::warning::bootstrap_baselines=true — running WITHOUT --ci so baselines are auto-written."
+          else
+            CI_FLAG="--ci"
+          fi
           npx concurrently -k -s first -n SB,TEST -c magenta,blue \
             "npx http-server storybook-static --port 6006 --silent" \
-            "npx wait-on tcp:127.0.0.1:6006 && npx test-storybook --ci --url http://127.0.0.1:6006 --maxWorkers=2 --no-index-json"
+            "npx wait-on tcp:127.0.0.1:6006 && npx test-storybook $CI_FLAG --url http://127.0.0.1:6006 --maxWorkers=2 --no-index-json"
 
       # ── Failure artifacts ────────────────────────────────────────────
       # jest-image-snapshot writes diff PNGs + actual renders to
       # `__image_snapshots__/__diff_output__/` on mismatch. Upload them
       # so reviewers can eyeball the regression directly from the PR.
+      #
+      # We also always upload `__received_output__/` on failure, so when
+      # a story is NEW (no baseline yet) the received screenshot can be
+      # downloaded and committed by hand without needing to rerun
+      # workflow_dispatch in bootstrap mode.
       - name: Upload snapshot diffs (on failure)
         if: failure()
         uses: actions/upload-artifact@v4
@@ -138,6 +172,18 @@ jobs:
             packages/shared-ui/__image_snapshots__/__received_output__/
           retention-days: 14
           if-no-files-found: ignore
+
+      # Bootstrap-mode artifact: on workflow_dispatch with
+      # bootstrap_baselines=true, upload the full (now-updated)
+      # __image_snapshots__/ tree so the dev can download + commit.
+      - name: Upload regenerated baselines (bootstrap mode)
+        if: always() && github.event.inputs.bootstrap_baselines == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: shared-ui-baselines-bootstrap
+          path: packages/shared-ui/__image_snapshots__/
+          retention-days: 14
+          if-no-files-found: warn
 
       # Also upload the built Storybook on failure so reviewers can
       # browse stories locally if needed (faster than re-running
