@@ -14,6 +14,7 @@ import {
   BreadcrumbLink,
   BreadcrumbPage,
   BreadcrumbSeparator,
+  SectionHeader,
 } from "@teranga/shared-ui";
 
 function formatCurrency(value: number): string {
@@ -44,8 +45,8 @@ export default function AdminPage() {
   void tCommon; // reserved for future string swaps (I1d long-tail)
 
   return (
-    <div>
-      <Breadcrumb className="mb-4">
+    <div className="space-y-6">
+      <Breadcrumb>
         <BreadcrumbList>
           <BreadcrumbItem>
             <BreadcrumbLink asChild>
@@ -59,12 +60,13 @@ export default function AdminPage() {
         </BreadcrumbList>
       </Breadcrumb>
 
-      <h1 className="text-2xl font-bold text-foreground mb-2">
-        Administration de la plateforme
-      </h1>
-      <p className="text-muted-foreground mb-6">
-        Vue d&apos;ensemble de l&apos;activit&eacute; de la plateforme
-      </p>
+      <SectionHeader
+        kicker="— ADMINISTRATION"
+        title="Administration de la plateforme"
+        subtitle="Vue d'ensemble de l'activité de la plateforme."
+        size="hero"
+        as="h1"
+      />
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {STAT_CARDS.map((card) => {

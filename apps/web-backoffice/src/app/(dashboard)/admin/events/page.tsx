@@ -5,7 +5,6 @@ import Link from "next/link";
 import {
   Card,
   CardContent,
-  Badge,
   Select,
   DataTable,
   type DataTableColumn,
@@ -15,6 +14,9 @@ import {
   BreadcrumbLink,
   BreadcrumbPage,
   BreadcrumbSeparator,
+  SectionHeader,
+  StatusPill,
+  type StatusPillTone,
 } from "@teranga/shared-ui";
 import { ChevronLeft, ChevronRight, Eye, Users, Building } from "lucide-react";
 import { useAdminEvents, useAdminOrganizations } from "@/hooks/use-admin";
@@ -29,12 +31,12 @@ const STATUS_OPTIONS = [
   { value: "archived", label: "Archivé" },
 ] as const;
 
-const STATUS_STYLES: Record<string, { variant: "default" | "secondary" | "destructive" | "success" | "warning" | "outline"; label: string }> = {
-  draft: { variant: "secondary", label: "Brouillon" },
-  published: { variant: "success", label: "Publié" },
-  cancelled: { variant: "destructive", label: "Annulé" },
-  completed: { variant: "default", label: "Terminé" },
-  archived: { variant: "outline", label: "Archivé" },
+const STATUS_STYLES: Record<string, { tone: StatusPillTone; label: string }> = {
+  draft: { tone: "neutral", label: "Brouillon" },
+  published: { tone: "success", label: "Publié" },
+  cancelled: { tone: "danger", label: "Annulé" },
+  completed: { tone: "info", label: "Terminé" },
+  archived: { tone: "neutral", label: "Archivé" },
 };
 
 function formatDate(timestamp: string) {
@@ -92,25 +94,30 @@ export default function AdminEventsPage() {
       </Breadcrumb>
 
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="text-2xl font-bold text-foreground">Tous les événements</h1>
-        <div className="w-full sm:w-56">
-          <Select
-            value={status}
-            onChange={(e) => {
-              setStatus(e.target.value);
-              setPage(1);
-            }}
-            aria-label="Filtrer par statut"
-          >
-            {STATUS_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </Select>
-        </div>
-      </div>
+      <SectionHeader
+        kicker="— ADMINISTRATION"
+        title="Tous les événements"
+        size="hero"
+        as="h1"
+        action={
+          <div className="w-full sm:w-56">
+            <Select
+              value={status}
+              onChange={(e) => {
+                setStatus(e.target.value);
+                setPage(1);
+              }}
+              aria-label="Filtrer par statut"
+            >
+              {STATUS_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </Select>
+          </div>
+        }
+      />
 
       {/* Table */}
       <Card>
@@ -156,7 +163,7 @@ export default function AdminEventsPage() {
                   render: (event) => {
                     const statusInfo =
                       STATUS_STYLES[(event.status as string) ?? "draft"] ?? STATUS_STYLES.draft;
-                    return <Badge variant={statusInfo.variant}>{statusInfo.label}</Badge>;
+                    return <StatusPill tone={statusInfo.tone} label={statusInfo.label} />;
                   },
                 },
                 {

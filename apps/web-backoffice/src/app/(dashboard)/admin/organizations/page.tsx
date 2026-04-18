@@ -22,8 +22,10 @@ import {
   BreadcrumbLink,
   BreadcrumbPage,
   BreadcrumbSeparator,
+  SectionHeader,
+  StatusPill,
 } from "@teranga/shared-ui";
-import { Building2, Search, ShieldCheck, Ban, CheckCircle, XCircle, Sparkles } from "lucide-react";
+import { Search, ShieldCheck, Ban, CheckCircle, XCircle, Sparkles } from "lucide-react";
 import type { Organization } from "@teranga/shared-types";
 import { useTranslations } from "next-intl";
 import { AssignPlanDialog } from "@/components/admin/AssignPlanDialog";
@@ -115,11 +117,11 @@ export default function AdminOrganizationsPage() {
   return (
     <div className="space-y-6">
       {/* Breadcrumb */}
-      <Breadcrumb className="mb-4">
+      <Breadcrumb>
         <BreadcrumbList>
           <BreadcrumbItem>
             <BreadcrumbLink asChild>
-              <Link href="/admin">Tableau de bord</Link>
+              <Link href="/dashboard">Tableau de bord</Link>
             </BreadcrumbLink>
           </BreadcrumbItem>
           <BreadcrumbSeparator />
@@ -136,10 +138,13 @@ export default function AdminOrganizationsPage() {
       </Breadcrumb>
 
       {/* Header */}
-      <div className="flex items-center gap-3">
-        <Building2 className="h-7 w-7 text-primary" />
-        <h1 className="text-2xl font-bold text-foreground">Gestion des organisations</h1>
-      </div>
+      <SectionHeader
+        kicker="— ADMINISTRATION"
+        title="Gestion des organisations"
+        subtitle="Vérifiez, suspendez et assignez des plans aux organisations de la plateforme."
+        size="hero"
+        as="h1"
+      />
 
       {/* Filters */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
@@ -258,9 +263,9 @@ export default function AdminOrganizationsPage() {
                   header: "Statut",
                   render: (org) =>
                     org.isActive ? (
-                      <Badge variant="success">Actif</Badge>
+                      <StatusPill tone="success" label="Actif" />
                     ) : (
-                      <Badge variant="destructive">Suspendu</Badge>
+                      <StatusPill tone="danger" label="Suspendu" />
                     ),
                 },
                 {
