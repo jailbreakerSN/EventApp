@@ -82,6 +82,11 @@ export {
   type StatusPillProps,
   type StatusPillTone,
 } from "./components/status-pill";
+export {
+  EditorialHero,
+  type EditorialHeroProps,
+  type EditorialHeroStat,
+} from "./components/editorial-hero";
 
 // ─── i18n ─────────────────────────────────────────────────────────────────
 export {
