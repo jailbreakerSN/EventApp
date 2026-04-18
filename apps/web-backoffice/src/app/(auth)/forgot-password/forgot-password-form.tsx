@@ -5,9 +5,9 @@ import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { FormField } from "@teranga/shared-ui";
+import { Mail } from "lucide-react";
+import { Button, EmptyStateEditorial, FormField, SectionHeader } from "@teranga/shared-ui";
 import { useAuth } from "@/hooks/use-auth";
-import { ThemeLogo } from "@/components/theme-logo";
 
 const schema = z.object({
   email: z
@@ -49,67 +49,69 @@ export function ForgotPasswordForm() {
       ? "valid"
       : "idle";
 
-  return (
-    <div className="bg-card rounded-2xl shadow-2xl p-8">
-      <div className="flex justify-center mb-6">
-        <ThemeLogo
-          width={200}
-          height={119}
-          className="h-14 w-auto sm:h-16 md:h-20"
-          priority
+  if (success) {
+    return (
+      <div className="space-y-6">
+        <EmptyStateEditorial
+          icon={Mail}
+          kicker="— LIEN ENVOYÉ"
+          title="Vérifiez votre boîte de réception"
+          description={`Si un compte existe avec l'adresse ${submittedEmail}, un lien de réinitialisation vient d'être envoyé. Pensez à consulter vos spams.`}
+          action={
+            <Link href="/login">
+              <Button variant="outline" className="rounded-full">
+                Retour à la connexion
+              </Button>
+            </Link>
+          }
         />
       </div>
-      <h2 className="text-xl font-semibold text-card-foreground mb-2 text-center">
-        Mot de passe oubli&eacute;
-      </h2>
-      <p className="text-sm text-muted-foreground mb-6 text-center">
-        Entrez votre adresse email pour recevoir un lien de
-        r&eacute;initialisation
-      </p>
+    );
+  }
 
-      {success ? (
-        <div className="rounded-lg bg-green-500/10 p-4 text-sm text-green-700 dark:text-green-400 mb-4">
-          Si un compte existe avec cet email, un lien de r&eacute;initialisation a
-          &eacute;t&eacute; envoy&eacute; &agrave; <strong>{submittedEmail}</strong>.
-          V&eacute;rifiez votre bo&icirc;te de r&eacute;ception.
-        </div>
-      ) : (
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
-          <FormField
-            label="Adresse email"
-            htmlFor="email"
-            required
-            error={errors.email?.message}
-            state={emailState}
-          >
-            <input
-              id="email"
-              type="email"
-              placeholder="vous@organisation.sn"
-              autoComplete="email"
-              className="w-full border border-input bg-background rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
-              {...register("email")}
-            />
-          </FormField>
+  return (
+    <div className="rounded-tile border border-border/60 bg-card p-8 shadow-sm md:p-10">
+      <SectionHeader
+        as="h1"
+        kicker="— MOT DE PASSE OUBLIÉ"
+        title="Réinitialisez votre accès"
+        subtitle="Entrez l’adresse associée à votre compte organisateur. Nous vous enverrons un lien sécurisé."
+      />
 
-          <button
-            type="submit"
-            disabled={isSubmitting}
-            className="w-full bg-primary text-primary-foreground rounded-lg py-2.5 text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60"
-          >
-            {isSubmitting
-              ? "Envoi en cours..."
-              : "Envoyer le lien de r\u00e9initialisation"}
-          </button>
-        </form>
-      )}
+      <form onSubmit={handleSubmit(onSubmit)} className="mt-8 space-y-5" noValidate>
+        <FormField
+          label="Adresse email"
+          htmlFor="email"
+          required
+          error={errors.email?.message}
+          state={emailState}
+        >
+          <input
+            id="email"
+            type="email"
+            placeholder="vous@organisation.sn"
+            autoComplete="email"
+            aria-invalid={Boolean(errors.email) || undefined}
+            className="w-full rounded-lg border border-input bg-background px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/70 focus:outline-none focus:ring-2 focus:ring-primary"
+            {...register("email")}
+          />
+        </FormField>
+
+        <Button
+          type="submit"
+          disabled={isSubmitting}
+          className="w-full rounded-full bg-teranga-navy text-white hover:bg-teranga-navy/90 dark:bg-teranga-gold dark:text-teranga-navy dark:hover:bg-teranga-gold-light"
+        >
+          {isSubmitting ? "Envoi en cours..." : "Envoyer le lien de réinitialisation"}
+        </Button>
+      </form>
 
       <div className="mt-6 text-center">
         <Link
           href="/login"
-          className="text-sm font-medium text-primary hover:underline"
+          className="text-sm font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
         >
-          Retour &agrave; la connexion
+          Retour à la connexion
         </Link>
       </div>
     </div>

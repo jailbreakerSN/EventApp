@@ -37,7 +37,7 @@
     "@storybook/test": "^8.6.18",
     "@storybook/test-runner": "^0.19.1",
     "@tailwindcss/typography": "^0.5.19",
-    "@types/jest-image-snapshot": "^6.4.0",
+    "@teranga/shared-config": "*",
     "@types/react": "^19.0.2",
     "@vitejs/plugin-react": "^4.7.0",
     "autoprefixer": "^10.5.0",

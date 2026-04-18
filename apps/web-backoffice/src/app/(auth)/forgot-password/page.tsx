@@ -1,18 +1,27 @@
 import type { Metadata } from "next";
-import { ForgotPasswordForm } from "./forgot-password-form";
 import { getTranslations } from "next-intl/server";
+import { AuthShell } from "../_components/auth-shell";
+import { ForgotPasswordForm } from "./forgot-password-form";
 
 export const metadata: Metadata = {
-  title: "Mot de passe oubli\u00e9",
+  title: "Mot de passe oublié",
 };
 
 export default async function ForgotPasswordPage() {
-  const _t = await getTranslations("common"); void _t;
+  const _t = await getTranslations("common");
+  void _t;
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary to-primary/80 dark:from-background dark:to-muted px-4">
-      <div className="w-full max-w-md">
-        <ForgotPasswordForm />
-      </div>
-    </div>
+    <AuthShell
+      heroTitle={
+        <>
+          Reprenez la main sur
+          <br />
+          <em className="font-serif-display italic text-teranga-gold-light">votre compte.</em>
+        </>
+      }
+      heroLead="Nous vous envoyons un lien sécurisé pour réinitialiser votre mot de passe en quelques secondes."
+    >
+      <ForgotPasswordForm />
+    </AuthShell>
   );
 }
