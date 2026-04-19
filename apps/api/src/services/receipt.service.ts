@@ -79,6 +79,7 @@ export class ReceiptService extends BaseService {
       receiptId: created.id,
       paymentId: payment.id,
       eventId: payment.eventId,
+      organizationId: payment.organizationId,
       userId: payment.userId,
       amount: payment.amount,
       actorId: user.uid,

@@ -8,10 +8,10 @@ import {
   PLAN_LIMIT_UNLIMITED,
   type OrganizationPlan,
 } from "@teranga/shared-types";
+import { randomUUID } from "node:crypto";
 import { type Firestore } from "firebase-admin/firestore";
 import { db as appDb } from "@/config/firebase";
 import { eventBus } from "@/events/event-bus";
-import { getRequestId } from "@/context/request-context";
 
 // ─── Subscription Rollover Worker ────────────────────────────────────────────
 //
@@ -272,6 +272,10 @@ export async function applyScheduledRollovers(
 export async function runScheduledRollovers(
   options: ApplyScheduledRolloversOptions = {},
 ): Promise<RolloverResult> {
+  // Rollover worker runs outside any Fastify request, so no ALS store is
+  // active. Use a fresh UUID so each scheduled run is traceable in the
+  // audit log instead of the "no-request" sentinel.
+  const batchRequestId = `rollover:${randomUUID()}`;
   return applyScheduledRollovers(appDb, {
     ...options,
     onRolledOver: (row) => {
@@ -282,7 +286,7 @@ export async function runScheduledRollovers(
         toPlan: row.toPlan,
         reason: row.reason,
         actorId: "system:subscription-rollover",
-        requestId: getRequestId(),
+        requestId: batchRequestId,
         timestamp: new Date().toISOString(),
       });
     },

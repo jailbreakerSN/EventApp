@@ -149,7 +149,9 @@ describe("BadgeTemplateService.remove", () => {
   it("soft-deletes a template", async () => {
     const user = buildOrganizerUser("org-1");
     const template = buildTemplate({ organizationId: "org-1" });
+    const org = buildOrganization({ id: "org-1", plan: "starter" });
     mockTemplateRepo.findByIdOrThrow.mockResolvedValue(template);
+    mockOrgRepo.findByIdOrThrow.mockResolvedValue(org);
     mockTemplateRepo.softDelete.mockResolvedValue(undefined);
 
     await service.remove("tpl-1", user);

@@ -90,6 +90,12 @@ export class SponsorService extends BaseService {
       this.requireOrganizationAccess(user, sponsor.organizationId);
     }
 
+    // Gate behind `sponsorPortal` regardless of which branch — if the org
+    // downgraded below pro, the portal surface is gone and booth mutations
+    // (self or organizer) must be blocked consistently with create/delete.
+    const org = await organizationRepository.findByIdOrThrow(sponsor.organizationId);
+    this.requirePlanFeature(org, "sponsorPortal");
+
     await sponsorRepository.update(sponsorId, {
       ...dto,
       updatedAt: new Date().toISOString(),
@@ -105,6 +111,10 @@ export class SponsorService extends BaseService {
     this.requirePermission(user, "event:manage_sponsors");
     const sponsor = await sponsorRepository.findByIdOrThrow(sponsorId);
     this.requireOrganizationAccess(user, sponsor.organizationId);
+
+    const org = await organizationRepository.findByIdOrThrow(sponsor.organizationId);
+    this.requirePlanFeature(org, "sponsorPortal");
+
     await sponsorRepository.update(sponsorId, {
       isActive: false,
       updatedAt: new Date().toISOString(),
