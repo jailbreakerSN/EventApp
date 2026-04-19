@@ -847,6 +847,154 @@ export function registerAuditListeners(): void {
     });
   });
 
+  eventBus.on("subscription.upgraded", async (payload) => {
+    await auditService.log({
+      action: "subscription.upgraded",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "subscription",
+      resourceId: payload.organizationId,
+      eventId: null,
+      organizationId: payload.organizationId,
+      details: {
+        previousPlan: payload.previousPlan,
+        newPlan: payload.newPlan,
+      },
+    });
+  });
+
+  eventBus.on("subscription.downgraded", async (payload) => {
+    await auditService.log({
+      action: "subscription.downgraded",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "subscription",
+      resourceId: payload.organizationId,
+      eventId: null,
+      organizationId: payload.organizationId,
+      details: {
+        previousPlan: payload.previousPlan,
+        newPlan: payload.newPlan,
+      },
+    });
+  });
+
+  // ── Payment lifecycle ──────────────────────────────────────────────────
+  // Every payment state transition is audited so the finance surface has a
+  // full trail of intent → outcome (initiated, succeeded, failed, refunded).
+
+  eventBus.on("payment.initiated", async (payload) => {
+    await auditService.log({
+      action: "payment.initiated",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "payment",
+      resourceId: payload.paymentId,
+      eventId: payload.eventId,
+      organizationId: payload.organizationId,
+      details: {
+        registrationId: payload.registrationId,
+        amount: payload.amount,
+        method: payload.method,
+      },
+    });
+  });
+
+  eventBus.on("payment.succeeded", async (payload) => {
+    await auditService.log({
+      action: "payment.succeeded",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "payment",
+      resourceId: payload.paymentId,
+      eventId: payload.eventId,
+      organizationId: payload.organizationId,
+      details: {
+        registrationId: payload.registrationId,
+        amount: payload.amount,
+      },
+    });
+  });
+
+  eventBus.on("payment.failed", async (payload) => {
+    await auditService.log({
+      action: "payment.failed",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "payment",
+      resourceId: payload.paymentId,
+      eventId: payload.eventId,
+      organizationId: payload.organizationId,
+      details: {
+        registrationId: payload.registrationId,
+      },
+    });
+  });
+
+  eventBus.on("payment.refunded", async (payload) => {
+    await auditService.log({
+      action: "payment.refunded",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "payment",
+      resourceId: payload.paymentId,
+      eventId: payload.eventId,
+      organizationId: payload.organizationId,
+      details: {
+        registrationId: payload.registrationId,
+        amount: payload.amount,
+        reason: payload.reason ?? null,
+      },
+    });
+  });
+
+  // ── Member role change ────────────────────────────────────────────────
+  // Distinct from user.role_changed (admin → global roles): this is the
+  // org-scoped membership role update (owner/admin/member → organizer etc).
+
+  eventBus.on("member.role_updated", async (payload) => {
+    await auditService.log({
+      action: "member.role_updated",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "organization",
+      resourceId: payload.organizationId,
+      eventId: null,
+      organizationId: payload.organizationId,
+      details: {
+        memberId: payload.memberId,
+        newRole: payload.newRole,
+      },
+    });
+  });
+
+  // ── Receipt ────────────────────────────────────────────────────────────
+
+  eventBus.on("receipt.generated", async (payload) => {
+    await auditService.log({
+      action: "receipt.generated",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "receipt",
+      resourceId: payload.receiptId,
+      eventId: payload.eventId,
+      organizationId: null,
+      details: {
+        paymentId: payload.paymentId,
+        userId: payload.userId,
+        amount: payload.amount,
+      },
+    });
+  });
+
   // ── Subscription Override (Phase 5 — admin per-org assign) ─────────────
 
   eventBus.on("subscription.overridden", async (payload) => {

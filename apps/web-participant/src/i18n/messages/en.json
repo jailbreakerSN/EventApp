@@ -26,7 +26,18 @@
       "title": "Something went wrong",
       "description": "We couldn’t load this page. Please try again.",
       "retry": "Retry",
-      "home": "Home"
+      "home": "Home",
+      "authKicker": "— ERROR",
+      "authTitle": "Authentication error",
+      "authDescription": "Something went wrong. Please try again.",
+      "unexpectedTitle": "Unexpected error",
+      "unexpectedDescription": "Something went wrong. Please try again."
+    },
+    "notFoundPage": {
+      "kicker": "— PAGE NOT FOUND",
+      "title": "This page no longer exists",
+      "description": "The page you’re looking for doesn’t exist or has been moved.",
+      "cta": "Back to events"
     }
   },
   "auth": {

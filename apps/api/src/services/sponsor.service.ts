@@ -8,6 +8,7 @@ import {
 import { sponsorRepository } from "@/repositories/sponsor.repository";
 import { sponsorLeadRepository } from "@/repositories/sponsor-lead.repository";
 import { eventRepository } from "@/repositories/event.repository";
+import { organizationRepository } from "@/repositories/organization.repository";
 import { userRepository } from "@/repositories/user.repository";
 import { type AuthUser } from "@/middlewares/auth.middleware";
 import { ConflictError, ValidationError } from "@/errors/app-error";
@@ -25,6 +26,10 @@ export class SponsorService extends BaseService {
 
     const event = await eventRepository.findByIdOrThrow(dto.eventId);
     this.requireOrganizationAccess(user, event.organizationId);
+
+    // Gate sponsor portal features behind `sponsorPortal` (pro+).
+    const org = await organizationRepository.findByIdOrThrow(event.organizationId);
+    this.requirePlanFeature(org, "sponsorPortal");
 
     const now = new Date().toISOString();
     const sponsor: SponsorProfile = {
@@ -233,6 +238,12 @@ export class SponsorService extends BaseService {
     if (sponsor.userId !== user.uid) {
       this.requireOrganizationAccess(user, sponsor.organizationId);
     }
+
+    // Gate bulk lead export behind `csvExport` (starter+). The sponsor can
+    // still view the leads list via listLeads() — only the bulk export is
+    // restricted.
+    const org = await organizationRepository.findByIdOrThrow(sponsor.organizationId);
+    this.requirePlanFeature(org, "csvExport");
 
     const result = await sponsorLeadRepository.findBySponsor(sponsorId, { page: 1, limit: 10000 });
     return result.data;

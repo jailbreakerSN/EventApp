@@ -12,6 +12,7 @@ import {
 } from "@teranga/shared-types";
 import { db, COLLECTIONS } from "@/config/firebase";
 import { eventRepository } from "@/repositories/event.repository";
+import { organizationRepository } from "@/repositories/organization.repository";
 import { registrationRepository } from "@/repositories/registration.repository";
 import { userRepository } from "@/repositories/user.repository";
 import type { DocumentSnapshot } from "firebase-admin/firestore";
@@ -31,6 +32,11 @@ export class CheckinService extends BaseService {
 
     const event = await eventRepository.findByIdOrThrow(eventId);
     this.requireOrganizationAccess(user, event.organizationId);
+
+    // Gate offline QR sync behind `qrScanning` (starter+). This is the
+    // platform's core differentiator — paid feature by design.
+    const org = await organizationRepository.findByIdOrThrow(event.organizationId);
+    this.requirePlanFeature(org, "qrScanning");
 
     // Fetch all scannable registrations via cursor pagination
     const CHUNK_SIZE = 1000;
@@ -105,6 +111,10 @@ export class CheckinService extends BaseService {
 
     const event = await eventRepository.findByIdOrThrow(eventId);
     this.requireOrganizationAccess(user, event.organizationId);
+
+    // Gate batch QR-scan sync behind `qrScanning` (starter+).
+    const org = await organizationRepository.findByIdOrThrow(event.organizationId);
+    this.requirePlanFeature(org, "qrScanning");
 
     const results: BulkCheckinResult[] = [];
     let succeeded = 0;

@@ -422,6 +422,13 @@ export class RegistrationService extends BaseService {
     // Pre-fetch participant info (read-only, no consistency concern)
     const participant = await userRepository.findById(registration.userId);
 
+    // Gate QR check-in behind `qrScanning` (starter+). Looked up via the
+    // event's org since the caller is an authenticated staff/organizer, not
+    // the participant, and the registration itself doesn't carry orgId.
+    const event = await eventRepository.findByIdOrThrow(registration.eventId);
+    const org = await organizationRepository.findByIdOrThrow(event.organizationId);
+    this.requirePlanFeature(org, "qrScanning");
+
     const txResult = await runTransaction(async (tx) => {
       // Re-read registration inside transaction for double-check-in safety
       const regRef = registrationRepository.ref.doc(registration.id);

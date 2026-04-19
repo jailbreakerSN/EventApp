@@ -8,6 +8,7 @@ import {
 } from "@teranga/shared-types";
 import { db, COLLECTIONS } from "@/config/firebase";
 import { type AuthUser } from "@/middlewares/auth.middleware";
+import { organizationRepository } from "@/repositories/organization.repository";
 import { BaseService } from "./base.service";
 
 function getTimeframeStartDate(timeframe: AnalyticsTimeframe): Date | null {
@@ -45,6 +46,11 @@ export class AnalyticsService extends BaseService {
   ): Promise<OrgAnalytics> {
     this.requirePermission(user, "event:read");
     this.requireOrganizationAccess(user, orgId);
+
+    // Gate advanced analytics behind the `advancedAnalytics` plan feature
+    // (pro+). Free/starter orgs hit the upgrade wall here.
+    const org = await organizationRepository.findByIdOrThrow(orgId);
+    this.requirePlanFeature(org, "advancedAnalytics");
 
     const timeframe = query.timeframe ?? "30d";
     const startDate = getTimeframeStartDate(timeframe);

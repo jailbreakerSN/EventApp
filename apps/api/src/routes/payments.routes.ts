@@ -9,6 +9,7 @@ import {
   getProviderForWebhook,
 } from "@/services/payment.service";
 import { MockPaymentProvider } from "@/providers/mock-payment.provider";
+import { config } from "@/config";
 import {
   InitiatePaymentSchema,
   PaymentWebhookSchema,
@@ -280,7 +281,7 @@ export const paymentRoutes: FastifyPluginAsync = async (fastify) => {
       },
     },
     async (request, reply) => {
-      if (process.env.NODE_ENV === "production") {
+      if (config.NODE_ENV !== "development") {
         return reply.status(404).send({
           success: false,
           error: {
@@ -418,8 +419,12 @@ export const paymentRoutes: FastifyPluginAsync = async (fastify) => {
     },
   );
 
-  // ─── Mock Checkout Routes (dev/test only) ─────────────────────────────────
-  if (process.env.NODE_ENV !== "production") {
+  // ─── Mock Checkout Routes (dev-only) ──────────────────────────────────────
+  // Gated strictly to `development` — staging and production must never mount
+  // the mock checkout page (it embeds caller-supplied returnUrl + callbackUrl
+  // values into HTML/JS for the browser to execute, which is an open-redirect
+  // vector if the guard ever loosens).
+  if (config.NODE_ENV === "development") {
     // ─── Mock Checkout Page (dev/test only) ───────────────────────────────────
     fastify.get(
       "/mock-checkout/:txId",
@@ -622,5 +627,5 @@ export const paymentRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.send({ success: true, data: { status: state.status } });
       },
     );
-  } // end if (NODE_ENV !== "production")
+  } // end if (config.NODE_ENV === "development")
 };

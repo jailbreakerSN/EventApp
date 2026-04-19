@@ -31,6 +31,48 @@ vi.mock("@/events/event-bus", () => ({
   ),
 }));
 
+// Firestore mock — plan.service now uses db.runTransaction + tx.set / tx.update
+// directly (Class-C hardening: version-material updates must mint the new doc
+// and flip the previous isLatest atomically). The mock routes tx calls onto
+// dedicated spies so assertions stay explicit about what the transaction does.
+const mockTxSet = vi.fn();
+const mockTxUpdate = vi.fn();
+const mockNewDocId = { current: "plan-new-doc" };
+
+vi.mock("@/config/firebase", () => ({
+  db: {
+    collection: vi.fn(() => ({
+      doc: vi.fn((id?: string) => {
+        const docId = id ?? mockNewDocId.current;
+        return { id: docId };
+      }),
+    })),
+    runTransaction: vi.fn(async (cb: (tx: unknown) => unknown) => {
+      const tx = {
+        get: vi.fn(async (ref: { id: string }) => {
+          // The service re-reads the old latest to guard against concurrent
+          // version mints — return the value the test staged via
+          // mockPlanRepo.findByIdOrThrow (same doc, seen through tx).
+          const existing = await (mockPlanRepo.findByIdOrThrow.mock.results[0]?.value ?? Promise.resolve(null));
+          if (!existing || existing.id !== ref.id) {
+            return { exists: false, data: () => ({}) };
+          }
+          return { exists: true, data: () => existing };
+        }),
+        set: mockTxSet,
+        update: mockTxUpdate,
+      };
+      return cb(tx);
+    }),
+  },
+  COLLECTIONS: {
+    PLANS: "plans",
+    ORGANIZATIONS: "organizations",
+    SUBSCRIPTIONS: "subscriptions",
+    EVENTS: "events",
+  },
+}));
+
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 function buildPlan(overrides: Partial<Plan> = {}): Plan {
@@ -215,23 +257,18 @@ describe("PlanService.update", () => {
       lineageId: "lin-pro",
       isLatest: true,
     });
-    const newVersion = {
-      ...existing,
-      id: "plan-pro-v2",
-      priceXof: 34900,
-      version: 2,
-      previousVersionId: existing.id,
-    };
     mockPlanRepo.findByIdOrThrow.mockResolvedValue(existing);
-    mockPlanRepo.create.mockResolvedValue(newVersion);
-    mockPlanRepo.update.mockResolvedValue(undefined);
+    mockNewDocId.current = "plan-pro-v2";
 
     const result = await service.update(existing.id, { priceXof: 34900 }, user);
 
-    // A fresh doc was minted — the returned plan is the new version.
+    // The transaction performs both writes atomically:
+    //  1) tx.set(newRef, <v2 payload>)  — mint
+    //  2) tx.update(oldRef, { isLatest: false })  — flip
     expect(result.id).toBe("plan-pro-v2");
     expect(result.priceXof).toBe(34900);
-    expect(mockPlanRepo.create).toHaveBeenCalledWith(
+    expect(mockTxSet).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "plan-pro-v2" }),
       expect.objectContaining({
         key: "pro",
         priceXof: 34900,
@@ -241,8 +278,10 @@ describe("PlanService.update", () => {
         previousVersionId: existing.id,
       }),
     );
-    // Previous version is tombstoned as non-latest.
-    expect(mockPlanRepo.update).toHaveBeenCalledWith(existing.id, { isLatest: false });
+    expect(mockTxUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ id: existing.id }),
+      expect.objectContaining({ isLatest: false }),
+    );
     expect(mockEventBus.emit).toHaveBeenCalledWith(
       "plan.updated",
       expect.objectContaining({ planId: "plan-pro-v2", changes: ["priceXof"] }),

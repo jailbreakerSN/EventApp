@@ -9,6 +9,9 @@ import {
   type OrganizationPlan,
 } from "@teranga/shared-types";
 import { type Firestore } from "firebase-admin/firestore";
+import { db as appDb } from "@/config/firebase";
+import { eventBus } from "@/events/event-bus";
+import { getRequestId } from "@/context/request-context";
 
 // ─── Subscription Rollover Worker ────────────────────────────────────────────
 //
@@ -256,4 +259,32 @@ export async function applyScheduledRollovers(
   }
 
   return result;
+}
+
+/**
+ * App-side entry point that wires the eventBus as the default `onRolledOver`.
+ * Used by any future API surface (admin-manual rollover endpoint, ops script)
+ * that needs the domain event to fire for audit logging. The scheduled Cloud
+ * Function writes the audit log directly (it can't reach the app-side event
+ * bus across the Functions / Cloud Run boundary), so this wrapper exists only
+ * for callers that live inside the Fastify process.
+ */
+export async function runScheduledRollovers(
+  options: ApplyScheduledRolloversOptions = {},
+): Promise<RolloverResult> {
+  return applyScheduledRollovers(appDb, {
+    ...options,
+    onRolledOver: (row) => {
+      options.onRolledOver?.(row);
+      eventBus.emit("subscription.period_rolled_over", {
+        organizationId: row.organizationId,
+        fromPlan: row.fromPlan,
+        toPlan: row.toPlan,
+        reason: row.reason,
+        actorId: "system:subscription-rollover",
+        requestId: getRequestId(),
+        timestamp: new Date().toISOString(),
+      });
+    },
+  });
 }

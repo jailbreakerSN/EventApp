@@ -1,8 +1,10 @@
 import Link from "next/link";
 import { SearchX } from "lucide-react";
+import { getTranslations } from "next-intl/server";
 import { Button, EmptyStateEditorial } from "@teranga/shared-ui";
 
-export default function NotFound() {
+export default async function NotFound() {
+  const t = await getTranslations("common.notFoundPage");
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-6">
       <div className="w-full max-w-md text-center">
@@ -15,12 +17,12 @@ export default function NotFound() {
         <EmptyStateEditorial
           className="mt-4"
           icon={SearchX}
-          kicker="— PAGE INTROUVABLE"
-          title="Cette page n’existe plus"
-          description="La page que vous recherchez n’existe pas ou a été déplacée."
+          kicker={t("kicker")}
+          title={t("title")}
+          description={t("description")}
           action={
             <Link href="/events">
-              <Button>Retour aux événements</Button>
+              <Button>{t("cta")}</Button>
             </Link>
           }
         />

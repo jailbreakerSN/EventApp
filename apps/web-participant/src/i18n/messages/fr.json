@@ -26,7 +26,18 @@
       "title": "Une erreur est survenue",
       "description": "Impossible de charger cette page. Veuillez réessayer.",
       "retry": "Réessayer",
-      "home": "Accueil"
+      "home": "Accueil",
+      "authKicker": "— ERREUR",
+      "authTitle": "Erreur d’authentification",
+      "authDescription": "Une erreur est survenue. Veuillez réessayer.",
+      "unexpectedTitle": "Erreur inattendue",
+      "unexpectedDescription": "Une erreur est survenue. Veuillez réessayer."
+    },
+    "notFoundPage": {
+      "kicker": "— PAGE INTROUVABLE",
+      "title": "Cette page n’existe plus",
+      "description": "La page que vous recherchez n’existe pas ou a été déplacée.",
+      "cta": "Retour aux événements"
     }
   },
   "auth": {

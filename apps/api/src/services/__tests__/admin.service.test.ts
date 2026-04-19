@@ -38,7 +38,19 @@ vi.mock("@/config/firebase", () => ({
         return { get: vi.fn(), update: vi.fn(), id };
       }),
     })),
-    runTransaction: vi.fn(),
+    // Route tx.get / tx.update on user/org docs to the same spies as
+    // non-tx writes so existing assertions keep working after the
+    // Class-C transactional hardening (updateUserRoles / updateUserStatus
+    // now read-then-write inside runTransaction).
+    runTransaction: vi.fn(async (cb: (tx: unknown) => unknown) => {
+      const tx = {
+        get: (ref: { get: () => unknown }) => ref.get(),
+        update: (ref: { update: (data: unknown) => unknown }, data: unknown) =>
+          ref.update(data),
+        set: vi.fn(),
+      };
+      return cb(tx);
+    }),
   },
   auth: {
     setCustomUserClaims: vi.fn().mockResolvedValue(undefined),

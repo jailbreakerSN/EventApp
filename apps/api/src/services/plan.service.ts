@@ -8,6 +8,7 @@ import {
   PLAN_LIMIT_UNLIMITED,
 } from "@teranga/shared-types";
 import { planRepository } from "@/repositories/plan.repository";
+import { db, COLLECTIONS } from "@/config/firebase";
 import { subscriptionRepository } from "@/repositories/subscription.repository";
 import { organizationRepository } from "@/repositories/organization.repository";
 import { eventRepository } from "@/repositories/event.repository";
@@ -253,7 +254,18 @@ export class PlanService extends BaseService {
       ? { ...existing.limits, ...versionPatch.limits }
       : existing.limits;
 
-    const newVersion = await planRepository.create({
+    // Version-material mint + old-latest flip atomically. Without a
+    // transaction, a crash between the new doc's write and the old doc's
+    // flip would leave the lineage with two `isLatest: true` rows (catalog
+    // reader tolerates that but it's a catalog-hygiene bug), and a
+    // concurrent update racing against us could double-version the same
+    // edit. We also re-read the old doc inside the tx to guard against
+    // another admin minting a version between our `findByIdOrThrow` above
+    // and the commit — if `isLatest` has already flipped, abort.
+    const now = new Date().toISOString();
+    const newRef = db.collection(COLLECTIONS.PLANS).doc();
+    const newVersionData: Plan = {
+      id: newRef.id,
       key: existing.key,
       name: versionPatch.name ?? existing.name,
       description:
@@ -268,8 +280,6 @@ export class PlanService extends BaseService {
       limits: mergedLimits,
       features: mergedFeatures,
       isSystem: existing.isSystem,
-      // Display-only changes (if bundled in the same call) land on the NEW
-      // version — simpler than split-writing both old and new.
       isPublic: "isPublic" in patch ? (patch.isPublic ?? existing.isPublic) : existing.isPublic,
       isArchived: false,
       sortOrder:
@@ -278,22 +288,30 @@ export class PlanService extends BaseService {
         "trialDays" in versionPatch
           ? (versionPatch.trialDays ?? null)
           : (existing.trialDays ?? null),
-      // Guard against pre-Phase-7 plans that were written before versioning
-      // landed — they may lack `version` / `lineageId`. Treat missing metadata
-      // as "v1 with a self-lineage".
       version: (existing.version ?? 1) + 1,
       lineageId: existing.lineageId ?? `lin-${existing.id}-legacy`,
       isLatest: true,
       previousVersionId: existing.id,
       createdBy: user.uid,
-    } as Omit<Plan, "id" | "createdAt" | "updatedAt">);
+      createdAt: now,
+      updatedAt: now,
+    } as Plan;
 
-    // Flip the previous latest flag. Done after the new doc exists so that
-    // a concurrent reader never sees zero latest versions for this lineage
-    // (they might briefly see two — the catalog reader tolerates that by
-    // preferring the first match; Phase 7+ follow-up can tighten via a txn
-    // once we have volume).
-    await planRepository.update(existing.id, { isLatest: false } as Partial<Plan>);
+    await db.runTransaction(async (tx) => {
+      const oldRef = db.collection(COLLECTIONS.PLANS).doc(existing.id);
+      const oldSnap = await tx.get(oldRef);
+      if (!oldSnap.exists) throw new NotFoundError("Plan", existing.id);
+      const oldData = oldSnap.data() as Plan;
+      if (oldData.isLatest === false) {
+        throw new ConflictError(
+          "Une autre mise à jour a été appliquée entre-temps — rechargez la page",
+        );
+      }
+      tx.set(newRef, newVersionData);
+      tx.update(oldRef, { isLatest: false, updatedAt: now });
+    });
+
+    const newVersion = newVersionData;
 
     eventBus.emit("plan.updated", {
       planId: newVersion.id,

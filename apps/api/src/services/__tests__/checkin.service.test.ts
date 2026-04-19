@@ -5,6 +5,7 @@ import {
   buildOrganizerUser,
   buildStaffUser,
   buildEvent,
+  buildOrganization,
   buildRegistration,
 } from "@/__tests__/factories";
 import { type UserRole } from "@teranga/shared-types";
@@ -24,6 +25,10 @@ const mockRegRepo = {
 const mockUserRepo = {
   batchGet: vi.fn(),
   findById: vi.fn(),
+};
+
+const mockOrgRepo = {
+  findByIdOrThrow: vi.fn(),
 };
 
 vi.mock("@/repositories/event.repository", () => ({
@@ -49,6 +54,15 @@ vi.mock("@/repositories/user.repository", () => ({
     {},
     {
       get: (_target, prop) => (mockUserRepo as Record<string, unknown>)[prop as string],
+    },
+  ),
+}));
+
+vi.mock("@/repositories/organization.repository", () => ({
+  organizationRepository: new Proxy(
+    {},
+    {
+      get: (_target, prop) => (mockOrgRepo as Record<string, unknown>)[prop as string],
     },
   ),
 }));
@@ -91,6 +105,9 @@ const service = new CheckinService();
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // bulkSync is gated behind the `qrScanning` plan feature — every test
+  // needs a starter-or-better org returned by the repository lookup.
+  mockOrgRepo.findByIdOrThrow.mockResolvedValue(buildOrganization({ id: "org-1", plan: "starter" }));
 });
 
 describe("CheckinService.getOfflineSyncData", () => {
