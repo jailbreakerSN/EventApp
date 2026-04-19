@@ -1,0 +1,1420 @@
+/**
+ * Seed event fixtures — 20 events across categories / formats / plans / cities.
+ *
+ * The four legacy events (event-001..004) are preserved BYTE-FOR-BYTE because
+ * downstream inline sections in `seed-emulators.ts` (registrations, sessions,
+ * speakers, feed, payments, broadcasts, audit logs) all reference them by the
+ * IDs resolved through `./ids`. Touching any field on the legacy four risks a
+ * silent cascade failure somewhere in sections 5-20.
+ *
+ * The 16 expansion events (event-005..020) are added by subsequent commits in
+ * this PR and cover:
+ *   - every EventCategory value except `other` / `ceremony`
+ *   - all three EventFormat values (in_person / online / hybrid)
+ *   - all lifecycle states (past completed, live now, near-term, far-future)
+ *   - all four plan tiers — free / starter / pro / enterprise
+ *   - 8 francophone West African cities
+ *
+ * This first commit lands the module scaffolding + the 4 legacy events so the
+ * orchestrator rewire can import `seedEvents` while the remaining events are
+ * filled in. `seedEvents` returns `all.length` so the caller can log totals.
+ */
+
+import type { Firestore } from "firebase-admin/firestore";
+
+import { Dates } from "./config";
+import { IDS } from "./ids";
+
+const {
+  now,
+  twoHoursAgo,
+  oneHourAgo,
+  yesterday,
+  twoDaysAgo,
+  oneWeekAgo,
+  twoWeeksAgo,
+  oneMonthAgo,
+  fortyFiveDaysAgo,
+  threeMonthsAgo,
+  inThreeHours,
+  inFourHours,
+  inOneWeek,
+  inOneWeekPlus1h,
+  inFiveDays,
+  inTenDays,
+  inTwoWeeks,
+  inThreeWeeks,
+  inOneMonth,
+  inFortyFiveDays,
+  inTwoMonths,
+  inSeventyFiveDays,
+  inThreeMonths,
+} = Dates;
+
+/**
+ * Shape we actually write to Firestore. Kept loose on most fields (not
+ * `z.infer<EventSchema>`) because the seed writes denormalised fields the
+ * Zod schema marks as optional — forcing the full inferred type here would
+ * trigger spurious `undefined` vs `null` friction on re-seed. The six
+ * fields we *do* type strictly are the ones downstream modules
+ * (`05-activity.ts`, `06-social.ts`) consume to keep their denorms and
+ * audit entries consistent with this module.
+ */
+type SeedTicketType = {
+  id: string;
+  name: string;
+  price: number;
+  [key: string]: unknown;
+};
+
+type SeedEvent = Record<string, unknown> & {
+  id: string;
+  title: string;
+  slug: string;
+  startDate: string;
+  endDate: string;
+  ticketTypes: SeedTicketType[];
+  createdBy: string;
+  organizationId: string;
+};
+
+// ─── Legacy events (preserved byte-for-byte) ─────────────────────────────
+// ⚠ DO NOT EDIT fields on these four. They are the anchor for every inline
+// fixture in `seed-emulators.ts` (registrations, sessions, feed posts,
+// comments, payments, receipts, broadcasts, audit logs). If you need to
+// change shape, update the monolith AND the matching inline references in
+// one atomic commit.
+
+const LEGACY_EVENTS: SeedEvent[] = [
+  // Event 1: Published FREE conference (main event for testing most features)
+  {
+    id: IDS.conference,
+    organizationId: IDS.orgId,
+    title: "Dakar Tech Summit 2026",
+    slug: "dakar-tech-summit-2026",
+    description:
+      "Le plus grand événement tech d'Afrique de l'Ouest. Rejoignez-nous pour deux jours de conférences, ateliers et networking avec les meilleurs talents tech du continent.",
+    shortDescription: "Le rendez-vous tech incontournable de Dakar",
+    coverImageURL: null,
+    bannerImageURL: null,
+    category: "conference",
+    tags: ["tech", "startup", "dakar", "innovation"],
+    format: "in_person",
+    status: "published",
+    location: {
+      name: "Centre International de Conférences de Dakar (CICAD)",
+      address: "Route de King Fahd, Almadies",
+      city: "Dakar",
+      country: "SN",
+    },
+    startDate: inOneWeek,
+    endDate: inTwoWeeks,
+    timezone: "Africa/Dakar",
+    ticketTypes: [
+      {
+        id: "ticket-standard-001",
+        name: "Standard",
+        description: "Accès aux conférences et networking",
+        price: 0,
+        currency: "XOF",
+        totalQuantity: 500,
+        soldCount: 4,
+        accessZoneIds: [],
+        isVisible: true,
+      },
+      {
+        id: "ticket-vip-001",
+        name: "VIP",
+        description: "Accès complet + déjeuner + places réservées",
+        price: 25000,
+        currency: "XOF",
+        totalQuantity: 50,
+        soldCount: 1,
+        accessZoneIds: [],
+        isVisible: true,
+      },
+    ],
+    accessZones: [],
+    maxAttendees: 550,
+    registeredCount: 5,
+    checkedInCount: 1,
+    isPublic: true,
+    isFeatured: true,
+    venueId: IDS.venue1,
+    venueName: "CICAD — Centre International de Conferences",
+    requiresApproval: false,
+    templateId: null,
+    createdBy: IDS.organizer,
+    updatedBy: IDS.organizer,
+    createdAt: twoDaysAgo,
+    updatedAt: now,
+    publishedAt: yesterday,
+  },
+
+  // Event 2: Draft workshop (paid)
+  {
+    id: IDS.workshop,
+    organizationId: IDS.orgId,
+    title: "Atelier Flutter & Firebase",
+    slug: "atelier-flutter-firebase",
+    description:
+      "Un atelier pratique de 4 heures pour apprendre à construire une application mobile avec Flutter et Firebase. Apportez votre ordinateur !",
+    shortDescription: "Atelier pratique Flutter + Firebase",
+    coverImageURL: null,
+    bannerImageURL: null,
+    category: "workshop",
+    tags: ["flutter", "firebase", "mobile", "formation"],
+    format: "in_person",
+    status: "draft",
+    location: {
+      name: "Jokkolabs Dakar",
+      address: "Sicap Liberté 6, Villa 7691",
+      city: "Dakar",
+      country: "SN",
+    },
+    startDate: inOneMonth,
+    endDate: inOneMonth,
+    timezone: "Africa/Dakar",
+    ticketTypes: [
+      {
+        id: "ticket-standard-002",
+        name: "Participant",
+        description: "Place atelier",
+        price: 5000,
+        currency: "XOF",
+        totalQuantity: 30,
+        soldCount: 0,
+        accessZoneIds: [],
+        isVisible: true,
+      },
+    ],
+    accessZones: [],
+    maxAttendees: 30,
+    registeredCount: 0,
+    checkedInCount: 0,
+    isPublic: true,
+    isFeatured: false,
+    venueId: null,
+    venueName: null,
+    requiresApproval: false,
+    templateId: null,
+    createdBy: IDS.organizer,
+    updatedBy: IDS.organizer,
+    createdAt: yesterday,
+    updatedAt: yesterday,
+    publishedAt: null,
+  },
+
+  // Event 3: Cancelled meetup
+  {
+    id: IDS.meetup,
+    organizationId: IDS.orgId,
+    title: "Meetup Développeurs Dakar #12",
+    slug: "meetup-dev-dakar-12",
+    description:
+      "Rencontre mensuelle des développeurs de Dakar. Présentations éclair et networking.",
+    shortDescription: "Meetup mensuel dev Dakar",
+    coverImageURL: null,
+    bannerImageURL: null,
+    category: "networking",
+    tags: ["meetup", "dev", "dakar"],
+    format: "hybrid",
+    status: "cancelled",
+    location: {
+      name: "Impact Hub Dakar",
+      address: "Rue Carnot x Amadou Assane Ndoye",
+      city: "Dakar",
+      country: "SN",
+      streamUrl: "https://meet.google.com/abc-defg-hij",
+    },
+    startDate: yesterday,
+    endDate: yesterday,
+    timezone: "Africa/Dakar",
+    ticketTypes: [
+      {
+        id: "ticket-standard-003",
+        name: "Entrée libre",
+        price: 0,
+        currency: "XOF",
+        totalQuantity: null,
+        soldCount: 0,
+        accessZoneIds: [],
+        isVisible: true,
+      },
+    ],
+    accessZones: [],
+    maxAttendees: null,
+    registeredCount: 0,
+    checkedInCount: 0,
+    isPublic: true,
+    isFeatured: false,
+    venueId: null,
+    venueName: null,
+    requiresApproval: false,
+    templateId: null,
+    createdBy: IDS.organizer,
+    updatedBy: IDS.organizer,
+    createdAt: twoDaysAgo,
+    updatedAt: yesterday,
+    publishedAt: twoDaysAgo,
+  },
+
+  // Event 4: Published PAID event (for testing payment flow)
+  {
+    id: IDS.paidEvent,
+    organizationId: IDS.orgId,
+    title: "Masterclass IA Générative",
+    slug: "masterclass-ia-generative",
+    description:
+      "Une journée intensive pour maîtriser les outils d'IA générative : ChatGPT, Claude, Midjourney et leurs applications business en Afrique.",
+    shortDescription: "Maîtrisez l'IA générative en une journée",
+    coverImageURL: null,
+    bannerImageURL: null,
+    category: "conference",
+    tags: ["ia", "ai", "generative", "business", "dakar"],
+    format: "in_person",
+    status: "published",
+    location: {
+      name: "Radisson Blu Dakar",
+      address: "Route de la Corniche, Sea Plaza",
+      city: "Dakar",
+      country: "SN",
+    },
+    startDate: inTwoWeeks,
+    endDate: inTwoWeeks,
+    timezone: "Africa/Dakar",
+    ticketTypes: [
+      {
+        id: "ticket-standard-004",
+        name: "Early Bird",
+        description: "Tarif réduit — places limitées",
+        price: 15000,
+        currency: "XOF",
+        totalQuantity: 50,
+        soldCount: 1,
+        accessZoneIds: [],
+        isVisible: true,
+      },
+      {
+        id: "ticket-vip-004",
+        name: "Premium",
+        description: "Accès complet + déjeuner VIP + certificat",
+        price: 35000,
+        currency: "XOF",
+        totalQuantity: 20,
+        soldCount: 1,
+        accessZoneIds: [],
+        isVisible: true,
+      },
+    ],
+    accessZones: [],
+    maxAttendees: 70,
+    registeredCount: 2,
+    checkedInCount: 0,
+    isPublic: true,
+    isFeatured: true,
+    venueId: IDS.venue2,
+    venueName: "Radisson Blu Dakar Sea Plaza",
+    requiresApproval: false,
+    templateId: null,
+    createdBy: IDS.organizer,
+    updatedBy: IDS.organizer,
+    createdAt: yesterday,
+    updatedAt: now,
+    publishedAt: now,
+  },
+];
+
+// ─── Expansion events ──────────────────────────────────────────────────
+// Organised by lifecycle bucket (past → live → near-term → far-future) so
+// the seed produces realistic distribution across the `upcoming / live /
+// past` filter surfaces in the participant app and admin dashboards.
+
+const PAST_EVENTS: SeedEvent[] = [
+  // event-005 — Past / completed festival. Exercises the `completed` status
+  // badge on the events list + venue-006 (Saly beach hotel) activity counter.
+  {
+    id: "event-005",
+    organizationId: IDS.enterpriseOrgId,
+    title: "Festival Hip-Hop de Saly",
+    slug: "festival-hip-hop-saly-2026",
+    description:
+      "Trois jours de hip-hop francophone sur la plage de Saly. Line-up pan-africain — Sénégal, Côte d'Ivoire, Mali, Togo — avec masterclass beatmaking et open mic.",
+    shortDescription: "Festival hip-hop pan-africain sur la plage de Saly",
+    coverImageURL: null,
+    bannerImageURL: null,
+    category: "festival",
+    tags: ["festival", "hip-hop", "musique", "saly", "afrique"],
+    format: "in_person",
+    status: "completed",
+    location: {
+      name: "Palm Beach Resort Saly",
+      address: "Route de la Pointe, Saly Portudal",
+      city: "Saly",
+      country: "SN",
+    },
+    startDate: fortyFiveDaysAgo,
+    endDate: fortyFiveDaysAgo, // modelled as a single-ISO range; visually a 3-day fest
+    timezone: "Africa/Dakar",
+    ticketTypes: [
+      {
+        id: "ticket-pass-005",
+        name: "Pass 3 jours",
+        description: "Accès complet aux trois jours + backstage",
+        price: 25000,
+        currency: "XOF",
+        totalQuantity: 2000,
+        soldCount: 1850,
+        accessZoneIds: [],
+        isVisible: true,
+      },
+    ],
+    accessZones: [],
+    maxAttendees: 2000,
+    registeredCount: 1850,
+    checkedInCount: 1624,
+    isPublic: true,
+    isFeatured: false,
+    venueId: "venue-006",
+    venueName: "Palm Beach Resort Saly",
+    requiresApproval: false,
+    templateId: null,
+    createdBy: IDS.enterpriseOrganizer,
+    updatedBy: IDS.enterpriseOrganizer,
+    createdAt: oneMonthAgo,
+    updatedAt: fortyFiveDaysAgo,
+    publishedAt: oneMonthAgo,
+  },
+
+  // event-006 — Past / completed sport event. Uses venue-005 (outdoor
+  // Monument de la Renaissance) so the venue profile shows real event history.
+  {
+    id: "event-006",
+    organizationId: IDS.enterpriseOrgId,
+    title: "Marathon de Dakar 2026",
+    slug: "marathon-dakar-2026",
+    description:
+      "Le marathon annuel de Dakar — 42,195 km au cœur de la capitale sénégalaise. Parcours certifié, 5 000 coureurs attendus, tracé Almadies → Corniche → Monument de la Renaissance.",
+    shortDescription: "Marathon international de Dakar, 42 km",
+    coverImageURL: null,
+    bannerImageURL: null,
+    category: "sport",
+    tags: ["sport", "marathon", "course", "dakar"],
+    format: "in_person",
+    status: "completed",
+    location: {
+      name: "Esplanade Monument de la Renaissance",
+      address: "Colline des Mamelles, Ouakam",
+      city: "Dakar",
+      country: "SN",
+    },
+    startDate: oneMonthAgo,
+    endDate: oneMonthAgo,
+    timezone: "Africa/Dakar",
+    ticketTypes: [
+      {
+        id: "ticket-marathon-006",
+        name: "Dossard marathon",
+        description: "Dossard officiel + t-shirt + ravitaillement",
+        price: 15000,
+        currency: "XOF",
+        totalQuantity: 5000,
+        soldCount: 4200,
+        accessZoneIds: [],
+        isVisible: true,
+      },
+      {
+        id: "ticket-semi-006",
+        name: "Dossard semi-marathon",
+        description: "Parcours 21 km",
+        price: 10000,
+        currency: "XOF",
+        totalQuantity: 3000,
+        soldCount: 2800,
+        accessZoneIds: [],
+        isVisible: true,
+      },
+    ],
+    accessZones: [],
+    maxAttendees: 8000,
+    registeredCount: 7000,
+    checkedInCount: 6312,
+    isPublic: true,
+    isFeatured: false,
+    venueId: "venue-005",
+    venueName: "Esplanade Monument de la Renaissance",
+    requiresApproval: false,
+    templateId: null,
+    createdBy: IDS.enterpriseOrganizer,
+    updatedBy: IDS.enterpriseOrganizer,
+    createdAt: threeMonthsAgo,
+    updatedAt: oneMonthAgo,
+    publishedAt: threeMonthsAgo,
+  },
+];
+
+const LIVE_EVENTS: SeedEvent[] = [
+  // event-007 — LIVE now. Free-plan org, meetup in Dakar. Proves the
+  // `live` badge + real-time agenda view for the happiest plan tier.
+  {
+    id: "event-007",
+    organizationId: IDS.freeOrgId,
+    title: "Meetup Développeurs Dakar #13 (LIVE)",
+    slug: "meetup-dev-dakar-13",
+    description:
+      "13ème édition du meetup mensuel des développeurs de Dakar. Au programme : Flutter 4.0, retour d'expérience IA générative en production, et open discussion networking.",
+    shortDescription: "Meetup dev mensuel — en cours",
+    coverImageURL: null,
+    bannerImageURL: null,
+    category: "networking",
+    tags: ["meetup", "dev", "flutter", "ia", "dakar"],
+    format: "in_person",
+    status: "published",
+    location: {
+      name: "Jokkolabs Dakar",
+      address: "Sicap Liberté 6, Villa 7691",
+      city: "Dakar",
+      country: "SN",
+    },
+    startDate: twoHoursAgo,
+    endDate: inFourHours,
+    timezone: "Africa/Dakar",
+    ticketTypes: [
+      {
+        id: "ticket-free-007",
+        name: "Entrée libre",
+        description: "Gratuit sur inscription",
+        price: 0,
+        currency: "XOF",
+        totalQuantity: 50,
+        soldCount: 42,
+        accessZoneIds: [],
+        isVisible: true,
+      },
+    ],
+    accessZones: [],
+    maxAttendees: 50,
+    registeredCount: 42,
+    checkedInCount: 28,
+    isPublic: true,
+    isFeatured: false,
+    venueId: IDS.venue3,
+    venueName: "Jokkolabs Dakar",
+    requiresApproval: false,
+    templateId: null,
+    createdBy: IDS.freeOrganizer,
+    updatedBy: IDS.freeOrganizer,
+    createdAt: oneWeekAgo,
+    updatedAt: twoHoursAgo,
+    publishedAt: oneWeekAgo,
+  },
+
+  // event-008 — LIVE now. Starter-plan org (Thiès Tech Collective), workshop
+  // in Saint-Louis. First starter-tier event with actual registered count.
+  {
+    id: "event-008",
+    organizationId: IDS.starterOrgId,
+    title: "Workshop Design Digital Saint-Louis (LIVE)",
+    slug: "workshop-digital-saint-louis",
+    description:
+      "Atelier pratique sur le design d'interfaces digitales pour les ONG et PME de la région Nord. Figma, prototypage rapide, accessibilité WCAG — en cours à l'Institut Français.",
+    shortDescription: "Atelier design digital — en cours",
+    coverImageURL: null,
+    bannerImageURL: null,
+    category: "workshop",
+    tags: ["workshop", "design", "figma", "saint-louis"],
+    format: "in_person",
+    status: "published",
+    location: {
+      name: "Institut Français de Saint-Louis",
+      address: "Rue Abdoulaye Seck Papa Mademba",
+      city: "Saint-Louis",
+      country: "SN",
+    },
+    startDate: oneHourAgo,
+    endDate: inThreeHours,
+    timezone: "Africa/Dakar",
+    ticketTypes: [
+      {
+        id: "ticket-workshop-008",
+        name: "Participant",
+        description: "Place atelier + kit Figma",
+        price: 8000,
+        currency: "XOF",
+        totalQuantity: 40,
+        soldCount: 36,
+        accessZoneIds: [],
+        isVisible: true,
+      },
+    ],
+    accessZones: [],
+    maxAttendees: 40,
+    registeredCount: 36,
+    checkedInCount: 31,
+    isPublic: true,
+    isFeatured: true,
+    venueId: "venue-010",
+    venueName: "Institut Français de Saint-Louis",
+    requiresApproval: false,
+    templateId: null,
+    createdBy: IDS.starterOrganizer,
+    updatedBy: IDS.starterOrganizer,
+    createdAt: twoWeeksAgo,
+    updatedAt: oneHourAgo,
+    publishedAt: twoWeeksAgo,
+  },
+];
+
+const NEAR_TERM_EVENTS: SeedEvent[] = [
+  // event-009 — Online training, +5d. Enterprise Sonatel, online format.
+  // First online-only event in the seed — exercises the streamUrl path and
+  // the "no venue / no city filter" path on the events list.
+  {
+    id: "event-009",
+    organizationId: IDS.enterpriseOrgId,
+    title: "Formation IA pour Cadres Dirigeants",
+    slug: "formation-ia-cadres-bamako",
+    description:
+      "Formation en ligne de 2 jours sur l'IA générative appliquée au management. Use cases pan-africains, studio de prompt engineering, intégration Claude + ChatGPT en entreprise. 100% en ligne, accessible depuis Bamako, Dakar, Abidjan et Lomé.",
+    shortDescription: "Formation IA 100% en ligne — 2 jours",
+    coverImageURL: null,
+    bannerImageURL: null,
+    category: "training",
+    tags: ["ia", "formation", "management", "online", "afrique"],
+    format: "online",
+    status: "published",
+    location: {
+      name: "En ligne (Zoom)",
+      address: "N/A",
+      city: "Bamako",
+      country: "ML",
+      streamUrl: "https://zoom.us/j/formation-ia-bamako",
+    },
+    startDate: inFiveDays,
+    endDate: inFiveDays,
+    timezone: "Africa/Bamako",
+    ticketTypes: [
+      {
+        id: "ticket-formation-009",
+        name: "Place formation",
+        description: "Accès 2 jours + support PDF + enregistrement",
+        price: 75000,
+        currency: "XOF",
+        totalQuantity: 200,
+        soldCount: 87,
+        accessZoneIds: [],
+        isVisible: true,
+      },
+    ],
+    accessZones: [],
+    maxAttendees: 200,
+    registeredCount: 87,
+    checkedInCount: 0,
+    isPublic: true,
+    isFeatured: true,
+    venueId: null,
+    venueName: null,
+    requiresApproval: false,
+    templateId: null,
+    createdBy: IDS.enterpriseOrganizer,
+    updatedBy: IDS.enterpriseOrganizer,
+    createdAt: twoWeeksAgo,
+    updatedAt: yesterday,
+    publishedAt: twoWeeksAgo,
+  },
+
+  // event-010 — Hybrid conference, +10d. Starter org (Thiès Tech Collective).
+  // First hybrid event on the starter tier — exercises `streamUrl` combined
+  // with a physical venue, the trickiest rendering path.
+  {
+    id: "event-010",
+    organizationId: IDS.starterOrgId,
+    title: "Conférence Fintech Ouest-Africaine",
+    slug: "conference-fintech-ouest-africaine",
+    description:
+      "Rencontre annuelle des acteurs de la fintech francophone ouest-africaine — Wave, Orange Money, Free Money, et nouveaux entrants. Sur place à Thiès + streaming pour les participants Dakar / Abidjan / Bamako.",
+    shortDescription: "Fintech pan-africaine — hybride (Thiès + stream)",
+    coverImageURL: null,
+    bannerImageURL: null,
+    category: "conference",
+    tags: ["fintech", "mobile-money", "wave", "thiès", "hybride"],
+    format: "hybrid",
+    status: "published",
+    location: {
+      name: "Palais des Congrès de Thiès",
+      address: "Avenue Léopold Sédar Senghor",
+      city: "Thiès",
+      country: "SN",
+      streamUrl: "https://live.thies-tech.sn/fintech-2026",
+    },
+    startDate: inTenDays,
+    endDate: inTenDays,
+    timezone: "Africa/Dakar",
+    ticketTypes: [
+      {
+        id: "ticket-on-site-010",
+        name: "Sur place",
+        description: "Accès Palais des Congrès + déjeuner",
+        price: 35000,
+        currency: "XOF",
+        totalQuantity: 400,
+        soldCount: 180,
+        accessZoneIds: [],
+        isVisible: true,
+      },
+      {
+        id: "ticket-stream-010",
+        name: "En ligne",
+        description: "Stream HD + replay 30 jours",
+        price: 10000,
+        currency: "XOF",
+        totalQuantity: null,
+        soldCount: 340,
+        accessZoneIds: [],
+        isVisible: true,
+      },
+    ],
+    accessZones: [],
+    maxAttendees: 400,
+    registeredCount: 520,
+    checkedInCount: 0,
+    isPublic: true,
+    isFeatured: true,
+    venueId: "venue-008",
+    venueName: "Palais des Congrès de Thiès",
+    requiresApproval: false,
+    templateId: null,
+    createdBy: IDS.starterOrganizer,
+    updatedBy: IDS.starterOrganizer,
+    createdAt: oneMonthAgo,
+    updatedAt: twoDaysAgo,
+    publishedAt: oneMonthAgo,
+  },
+
+  // event-011 — Large-capacity concert, +14d. Enterprise Sonatel, venue-005
+  // Monument de la Renaissance outdoor (15 000 cap). Tests the events list
+  // rendering when `registeredCount` is in the thousands.
+  {
+    id: "event-011",
+    organizationId: IDS.enterpriseOrgId,
+    title: "Concert Youssou N'Dour — Grand Bal de Dakar",
+    slug: "concert-youssou-ndour-dakar-2026",
+    description:
+      "Le roi du mbalax en concert exceptionnel sur l'esplanade du Monument de la Renaissance. Ouverture par Baaba Maal. Capacité 15 000 places — première billetterie en ligne officielle.",
+    shortDescription: "Youssou N'Dour en concert — Monument de la Renaissance",
+    coverImageURL: null,
+    bannerImageURL: null,
+    category: "concert",
+    tags: ["concert", "mbalax", "musique", "dakar", "youssou-ndour"],
+    format: "in_person",
+    status: "published",
+    location: {
+      name: "Esplanade Monument de la Renaissance",
+      address: "Colline des Mamelles, Ouakam",
+      city: "Dakar",
+      country: "SN",
+    },
+    startDate: inTwoWeeks,
+    endDate: inTwoWeeks,
+    timezone: "Africa/Dakar",
+    ticketTypes: [
+      {
+        id: "ticket-carre-or-011",
+        name: "Carré Or",
+        description: "Places devant la scène + accès backstage",
+        price: 50000,
+        currency: "XOF",
+        totalQuantity: 500,
+        soldCount: 480,
+        accessZoneIds: [],
+        isVisible: true,
+      },
+      {
+        id: "ticket-pelouse-011",
+        name: "Pelouse",
+        description: "Accès général pelouse",
+        price: 12000,
+        currency: "XOF",
+        totalQuantity: 14500,
+        soldCount: 9200,
+        accessZoneIds: [],
+        isVisible: true,
+      },
+    ],
+    accessZones: [],
+    maxAttendees: 15000,
+    registeredCount: 9680,
+    checkedInCount: 0,
+    isPublic: true,
+    isFeatured: true,
+    venueId: "venue-005",
+    venueName: "Esplanade Monument de la Renaissance",
+    requiresApproval: false,
+    templateId: null,
+    createdBy: IDS.enterpriseOrganizer,
+    updatedBy: IDS.enterpriseOrganizer,
+    createdAt: oneMonthAgo,
+    updatedAt: now,
+    publishedAt: oneMonthAgo,
+  },
+
+  // event-012 — Tech conference, +21d, pro org Teranga. Regional venue
+  // (Palais Thiès) exercises multi-city discovery for the pro plan.
+  {
+    id: "event-012",
+    organizationId: IDS.orgId,
+    title: "Web Summit Thiès — Édition 2026",
+    slug: "web-summit-thies-2026",
+    description:
+      "Conférence tech régionale organisée par Teranga Events à Thiès. Trois tracks : startup, dev, produit. 40 intervenants, 600 participants, exposition partenaires.",
+    shortDescription: "Web Summit tech régional à Thiès",
+    coverImageURL: null,
+    bannerImageURL: null,
+    category: "conference",
+    tags: ["tech", "conference", "thiès", "startup", "produit"],
+    format: "in_person",
+    status: "published",
+    location: {
+      name: "Palais des Congrès de Thiès",
+      address: "Avenue Léopold Sédar Senghor",
+      city: "Thiès",
+      country: "SN",
+    },
+    startDate: inThreeWeeks,
+    endDate: inThreeWeeks,
+    timezone: "Africa/Dakar",
+    ticketTypes: [
+      {
+        id: "ticket-early-012",
+        name: "Early Bird",
+        description: "Tarif préférentiel jusqu'à J-15",
+        price: 18000,
+        currency: "XOF",
+        totalQuantity: 200,
+        soldCount: 142,
+        accessZoneIds: [],
+        isVisible: true,
+      },
+      {
+        id: "ticket-standard-012",
+        name: "Standard",
+        description: "Accès 1 jour + lunch",
+        price: 28000,
+        currency: "XOF",
+        totalQuantity: 400,
+        soldCount: 68,
+        accessZoneIds: [],
+        isVisible: true,
+      },
+    ],
+    accessZones: [],
+    maxAttendees: 600,
+    registeredCount: 210,
+    checkedInCount: 0,
+    isPublic: true,
+    isFeatured: false,
+    venueId: "venue-008",
+    venueName: "Palais des Congrès de Thiès",
+    requiresApproval: false,
+    templateId: null,
+    createdBy: IDS.organizer,
+    updatedBy: IDS.organizer,
+    createdAt: twoWeeksAgo,
+    updatedAt: yesterday,
+    publishedAt: twoWeeksAgo,
+  },
+
+  // event-013 — Jazz festival, +3 weeks+2h (near +21d anchor). Enterprise,
+  // festival category in Saint-Louis (the jazz capital of Senegal). venue-011
+  // Hôtel de la Poste — historic riverside property.
+  {
+    id: "event-013",
+    organizationId: IDS.enterpriseOrgId,
+    title: "Festival Jazz de Saint-Louis",
+    slug: "festival-jazz-saint-louis-2026",
+    description:
+      "34ème édition du Festival international de Jazz de Saint-Louis. 4 jours, 3 scènes, artistes du Sénégal, Mali, États-Unis, France. Programme complet sur le site officiel.",
+    shortDescription: "Festival Jazz Saint-Louis — 34ème édition",
+    coverImageURL: null,
+    bannerImageURL: null,
+    category: "festival",
+    tags: ["festival", "jazz", "musique", "saint-louis", "international"],
+    format: "in_person",
+    status: "published",
+    location: {
+      name: "Hôtel de la Poste",
+      address: "Rue Abdoulaye Seck Papa Mademba",
+      city: "Saint-Louis",
+      country: "SN",
+    },
+    startDate: inThreeWeeks,
+    endDate: inThreeWeeks,
+    timezone: "Africa/Dakar",
+    ticketTypes: [
+      {
+        id: "ticket-pass-013",
+        name: "Pass 4 jours",
+        description: "Accès complet aux 4 soirées + 3 scènes",
+        price: 45000,
+        currency: "XOF",
+        totalQuantity: 3000,
+        soldCount: 1820,
+        accessZoneIds: [],
+        isVisible: true,
+      },
+      {
+        id: "ticket-soiree-013",
+        name: "Soirée unique",
+        description: "Une soirée au choix",
+        price: 15000,
+        currency: "XOF",
+        totalQuantity: null,
+        soldCount: 640,
+        accessZoneIds: [],
+        isVisible: true,
+      },
+    ],
+    accessZones: [],
+    maxAttendees: 3000,
+    registeredCount: 2460,
+    checkedInCount: 0,
+    isPublic: true,
+    isFeatured: true,
+    venueId: "venue-011",
+    venueName: "Hôtel de la Poste Saint-Louis",
+    requiresApproval: false,
+    templateId: null,
+    createdBy: IDS.enterpriseOrganizer,
+    updatedBy: IDS.enterpriseOrganizer,
+    createdAt: threeMonthsAgo,
+    updatedAt: twoDaysAgo,
+    publishedAt: threeMonthsAgo,
+  },
+
+  // event-014 — Training Flutter, +30d, hybrid. Starter org, Ziguinchor
+  // (Casamance) — first Casamance event and first hybrid starter event.
+  {
+    id: "event-014",
+    organizationId: IDS.starterOrgId,
+    title: "Formation Flutter Avancée — Ziguinchor",
+    slug: "formation-flutter-avancee-ziguinchor",
+    description:
+      "Formation intensive de 3 jours sur Flutter 4.0 pour développeurs mobiles de la Casamance. Sur place à l'Alliance Franco-Sénégalaise + session hybride pour Dakar / Abidjan. Projet capstone inclus.",
+    shortDescription: "Formation Flutter avancée — hybride Ziguinchor",
+    coverImageURL: null,
+    bannerImageURL: null,
+    category: "training",
+    tags: ["flutter", "mobile", "formation", "ziguinchor", "casamance"],
+    format: "hybrid",
+    status: "published",
+    location: {
+      name: "Alliance Franco-Sénégalaise de Ziguinchor",
+      address: "Avenue Carnot, Ziguinchor",
+      city: "Ziguinchor",
+      country: "SN",
+      streamUrl: "https://live.thies-tech.sn/formation-flutter-2026",
+    },
+    startDate: inOneMonth,
+    endDate: inOneMonth,
+    timezone: "Africa/Dakar",
+    ticketTypes: [
+      {
+        id: "ticket-onsite-014",
+        name: "Sur place (Ziguinchor)",
+        description: "Formation 3 jours + hébergement sur demande",
+        price: 120000,
+        currency: "XOF",
+        totalQuantity: 25,
+        soldCount: 18,
+        accessZoneIds: [],
+        isVisible: true,
+      },
+      {
+        id: "ticket-stream-014",
+        name: "En ligne",
+        description: "Stream HD + Q&R + replay 60 jours",
+        price: 60000,
+        currency: "XOF",
+        totalQuantity: null,
+        soldCount: 42,
+        accessZoneIds: [],
+        isVisible: true,
+      },
+    ],
+    accessZones: [],
+    maxAttendees: 25,
+    registeredCount: 60,
+    checkedInCount: 0,
+    isPublic: true,
+    isFeatured: false,
+    venueId: "venue-012",
+    venueName: "Alliance Franco-Sénégalaise de Ziguinchor",
+    requiresApproval: true,
+    templateId: null,
+    createdBy: IDS.starterOrganizer,
+    updatedBy: IDS.starterOrganizer,
+    createdAt: twoWeeksAgo,
+    updatedAt: yesterday,
+    publishedAt: twoWeeksAgo,
+  },
+];
+
+const FAR_FUTURE_EVENTS: SeedEvent[] = [
+  // event-015 — Free-plan Dakar meetup, +7d+1h. Free org gets a real
+  // upcoming event (in addition to the LIVE event-007) so the free-tier
+  // organizer dashboard shows both "today" and "upcoming" buckets.
+  {
+    id: "event-015",
+    organizationId: IDS.freeOrgId,
+    title: "Meetup Mobile Dakar — Flutter vs React Native",
+    slug: "meetup-mobile-dakar-flutter-vs-rn",
+    description:
+      "Débat ouvert entre les communautés Flutter et React Native de Dakar. Lightning talks, démo live, vote du public. Bière et pizzas offertes.",
+    shortDescription: "Battle Flutter vs React Native à Dakar",
+    coverImageURL: null,
+    bannerImageURL: null,
+    category: "networking",
+    tags: ["meetup", "flutter", "react-native", "mobile", "dakar"],
+    format: "in_person",
+    status: "published",
+    location: {
+      name: "Les Almadies Events",
+      address: "Route des Almadies, Ngor",
+      city: "Dakar",
+      country: "SN",
+    },
+    startDate: inOneWeek,
+    endDate: inOneWeekPlus1h,
+    timezone: "Africa/Dakar",
+    ticketTypes: [
+      {
+        id: "ticket-free-015",
+        name: "Entrée libre",
+        description: "Gratuit sur inscription",
+        price: 0,
+        currency: "XOF",
+        totalQuantity: 120,
+        soldCount: 78,
+        accessZoneIds: [],
+        isVisible: true,
+      },
+    ],
+    accessZones: [],
+    maxAttendees: 120,
+    registeredCount: 78,
+    checkedInCount: 0,
+    isPublic: true,
+    isFeatured: false,
+    venueId: "venue-004",
+    venueName: "Les Almadies Events",
+    requiresApproval: false,
+    templateId: null,
+    createdBy: IDS.freeOrganizer,
+    updatedBy: IDS.freeOrganizer,
+    createdAt: oneWeekAgo,
+    updatedAt: twoDaysAgo,
+    publishedAt: oneWeekAgo,
+  },
+
+  // event-016 — Starter org sport event in Thiès, +45d. venue-009 Stade
+  // Lat Dior (15 000-seat football stadium). Wider category coverage for
+  // the starter tier.
+  {
+    id: "event-016",
+    organizationId: IDS.starterOrgId,
+    title: "Marathon Régional de Thiès",
+    slug: "marathon-regional-thies-2026",
+    description:
+      "Première édition du marathon régional de Thiès — 42 km + semi 21 km + 10 km populaire. Départ Stade Lat Dior, boucle à travers le plateau de Thiès.",
+    shortDescription: "Marathon régional Thiès — 1ère édition",
+    coverImageURL: null,
+    bannerImageURL: null,
+    category: "sport",
+    tags: ["sport", "marathon", "thiès", "course"],
+    format: "in_person",
+    status: "published",
+    location: {
+      name: "Stade Lat Dior",
+      address: "Avenue Caen, Thiès",
+      city: "Thiès",
+      country: "SN",
+    },
+    startDate: inFortyFiveDays,
+    endDate: inFortyFiveDays,
+    timezone: "Africa/Dakar",
+    ticketTypes: [
+      {
+        id: "ticket-marathon-016",
+        name: "Dossard marathon (42 km)",
+        price: 10000,
+        currency: "XOF",
+        totalQuantity: 1500,
+        soldCount: 320,
+        accessZoneIds: [],
+        isVisible: true,
+      },
+      {
+        id: "ticket-semi-016",
+        name: "Dossard semi (21 km)",
+        price: 6000,
+        currency: "XOF",
+        totalQuantity: 2000,
+        soldCount: 480,
+        accessZoneIds: [],
+        isVisible: true,
+      },
+      {
+        id: "ticket-populaire-016",
+        name: "Course populaire (10 km)",
+        price: 3000,
+        currency: "XOF",
+        totalQuantity: 3000,
+        soldCount: 620,
+        accessZoneIds: [],
+        isVisible: true,
+      },
+    ],
+    accessZones: [],
+    maxAttendees: 6500,
+    registeredCount: 1420,
+    checkedInCount: 0,
+    isPublic: true,
+    isFeatured: false,
+    venueId: "venue-009",
+    venueName: "Stade Lat Dior",
+    requiresApproval: false,
+    templateId: null,
+    createdBy: IDS.starterOrganizer,
+    updatedBy: IDS.starterOrganizer,
+    createdAt: twoWeeksAgo,
+    updatedAt: yesterday,
+    publishedAt: twoWeeksAgo,
+  },
+
+  // event-017 — Online enterprise conference, +60d. Pan-African reach,
+  // no physical venue. Proves the events list gracefully renders an online
+  // event with no city pin.
+  {
+    id: "event-017",
+    organizationId: IDS.enterpriseOrgId,
+    title: "AfricaTech Online Conference 2026",
+    slug: "africatech-online-2026",
+    description:
+      "Conférence tech 100% en ligne couvrant 12 pays africains francophones. 50 intervenants, 8 tracks, studio de démos. Traduction simultanée FR / EN / portugais.",
+    shortDescription: "AfricaTech 2026 — conférence pan-africaine en ligne",
+    coverImageURL: null,
+    bannerImageURL: null,
+    category: "conference",
+    tags: ["conference", "afrique", "online", "pan-africain", "tech"],
+    format: "online",
+    status: "published",
+    location: {
+      name: "En ligne (plateforme Sonatel Live)",
+      address: "N/A",
+      city: "Dakar",
+      country: "SN",
+      streamUrl: "https://live.sonatel.sn/africatech-2026",
+    },
+    startDate: inTwoMonths,
+    endDate: inTwoMonths,
+    timezone: "Africa/Dakar",
+    ticketTypes: [
+      {
+        id: "ticket-free-017",
+        name: "Participation libre",
+        description: "Accès streams principaux",
+        price: 0,
+        currency: "XOF",
+        totalQuantity: null,
+        soldCount: 3240,
+        accessZoneIds: [],
+        isVisible: true,
+      },
+      {
+        id: "ticket-pro-017",
+        name: "Pass Pro",
+        description: "Streams premium + replays + studio de démos",
+        price: 20000,
+        currency: "XOF",
+        totalQuantity: null,
+        soldCount: 420,
+        accessZoneIds: [],
+        isVisible: true,
+      },
+    ],
+    accessZones: [],
+    maxAttendees: null,
+    registeredCount: 3660,
+    checkedInCount: 0,
+    isPublic: true,
+    isFeatured: true,
+    venueId: null,
+    venueName: null,
+    requiresApproval: false,
+    templateId: null,
+    createdBy: IDS.enterpriseOrganizer,
+    updatedBy: IDS.enterpriseOrganizer,
+    createdAt: oneMonthAgo,
+    updatedAt: yesterday,
+    publishedAt: oneMonthAgo,
+  },
+
+  // event-018 — Exhibition, +75d, pro. UX/UI design exhibition at Les
+  // Almadies Events (cultural_space) — fills the `exhibition` category gap
+  // and gives the Dakar cultural scene a dedicated event.
+  {
+    id: "event-018",
+    organizationId: IDS.orgId,
+    title: "Exposition UX Dakar 2026",
+    slug: "exposition-ux-dakar-2026",
+    description:
+      "Exposition des meilleurs portfolios UX/UI de l'Afrique francophone. 40 designers, parcours guidé, prix du jury et prix du public. Vernissage le premier soir.",
+    shortDescription: "Expo UX/UI francophone à Dakar",
+    coverImageURL: null,
+    bannerImageURL: null,
+    category: "exhibition",
+    tags: ["design", "ux", "ui", "exposition", "dakar"],
+    format: "in_person",
+    status: "published",
+    location: {
+      name: "Les Almadies Events",
+      address: "Route des Almadies, Ngor",
+      city: "Dakar",
+      country: "SN",
+    },
+    startDate: inSeventyFiveDays,
+    endDate: inSeventyFiveDays,
+    timezone: "Africa/Dakar",
+    ticketTypes: [
+      {
+        id: "ticket-expo-018",
+        name: "Visite expo",
+        description: "Accès expo + parcours guidé (créneau 2h)",
+        price: 5000,
+        currency: "XOF",
+        totalQuantity: 600,
+        soldCount: 142,
+        accessZoneIds: [],
+        isVisible: true,
+      },
+      {
+        id: "ticket-vernissage-018",
+        name: "Vernissage",
+        description: "Soirée d'ouverture + cocktail + rencontre designers",
+        price: 18000,
+        currency: "XOF",
+        totalQuantity: 150,
+        soldCount: 84,
+        accessZoneIds: [],
+        isVisible: true,
+      },
+    ],
+    accessZones: [],
+    maxAttendees: 750,
+    registeredCount: 226,
+    checkedInCount: 0,
+    isPublic: true,
+    isFeatured: false,
+    venueId: "venue-004",
+    venueName: "Les Almadies Events",
+    requiresApproval: false,
+    templateId: null,
+    createdBy: IDS.organizer,
+    updatedBy: IDS.organizer,
+    createdAt: oneMonthAgo,
+    updatedAt: yesterday,
+    publishedAt: oneMonthAgo,
+  },
+
+  // event-019 — Concert, +45d, pro. Baaba Maal at Palm Beach Saly. Second
+  // Saly event after the past festival so the Saly venues aren't empty for
+  // upcoming filters.
+  {
+    id: "event-019",
+    organizationId: IDS.orgId,
+    title: "Concert Baaba Maal — Nuit de Saly",
+    slug: "concert-baaba-maal-saly",
+    description:
+      "Soirée acoustique de Baaba Maal sur la plage de Saly — répertoire Yela, Peul, classiques. Scène en bord de mer, dîner sénégalais en option.",
+    shortDescription: "Baaba Maal acoustique à Saly",
+    coverImageURL: null,
+    bannerImageURL: null,
+    category: "concert",
+    tags: ["concert", "baaba-maal", "saly", "yela", "acoustique"],
+    format: "in_person",
+    status: "published",
+    location: {
+      name: "Palm Beach Resort Saly",
+      address: "Route de la Pointe, Saly Portudal",
+      city: "Saly",
+      country: "SN",
+    },
+    startDate: inFortyFiveDays,
+    endDate: inFortyFiveDays,
+    timezone: "Africa/Dakar",
+    ticketTypes: [
+      {
+        id: "ticket-concert-019",
+        name: "Place concert",
+        description: "Accès plage + scène",
+        price: 22000,
+        currency: "XOF",
+        totalQuantity: 500,
+        soldCount: 312,
+        accessZoneIds: [],
+        isVisible: true,
+      },
+      {
+        id: "ticket-diner-019",
+        name: "Dîner + concert",
+        description: "Dîner sénégalais 3 services + places premium",
+        price: 55000,
+        currency: "XOF",
+        totalQuantity: 80,
+        soldCount: 54,
+        accessZoneIds: [],
+        isVisible: true,
+      },
+    ],
+    accessZones: [],
+    maxAttendees: 500,
+    registeredCount: 366,
+    checkedInCount: 0,
+    isPublic: true,
+    isFeatured: true,
+    venueId: "venue-006",
+    venueName: "Palm Beach Resort Saly",
+    requiresApproval: false,
+    templateId: null,
+    createdBy: IDS.organizer,
+    updatedBy: IDS.organizer,
+    createdAt: twoWeeksAgo,
+    updatedAt: twoDaysAgo,
+    publishedAt: twoWeeksAgo,
+  },
+
+  // event-020 — Hybrid workshop at Sofitel Abidjan, +90d. Pro org, first
+  // Côte d'Ivoire event in the seed — gives Abidjan a future date so the
+  // international city filter isn't empty.
+  {
+    id: "event-020",
+    organizationId: IDS.orgId,
+    title: "Atelier IA Appliquée — Abidjan",
+    slug: "atelier-ia-appliquee-abidjan",
+    description:
+      "Atelier intensif de 2 jours sur l'IA appliquée aux métiers marketing et communication — Côte d'Ivoire. Sur place Sofitel Abidjan + session en ligne pour Dakar et Bamako.",
+    shortDescription: "Atelier IA métier à Abidjan (hybride)",
+    coverImageURL: null,
+    bannerImageURL: null,
+    category: "workshop",
+    tags: ["ia", "workshop", "marketing", "abidjan", "hybride"],
+    format: "hybrid",
+    status: "published",
+    location: {
+      name: "Sofitel Abidjan Hôtel Ivoire",
+      address: "Boulevard Hassan II, Cocody",
+      city: "Abidjan",
+      country: "CI",
+      streamUrl: "https://live.teranga.events/atelier-ia-abidjan-2026",
+    },
+    startDate: inThreeMonths,
+    endDate: inThreeMonths,
+    timezone: "Africa/Abidjan",
+    ticketTypes: [
+      {
+        id: "ticket-onsite-020",
+        name: "Sur place Abidjan",
+        description: "2 jours atelier + déjeuner + kit support",
+        price: 95000,
+        currency: "XOF",
+        totalQuantity: 60,
+        soldCount: 22,
+        accessZoneIds: [],
+        isVisible: true,
+      },
+      {
+        id: "ticket-stream-020",
+        name: "En ligne",
+        description: "Stream HD + replay 90 jours",
+        price: 45000,
+        currency: "XOF",
+        totalQuantity: null,
+        soldCount: 38,
+        accessZoneIds: [],
+        isVisible: true,
+      },
+    ],
+    accessZones: [],
+    maxAttendees: 60,
+    registeredCount: 60,
+    checkedInCount: 0,
+    isPublic: true,
+    isFeatured: false,
+    venueId: "venue-013",
+    venueName: "Sofitel Abidjan Hôtel Ivoire",
+    requiresApproval: true,
+    templateId: null,
+    createdBy: IDS.organizer,
+    updatedBy: IDS.organizer,
+    createdAt: twoWeeksAgo,
+    updatedAt: yesterday,
+    publishedAt: twoWeeksAgo,
+  },
+];
+
+const EXPANSION_EVENTS: SeedEvent[] = [
+  ...PAST_EVENTS,
+  ...LIVE_EVENTS,
+  ...NEAR_TERM_EVENTS,
+  ...FAR_FUTURE_EVENTS,
+];
+
+// ─── Public surface consumed by 05-activity.ts and 06-social.ts ─────────
+// The events module is the single source of truth for title / slug / dates
+// on each expansion event. Downstream modules import these helpers rather
+// than re-typing the metadata, so a title change here can't silently leave
+// stale denorms on registrations or audit rows.
+
+export type ExpansionEventDenorm = {
+  id: string;
+  title: string;
+  slug: string;
+  startDate: string;
+  endDate: string;
+  organizationId: string;
+  createdBy: string;
+};
+
+/**
+ * Denormalised view of the 16 expansion events. Derived at module load so
+ * the array stays in lockstep with `EXPANSION_EVENTS` above. Keeps only the
+ * fields downstream modules actually consume — downstream doesn't need
+ * `ticketTypes`, `coverImageURL`, venue wiring, etc.
+ */
+export const EXPANSION_EVENT_DENORM: readonly ExpansionEventDenorm[] = EXPANSION_EVENTS.map(
+  (e) => ({
+    id: e.id,
+    title: e.title,
+    slug: e.slug,
+    startDate: e.startDate,
+    endDate: e.endDate,
+    organizationId: e.organizationId,
+    createdBy: e.createdBy,
+  }),
+);
+
+/** Ticket-type lookup for the activity module's registration fan-out. */
+export function findTicketType(eventId: string, ticketTypeId: string): SeedTicketType | undefined {
+  const event = EXPANSION_EVENTS.find((e) => e.id === eventId);
+  return event?.ticketTypes.find((t) => t.id === ticketTypeId);
+}
+
+// ─── Seed ────────────────────────────────────────────────────────────────
+
+export async function seedEvents(db: Firestore): Promise<number> {
+  const all = [...LEGACY_EVENTS, ...EXPANSION_EVENTS];
+
+  await Promise.all(all.map((event) => db.collection("events").doc(event.id).set(event)));
+
+  return all.length;
+}
