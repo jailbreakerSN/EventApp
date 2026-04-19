@@ -58,6 +58,35 @@ export const receiptRoutes: FastifyPluginAsync = async (fastify) => {
     },
   );
 
+  // ─── Download Receipt PDF ───────────────────────────────────────────────
+  // Renders a branded A4 receipt, uploads it to Cloud Storage and returns a
+  // short-lived signed URL. Symmetric with /v1/badges/me/:eventId — the
+  // client opens the URL in a new tab. Uses the same owner/org/super_admin
+  // authorisation as getReceipt().
+  fastify.get(
+    "/:receiptId/pdf",
+    {
+      preHandler: [
+        authenticate,
+        requirePermission("payment:read_own"),
+        validate({ params: ParamsWithReceiptId }),
+      ],
+      schema: {
+        tags: ["Receipts"],
+        summary: "Download a receipt as PDF (signed URL)",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const { receiptId } = request.params as z.infer<typeof ParamsWithReceiptId>;
+      const result = await receiptService.generateReceiptPdf(receiptId, request.user!);
+      return reply.send({
+        success: true,
+        data: { receipt: result.receipt, pdfURL: result.pdfURL },
+      });
+    },
+  );
+
   // ─── My Receipts ────────────────────────────────────────────────────────
   fastify.get(
     "/my",

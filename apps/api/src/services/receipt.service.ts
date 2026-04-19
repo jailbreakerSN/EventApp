@@ -9,6 +9,8 @@ import { ValidationError } from "@/errors/app-error";
 import { BaseService } from "./base.service";
 import { eventBus } from "@/events/event-bus";
 import { getRequestId } from "@/context/request-context";
+import { storage } from "@/config/firebase";
+import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 
 export class ReceiptService extends BaseService {
   /**
@@ -108,6 +110,229 @@ export class ReceiptService extends BaseService {
   async listMyReceipts(user: AuthUser, pagination: { page: number; limit: number }) {
     this.requirePermission(user, "payment:read_own");
     return receiptRepository.findByUser(user.uid, pagination);
+  }
+
+  /**
+   * Render + upload a PDF for a receipt and return a short-lived signed URL.
+   *
+   * Symmetric with badge.service.ts → generateOnDemand():
+   *   - same owner/org/super_admin authorisation as getReceipt()
+   *   - PDF rendered with pdf-lib (already pulled in for badges)
+   *   - upload to `receipts/{eventId}/{userId}/{receiptId}.pdf`
+   *   - signed URL expires after 1h (Cloud Storage V4)
+   *
+   * The participant-facing route only exposes this for receipts the user
+   * actually owns; enforcement happens here via requireOrganizationAccess +
+   * requirePermission calls already gating getReceipt().
+   */
+  async generateReceiptPdf(
+    receiptId: string,
+    user: AuthUser,
+  ): Promise<{ receipt: Receipt; pdfURL: string }> {
+    const receipt = await this.getReceipt(receiptId, user);
+
+    const pdfDoc = await PDFDocument.create();
+    const page = pdfDoc.addPage([595.28, 841.89]); // A4 portrait in points
+    const { width, height } = page.getSize();
+
+    const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+    const fontRegular = await pdfDoc.embedFont(StandardFonts.Helvetica);
+
+    const navy = rgb(0.102, 0.102, 0.18); // teranga-navy #1A1A2E
+    const gold = rgb(0.773, 0.62, 0.294); // teranga-gold #c59e4b
+    const muted = rgb(0.4, 0.4, 0.4);
+    const border = rgb(0.87, 0.87, 0.87);
+
+    // Header band
+    page.drawRectangle({ x: 0, y: height - 90, width, height: 90, color: navy });
+    page.drawText("TERANGA EVENTS", {
+      x: 40,
+      y: height - 45,
+      size: 14,
+      font: fontBold,
+      color: rgb(1, 1, 1),
+    });
+    page.drawText("REÇU DE PAIEMENT", {
+      x: 40,
+      y: height - 65,
+      size: 9,
+      font: fontRegular,
+      color: gold,
+    });
+    page.drawText(`N° ${receipt.receiptNumber}`, {
+      x: width - 200,
+      y: height - 45,
+      size: 10,
+      font: fontBold,
+      color: rgb(1, 1, 1),
+    });
+    page.drawText(
+      new Date(receipt.issuedAt).toLocaleDateString("fr-SN", {
+        day: "2-digit",
+        month: "long",
+        year: "numeric",
+      }),
+      {
+        x: width - 200,
+        y: height - 65,
+        size: 9,
+        font: fontRegular,
+        color: rgb(1, 1, 1),
+      },
+    );
+
+    // Organization
+    page.drawText(receipt.organizationName, {
+      x: 40,
+      y: height - 130,
+      size: 11,
+      font: fontBold,
+      color: navy,
+    });
+    page.drawText("Organisateur", {
+      x: 40,
+      y: height - 145,
+      size: 8,
+      font: fontRegular,
+      color: muted,
+    });
+
+    // Divider
+    page.drawLine({
+      start: { x: 40, y: height - 170 },
+      end: { x: width - 40, y: height - 170 },
+      thickness: 0.5,
+      color: border,
+    });
+
+    // Event + ticket block
+    page.drawText("ÉVÉNEMENT", {
+      x: 40,
+      y: height - 200,
+      size: 8,
+      font: fontBold,
+      color: muted,
+    });
+    page.drawText(receipt.eventTitle, {
+      x: 40,
+      y: height - 220,
+      size: 14,
+      font: fontBold,
+      color: navy,
+    });
+    page.drawText(`Type de billet : ${receipt.ticketTypeName}`, {
+      x: 40,
+      y: height - 240,
+      size: 10,
+      font: fontRegular,
+      color: navy,
+    });
+
+    // Participant block
+    page.drawText("PARTICIPANT", {
+      x: 40,
+      y: height - 280,
+      size: 8,
+      font: fontBold,
+      color: muted,
+    });
+    page.drawText(receipt.participantName, {
+      x: 40,
+      y: height - 300,
+      size: 11,
+      font: fontBold,
+      color: navy,
+    });
+    if (receipt.participantEmail) {
+      page.drawText(receipt.participantEmail, {
+        x: 40,
+        y: height - 315,
+        size: 9,
+        font: fontRegular,
+        color: muted,
+      });
+    }
+
+    // Total box
+    const boxTop = height - 380;
+    const boxBottom = boxTop - 100;
+    page.drawRectangle({
+      x: 40,
+      y: boxBottom,
+      width: width - 80,
+      height: boxTop - boxBottom,
+      color: rgb(0.98, 0.96, 0.9), // teranga-gold-whisper
+      borderColor: gold,
+      borderWidth: 0.5,
+    });
+    page.drawText("MONTANT PAYÉ", {
+      x: 60,
+      y: boxTop - 25,
+      size: 8,
+      font: fontBold,
+      color: muted,
+    });
+    page.drawText(
+      `${receipt.amount.toLocaleString("fr-FR").replace(/,/g, " ")} ${receipt.currency}`,
+      { x: 60, y: boxTop - 60, size: 28, font: fontBold, color: navy },
+    );
+    const methodLabel: Record<string, string> = {
+      wave: "Wave",
+      orange_money: "Orange Money",
+      free_money: "Free Money",
+      card: "Carte bancaire",
+      cash: "Espèces",
+      mock: "Démo",
+    };
+    page.drawText(`Méthode : ${methodLabel[receipt.method] ?? receipt.method}`, {
+      x: 60,
+      y: boxTop - 85,
+      size: 10,
+      font: fontRegular,
+      color: muted,
+    });
+
+    // Footer
+    page.drawText(
+      "Reçu émis électroniquement par Teranga Events — conservez-le pour vos déclarations.",
+      {
+        x: 40,
+        y: 60,
+        size: 8,
+        font: fontRegular,
+        color: muted,
+      },
+    );
+    page.drawText(`Paiement ID · ${receipt.paymentId}`, {
+      x: 40,
+      y: 45,
+      size: 7,
+      font: fontRegular,
+      color: muted,
+    });
+
+    const pdfBytes = await pdfDoc.save();
+
+    // Upload to Cloud Storage and return a V4 signed URL (1h lifetime).
+    // Matches the badge.service upload pattern.
+    const bucket = storage.bucket();
+    const filePath = `receipts/${receipt.eventId}/${receipt.userId}/${receipt.id}.pdf`;
+    const file = bucket.file(filePath);
+
+    await file.save(Buffer.from(pdfBytes), {
+      metadata: {
+        contentType: "application/pdf",
+        cacheControl: "private, max-age=3600",
+      },
+    });
+
+    const [pdfURL] = await file.getSignedUrl({
+      version: "v4",
+      action: "read",
+      expires: Date.now() + 60 * 60 * 1000, // 1 hour
+    });
+
+    return { receipt, pdfURL };
   }
 }
 

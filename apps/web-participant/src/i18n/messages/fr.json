@@ -504,6 +504,9 @@
     "failedFallback": "Le paiement n'a pas pu être traité. Veuillez réessayer.",
     "retry": "Réessayer",
     "contactSupport": "Contacter le support",
+    "downloadReceipt": "Télécharger le reçu",
+    "generatingReceipt": "Préparation du reçu…",
+    "receiptError": "Impossible de générer le reçu. Réessayez dans quelques instants.",
     "errorHeading": "Erreur",
     "errorHint": "Impossible de récupérer le statut du paiement."
   },
@@ -708,6 +711,22 @@
     "photoUploadError": "Erreur lors du téléversement de la photo.",
     "photoUploaded": "Photo de profil mise à jour.",
     "notAuthenticated": "Non authentifié"
+  },
+  "feed": {
+    "kicker": "— FIL D'ACTUALITÉ",
+    "title": "Fil d'actualité",
+    "backToEvent": "Retour à l'événement",
+    "backToEvents": "Retour aux événements",
+    "notFoundKicker": "— INTROUVABLE",
+    "notFoundTitle": "Événement introuvable",
+    "loadingLabel": "Chargement du fil d'actualité…",
+    "errorKicker": "— ERREUR",
+    "errorTitle": "Impossible de charger le fil d'actualité",
+    "errorDescription": "Vérifiez votre connexion et réessayez dans un instant.",
+    "retry": "Réessayer",
+    "emptyKicker": "— AUCUNE PUBLICATION",
+    "emptyTitle": "Aucune publication pour le moment",
+    "emptyDescription": "Soyez le premier à partager une publication avec les participants."
   },
   "schedule": {
     "kicker": "— PROGRAMME",

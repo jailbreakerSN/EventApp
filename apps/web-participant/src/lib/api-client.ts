@@ -289,6 +289,11 @@ export const receiptsApi = {
 
   listMy: (params: { page?: number; limit?: number } = {}) =>
     api.get<PaginatedResponse<Receipt>>(`/v1/receipts/my${buildQuery(params)}`),
+
+  getPdf: (receiptId: string) =>
+    api.get<ApiResponse<{ receipt: Receipt; pdfURL: string }>>(
+      `/v1/receipts/${receiptId}/pdf`,
+    ),
 };
 
 export const notificationsApi = {

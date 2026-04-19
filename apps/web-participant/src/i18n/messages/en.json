@@ -501,6 +501,9 @@
     "failedFallback": "The payment could not be processed. Please try again.",
     "retry": "Try again",
     "contactSupport": "Contact support",
+    "downloadReceipt": "Download receipt",
+    "generatingReceipt": "Preparing receipt…",
+    "receiptError": "Couldn’t generate the receipt. Please try again in a moment.",
     "errorHeading": "Error",
     "errorHint": "Unable to fetch the payment status."
   },
@@ -705,6 +708,22 @@
     "photoUploadError": "Failed to upload the photo.",
     "photoUploaded": "Profile photo updated.",
     "notAuthenticated": "Not authenticated"
+  },
+  "feed": {
+    "kicker": "— FEED",
+    "title": "Feed",
+    "backToEvent": "Back to the event",
+    "backToEvents": "Back to events",
+    "notFoundKicker": "— NOT FOUND",
+    "notFoundTitle": "Event not found",
+    "loadingLabel": "Loading feed…",
+    "errorKicker": "— ERROR",
+    "errorTitle": "Couldn’t load the feed",
+    "errorDescription": "Check your connection and try again in a moment.",
+    "retry": "Retry",
+    "emptyKicker": "— NO POSTS",
+    "emptyTitle": "No posts yet",
+    "emptyDescription": "Be the first to share something with the other attendees."
   },
   "schedule": {
     "kicker": "— SCHEDULE",
