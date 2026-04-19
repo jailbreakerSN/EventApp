@@ -446,19 +446,55 @@ const PARTICIPANT_PERSONAS: ParticipantPersona[] = [
   },
 ];
 
-function expansionParticipantSpec(
-  uid: string,
-  persona: ParticipantPersona,
-  index: number,
-): AuthUserSpec {
-  const slug = persona.displayName
+/**
+ * Build the email address for an expansion participant from their display
+ * name + seed index. Kept as a standalone helper so PR C (registrations)
+ * can materialise the same email without re-importing the personas list.
+ */
+export function expansionParticipantEmail(displayName: string, index: number): string {
+  const slug = displayName
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-z0-9]+/g, ".")
     .replace(/^\.+|\.+$/g, "")
     .slice(0, 30);
-  const email = `${slug}.${index + 3}@teranga.dev`;
+  return `${slug}.${index + 3}@teranga.dev`;
+}
+
+/**
+ * Summary of a single expansion participant — what downstream modules (PR C
+ * registrations, PR D feed) need to attach a real name/email/city to their
+ * fixtures without depending on the full persona shape.
+ */
+export type ExpansionParticipant = {
+  uid: string;
+  displayName: string;
+  email: string;
+  city: string;
+  index: number; // 0-based index into EXPANSION_PARTICIPANT_UIDS
+};
+
+/**
+ * Materialised list of the 27 expansion participants. Index in this array
+ * matches index in `EXPANSION_PARTICIPANT_UIDS`.
+ */
+export const EXPANSION_PARTICIPANTS: readonly ExpansionParticipant[] = PARTICIPANT_PERSONAS.map(
+  (persona, index) => ({
+    uid: EXPANSION_PARTICIPANT_UIDS[index],
+    displayName: persona.displayName,
+    email: expansionParticipantEmail(persona.displayName, index),
+    city: persona.city,
+    index,
+  }),
+);
+
+function expansionParticipantSpec(
+  uid: string,
+  persona: ParticipantPersona,
+  index: number,
+): AuthUserSpec {
+  const email = expansionParticipantEmail(persona.displayName, index);
   return {
     uid,
     email,

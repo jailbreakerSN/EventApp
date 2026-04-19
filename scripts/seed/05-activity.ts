@@ -20,17 +20,32 @@ import type { Firestore } from "firebase-admin/firestore";
 
 import { Dates } from "./config";
 import { IDS } from "./ids";
+import { EXPANSION_PARTICIPANTS } from "./02-users";
 
 const {
   now,
+  twoHoursAgo,
   oneHourAgo,
   yesterday,
+  twoWeeksAgo,
+  oneMonthAgo,
+  fortyFiveDaysAgo,
+  inThreeHours,
+  inFourHours,
+  inFiveDays,
   inOneWeek,
   inOneWeekPlus1h,
   inOneWeekPlus2h,
   inOneWeekPlus3h,
   inOneWeekPlus4h,
+  inTenDays,
   inTwoWeeks,
+  inThreeWeeks,
+  inOneMonth,
+  inFortyFiveDays,
+  inTwoMonths,
+  inSeventyFiveDays,
+  inThreeMonths,
 } = Dates;
 
 // Shared across registrations + badges. The epoch is only used as a replay-
@@ -186,8 +201,325 @@ const LEGACY_REGISTRATIONS: SeedRegistration[] = [
   },
 ];
 
-// Populated by PR C part 2 — registrations fanned out across event-005..020.
-const EXPANSION_REGISTRATIONS: SeedRegistration[] = [];
+// ─── Expansion registrations ──────────────────────────────────────────────
+// Fan-out of the 27 expansion participants across the 16 new events. Targets
+// 3-5 registrations per event with city-aware preferences (e.g. Saly
+// participants get priority on Saly events) so the "events near you" +
+// participant profile pages have realistic content. Past events are pre-
+// checked-in, LIVE events have a partial check-in, upcoming events have
+// no check-ins yet.
+//
+// NOTE: the `registeredCount` field on each event document (set in
+// 04-events.ts) is deliberately higher than the real count of registration
+// docs we materialise here — keeping 1 500 reg docs for the Youssou N'Dour
+// concert would bloat the emulator with zero additional coverage. The
+// denormalised count is what the UI surfaces; the actual reg rows are a
+// representative sample.
+
+type ExpansionEventMeta = {
+  title: string;
+  slug: string;
+  startDate: string;
+  endDate: string;
+  ticketTypeId: string;
+  ticketTypeName: string;
+};
+
+const EXPANSION_EVENT_META: Record<string, ExpansionEventMeta> = {
+  "event-005": {
+    title: "Festival Hip-Hop de Saly",
+    slug: "festival-hip-hop-saly-2026",
+    startDate: fortyFiveDaysAgo,
+    endDate: fortyFiveDaysAgo,
+    ticketTypeId: "ticket-pass-005",
+    ticketTypeName: "Pass 3 jours",
+  },
+  "event-006": {
+    title: "Marathon de Dakar 2026",
+    slug: "marathon-dakar-2026",
+    startDate: oneMonthAgo,
+    endDate: oneMonthAgo,
+    ticketTypeId: "ticket-marathon-006",
+    ticketTypeName: "Dossard marathon",
+  },
+  "event-007": {
+    title: "Meetup Développeurs Dakar #13 (LIVE)",
+    slug: "meetup-dev-dakar-13",
+    startDate: twoHoursAgo,
+    endDate: inFourHours,
+    ticketTypeId: "ticket-free-007",
+    ticketTypeName: "Entrée libre",
+  },
+  "event-008": {
+    title: "Workshop Design Digital Saint-Louis (LIVE)",
+    slug: "workshop-digital-saint-louis",
+    startDate: oneHourAgo,
+    endDate: inThreeHours,
+    ticketTypeId: "ticket-workshop-008",
+    ticketTypeName: "Participant",
+  },
+  "event-009": {
+    title: "Formation IA pour Cadres Dirigeants",
+    slug: "formation-ia-cadres-bamako",
+    startDate: inFiveDays,
+    endDate: inFiveDays,
+    ticketTypeId: "ticket-formation-009",
+    ticketTypeName: "Place formation",
+  },
+  "event-010": {
+    title: "Conférence Fintech Ouest-Africaine",
+    slug: "conference-fintech-ouest-africaine",
+    startDate: inTenDays,
+    endDate: inTenDays,
+    ticketTypeId: "ticket-on-site-010",
+    ticketTypeName: "Sur place",
+  },
+  "event-011": {
+    title: "Concert Youssou N'Dour — Grand Bal de Dakar",
+    slug: "concert-youssou-ndour-dakar-2026",
+    startDate: inTwoWeeks,
+    endDate: inTwoWeeks,
+    ticketTypeId: "ticket-pelouse-011",
+    ticketTypeName: "Pelouse",
+  },
+  "event-012": {
+    title: "Web Summit Thiès — Édition 2026",
+    slug: "web-summit-thies-2026",
+    startDate: inThreeWeeks,
+    endDate: inThreeWeeks,
+    ticketTypeId: "ticket-early-012",
+    ticketTypeName: "Early Bird",
+  },
+  "event-013": {
+    title: "Festival Jazz de Saint-Louis",
+    slug: "festival-jazz-saint-louis-2026",
+    startDate: inThreeWeeks,
+    endDate: inThreeWeeks,
+    ticketTypeId: "ticket-pass-013",
+    ticketTypeName: "Pass 4 jours",
+  },
+  "event-014": {
+    title: "Formation Flutter Avancée — Ziguinchor",
+    slug: "formation-flutter-avancee-ziguinchor",
+    startDate: inOneMonth,
+    endDate: inOneMonth,
+    ticketTypeId: "ticket-onsite-014",
+    ticketTypeName: "Sur place (Ziguinchor)",
+  },
+  "event-015": {
+    title: "Meetup Mobile Dakar — Flutter vs React Native",
+    slug: "meetup-mobile-dakar-flutter-vs-rn",
+    startDate: inOneWeek,
+    endDate: inOneWeekPlus1h,
+    ticketTypeId: "ticket-free-015",
+    ticketTypeName: "Entrée libre",
+  },
+  "event-016": {
+    title: "Marathon Régional de Thiès",
+    slug: "marathon-regional-thies-2026",
+    startDate: inFortyFiveDays,
+    endDate: inFortyFiveDays,
+    ticketTypeId: "ticket-semi-016",
+    ticketTypeName: "Dossard semi (21 km)",
+  },
+  "event-017": {
+    title: "AfricaTech Online Conference 2026",
+    slug: "africatech-online-2026",
+    startDate: inTwoMonths,
+    endDate: inTwoMonths,
+    ticketTypeId: "ticket-free-017",
+    ticketTypeName: "Participation libre",
+  },
+  "event-018": {
+    title: "Exposition UX Dakar 2026",
+    slug: "exposition-ux-dakar-2026",
+    startDate: inSeventyFiveDays,
+    endDate: inSeventyFiveDays,
+    ticketTypeId: "ticket-expo-018",
+    ticketTypeName: "Visite expo",
+  },
+  "event-019": {
+    title: "Concert Baaba Maal — Nuit de Saly",
+    slug: "concert-baaba-maal-saly",
+    startDate: inFortyFiveDays,
+    endDate: inFortyFiveDays,
+    ticketTypeId: "ticket-concert-019",
+    ticketTypeName: "Place concert",
+  },
+  "event-020": {
+    title: "Atelier IA Appliquée — Abidjan",
+    slug: "atelier-ia-appliquee-abidjan",
+    startDate: inThreeMonths,
+    endDate: inThreeMonths,
+    ticketTypeId: "ticket-stream-020",
+    ticketTypeName: "En ligne",
+  },
+};
+
+/**
+ * One line = one registration. `p` is the 0-based index into
+ * `EXPANSION_PARTICIPANTS`. `checkedIn: true` marks the reg as consumed
+ * (uses the event's start date as checkedInAt so the timeline is coherent).
+ */
+type FanOutEntry = {
+  eventId: string;
+  p: number;
+  checkedIn?: boolean;
+  notes?: string;
+};
+
+const FAN_OUT: FanOutEntry[] = [
+  // event-005 — past festival Saly, all checked-in
+  { eventId: "event-005", p: 10, checkedIn: true }, // Yacine (Saly)
+  { eventId: "event-005", p: 11, checkedIn: true }, // Ousseynou (Saly)
+  { eventId: "event-005", p: 0, checkedIn: true }, // Mariama (Dakar)
+
+  // event-006 — past marathon Dakar, all finished
+  { eventId: "event-006", p: 5, checkedIn: true }, // Sékou
+  { eventId: "event-006", p: 6, checkedIn: true }, // Aby
+  { eventId: "event-006", p: 1, checkedIn: true }, // Cheikh
+  { eventId: "event-006", p: 13, checkedIn: true }, // Omar (Thiès)
+
+  // event-007 — LIVE meetup dev Dakar (2 checked-in + 1 not yet)
+  { eventId: "event-007", p: 3, checkedIn: true }, // Mamadou Lamine
+  { eventId: "event-007", p: 4, checkedIn: true }, // Ndeye Rama
+  { eventId: "event-007", p: 7 }, // Pape Demba (arriving late)
+
+  // event-008 — LIVE workshop Saint-Louis (2 checked-in + 1 not yet)
+  { eventId: "event-008", p: 16, checkedIn: true }, // Fatou Binetou
+  { eventId: "event-008", p: 17, checkedIn: true }, // Alioune Badara
+  { eventId: "event-008", p: 18 }, // Ramatoulaye
+
+  // event-009 — upcoming online formation IA Bamako
+  { eventId: "event-009", p: 24 }, // Adama (Bamako)
+  { eventId: "event-009", p: 25 }, // Fatoumata (Bamako)
+  { eventId: "event-009", p: 26 }, // Koffi (Lomé)
+
+  // event-010 — upcoming hybrid conference Thiès
+  { eventId: "event-010", p: 13 }, // Omar
+  { eventId: "event-010", p: 14 }, // Awa
+  { eventId: "event-010", p: 15 }, // Modou
+  { eventId: "event-010", p: 0 }, // Mariama (Dakar travelling)
+
+  // event-011 — upcoming concert Youssou N'Dour Dakar
+  { eventId: "event-011", p: 12 }, // Binta (Saly travelling)
+  { eventId: "event-011", p: 8 }, // Coumba
+  { eventId: "event-011", p: 9 }, // Bacary
+  { eventId: "event-011", p: 2 }, // Astou
+
+  // event-012 — upcoming Web Summit Thiès
+  { eventId: "event-012", p: 13 }, // Omar
+  { eventId: "event-012", p: 14 }, // Awa
+  { eventId: "event-012", p: 15 }, // Modou
+  { eventId: "event-012", p: 1 }, // Cheikh (Dakar travelling)
+
+  // event-013 — upcoming festival Jazz Saint-Louis
+  { eventId: "event-013", p: 16 }, // Fatou Binetou
+  { eventId: "event-013", p: 17 }, // Alioune Badara
+  { eventId: "event-013", p: 18 }, // Ramatoulaye
+
+  // event-014 — upcoming Flutter Ziguinchor (1 on-site, 2 stream)
+  { eventId: "event-014", p: 19 }, // Simon (Ziguinchor)
+  { eventId: "event-014", p: 20 }, // Marie-Louise (Ziguinchor)
+  { eventId: "event-014", p: 26, notes: "Suivi en ligne" }, // Koffi (Lomé)
+
+  // event-015 — upcoming meetup mobile Dakar
+  { eventId: "event-015", p: 5 }, // Sékou
+  { eventId: "event-015", p: 6 }, // Aby
+  { eventId: "event-015", p: 7 }, // Pape Demba
+  { eventId: "event-015", p: 8 }, // Coumba
+
+  // event-016 — upcoming marathon Thiès
+  { eventId: "event-016", p: 13 }, // Omar
+  { eventId: "event-016", p: 14 }, // Awa
+  { eventId: "event-016", p: 15 }, // Modou
+  { eventId: "event-016", p: 0 }, // Mariama
+
+  // event-017 — upcoming AfricaTech online (pan-African)
+  { eventId: "event-017", p: 21, notes: "Suivi depuis Abidjan" },
+  { eventId: "event-017", p: 22, notes: "Suivi depuis Abidjan" },
+  { eventId: "event-017", p: 23, notes: "Suivi depuis Abidjan" },
+  { eventId: "event-017", p: 24, notes: "Suivi depuis Bamako" },
+  { eventId: "event-017", p: 26, notes: "Suivi depuis Lomé" },
+
+  // event-018 — upcoming expo UX Dakar
+  { eventId: "event-018", p: 2 }, // Astou
+  { eventId: "event-018", p: 4 }, // Ndeye Rama
+  { eventId: "event-018", p: 1 }, // Cheikh
+
+  // event-019 — upcoming concert Baaba Maal Saly
+  { eventId: "event-019", p: 10 }, // Yacine
+  { eventId: "event-019", p: 11 }, // Ousseynou
+  { eventId: "event-019", p: 12 }, // Binta
+
+  // event-020 — upcoming atelier IA Abidjan (hybrid)
+  { eventId: "event-020", p: 21 }, // Kouamé
+  { eventId: "event-020", p: 22 }, // Akissi
+  { eventId: "event-020", p: 23 }, // Serge
+  { eventId: "event-020", p: 0, notes: "Suivi en ligne depuis Dakar" }, // Mariama
+];
+
+/**
+ * Build a 2-digit event suffix ("005" → "05") used as part of the reg id.
+ */
+function eventNumShort(eventId: string): string {
+  const m = /event-(\d+)/.exec(eventId);
+  return m ? m[1].padStart(3, "0").slice(-2) : "00";
+}
+
+function materialiseExpansionRegs(): SeedRegistration[] {
+  const counter: Record<string, number> = {};
+  return FAN_OUT.map((entry) => {
+    const meta = EXPANSION_EVENT_META[entry.eventId];
+    const participant = EXPANSION_PARTICIPANTS[entry.p];
+    if (!meta) {
+      throw new Error(`Missing EXPANSION_EVENT_META for ${entry.eventId}`);
+    }
+    if (!participant) {
+      throw new Error(`Expansion participant index ${entry.p} out of range`);
+    }
+    counter[entry.eventId] = (counter[entry.eventId] ?? 0) + 1;
+    const ord = counter[entry.eventId].toString().padStart(2, "0");
+    const id = `reg-e${eventNumShort(entry.eventId)}-${ord}`;
+    const { checkedIn = false, notes = null } = entry;
+    const checkedInAt = checkedIn ? meta.startDate : null;
+    return {
+      id,
+      eventId: entry.eventId,
+      userId: participant.uid,
+      ticketTypeId: meta.ticketTypeId,
+      participantName: participant.displayName,
+      participantEmail: participant.email,
+      status: checkedIn ? "checked_in" : "confirmed",
+      qrCodeValue: `${id}:${entry.eventId}:${participant.uid}:${epochBase36}:demo-hmac-exp-${ord}`,
+      checkedInAt,
+      checkedInBy: checkedIn ? IDS.staffUser : null,
+      notes,
+      createdAt: twoWeeksAgo,
+      updatedAt: checkedInAt ?? twoWeeksAgo,
+    };
+  });
+}
+
+/**
+ * Runtime-materialised — done this way (vs a static literal) so the compact
+ * `FAN_OUT` table stays the single source of truth. Re-using
+ * `EXPANSION_PARTICIPANTS` + `EXPANSION_EVENT_META` keeps every seeded reg
+ * consistent with the upstream user / event fixtures.
+ */
+const EXPANSION_REGISTRATIONS: SeedRegistration[] = materialiseExpansionRegs();
+
+// Merge expansion event metadata into the denorm lookup used by
+// writeRegistrations, so the denorm fields land on the new regs too.
+for (const [id, meta] of Object.entries(EXPANSION_EVENT_META)) {
+  EVENT_DENORM[id] = {
+    eventTitle: meta.title,
+    eventSlug: meta.slug,
+    eventStartDate: meta.startDate,
+    eventEndDate: meta.endDate,
+  };
+  TICKET_NAMES[meta.ticketTypeId] = meta.ticketTypeName;
+}
 
 async function writeRegistrations(db: Firestore): Promise<number> {
   const all = [...LEGACY_REGISTRATIONS, ...EXPANSION_REGISTRATIONS];
@@ -322,8 +654,156 @@ const LEGACY_SESSIONS: SeedSession[] = [
   },
 ];
 
-// Populated by PR C part 2 — additional sessions for expansion conferences.
-const EXPANSION_SESSIONS: SeedSession[] = [];
+// ─── Expansion sessions ───────────────────────────────────────────────────
+// Conference-shaped events in the expansion set (hybrid / in_person
+// conferences) get an agenda so the sessions view has non-empty data for
+// multi-event scenarios. Sessions on purely single-stream events (concerts,
+// festivals, marathons, workshops) are not modeled — those are already
+// represented by a single ticket.
+
+const EXPANSION_SESSIONS: SeedSession[] = [
+  // event-010 Conférence Fintech Ouest-Africaine (hybrid, Thiès) — 3 sessions
+  {
+    id: "session-e10-01",
+    eventId: "event-010",
+    title: "Keynote : l'essor du mobile money en zone CFA",
+    description:
+      "État des lieux du mobile money francophone — Wave, Orange Money, Free Money, et nouveaux entrants. Panorama des régulations BCEAO.",
+    speakerIds: [],
+    location: "Auditorium Palais des Congrès",
+    startTime: inTenDays,
+    endTime: inTenDays,
+    tags: ["fintech", "mobile-money", "keynote"],
+    streamUrl: "https://live.thies-tech.sn/fintech-2026/keynote",
+    isBookmarkable: true,
+  },
+  {
+    id: "session-e10-02",
+    eventId: "event-010",
+    title: "Panel : régulations et conformité fintech BCEAO",
+    description:
+      "Table ronde avec des régulateurs, des juristes et des CPO de fintechs sur l'adaptation aux nouvelles exigences BCEAO.",
+    speakerIds: [],
+    location: "Auditorium Palais des Congrès",
+    startTime: inTenDays,
+    endTime: inTenDays,
+    tags: ["fintech", "régulation", "bceao", "panel"],
+    streamUrl: "https://live.thies-tech.sn/fintech-2026/panel-regul",
+    isBookmarkable: true,
+  },
+  {
+    id: "session-e10-03",
+    eventId: "event-010",
+    title: "Atelier : intégrer Wave API dans une app mobile",
+    description: "Hands-on avec le SDK Wave — sandbox, callbacks, idempotency.",
+    speakerIds: [],
+    location: "Salle commissions",
+    startTime: inTenDays,
+    endTime: inTenDays,
+    tags: ["wave", "api", "atelier"],
+    streamUrl: null,
+    isBookmarkable: true,
+  },
+
+  // event-012 Web Summit Thiès — 3 sessions (startup / dev / produit tracks)
+  {
+    id: "session-e12-01",
+    eventId: "event-012",
+    title: "Startup pitch session — dix startups sénégalaises",
+    description:
+      "Dix startups sélectionnées pitchent leur projet en 3 min chacune. Jury panafricain.",
+    speakerIds: [],
+    location: "Grande salle",
+    startTime: inThreeWeeks,
+    endTime: inThreeWeeks,
+    tags: ["startup", "pitch", "networking"],
+    streamUrl: null,
+    isBookmarkable: true,
+  },
+  {
+    id: "session-e12-02",
+    eventId: "event-012",
+    title: "Dev track : architectures event-driven en production",
+    description:
+      "Retours d'expérience sur Kafka, Pub/Sub et Firestore dans des stacks africaines à fort trafic.",
+    speakerIds: [],
+    location: "Salle B",
+    startTime: inThreeWeeks,
+    endTime: inThreeWeeks,
+    tags: ["architecture", "event-driven", "backend"],
+    streamUrl: null,
+    isBookmarkable: true,
+  },
+  {
+    id: "session-e12-03",
+    eventId: "event-012",
+    title: "Produit : research sur des marchés francophones ouest-africains",
+    description:
+      "Comment mener des entretiens utilisateurs pertinents dans huit pays francophones — benchmarks, biais culturels, outils.",
+    speakerIds: [],
+    location: "Salle C",
+    startTime: inThreeWeeks,
+    endTime: inThreeWeeks,
+    tags: ["produit", "research", "user-research"],
+    streamUrl: null,
+    isBookmarkable: true,
+  },
+
+  // event-017 AfricaTech Online — 4 sessions (online-only, pan-African)
+  {
+    id: "session-e17-01",
+    eventId: "event-017",
+    title: "Opening keynote : l'écosystème tech francophone en 2026",
+    description:
+      "Cartographie des pôles tech en Afrique francophone — Dakar, Abidjan, Bamako, Lomé, Yaoundé.",
+    speakerIds: [],
+    location: "Plateforme Sonatel Live",
+    startTime: inTwoMonths,
+    endTime: inTwoMonths,
+    tags: ["afrique", "keynote", "écosystème"],
+    streamUrl: "https://live.sonatel.sn/africatech-2026/keynote",
+    isBookmarkable: true,
+  },
+  {
+    id: "session-e17-02",
+    eventId: "event-017",
+    title: "Deep dive : IA générative adaptée aux langues locales",
+    description: "Modèles bilingues FR/Wolof/Bambara — état de l'art, datasets, benchmarks.",
+    speakerIds: [],
+    location: "Plateforme Sonatel Live",
+    startTime: inTwoMonths,
+    endTime: inTwoMonths,
+    tags: ["ia", "langues-locales", "wolof", "bambara"],
+    streamUrl: "https://live.sonatel.sn/africatech-2026/ia-locales",
+    isBookmarkable: true,
+  },
+  {
+    id: "session-e17-03",
+    eventId: "event-017",
+    title: "Studio de démos : 8 produits présentés en 45 min",
+    description: "Format demo-jam — 8 équipes, 5 min chacune, vote du public.",
+    speakerIds: [],
+    location: "Plateforme Sonatel Live",
+    startTime: inTwoMonths,
+    endTime: inTwoMonths,
+    tags: ["demos", "pitch", "produit"],
+    streamUrl: "https://live.sonatel.sn/africatech-2026/demos",
+    isBookmarkable: true,
+  },
+  {
+    id: "session-e17-04",
+    eventId: "event-017",
+    title: "Closing panel : femmes et tech francophone",
+    description: "Table ronde avec des fondatrices et tech leads de Dakar, Abidjan et Bamako.",
+    speakerIds: [],
+    location: "Plateforme Sonatel Live",
+    startTime: inTwoMonths,
+    endTime: inTwoMonths,
+    tags: ["diversité", "leadership", "panel"],
+    streamUrl: "https://live.sonatel.sn/africatech-2026/closing",
+    isBookmarkable: true,
+  },
+];
 
 async function writeSessions(db: Firestore): Promise<number> {
   const all = [...LEGACY_SESSIONS, ...EXPANSION_SESSIONS];
