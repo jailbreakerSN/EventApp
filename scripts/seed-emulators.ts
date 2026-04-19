@@ -27,24 +27,24 @@
  *   - 12 audit logs (including admin + subscription actions)
  */
 
-// ─── Mode detection ────────────────────────────────────────────────────────
-// Defaults to emulator mode for safety. Set SEED_TARGET=staging (or any other
-// non-empty value) to seed against a real Firestore project.
-//   - emulator: writes to local Firebase emulators (default)
-//   - staging:  writes to real Firestore. Requires GOOGLE_APPLICATION_CREDENTIALS
-//               or Application Default Credentials (set automatically by
-//               google-github-actions/auth in CI). Checks idempotency before
-//               writing, unless SEED_FORCE=true.
+// ─── Safety guards ─────────────────────────────────────────────────────────
+// All target detection, project-id allow-listing and emulator host wiring
+// now lives in scripts/seed/config.ts. This script must assert safety BEFORE
+// initializing the admin SDK — otherwise a typo in FIREBASE_PROJECT_ID would
+// connect to the wrong Firestore before the guard runs.
 
-const SEED_TARGET = process.env.SEED_TARGET ?? "emulator";
-const SEED_FORCE = process.env.SEED_FORCE === "true";
-const PROJECT_ID = process.env.FIREBASE_PROJECT_ID ?? "teranga-app-990a8";
+import {
+  PROJECT_ID,
+  PROJECT_LABEL,
+  SEED_FORCE,
+  SEED_TARGET,
+  assertSafeTarget,
+  configureEmulatorHosts,
+  Dates,
+} from "./seed/config";
 
-if (SEED_TARGET === "emulator") {
-  process.env.FIRESTORE_EMULATOR_HOST = "localhost:8080";
-  process.env.FIREBASE_AUTH_EMULATOR_HOST = "localhost:9099";
-  process.env.FIREBASE_STORAGE_EMULATOR_HOST = "localhost:9199";
-}
+configureEmulatorHosts();
+assertSafeTarget();
 
 import { initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
@@ -55,18 +55,21 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 
 // ─── Time helpers ──────────────────────────────────────────────────────────
+// Aliases preserved so the sprawling document bodies below keep reading
+// naturally (`createdAt: yesterday`, `startDate: inOneWeek`, ...). The
+// actual offsets live in scripts/seed/config.ts → Dates.
 
-const now = new Date().toISOString();
-const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
-const inOneWeek = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-const inOneWeekPlus1h = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000 + 3600000).toISOString();
-const inOneWeekPlus2h = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000 + 7200000).toISOString();
-const inOneWeekPlus3h = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000 + 10800000).toISOString();
-const inOneWeekPlus4h = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000 + 14400000).toISOString();
-const inTwoWeeks = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
-const inOneMonth = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+const now = Dates.now;
+const oneHourAgo = Dates.oneHourAgo;
+const yesterday = Dates.yesterday;
+const twoDaysAgo = Dates.twoDaysAgo;
+const inOneWeek = Dates.inOneWeek;
+const inOneWeekPlus1h = Dates.inOneWeekPlus1h;
+const inOneWeekPlus2h = Dates.inOneWeekPlus2h;
+const inOneWeekPlus3h = Dates.inOneWeekPlus3h;
+const inOneWeekPlus4h = Dates.inOneWeekPlus4h;
+const inTwoWeeks = Dates.inTwoWeeks;
+const inOneMonth = Dates.inOneMonth;
 
 // ─── IDs ─────────────────────────────────────────────────────────────────
 
@@ -163,7 +166,10 @@ async function ensureUser(
 }
 
 async function seed() {
-  console.log(`🌱 Seeding Firebase (target=${SEED_TARGET}, project=${PROJECT_ID})...\n`);
+  const label = PROJECT_LABEL[PROJECT_ID] ?? PROJECT_ID;
+  console.log(
+    `🌱 Seeding Firebase (target=${SEED_TARGET}, project=${PROJECT_ID}, label=${label})...\n`,
+  );
 
   // ─── Always-run: plan catalog + effective-limits backfill ──────────────
   // These two steps are pure upserts / denormalization refreshes — safe to
@@ -1018,6 +1024,34 @@ async function seed() {
 
   const epochBase36 = Date.now().toString(36);
 
+  // Denormalized event metadata copied onto each registration. The API
+  // populates these four fields automatically on real writes (see
+  // apps/api/src/services/registration.service.ts); the seed has to mirror
+  // that contract or the calendar + my-events surfaces render empty dates.
+  const eventDenorm = {
+    [IDS.conference]: {
+      eventTitle: "Dakar Tech Summit 2026",
+      eventSlug: "dakar-tech-summit-2026",
+      eventStartDate: inOneWeek,
+      eventEndDate: inTwoWeeks,
+    },
+    [IDS.paidEvent]: {
+      eventTitle: "Masterclass IA Générative",
+      eventSlug: "masterclass-ia-generative",
+      eventStartDate: inTwoWeeks,
+      eventEndDate: inTwoWeeks,
+    },
+  } as const;
+
+  // Display names for the same two events' ticket types, surfaced in
+  // registration cards / ticket passes.
+  const ticketNames: Record<string, string> = {
+    "ticket-standard-001": "Standard",
+    "ticket-vip-001": "VIP",
+    "ticket-standard-004": "Early Bird",
+    "ticket-vip-004": "Premium",
+  };
+
   // Reg 1: Participant 1 → Conference (confirmed, checked in)
   await db
     .collection("registrations")
@@ -1027,6 +1061,10 @@ async function seed() {
       eventId: IDS.conference,
       userId: IDS.participant1,
       ticketTypeId: "ticket-standard-001",
+      ticketTypeName: ticketNames["ticket-standard-001"],
+      participantName: "Aminata Fall",
+      participantEmail: "participant@teranga.dev",
+      ...eventDenorm[IDS.conference],
       status: "confirmed",
       qrCodeValue: `${IDS.reg1}:${IDS.conference}:${IDS.participant1}:${epochBase36}:demo-hmac-sig-001`,
       checkedInAt: oneHourAgo,
@@ -1046,6 +1084,10 @@ async function seed() {
       eventId: IDS.conference,
       userId: IDS.participant2,
       ticketTypeId: "ticket-standard-001",
+      ticketTypeName: ticketNames["ticket-standard-001"],
+      participantName: "Ousmane Ndiaye",
+      participantEmail: "participant2@teranga.dev",
+      ...eventDenorm[IDS.conference],
       status: "confirmed",
       qrCodeValue: `${IDS.reg2}:${IDS.conference}:${IDS.participant2}:${epochBase36}:demo-hmac-sig-002`,
       checkedInAt: null,
@@ -1065,6 +1107,10 @@ async function seed() {
       eventId: IDS.conference,
       userId: IDS.speakerUser,
       ticketTypeId: "ticket-standard-001",
+      ticketTypeName: ticketNames["ticket-standard-001"],
+      participantName: "Ibrahima Gueye",
+      participantEmail: "speaker@teranga.dev",
+      ...eventDenorm[IDS.conference],
       status: "confirmed",
       qrCodeValue: `${IDS.reg3}:${IDS.conference}:${IDS.speakerUser}:${epochBase36}:demo-hmac-sig-003`,
       checkedInAt: null,
@@ -1084,6 +1130,10 @@ async function seed() {
       eventId: IDS.conference,
       userId: IDS.sponsorUser,
       ticketTypeId: "ticket-vip-001",
+      ticketTypeName: ticketNames["ticket-vip-001"],
+      participantName: "Aissatou Ba",
+      participantEmail: "sponsor@teranga.dev",
+      ...eventDenorm[IDS.conference],
       status: "confirmed",
       qrCodeValue: `${IDS.reg4}:${IDS.conference}:${IDS.sponsorUser}:${epochBase36}:demo-hmac-sig-004`,
       checkedInAt: null,
@@ -1095,13 +1145,20 @@ async function seed() {
     });
 
   // Reg 5: Participant 1 → Paid event (pending_payment)
+  // qrCodeValue is a placeholder sentinel because RegistrationSchema requires
+  // a non-nullable string; real pending_payment registrations get the HMAC-
+  // signed payload on confirmation.
   await db.collection("registrations").doc(IDS.reg5).set({
     id: IDS.reg5,
     eventId: IDS.paidEvent,
     userId: IDS.participant1,
     ticketTypeId: "ticket-standard-004",
+    ticketTypeName: ticketNames["ticket-standard-004"],
+    participantName: "Aminata Fall",
+    participantEmail: "participant@teranga.dev",
+    ...eventDenorm[IDS.paidEvent],
     status: "pending_payment",
-    qrCodeValue: null,
+    qrCodeValue: `pending:${IDS.reg5}`,
     checkedInAt: null,
     checkedInBy: null,
     accessZoneId: null,
@@ -1119,6 +1176,10 @@ async function seed() {
       eventId: IDS.paidEvent,
       userId: IDS.participant2,
       ticketTypeId: "ticket-vip-004",
+      ticketTypeName: ticketNames["ticket-vip-004"],
+      participantName: "Ousmane Ndiaye",
+      participantEmail: "participant2@teranga.dev",
+      ...eventDenorm[IDS.paidEvent],
       status: "confirmed",
       qrCodeValue: `${IDS.reg6}:${IDS.paidEvent}:${IDS.participant2}:${epochBase36}:demo-hmac-sig-006`,
       checkedInAt: null,
