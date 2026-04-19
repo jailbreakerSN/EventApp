@@ -16,7 +16,7 @@ import { InfiniteScrollSentinel } from "@/components/feed/InfiniteScrollSentinel
 import { useTranslations } from "next-intl";
 
 export default function FeedPage() {
-  const tCommon = useTranslations("common"); void tCommon;
+  const t = useTranslations("feed");
   const { slug } = useParams<{ slug: string }>();
   const { user } = useAuth();
 
@@ -59,14 +59,14 @@ export default function FeedPage() {
       <div className="max-w-2xl mx-auto px-4 py-8">
         <EmptyStateEditorial
           icon={MessageSquare}
-          kicker="— INTROUVABLE"
-          title="Événement introuvable"
+          kicker={t("notFoundKicker")}
+          title={t("notFoundTitle")}
           action={
             <Link
               href="/events"
               className="text-sm font-medium text-teranga-gold-dark hover:underline"
             >
-              Retour aux événements
+              {t("backToEvents")}
             </Link>
           }
         />
@@ -80,12 +80,12 @@ export default function FeedPage() {
         href={`/events/${event.slug}`}
         className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
       >
-        <ArrowLeft className="h-4 w-4" /> Retour à l&apos;événement
+        <ArrowLeft className="h-4 w-4" /> {t("backToEvent")}
       </Link>
 
       <SectionHeader
-        kicker="— FIL D'ACTUALITÉ"
-        title="Feed"
+        kicker={t("kicker")}
+        title={t("title")}
         subtitle={event.title}
         size="hero"
         as="h1"
@@ -94,31 +94,31 @@ export default function FeedPage() {
       <CreatePostForm eventId={eventId} user={user} />
 
       {isLoadingFeed ? (
-        <div className="space-y-4" role="status" aria-label="Chargement du feed...">
+        <div className="space-y-4" role="status" aria-label={t("loadingLabel")}>
           <FeedPostSkeleton />
           <FeedPostSkeleton />
           <FeedPostSkeleton />
-          <span className="sr-only">Chargement du feed...</span>
+          <span className="sr-only">{t("loadingLabel")}</span>
         </div>
       ) : feedError ? (
         <EmptyStateEditorial
           icon={AlertTriangle}
-          kicker="— ERREUR"
-          title="Impossible de charger le feed"
-          description="Vérifiez votre connexion et réessayez dans un instant."
+          kicker={t("errorKicker")}
+          title={t("errorTitle")}
+          description={t("errorDescription")}
           action={
             <Button variant="outline" onClick={refresh}>
               <RotateCcw className="mr-2 h-4 w-4" aria-hidden="true" />
-              Réessayer
+              {t("retry")}
             </Button>
           }
         />
       ) : posts.length === 0 ? (
         <EmptyStateEditorial
           icon={MessageSquare}
-          kicker="— AUCUNE PUBLICATION"
-          title="Aucune publication pour le moment"
-          description="Soyez le premier à partager une publication avec les participants."
+          kicker={t("emptyKicker")}
+          title={t("emptyTitle")}
+          description={t("emptyDescription")}
         />
       ) : (
         <>

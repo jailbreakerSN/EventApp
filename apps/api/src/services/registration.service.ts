@@ -4,6 +4,7 @@ import {
   type QrScanResult,
   type Event,
   type Organization,
+  type UserProfile,
 } from "@teranga/shared-types";
 import { registrationRepository } from "@/repositories/registration.repository";
 import { eventRepository } from "@/repositories/event.repository";
@@ -138,8 +139,15 @@ export class RegistrationService extends BaseService {
       const regId = regRef.id;
       const qrCodeValue = signQrPayload(regId, eventId, user.uid);
 
-      // Fetch user profile for denormalized display fields
-      const userProfile = await userRepository.findById(user.uid);
+      // Fetch user profile for denormalized display fields. Must go through
+      // tx.get() so the read participates in the transaction's snapshot —
+      // a naked userRepository.findById() here would race against concurrent
+      // profile updates (e.g. display-name edits) between the read set and
+      // the subsequent tx.set(regRef, registration) write.
+      const userSnap = await tx.get(userRepository.ref.doc(user.uid));
+      const userProfile = userSnap.exists
+        ? ({ id: userSnap.id, ...userSnap.data() } as unknown as UserProfile)
+        : null;
 
       const registration: Registration = {
         id: regId,

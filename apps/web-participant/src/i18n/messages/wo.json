@@ -464,6 +464,9 @@
     "failedHeading": "Paye fàllee na",
     "retry": "Jéem waaf",
     "contactSupport": "Jokkoo ak support bi",
+    "downloadReceipt": "Téelé reçu bi",
+    "generatingReceipt": "Di waajal reçu bi…",
+    "receiptError": "Mënul a defar reçu bi. Jéemal ay saañu.",
     "errorHeading": "Njumte",
     "myRegistrations": "Samay bind",
     "viewBadge": "Gis sama badge"
@@ -554,6 +557,22 @@
   },
   "authGuard": {
     "checking": "Di verife..."
+  },
+  "feed": {
+    "kicker": "— FEED",
+    "title": "Feed",
+    "backToEvent": "Dellu ci xew-xew bi",
+    "backToEvents": "Dellu ci xew-xew yi",
+    "notFoundKicker": "— GISU KO",
+    "notFoundTitle": "Xew-xew bi gisu ko",
+    "loadingLabel": "Di yónnee feed bi…",
+    "errorKicker": "— NJUMTE",
+    "errorTitle": "Mënunoo yónnee feed bi",
+    "errorDescription": "Xoolal sa konesion te jéem waaf.",
+    "retry": "Jéem waaf",
+    "emptyKicker": "— AMUL TERRE",
+    "emptyTitle": "Amul terre ba fii",
+    "emptyDescription": "Dinga jiitu yokk ab terre ak ñi bokk."
   },
   "schedule": {
     "kicker": "— PROGRAMME",

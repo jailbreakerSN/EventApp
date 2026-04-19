@@ -3,11 +3,11 @@
 import { useEffect, useState } from "react";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { CheckCircle, XCircle, Loader2, ArrowLeft } from "lucide-react";
+import { CheckCircle, Download, Loader2, XCircle, ArrowLeft } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocale, useTranslations } from "next-intl";
-import { eventsApi, registrationsApi } from "@/lib/api-client";
+import { eventsApi, receiptsApi, registrationsApi } from "@/lib/api-client";
 import { usePaymentStatus } from "@/hooks/use-payments";
 import {
   Button,
@@ -31,6 +31,36 @@ export default function PaymentStatusPage() {
   const paymentId = searchParams.get("paymentId");
 
   const [redirectCountdown, setRedirectCountdown] = useState<number | null>(null);
+  const [receiptState, setReceiptState] = useState<"idle" | "loading" | "error">("idle");
+
+  const handleReceiptDownload = async () => {
+    if (!paymentId || receiptState === "loading") return;
+    setReceiptState("loading");
+    try {
+      // generate() is idempotent on the API side — returns existing receipt
+      // if one already exists, so calling it every click is safe.
+      const gen = (await receiptsApi.generate(paymentId)) as {
+        data?: { id?: string };
+      };
+      const receiptId = gen?.data?.id;
+      if (!receiptId) {
+        setReceiptState("error");
+        return;
+      }
+      const pdf = (await receiptsApi.getPdf(receiptId)) as {
+        data?: { pdfURL?: string };
+      };
+      const url = pdf?.data?.pdfURL;
+      if (!url) {
+        setReceiptState("error");
+        return;
+      }
+      window.open(url, "_blank");
+      setReceiptState("idle");
+    } catch {
+      setReceiptState("error");
+    }
+  };
 
   const { data: eventData } = useQuery({
     queryKey: ["event", eventId],
@@ -164,7 +194,7 @@ export default function PaymentStatusPage() {
                 </div>
               )}
 
-              <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+              <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:justify-center">
                 {registration && (
                   <Link href={`/my-events/${registration.id}/badge`}>
                     <Button className="bg-teranga-gold hover:bg-teranga-gold/90">
@@ -172,6 +202,20 @@ export default function PaymentStatusPage() {
                     </Button>
                   </Link>
                 )}
+                <Button
+                  variant="outline"
+                  onClick={handleReceiptDownload}
+                  disabled={receiptState === "loading"}
+                >
+                  {receiptState === "loading" ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
+                  ) : (
+                    <Download className="mr-2 h-4 w-4" aria-hidden="true" />
+                  )}
+                  {receiptState === "loading"
+                    ? t("generatingReceipt")
+                    : t("downloadReceipt")}
+                </Button>
                 <Link href="/my-events">
                   <Button
                     variant={registration ? "outline" : "default"}
@@ -184,6 +228,11 @@ export default function PaymentStatusPage() {
                   <Button variant="outline">{t("exploreOthers")}</Button>
                 </Link>
               </div>
+              {receiptState === "error" && (
+                <p className="mt-2 text-center text-sm text-destructive">
+                  {t("receiptError")}
+                </p>
+              )}
             </>
           )}
 
