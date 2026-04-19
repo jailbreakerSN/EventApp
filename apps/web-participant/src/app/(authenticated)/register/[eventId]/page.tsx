@@ -179,8 +179,7 @@ export default function RegisterPage() {
       qrCodeValue: registration.qrCodeValue,
       eventId: event.id,
       eventTitle: event.title,
-      holderName:
-        registration.participantName ?? user?.displayName ?? user?.email ?? "",
+      holderName: registration.participantName ?? user?.displayName ?? user?.email ?? "",
       ticketTypeName: selectedTicket?.name ?? registration.ticketTypeName ?? "",
       cachedAt: new Date().toISOString(),
     });
@@ -394,9 +393,7 @@ export default function RegisterPage() {
               aria-hidden="true"
             />
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold text-teranga-clay">
-                {t("verifyEmailTitle")}
-              </p>
+              <p className="text-sm font-semibold text-teranga-clay">{t("verifyEmailTitle")}</p>
               <p className="mt-1 text-sm text-muted-foreground">
                 {t("verifyEmailBody", { email: user?.email ?? "" })}
               </p>
@@ -407,9 +404,7 @@ export default function RegisterPage() {
                 disabled={resendingVerification}
                 className="mt-3"
               >
-                {resendingVerification
-                  ? t("verificationResending")
-                  : t("resendVerification")}
+                {resendingVerification ? t("verificationResending") : t("resendVerification")}
               </Button>
             </div>
           </div>
@@ -506,9 +501,7 @@ export default function RegisterPage() {
                 {isPaidTicket ? t("chooseMethod") : t("confirmHeading")}
               </h1>
               <p className="mt-2 text-sm text-muted-foreground">
-                {isPaidTicket
-                  ? tMethods("waveDescription").replace(/./, "")
-                  : t("confirmHeading")}
+                {isPaidTicket ? tMethods("waveDescription").replace(/./, "") : t("confirmHeading")}
               </p>
 
               {/* Payment method cards */}
@@ -794,12 +787,8 @@ export default function RegisterPage() {
                   <p className="font-mono-kicker text-[11px] font-medium uppercase tracking-[0.12em] text-teranga-gold-dark">
                     {step.done ? `✓ ${step.num}` : step.num}
                   </p>
-                  <p className="mt-1.5 text-sm font-semibold text-foreground">
-                    {step.label}
-                  </p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">
-                    {step.description}
-                  </p>
+                  <p className="mt-1.5 text-sm font-semibold text-foreground">{step.label}</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">{step.description}</p>
                 </Link>
               ))}
             </div>

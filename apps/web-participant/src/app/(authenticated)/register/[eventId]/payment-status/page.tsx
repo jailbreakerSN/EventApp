@@ -248,9 +248,7 @@ export default function PaymentStatusPage() {
 
               <div className="mt-6 flex flex-col gap-3 sm:flex-row">
                 <Link href={`/register/${eventId}`}>
-                  <Button className="bg-teranga-gold hover:bg-teranga-gold/90">
-                    {t("retry")}
-                  </Button>
+                  <Button className="bg-teranga-gold hover:bg-teranga-gold/90">{t("retry")}</Button>
                 </Link>
                 <a href="mailto:contact@teranga.sn?subject=Paiement%20%C3%A9chou%C3%A9">
                   <Button variant="outline">{t("contactSupport")}</Button>

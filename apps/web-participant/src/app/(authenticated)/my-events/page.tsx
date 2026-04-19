@@ -5,7 +5,9 @@ import Link from "next/link";
 import {
   ArrowRight,
   Calendar,
+  CalendarDays,
   Check,
+  LayoutList,
   ListOrdered,
   LogOut,
   QrCode,
@@ -13,6 +15,7 @@ import {
   Settings,
   XCircle,
 } from "lucide-react";
+import { CalendarView } from "@/components/calendar-view";
 import { toast } from "sonner";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocale, useTranslations } from "next-intl";
@@ -57,6 +60,7 @@ const STATUS_TONES: Record<StatusKey, StatusPillTone> = {
 };
 
 type TabId = "upcoming" | "past" | "saved";
+type ViewMode = "list" | "calendar";
 
 export default function MyEventsPage() {
   const t = useTranslations("myEvents");
@@ -65,6 +69,7 @@ export default function MyEventsPage() {
   const { user } = useAuth();
   const [page, setPage] = useState(1);
   const [tab, setTab] = useState<TabId>("upcoming");
+  const [viewMode, setViewMode] = useState<ViewMode>("list");
   const { data, isLoading, error } = useMyRegistrations({ page, limit: 20 });
   const cancelMutation = useCancelRegistration();
   const queryClient = useQueryClient();
@@ -172,32 +177,68 @@ export default function MyEventsPage() {
         }
       />
 
-      {/* Tab bar */}
-      <div role="tablist" aria-label={t("title")} className="mb-8 flex gap-1 border-b">
-        {[
-          { id: "upcoming" as const, label: t("tabs.upcoming"), count: upcoming.length },
-          { id: "past" as const, label: t("tabs.past"), count: past.length },
-          { id: "saved" as const, label: t("tabs.saved"), count: 0 },
-        ].map((ti) => {
-          const active = tab === ti.id;
-          return (
+      {/* Tab bar + view toggle */}
+      <div className="mb-8 flex items-end justify-between border-b">
+        <div role="tablist" aria-label={t("title")} className="flex gap-1">
+          {[
+            { id: "upcoming" as const, label: t("tabs.upcoming"), count: upcoming.length },
+            { id: "past" as const, label: t("tabs.past"), count: past.length },
+            { id: "saved" as const, label: t("tabs.saved"), count: 0 },
+          ].map((ti) => {
+            const active = tab === ti.id;
+            return (
+              <button
+                key={ti.id}
+                role="tab"
+                aria-selected={active}
+                aria-controls={`panel-${ti.id}`}
+                onClick={() => setTab(ti.id)}
+                className={`-mb-px px-4 py-3 text-sm font-semibold transition-colors ${
+                  active
+                    ? "border-b-2 border-teranga-navy text-foreground dark:border-teranga-gold"
+                    : "border-b-2 border-transparent text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {ti.label}
+                <span className="ml-1.5 font-medium text-muted-foreground">{ti.count}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* List / Calendar view toggle — only relevant on the upcoming tab */}
+        {tab === "upcoming" && (
+          <div
+            role="group"
+            aria-label={t("viewToggleAria")}
+            className="mb-1 flex items-center gap-0.5 rounded-full border bg-muted/40 p-0.5"
+          >
             <button
-              key={ti.id}
-              role="tab"
-              aria-selected={active}
-              aria-controls={`panel-${ti.id}`}
-              onClick={() => setTab(ti.id)}
-              className={`-mb-px px-4 py-3 text-sm font-semibold transition-colors ${
-                active
-                  ? "border-b-2 border-teranga-navy text-foreground dark:border-teranga-gold"
-                  : "border-b-2 border-transparent text-muted-foreground hover:text-foreground"
+              onClick={() => setViewMode("list")}
+              className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
+                viewMode === "list"
+                  ? "bg-card text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
               }`}
+              aria-pressed={viewMode === "list"}
             >
-              {ti.label}
-              <span className="ml-1.5 font-medium text-muted-foreground">{ti.count}</span>
+              <LayoutList className="h-3.5 w-3.5" aria-hidden="true" />
+              {t("viewList")}
             </button>
-          );
-        })}
+            <button
+              onClick={() => setViewMode("calendar")}
+              className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
+                viewMode === "calendar"
+                  ? "bg-card text-foreground shadow-sm"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+              aria-pressed={viewMode === "calendar"}
+            >
+              <CalendarDays className="h-3.5 w-3.5" aria-hidden="true" />
+              {t("viewCalendar")}
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Loading skeleton */}
@@ -230,7 +271,7 @@ export default function MyEventsPage() {
 
       {/* Upcoming panel */}
       {tab === "upcoming" && (
-        <div role="tabpanel" id="panel-upcoming" className="flex flex-col gap-4">
+        <div role="tabpanel" id="panel-upcoming">
           {registrations && upcoming.length === 0 && !isLoading && (
             <EmptyState
               icon={Calendar}
@@ -245,28 +286,41 @@ export default function MyEventsPage() {
               }
             />
           )}
-          {upcoming.map((rawReg) => {
-            const reg = rawReg as RegistrationWithExtras;
-            return (
-              <UpcomingRow
-                key={reg.id}
-                reg={reg}
-                regional={regional}
-                t={t}
-                canCancel={["confirmed", "pending"].includes(reg.status)}
-                isWaitlisted={reg.status === "waitlisted"}
-                showRefund={canRequestRefund(reg)}
-                onCancel={() => setCancelTarget(reg.id)}
-                onRefund={() => {
-                  if (reg.paymentId) {
-                    setRefundTarget({ registrationId: reg.id, paymentId: reg.paymentId });
-                  }
-                }}
-                isCancelling={cancelMutation.isPending}
-                isRefunding={refundMutation.isPending}
-              />
-            );
-          })}
+
+          {/* Calendar view */}
+          {viewMode === "calendar" && registrations && upcoming.length > 0 && (
+            <CalendarView
+              registrations={upcoming as Parameters<typeof CalendarView>[0]["registrations"]}
+            />
+          )}
+
+          {/* List view */}
+          {viewMode === "list" && (
+            <div className="flex flex-col gap-4">
+              {upcoming.map((rawReg) => {
+                const reg = rawReg as RegistrationWithExtras;
+                return (
+                  <UpcomingRow
+                    key={reg.id}
+                    reg={reg}
+                    regional={regional}
+                    t={t}
+                    canCancel={["confirmed", "pending"].includes(reg.status)}
+                    isWaitlisted={reg.status === "waitlisted"}
+                    showRefund={canRequestRefund(reg)}
+                    onCancel={() => setCancelTarget(reg.id)}
+                    onRefund={() => {
+                      if (reg.paymentId) {
+                        setRefundTarget({ registrationId: reg.id, paymentId: reg.paymentId });
+                      }
+                    }}
+                    isCancelling={cancelMutation.isPending}
+                    isRefunding={refundMutation.isPending}
+                  />
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 
@@ -285,9 +339,7 @@ export default function MyEventsPage() {
                 const gradient = getCoverGradient(reg.eventId).bg;
                 const statusKey =
                   (reg.status as StatusKey) in STATUS_TONES ? (reg.status as StatusKey) : null;
-                const statusTone: StatusPillTone = statusKey
-                  ? STATUS_TONES[statusKey]
-                  : "neutral";
+                const statusTone: StatusPillTone = statusKey ? STATUS_TONES[statusKey] : "neutral";
                 const statusLabel = statusKey ? t(`status.${statusKey}` as const) : reg.status;
                 return (
                   <article key={reg.id} className="overflow-hidden rounded-card border bg-card">

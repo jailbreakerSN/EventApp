@@ -73,7 +73,7 @@ export const WebhookEventTypeSchema = z.enum([
 export type WebhookEventType = z.infer<typeof WebhookEventTypeSchema>;
 
 export const WebhookPayloadSchema = z.object({
-  id: z.string(),       // unique webhook delivery ID
+  id: z.string(), // unique webhook delivery ID
   type: WebhookEventTypeSchema,
   timestamp: z.string().datetime(),
   organizationId: z.string(),

@@ -355,15 +355,26 @@ export default async function EventDetailPage({ params }: PageProps) {
             )}
           </section>
 
-          {/* Programme — grouped day cards with mono day kicker. */}
-          {sessions.length > 0 && (
-            <section className="mb-12">
-              <h2 className="font-serif-display mb-1.5 text-[28px] font-semibold tracking-[-0.02em]">
-                {tDetail("schedule")}
-              </h2>
-              <p className="font-mono-kicker mb-6 text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-                — {tDetail("scheduleTimezone")}
-              </p>
+          {/* Programme — grouped day cards with mono day kicker.
+              Always rendered so visitors know the section exists even before
+              the organiser has added sessions. */}
+          <section className="mb-12">
+            <h2 className="font-serif-display mb-1.5 text-[28px] font-semibold tracking-[-0.02em]">
+              {tDetail("schedule")}
+            </h2>
+            <p className="font-mono-kicker mb-6 text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+              — {tDetail("scheduleTimezone")}
+            </p>
+            {sessions.length === 0 ? (
+              <div className="rounded-card border border-dashed bg-muted/30 px-6 py-10 text-center">
+                <p className="font-mono-kicker text-[11px] uppercase tracking-[0.12em] text-muted-foreground">
+                  — {tDetail("scheduleComingSoon")}
+                </p>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  {tDetail("scheduleComingSoonHint")}
+                </p>
+              </div>
+            ) : (
               <div className="flex flex-col gap-8">
                 {Array.from(sessionsByDate.entries()).map(([dateLabel, daySessions]) => (
                   <div key={dateLabel}>
@@ -425,8 +436,8 @@ export default async function EventDetailPage({ params }: PageProps) {
                   </div>
                 ))}
               </div>
-            </section>
-          )}
+            )}
+          </section>
 
           {/* Intervenants — gradient-avatar grid from the prototype. */}
           {speakers.length > 0 && (

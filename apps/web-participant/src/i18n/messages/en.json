@@ -324,6 +324,8 @@
       "about": "About",
       "speakers": "Speakers",
       "schedule": "Schedule",
+      "scheduleComingSoon": "Schedule coming soon",
+      "scheduleComingSoonHint": "The organiser will publish sessions shortly. Check back soon.",
       "sessions": "Sessions",
       "tickets": "Tickets",
       "noTickets": "No tickets available.",
@@ -554,6 +556,19 @@
     "cancel": "Cancel",
     "cancelled": "Cancelled",
     "cancelledSuccess": "Registration cancelled successfully.",
+    "viewToggleAria": "Toggle between list and calendar view",
+    "viewList": "List",
+    "viewCalendar": "Calendar",
+    "calendar": {
+      "prevMonth": "Previous month",
+      "nextMonth": "Next month",
+      "more": "more",
+      "legend": "Status",
+      "confirmed": "Confirmed",
+      "checkedIn": "Attended",
+      "pending": "Pending",
+      "waitlisted": "Waitlisted"
+    },
     "paginationPrev": "Previous",
     "paginationNext": "Next",
     "paginationOf": "Page {page} / {total}",
@@ -740,7 +755,8 @@
     "addBookmarkShort": "Save to my schedule",
     "removeBookmarkShort": "Remove from my schedule",
     "addBookmarkAria": "Add this session to your personal schedule",
-    "removeBookmarkAria": "Remove this session from your personal schedule"
+    "removeBookmarkAria": "Remove this session from your personal schedule",
+    "bookmarkCount": "{count, plural, one {# session in your schedule} other {# sessions in your schedule}}"
   },
   "newsletter": {
     "heading": "Stay informed about events in Senegal",

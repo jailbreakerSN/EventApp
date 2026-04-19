@@ -327,6 +327,8 @@
       "about": "À propos",
       "speakers": "Intervenants",
       "schedule": "Programme",
+      "scheduleComingSoon": "Programme à venir",
+      "scheduleComingSoonHint": "L'organisateur publiera bientôt les sessions. Revenez consulter le programme.",
       "sessions": "Sessions",
       "tickets": "Billets",
       "noTickets": "Aucun billet disponible.",
@@ -557,6 +559,19 @@
     "cancel": "Annuler",
     "cancelled": "Annulé",
     "cancelledSuccess": "Inscription annulée avec succès.",
+    "viewToggleAria": "Basculer entre la vue liste et la vue calendrier",
+    "viewList": "Liste",
+    "viewCalendar": "Calendrier",
+    "calendar": {
+      "prevMonth": "Mois précédent",
+      "nextMonth": "Mois suivant",
+      "more": "de plus",
+      "legend": "Statuts",
+      "confirmed": "Confirmé",
+      "checkedIn": "Présent",
+      "pending": "En attente",
+      "waitlisted": "Liste d'attente"
+    },
     "paginationPrev": "Précédent",
     "paginationNext": "Suivant",
     "paginationOf": "Page {page} / {total}",
@@ -743,7 +758,8 @@
     "addBookmarkShort": "Ajouter au programme perso",
     "removeBookmarkShort": "Retirer du programme perso",
     "addBookmarkAria": "Ajouter cette session à votre programme personnel",
-    "removeBookmarkAria": "Retirer cette session de votre programme personnel"
+    "removeBookmarkAria": "Retirer cette session de votre programme personnel",
+    "bookmarkCount": "{count, plural, one {# session dans votre programme} other {# sessions dans votre programme}}"
   },
   "newsletter": {
     "heading": "Restez informé des événements au Sénégal",

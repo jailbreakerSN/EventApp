@@ -328,6 +328,8 @@
       "about": "Ci mbir mi",
       "speakers": "Ñi wax",
       "schedule": "Programme",
+      "scheduleComingSoon": "Programme bi amuñu ko seppi",
+      "scheduleComingSoonHint": "Jëkël bi dina bindal session yi ci kanam.",
       "sessions": "Session yi",
       "tickets": "Billet yi",
       "noTickets": "Amul billet.",
@@ -515,6 +517,19 @@
     "leaveWaitlist": "Génn liste d'attente bi",
     "cancel": "Bayyi",
     "cancelled": "Bayyi nañu",
+    "viewToggleAria": "Tanleel ci liste walla calendrier",
+    "viewList": "Liste",
+    "viewCalendar": "Calendrier",
+    "calendar": {
+      "prevMonth": "Wergi bu jiitu",
+      "nextMonth": "Wergi bu topp",
+      "more": "ëpp",
+      "legend": "Statut yi",
+      "confirmed": "Nangu",
+      "checkedIn": "Dugg",
+      "pending": "Di xaar",
+      "waitlisted": "Liste d'attente"
+    },
     "status": {
       "confirmed": "Nangu",
       "pending": "Di xaar",
@@ -589,7 +604,8 @@
     "addBookmarkShort": "Dencal ci sama programme",
     "removeBookmarkShort": "Jële ci sama programme",
     "addBookmarkAria": "Dencal sesyoŋ bi ci sa programme bu tur",
-    "removeBookmarkAria": "Jële sesyoŋ bi ci sa programme bu tur"
+    "removeBookmarkAria": "Jële sesyoŋ bi ci sa programme bu tur",
+    "bookmarkCount": "{count, plural, one {# sesyoŋ ci sa programme} other {# sesyoŋ ci sa programme}}"
   },
   "newsletter": {
     "heading": "Xam xew-xew yu Senegaal",
