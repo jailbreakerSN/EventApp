@@ -65,6 +65,18 @@ const FAN_OUT_STATUSES: RegistrationStatus[] = [
 
 const CHUNK_SIZE = 400;
 
+// Notifications are sent in parallel per chunk to bound wall time on
+// high-attendance events. 20 concurrent sends keep FCM rate-limit headroom
+// while still flushing a 2 000-participant event in ~100 tranches.
+const NOTIFY_PARALLELISM = 20;
+
+// Which schedule field(s) moved, used to describe the change accurately
+// in the participant notification body.
+type ScheduleFieldsChanged = {
+  start: boolean;
+  end: boolean;
+};
+
 // ─── Listener ────────────────────────────────────────────────────────────────
 
 export function registerEventDenormListeners(): void {
@@ -82,9 +94,17 @@ export function registerEventDenormListeners(): void {
     const patch = buildPatch(event, touched);
     if (Object.keys(patch).length === 0) return;
 
-    const scheduleChanged = touched.includes("startDate") || touched.includes("endDate");
+    // event.service.ts#diffChanges guarantees `changes` only carries fields
+    // whose value genuinely moved (dates are compared by parsed ms, so
+    // format-only re-serialisations are filtered out). By the time we see
+    // a touched schedule field here, it is a real move — no need for a
+    // magnitude threshold.
+    const scheduleFields: ScheduleFieldsChanged = {
+      start: touched.includes("startDate"),
+      end: touched.includes("endDate"),
+    };
 
-    await fanOutToRegistrations(event, patch, scheduleChanged);
+    await fanOutToRegistrations(event, patch, scheduleFields);
   });
 }
 
@@ -109,12 +129,15 @@ function buildPatch(event: Event, touched: DenormalizedField[]): RegistrationDen
 async function fanOutToRegistrations(
   event: Event,
   patch: RegistrationDenormPatch,
-  scheduleChanged: boolean,
+  scheduleFields: ScheduleFieldsChanged,
 ): Promise<void> {
+  const notify = scheduleFields.start || scheduleFields.end;
+  const body = notify ? buildScheduleBody(event, scheduleFields) : null;
+
   let lastDoc: FirebaseFirestore.DocumentSnapshot | undefined;
   let hasMore = true;
   let rewritten = 0;
-  const notifyUserIds = new Set<string>();
+  let notified = 0;
 
   while (hasMore) {
     const page = await registrationRepository.findByEventCursor(
@@ -129,11 +152,12 @@ async function fanOutToRegistrations(
 
     const batch = db.batch();
     const now = new Date().toISOString();
+    const chunkUserIds = new Set<string>();
     for (const reg of page.data) {
       const ref = db.collection(COLLECTIONS.REGISTRATIONS).doc(reg.id);
       batch.update(ref, { ...patch, updatedAt: now });
       rewritten++;
-      if (scheduleChanged) notifyUserIds.add(reg.userId);
+      chunkUserIds.add(reg.userId);
     }
 
     try {
@@ -149,46 +173,75 @@ async function fanOutToRegistrations(
       );
       return;
     }
-  }
 
-  if (scheduleChanged && notifyUserIds.size > 0) {
-    await notifyScheduleChange(event, [...notifyUserIds]);
+    // Notify per-chunk in bounded parallelism so memory stays flat and
+    // participants in the first 400 rows get their push while the later
+    // pages are still being scanned.
+    if (notify && body) {
+      notified += await notifyUsersInParallel(event.id, [...chunkUserIds], body);
+    }
   }
 
   if (rewritten > 0) {
-    process.stdout.write(
+    process.stderr.write(
       JSON.stringify({
         level: "info",
         msg: "[EventDenormListener] fan-out complete",
         eventId: event.id,
         rewritten,
         fields: Object.keys(patch),
-        notified: scheduleChanged ? notifyUserIds.size : 0,
+        notified,
       }) + "\n",
     );
   }
 }
 
-async function notifyScheduleChange(event: Event, userIds: string[]): Promise<void> {
-  const formattedDate = new Intl.DateTimeFormat("fr-SN", {
+// Build the notification body based on which date fields actually moved.
+// Three variants keep the message honest: start-only, end-only, or both.
+function buildScheduleBody(event: Event, scheduleFields: ScheduleFieldsChanged): string {
+  const fmt = new Intl.DateTimeFormat("fr-SN", {
     dateStyle: "full",
     timeStyle: "short",
     timeZone: "Africa/Dakar",
-  }).format(new Date(event.startDate));
-  const title = "Programme mis à jour";
-  const body = `Les horaires de « ${event.title} » ont changé. Nouveau début : ${formattedDate}.`;
+  });
+  const start = fmt.format(new Date(event.startDate));
+  const end = fmt.format(new Date(event.endDate));
+  const title = event.title;
 
-  for (const userId of userIds) {
-    try {
-      await notificationService.send({
-        userId,
-        type: "event_updated",
-        title,
-        body,
-        data: { eventId: event.id, kind: "schedule_change" },
-      });
-    } catch {
-      // One user's notification failure must not block the rest.
+  if (scheduleFields.start && scheduleFields.end) {
+    return `Les horaires de « ${title} » ont changé. Début : ${start}. Fin : ${end}.`;
+  }
+  if (scheduleFields.start) {
+    return `Les horaires de « ${title} » ont changé. Nouveau début : ${start}.`;
+  }
+  return `La fin de « ${title} » a été déplacée. Nouvelle fin : ${end}.`;
+}
+
+async function notifyUsersInParallel(
+  eventId: string,
+  userIds: string[],
+  body: string,
+): Promise<number> {
+  const title = "Programme mis à jour";
+  let sent = 0;
+
+  for (let i = 0; i < userIds.length; i += NOTIFY_PARALLELISM) {
+    const tranche = userIds.slice(i, i + NOTIFY_PARALLELISM);
+    const results = await Promise.allSettled(
+      tranche.map((userId) =>
+        notificationService.send({
+          userId,
+          type: "event_updated",
+          title,
+          body,
+          data: { eventId, kind: "schedule_change" },
+        }),
+      ),
+    );
+    for (const r of results) {
+      if (r.status === "fulfilled") sent++;
     }
   }
+
+  return sent;
 }

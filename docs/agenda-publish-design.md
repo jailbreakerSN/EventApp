@@ -172,6 +172,26 @@ Firestore index requirement for the draft scan:
 `sessions: eventId ASC, publishedAt ASC, deletedAt ASC`.
 This goes into `firestore.indexes.json` alongside the agenda feature flag.
 
+**500-doc transaction cap.** Firestore transactions can read/write at most
+500 documents. The pseudocode above assumes a typical agenda (< 100
+sessions). For events that exceed that — think multi-track week-long
+conferences — the publish action must:
+
+1. Read a count (via `collection.count()`) to detect the overflow case
+   and fail fast with `ValidationError("Agenda trop volumineux pour
+publication atomique — contactez le support.")`, OR
+2. Split the publish into a pre-computed session-id list, increment the
+   `agendaVersion` inside the transaction, then fan out session
+   `publishedAt` writes via chunked `db.batch()` commits outside the
+   transaction. Loses atomicity across the boundary (a crash between the
+   version bump and the batch flush leaves half-published sessions), so
+   the listener has to reconcile by re-reading draft sessions of the
+   same version on retry.
+
+Decision: start with path (1) — reject agendas > 480 sessions (leave
+headroom for the event doc + 19 reserved slots) and revisit if a real
+customer hits the cap. Simpler, no half-committed states.
+
 ### 4.3 Domain events
 
 Add to `apps/api/src/events/domain-events.ts`:

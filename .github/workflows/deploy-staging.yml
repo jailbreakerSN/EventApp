@@ -508,6 +508,20 @@ jobs:
             --project ${{ needs.setup.outputs.project_id }} \
             --force --non-interactive
 
+      # Strict subset audit — the CI gate blocks on primary (maximal +
+      # mandatory-only) shapes; here we run the full power-set check
+      # (AUDIT_SUBSETS=1) as a *warning-only* step. Subset gaps only
+      # surface at runtime on the specific filter combination a user
+      # happens to submit (previous staging incident was category +
+      # location.city + status, 2026-04-19). Logs are attached to the
+      # deploy run so an operator can spot new gaps, but we don't block
+      # the deploy because the primary-only set is the authoritative CI
+      # gate. Flip `continue-on-error` to false once every reachable
+      # subset has a declared index.
+      - name: Audit Firestore index coverage (strict, all subsets — warning-only)
+        continue-on-error: true
+        run: npm run audit:firestore-indexes:strict
+
       - name: Deploy Firestore indexes
         # Requires the deploy SA to have `roles/datastore.indexAdmin` (or
         # broader Firebase admin). If this step fails with PERMISSION_DENIED,

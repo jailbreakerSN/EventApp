@@ -46,6 +46,40 @@ function generateSlug(title: string): string {
   return `${base}-${suffix}`;
 }
 
+// Date fields that should be compared by parsed-milliseconds rather than
+// string identity. A PATCH that re-serializes the same instant (e.g.
+// `2026-06-01T09:00:00Z` vs `2026-06-01T09:00:00.000Z`) would otherwise
+// look like a change and trigger a needless fan-out + schedule-change
+// push notification.
+const DATE_FIELDS = new Set(["startDate", "endDate"]);
+
+// Shallow-diff the submitted DTO against the stored event. Returns only
+// keys whose submitted value is defined AND differs from the stored value.
+// Used by update() to build a minimal `event.updated` domain-event payload
+// so downstream listeners don't react to no-op PATCHes.
+//
+// Date fields use millisecond comparison (see DATE_FIELDS). Other fields
+// use strict inequality — nested objects like `location` are compared by
+// reference so a fresh object with identical fields still counts as a
+// change. That's a conscious trade-off: we'd rather over-fire on a
+// nested-object PATCH than miss a real change to a free-text field.
+function diffChanges(
+  previous: Record<string, unknown>,
+  submitted: Record<string, unknown>,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(submitted)) {
+    if (value === undefined) continue;
+    if (DATE_FIELDS.has(key)) {
+      const a = typeof value === "string" ? Date.parse(value) : NaN;
+      const b = typeof previous[key] === "string" ? Date.parse(previous[key] as string) : NaN;
+      if (!Number.isNaN(a) && !Number.isNaN(b) && a === b) continue;
+    }
+    if (previous[key] !== value) out[key] = value;
+  }
+  return out;
+}
+
 // ─── Service ─────────────────────────────────────────────────────────────────
 
 export class EventService extends BaseService {
@@ -210,14 +244,23 @@ export class EventService extends BaseService {
 
     await eventRepository.update(eventId, updateData as Partial<Event>);
 
-    eventBus.emit("event.updated", {
-      eventId,
-      organizationId: event.organizationId,
-      changes: dto as Record<string, unknown>,
-      actorId: user.uid,
-      requestId: getRequestId(),
-      timestamp: new Date().toISOString(),
-    });
+    // Diff the submitted DTO against the pre-write event so only genuinely-
+    // changed fields land on the domain event. Downstream listeners (denorm
+    // fan-out, audit, schedule-change notifications) key off this payload;
+    // re-posting an unchanged value would otherwise trigger a no-op write
+    // fan-out across every registration and a spurious "schedule updated"
+    // push to every participant.
+    const changes = diffChanges(event, dto);
+    if (Object.keys(changes).length > 0) {
+      eventBus.emit("event.updated", {
+        eventId,
+        organizationId: event.organizationId,
+        changes,
+        actorId: user.uid,
+        requestId: getRequestId(),
+        timestamp: new Date().toISOString(),
+      });
+    }
   }
 
   async publish(eventId: string, user: AuthUser): Promise<void> {

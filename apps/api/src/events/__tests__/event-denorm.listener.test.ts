@@ -42,9 +42,17 @@ vi.mock("@/services/notification.service", () => ({
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
+// The listener's body chains ~6-10 awaits (eventRepository.findById, a
+// cursor-paginated loop, batch.commit per page, notifications). Two
+// setImmediate ticks aren't enough to let multi-page fan-outs complete, so
+// an in-flight listener from a previous test will bleed into the next and
+// call the now-reset mock (returning undefined) → the cross-test count on
+// mockFindByEventCursor goes up even though the current test's emit is
+// clean. Draining 16 ticks covers the deepest chain we exercise.
 const flush = async () => {
-  await new Promise((r) => setImmediate(r));
-  await new Promise((r) => setImmediate(r));
+  for (let i = 0; i < 16; i++) {
+    await new Promise((r) => setImmediate(r));
+  }
 };
 
 const basePayload = (changes: Record<string, unknown>): EventUpdatedEvent => ({
@@ -95,7 +103,15 @@ beforeEach(async () => {
   registerEventDenormListeners();
 });
 
-afterEach(() => {
+afterEach(async () => {
+  // Drain any in-flight listener from this test BEFORE removing the
+  // subscription — otherwise a pending promise chain (multi-page fan-out,
+  // chunked notifications) will bleed into the next test and call the
+  // current test's mocks, inflating call counts. removeAllListeners only
+  // prevents *new* emissions from reaching the handler.
+  for (let i = 0; i < 16; i++) {
+    await new Promise((r) => setImmediate(r));
+  }
   eventBus.removeAllListeners();
 });
 
@@ -181,5 +197,100 @@ describe("Event Denorm Listener", () => {
       eventBus.emit("event.updated", basePayload({ title: "Renamed Event" }));
       await flush();
     }).not.toThrow();
+  });
+
+  it("walks multiple pages until the cursor drains", async () => {
+    mockEventFindById.mockResolvedValue(buildEvent({ title: "Renamed" }));
+    // First page returns exactly CHUNK_SIZE (400) rows to signal more, second
+    // page returns a short page to terminate the loop.
+    const fullPage = Array.from({ length: 400 }, (_, i) => buildReg(`reg-${i}`, `u-${i}`));
+    const tailPage = [buildReg("reg-tail", "u-tail")];
+    mockFindByEventCursor
+      .mockResolvedValueOnce({ data: fullPage, lastDoc: { id: "cursor-400" } })
+      .mockResolvedValueOnce({ data: tailPage, lastDoc: null });
+
+    eventBus.emit("event.updated", basePayload({ title: "Renamed" }));
+    await flush();
+
+    expect(mockFindByEventCursor).toHaveBeenCalledTimes(2);
+    expect(mockFindByEventCursor.mock.calls[1][3]).toEqual({ id: "cursor-400" });
+    expect(mockBatchCommit).toHaveBeenCalledTimes(2);
+    // 400 + 1 batch.update calls across both chunks
+    expect(mockBatchUpdate).toHaveBeenCalledTimes(401);
+  });
+
+  it("notifies when only endDate changed, and the body describes the end move", async () => {
+    mockEventFindById.mockResolvedValue(buildEvent({ endDate: "2026-06-01T20:00:00.000Z" }));
+    mockFindByEventCursor.mockResolvedValue({
+      data: [buildReg("reg-1", "u-1")],
+      lastDoc: null,
+    });
+
+    eventBus.emit("event.updated", basePayload({ endDate: "2026-06-01T20:00:00.000Z" }));
+    await flush();
+
+    expect(mockNotificationSend).toHaveBeenCalledTimes(1);
+    const sent = mockNotificationSend.mock.calls[0][0] as { body: string; title: string };
+    expect(sent.title).toBe("Programme mis à jour");
+    expect(sent.body).toMatch(/fin/i);
+    expect(sent.body).not.toMatch(/nouveau début/i);
+  });
+
+  it("builds a combined body when both startDate and endDate changed", async () => {
+    mockEventFindById.mockResolvedValue(
+      buildEvent({
+        startDate: "2026-06-02T09:00:00.000Z",
+        endDate: "2026-06-02T18:00:00.000Z",
+      }),
+    );
+    mockFindByEventCursor.mockResolvedValue({
+      data: [buildReg("reg-1", "u-1")],
+      lastDoc: null,
+    });
+
+    eventBus.emit(
+      "event.updated",
+      basePayload({
+        startDate: "2026-06-02T09:00:00.000Z",
+        endDate: "2026-06-02T18:00:00.000Z",
+      }),
+    );
+    await flush();
+
+    const sent = mockNotificationSend.mock.calls[0][0] as { body: string };
+    expect(sent.body).toMatch(/Début\s*:/);
+    expect(sent.body).toMatch(/Fin\s*:/);
+  });
+
+  it("passes only FAN_OUT_STATUSES to the cursor so cancelled rows are excluded", async () => {
+    mockEventFindById.mockResolvedValue(buildEvent({ title: "Renamed" }));
+    mockFindByEventCursor.mockResolvedValue({ data: [], lastDoc: null });
+
+    eventBus.emit("event.updated", basePayload({ title: "Renamed" }));
+    await flush();
+
+    expect(mockFindByEventCursor).toHaveBeenCalledTimes(1);
+    const statuses = mockFindByEventCursor.mock.calls[0][1] as string[];
+    expect(statuses).toEqual(
+      expect.arrayContaining(["pending", "confirmed", "waitlisted", "checked_in"]),
+    );
+    expect(statuses).not.toContain("cancelled");
+  });
+
+  it("continues with the denorm fan-out even when notification sends fail", async () => {
+    mockEventFindById.mockResolvedValue(buildEvent({ startDate: "2026-06-02T09:00:00.000Z" }));
+    mockFindByEventCursor.mockResolvedValue({
+      data: [buildReg("reg-1", "u-1"), buildReg("reg-2", "u-2")],
+      lastDoc: null,
+    });
+    mockNotificationSend.mockRejectedValueOnce(new Error("fcm down")).mockResolvedValueOnce({});
+
+    eventBus.emit("event.updated", basePayload({ startDate: "2026-06-02T09:00:00.000Z" }));
+    await flush();
+
+    // Both participants were attempted; the batch write still committed.
+    expect(mockNotificationSend).toHaveBeenCalledTimes(2);
+    expect(mockBatchCommit).toHaveBeenCalledTimes(1);
+    expect(mockBatchUpdate).toHaveBeenCalledTimes(2);
   });
 });

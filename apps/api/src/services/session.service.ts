@@ -202,14 +202,22 @@ export class SessionService extends BaseService {
     });
   }
 
-  async removeBookmark(_eventId: string, sessionId: string, user: AuthUser): Promise<void> {
+  async removeBookmark(eventId: string, sessionId: string, user: AuthUser): Promise<void> {
     // No permission check: a user can always remove their own bookmark.
     // The repository query is scoped by `user.uid` so cross-user removal
     // is impossible.
+    //
+    // We DO verify that the bookmark's recorded eventId matches the eventId
+    // in the URL — otherwise a caller could pass the wrong event in the
+    // path and still remove the bookmark. Not a security hole (they own
+    // the bookmark either way), but accepting mismatched parameters is a
+    // footgun that hides client bugs.
     const bookmark = await sessionBookmarkRepository.findByUserAndSession(user.uid, sessionId);
-    if (bookmark) {
-      await sessionBookmarkRepository.deleteBookmark(bookmark.id);
+    if (!bookmark) return;
+    if (bookmark.eventId !== eventId) {
+      throw new ValidationError("Ce favori n'appartient pas à cet événement");
     }
+    await sessionBookmarkRepository.deleteBookmark(bookmark.id);
   }
 
   async getUserBookmarks(eventId: string, user: AuthUser): Promise<SessionBookmark[]> {

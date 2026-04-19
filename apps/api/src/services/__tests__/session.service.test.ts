@@ -291,11 +291,31 @@ describe("SessionService", () => {
 
   describe("removeBookmark", () => {
     it("removes a bookmark", async () => {
-      mockBookmarkRepo.findByUserAndSession.mockResolvedValue({ id: "bm-1" });
+      mockBookmarkRepo.findByUserAndSession.mockResolvedValue({ id: "bm-1", eventId });
 
       await service.removeBookmark(eventId, "sess-1", user);
 
       expect(mockBookmarkRepo.deleteBookmark).toHaveBeenCalledWith("bm-1");
+    });
+
+    it("rejects when the bookmark belongs to a different event", async () => {
+      mockBookmarkRepo.findByUserAndSession.mockResolvedValue({
+        id: "bm-1",
+        eventId: "other-event",
+      });
+
+      await expect(service.removeBookmark(eventId, "sess-1", user)).rejects.toThrow(
+        /n'appartient pas/,
+      );
+      expect(mockBookmarkRepo.deleteBookmark).not.toHaveBeenCalled();
+    });
+
+    it("silently no-ops when the user has no bookmark for the session", async () => {
+      mockBookmarkRepo.findByUserAndSession.mockResolvedValue(null);
+
+      await service.removeBookmark(eventId, "sess-1", user);
+
+      expect(mockBookmarkRepo.deleteBookmark).not.toHaveBeenCalled();
     });
   });
 });

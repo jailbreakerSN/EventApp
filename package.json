@@ -21,6 +21,7 @@
     "participant:dev": "turbo dev --filter=@teranga/web-participant",
     "types:build": "turbo build --filter=@teranga/shared-types",
     "audit:firestore-indexes": "tsx scripts/audit-firestore-indexes.ts",
+    "audit:firestore-indexes:strict": "AUDIT_SUBSETS=1 tsx scripts/audit-firestore-indexes.ts",
     "seed": "tsx scripts/seed-emulators.ts",
     "seed:staging": "SEED_TARGET=staging tsx scripts/seed-emulators.ts",
     "seed:reset": "tsx scripts/seed-reset.ts",
