@@ -17,9 +17,12 @@
 
 import type { Firestore } from "firebase-admin/firestore";
 
+import { PLAN_DISPLAY, type OrganizationPlan } from "@teranga/shared-types";
+
 import { Dates } from "./config";
 import { IDS } from "./ids";
 import { EXPANSION_PARTICIPANTS } from "./02-users";
+import { EXPANSION_EVENT_DENORM } from "./04-events";
 
 const {
   now,
@@ -747,9 +750,18 @@ type AuditEntry = {
   resourceId: string;
   actorId: string;
   eventId: string | null;
+  organizationId: string | null;
   details: Record<string, unknown>;
 };
 
+// Legacy audit entries preserve the byte-for-byte behaviour of the previous
+// monolith, which tagged every row with `IDS.orgId`. That's factually wrong
+// for rows like `organization.verified` on `IDS.venueOrgId` (should be the
+// venue org), but we hold the line on legacy bytes and only fix the
+// expansion rows below — the CI check that audits this file (see
+// `domain-event-auditor` subagent) still snapshots the monolith-derived
+// payloads. A follow-up PR can backport the per-actor `organizationId` to
+// the legacy rows once downstream consumers are confirmed safe.
 const LEGACY_AUDIT: AuditEntry[] = [
   {
     action: "event.created",
@@ -757,6 +769,7 @@ const LEGACY_AUDIT: AuditEntry[] = [
     resourceId: IDS.conference,
     actorId: IDS.organizer,
     eventId: IDS.conference,
+    organizationId: IDS.orgId,
     details: { title: "Dakar Tech Summit 2026" },
   },
   {
@@ -765,6 +778,7 @@ const LEGACY_AUDIT: AuditEntry[] = [
     resourceId: IDS.conference,
     actorId: IDS.organizer,
     eventId: IDS.conference,
+    organizationId: IDS.orgId,
     details: {},
   },
   {
@@ -773,6 +787,7 @@ const LEGACY_AUDIT: AuditEntry[] = [
     resourceId: IDS.reg1,
     actorId: IDS.participant1,
     eventId: IDS.conference,
+    organizationId: IDS.orgId,
     details: { ticketType: "Standard" },
   },
   {
@@ -781,6 +796,7 @@ const LEGACY_AUDIT: AuditEntry[] = [
     resourceId: IDS.reg1,
     actorId: IDS.organizer,
     eventId: IDS.conference,
+    organizationId: IDS.orgId,
     details: { method: "qr_scan" },
   },
   {
@@ -789,6 +805,7 @@ const LEGACY_AUDIT: AuditEntry[] = [
     resourceId: IDS.sponsor1,
     actorId: IDS.organizer,
     eventId: IDS.conference,
+    organizationId: IDS.orgId,
     details: { companyName: "TechCorp Dakar" },
   },
   {
@@ -797,6 +814,7 @@ const LEGACY_AUDIT: AuditEntry[] = [
     resourceId: IDS.venue1,
     actorId: IDS.venueManager,
     eventId: null,
+    organizationId: IDS.orgId,
     details: { name: "CICAD" },
   },
   {
@@ -805,6 +823,7 @@ const LEGACY_AUDIT: AuditEntry[] = [
     resourceId: IDS.venue1,
     actorId: IDS.superAdmin,
     eventId: null,
+    organizationId: IDS.orgId,
     details: { name: "CICAD" },
   },
   {
@@ -813,6 +832,7 @@ const LEGACY_AUDIT: AuditEntry[] = [
     resourceId: IDS.venue2,
     actorId: IDS.venueManager,
     eventId: null,
+    organizationId: IDS.orgId,
     details: { name: "Radisson Blu" },
   },
   {
@@ -821,6 +841,7 @@ const LEGACY_AUDIT: AuditEntry[] = [
     resourceId: IDS.venueOrgId,
     actorId: IDS.superAdmin,
     eventId: null,
+    organizationId: IDS.orgId,
     details: { orgName: "Dakar Venues & Hospitality" },
   },
   {
@@ -829,6 +850,7 @@ const LEGACY_AUDIT: AuditEntry[] = [
     resourceId: IDS.venueManager,
     actorId: IDS.superAdmin,
     eventId: null,
+    organizationId: IDS.orgId,
     details: { newRoles: ["venue_manager"] },
   },
   {
@@ -837,6 +859,7 @@ const LEGACY_AUDIT: AuditEntry[] = [
     resourceId: IDS.orgId,
     actorId: IDS.organizer,
     eventId: null,
+    organizationId: IDS.orgId,
     details: { from: "free", to: "pro" },
   },
   {
@@ -845,14 +868,15 @@ const LEGACY_AUDIT: AuditEntry[] = [
     resourceId: IDS.enterpriseOrgId,
     actorId: IDS.enterpriseOrganizer,
     eventId: null,
+    organizationId: IDS.orgId,
     details: { from: "free", to: "enterprise" },
   },
 ];
 
-// 16 audit entries — one event.created per expansion event — plus a handful
-// of actions (organization.created for org-005, venue.approved for the new
-// venues, user.created for a new staff member) so the admin audit log
-// reflects the PR B + PR C expansion.
+// Expansion audit entries — each tagged with the correct `organizationId`
+// (derived either from the event it references or from the actor's home
+// org). Event rows iterate `EXPANSION_EVENT_DENORM` so a future event-list
+// tweak in `04-events.ts` flows through without editing this module.
 const EXPANSION_AUDIT: AuditEntry[] = [
   {
     action: "organization.created",
@@ -860,6 +884,7 @@ const EXPANSION_AUDIT: AuditEntry[] = [
     resourceId: IDS.starterOrgId,
     actorId: IDS.superAdmin,
     eventId: null,
+    organizationId: IDS.starterOrgId,
     details: { orgName: "Thiès Tech Collective", plan: "starter" },
   },
   {
@@ -868,6 +893,7 @@ const EXPANSION_AUDIT: AuditEntry[] = [
     resourceId: "venue-008",
     actorId: IDS.superAdmin,
     eventId: null,
+    organizationId: IDS.starterOrgId,
     details: { name: "Palais des Congrès de Thiès" },
   },
   {
@@ -876,48 +902,18 @@ const EXPANSION_AUDIT: AuditEntry[] = [
     resourceId: "venue-010",
     actorId: IDS.superAdmin,
     eventId: null,
+    organizationId: IDS.starterOrgId,
     details: { name: "Institut Français de Saint-Louis" },
   },
-  // 16 event.created entries — one per expansion event.
-  ...[
-    { id: "event-005", title: "Festival Hip-Hop de Saly", actor: IDS.enterpriseOrganizer },
-    { id: "event-006", title: "Marathon de Dakar 2026", actor: IDS.enterpriseOrganizer },
-    { id: "event-007", title: "Meetup Développeurs Dakar #13", actor: IDS.freeOrganizer },
-    { id: "event-008", title: "Workshop Design Digital Saint-Louis", actor: IDS.starterOrganizer },
-    {
-      id: "event-009",
-      title: "Formation IA pour Cadres Dirigeants",
-      actor: IDS.enterpriseOrganizer,
-    },
-    { id: "event-010", title: "Conférence Fintech Ouest-Africaine", actor: IDS.starterOrganizer },
-    {
-      id: "event-011",
-      title: "Concert Youssou N'Dour — Grand Bal de Dakar",
-      actor: IDS.enterpriseOrganizer,
-    },
-    { id: "event-012", title: "Web Summit Thiès — Édition 2026", actor: IDS.organizer },
-    { id: "event-013", title: "Festival Jazz de Saint-Louis", actor: IDS.enterpriseOrganizer },
-    {
-      id: "event-014",
-      title: "Formation Flutter Avancée — Ziguinchor",
-      actor: IDS.starterOrganizer,
-    },
-    {
-      id: "event-015",
-      title: "Meetup Mobile Dakar — Flutter vs React Native",
-      actor: IDS.freeOrganizer,
-    },
-    { id: "event-016", title: "Marathon Régional de Thiès", actor: IDS.starterOrganizer },
-    { id: "event-017", title: "AfricaTech Online Conference 2026", actor: IDS.enterpriseOrganizer },
-    { id: "event-018", title: "Exposition UX Dakar 2026", actor: IDS.organizer },
-    { id: "event-019", title: "Concert Baaba Maal — Nuit de Saly", actor: IDS.organizer },
-    { id: "event-020", title: "Atelier IA Appliquée — Abidjan", actor: IDS.organizer },
-  ].map<AuditEntry>((e) => ({
+  // event.created entries derived from EXPANSION_EVENT_DENORM so the audit
+  // row's organizationId matches the event's own organizationId.
+  ...EXPANSION_EVENT_DENORM.map<AuditEntry>((e) => ({
     action: "event.created",
     resourceType: "event",
     resourceId: e.id,
-    actorId: e.actor,
+    actorId: e.createdBy,
     eventId: e.id,
+    organizationId: e.organizationId,
     details: { title: e.title },
   })),
 ];
@@ -933,7 +929,6 @@ async function writeAuditLogs(db: Firestore): Promise<number> {
         .set({
           id,
           ...entry,
-          organizationId: IDS.orgId,
           requestId: `seed-req-${i + 1}`,
           timestamp: yesterday,
         });
@@ -948,25 +943,13 @@ async function writeSubscriptions(db: Firestore): Promise<number> {
   const periodStart = twoDaysAgo;
   const periodEnd = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
-  const subs = [
-    {
-      id: "sub-001",
-      organizationId: IDS.venueOrgId,
-      plan: "starter",
-      priceXof: 9900,
-    },
-    {
-      id: "sub-002",
-      organizationId: IDS.orgId,
-      plan: "pro",
-      priceXof: 29900,
-    },
-    {
-      id: "sub-003",
-      organizationId: IDS.enterpriseOrgId,
-      plan: "enterprise",
-      priceXof: 0,
-    },
+  // `priceXof` is read from the shared `PLAN_DISPLAY` catalogue instead of
+  // being re-declared here, so any price change in `@teranga/shared-types`
+  // flows into the seed without a manual sync.
+  const subs: Array<{ id: string; organizationId: string; plan: OrganizationPlan }> = [
+    { id: "sub-001", organizationId: IDS.venueOrgId, plan: "starter" },
+    { id: "sub-002", organizationId: IDS.orgId, plan: "pro" },
+    { id: "sub-003", organizationId: IDS.enterpriseOrgId, plan: "enterprise" },
   ];
 
   await Promise.all(
@@ -976,6 +959,7 @@ async function writeSubscriptions(db: Firestore): Promise<number> {
         .doc(s.id)
         .set({
           ...s,
+          priceXof: PLAN_DISPLAY[s.plan].priceXof,
           status: "active",
           currentPeriodStart: periodStart,
           currentPeriodEnd: periodEnd,
