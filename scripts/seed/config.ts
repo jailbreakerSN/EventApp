@@ -101,30 +101,40 @@ export const Dates = {
 
   // past — anchor for "happened already" demo content
   fifteenMinutesAgo: isoAt(-15 * 60 * 1000),
+  twoHoursAgo: isoAt(-2 * HOUR_MS),
   oneHourAgo: isoAt(-HOUR_MS),
   yesterday: isoAt(-DAY_MS),
   twoDaysAgo: isoAt(-2 * DAY_MS),
   oneWeekAgo: isoAt(-7 * DAY_MS),
   twoWeeksAgo: isoAt(-14 * DAY_MS),
   oneMonthAgo: isoAt(-30 * DAY_MS),
+  fortyFiveDaysAgo: isoAt(-45 * DAY_MS),
   threeMonthsAgo: isoAt(-90 * DAY_MS),
 
   // live / near-term — anchor for "currently running" demo content
   inOneHour: isoAt(HOUR_MS),
   inThreeHours: isoAt(3 * HOUR_MS),
+  inFourHours: isoAt(4 * HOUR_MS),
+  inSixHours: isoAt(6 * HOUR_MS),
 
   // upcoming — anchor for "future" demo content
   inTwoDays: isoAt(2 * DAY_MS),
+  inThreeDays: isoAt(3 * DAY_MS),
   inFourDays: isoAt(4 * DAY_MS),
+  inFiveDays: isoAt(5 * DAY_MS),
   inOneWeek: isoAt(7 * DAY_MS),
   inOneWeekPlus1h: isoAt(7 * DAY_MS + HOUR_MS),
   inOneWeekPlus2h: isoAt(7 * DAY_MS + 2 * HOUR_MS),
   inOneWeekPlus3h: isoAt(7 * DAY_MS + 3 * HOUR_MS),
   inOneWeekPlus4h: isoAt(7 * DAY_MS + 4 * HOUR_MS),
+  inTenDays: isoAt(10 * DAY_MS),
   inTwoWeeks: isoAt(14 * DAY_MS),
   inThreeWeeks: isoAt(21 * DAY_MS),
   inOneMonth: isoAt(30 * DAY_MS),
+  inFortyFiveDays: isoAt(45 * DAY_MS),
   inTwoMonths: isoAt(60 * DAY_MS),
+  inSeventyFiveDays: isoAt(75 * DAY_MS),
+  inThreeMonths: isoAt(90 * DAY_MS),
 } as const;
 
 /** Compose a datetime relative to seed start. Useful for ad-hoc offsets. */
@@ -180,6 +190,14 @@ export const CITIES: Record<string, SeedCity> = {
     timezone: "Africa/Dakar",
     coordinates: { lat: 16.0179, lng: -16.4896 },
   },
+  ziguinchor: {
+    name: "Ziguinchor",
+    country: "Sénégal",
+    countryCode: "SN",
+    region: "Ziguinchor",
+    timezone: "Africa/Dakar",
+    coordinates: { lat: 12.5833, lng: -16.2719 },
+  },
   abidjan: {
     name: "Abidjan",
     country: "Côte d'Ivoire",
@@ -187,6 +205,22 @@ export const CITIES: Record<string, SeedCity> = {
     region: "Abidjan",
     timezone: "Africa/Abidjan",
     coordinates: { lat: 5.3599, lng: -4.0083 },
+  },
+  bamako: {
+    name: "Bamako",
+    country: "Mali",
+    countryCode: "ML",
+    region: "Bamako",
+    timezone: "Africa/Bamako",
+    coordinates: { lat: 12.6392, lng: -8.0029 },
+  },
+  lome: {
+    name: "Lomé",
+    country: "Togo",
+    countryCode: "TG",
+    region: "Maritime",
+    timezone: "Africa/Lome",
+    coordinates: { lat: 6.1725, lng: 1.2314 },
   },
 };
 
