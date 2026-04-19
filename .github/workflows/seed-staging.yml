@@ -1,0 +1,151 @@
+name: Seed staging (manual reset + re-seed)
+
+# One-shot workflow to blow away the staging Firestore and re-seed it from
+# scratch with the latest fixture set. Deliberately isolated from the daily
+# `deploy-staging.yml` seed step — that step is idempotent and safe to run
+# on every push, whereas this one is destructive and must be invoked
+# explicitly by a human.
+#
+# Safety rails (all four MUST align or the workflow aborts):
+#   1. `workflow_dispatch` only — no push / schedule triggers.
+#   2. A typed confirmation input: the operator must spell out the exact
+#      string `RESET_AND_SEED_STAGING` to proceed.
+#   3. The `staging` environment gate — GitHub will require reviewer
+#      approval per environment protection rules (configure in repo
+#      Settings → Environments if not already enabled).
+#   4. The seed scripts themselves double-check the project id against
+#      the allow-list in scripts/seed/config.ts (production is NOT in
+#      the allow-list) and refuse any reset that doesn't set
+#      SEED_RESET_CONFIRM=YES_RESET + CONFIRM_PROJECT=<project-id>.
+#
+# Usage: Actions → "Seed staging (manual reset + re-seed)" → Run workflow.
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type RESET_AND_SEED_STAGING to confirm (destructive — wipes staging Firestore)'
+        required: true
+        type: string
+      reset:
+        description: 'Reset Firestore before seeding (uncheck to skip the wipe and only re-run the seed upserts)'
+        required: true
+        type: boolean
+        default: true
+
+concurrency:
+  group: seed-staging
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: '22'
+  NPM_CONFIG_FETCH_RETRIES: '5'
+  NPM_CONFIG_FETCH_RETRY_MINTIMEOUT: '10000'
+  NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT: '120000'
+
+jobs:
+  # ─── Gate 1: verify the typed confirmation string ────────────────────────
+  # Runs without any cloud credentials so an attempt with the wrong
+  # confirmation never even authenticates to GCP.
+  verify-confirmation:
+    name: Verify confirmation string
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check input
+        run: |
+          if [ "${{ inputs.confirm }}" != "RESET_AND_SEED_STAGING" ]; then
+            echo "::error::confirm input must be exactly 'RESET_AND_SEED_STAGING' (got: '${{ inputs.confirm }}')"
+            exit 1
+          fi
+          echo "✓ Confirmation string matches."
+
+  # ─── Gate 2: environment-protected discovery of project id ───────────────
+  setup:
+    name: Discover staging project id
+    runs-on: ubuntu-latest
+    needs: verify-confirmation
+    environment: staging
+    outputs:
+      project_id: ${{ steps.discover.outputs.project_id }}
+    steps:
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - id: discover
+        run: |
+          PROJECT_ID=$(gcloud config get-value project)
+          echo "project_id=${PROJECT_ID}" >> "$GITHUB_OUTPUT"
+          echo "Staging project: ${PROJECT_ID}"
+          if [ "${PROJECT_ID}" != "teranga-events-staging" ]; then
+            echo "::error::Refusing to run: derived project id '${PROJECT_ID}' is not 'teranga-events-staging'."
+            exit 1
+          fi
+
+  # ─── Reset Firestore (opt-in, default true) ──────────────────────────────
+  reset:
+    name: Reset staging Firestore
+    runs-on: ubuntu-latest
+    needs: setup
+    if: ${{ inputs.reset }}
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: Build shared-types
+        run: npx turbo build --filter=@teranga/shared-types
+      - name: Run reset script
+        env:
+          SEED_TARGET: staging
+          FIREBASE_PROJECT_ID: ${{ needs.setup.outputs.project_id }}
+          SEED_RESET_CONFIRM: YES_RESET
+          CONFIRM_PROJECT: ${{ needs.setup.outputs.project_id }}
+        run: npx tsx scripts/seed-reset.ts
+
+  # ─── Re-seed (always runs; depends on reset when reset was requested) ────
+  seed:
+    name: Re-seed staging database
+    runs-on: ubuntu-latest
+    needs: [setup, reset]
+    # `always() && needs.setup.result == 'success'` so the seed still
+    # proceeds when `reset` is skipped (inputs.reset === false), but is
+    # correctly blocked when `reset` actually fails.
+    if: |
+      always() &&
+      needs.setup.result == 'success' &&
+      (needs.reset.result == 'success' || needs.reset.result == 'skipped')
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: Build shared-types
+        run: npx turbo build --filter=@teranga/shared-types
+      - name: Run full seed
+        env:
+          SEED_TARGET: staging
+          FIREBASE_PROJECT_ID: ${{ needs.setup.outputs.project_id }}
+          # After a reset, the idempotency guard sees an empty database and
+          # proceeds with the bulk seed. When the operator unchecked the
+          # reset input, we still want the full seed to run (the point of
+          # this manual workflow is refreshing fixtures), so force it.
+          SEED_FORCE: 'true'
+        run: npx tsx scripts/seed-emulators.ts
+      - name: Upsert QA fixture users (PR #59 role coverage)
+        env:
+          SEED_TARGET: staging
+          FIREBASE_PROJECT_ID: ${{ needs.setup.outputs.project_id }}
+        run: npx tsx scripts/seed-qa-fixtures.ts
