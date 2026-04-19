@@ -4,10 +4,11 @@ import {
   buildAuthUser,
   buildOrganizerUser,
   buildEvent,
+  buildOrganization,
   buildSponsor,
 } from "@/__tests__/factories";
 
-const { mockSponsorRepo, mockSponsorLeadRepo, mockEventRepo, mockUserRepo, mockEventBus } = vi.hoisted(() => ({
+const { mockSponsorRepo, mockSponsorLeadRepo, mockEventRepo, mockOrgRepo, mockUserRepo, mockEventBus } = vi.hoisted(() => ({
   mockSponsorRepo: {
     findByIdOrThrow: vi.fn(),
     findByEvent: vi.fn(),
@@ -20,6 +21,9 @@ const { mockSponsorRepo, mockSponsorLeadRepo, mockEventRepo, mockUserRepo, mockE
     create: vi.fn(),
   },
   mockEventRepo: {
+    findByIdOrThrow: vi.fn(),
+  },
+  mockOrgRepo: {
     findByIdOrThrow: vi.fn(),
   },
   mockUserRepo: {
@@ -46,6 +50,12 @@ vi.mock("@/repositories/event.repository", () => ({
   }),
 }));
 
+vi.mock("@/repositories/organization.repository", () => ({
+  organizationRepository: new Proxy({}, {
+    get: (_t, p) => (mockOrgRepo as Record<string, unknown>)[p as string],
+  }),
+}));
+
 vi.mock("@/repositories/registration.repository", () => ({
   registrationRepository: {},
 }));
@@ -67,7 +77,11 @@ vi.mock("@/services/qr-signing", () => ({
 
 const service = new SponsorService();
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  // SponsorService mutations are gated behind `sponsorPortal` (pro+).
+  mockOrgRepo.findByIdOrThrow.mockResolvedValue(buildOrganization({ id: "org-1", plan: "pro" }));
+});
 
 describe("SponsorService.createSponsor", () => {
   const orgId = "org-1";

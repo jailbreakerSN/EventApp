@@ -5,6 +5,7 @@ import {
 } from "@teranga/shared-types";
 import { speakerRepository } from "@/repositories/speaker.repository";
 import { eventRepository } from "@/repositories/event.repository";
+import { organizationRepository } from "@/repositories/organization.repository";
 import { type AuthUser } from "@/middlewares/auth.middleware";
 import { ConflictError } from "@/errors/app-error";
 import { BaseService } from "./base.service";
@@ -20,6 +21,10 @@ export class SpeakerService extends BaseService {
 
     const event = await eventRepository.findByIdOrThrow(dto.eventId);
     this.requireOrganizationAccess(user, event.organizationId);
+
+    // Gate speaker portal features behind `speakerPortal` (pro+).
+    const org = await organizationRepository.findByIdOrThrow(event.organizationId);
+    this.requirePlanFeature(org, "speakerPortal");
 
     // Check for duplicate speaker (same userId + event)
     if (dto.userId) {

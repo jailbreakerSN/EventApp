@@ -14,8 +14,12 @@ export class BadgeTemplateService extends BaseService {
     this.requirePermission(user, "badge:generate");
 
     // Verify organization exists and user belongs to it
-    await organizationRepository.findByIdOrThrow(dto.organizationId);
+    const org = await organizationRepository.findByIdOrThrow(dto.organizationId);
     this.requireOrganizationAccess(user, dto.organizationId);
+
+    // Gate custom badge templates behind `customBadges` (starter+).
+    // The default badge template bundled with the platform remains free.
+    this.requirePlanFeature(org, "customBadges");
 
     return badgeTemplateRepository.create(
       dto as Omit<BadgeTemplate, "id" | "createdAt" | "updatedAt">,
@@ -47,6 +51,11 @@ export class BadgeTemplateService extends BaseService {
 
     const template = await badgeTemplateRepository.findByIdOrThrow(templateId);
     this.requireOrganizationAccess(user, template.organizationId);
+
+    // Re-check `customBadges`: an org that downgraded off starter should
+    // not be able to edit a template that survived the downgrade.
+    const org = await organizationRepository.findByIdOrThrow(template.organizationId);
+    this.requirePlanFeature(org, "customBadges");
 
     await badgeTemplateRepository.update(templateId, dto as Partial<BadgeTemplate>);
   }

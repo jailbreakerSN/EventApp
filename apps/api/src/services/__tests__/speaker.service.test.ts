@@ -1,10 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { SpeakerService } from "../speaker.service";
-import { buildAuthUser, buildOrganizerUser, buildEvent, buildSpeaker } from "@/__tests__/factories";
+import {
+  buildAuthUser,
+  buildOrganizerUser,
+  buildEvent,
+  buildOrganization,
+  buildSpeaker,
+} from "@/__tests__/factories";
 
 // ─── Mocks (vi.hoisted) ──────────────────────────────────────────────────
 
-const { mockSpeakerRepo, mockEventRepo, mockEventBus } = vi.hoisted(() => ({
+const { mockSpeakerRepo, mockEventRepo, mockOrgRepo, mockEventBus } = vi.hoisted(() => ({
   mockSpeakerRepo: {
     findByIdOrThrow: vi.fn(),
     findByEvent: vi.fn(),
@@ -13,6 +19,9 @@ const { mockSpeakerRepo, mockEventRepo, mockEventBus } = vi.hoisted(() => ({
     update: vi.fn(),
   },
   mockEventRepo: {
+    findByIdOrThrow: vi.fn(),
+  },
+  mockOrgRepo: {
     findByIdOrThrow: vi.fn(),
   },
   mockEventBus: { emit: vi.fn() },
@@ -36,12 +45,25 @@ vi.mock("@/repositories/event.repository", () => ({
   ),
 }));
 
+vi.mock("@/repositories/organization.repository", () => ({
+  organizationRepository: new Proxy(
+    {},
+    {
+      get: (_t, p) => (mockOrgRepo as Record<string, unknown>)[p as string],
+    },
+  ),
+}));
+
 vi.mock("@/events/event-bus", () => ({ eventBus: mockEventBus }));
 vi.mock("@/context/request-context", () => ({ getRequestId: () => "test-req" }));
 
 const service = new SpeakerService();
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  // SpeakerService mutations are gated behind `speakerPortal` (pro+).
+  mockOrgRepo.findByIdOrThrow.mockResolvedValue(buildOrganization({ id: "org-1", plan: "pro" }));
+});
 
 // ─── createSpeaker ──────────────────────────────────────────────────────
 

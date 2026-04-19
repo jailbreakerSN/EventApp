@@ -30,6 +30,7 @@ export const AuditActionSchema = z.enum([
   "invite.declined",
   "invite.revoked",
   "member.role_changed",
+  "member.role_updated",
   "organization.updated",
   "session.created",
   "session.updated",
@@ -44,6 +45,7 @@ export const AuditActionSchema = z.enum([
   "payment.succeeded",
   "payment.failed",
   "payment.refunded",
+  "receipt.generated",
   // ── Speaker & Sponsor ──────────────────────────────────────────────────────
   "speaker.added",
   "speaker.removed",
@@ -67,6 +69,8 @@ export const AuditActionSchema = z.enum([
   "plan.updated",
   "plan.archived",
   // ── Subscription lifecycle (Phase 4c) ─────────────────────────────────────
+  "subscription.upgraded",
+  "subscription.downgraded",
   "subscription.change_scheduled",
   "subscription.scheduled_reverted",
   "subscription.period_rolled_over",

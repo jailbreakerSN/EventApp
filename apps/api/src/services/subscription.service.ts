@@ -339,12 +339,22 @@ export class SubscriptionService extends BaseService {
             `Impossible de passer du plan ${org.plan} au plan ${targetPlan}`,
           );
         }
-        // Validate fit (member count checked at schedule time; event count
-        // rechecked at rollover — events can grow before effectiveAt).
+        // Validate fit. Member count is read from the org doc (authoritative
+        // at schedule time). Active event count is queried live — we refuse
+        // to queue a downgrade that ALREADY violates the target's event cap
+        // today, even though events could theoretically drop before
+        // effectiveAt. Rationale: letting the customer queue a guaranteed
+        // rollover failure creates a silent footgun at renewal time.
         const memberCount = org.memberIds?.length ?? 0;
         if (isFinite(targetMaxMembers) && memberCount > targetMaxMembers) {
           throw new PlanLimitError(
             `Utilisation actuelle dépasse les limites du plan ${targetPlan}: ${memberCount} membres (max ${targetMaxMembers})`,
+          );
+        }
+        const scheduledActiveEvents = await eventRepository.countActiveByOrganization(orgId);
+        if (isFinite(targetMaxEvents) && scheduledActiveEvents > targetMaxEvents) {
+          throw new PlanLimitError(
+            `Utilisation actuelle dépasse les limites du plan ${targetPlan}: ${scheduledActiveEvents} événements actifs (max ${targetMaxEvents})`,
           );
         }
 
@@ -381,7 +391,22 @@ export class SubscriptionService extends BaseService {
       // has no prepaid rights to honor.
     }
 
-    // Transactional: read org + validate path + check usage + update + denormalize atomically
+    // Pre-check active event count BEFORE committing the plan flip. Firestore
+    // transactions can't include aggregation queries, and doing this check
+    // AFTER the transaction would require a compensating rollback that is
+    // not itself atomic — a Cloud Run crash between the tx commit and the
+    // rollback would leave the org on the wrong plan. Pre-checking avoids
+    // that failure mode. The narrow race where an event is created between
+    // this check and the tx commit is acceptable: new events can still be
+    // created under the old plan until the transaction commits.
+    const activeEvents = await eventRepository.countActiveByOrganization(orgId);
+    if (isFinite(targetMaxEvents) && activeEvents > targetMaxEvents) {
+      throw new PlanLimitError(
+        `${activeEvents} événements actifs (max ${targetMaxEvents} sur ${targetPlan})`,
+      );
+    }
+
+    // Transactional: read org + validate path + check member-count + update + denormalize atomically
     const previousPlan = await db.runTransaction(async (tx) => {
       const orgRef = db.collection(COLLECTIONS.ORGANIZATIONS).doc(orgId);
       const orgSnap = await tx.get(orgRef);
@@ -422,16 +447,6 @@ export class SubscriptionService extends BaseService {
       tx.update(orgRef, update);
       return orgData.plan;
     });
-
-    // Check event count outside transaction (not modifiable in this operation)
-    const activeEvents = await eventRepository.countActiveByOrganization(orgId);
-    if (isFinite(targetMaxEvents) && activeEvents > targetMaxEvents) {
-      // Rollback plan change — usage exceeded
-      await organizationRepository.update(orgId, { plan: previousPlan } as Partial<Organization>);
-      throw new PlanLimitError(
-        `${activeEvents} événements actifs (max ${targetMaxEvents} sur ${targetPlan})`,
-      );
-    }
 
     // Update subscription doc. Any previously queued scheduledChange is
     // cleared — we've just applied a flip, so a pending one (possibly

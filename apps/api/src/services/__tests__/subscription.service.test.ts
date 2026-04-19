@@ -421,22 +421,22 @@ describe("SubscriptionService.downgrade", () => {
   it("rejects downgrade when event count exceeds target limit", async () => {
     const user = buildOrganizerUser("org-1");
 
-    // Transaction passes (member count OK), but event count exceeds free limit (3)
-    mockTxGet.mockResolvedValue({
-      exists: true,
-      data: () => ({ plan: "starter", memberIds: ["user-1"] }),
-    });
+    // Event count exceeds free limit (3). After the P3 atomicity hardening
+    // this check runs BEFORE the transaction — Firestore aggregations can't
+    // participate in runTransaction(), so we pre-guard the write instead of
+    // compensating after the fact. Narrow race window but no dual-write
+    // rollback semantics needed.
+    mockOrgRepo.findByIdOrThrow.mockResolvedValue(
+      buildOrganization({ plan: "starter", memberIds: ["user-1"] }),
+    );
     mockEventRepo.countActiveByOrganization.mockResolvedValue(5);
 
     await expect(service.downgrade("org-1", "free", user)).rejects.toThrow(
       "Limite du plan atteinte",
     );
 
-    // Should rollback the plan change
-    expect(mockOrgRepo.update).toHaveBeenCalledWith(
-      "org-1",
-      expect.objectContaining({ plan: "starter" }),
-    );
+    // Pre-guard: no write attempted — neither apply nor rollback.
+    expect(mockOrgRepo.update).not.toHaveBeenCalled();
   });
 
   it("rejects invalid downgrade path (free to starter)", async () => {

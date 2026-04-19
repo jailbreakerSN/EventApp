@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { PromoCodeService } from "../promo-code.service";
-import { buildOrganizerUser, buildAuthUser, buildEvent } from "@/__tests__/factories";
+import { buildOrganizerUser, buildAuthUser, buildEvent, buildOrganization } from "@/__tests__/factories";
 import { type PromoCode } from "@teranga/shared-types";
 
 // ─── Mocks ─────────────────────────────────────────────────────────────────
@@ -17,6 +17,10 @@ const mockEventRepo = {
   findByIdOrThrow: vi.fn(),
 };
 
+const mockOrgRepo = {
+  findByIdOrThrow: vi.fn(),
+};
+
 vi.mock("@/repositories/promo-code.repository", () => ({
   promoCodeRepository: new Proxy({}, {
     get: (_target, prop) => (mockPromoCodeRepo as Record<string, unknown>)[prop as string],
@@ -26,6 +30,12 @@ vi.mock("@/repositories/promo-code.repository", () => ({
 vi.mock("@/repositories/event.repository", () => ({
   eventRepository: new Proxy({}, {
     get: (_target, prop) => (mockEventRepo as Record<string, unknown>)[prop as string],
+  }),
+}));
+
+vi.mock("@/repositories/organization.repository", () => ({
+  organizationRepository: new Proxy({}, {
+    get: (_target, prop) => (mockOrgRepo as Record<string, unknown>)[prop as string],
   }),
 }));
 
@@ -61,6 +71,8 @@ const service = new PromoCodeService();
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // PromoCodeService mutations are gated behind `promoCodes` (starter+).
+  mockOrgRepo.findByIdOrThrow.mockResolvedValue(buildOrganization({ id: "org-1", plan: "starter" }));
 });
 
 // ─── createPromoCode ────────────────────────────────────────────────────────

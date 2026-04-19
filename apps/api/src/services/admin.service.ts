@@ -157,17 +157,21 @@ class AdminService extends BaseService {
       throw new ForbiddenError("Impossible de retirer votre propre rôle super_admin");
     }
 
-    // Fetch current user doc
-    const userDoc = await db.collection(COLLECTIONS.USERS).doc(targetUserId).get();
-    if (!userDoc.exists) throw new NotFoundError("User", targetUserId);
-
-    const currentData = userDoc.data()!;
-    const oldRoles = (currentData.roles as string[]) ?? ["participant"];
-
-    // Update Firestore user doc FIRST.
-    await db.collection(COLLECTIONS.USERS).doc(targetUserId).update({
-      roles,
-      updatedAt: new Date().toISOString(),
+    // Transactional read-then-write on the Firestore side so two concurrent
+    // admin updates can't interleave. The Auth claims mutation remains
+    // outside the transaction boundary (cross-system — Auth is not part of
+    // Firestore's atomicity), so we keep the compensating rollback below.
+    const { oldRoles, organizationId } = await db.runTransaction(async (tx) => {
+      const userRef = db.collection(COLLECTIONS.USERS).doc(targetUserId);
+      const snap = await tx.get(userRef);
+      if (!snap.exists) throw new NotFoundError("User", targetUserId);
+      const data = snap.data()!;
+      const prevRoles = (data.roles as string[]) ?? ["participant"];
+      tx.update(userRef, { roles, updatedAt: new Date().toISOString() });
+      return {
+        oldRoles: prevRoles,
+        organizationId: (data.organizationId as string | undefined) ?? undefined,
+      };
     });
 
     // Update Firebase Auth custom claims (critical — JWT is source of
@@ -181,7 +185,7 @@ class AdminService extends BaseService {
     try {
       await auth.setCustomUserClaims(targetUserId, {
         roles,
-        organizationId: currentData.organizationId ?? undefined,
+        organizationId,
       });
     } catch (err) {
       // Compensating write — best-effort, but the original Auth error
@@ -220,15 +224,14 @@ class AdminService extends BaseService {
       throw new ForbiddenError("Impossible de suspendre votre propre compte");
     }
 
-    const userDoc = await db.collection(COLLECTIONS.USERS).doc(targetUserId).get();
-    if (!userDoc.exists) throw new NotFoundError("User", targetUserId);
-
-    const previousIsActive = (userDoc.data()?.isActive as boolean | undefined) ?? true;
-
-    // Update Firestore
-    await db.collection(COLLECTIONS.USERS).doc(targetUserId).update({
-      isActive,
-      updatedAt: new Date().toISOString(),
+    // Transactional read-then-write — same rationale as updateUserRoles().
+    const previousIsActive = await db.runTransaction(async (tx) => {
+      const userRef = db.collection(COLLECTIONS.USERS).doc(targetUserId);
+      const snap = await tx.get(userRef);
+      if (!snap.exists) throw new NotFoundError("User", targetUserId);
+      const prev = (snap.data()?.isActive as boolean | undefined) ?? true;
+      tx.update(userRef, { isActive, updatedAt: new Date().toISOString() });
+      return prev;
     });
 
     // Disable/enable in Firebase Auth. Same drift-rollback story as

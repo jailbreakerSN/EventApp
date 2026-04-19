@@ -71,7 +71,8 @@ beforeEach(() => {
 describe("BadgeTemplateService.create", () => {
   it("creates a template when user has permission and org access", async () => {
     const user = buildOrganizerUser("org-1");
-    const org = buildOrganization({ id: "org-1" });
+    // customBadges feature requires starter-or-better after P3 gate.
+    const org = buildOrganization({ id: "org-1", plan: "starter" });
     const template = buildTemplate();
 
     mockOrgRepo.findByIdOrThrow.mockResolvedValue(org);

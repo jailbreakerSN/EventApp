@@ -32,7 +32,18 @@
       "title": "Am na njumte",
       "description": "Mënunoo yónnee xët bi. Jéemal ay saañu.",
       "retry": "Jéem waaf",
-      "home": "Kër"
+      "home": "Kër",
+      "authKicker": "— NJUMTE",
+      "authTitle": "Njumte ci duggal",
+      "authDescription": "Am na njumte. Jéemal ay saañu.",
+      "unexpectedTitle": "Njumte mu nekkul",
+      "unexpectedDescription": "Am na njumte. Jéemal ay saañu."
+    },
+    "notFoundPage": {
+      "kicker": "— XËT BI GISU KO",
+      "title": "Xët bii amatul",
+      "description": "Xët bi nga seet amul walla ñu koy sottiku.",
+      "cta": "Dellu ci xew yi"
     }
   },
   "auth": {

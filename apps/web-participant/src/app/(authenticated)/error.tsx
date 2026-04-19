@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { AlertTriangle, RotateCcw } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { Button, EmptyStateEditorial } from "@teranga/shared-ui";
 
 export default function AuthenticatedError({
@@ -11,6 +12,8 @@ export default function AuthenticatedError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  const t = useTranslations("common.errorBoundary");
+
   useEffect(() => {
     console.error("[AuthenticatedError]", error);
   }, [error]);
@@ -20,13 +23,13 @@ export default function AuthenticatedError({
       <div className="w-full max-w-md">
         <EmptyStateEditorial
           icon={AlertTriangle}
-          kicker="— ERREUR"
-          title="Erreur inattendue"
-          description={error.message || "Une erreur est survenue. Veuillez réessayer."}
+          kicker={t("kicker")}
+          title={t("unexpectedTitle")}
+          description={error.message || t("unexpectedDescription")}
           action={
             <Button onClick={reset}>
               <RotateCcw className="mr-2 h-4 w-4" aria-hidden="true" />
-              Réessayer
+              {t("retry")}
             </Button>
           }
         />

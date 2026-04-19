@@ -5,6 +5,7 @@ import {
 } from "@teranga/shared-types";
 import { promoCodeRepository } from "@/repositories/promo-code.repository";
 import { eventRepository } from "@/repositories/event.repository";
+import { organizationRepository } from "@/repositories/organization.repository";
 import { type PaginatedResult } from "@/repositories/base.repository";
 import { type AuthUser } from "@/middlewares/auth.middleware";
 import { ConflictError, ValidationError } from "@/errors/app-error";
@@ -26,6 +27,10 @@ export class PromoCodeService extends BaseService {
     // Fetch event to verify org access
     const event = await eventRepository.findByIdOrThrow(dto.eventId);
     this.requireOrganizationAccess(user, event.organizationId);
+
+    // Gate behind the `promoCodes` plan feature (starter+).
+    const org = await organizationRepository.findByIdOrThrow(event.organizationId);
+    this.requirePlanFeature(org, "promoCodes");
 
     // Validate discount value
     if (dto.discountType === "percentage" && (dto.discountValue < 1 || dto.discountValue > 100)) {

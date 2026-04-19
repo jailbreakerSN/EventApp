@@ -8,25 +8,36 @@ import {
 } from "@/__tests__/factories";
 
 // ─── Mocks ─────────────────────────────────────────────────────────────────
+//
+// vi.hoisted so the factories (which run before module imports) can see the
+// mock snapshots. Previously this was only a chain of top-level consts,
+// which broke once analytics.service started importing organizationRepository
+// — the organization repo's constructor calls db.collection(...) at module
+// load, which fires the firebase mock factory BEFORE the snapshot consts
+// initialize. Hoisting keeps the closure reference valid.
+const { mockEventsSnap, mockRegsSnap, mockOrgDocGet, mockEventsQuery, mockRegsQuery } = vi.hoisted(() => {
+  const mockEventsSnap = {
+    docs: [] as Array<{ id: string; data: () => Record<string, unknown> }>,
+  };
+  const mockRegsSnap = {
+    docs: [] as Array<{ id: string; data: () => Record<string, unknown> }>,
+  };
+  const mockEventsQuery = {
+    where: vi.fn().mockReturnThis(),
+    limit: vi.fn().mockReturnThis(),
+    get: vi.fn().mockResolvedValue(mockEventsSnap),
+  };
+  const mockRegsQuery = {
+    where: vi.fn().mockReturnThis(),
+    limit: vi.fn().mockReturnThis(),
+    get: vi.fn().mockResolvedValue(mockRegsSnap),
+  };
+  const mockOrgDocGet = vi.fn();
+  return { mockEventsSnap, mockRegsSnap, mockOrgDocGet, mockEventsQuery, mockRegsQuery };
+});
 
-const mockEventsSnap = {
-  docs: [] as Array<{ id: string; data: () => Record<string, unknown> }>,
-};
-
-const mockRegsSnap = {
-  docs: [] as Array<{ id: string; data: () => Record<string, unknown> }>,
-};
-
-const mockEventsQuery = {
-  where: vi.fn().mockReturnThis(),
-  limit: vi.fn().mockReturnThis(),
-  get: vi.fn().mockResolvedValue(mockEventsSnap),
-};
-
-const mockRegsQuery = {
-  where: vi.fn().mockReturnThis(),
-  limit: vi.fn().mockReturnThis(),
-  get: vi.fn().mockResolvedValue(mockRegsSnap),
+const mockOrgRepo = {
+  findByIdOrThrow: vi.fn(),
 };
 
 vi.mock("@/config/firebase", () => ({
@@ -34,13 +45,34 @@ vi.mock("@/config/firebase", () => ({
     collection: vi.fn((name: string) => {
       if (name === "events") return mockEventsQuery;
       if (name === "registrations") return mockRegsQuery;
+      if (name === "organizations") {
+        // Minimal stub so OrganizationRepository's constructor can
+        // call db.collection("organizations").doc(...).get() without
+        // crashing. Actual lookups in tests go through mockOrgRepo.
+        return {
+          doc: vi.fn(() => ({ get: mockOrgDocGet })),
+          where: vi.fn().mockReturnThis(),
+          limit: vi.fn().mockReturnThis(),
+          get: vi.fn(),
+        };
+      }
       return mockEventsQuery;
     }),
   },
   COLLECTIONS: {
     EVENTS: "events",
     REGISTRATIONS: "registrations",
+    ORGANIZATIONS: "organizations",
   },
+}));
+
+vi.mock("@/repositories/organization.repository", () => ({
+  organizationRepository: new Proxy(
+    {},
+    {
+      get: (_t, p) => (mockOrgRepo as Record<string, unknown>)[p as string],
+    },
+  ),
 }));
 
 vi.mock("@/events/event-bus", () => ({
@@ -69,6 +101,13 @@ describe("AnalyticsService", () => {
     mockRegsQuery.where.mockReturnThis();
     mockRegsQuery.limit.mockReturnThis();
     mockRegsQuery.get.mockResolvedValue(mockRegsSnap);
+    // advancedAnalytics requires pro-or-better after P3 gate.
+    mockOrgRepo.findByIdOrThrow.mockResolvedValue({
+      id: orgId,
+      plan: "pro",
+      name: "Test Org",
+      slug: "test-org",
+    });
   });
 
   it("returns empty analytics for org with no events", async () => {
