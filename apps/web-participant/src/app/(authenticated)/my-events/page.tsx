@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import Link from "next/link";
 import {
   ArrowRight,
   Calendar,
   CalendarDays,
   Check,
+  ExternalLink,
   LayoutList,
   ListOrdered,
   LogOut,
@@ -15,13 +16,17 @@ import {
   Settings,
   XCircle,
 } from "lucide-react";
-import { CalendarView } from "@/components/calendar-view";
+import {
+  EventCalendar,
+  type CalendarEvent,
+  type CalendarEventAction,
+} from "@/components/event-calendar";
 import { toast } from "sonner";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query";
 import { useLocale, useTranslations } from "next-intl";
 import { useMyRegistrations, useCancelRegistration } from "@/hooks/use-registrations";
 import { useAuth } from "@/hooks/use-auth";
-import { paymentsApi } from "@/lib/api-client";
+import { eventsApi, paymentsApi } from "@/lib/api-client";
 import {
   Button,
   Card,
@@ -81,6 +86,47 @@ export default function MyEventsPage() {
 
   const registrations = data?.data;
   const meta = data?.meta;
+
+  // Batch-fetch event details for registrations missing eventStartDate.
+  // These are older registrations created before the denormalization was added.
+  const missingStartDate = useMemo(
+    () => (registrations ?? []).filter((r) => !r.eventStartDate),
+    [registrations],
+  );
+
+  const eventDetailQueries = useQueries({
+    queries: missingStartDate.map((r) => ({
+      queryKey: ["event-detail", r.eventSlug ?? r.eventId] as const,
+      queryFn: () =>
+        r.eventSlug
+          ? eventsApi.getBySlug(r.eventSlug).then((res) => res.data)
+          : eventsApi.getById(r.eventId).then((res) => res.data),
+      staleTime: 5 * 60 * 1000,
+      retry: 1,
+    })),
+  });
+
+  // Map eventId → fetched event details so we can fill in missing start dates.
+  const eventDetailMap = useMemo(() => {
+    const map = new Map<string, { startDate?: string; endDate?: string; location?: string }>();
+    missingStartDate.forEach((reg, i) => {
+      const result = eventDetailQueries[i];
+      if (result?.data) {
+        const loc = result.data.location;
+        map.set(reg.eventId, {
+          startDate: result.data.startDate,
+          endDate: result.data.endDate,
+          // Event.location is a structured object; extract a display string.
+          location:
+            typeof loc === "string"
+              ? loc
+              : ((loc as { name?: string; city?: string } | undefined)?.name ??
+                (loc as { name?: string; city?: string } | undefined)?.city),
+        });
+      }
+    });
+    return map;
+  }, [missingStartDate, eventDetailQueries]);
 
   const refundMutation = useMutation({
     mutationFn: (paymentId: string) => paymentsApi.refund(paymentId, t("refundReason")),
@@ -144,6 +190,123 @@ export default function MyEventsPage() {
   // future feature — the tab is rendered for parity with the prototype.
   const upcoming = (registrations ?? []).filter((r) => r.status !== "checked_in");
   const past = (registrations ?? []).filter((r) => r.status === "checked_in");
+
+  // Build CalendarEvent[] from upcoming registrations, backfilling startDate
+  // from the fetched event details when the registration itself lacks it.
+  const calendarEvents = useMemo<CalendarEvent[]>(() => {
+    const result: CalendarEvent[] = [];
+    for (const rawReg of upcoming) {
+      const reg = rawReg as RegistrationWithExtras;
+      const fetched = eventDetailMap.get(reg.eventId);
+      const startDate = reg.eventStartDate ?? fetched?.startDate;
+      if (!startDate) continue;
+      result.push({
+        id: reg.id,
+        title: reg.eventTitle ?? reg.eventId,
+        startDate,
+        endDate: reg.eventEndDate ?? fetched?.endDate,
+        status: reg.status,
+        location: fetched?.location,
+        slug: reg.eventSlug ?? undefined,
+        gradient: getCoverGradient(reg.eventId).bg,
+        variant: "mine",
+      });
+    }
+    return result;
+  }, [upcoming, eventDetailMap]);
+
+  async function handleDiscovery(year: number, month: number): Promise<CalendarEvent[]> {
+    const start = new Date(year, month, 1).toISOString();
+    const end = new Date(year, month + 1, 0, 23, 59, 59).toISOString();
+    try {
+      const res = await eventsApi.search({ dateFrom: start, dateTo: end, limit: 50 });
+      return (res.data ?? []).map((ev) => {
+        const loc = ev.location;
+        const locationStr =
+          typeof loc === "string"
+            ? loc
+            : ((loc as { name?: string; city?: string } | undefined)?.name ??
+              (loc as { name?: string; city?: string } | undefined)?.city);
+        return {
+          id: `discovery-${ev.id}`,
+          title: ev.title,
+          startDate: ev.startDate,
+          endDate: ev.endDate,
+          location: locationStr,
+          slug: ev.slug,
+          gradient: getCoverGradient(ev.id).bg,
+          variant: "discovery" as const,
+        };
+      });
+    } catch {
+      return [];
+    }
+  }
+
+  const calendarLabels = {
+    prevMonth: t("calendar.prevMonth"),
+    nextMonth: t("calendar.nextMonth"),
+    today: t("calendar.today"),
+    more: t("calendar.more"),
+    legend: t("calendar.legend"),
+    legendConfirmed: t("calendar.confirmed"),
+    legendCheckedIn: t("calendar.checkedIn"),
+    legendPending: t("calendar.pending"),
+    legendWaitlisted: t("calendar.waitlisted"),
+    legendDiscovery: t("calendar.discoveryLegend"),
+    discoveryOn: t("calendar.discoveryOn"),
+    discoveryOff: t("calendar.discoveryOff"),
+    closeDialog: t("calendar.closeDialog"),
+  };
+
+  function getCalendarActions(event: CalendarEvent): CalendarEventAction[] {
+    if (event.variant === "discovery") {
+      return [
+        {
+          label: t("details"),
+          icon: <ExternalLink className="h-4 w-4" />,
+          href: `/events/${event.slug ?? event.id.replace("discovery-", "")}`,
+          variant: "primary",
+        },
+      ];
+    }
+    const reg = upcoming.find((r) => r.id === event.id) as RegistrationWithExtras | undefined;
+
+    const acts: CalendarEventAction[] = [];
+    if (event.slug) {
+      acts.push({
+        label: t("details"),
+        icon: <ExternalLink className="h-4 w-4" />,
+        href: `/events/${event.slug}`,
+        variant: "primary",
+      });
+    }
+    if (event.slug) {
+      acts.push({
+        label: t("viewSchedule"),
+        icon: <Calendar className="h-4 w-4" />,
+        href: `/events/${event.slug}/schedule`,
+        variant: "outline",
+      });
+    }
+    if (reg?.status === "confirmed" && reg?.qrCodeValue) {
+      acts.push({
+        label: t("badge"),
+        icon: <QrCode className="h-4 w-4" />,
+        href: `/my-events/${reg.id}/badge`,
+        variant: "outline",
+      });
+    }
+    if (reg && ["confirmed", "pending"].includes(reg.status)) {
+      acts.push({
+        label: t("cancel"),
+        icon: <XCircle className="h-4 w-4" />,
+        onClick: () => setCancelTarget(reg.id),
+        variant: "danger",
+      });
+    }
+    return acts;
+  }
 
   const firstName = (user?.displayName ?? user?.email ?? "").split(" ")[0];
 
@@ -288,9 +451,13 @@ export default function MyEventsPage() {
           )}
 
           {/* Calendar view */}
-          {viewMode === "calendar" && registrations && upcoming.length > 0 && (
-            <CalendarView
-              registrations={upcoming as Parameters<typeof CalendarView>[0]["registrations"]}
+          {viewMode === "calendar" && registrations && (
+            <EventCalendar
+              events={calendarEvents}
+              loading={isLoading}
+              labels={calendarLabels}
+              onDiscovery={handleDiscovery}
+              actions={getCalendarActions}
             />
           )}
 

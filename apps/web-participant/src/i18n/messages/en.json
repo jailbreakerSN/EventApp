@@ -562,12 +562,17 @@
     "calendar": {
       "prevMonth": "Previous month",
       "nextMonth": "Next month",
+      "today": "Today",
       "more": "more",
       "legend": "Status",
       "confirmed": "Confirmed",
       "checkedIn": "Attended",
       "pending": "Pending",
-      "waitlisted": "Waitlisted"
+      "waitlisted": "Waitlisted",
+      "discoveryLegend": "Other events",
+      "discoveryOn": "Discover other events",
+      "discoveryOff": "Hide others",
+      "closeDialog": "Close"
     },
     "paginationPrev": "Previous",
     "paginationNext": "Next",

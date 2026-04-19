@@ -565,12 +565,17 @@
     "calendar": {
       "prevMonth": "Mois précédent",
       "nextMonth": "Mois suivant",
+      "today": "Aujourd'hui",
       "more": "de plus",
       "legend": "Statuts",
       "confirmed": "Confirmé",
       "checkedIn": "Présent",
       "pending": "En attente",
-      "waitlisted": "Liste d'attente"
+      "waitlisted": "Liste d'attente",
+      "discoveryLegend": "Autres événements",
+      "discoveryOn": "Voir d'autres événements",
+      "discoveryOff": "Masquer les autres",
+      "closeDialog": "Fermer"
     },
     "paginationPrev": "Précédent",
     "paginationNext": "Suivant",
