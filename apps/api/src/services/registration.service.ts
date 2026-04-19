@@ -140,6 +140,8 @@ export class RegistrationService extends BaseService {
         ticketTypeId,
         eventTitle: event.title,
         eventSlug: event.slug,
+        eventStartDate: event.startDate,
+        eventEndDate: event.endDate,
         ticketTypeName: ticketType.name,
         participantName: userProfile?.displayName ?? null,
         participantEmail: userProfile?.email ?? null,
