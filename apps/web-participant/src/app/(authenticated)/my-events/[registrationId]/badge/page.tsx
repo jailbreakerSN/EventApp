@@ -3,19 +3,11 @@
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useState, useEffect, useMemo } from "react";
-import {
-  ArrowLeft,
-  CheckCircle2,
-  Download,
-  Loader2,
-  AlertTriangle,
-  WifiOff,
-} from "lucide-react";
+import { ArrowLeft, CheckCircle2, Download, Loader2, AlertTriangle, WifiOff } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocale, useTranslations } from "next-intl";
 import { registrationsApi, badgesApi } from "@/lib/api-client";
-import { cacheBadgeInServiceWorker } from "@/hooks/use-badges";
 import { useAuth } from "@/hooks/use-auth";
 import {
   Button,
@@ -25,7 +17,7 @@ import {
   TicketPass,
   formatDate,
 } from "@teranga/shared-ui";
-import type { Registration, GeneratedBadge } from "@teranga/shared-types";
+import type { Registration } from "@teranga/shared-types";
 import { intlLocale } from "@/lib/intl-locale";
 import { loadBadge, saveBadge, type CachedBadge } from "@/lib/badge-store";
 
@@ -112,8 +104,7 @@ export default function BadgePage() {
       qrCodeValue: networkRegistration.qrCodeValue,
       eventId: networkRegistration.eventId,
       eventTitle: networkRegistration.eventTitle ?? networkRegistration.eventId,
-      holderName:
-        networkRegistration.participantName ?? user?.displayName ?? user?.email ?? "",
+      holderName: networkRegistration.participantName ?? user?.displayName ?? user?.email ?? "",
       ticketTypeName: networkRegistration.ticketTypeName ?? "",
       cachedAt: new Date().toISOString(),
     });
@@ -124,8 +115,7 @@ export default function BadgePage() {
       qrCodeValue: networkRegistration.qrCodeValue,
       eventId: networkRegistration.eventId,
       eventTitle: networkRegistration.eventTitle ?? networkRegistration.eventId,
-      holderName:
-        networkRegistration.participantName ?? user?.displayName ?? user?.email ?? "",
+      holderName: networkRegistration.participantName ?? user?.displayName ?? user?.email ?? "",
       ticketTypeName: networkRegistration.ticketTypeName ?? "",
       cachedAt: new Date().toISOString(),
     });
@@ -135,10 +125,14 @@ export default function BadgePage() {
     if (!registration?.eventId || offlineState === "saving") return;
     setOfflineState("saving");
     try {
-      // Warm the service-worker cache for the badge API response …
-      cacheBadgeInServiceWorker(`/v1/badges/me/${registration.eventId}`);
-      // … and prefetch the badge PDF metadata so the signed URL is in cache.
-      await badgesApi.getMyBadge(registration.eventId);
+      // Issue both fetches through the app (with auth) so the SW's fetch
+      // handler caches the responses. The postMessage-based CACHE_BADGE
+      // path can't reach auth-gated routes — the SW would call fetch(url)
+      // without the Bearer token.
+      await Promise.all([
+        badgesApi.getMyBadge(registration.eventId),
+        badgesApi.getMyBadgePdf(registration.eventId),
+      ]);
       setOfflineState("saved");
     } catch {
       setOfflineState("error");
@@ -149,15 +143,13 @@ export default function BadgePage() {
     if (!registration?.eventId || pdfState === "loading") return;
     setPdfState("loading");
     try {
-      const res = await badgesApi.getMyBadge(registration.eventId);
-      const badge = (res as { data?: GeneratedBadge })?.data as GeneratedBadge | undefined;
-      if (badge?.pdfURL) {
-        cacheBadgeInServiceWorker(`/v1/badges/me/${registration.eventId}`);
-        window.open(badge.pdfURL, "_blank");
-        setPdfState("idle");
-      } else {
-        setPdfState("error");
-      }
+      const blob = await badgesApi.getMyBadgePdf(registration.eventId);
+      const objectUrl = URL.createObjectURL(blob);
+      window.open(objectUrl, "_blank");
+      // Object URLs leak memory if held forever; revoke after the new tab
+      // has had time to load. 60s is generous on slow networks but bounded.
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+      setPdfState("idle");
     } catch {
       setPdfState("error");
     }
@@ -192,15 +184,12 @@ export default function BadgePage() {
   }
 
   const isConfirmed = registration.status === "confirmed" || registration.status === "checked_in";
-  const holderName =
-    registration.participantName ?? user?.displayName ?? user?.email ?? "";
+  const holderName = registration.participantName ?? user?.displayName ?? user?.email ?? "";
 
   const passFields = [
     { label: tSuccess("dateLabel"), value: formatDate(registration.createdAt, regional) },
     { label: tSuccess("passTypeLabel"), value: registration.ticketTypeName ?? "—" },
-    ...(holderName
-      ? [{ label: tSuccess("placeLabel"), value: holderName.split(" ")[0] }]
-      : []),
+    ...(holderName ? [{ label: tSuccess("placeLabel"), value: holderName.split(" ")[0] }] : []),
   ];
 
   const isServedFromCache = !networkRegistration && !!cachedBadge;
@@ -260,7 +249,9 @@ export default function BadgePage() {
           }
           codeLabel={tSuccess("codeLabel")}
           codeValue={registration.qrCodeValue.slice(0, 24)}
-          holderLine={holderName ? `${holderName} · ${registration.ticketTypeName ?? ""}` : undefined}
+          holderLine={
+            holderName ? `${holderName} · ${registration.ticketTypeName ?? ""}` : undefined
+          }
           validAccessLabel={tSuccess("accessValid")}
           scanHint={t("scanToCheckin")}
           offlineHint={`⚡ ${t("offlineHint")}`}

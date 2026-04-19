@@ -3,21 +3,23 @@ import {
   type OfflineEventData,
   type Registration,
 } from "@teranga/shared-types";
-import { type DocumentSnapshot } from "firebase-admin/firestore";
+import { type DocumentSnapshot, FieldValue } from "firebase-admin/firestore";
 import { db, storage, COLLECTIONS } from "@/config/firebase";
 import { eventRepository } from "@/repositories/event.repository";
 import { registrationRepository } from "@/repositories/registration.repository";
 import { userRepository } from "@/repositories/user.repository";
 import { type AuthUser } from "@/middlewares/auth.middleware";
-import {
-  NotFoundError,
-  ValidationError,
-} from "@/errors/app-error";
+import { NotFoundError, ValidationError } from "@/errors/app-error";
 import { BaseService } from "./base.service";
 import { eventBus } from "@/events/event-bus";
 import { getRequestId } from "@/context/request-context";
 import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
 import QRCode from "qrcode";
+
+export interface BadgePdfResult {
+  buffer: Buffer;
+  filename: string;
+}
 
 // ─── Service ─────────────────────────────────────────────────────────────────
 
@@ -35,13 +37,19 @@ export class BadgeService extends BaseService {
    * Creates a badge document in Firestore — the Cloud Function trigger
    * generates the actual PDF asynchronously.
    */
-  async generate(registrationId: string, templateId: string, user: AuthUser): Promise<GeneratedBadge> {
+  async generate(
+    registrationId: string,
+    templateId: string,
+    user: AuthUser,
+  ): Promise<GeneratedBadge> {
     this.requirePermission(user, "badge:generate");
 
     const registration = await registrationRepository.findByIdOrThrow(registrationId);
 
     if (registration.status !== "confirmed" && registration.status !== "checked_in") {
-      throw new ValidationError("Le badge ne peut être généré que pour les inscriptions confirmées");
+      throw new ValidationError(
+        "Le badge ne peut être généré que pour les inscriptions confirmées",
+      );
     }
 
     // Verify template exists
@@ -102,7 +110,11 @@ export class BadgeService extends BaseService {
    * Bulk generate badges for all confirmed registrations of an event.
    * Uses cursor-based pagination to avoid loading all registrations into memory.
    */
-  async bulkGenerate(eventId: string, templateId: string, user: AuthUser): Promise<{ queued: number }> {
+  async bulkGenerate(
+    eventId: string,
+    templateId: string,
+    user: AuthUser,
+  ): Promise<{ queued: number }> {
     this.requirePermission(user, "badge:bulk_generate");
 
     const event = await eventRepository.findByIdOrThrow(eventId);
@@ -114,9 +126,7 @@ export class BadgeService extends BaseService {
     }
 
     // Find which registrations already have badges
-    const existingBadgesSnap = await this.badgesCollection
-      .where("eventId", "==", eventId)
-      .get();
+    const existingBadgesSnap = await this.badgesCollection.where("eventId", "==", eventId).get();
     const existingRegIds = new Set(existingBadgesSnap.docs.map((d) => d.data().registrationId));
 
     const CHUNK_SIZE = 500;
@@ -169,27 +179,30 @@ export class BadgeService extends BaseService {
   }
 
   /**
-   * Get a user's own badge for an event.
-   * If no badge exists yet, generates the PDF on-demand (no pre-storage needed).
+   * Get a user's own badge metadata for an event.
+   *
+   * The PDF is rendered on demand by `getMyBadgePdf` and streamed back through
+   * the API — we no longer upload to Cloud Storage or generate signed URLs
+   * here. Cloud Run's runtime service account lacks `iam.signBlob` by default,
+   * so the V4 signed URL path failed in production with a 500. Streaming the
+   * bytes directly removes that IAM dependency entirely and keeps the PDF
+   * behind authentication.
    */
   async getMyBadge(eventId: string, user: AuthUser): Promise<GeneratedBadge> {
     this.requirePermission(user, "badge:view_own");
 
-    // Check for existing badge first
-    const snap = await this.badgesCollection
-      .where("eventId", "==", eventId)
-      .where("userId", "==", user.uid)
-      .limit(1)
-      .get();
+    // Deterministic doc ID + transaction kills the race where two concurrent
+    // first-time fetches would both pass the "empty" check and create two
+    // badge documents for the same (event, user) pair. Per CLAUDE.md any
+    // read-then-write must be transactional.
+    const docId = `${eventId}_${user.uid}`;
+    const docRef = this.badgesCollection.doc(docId);
 
-    if (!snap.empty) {
-      const doc = snap.docs[0];
-      const badge = { id: doc.id, ...doc.data() } as GeneratedBadge;
-      // If badge exists but PDF failed or is pending, try regenerating
-      if (badge.pdfURL) return badge;
+    const existing = await docRef.get();
+    if (existing.exists) {
+      return { id: existing.id, ...existing.data() } as GeneratedBadge;
     }
 
-    // No badge or no PDF — generate on demand
     const registration = await this.findUserRegistration(eventId, user.uid);
     if (!registration) {
       throw new NotFoundError("Registration");
@@ -198,14 +211,129 @@ export class BadgeService extends BaseService {
       throw new ValidationError("Le badge n'est disponible que pour les inscriptions confirmées");
     }
 
-    return this.generateOnDemand(registration, eventId, user.uid);
+    const now = new Date().toISOString();
+    const badge: GeneratedBadge = {
+      id: docId,
+      registrationId: registration.id,
+      eventId,
+      userId: user.uid,
+      templateId: "",
+      status: "generated",
+      pdfURL: null,
+      qrCodeValue: registration.qrCodeValue,
+      error: null,
+      generatedAt: now,
+      downloadCount: 0,
+    };
+
+    const created = await db.runTransaction(async (tx) => {
+      const fresh = await tx.get(docRef);
+      if (fresh.exists) {
+        return { id: fresh.id, ...fresh.data() } as GeneratedBadge;
+      }
+      tx.set(docRef, badge);
+      return badge;
+    });
+
+    // Only emit the audit event when we actually wrote a new doc — comparing
+    // `generatedAt` is the cheapest way to detect "we lost the race and the
+    // other writer won" without a second read.
+    if (created.generatedAt === now) {
+      eventBus.emit("badge.generated", {
+        badgeId: created.id,
+        registrationId: created.registrationId,
+        eventId: created.eventId,
+        userId: created.userId,
+        actorId: user.uid,
+        requestId: getRequestId(),
+        timestamp: now,
+      });
+    }
+
+    return created;
+  }
+
+  /**
+   * Render a user's badge PDF on demand and return raw bytes for streaming.
+   *
+   * Used by the route handler to set Content-Type/Content-Disposition and
+   * pipe the buffer back to the client. Always renders fresh from the
+   * registration — there is no persistent PDF file to keep in sync.
+   */
+  async getMyBadgePdf(eventId: string, user: AuthUser): Promise<BadgePdfResult> {
+    this.requirePermission(user, "badge:view_own");
+
+    const registration = await this.findUserRegistration(eventId, user.uid);
+    if (!registration) {
+      throw new NotFoundError("Registration");
+    }
+    if (registration.status !== "confirmed" && registration.status !== "checked_in") {
+      throw new ValidationError("Le badge n'est disponible que pour les inscriptions confirmées");
+    }
+
+    const buffer = await this.renderBadgePdf(registration, eventId);
+    return { buffer, filename: `badge-${eventId}.pdf` };
+  }
+
+  /**
+   * Stream a previously-generated badge PDF (organizer/staff download).
+   *
+   * Reads the file from Cloud Storage and returns the bytes — no signed URL
+   * required, so the route works on Cloud Run without `iam.signBlob`.
+   * Increments the download counter fire-and-forget.
+   */
+  async download(badgeId: string, user: AuthUser): Promise<BadgePdfResult> {
+    const snap = await this.badgesCollection.doc(badgeId).get();
+    if (!snap.exists) throw new NotFoundError("Badge", badgeId);
+
+    const badge = { id: snap.id, ...snap.data() } as GeneratedBadge;
+
+    if (badge.userId !== user.uid) {
+      this.requirePermission(user, "badge:generate");
+      const event = await eventRepository.findByIdOrThrow(badge.eventId);
+      this.requireOrganizationAccess(user, event.organizationId);
+    }
+
+    if (badge.status === "failed") {
+      throw new ValidationError(`Badge generation failed: ${badge.error ?? "unknown error"}`);
+    }
+
+    let buffer: Buffer;
+    if (badge.pdfURL) {
+      const storagePath = `badges/${badge.eventId}/${badge.userId}/${badge.id}.pdf`;
+      const file = storage.bucket().file(storagePath);
+      const [bytes] = await file.download();
+      buffer = bytes;
+    } else {
+      const registration = await registrationRepository.findByIdOrThrow(badge.registrationId);
+      buffer = await this.renderBadgePdf(registration, badge.eventId);
+    }
+
+    // Atomic increment — Firestore handles concurrent download counts on
+    // the server side, so we don't need a transaction or to read the
+    // current value first.
+    const reqId = getRequestId();
+    this.badgesCollection
+      .doc(badgeId)
+      .update({ downloadCount: FieldValue.increment(1) })
+      .catch((err: unknown) => {
+        process.stderr.write(
+          `[BadgeService] reqId=${reqId} Failed to increment download counter for badge ${badgeId}: ${err}\n`,
+        );
+      });
+
+    return { buffer, filename: `badge-${badge.eventId}.pdf` };
   }
 
   /**
    * Find a user's active registration for an event.
    */
-  private async findUserRegistration(eventId: string, userId: string): Promise<Registration | null> {
-    const regSnap = await db.collection(COLLECTIONS.REGISTRATIONS)
+  private async findUserRegistration(
+    eventId: string,
+    userId: string,
+  ): Promise<Registration | null> {
+    const regSnap = await db
+      .collection(COLLECTIONS.REGISTRATIONS)
       .where("eventId", "==", eventId)
       .where("userId", "==", userId)
       .where("status", "in", ["confirmed", "checked_in", "pending", "waitlisted"])
@@ -217,24 +345,28 @@ export class BadgeService extends BaseService {
   }
 
   /**
-   * Generate a badge PDF on-demand — no pre-storage, no Cloud Function needed.
-   * Creates badge doc + PDF in one shot, returns immediately.
+   * Render the badge PDF in-memory and return raw bytes.
+   *
+   * Pure rendering — no Firestore writes, no Cloud Storage upload, no
+   * signed-URL generation. Callers wrap this with the appropriate auth
+   * and streaming response.
    */
-  private async generateOnDemand(registration: Registration, eventId: string, userId: string): Promise<GeneratedBadge> {
-    const now = new Date().toISOString();
-
-    // Fetch event + user data for the PDF
+  private async renderBadgePdf(registration: Registration, eventId: string): Promise<Buffer> {
     const [event, userData] = await Promise.all([
       eventRepository.findByIdOrThrow(eventId),
-      userRepository.findById(userId),
+      userRepository.findById(registration.userId),
     ]);
 
     const participantName = userData?.displayName ?? "Participant";
     const ticketType = event.ticketTypes.find((t) => t.id === registration.ticketTypeId);
     const ticketName = ticketType?.name ?? "Participant";
 
-    // Look up org default template for styling
-    let template = { backgroundColor: "#FFFFFF", primaryColor: "#1A1A2E", width: 85.6, height: 54.0 };
+    let template = {
+      backgroundColor: "#FFFFFF",
+      primaryColor: "#1A1A2E",
+      width: 85.6,
+      height: 54.0,
+    };
     try {
       const tplSnap = await this.templatesCollection
         .where("organizationId", "==", event.organizationId)
@@ -242,11 +374,12 @@ export class BadgeService extends BaseService {
         .limit(1)
         .get();
       if (!tplSnap.empty) {
-        template = { ...template, ...tplSnap.docs[0].data() as typeof template };
+        template = { ...template, ...(tplSnap.docs[0].data() as typeof template) };
       }
-    } catch { /* use defaults */ }
+    } catch {
+      /* use defaults */
+    }
 
-    // Generate QR code as PNG bytes
     const qrPngBase64 = await QRCode.toDataURL(registration.qrCodeValue, {
       errorCorrectionLevel: "H",
       margin: 1,
@@ -254,7 +387,6 @@ export class BadgeService extends BaseService {
     });
     const qrImageBytes = Buffer.from(qrPngBase64.split(",")[1], "base64");
 
-    // Build PDF
     const pdfDoc = await PDFDocument.create();
     const mmToPoints = (mm: number) => mm * 2.83465;
     const page = pdfDoc.addPage([mmToPoints(template.width), mmToPoints(template.height)]);
@@ -273,112 +405,33 @@ export class BadgeService extends BaseService {
     const primaryRgb = hexToRgb(template.primaryColor);
     const bgRgb = hexToRgb(template.backgroundColor);
 
-    // Background
     page.drawRectangle({ x: 0, y: 0, width, height, color: bgRgb });
-    // Header bar
     page.drawRectangle({ x: 0, y: height - 30, width, height: 30, color: primaryRgb });
-    // Event name in header
     page.drawText((event.title ?? "Event").slice(0, 40), {
-      x: 8, y: height - 20, size: 9, font: fontBold, color: rgb(1, 1, 1),
+      x: 8,
+      y: height - 20,
+      size: 9,
+      font: fontBold,
+      color: rgb(1, 1, 1),
     });
-    // Participant name
     page.drawText(participantName, {
-      x: 8, y: height - 55, size: 13, font: fontBold, color: primaryRgb,
+      x: 8,
+      y: height - 55,
+      size: 13,
+      font: fontBold,
+      color: primaryRgb,
     });
-    // Ticket type
     page.drawText(ticketName, {
-      x: 8, y: height - 70, size: 9, font: fontRegular, color: primaryRgb,
+      x: 8,
+      y: height - 70,
+      size: 9,
+      font: fontRegular,
+      color: primaryRgb,
     });
-    // QR code
     const qrImage = await pdfDoc.embedPng(qrImageBytes);
     page.drawImage(qrImage, { x: width - 80, y: 10, width: 65, height: 65 });
 
-    const pdfBytes = await pdfDoc.save();
-
-    // Upload to Cloud Storage
-    const bucket = storage.bucket();
-    const docRef = this.badgesCollection.doc();
-    const filePath = `badges/${eventId}/${userId}/${docRef.id}.pdf`;
-    const file = bucket.file(filePath);
-
-    await file.save(Buffer.from(pdfBytes), {
-      metadata: {
-        contentType: "application/pdf",
-        cacheControl: "public, max-age=604800",
-      },
-    });
-
-    const [signedUrl] = await file.getSignedUrl({
-      version: "v4",
-      action: "read",
-      expires: Date.now() + 60 * 60 * 1000, // 1 hour
-    });
-
-    // Save badge doc for caching (subsequent calls return this directly)
-    const badge: GeneratedBadge = {
-      id: docRef.id,
-      registrationId: registration.id,
-      eventId,
-      userId,
-      templateId: "",
-      status: "generated",
-      pdfURL: signedUrl,
-      qrCodeValue: registration.qrCodeValue,
-      error: null,
-      generatedAt: now,
-      downloadCount: 0,
-    };
-
-    await docRef.set(badge);
-
-    return badge;
-  }
-
-  /**
-   * Get a download URL for a badge PDF.
-   * Generates a fresh signed URL from Cloud Storage (the stored pdfURL may expire).
-   */
-  async download(badgeId: string, user: AuthUser): Promise<{ downloadUrl: string }> {
-    const snap = await this.badgesCollection.doc(badgeId).get();
-    if (!snap.exists) throw new NotFoundError("Badge", badgeId);
-
-    const badge = { id: snap.id, ...snap.data() } as GeneratedBadge;
-
-    // Check access: own badge or badge:generate permission with org verification
-    if (badge.userId !== user.uid) {
-      this.requirePermission(user, "badge:generate");
-      const event = await eventRepository.findByIdOrThrow(badge.eventId);
-      this.requireOrganizationAccess(user, event.organizationId);
-    }
-
-    if (badge.status === "failed") {
-      throw new ValidationError(`Badge generation failed: ${badge.error ?? "unknown error"}`);
-    }
-
-    if (!badge.pdfURL) {
-      throw new ValidationError("Le PDF du badge n'a pas encore été généré");
-    }
-
-    // Generate fresh signed URL from the known storage path
-    const storagePath = `badges/${badge.eventId}/${badge.userId}/${badge.id}.pdf`;
-    const bucket = storage.bucket();
-    const file = bucket.file(storagePath);
-
-    const [downloadUrl] = await file.getSignedUrl({
-      version: "v4",
-      action: "read",
-      expires: Date.now() + 60 * 60 * 1000, // 1 hour
-    });
-
-    // Increment download counter (fire-and-forget, log errors with context)
-    const reqId = getRequestId();
-    this.badgesCollection.doc(badgeId).update({
-      downloadCount: (badge.downloadCount ?? 0) + 1,
-    }).catch((err: unknown) => {
-      process.stderr.write(`[BadgeService] reqId=${reqId} Failed to increment download counter for badge ${badgeId}: ${err}\n`);
-    });
-
-    return { downloadUrl };
+    return Buffer.from(await pdfDoc.save());
   }
 
   /**
@@ -430,14 +483,16 @@ export class BadgeService extends BaseService {
           ticketTypeId: reg.ticketTypeId,
           ticketTypeName: ticketType?.name ?? "Unknown",
           accessZoneIds: ticketType?.accessZoneIds ?? [],
-          status: reg.status === "checked_in" ? "confirmed" as const : reg.status as "confirmed" | "waitlisted",
+          status:
+            reg.status === "checked_in"
+              ? ("confirmed" as const)
+              : (reg.status as "confirmed" | "waitlisted"),
           checkedIn: reg.status === "checked_in",
           checkedInAt: reg.checkedInAt ?? null,
         };
       }),
     };
   }
-
 }
 
 export const badgeService = new BadgeService();

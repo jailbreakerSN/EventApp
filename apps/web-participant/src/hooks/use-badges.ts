@@ -33,20 +33,4 @@ export function useMyBadge(eventId: string) {
   return query;
 }
 
-export function useBadgeDownloadUrl(badgeId: string) {
-  const query = useQuery({
-    queryKey: ["badge-download", badgeId],
-    queryFn: () => badgesApi.getDownloadUrl(badgeId),
-    enabled: !!badgeId,
-  });
-
-  useEffect(() => {
-    if (query.data && badgeId) {
-      cacheBadgeInServiceWorker(`/v1/badges/${badgeId}/download`);
-    }
-  }, [query.data, badgeId]);
-
-  return query;
-}
-
 export { cacheBadgeInServiceWorker };

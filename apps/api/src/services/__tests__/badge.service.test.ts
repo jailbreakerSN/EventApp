@@ -60,23 +60,58 @@ vi.mock("@/context/request-context", () => ({
   getRequestId: () => "test-request-id",
 }));
 
-// Mock Firestore collections for badges / templates
-const mockBadgeDocSet = vi.fn().mockResolvedValue(undefined);
-const mockBadgeDocGet = vi.fn();
-const mockBadgeDocUpdate = vi.fn().mockResolvedValue(undefined);
-const mockBadgeDocRef = {
-  id: "badge-1",
-  set: mockBadgeDocSet,
-  get: mockBadgeDocGet,
-  update: mockBadgeDocUpdate,
-};
-
-const mockTemplateDocGet = vi.fn();
-const mockTemplateDocRef = { get: mockTemplateDocGet };
-
-const mockBadgeWhereGet = vi.fn();
-const mockBatchSet = vi.fn();
-const mockBatchCommit = vi.fn().mockResolvedValue(undefined);
+// Mock Firestore collections for badges / templates. `vi.mock` hoists to
+// the top of the file, so any var the factory closes over must come from
+// `vi.hoisted()` — plain `const`s aren't initialised yet at hoist time.
+const {
+  mockBadgeDocSet,
+  mockBadgeDocGet,
+  mockBadgeDocUpdate,
+  mockBadgeDocRef,
+  mockTemplateDocGet,
+  mockTemplateDocRef,
+  mockBadgeWhereGet,
+  mockBatchSet,
+  mockBatchCommit,
+  mockRegistrationWhereGet,
+  mockTxSet,
+  mockRunTransaction,
+} = vi.hoisted(() => {
+  const badgeDocSet = vi.fn().mockResolvedValue(undefined);
+  const badgeDocGet = vi.fn();
+  const badgeDocUpdate = vi.fn().mockResolvedValue(undefined);
+  const badgeDocRef = { id: "badge-1", set: badgeDocSet, get: badgeDocGet, update: badgeDocUpdate };
+  const templateDocGet = vi.fn();
+  const templateDocRef = { get: templateDocGet };
+  const badgeWhereGet = vi.fn();
+  const batchSet = vi.fn();
+  const batchCommit = vi.fn().mockResolvedValue(undefined);
+  const registrationWhereGet = vi.fn().mockResolvedValue({ empty: true });
+  const txSet = vi.fn();
+  // Transaction mock — services call db.runTransaction(cb). We feed the
+  // callback a tx whose .get(ref) re-uses badgeDocGet so each test
+  // controls "exists/not-exists" with a single mock.
+  const runTransaction = vi.fn(async (cb: (tx: unknown) => unknown) =>
+    cb({
+      get: (ref: { get: () => unknown }) => ref.get(),
+      set: txSet,
+    }),
+  );
+  return {
+    mockBadgeDocSet: badgeDocSet,
+    mockBadgeDocGet: badgeDocGet,
+    mockBadgeDocUpdate: badgeDocUpdate,
+    mockBadgeDocRef: badgeDocRef,
+    mockTemplateDocGet: templateDocGet,
+    mockTemplateDocRef: templateDocRef,
+    mockBadgeWhereGet: badgeWhereGet,
+    mockBatchSet: batchSet,
+    mockBatchCommit: batchCommit,
+    mockRegistrationWhereGet: registrationWhereGet,
+    mockTxSet: txSet,
+    mockRunTransaction: runTransaction,
+  };
+});
 
 vi.mock("@/config/firebase", () => ({
   db: {
@@ -102,14 +137,13 @@ vi.mock("@/config/firebase", () => ({
           })),
         };
       }
-      // registrations collection
+      // registrations collection — getMyBadge / getMyBadgePdf use a chained
+      // where().where().where().limit().get() to find the user's reg.
       return {
         where: vi.fn(() => ({
           where: vi.fn(() => ({
             where: vi.fn(() => ({
-              limit: vi.fn(() => ({
-                get: vi.fn().mockResolvedValue({ empty: true }),
-              })),
+              limit: vi.fn(() => ({ get: mockRegistrationWhereGet })),
             })),
           })),
         })),
@@ -119,12 +153,14 @@ vi.mock("@/config/firebase", () => ({
       set: mockBatchSet,
       commit: mockBatchCommit,
     })),
+    runTransaction: mockRunTransaction,
   },
   storage: {
     bucket: vi.fn(() => ({
       file: vi.fn(() => ({
-        save: vi.fn().mockResolvedValue(undefined),
-        getSignedUrl: vi.fn().mockResolvedValue(["https://storage.example.com/badge.pdf"]),
+        // Used by download() when the badge has a pre-rendered Cloud Storage
+        // file (Cloud Function-generated path). We no longer call signed URLs.
+        download: vi.fn().mockResolvedValue([Buffer.from("%PDF-stub")]),
       })),
     })),
   },
@@ -136,14 +172,39 @@ vi.mock("@/config/firebase", () => ({
   },
 }));
 
-vi.mock("pdf-lib", () => ({
-  PDFDocument: { create: vi.fn() },
-  rgb: vi.fn(),
-  StandardFonts: { HelveticaBold: "HelveticaBold", Helvetica: "Helvetica" },
+vi.mock("firebase-admin/firestore", () => ({
+  FieldValue: { increment: (n: number) => ({ __increment: n }) },
 }));
 
+// Lightweight pdf-lib stub: just enough surface for renderBadgePdf() to
+// run end-to-end without producing real PDF bytes. Returns a 4-byte
+// "%PDF" buffer so callers can assert on a non-empty Buffer.
+vi.mock("pdf-lib", () => {
+  const fakePage = {
+    getSize: () => ({ width: 240, height: 153 }),
+    drawRectangle: vi.fn(),
+    drawText: vi.fn(),
+    drawImage: vi.fn(),
+  };
+  const fakeDoc = {
+    addPage: vi.fn(() => fakePage),
+    embedFont: vi.fn(async () => ({ name: "stub" })),
+    embedPng: vi.fn(async () => ({ name: "qr" })),
+    save: vi.fn(async () => new Uint8Array([0x25, 0x50, 0x44, 0x46])),
+  };
+  return {
+    PDFDocument: { create: vi.fn(async () => fakeDoc) },
+    rgb: vi.fn((r: number, g: number, b: number) => ({ r, g, b })),
+    StandardFonts: { HelveticaBold: "HelveticaBold", Helvetica: "Helvetica" },
+  };
+});
+
 vi.mock("qrcode", () => ({
-  default: { toDataURL: vi.fn() },
+  default: {
+    // toDataURL must return a base64 data URL — `renderBadgePdf` splits on
+    // "," and decodes the back half. A short valid-base64 stub is enough.
+    toDataURL: vi.fn(async () => "data:image/png;base64,aGVsbG8="),
+  },
 }));
 
 // ─── Tests ─────────────────────────────────────────────────────────────────
@@ -321,5 +382,216 @@ describe("BadgeService.bulkGenerate", () => {
     await expect(service.bulkGenerate("ev-1", "tpl-missing", user)).rejects.toThrow(
       "BadgeTemplate",
     );
+  });
+});
+
+// ─── getMyBadge ────────────────────────────────────────────────────────────
+// The on-demand path must (a) be transactional (no duplicate badge docs on
+// concurrent first-time fetches), (b) emit `badge.generated` only when it
+// actually wrote a new doc, and (c) reject ineligible registrations.
+
+describe("BadgeService.getMyBadge", () => {
+  it("returns the existing badge document when one is present", async () => {
+    const user = buildAuthUser({ uid: "user-1", roles: ["participant"] });
+    const existing = {
+      id: "ev-1_user-1",
+      registrationId: "reg-1",
+      eventId: "ev-1",
+      userId: "user-1",
+      status: "generated",
+      pdfURL: null,
+      qrCodeValue: "qr-payload",
+      generatedAt: "2026-01-01T00:00:00.000Z",
+    };
+    mockBadgeDocGet.mockResolvedValue({
+      exists: true,
+      id: existing.id,
+      data: () => existing,
+    });
+
+    const result = await service.getMyBadge("ev-1", user);
+
+    expect(result.id).toBe(existing.id);
+    expect(result.status).toBe("generated");
+    expect(mockTxSet).not.toHaveBeenCalled();
+  });
+
+  it("creates a stub badge document inside a transaction on first fetch", async () => {
+    const user = buildAuthUser({ uid: "user-1", roles: ["participant"] });
+    const registration = buildRegistration({
+      id: "reg-1",
+      eventId: "ev-1",
+      userId: "user-1",
+      status: "confirmed",
+    });
+    mockBadgeDocGet.mockResolvedValue({ exists: false });
+    mockRegistrationWhereGet.mockResolvedValue({
+      empty: false,
+      docs: [{ id: registration.id, data: () => registration }],
+    });
+
+    const result = await service.getMyBadge("ev-1", user);
+
+    expect(result.eventId).toBe("ev-1");
+    expect(result.userId).toBe("user-1");
+    expect(result.pdfURL).toBeNull();
+    expect(mockRunTransaction).toHaveBeenCalledTimes(1);
+    expect(mockTxSet).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects when no eligible registration exists", async () => {
+    const user = buildAuthUser({ uid: "user-1", roles: ["participant"] });
+    mockBadgeDocGet.mockResolvedValue({ exists: false });
+    mockRegistrationWhereGet.mockResolvedValue({ empty: true });
+
+    await expect(service.getMyBadge("ev-1", user)).rejects.toThrow("Registration");
+  });
+
+  it("rejects participant without badge:view_own", async () => {
+    const user = buildAuthUser({ roles: [] });
+    await expect(service.getMyBadge("ev-1", user)).rejects.toThrow(
+      "Permission manquante : badge:view_own",
+    );
+  });
+});
+
+// ─── getMyBadgePdf ─────────────────────────────────────────────────────────
+// Streams raw PDF bytes for the participant's own badge — no Cloud Storage
+// signed URLs (the bug this branch fixes). Verifies happy path and gating.
+
+describe("BadgeService.getMyBadgePdf", () => {
+  const orgId = "org-1";
+
+  it("returns rendered PDF bytes + filename for an eligible registration", async () => {
+    const user = buildAuthUser({ uid: "user-1", roles: ["participant"] });
+    const registration = buildRegistration({
+      id: "reg-1",
+      eventId: "ev-1",
+      userId: "user-1",
+      status: "confirmed",
+    });
+    mockRegistrationWhereGet.mockResolvedValue({
+      empty: false,
+      docs: [{ id: registration.id, data: () => registration }],
+    });
+    mockEventRepo.findByIdOrThrow.mockResolvedValue(
+      buildEvent({ id: "ev-1", organizationId: orgId }),
+    );
+    mockUserRepo.findById.mockResolvedValue({ uid: "user-1", displayName: "Aïssatou" });
+
+    const result = await service.getMyBadgePdf("ev-1", user);
+
+    expect(result.filename).toBe("badge-ev-1.pdf");
+    expect(Buffer.isBuffer(result.buffer)).toBe(true);
+    expect(result.buffer.length).toBeGreaterThan(0);
+  });
+
+  it("rejects when the registration is not confirmed/checked_in", async () => {
+    const user = buildAuthUser({ uid: "user-1", roles: ["participant"] });
+    const registration = buildRegistration({
+      id: "reg-1",
+      eventId: "ev-1",
+      userId: "user-1",
+      status: "pending",
+    });
+    mockRegistrationWhereGet.mockResolvedValue({
+      empty: false,
+      docs: [{ id: registration.id, data: () => registration }],
+    });
+
+    await expect(service.getMyBadgePdf("ev-1", user)).rejects.toThrow("inscriptions confirmées");
+  });
+
+  it("rejects participant without badge:view_own", async () => {
+    const user = buildAuthUser({ roles: [] });
+    await expect(service.getMyBadgePdf("ev-1", user)).rejects.toThrow(
+      "Permission manquante : badge:view_own",
+    );
+  });
+});
+
+// ─── download (organizer/staff binary stream) ──────────────────────────────
+// Returns raw bytes — read from Cloud Storage when a Cloud Function-rendered
+// PDF exists, otherwise re-rendered from the registration. Atomic increment
+// on downloadCount avoids the read-then-write race.
+
+describe("BadgeService.download", () => {
+  const orgId = "org-1";
+
+  it("re-renders PDF bytes when the badge has no stored Cloud Storage file", async () => {
+    const user = buildAuthUser({ uid: "user-1", roles: ["participant"] });
+    const badge = {
+      id: "badge-1",
+      registrationId: "reg-1",
+      eventId: "ev-1",
+      userId: "user-1",
+      status: "generated",
+      pdfURL: null,
+      downloadCount: 0,
+    };
+    mockBadgeDocGet.mockResolvedValue({ exists: true, id: badge.id, data: () => badge });
+
+    const registration = buildRegistration({
+      id: "reg-1",
+      eventId: "ev-1",
+      userId: "user-1",
+      status: "confirmed",
+    });
+    mockRegistrationRepo.findByIdOrThrow.mockResolvedValue(registration);
+    mockEventRepo.findByIdOrThrow.mockResolvedValue(
+      buildEvent({ id: "ev-1", organizationId: orgId }),
+    );
+    mockUserRepo.findById.mockResolvedValue({ uid: "user-1", displayName: "Aïssatou" });
+
+    const result = await service.download("badge-1", user);
+
+    expect(result.filename).toBe("badge-ev-1.pdf");
+    expect(Buffer.isBuffer(result.buffer)).toBe(true);
+    // Increment is atomic — passes a FieldValue sentinel, never reads first.
+    expect(mockBadgeDocUpdate).toHaveBeenCalledWith({
+      downloadCount: expect.objectContaining({ __increment: 1 }),
+    });
+  });
+
+  it("rejects access when caller is not the badge owner and lacks badge:generate", async () => {
+    const user = buildAuthUser({ uid: "stranger", roles: ["participant"] });
+    const badge = {
+      id: "badge-1",
+      registrationId: "reg-1",
+      eventId: "ev-1",
+      userId: "user-1",
+      status: "generated",
+      pdfURL: null,
+      downloadCount: 0,
+    };
+    mockBadgeDocGet.mockResolvedValue({ exists: true, id: badge.id, data: () => badge });
+
+    await expect(service.download("badge-1", user)).rejects.toThrow(
+      "Permission manquante : badge:generate",
+    );
+  });
+
+  it("rejects when the badge generation has failed", async () => {
+    const user = buildAuthUser({ uid: "user-1", roles: ["participant"] });
+    const badge = {
+      id: "badge-1",
+      registrationId: "reg-1",
+      eventId: "ev-1",
+      userId: "user-1",
+      status: "failed",
+      pdfURL: null,
+      downloadCount: 0,
+      error: "render_failed",
+    };
+    mockBadgeDocGet.mockResolvedValue({ exists: true, id: badge.id, data: () => badge });
+
+    await expect(service.download("badge-1", user)).rejects.toThrow("render_failed");
+  });
+
+  it("returns 404-style NotFoundError when badge document is missing", async () => {
+    const user = buildAuthUser({ uid: "user-1", roles: ["participant"] });
+    mockBadgeDocGet.mockResolvedValue({ exists: false });
+
+    await expect(service.download("missing", user)).rejects.toThrow("Badge");
   });
 });
