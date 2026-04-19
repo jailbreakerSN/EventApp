@@ -121,11 +121,12 @@ export class SessionService extends BaseService {
     query: SessionScheduleQuery,
     user: AuthUser,
   ): Promise<PaginatedResult<Session>> {
-    this.requirePermission(user, "event:read");
-
-    // Verify event exists and check org access for non-published events
+    // Published-event schedules are readable by any authenticated user
+    // (participants view their programme). Non-published events still
+    // require org access so drafts don't leak.
     const event = await eventRepository.findByIdOrThrow(eventId);
     if (event.status !== "published") {
+      this.requirePermission(user, "event:read");
       this.requireOrganizationAccess(user, event.organizationId);
     }
 
@@ -145,10 +146,9 @@ export class SessionService extends BaseService {
   // ─── Get Single ───────────────────────────────────────────────────────────
 
   async getById(eventId: string, sessionId: string, user: AuthUser): Promise<Session> {
-    this.requirePermission(user, "event:read");
-
     const event = await eventRepository.findByIdOrThrow(eventId);
     if (event.status !== "published") {
+      this.requirePermission(user, "event:read");
       this.requireOrganizationAccess(user, event.organizationId);
     }
 

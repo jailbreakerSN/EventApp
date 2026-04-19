@@ -228,6 +228,38 @@ describe("SessionService", () => {
         expect.any(Object),
       );
     });
+
+    it("allows a participant to read sessions on a published event", async () => {
+      const participant = buildAuthUser({ roles: ["participant"] });
+      const publishedEvent = buildEvent({
+        id: eventId,
+        organizationId: orgId,
+        status: "published",
+      });
+      mockEventRepo.findByIdOrThrow.mockResolvedValue(publishedEvent);
+      mockSessionRepo.findByEvent.mockResolvedValue({
+        data: [{ id: "s1" }],
+        meta: { total: 1, page: 1, limit: 50, totalPages: 1 },
+      });
+
+      const result = await service.listByEvent(eventId, { page: 1, limit: 50 }, participant);
+
+      expect(result.data).toHaveLength(1);
+    });
+
+    it("rejects a participant from reading sessions on a draft event", async () => {
+      const participant = buildAuthUser({ roles: ["participant"] });
+      const draftEvent = buildEvent({
+        id: eventId,
+        organizationId: orgId,
+        status: "draft",
+      });
+      mockEventRepo.findByIdOrThrow.mockResolvedValue(draftEvent);
+
+      await expect(
+        service.listByEvent(eventId, { page: 1, limit: 50 }, participant),
+      ).rejects.toThrow("Permission manquante");
+    });
   });
 
   describe("bookmark", () => {
