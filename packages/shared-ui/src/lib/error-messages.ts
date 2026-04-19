@@ -10,6 +10,8 @@ const ERROR_MESSAGES: Record<string, string> = {
   QR_INVALID: "Le code QR est invalide.",
   QR_ALREADY_USED: "Ce badge a déjà été scanné.",
   ORGANIZATION_PLAN_LIMIT: "Limite de votre plan atteinte.",
+  EMAIL_NOT_VERIFIED:
+    "Votre e-mail n'est pas vérifié. Vérifiez votre boîte de réception avant de vous inscrire à un événement payant.",
   RATE_LIMIT_EXCEEDED: "Trop de requêtes. Veuillez patienter quelques instants.",
   TIMEOUT: "La requête a expiré. Vérifiez votre connexion.",
   INTERNAL_ERROR: "Une erreur inattendue s'est produite.",

@@ -149,7 +149,11 @@ export default function PaymentStatusPage() {
               </p>
 
               {registration && redirectCountdown !== null && redirectCountdown > 0 && (
-                <p className="mt-3 text-sm text-primary animate-pulse">
+                <p
+                  role="status"
+                  aria-live="polite"
+                  className="mt-3 text-sm text-primary animate-pulse"
+                >
                   {t("redirectIn", { seconds: redirectCountdown })}
                 </p>
               )}
@@ -195,12 +199,13 @@ export default function PaymentStatusPage() {
 
               <div className="mt-6 flex flex-col gap-3 sm:flex-row">
                 <Link href={`/register/${eventId}`}>
-                  <Button className="bg-teranga-gold hover:bg-teranga-gold/90">
-                    {t("retry")}
-                  </Button>
+                  <Button className="bg-teranga-gold hover:bg-teranga-gold/90">{t("retry")}</Button>
                 </Link>
+                <a href="mailto:contact@teranga.sn?subject=Paiement%20%C3%A9chou%C3%A9">
+                  <Button variant="outline">{t("contactSupport")}</Button>
+                </a>
                 <Link href="/events">
-                  <Button variant="outline">{t("backToEvents")}</Button>
+                  <Button variant="ghost">{t("backToEvents")}</Button>
                 </Link>
               </div>
             </>

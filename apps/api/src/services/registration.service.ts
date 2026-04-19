@@ -15,6 +15,7 @@ import { type AuthUser } from "@/middlewares/auth.middleware";
 import {
   ValidationError,
   ConflictError,
+  EmailNotVerifiedError,
   EventFullError,
   RegistrationClosedError,
   QrInvalidError,
@@ -102,6 +103,13 @@ export class RegistrationService extends BaseService {
         throw new ValidationError(
           `Type de billet « ${ticketTypeId} » introuvable pour cet événement`,
         );
+      }
+
+      // ── Gate paid registrations behind email verification ──
+      // Free tickets remain low-friction to maximise adoption; paid tickets
+      // must verify email first so receipts + payment notifications land.
+      if (ticketType.price > 0 && !user.emailVerified) {
+        throw new EmailNotVerifiedError();
       }
 
       // Check ticket availability

@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { useProfile, useUpdateProfile } from "@/hooks/use-profile";
 import { useAuth } from "@/hooks/use-auth";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
@@ -28,6 +29,8 @@ const MAX_PHOTO_SIZE = 5 * 1024 * 1024; // 5 MB
 export default function ProfilePage() {
   const t = useTranslations("profile");
   const tAuth = useTranslations("auth");
+  const router = useRouter();
+  const currentLocale = useLocale();
   const { user } = useAuth();
   const { data: profileData, isLoading } = useProfile();
   const updateMutation = useUpdateProfile();
@@ -103,6 +106,16 @@ export default function ProfilePage() {
     e.preventDefault();
     try {
       await updateMutation.mutateAsync({ displayName, phone, bio, preferredLanguage: language });
+      // Sync the UI locale to the new preference. next-intl drives its
+      // locale from the NEXT_LOCALE cookie (see src/i18n/request.ts), so
+      // we write the cookie client-side and let router.refresh() re-render
+      // server components with the new bundle. Without this, the user
+      // changes their preferred language but the UI stays in the old one
+      // until the next manual language-switcher click.
+      if (language !== currentLocale) {
+        document.cookie = `NEXT_LOCALE=${language}; path=/; max-age=31536000; samesite=lax`;
+        router.refresh();
+      }
       toast.success(t("profileUpdated"));
     } catch (err: unknown) {
       const code = (err as { code?: string })?.code;

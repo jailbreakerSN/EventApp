@@ -53,6 +53,7 @@ export const ERROR_CODES = {
   QR_INVALID: "QR_INVALID",
   QR_ALREADY_USED: "QR_ALREADY_USED",
   ORGANIZATION_PLAN_LIMIT: "ORGANIZATION_PLAN_LIMIT",
+  EMAIL_NOT_VERIFIED: "EMAIL_NOT_VERIFIED",
 } as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];
@@ -72,7 +73,7 @@ export const WebhookEventTypeSchema = z.enum([
 export type WebhookEventType = z.infer<typeof WebhookEventTypeSchema>;
 
 export const WebhookPayloadSchema = z.object({
-  id: z.string(),       // unique webhook delivery ID
+  id: z.string(), // unique webhook delivery ID
   type: WebhookEventTypeSchema,
   timestamp: z.string().datetime(),
   organizationId: z.string(),

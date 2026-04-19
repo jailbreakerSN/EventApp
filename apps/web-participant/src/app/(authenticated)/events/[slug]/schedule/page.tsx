@@ -15,10 +15,12 @@ import {
 } from "lucide-react";
 import { EmptyStateEditorial, SectionHeader } from "@teranga/shared-ui";
 import Link from "next/link";
+import { useLocale, useTranslations } from "next-intl";
+import { intlLocale } from "@/lib/intl-locale";
 import type { Session } from "@teranga/shared-types";
 
-function formatTime(iso: string) {
-  return new Date(iso).toLocaleTimeString("fr-FR", {
+function formatTime(iso: string, regional: string) {
+  return new Date(iso).toLocaleTimeString(regional, {
     hour: "2-digit",
     minute: "2-digit",
     timeZone: "Africa/Dakar",
@@ -55,6 +57,9 @@ function durationLabel(start: string, end: string) {
 }
 
 export default function SchedulePage() {
+  const t = useTranslations("schedule");
+  const locale = useLocale();
+  const regional = intlLocale(locale);
   const { slug } = useParams<{ slug: string }>();
   const qc = useQueryClient();
 
@@ -121,14 +126,14 @@ export default function SchedulePage() {
       <div className="max-w-3xl mx-auto px-4 py-16">
         <EmptyStateEditorial
           icon={AlertTriangle}
-          kicker="— ERREUR"
-          title="Impossible de charger le programme"
+          kicker={t("errorKicker")}
+          title={t("errorTitle")}
           action={
             <button
               onClick={() => qc.invalidateQueries({ queryKey: ["sessions", eventId] })}
               className="text-sm font-medium text-teranga-gold-dark hover:underline"
             >
-              Réessayer
+              {t("retry")}
             </button>
           }
         />
@@ -142,16 +147,19 @@ export default function SchedulePage() {
         href={event ? `/events/${event.slug}` : "/events"}
         className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
       >
-        <ArrowLeft className="h-4 w-4" /> Retour
+        <ArrowLeft className="h-4 w-4" /> {t("back")}
       </Link>
 
       <SectionHeader
-        kicker="— PROGRAMME"
-        title="Programme"
+        kicker={t("kicker")}
+        title={t("title")}
         subtitle={event?.title}
         size="hero"
         as="h1"
       />
+      <p className="font-mono-kicker text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+        — {t("timezone")}
+      </p>
 
       {/* Bookmark count strip */}
       {bookmarkedIds.size > 0 && (
@@ -159,9 +167,7 @@ export default function SchedulePage() {
           <Bookmark className="h-4 w-4 fill-teranga-gold text-teranga-gold" aria-hidden="true" />
           <span className="text-foreground">
             <strong>{bookmarkedIds.size}</strong>{" "}
-            {bookmarkedIds.size === 1
-              ? "session dans votre programme"
-              : "sessions dans votre programme"}
+            {t("bookmarkCount", { count: bookmarkedIds.size })}
           </span>
         </div>
       )}
@@ -169,9 +175,9 @@ export default function SchedulePage() {
       {sessions.length === 0 ? (
         <EmptyStateEditorial
           icon={Calendar}
-          kicker="— AUCUNE SESSION"
-          title="Aucune session programmée"
-          description="Le programme sera disponible prochainement. Revenez bientôt."
+          kicker={t("emptyKicker")}
+          title={t("emptyTitle")}
+          description={t("emptyDescription")}
         />
       ) : (
         <div className="space-y-10">
@@ -204,7 +210,7 @@ export default function SchedulePage() {
                         {/* Time column */}
                         <div className="w-[52px] shrink-0 pt-3.5 text-right">
                           <span className="font-mono-kicker text-[11px] font-semibold text-teranga-navy dark:text-teranga-gold">
-                            {formatTime(session.startTime)}
+                            {formatTime(session.startTime, regional)}
                           </span>
                         </div>
 
@@ -238,7 +244,8 @@ export default function SchedulePage() {
                               <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
                                 <span className="flex items-center gap-1">
                                   <Clock className="h-3 w-3" aria-hidden="true" />
-                                  {formatTime(session.startTime)} — {formatTime(session.endTime)}
+                                  {formatTime(session.startTime, regional)} —{" "}
+                                  {formatTime(session.endTime, regional)}
                                   <span className="text-muted-foreground/60">({duration})</span>
                                 </span>
                                 {session.location && (
@@ -250,10 +257,7 @@ export default function SchedulePage() {
                                 {session.speakerIds.length > 0 && (
                                   <span className="flex items-center gap-1">
                                     <Mic className="h-3 w-3" aria-hidden="true" />
-                                    {session.speakerIds.length}{" "}
-                                    {session.speakerIds.length === 1
-                                      ? "intervenant"
-                                      : "intervenants"}
+                                    {t("speakersCount", { count: session.speakerIds.length })}
                                   </span>
                                 )}
                               </div>
@@ -291,14 +295,10 @@ export default function SchedulePage() {
                                     : "text-muted-foreground hover:bg-muted hover:text-foreground"
                                 }`}
                                 aria-label={
-                                  isBookmarked
-                                    ? "Retirer du programme personnel"
-                                    : "Ajouter au programme personnel"
+                                  isBookmarked ? t("removeBookmarkAria") : t("addBookmarkAria")
                                 }
                                 title={
-                                  isBookmarked
-                                    ? "Retirer du programme perso"
-                                    : "Ajouter au programme perso"
+                                  isBookmarked ? t("removeBookmarkShort") : t("addBookmarkShort")
                                 }
                               >
                                 <Bookmark

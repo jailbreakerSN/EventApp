@@ -26,7 +26,14 @@
     "price": "Ñaari xaalis",
     "status": "Melo wi",
     "free": "Ba neex",
-    "fromPrice": "Dale fi {price}"
+    "fromPrice": "Dale fi {price}",
+    "errorBoundary": {
+      "kicker": "— NJUMTE",
+      "title": "Am na njumte",
+      "description": "Mënunoo yónnee xët bi. Jéemal ay saañu.",
+      "retry": "Jéem waaf",
+      "home": "Kër"
+    }
   },
   "auth": {
     "login": "Dugg",
@@ -285,6 +292,7 @@
     "noResults": "Gisul xew-xew",
     "noResultsHint": "Xew-xew bu dëppoo ak say laaj amul. Jéemal yaatal sa wut.",
     "clearFilters": "Delwal filt yi",
+    "compareCta": "Mengale xew-xew yi",
     "list": {
       "resultsCount": "{count, plural, one {# xew-xew gis na} other {# xew-xew gis nañu}}"
     },
@@ -335,6 +343,10 @@
       "full": "Fees",
       "seatsLeft": "{count, plural, one {# seat des} other {# seat des}}",
       "lastSeats": "{count, plural, one {Desul benn seat rekk !} other {Desul # seat rekk !}}",
+      "popular": "Xew-xew bu bari ñëp",
+      "scheduleTimezone": "Waxtu yi ci waxtu Dakar (WAIST, UTC+0)",
+      "save": "Denc",
+      "saved": "Denc nañu",
       "feedCommunity": "Feed mbooloo",
       "feedHint": "Wax ak ñi bokk",
       "onlineEvent": "Xew-xew ci internet",
@@ -392,6 +404,12 @@
     "backToEvents": "Dellu ci xew-xew yi",
     "backToEvent": "Dellu ci xew-xew bi",
     "back": "Dellu",
+    "verifyEmailTitle": "Verifie sa imeyl bi",
+    "verifyEmailBody": "Yónnee nañu ab link verifikasion ci {email}. Cliquer ko ngir mën a bind ci xew-xew yu fay.",
+    "resendVerification": "Yónnaat link verifikasion bi",
+    "verificationResending": "Di yónnee…",
+    "verificationResent": "Yónnaat nañu link bi. Xoolal sa bokso imeyl.",
+    "verificationResendError": "Mënul a yónnee imeyl bi. Jéem ci ay saañu.",
     "alreadyRegistered": "Bind nga ba jàllee",
     "selectHeading": "Tann sa billet",
     "soldOut": "Mat na",
@@ -429,7 +447,15 @@
       "codeLabel": "Kód",
       "dateLabel": "Bés",
       "passTypeLabel": "Pass",
-      "placeLabel": "Barab"
+      "placeLabel": "Barab",
+      "nextStep": {
+        "verifyEmail": "Verifie imeyl bi",
+        "verifyEmailHint": "Nangu sa imeyl ngir sa kont karax.",
+        "downloadBadge": "Téelé badge bi",
+        "downloadBadgeHint": "Dencal ko ci dul laaj rezo ngir bés xew-xew bi.",
+        "exploreSchedule": "Xool programme bi",
+        "exploreScheduleHint": "Tànnal sesyoŋ yi la soxal."
+      }
     }
   },
   "paymentStatus": {
@@ -439,6 +465,7 @@
     "successHint": "Sa bindu nangu nañu ko te sa badge QR fi am na.",
     "failedHeading": "Paye fàllee na",
     "retry": "Jéem waaf",
+    "contactSupport": "Jokkoo ak support bi",
     "errorHeading": "Njumte",
     "myRegistrations": "Samay bind",
     "viewBadge": "Gis sama badge"
@@ -475,11 +502,13 @@
     "pastEmptyTitle": "Amul xew-xew bu weesoon",
     "pastEmptyDescription": "Xew-xew yi nga bokk di feeñ fii.",
     "details": "Sitt",
+    "viewSchedule": "Programme",
     "settings": "Paramètres",
     "browseCta": "Saytu",
     "ticketPrefix": "Billet",
     "registeredOn": "Bind ci",
     "waitlistPosition": "Palaas #{n}",
+    "waitlistPositionAria": "Nga ci palaas {n} ci liste d'attente bi",
     "badge": "Badge",
     "refund": "Delloo ñaari xaalis",
     "leaveWaitlist": "Génn liste d'attente bi",
@@ -540,6 +569,24 @@
   },
   "authGuard": {
     "checking": "Di verife..."
+  },
+  "schedule": {
+    "kicker": "— PROGRAMME",
+    "title": "Programme",
+    "timezone": "Waxtu yi ci waxtu Dakar (WAIST, UTC+0)",
+    "back": "Dellu",
+    "errorKicker": "— NJUMTE",
+    "errorTitle": "Mënunoo yónnee programme bi",
+    "retry": "Jéem waaf",
+    "emptyKicker": "— AMUL SESYOŊ",
+    "emptyTitle": "Amul sesyoŋ bu nu planeel",
+    "emptyDescription": "Programme bi dina jot fi kanam. Deluwaat fi yàgg.",
+    "speakersCount": "{count, plural, one {# waxtaankat} other {# waxtaankat}}",
+    "addBookmarkShort": "Dencal ci sama programme",
+    "removeBookmarkShort": "Jële ci sama programme",
+    "addBookmarkAria": "Dencal sesyoŋ bi ci sa programme bu tur",
+    "removeBookmarkAria": "Jële sesyoŋ bi ci sa programme bu tur",
+    "bookmarkCount": "{count, plural, one {# sesyoŋ ci sa programme} other {# sesyoŋ ci sa programme}}"
   },
   "newsletter": {
     "heading": "Xam xew-xew yu Senegaal",
