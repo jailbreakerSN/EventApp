@@ -386,7 +386,18 @@ export class EventService extends BaseService {
       }
 
       const updatedTicketTypes = [...event.ticketTypes];
-      updatedTicketTypes[index] = { ...updatedTicketTypes[index], ...dto };
+      const merged = { ...updatedTicketTypes[index], ...dto };
+      updatedTicketTypes[index] = merged;
+
+      // Gate paid tickets behind plan feature. Checked against the merged
+      // price so raising a free ticket to a paid one — or keeping an
+      // existing paid ticket while editing anything else — both trip the
+      // gate on free/starter plans.
+      if (merged.price > 0) {
+        const org = await organizationRepository.findByIdOrThrow(event.organizationId);
+        this.requirePlanFeature(org, "paidTickets");
+      }
+
       tx.update(docRef, { ticketTypes: updatedTicketTypes, updatedBy: user.uid });
       return { ...event, ticketTypes: updatedTicketTypes };
     });

@@ -449,6 +449,102 @@ describe("Paid ticket feature gating", () => {
     expect(result.ticketTypes).toHaveLength(1);
     expect(result.ticketTypes[0].price).toBe(0);
   });
+
+  it("rejects raising an existing free ticket to a paid price on free plan", async () => {
+    const user = buildOrganizerUser("org-1");
+    const existing = {
+      id: "tt-1",
+      name: "Standard",
+      price: 0,
+      currency: "XOF" as const,
+      totalQuantity: 100,
+      soldCount: 0,
+      accessZoneIds: [],
+      isVisible: true,
+    };
+    const event = buildEvent({
+      organizationId: "org-1",
+      status: "draft",
+      ticketTypes: [existing],
+    });
+    mockTxGet.mockResolvedValue({
+      exists: true,
+      id: event.id,
+      data: () => ({ ...event, id: undefined }),
+    });
+    mockOrgRepo.findByIdOrThrow.mockResolvedValue(buildOrganization({ id: "org-1", plan: "free" }));
+
+    await expect(
+      eventService.updateTicketType(event.id, "tt-1", { price: 5000 }, user),
+    ).rejects.toThrow("paidTickets");
+  });
+
+  it("rejects editing any field of an existing paid ticket on starter plan", async () => {
+    const user = buildOrganizerUser("org-1");
+    const existing = {
+      id: "tt-1",
+      name: "VIP",
+      price: 10000,
+      currency: "XOF" as const,
+      totalQuantity: 50,
+      soldCount: 0,
+      accessZoneIds: [],
+      isVisible: true,
+    };
+    const event = buildEvent({
+      organizationId: "org-1",
+      status: "draft",
+      ticketTypes: [existing],
+    });
+    mockTxGet.mockResolvedValue({
+      exists: true,
+      id: event.id,
+      data: () => ({ ...event, id: undefined }),
+    });
+    mockOrgRepo.findByIdOrThrow.mockResolvedValue(
+      buildOrganization({ id: "org-1", plan: "starter" }),
+    );
+
+    // Price unchanged, but the resulting merged ticket still has price > 0,
+    // so starter (no paidTickets) must be refused.
+    await expect(
+      eventService.updateTicketType(event.id, "tt-1", { name: "VIP Plus" }, user),
+    ).rejects.toThrow("paidTickets");
+  });
+
+  it("allows lowering an existing paid ticket to a free price on free plan", async () => {
+    const user = buildOrganizerUser("org-1");
+    const existing = {
+      id: "tt-1",
+      name: "VIP",
+      price: 5000,
+      currency: "XOF" as const,
+      totalQuantity: 50,
+      soldCount: 0,
+      accessZoneIds: [],
+      isVisible: true,
+    };
+    const event = buildEvent({
+      organizationId: "org-1",
+      status: "draft",
+      ticketTypes: [existing],
+    });
+    mockTxGet.mockResolvedValue({
+      exists: true,
+      id: event.id,
+      data: () => ({ ...event, id: undefined }),
+    });
+    // No orgRepo mock — free merged price bypasses the feature check.
+
+    const result = await eventService.updateTicketType(
+      event.id,
+      "tt-1",
+      { price: 0 },
+      user,
+    );
+
+    expect(result.ticketTypes[0].price).toBe(0);
+  });
 });
 
 // ─── Clone Enforcement ──────────────────────────────────────────────────────
