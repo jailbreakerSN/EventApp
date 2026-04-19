@@ -612,7 +612,10 @@ const EXPANSION_VENUES: SeedVenue[] = [
  * Timestamps (createdAt / updatedAt) deliberately staggered so the
  * "recently added" badge in /admin/venues exercises different buckets.
  */
-function timestampFor(index: number, status: SeedVenue["status"]): {
+function timestampFor(
+  index: number,
+  status: SeedVenue["status"],
+): {
   createdAt: string;
   updatedAt: string;
 } {

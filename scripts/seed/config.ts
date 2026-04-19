@@ -16,16 +16,13 @@
  * combined with `SEED_TARGET=staging`.
  */
 
-export const SEED_TARGET = (process.env.SEED_TARGET ?? "emulator") as
-  | "emulator"
-  | "staging";
+export const SEED_TARGET = (process.env.SEED_TARGET ?? "emulator") as "emulator" | "staging";
 export const SEED_FORCE = process.env.SEED_FORCE === "true";
 export const SEED_RESET_CONFIRM = process.env.SEED_RESET_CONFIRM ?? "";
 
 // Default matches the historical seed target so existing local workflows
 // keep working without explicit env vars.
-export const PROJECT_ID =
-  process.env.FIREBASE_PROJECT_ID ?? "teranga-app-990a8";
+export const PROJECT_ID = process.env.FIREBASE_PROJECT_ID ?? "teranga-app-990a8";
 
 /**
  * Project IDs the seed / reset scripts are allowed to touch. Adding a new
@@ -52,13 +49,13 @@ export const PROJECT_LABEL: Record<string, string> = {
  * Must run BEFORE `initializeApp()` so a mis-typed project id never
  * connects to the wrong Firestore.
  */
-export function assertSafeTarget(opts: {
-  allowReset?: boolean;
-} = {}): void {
+export function assertSafeTarget(
+  opts: {
+    allowReset?: boolean;
+  } = {},
+): void {
   if (SEED_TARGET !== "emulator" && SEED_TARGET !== "staging") {
-    throw new Error(
-      `Invalid SEED_TARGET=${SEED_TARGET}. Must be "emulator" or "staging".`,
-    );
+    throw new Error(`Invalid SEED_TARGET=${SEED_TARGET}. Must be "emulator" or "staging".`);
   }
   if (!SEED_ALLOW_LIST.has(PROJECT_ID)) {
     throw new Error(

@@ -494,11 +494,7 @@ async function ensureAuthUser(auth: Auth, spec: AuthUserSpec): Promise<void> {
   await auth.setCustomUserClaims(spec.uid, spec.claims);
 }
 
-async function writeProfile(
-  db: Firestore,
-  spec: AuthUserSpec,
-  createdAt: string,
-): Promise<void> {
+async function writeProfile(db: Firestore, spec: AuthUserSpec, createdAt: string): Promise<void> {
   if (!spec.profile) return; // authOnlyUser stays auth-only
   await db
     .collection("users")
@@ -511,9 +507,7 @@ async function writeProfile(
         photoURL: null,
         isActive: true,
         roles: spec.profile.roles,
-        ...(spec.profile.organizationId
-          ? { organizationId: spec.profile.organizationId }
-          : {}),
+        ...(spec.profile.organizationId ? { organizationId: spec.profile.organizationId } : {}),
         ...(spec.profile.phone ? { phone: spec.profile.phone } : {}),
         bio: spec.profile.bio,
         ...(spec.profile.city ? { city: spec.profile.city } : {}),

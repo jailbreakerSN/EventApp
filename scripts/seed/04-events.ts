@@ -1355,9 +1355,7 @@ const EXPANSION_EVENTS: SeedEvent[] = [
 export async function seedEvents(db: Firestore): Promise<number> {
   const all = [...LEGACY_EVENTS, ...EXPANSION_EVENTS];
 
-  await Promise.all(
-    all.map((event) => db.collection("events").doc(event.id).set(event)),
-  );
+  await Promise.all(all.map((event) => db.collection("events").doc(event.id).set(event)));
 
   return all.length;
 }

@@ -76,7 +76,6 @@ const inOneWeekPlus2h = Dates.inOneWeekPlus2h;
 const inOneWeekPlus3h = Dates.inOneWeekPlus3h;
 const inOneWeekPlus4h = Dates.inOneWeekPlus4h;
 const inTwoWeeks = Dates.inTwoWeeks;
-const inOneMonth = Dates.inOneMonth;
 
 async function seed() {
   const label = PROJECT_LABEL[PROJECT_ID] ?? PROJECT_ID;
@@ -338,24 +337,27 @@ async function seed() {
   // qrCodeValue is a placeholder sentinel because RegistrationSchema requires
   // a non-nullable string; real pending_payment registrations get the HMAC-
   // signed payload on confirmation.
-  await db.collection("registrations").doc(IDS.reg5).set({
-    id: IDS.reg5,
-    eventId: IDS.paidEvent,
-    userId: IDS.participant1,
-    ticketTypeId: "ticket-standard-004",
-    ticketTypeName: ticketNames["ticket-standard-004"],
-    participantName: "Aminata Fall",
-    participantEmail: "participant@teranga.dev",
-    ...eventDenorm[IDS.paidEvent],
-    status: "pending_payment",
-    qrCodeValue: `pending:${IDS.reg5}`,
-    checkedInAt: null,
-    checkedInBy: null,
-    accessZoneId: null,
-    notes: null,
-    createdAt: now,
-    updatedAt: now,
-  });
+  await db
+    .collection("registrations")
+    .doc(IDS.reg5)
+    .set({
+      id: IDS.reg5,
+      eventId: IDS.paidEvent,
+      userId: IDS.participant1,
+      ticketTypeId: "ticket-standard-004",
+      ticketTypeName: ticketNames["ticket-standard-004"],
+      participantName: "Aminata Fall",
+      participantEmail: "participant@teranga.dev",
+      ...eventDenorm[IDS.paidEvent],
+      status: "pending_payment",
+      qrCodeValue: `pending:${IDS.reg5}`,
+      checkedInAt: null,
+      checkedInBy: null,
+      accessZoneId: null,
+      notes: null,
+      createdAt: now,
+      updatedAt: now,
+    });
 
   // Reg 6: Participant 2 → Paid event (confirmed after payment)
   await db
