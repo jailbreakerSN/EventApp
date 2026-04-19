@@ -14,15 +14,30 @@
  * Intended to run in CI as a gate before deploy. The goal: never again
  * discover a missing composite index at runtime in staging.
  *
+ * Severity model:
+ *
+ *  - `primary` shapes (blocking, exit 1 on miss):
+ *      • the maximal combination (all optional filters applied), and
+ *      • the mandatory-only combination (no optional filters applied).
+ *    These are the corners of the query-shape hypercube and any realistic
+ *    call path touches at least one of them.
+ *
+ *  - `subset` shapes (warning by default, blocking under AUDIT_SUBSETS=1):
+ *      • every intermediate combination of optional filters. The previous
+ *        staging miss (`category + isPublic + location.city + status +
+ *        startDate`) was exactly one of these. Firestore requires a
+ *        separate composite index per subset actually queried, so a full
+ *        power-set scan is the only safe way to catch this class of bug.
+ *        Run `AUDIT_SUBSETS=1 npx tsx scripts/audit-firestore-indexes.ts`
+ *        in pre-deploy to gate on the full set.
+ *
  * Heuristics and limitations (deliberate — full combinatorial coverage
  * would require proper type flow analysis):
  *
- *  - One required-index emitted per method: the MAXIMAL filter set observed
- *    in the method body. If a method has conditional `.where()` calls, the
- *    linter only validates the "all filters applied" combination. Sub-
- *    variants (e.g. eventId alone with no optional filters) must still be
- *    covered by a separate declared index; the linter emits a warning for
- *    those but doesn't fail.
+ *  - Conditional filters (inside `if (...)` blocks) are treated as optional.
+ *    Subset generation is capped at 2^MAX_OPTIONAL to keep runtimes bounded;
+ *    beyond that only the maximal combination is checked and a warning is
+ *    surfaced.
  *  - Dynamic field names (where(variable, ...)) trigger a warning and are
  *    skipped for that method.
  *  - Only repositories that extend `BaseRepository` or Cloud Function
@@ -77,6 +92,12 @@ type RequiredIndex = {
   source: string; // "file:line"
   method: string;
   queryShape: string; // human-readable
+  /**
+   * "primary" — the maximal or mandatory-only shape. Treated as blocking.
+   * "subset"  — an intermediate subset of optional filters. Treated as a
+   *             warning unless AUDIT_SUBSETS=1. See comment at top of file.
+   */
+  severity: "primary" | "subset";
 };
 
 type Warning = {
@@ -233,6 +254,13 @@ type QueryFragment = {
   field: string;
   op: string;
   isDynamicField: boolean;
+  /**
+   * True when the where-clause sits inside an `if (...) { ... }` block —
+   * i.e. the runtime query will only include this filter when the branch is
+   * taken. Subset generation uses this to enumerate every reachable query
+   * shape, not just the maximal one.
+   */
+  isOptional: boolean;
 };
 
 type OrderByFragment = {
@@ -248,18 +276,35 @@ function extractQueryFragments(body: string): {
   const wheres: QueryFragment[] = [];
   const orderBys: OrderByFragment[] = [];
 
+  // Pre-compute the span of every `if (...) { ... }` body in the method.
+  // A where-clause whose character index sits inside any of these spans is
+  // conditional — the runtime only sees it when the branch is taken.
+  const ifBlockSpans = findIfBlockSpans(body);
+  const isInsideIf = (idx: number): boolean =>
+    ifBlockSpans.some((span) => idx >= span.start && idx < span.end);
+
   // Raw .where("field", "op", ...) calls
   const whereRe = /\.where\s*\(\s*"([^"]+)"\s*,\s*"([^"]+)"/g;
   let m: RegExpExecArray | null;
   while ((m = whereRe.exec(body)) !== null) {
-    wheres.push({ field: m[1], op: m[2], isDynamicField: false });
+    wheres.push({
+      field: m[1],
+      op: m[2],
+      isDynamicField: false,
+      isOptional: isInsideIf(m.index),
+    });
   }
 
   // findMany/findOne filter-array shorthand:
   //   [{ field: "x", op: "==", value: ... }, ...]
   const filterObjRe = /\{\s*field:\s*"([^"]+)"\s*,\s*op:\s*"([^"]+)"/g;
   while ((m = filterObjRe.exec(body)) !== null) {
-    wheres.push({ field: m[1], op: m[2], isDynamicField: false });
+    wheres.push({
+      field: m[1],
+      op: m[2],
+      isDynamicField: false,
+      isOptional: isInsideIf(m.index),
+    });
   }
 
   // Direct .orderBy("field", "dir") calls
@@ -299,6 +344,67 @@ function extractQueryFragments(body: string): {
   const hasSelect = /\.select\s*\(/.test(body);
 
   return { wheres, orderBys, hasSelect };
+}
+
+// Scan for `if (...) { ... }` blocks and return the [start, end) character
+// ranges of each block body. Used to mark where-clauses as conditional
+// (optional) when they sit inside one of these ranges.
+function findIfBlockSpans(source: string): Array<{ start: number; end: number }> {
+  const spans: Array<{ start: number; end: number }> = [];
+  // Match `if (...)` headers — we then walk forward through the parenthesis
+  // to find the matching body `{...}`.
+  const headerRe = /\bif\s*\(/g;
+  let m: RegExpExecArray | null;
+  while ((m = headerRe.exec(source)) !== null) {
+    // Walk the condition parentheses
+    let i = m.index + m[0].length;
+    let parenDepth = 1;
+    let inStr: string | null = null;
+    for (; i < source.length && parenDepth > 0; i++) {
+      const ch = source[i];
+      const prev = source[i - 1];
+      if (inStr) {
+        if (ch === inStr && prev !== "\\") inStr = null;
+        continue;
+      }
+      if (ch === '"' || ch === "'" || ch === "`") {
+        inStr = ch;
+        continue;
+      }
+      if (ch === "(") parenDepth++;
+      else if (ch === ")") parenDepth--;
+    }
+    if (parenDepth !== 0) continue;
+
+    // Skip whitespace to find the opening brace (single-statement `if`
+    // bodies without braces are not tracked; they can hold at most one
+    // statement which is fine for our where-clause detection).
+    while (i < source.length && /\s/.test(source[i])) i++;
+    if (source[i] !== "{") continue;
+
+    // Walk the body braces
+    const bodyStart = i + 1;
+    let braceDepth = 1;
+    i = bodyStart;
+    inStr = null;
+    for (; i < source.length && braceDepth > 0; i++) {
+      const ch = source[i];
+      const prev = source[i - 1];
+      if (inStr) {
+        if (ch === inStr && prev !== "\\") inStr = null;
+        continue;
+      }
+      if (ch === '"' || ch === "'" || ch === "`") {
+        inStr = ch;
+        continue;
+      }
+      if (ch === "{") braceDepth++;
+      else if (ch === "}") braceDepth--;
+    }
+    if (braceDepth !== 0) continue;
+    spans.push({ start: bodyStart, end: i - 1 });
+  }
+  return spans;
 }
 
 // Detect raw `db.collection(COLLECTIONS.X).where(...)` patterns and bind them
@@ -411,18 +517,113 @@ function computeRequiredIndex(
 }
 
 // ───────────────────────────────────────────────────────────────────────────
+// Subset expansion — enumerate every reachable query shape
+// ───────────────────────────────────────────────────────────────────────────
+
+/**
+ * Cap on optional-filter count to keep subset enumeration tractable.
+ * A query with 12 optional filters yields 2^12 = 4096 required-index
+ * candidates, which is still cheap but the cap protects against
+ * pathological cases. If a method legitimately needs more, the linter
+ * emits a warning instead of failing so the maximal-only behaviour
+ * falls back to the previous heuristic.
+ */
+const MAX_OPTIONAL = 12;
+
+/**
+ * Generate every reachable query shape for a method by enumerating the
+ * 2^n subsets of optional where-clauses (keeping all mandatory clauses).
+ * Returns a list of { wheres, label } pairs ready for computeRequiredIndex.
+ */
+type EnumeratedShape = {
+  wheres: QueryFragment[];
+  orderBys: OrderByFragment[];
+  variantKey: string;
+  severity: "primary" | "subset";
+};
+
+function enumerateQueryShapes(
+  wheres: QueryFragment[],
+  orderBys: OrderByFragment[],
+): EnumeratedShape[] {
+  const mandatory = wheres.filter((w) => !w.isOptional);
+  const optional = wheres.filter((w) => w.isOptional);
+
+  if (optional.length === 0) {
+    return [{ wheres: mandatory, orderBys, variantKey: "all", severity: "primary" }];
+  }
+  if (optional.length > MAX_OPTIONAL) {
+    return [
+      {
+        wheres: [...mandatory, ...optional],
+        orderBys,
+        variantKey: "maximal",
+        severity: "primary",
+      },
+    ];
+  }
+
+  const shapes: EnumeratedShape[] = [];
+  const total = 1 << optional.length;
+  for (let mask = 0; mask < total; mask++) {
+    const pickedOpt = optional.filter((_, i) => (mask >> i) & 1);
+    const subsetWheres = [...mandatory, ...pickedOpt];
+    const keyParts = pickedOpt.map((w) => w.field).sort();
+    const isMandatoryOnly = pickedOpt.length === 0;
+    const isMaximal = pickedOpt.length === optional.length;
+    const severity: "primary" | "subset" = isMandatoryOnly || isMaximal ? "primary" : "subset";
+    const variantKey = isMandatoryOnly
+      ? "mandatory-only"
+      : isMaximal
+        ? "maximal"
+        : keyParts.join("+");
+    shapes.push({ wheres: subsetWheres, orderBys, variantKey, severity });
+  }
+  return shapes;
+}
+
+// ───────────────────────────────────────────────────────────────────────────
 // Index matching
 // ───────────────────────────────────────────────────────────────────────────
 
+/**
+ * Firestore composite-index matching semantics (simplified from the docs):
+ *   - The set of equality fields can appear in ANY order within the index.
+ *   - Array-contains field can appear anywhere, with matching arrayConfig.
+ *   - The terminal (range / orderBy) field, if present, must be the LAST
+ *     entry in the index and its direction must match.
+ *
+ * Our linter emits the "required" shape in a canonical code-order, but an
+ * equivalent declared index may permute the equality block. We treat them
+ * as equivalent when:
+ *   - collection matches
+ *   - same cardinality
+ *   - same set of fieldPaths
+ *   - same terminal (last) field with matching order/arrayConfig
+ *   - array-contains fields match positionally by arrayConfig presence
+ */
 function indexMatches(required: RequiredIndex, declared: DeclaredIndex): boolean {
   if (required.collection !== declared.collectionGroup) return false;
   if (required.fields.length !== declared.fields.length) return false;
-  for (let i = 0; i < required.fields.length; i++) {
-    const rf = required.fields[i];
-    const df = declared.fields[i];
-    if (rf.fieldPath !== df.fieldPath) return false;
-    if ((rf.order ?? null) !== (df.order ?? null)) return false;
-    if ((rf.arrayConfig ?? null) !== (df.arrayConfig ?? null)) return false;
+
+  const rTerminal = required.fields[required.fields.length - 1];
+  const dTerminal = declared.fields[declared.fields.length - 1];
+  // Terminal alignment: a query's final field (range or orderBy) pins the
+  // index tail, so both must agree on path + order/arrayConfig.
+  if (rTerminal.fieldPath !== dTerminal.fieldPath) return false;
+  if ((rTerminal.order ?? null) !== (dTerminal.order ?? null)) return false;
+  if ((rTerminal.arrayConfig ?? null) !== (dTerminal.arrayConfig ?? null)) return false;
+
+  // The remaining fields (equality + array-contains prefix) must be the same
+  // set with the same per-field order/arrayConfig. Permutations are allowed.
+  const rHead = required.fields.slice(0, -1);
+  const dHead = declared.fields.slice(0, -1);
+  const signature = (f: IndexField) => `${f.fieldPath}|${f.order ?? ""}|${f.arrayConfig ?? ""}`;
+  const rSigs = rHead.map(signature).sort();
+  const dSigs = dHead.map(signature).sort();
+  if (rSigs.length !== dSigs.length) return false;
+  for (let i = 0; i < rSigs.length; i++) {
+    if (rSigs[i] !== dSigs[i]) return false;
   }
   return true;
 }
@@ -478,15 +679,26 @@ function main(): void {
           // findOne has no orderBy, no default ordering.
           const effectiveOrderBys = usesFindOne ? [] : orderBys;
 
-          const idxFields = computeRequiredIndex(wheres, effectiveOrderBys, hasDefaultOrderBy);
-          if (idxFields) {
-            required.push({
-              collection: classCollection,
-              fields: idxFields,
+          const optionalCount = wheres.filter((w) => w.isOptional).length;
+          if (optionalCount > MAX_OPTIONAL) {
+            warnings.push({
               source: source_,
-              method: method.name,
-              queryShape: humanReadable(wheres, effectiveOrderBys, hasDefaultOrderBy),
+              message: `${optionalCount} optional where-clauses exceeds MAX_OPTIONAL=${MAX_OPTIONAL}; only the maximal combination is checked.`,
             });
+          }
+
+          for (const shape of enumerateQueryShapes(wheres, effectiveOrderBys)) {
+            const idxFields = computeRequiredIndex(shape.wheres, shape.orderBys, hasDefaultOrderBy);
+            if (idxFields) {
+              required.push({
+                collection: classCollection,
+                fields: idxFields,
+                source: source_,
+                method: method.name,
+                queryShape: `${humanReadable(shape.wheres, shape.orderBys, hasDefaultOrderBy)} [variant: ${shape.variantKey}]`,
+                severity: shape.severity,
+              });
+            }
           }
         }
 
@@ -494,15 +706,25 @@ function main(): void {
         for (const raw of rawChunks) {
           const frag = extractQueryFragments(raw.chunk);
           // These are raw chains — no default orderBy.
-          const idxFields = computeRequiredIndex(frag.wheres, frag.orderBys, false);
-          if (idxFields) {
-            required.push({
-              collection: raw.collection,
-              fields: idxFields,
+          const optionalCount = frag.wheres.filter((w) => w.isOptional).length;
+          if (optionalCount > MAX_OPTIONAL) {
+            warnings.push({
               source: source_,
-              method: method.name,
-              queryShape: humanReadable(frag.wheres, frag.orderBys, false),
+              message: `${optionalCount} optional where-clauses exceeds MAX_OPTIONAL=${MAX_OPTIONAL}; only the maximal combination is checked.`,
             });
+          }
+          for (const shape of enumerateQueryShapes(frag.wheres, frag.orderBys)) {
+            const idxFields = computeRequiredIndex(shape.wheres, shape.orderBys, false);
+            if (idxFields) {
+              required.push({
+                collection: raw.collection,
+                fields: idxFields,
+                source: source_,
+                method: method.name,
+                queryShape: `${humanReadable(shape.wheres, shape.orderBys, false)} [variant: ${shape.variantKey}]`,
+                severity: shape.severity,
+              });
+            }
           }
         }
 
@@ -525,6 +747,12 @@ function main(): void {
   // Compare.
   const missing = uniqueRequired.filter((r) => !declared.some((d) => indexMatches(r, d)));
 
+  // Split by severity. Primary = blocking; subsets = warnings unless the
+  // AUDIT_SUBSETS=1 env var promotes them to blocking.
+  const strictSubsets = process.env.AUDIT_SUBSETS === "1";
+  const missingPrimary = missing.filter((m) => m.severity === "primary");
+  const missingSubsets = missing.filter((m) => m.severity === "subset");
+
   // ─── Report ───
   console.log(
     `Scanned ${filesScanned} file(s); found ${uniqueRequired.length} unique query shape(s).`,
@@ -534,14 +762,35 @@ function main(): void {
     console.warn(`  [warn] ${w.source} — ${w.message}`);
   }
 
-  if (missing.length === 0) {
-    console.log(`\n✅ All reachable query shapes are covered by declared indexes.`);
+  if (missingSubsets.length > 0) {
+    const label = strictSubsets ? "ERROR" : "warn";
+    console.warn(
+      `\n[${label}] ${missingSubsets.length} subset query shape(s) lack a matching declared index${
+        strictSubsets ? "" : " (promoted to errors under AUDIT_SUBSETS=1)"
+      }:`,
+    );
+    for (const m of missingSubsets) {
+      console.warn(`  • ${m.source} (${m.method}): ${m.queryShape}`);
+      console.warn(`    Required: ${renderIndex(m.collection, m.fields)}`);
+    }
+  }
+
+  const blocking = [...missingPrimary, ...(strictSubsets ? missingSubsets : [])];
+
+  if (blocking.length === 0) {
+    if (missingSubsets.length === 0) {
+      console.log(`\n✅ All reachable query shapes are covered by declared indexes.`);
+    } else {
+      console.log(
+        `\n✅ All primary (maximal + mandatory-only) query shapes covered. ${missingSubsets.length} subset warning(s) — see above.`,
+      );
+    }
     process.exit(0);
   }
 
-  console.error(`\n❌ ${missing.length} query shape(s) lack a matching declared index:\n`);
-  for (const m of missing) {
-    console.error(`  • ${m.source} (${m.method}): ${m.queryShape}`);
+  console.error(`\n❌ ${blocking.length} query shape(s) lack a matching declared index:\n`);
+  for (const m of blocking) {
+    console.error(`  • [${m.severity}] ${m.source} (${m.method}): ${m.queryShape}`);
     console.error(`    Required: ${renderIndex(m.collection, m.fields)}`);
     console.error();
   }
@@ -549,7 +798,7 @@ function main(): void {
   console.error();
   console.error(
     JSON.stringify(
-      missing.map((m) => ({
+      blocking.map((m) => ({
         collectionGroup: m.collection,
         queryScope: "COLLECTION",
         fields: m.fields,
@@ -592,7 +841,16 @@ function dedupeRequired(list: RequiredIndex[]): RequiredIndex[] {
     const key = `${r.collection}::${r.fields
       .map((f) => `${f.fieldPath}|${f.order ?? ""}|${f.arrayConfig ?? ""}`)
       .join("::")}`;
-    if (!seen.has(key)) seen.set(key, r);
+    const existing = seen.get(key);
+    if (!existing) {
+      seen.set(key, r);
+      continue;
+    }
+    // When the same shape is reached via both a primary and a subset path,
+    // keep the primary one so blocking behaviour wins.
+    if (existing.severity === "subset" && r.severity === "primary") {
+      seen.set(key, r);
+    }
   }
   return [...seen.values()];
 }

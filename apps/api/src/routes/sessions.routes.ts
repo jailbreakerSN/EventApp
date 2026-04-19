@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { authenticate, requireEmailVerified } from "@/middlewares/auth.middleware";
+import { authenticate, optionalAuth, requireEmailVerified } from "@/middlewares/auth.middleware";
 import { validate } from "@/middlewares/validate.middleware";
 import { requirePermission } from "@/middlewares/permission.middleware";
 import { sessionService } from "@/services/session.service";
@@ -15,20 +15,23 @@ const SessionIdParams = z.object({ eventId: z.string(), sessionId: z.string() })
 
 export async function sessionRoutes(app: FastifyInstance) {
   // ─── List sessions for an event ─────────────────────────────────────────
-  // Published schedules are readable by any authenticated user; the service
-  // re-gates non-published events behind org access.
+  // Published agendas are PUBLIC — any visitor (authenticated or not) can
+  // fetch the programme because the participant marketing site renders it
+  // via SSR on the public event detail page. The service still gates draft/
+  // unpublished agendas behind authentication + org access so unreleased
+  // programmes never leak.
   app.get(
     "/:eventId/sessions",
     {
       preHandler: [
-        authenticate,
+        optionalAuth,
         validate({ params: EventIdParams, query: SessionScheduleQuerySchema }),
       ],
     },
     async (request, reply) => {
       const { eventId } = request.params as z.infer<typeof EventIdParams>;
       const query = request.query as z.infer<typeof SessionScheduleQuerySchema>;
-      const result = await sessionService.listByEvent(eventId, query, request.user!);
+      const result = await sessionService.listByEvent(eventId, query, request.user);
       return reply.send({ success: true, ...result });
     },
   );
@@ -37,14 +40,11 @@ export async function sessionRoutes(app: FastifyInstance) {
   app.get(
     "/:eventId/sessions/:sessionId",
     {
-      preHandler: [
-        authenticate,
-        validate({ params: SessionIdParams }),
-      ],
+      preHandler: [optionalAuth, validate({ params: SessionIdParams })],
     },
     async (request, reply) => {
       const { eventId, sessionId } = request.params as z.infer<typeof SessionIdParams>;
-      const session = await sessionService.getById(eventId, sessionId, request.user!);
+      const session = await sessionService.getById(eventId, sessionId, request.user);
       return reply.send({ success: true, data: session });
     },
   );
@@ -106,15 +106,15 @@ export async function sessionRoutes(app: FastifyInstance) {
   );
 
   // ─── Bookmark a session ─────────────────────────────────────────────────
+  // Bookmarks are per-user — any authenticated participant can manage their
+  // own bookmarks on any session they can see. We intentionally don't gate
+  // this behind `event:read` because participants don't hold that
+  // permission (it's organizer-scoped) and the service re-checks org access
+  // for non-published events.
   app.post(
     "/:eventId/sessions/:sessionId/bookmark",
     {
-      preHandler: [
-        authenticate,
-        requireEmailVerified,
-        requirePermission("event:read"),
-        validate({ params: SessionIdParams }),
-      ],
+      preHandler: [authenticate, requireEmailVerified, validate({ params: SessionIdParams })],
     },
     async (request, reply) => {
       const { eventId, sessionId } = request.params as z.infer<typeof SessionIdParams>;
@@ -127,12 +127,7 @@ export async function sessionRoutes(app: FastifyInstance) {
   app.delete(
     "/:eventId/sessions/:sessionId/bookmark",
     {
-      preHandler: [
-        authenticate,
-        requireEmailVerified,
-        requirePermission("event:read"),
-        validate({ params: SessionIdParams }),
-      ],
+      preHandler: [authenticate, requireEmailVerified, validate({ params: SessionIdParams })],
     },
     async (request, reply) => {
       const { eventId, sessionId } = request.params as z.infer<typeof SessionIdParams>;
@@ -145,11 +140,7 @@ export async function sessionRoutes(app: FastifyInstance) {
   app.get(
     "/:eventId/sessions-bookmarks",
     {
-      preHandler: [
-        authenticate,
-        requirePermission("event:read"),
-        validate({ params: EventIdParams }),
-      ],
+      preHandler: [authenticate, validate({ params: EventIdParams })],
     },
     async (request, reply) => {
       const { eventId } = request.params as z.infer<typeof EventIdParams>;
