@@ -87,15 +87,13 @@ export default function MyEventsPage() {
   const registrations = data?.data;
   const meta = data?.meta;
 
-  // Batch-fetch event details for registrations missing eventStartDate.
-  // These are older registrations created before the denormalization was added.
-  const missingStartDate = useMemo(
-    () => (registrations ?? []).filter((r) => !r.eventStartDate),
-    [registrations],
-  );
-
+  // Batch-fetch event details for every registration. The registration's
+  // denormalized `eventStartDate` / `eventEndDate` are a snapshot taken at
+  // registration time — if the organizer later reschedules the event, the
+  // snapshot drifts. React Query caches per eventSlug/eventId, so this is
+  // a single fetch per unique event (cheap on re-renders).
   const eventDetailQueries = useQueries({
-    queries: missingStartDate.map((r) => ({
+    queries: (registrations ?? []).map((r) => ({
       queryKey: ["event-detail", r.eventSlug ?? r.eventId] as const,
       queryFn: () =>
         r.eventSlug
@@ -106,10 +104,11 @@ export default function MyEventsPage() {
     })),
   });
 
-  // Map eventId → fetched event details so we can fill in missing start dates.
+  // Map eventId → fetched event details so we can prefer fresh dates over
+  // the (possibly stale) denormalized snapshot on the registration.
   const eventDetailMap = useMemo(() => {
     const map = new Map<string, { startDate?: string; endDate?: string; location?: string }>();
-    missingStartDate.forEach((reg, i) => {
+    (registrations ?? []).forEach((reg, i) => {
       const result = eventDetailQueries[i];
       if (result?.data) {
         const loc = result.data.location;
@@ -126,7 +125,7 @@ export default function MyEventsPage() {
       }
     });
     return map;
-  }, [missingStartDate, eventDetailQueries]);
+  }, [registrations, eventDetailQueries]);
 
   const refundMutation = useMutation({
     mutationFn: (paymentId: string) => paymentsApi.refund(paymentId, t("refundReason")),
@@ -198,13 +197,15 @@ export default function MyEventsPage() {
     for (const rawReg of upcoming) {
       const reg = rawReg as RegistrationWithExtras;
       const fetched = eventDetailMap.get(reg.eventId);
-      const startDate = reg.eventStartDate ?? fetched?.startDate;
+      // Prefer the live event date over the denormalized snapshot so a
+      // rescheduled event surfaces on the right day in the calendar.
+      const startDate = fetched?.startDate ?? reg.eventStartDate;
       if (!startDate) continue;
       result.push({
         id: reg.id,
         title: reg.eventTitle ?? reg.eventId,
         startDate,
-        endDate: reg.eventEndDate ?? fetched?.endDate,
+        endDate: fetched?.endDate ?? reg.eventEndDate,
         status: reg.status,
         location: fetched?.location,
         slug: reg.eventSlug ?? undefined,
@@ -466,10 +467,13 @@ export default function MyEventsPage() {
             <div className="flex flex-col gap-4">
               {upcoming.map((rawReg) => {
                 const reg = rawReg as RegistrationWithExtras;
+                const fetched = eventDetailMap.get(reg.eventId);
+                const eventStartDate = fetched?.startDate ?? reg.eventStartDate;
                 return (
                   <UpcomingRow
                     key={reg.id}
                     reg={reg}
+                    eventStartDate={eventStartDate}
                     regional={regional}
                     t={t}
                     canCancel={["confirmed", "pending"].includes(reg.status)}
@@ -619,6 +623,7 @@ export default function MyEventsPage() {
 // Cover gradient rotates per event.id via getCoverGradient.
 function UpcomingRow({
   reg,
+  eventStartDate,
   regional,
   t,
   canCancel,
@@ -630,6 +635,7 @@ function UpcomingRow({
   isRefunding,
 }: {
   reg: Registration & { paymentId?: string; waitlistPosition?: number };
+  eventStartDate: string | undefined;
   regional: string;
   t: ReturnType<typeof useTranslations<"myEvents">>;
   canCancel: boolean;
@@ -662,7 +668,7 @@ function UpcomingRow({
         <div className="p-6">
           <div className="mb-2 flex flex-wrap items-center gap-2">
             <span className="font-mono-kicker text-[11px] uppercase tracking-[0.08em] text-teranga-gold-dark">
-              {formatDate(reg.createdAt, regional)}
+              {formatDate(eventStartDate ?? reg.createdAt, regional)}
             </span>
             <StatusPill tone={tone} label={statusLabel} />
           </div>

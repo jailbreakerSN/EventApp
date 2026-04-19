@@ -15,12 +15,13 @@ const SessionIdParams = z.object({ eventId: z.string(), sessionId: z.string() })
 
 export async function sessionRoutes(app: FastifyInstance) {
   // ─── List sessions for an event ─────────────────────────────────────────
+  // Published schedules are readable by any authenticated user; the service
+  // re-gates non-published events behind org access.
   app.get(
     "/:eventId/sessions",
     {
       preHandler: [
         authenticate,
-        requirePermission("event:read"),
         validate({ params: EventIdParams, query: SessionScheduleQuerySchema }),
       ],
     },
@@ -38,7 +39,6 @@ export async function sessionRoutes(app: FastifyInstance) {
     {
       preHandler: [
         authenticate,
-        requirePermission("event:read"),
         validate({ params: SessionIdParams }),
       ],
     },
