@@ -12,6 +12,7 @@ import { runWithContext, enrichContext } from "@/context/request-context";
 import { registerNotificationListeners } from "@/events/listeners/notification.listener";
 import { registerAuditListeners } from "@/events/listeners/audit.listener";
 import { registerEffectivePlanListeners } from "@/events/listeners/effective-plan.listener";
+import { registerEventDenormListeners } from "@/events/listeners/event-denorm.listener";
 import { captureError } from "@/observability/sentry";
 
 export async function buildApp() {
@@ -151,6 +152,7 @@ export async function buildApp() {
   registerNotificationListeners();
   registerAuditListeners();
   registerEffectivePlanListeners();
+  registerEventDenormListeners();
 
   // ─── Routes ───────────────────────────────────────────────────────────────
   await registerRoutes(app);
