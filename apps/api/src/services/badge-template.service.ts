@@ -66,6 +66,9 @@ export class BadgeTemplateService extends BaseService {
     const template = await badgeTemplateRepository.findByIdOrThrow(templateId);
     this.requireOrganizationAccess(user, template.organizationId);
 
+    const org = await organizationRepository.findByIdOrThrow(template.organizationId);
+    this.requirePlanFeature(org, "customBadges");
+
     await badgeTemplateRepository.softDelete(templateId);
   }
 }

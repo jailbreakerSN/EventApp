@@ -444,6 +444,7 @@ export interface ReceiptGeneratedEvent extends BaseEventPayload {
   receiptId: string;
   paymentId: string;
   eventId: string;
+  organizationId: string;
   userId: string;
   amount: number;
 }

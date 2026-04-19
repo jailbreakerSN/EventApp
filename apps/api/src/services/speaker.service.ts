@@ -95,6 +95,12 @@ export class SpeakerService extends BaseService {
       this.requireOrganizationAccess(user, speaker.organizationId);
     }
 
+    // Gate behind `speakerPortal` regardless of which branch — if the org
+    // downgraded below pro, the portal surface is gone and profile mutations
+    // (self or organizer) must be blocked consistently with create/delete.
+    const org = await organizationRepository.findByIdOrThrow(speaker.organizationId);
+    this.requirePlanFeature(org, "speakerPortal");
+
     await speakerRepository.update(speakerId, {
       ...dto,
       updatedAt: new Date().toISOString(),
@@ -110,6 +116,10 @@ export class SpeakerService extends BaseService {
     this.requirePermission(user, "event:manage_speakers");
     const speaker = await speakerRepository.findByIdOrThrow(speakerId);
     this.requireOrganizationAccess(user, speaker.organizationId);
+
+    const org = await organizationRepository.findByIdOrThrow(speaker.organizationId);
+    this.requirePlanFeature(org, "speakerPortal");
+
     await speakerRepository.update(speakerId, {
       isConfirmed: false,
       sessionIds: [],

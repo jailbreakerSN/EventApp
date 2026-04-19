@@ -986,7 +986,7 @@ export function registerAuditListeners(): void {
       resourceType: "receipt",
       resourceId: payload.receiptId,
       eventId: payload.eventId,
-      organizationId: null,
+      organizationId: payload.organizationId,
       details: {
         paymentId: payload.paymentId,
         userId: payload.userId,
