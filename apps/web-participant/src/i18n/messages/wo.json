@@ -523,12 +523,17 @@
     "calendar": {
       "prevMonth": "Wergi bu jiitu",
       "nextMonth": "Wergi bu topp",
+      "today": "Tey",
       "more": "ëpp",
       "legend": "Statut yi",
       "confirmed": "Nangu",
       "checkedIn": "Dugg",
       "pending": "Di xaar",
-      "waitlisted": "Liste d'attente"
+      "waitlisted": "Liste d'attente",
+      "discoveryLegend": "Événements yeneen",
+      "discoveryOn": "Xool événements yeneen",
+      "discoveryOff": "Planqué yeneen yi",
+      "closeDialog": "Tëj"
     },
     "status": {
       "confirmed": "Nangu",
