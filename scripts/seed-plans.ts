@@ -12,7 +12,7 @@
  *
  * Usage:
  *   npx tsx scripts/seed-plans.ts
- *   SEED_TARGET=staging FIREBASE_PROJECT_ID=teranga-events-staging npx tsx scripts/seed-plans.ts
+ *   SEED_TARGET=staging FIREBASE_PROJECT_ID=teranga-app-990a8 npx tsx scripts/seed-plans.ts
  */
 
 import { initializeApp, getApps } from "firebase-admin/app";

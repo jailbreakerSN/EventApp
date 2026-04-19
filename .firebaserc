@@ -1,7 +1,7 @@
 {
   "projects": {
     "default": "teranga-app-990a8",
-    "staging": "teranga-events-staging",
+    "staging": "teranga-app-990a8",
     "production": "teranga-events-prod"
   },
   "etags": {}

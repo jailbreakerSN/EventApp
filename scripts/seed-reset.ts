@@ -17,9 +17,9 @@
  *
  * Usage (staging — gated behind the seed-staging GitHub Actions workflow):
  *   SEED_TARGET=staging \
- *   FIREBASE_PROJECT_ID=teranga-events-staging \
+ *   FIREBASE_PROJECT_ID=teranga-app-990a8 \
  *   SEED_RESET_CONFIRM=YES_RESET \
- *   CONFIRM_PROJECT=teranga-events-staging \
+ *   CONFIRM_PROJECT=teranga-app-990a8 \
  *     npx tsx scripts/seed-reset.ts
  */
 

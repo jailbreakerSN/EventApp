@@ -22,7 +22,7 @@
  *   npx tsx scripts/backfill-balance-ledger.ts
  *
  *   # Against staging — requires ADC / GOOGLE_APPLICATION_CREDENTIALS
- *   SEED_TARGET=staging FIREBASE_PROJECT_ID=teranga-events-staging \
+ *   SEED_TARGET=staging FIREBASE_PROJECT_ID=teranga-app-990a8 \
  *     npx tsx scripts/backfill-balance-ledger.ts
  *
  * NO destructive writes: the script only UPSERTS missing entries. It does
