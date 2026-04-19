@@ -47,7 +47,7 @@ export function CalendarView({ registrations }: CalendarViewProps) {
   const eventsByDay = useMemo(() => {
     const map = new Map<number, RegistrationWithExtras[]>();
     for (const reg of registrations) {
-      if (!reg.eventStartDate || reg.status === "cancelled" || reg.status === "refunded") continue;
+      if (!reg.eventStartDate || reg.status === "cancelled") continue;
       const d = getDakar(reg.eventStartDate);
       if (d.getFullYear() === year && d.getMonth() === month) {
         const day = d.getDate();
