@@ -3,7 +3,7 @@ import {
   type OfflineEventData,
   type Registration,
 } from "@teranga/shared-types";
-import { type DocumentSnapshot } from "firebase-admin/firestore";
+import { type DocumentSnapshot, FieldValue } from "firebase-admin/firestore";
 import { db, storage, COLLECTIONS } from "@/config/firebase";
 import { eventRepository } from "@/repositories/event.repository";
 import { registrationRepository } from "@/repositories/registration.repository";
@@ -191,15 +191,16 @@ export class BadgeService extends BaseService {
   async getMyBadge(eventId: string, user: AuthUser): Promise<GeneratedBadge> {
     this.requirePermission(user, "badge:view_own");
 
-    const snap = await this.badgesCollection
-      .where("eventId", "==", eventId)
-      .where("userId", "==", user.uid)
-      .limit(1)
-      .get();
+    // Deterministic doc ID + transaction kills the race where two concurrent
+    // first-time fetches would both pass the "empty" check and create two
+    // badge documents for the same (event, user) pair. Per CLAUDE.md any
+    // read-then-write must be transactional.
+    const docId = `${eventId}_${user.uid}`;
+    const docRef = this.badgesCollection.doc(docId);
 
-    if (!snap.empty) {
-      const doc = snap.docs[0];
-      return { id: doc.id, ...doc.data() } as GeneratedBadge;
+    const existing = await docRef.get();
+    if (existing.exists) {
+      return { id: existing.id, ...existing.data() } as GeneratedBadge;
     }
 
     const registration = await this.findUserRegistration(eventId, user.uid);
@@ -211,9 +212,8 @@ export class BadgeService extends BaseService {
     }
 
     const now = new Date().toISOString();
-    const docRef = this.badgesCollection.doc();
     const badge: GeneratedBadge = {
-      id: docRef.id,
+      id: docId,
       registrationId: registration.id,
       eventId,
       userId: user.uid,
@@ -225,8 +225,32 @@ export class BadgeService extends BaseService {
       generatedAt: now,
       downloadCount: 0,
     };
-    await docRef.set(badge);
-    return badge;
+
+    const created = await db.runTransaction(async (tx) => {
+      const fresh = await tx.get(docRef);
+      if (fresh.exists) {
+        return { id: fresh.id, ...fresh.data() } as GeneratedBadge;
+      }
+      tx.set(docRef, badge);
+      return badge;
+    });
+
+    // Only emit the audit event when we actually wrote a new doc — comparing
+    // `generatedAt` is the cheapest way to detect "we lost the race and the
+    // other writer won" without a second read.
+    if (created.generatedAt === now) {
+      eventBus.emit("badge.generated", {
+        badgeId: created.id,
+        registrationId: created.registrationId,
+        eventId: created.eventId,
+        userId: created.userId,
+        actorId: user.uid,
+        requestId: getRequestId(),
+        timestamp: now,
+      });
+    }
+
+    return created;
   }
 
   /**
@@ -285,12 +309,13 @@ export class BadgeService extends BaseService {
       buffer = await this.renderBadgePdf(registration, badge.eventId);
     }
 
+    // Atomic increment — Firestore handles concurrent download counts on
+    // the server side, so we don't need a transaction or to read the
+    // current value first.
     const reqId = getRequestId();
     this.badgesCollection
       .doc(badgeId)
-      .update({
-        downloadCount: (badge.downloadCount ?? 0) + 1,
-      })
+      .update({ downloadCount: FieldValue.increment(1) })
       .catch((err: unknown) => {
         process.stderr.write(
           `[BadgeService] reqId=${reqId} Failed to increment download counter for badge ${badgeId}: ${err}\n`,

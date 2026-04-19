@@ -8,7 +8,6 @@ import { QRCodeSVG } from "qrcode.react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocale, useTranslations } from "next-intl";
 import { registrationsApi, badgesApi } from "@/lib/api-client";
-import { cacheBadgeInServiceWorker } from "@/hooks/use-badges";
 import { useAuth } from "@/hooks/use-auth";
 import {
   Button,
@@ -126,10 +125,14 @@ export default function BadgePage() {
     if (!registration?.eventId || offlineState === "saving") return;
     setOfflineState("saving");
     try {
-      // Warm the service-worker cache for the badge API response …
-      cacheBadgeInServiceWorker(`/v1/badges/me/${registration.eventId}`);
-      // … and prefetch the badge PDF metadata so the signed URL is in cache.
-      await badgesApi.getMyBadge(registration.eventId);
+      // Issue both fetches through the app (with auth) so the SW's fetch
+      // handler caches the responses. The postMessage-based CACHE_BADGE
+      // path can't reach auth-gated routes — the SW would call fetch(url)
+      // without the Bearer token.
+      await Promise.all([
+        badgesApi.getMyBadge(registration.eventId),
+        badgesApi.getMyBadgePdf(registration.eventId),
+      ]);
       setOfflineState("saved");
     } catch {
       setOfflineState("error");
@@ -142,7 +145,6 @@ export default function BadgePage() {
     try {
       const blob = await badgesApi.getMyBadgePdf(registration.eventId);
       const objectUrl = URL.createObjectURL(blob);
-      cacheBadgeInServiceWorker(`/v1/badges/me/${registration.eventId}/pdf`);
       window.open(objectUrl, "_blank");
       // Object URLs leak memory if held forever; revoke after the new tab
       // has had time to load. 60s is generous on slow networks but bounded.
