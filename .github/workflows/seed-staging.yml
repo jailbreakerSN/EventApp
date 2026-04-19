@@ -77,8 +77,8 @@ jobs:
           PROJECT_ID=$(gcloud config get-value project)
           echo "project_id=${PROJECT_ID}" >> "$GITHUB_OUTPUT"
           echo "Staging project: ${PROJECT_ID}"
-          if [ "${PROJECT_ID}" != "teranga-events-staging" ]; then
-            echo "::error::Refusing to run: derived project id '${PROJECT_ID}' is not 'teranga-events-staging'."
+          if [ "${PROJECT_ID}" != "teranga-app-990a8" ]; then
+            echo "::error::Refusing to run: derived project id '${PROJECT_ID}' is not 'teranga-app-990a8'."
             exit 1
           fi
 

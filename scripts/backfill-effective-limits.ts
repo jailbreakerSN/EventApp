@@ -22,7 +22,7 @@
  *   npx tsx scripts/backfill-effective-limits.ts
  *
  *   # Against a real project — requires ADC / GOOGLE_APPLICATION_CREDENTIALS
- *   SEED_TARGET=staging FIREBASE_PROJECT_ID=teranga-events-staging \
+ *   SEED_TARGET=staging FIREBASE_PROJECT_ID=teranga-app-990a8 \
  *     npx tsx scripts/backfill-effective-limits.ts
  */
 

@@ -535,11 +535,11 @@ flutter build ios --release           # iOS (requires macOS)
 
 ## Environment Aliases
 
-| Alias      | Firebase Project         | Usage                  |
-| ---------- | ------------------------ | ---------------------- |
-| default    | `teranga-events-dev`     | Local development      |
-| staging    | `teranga-events-staging` | Pre-production testing |
-| production | `teranga-events-prod`    | Live production        |
+| Alias      | Firebase Project      | Usage                                     |
+| ---------- | --------------------- | ----------------------------------------- |
+| default    | `teranga-app-990a8`   | Local dev + staging (shared single env)   |
+| staging    | `teranga-app-990a8`   | Alias — same project as default           |
+| production | `teranga-events-prod` | Live production                           |
 
 Switch with: `firebase use <alias>`
 

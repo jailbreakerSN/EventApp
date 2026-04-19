@@ -33,16 +33,14 @@ export const PROJECT_ID =
  * override. The production project is intentionally NOT in this list.
  */
 const SEED_ALLOW_LIST = new Set([
-  "teranga-app-990a8", // local / default dev project
+  "teranga-app-990a8", // local dev + staging (shared project)
   "teranga-events-dev", // CI emulator-like project
-  "teranga-events-staging", // pre-production
 ]);
 
 /** Human name used in log output and workflow-dispatch confirmations. */
 export const PROJECT_LABEL: Record<string, string> = {
-  "teranga-app-990a8": "local dev",
+  "teranga-app-990a8": "local dev + staging",
   "teranga-events-dev": "CI dev",
-  "teranga-events-staging": "staging",
 };
 
 /**

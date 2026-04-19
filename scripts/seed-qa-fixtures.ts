@@ -25,7 +25,7 @@
  *
  * Against a real project (staging/prod) — requires ADC or
  * GOOGLE_APPLICATION_CREDENTIALS:
- *   SEED_TARGET=staging FIREBASE_PROJECT_ID=teranga-events-staging \
+ *   SEED_TARGET=staging FIREBASE_PROJECT_ID=teranga-app-990a8 \
  *     npx tsx scripts/seed-qa-fixtures.ts
  *
  * The CD pipeline (.github/workflows/deploy-staging.yml) runs this as a
