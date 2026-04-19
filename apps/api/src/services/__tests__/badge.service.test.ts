@@ -123,8 +123,9 @@ vi.mock("@/config/firebase", () => ({
   storage: {
     bucket: vi.fn(() => ({
       file: vi.fn(() => ({
-        save: vi.fn().mockResolvedValue(undefined),
-        getSignedUrl: vi.fn().mockResolvedValue(["https://storage.example.com/badge.pdf"]),
+        // Used by download() when the badge has a pre-rendered Cloud Storage
+        // file (Cloud Function-generated path). We no longer call signed URLs.
+        download: vi.fn().mockResolvedValue([Buffer.from("%PDF-stub")]),
       })),
     })),
   },

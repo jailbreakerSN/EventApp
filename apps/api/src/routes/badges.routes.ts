@@ -64,11 +64,15 @@ export const badgeRoutes: FastifyPluginAsync = async (fastify) => {
     },
   );
 
-  // ─── Get My Badge ────────────────────────────────────────────────────────
+  // ─── Get My Badge (metadata) ─────────────────────────────────────────────
   fastify.get(
     "/me/:eventId",
     {
-      preHandler: [authenticate, validate({ params: ParamsWithEventId })],
+      preHandler: [
+        authenticate,
+        requirePermission("badge:view_own"),
+        validate({ params: ParamsWithEventId }),
+      ],
       schema: {
         tags: ["Badges"],
         summary: "Get my badge for an event",
@@ -82,21 +86,59 @@ export const badgeRoutes: FastifyPluginAsync = async (fastify) => {
     },
   );
 
-  // ─── Download Badge PDF ──────────────────────────────────────────────────
+  // ─── Stream My Badge PDF ─────────────────────────────────────────────────
+  // Renders the PDF on demand and streams the bytes back. Avoids Cloud
+  // Storage signed URLs, which require `iam.signBlob` on the Cloud Run
+  // runtime SA — that permission is not granted by default and was the root
+  // cause of the production 500 on /v1/badges/me/:eventId.
+  fastify.get(
+    "/me/:eventId/pdf",
+    {
+      preHandler: [
+        authenticate,
+        requirePermission("badge:view_own"),
+        validate({ params: ParamsWithEventId }),
+      ],
+      schema: {
+        tags: ["Badges"],
+        summary: "Download my badge PDF (binary)",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const { eventId } = request.params as z.infer<typeof ParamsWithEventId>;
+      const { buffer, filename } = await badgeService.getMyBadgePdf(eventId, request.user!);
+      return reply
+        .header("Content-Type", "application/pdf")
+        .header("Content-Disposition", `inline; filename="${filename}"`)
+        .header("Cache-Control", "private, no-store")
+        .send(buffer);
+    },
+  );
+
+  // ─── Download Badge PDF (organizer/staff) ────────────────────────────────
   fastify.get(
     "/:badgeId/download",
     {
-      preHandler: [authenticate, validate({ params: ParamsWithBadgeId })],
+      preHandler: [
+        authenticate,
+        requirePermission("badge:view_own"),
+        validate({ params: ParamsWithBadgeId }),
+      ],
       schema: {
         tags: ["Badges"],
-        summary: "Get a download URL for a badge PDF",
+        summary: "Download a badge PDF (binary)",
         security: [{ BearerAuth: [] }],
       },
     },
     async (request, reply) => {
       const { badgeId } = request.params as z.infer<typeof ParamsWithBadgeId>;
-      const result = await badgeService.download(badgeId, request.user!);
-      return reply.send({ success: true, data: result });
+      const { buffer, filename } = await badgeService.download(badgeId, request.user!);
+      return reply
+        .header("Content-Type", "application/pdf")
+        .header("Content-Disposition", `attachment; filename="${filename}"`)
+        .header("Cache-Control", "private, no-store")
+        .send(buffer);
     },
   );
 

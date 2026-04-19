@@ -135,6 +135,49 @@ const api = {
     request<T>(path, { method: "DELETE" }),
 };
 
+// Binary-fetch counterpart of `request()`. JSON `request()` can't be reused
+// because it always parses the body as JSON; PDFs need `.blob()`. Keeps the
+// same hardening: 30 s abort timeout + single 401 retry with refreshed ID
+// token, matching the Security Hardening Checklist (CLAUDE.md).
+async function fetchPdf(path: string, _isRetry = false): Promise<Blob> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  let response: Response;
+  try {
+    response = await fetch(`${API_URL}${path}`, {
+      headers: { Authorization: await getAuthHeader() },
+      signal: controller.signal,
+    });
+  } catch (err: unknown) {
+    if (err instanceof DOMException && err.name === "AbortError") {
+      throw new ApiError("TIMEOUT", "La requête a expiré", 408);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  if (response.status === 401 && !_isRetry) {
+    const user = firebaseAuth.currentUser;
+    if (user) {
+      try {
+        await user.getIdToken(true);
+        return fetchPdf(path, true);
+      } catch {
+        await firebaseAuth.signOut();
+        throw new ApiError("AUTH_EXPIRED", "Votre session a expiré. Veuillez vous reconnecter.", 401);
+      }
+    }
+  }
+
+  if (!response.ok) {
+    throw new ApiError("PDF_FETCH_FAILED", "Impossible de récupérer le PDF du badge", response.status);
+  }
+
+  return response.blob();
+}
+
 interface ApiResponse<T> {
   success: boolean;
   data: T;
@@ -178,8 +221,16 @@ export const badgesApi = {
   getMyBadge: (eventId: string) =>
     api.get<ApiResponse<GeneratedBadge>>(`/v1/badges/me/${eventId}`),
 
-  getDownloadUrl: (badgeId: string) =>
-    api.get<ApiResponse<{ url: string }>>(`/v1/badges/${badgeId}/download`),
+  /**
+   * Fetch the badge PDF as a Blob. The API streams the bytes directly with
+   * `application/pdf`, so callers create an object URL and open/download it
+   * locally — no signed-URL hop through Cloud Storage required.
+   *
+   * Mirrors the hardening of the JSON `request()` helper: 30 s abort timeout
+   * and one transparent retry after a forced ID-token refresh on 401.
+   */
+  getMyBadgePdf: (eventId: string): Promise<Blob> =>
+    fetchPdf(`/v1/badges/me/${eventId}/pdf`),
 };
 
 export const usersApi = {
