@@ -19,8 +19,19 @@ import type { Firestore } from "firebase-admin/firestore";
 
 import { Dates } from "./config";
 import { IDS } from "./ids";
+import { EXPANSION_PARTICIPANTS } from "./02-users";
 
-const { now, oneHourAgo, yesterday, twoDaysAgo } = Dates;
+const {
+  now,
+  twoHoursAgo,
+  oneHourAgo,
+  yesterday,
+  twoDaysAgo,
+  oneWeekAgo,
+  twoWeeksAgo,
+  oneMonthAgo,
+  fortyFiveDaysAgo,
+} = Dates;
 
 // ─── Feed posts + comments ────────────────────────────────────────────────
 
@@ -96,7 +107,157 @@ const LEGACY_FEED_POSTS: SeedFeedPost[] = [
   },
 ];
 
-const EXPANSION_FEED_POSTS: SeedFeedPost[] = [];
+// 7 feed posts across the expansion — pinned organiser announcements on
+// upcoming events, live progress updates on LIVE events, and recap posts on
+// past events. Authors reference the real org owners defined in
+// 02-users.ts so the avatars + roles render correctly.
+const EXPANSION_FEED_POSTS: SeedFeedPost[] = [
+  // event-005 — recap of past festival Saly
+  {
+    id: "post-e05-01",
+    eventId: "event-005",
+    authorId: IDS.enterpriseOrganizer,
+    authorName: "Mame Diarra Seck",
+    authorRole: "organizer",
+    content:
+      "Merci à vous tous pour cette édition 2026 du Festival Hip-Hop de Saly ! 🎤 Photos officielles disponibles ce vendredi. On se retrouve l'année prochaine 🙌",
+    likeCount: 124,
+    likedByIds: [
+      EXPANSION_PARTICIPANTS[10].uid, // Yacine
+      EXPANSION_PARTICIPANTS[11].uid, // Ousseynou
+      EXPANSION_PARTICIPANTS[0].uid, // Mariama
+    ],
+    commentCount: 0,
+    isPinned: false,
+    isAnnouncement: false,
+    createdAt: oneMonthAgo,
+    updatedAt: oneMonthAgo,
+  },
+  // event-007 — LIVE meetup dev Dakar
+  {
+    id: "post-e07-01",
+    eventId: "event-007",
+    authorId: IDS.freeOrganizer,
+    authorName: "Djibril Mbaye",
+    authorRole: "organizer",
+    content:
+      "🎤 On démarre ! Première lightning talk dans 5 minutes chez Jokkolabs. Le stream sera actif pour celles et ceux qui ne sont pas sur place.",
+    likeCount: 18,
+    likedByIds: [
+      EXPANSION_PARTICIPANTS[3].uid,
+      EXPANSION_PARTICIPANTS[4].uid,
+      EXPANSION_PARTICIPANTS[7].uid,
+    ],
+    commentCount: 0,
+    isPinned: true,
+    isAnnouncement: true,
+    createdAt: twoHoursAgo,
+    updatedAt: twoHoursAgo,
+  },
+  // event-008 — LIVE workshop Saint-Louis
+  {
+    id: "post-e08-01",
+    eventId: "event-008",
+    authorId: IDS.starterOrganizer,
+    authorName: "Oumar Ba",
+    authorRole: "organizer",
+    content:
+      "Session prototypage Figma démarre dans 15 min 👨‍💻 Merci à l'Institut Français pour l'accueil chaleureux.",
+    likeCount: 9,
+    likedByIds: [EXPANSION_PARTICIPANTS[16].uid, EXPANSION_PARTICIPANTS[17].uid],
+    commentCount: 0,
+    isPinned: true,
+    isAnnouncement: true,
+    createdAt: oneHourAgo,
+    updatedAt: oneHourAgo,
+  },
+  // event-010 — upcoming Fintech Thiès (announcement)
+  {
+    id: "post-e10-01",
+    eventId: "event-010",
+    authorId: IDS.starterOrganizer,
+    authorName: "Oumar Ba",
+    authorRole: "organizer",
+    content:
+      "📣 Programme complet de la Conférence Fintech Ouest-Africaine publié ! 3 keynotes, 6 panels et un studio de démos. On vous attend à Thiès le 29 et en streaming 🌍",
+    likeCount: 47,
+    likedByIds: [
+      EXPANSION_PARTICIPANTS[13].uid,
+      EXPANSION_PARTICIPANTS[14].uid,
+      EXPANSION_PARTICIPANTS[15].uid,
+    ],
+    commentCount: 0,
+    isPinned: true,
+    isAnnouncement: true,
+    createdAt: twoWeeksAgo,
+    updatedAt: twoWeeksAgo,
+  },
+  // event-011 — upcoming concert Youssou N'Dour (announcement)
+  {
+    id: "post-e11-01",
+    eventId: "event-011",
+    authorId: IDS.enterpriseOrganizer,
+    authorName: "Mame Diarra Seck",
+    authorRole: "organizer",
+    content:
+      "🎶 Annonce officielle : Baaba Maal assurera la première partie du Grand Bal de Dakar ! Les pass Carré Or partent vite — sécurisez le vôtre 🔥",
+    likeCount: 312,
+    likedByIds: [
+      EXPANSION_PARTICIPANTS[12].uid,
+      EXPANSION_PARTICIPANTS[8].uid,
+      EXPANSION_PARTICIPANTS[9].uid,
+      EXPANSION_PARTICIPANTS[2].uid,
+    ],
+    commentCount: 0,
+    isPinned: true,
+    isAnnouncement: true,
+    createdAt: oneWeekAgo,
+    updatedAt: oneWeekAgo,
+  },
+  // event-014 — upcoming Flutter Ziguinchor (organiser note)
+  {
+    id: "post-e14-01",
+    eventId: "event-014",
+    authorId: IDS.starterOrganizer,
+    authorName: "Oumar Ba",
+    authorRole: "organizer",
+    content:
+      "Inscriptions ouvertes pour la formation Flutter avancée à Ziguinchor 📱 Places limitées à 25 sur place + nombre illimité en ligne. Hébergement organisable sur demande.",
+    likeCount: 15,
+    likedByIds: [
+      EXPANSION_PARTICIPANTS[19].uid,
+      EXPANSION_PARTICIPANTS[20].uid,
+      EXPANSION_PARTICIPANTS[26].uid,
+    ],
+    commentCount: 0,
+    isPinned: false,
+    isAnnouncement: true,
+    createdAt: twoWeeksAgo,
+    updatedAt: twoWeeksAgo,
+  },
+  // event-017 — upcoming AfricaTech Online (participant post)
+  {
+    id: "post-e17-01",
+    eventId: "event-017",
+    authorId: EXPANSION_PARTICIPANTS[21].uid, // Kouamé (Abidjan)
+    authorName: EXPANSION_PARTICIPANTS[21].displayName,
+    authorRole: "participant",
+    content:
+      "Qui sera présent au studio de démos de l'AfricaTech 2026 ? On prépare une démo côté Abidjan avec quelques collègues 👋",
+    likeCount: 7,
+    likedByIds: [
+      EXPANSION_PARTICIPANTS[22].uid,
+      EXPANSION_PARTICIPANTS[23].uid,
+      EXPANSION_PARTICIPANTS[24].uid,
+      EXPANSION_PARTICIPANTS[26].uid,
+    ],
+    commentCount: 0,
+    isPinned: false,
+    isAnnouncement: false,
+    createdAt: twoDaysAgo,
+    updatedAt: twoDaysAgo,
+  },
+];
 
 type SeedFeedComment = {
   id: string;
@@ -306,7 +467,132 @@ const LEGACY_NOTIFICATIONS: SeedNotification[] = [
   },
 ];
 
-const EXPANSION_NOTIFICATIONS: SeedNotification[] = [];
+// 10 notifications for expansion participants — a welcome-style
+// registration_confirmed per event, plus a handful of check-in successes on
+// the past + LIVE events so the notification bell is never empty for an
+// expansion user logging in.
+const EXPANSION_NOTIFICATIONS: SeedNotification[] = [
+  // event-005 past — Yacine checked in (got the "merci d'être venu" push)
+  {
+    id: "notif-e05-01",
+    userId: EXPANSION_PARTICIPANTS[10].uid, // Yacine
+    type: "check_in_success",
+    title: "Check-in réussi",
+    body: "Merci d'avoir assisté au Festival Hip-Hop de Saly. Photos bientôt disponibles !",
+    data: { eventId: "event-005" },
+    isRead: true,
+    readAt: oneMonthAgo,
+    createdAt: fortyFiveDaysAgo,
+  },
+  // event-007 LIVE — Mamadou Lamine just checked in
+  {
+    id: "notif-e07-01",
+    userId: EXPANSION_PARTICIPANTS[3].uid, // Mamadou Lamine
+    type: "check_in_success",
+    title: "Check-in réussi",
+    body: "Vous êtes enregistré(e) au Meetup Dev Dakar #13. Bon meetup !",
+    data: { eventId: "event-007" },
+    isRead: false,
+    readAt: null,
+    createdAt: oneHourAgo,
+  },
+  // event-007 — Ndeye Rama — new announcement from Djibril
+  {
+    id: "notif-e07-02",
+    userId: EXPANSION_PARTICIPANTS[4].uid,
+    type: "new_announcement",
+    title: "Nouvelle annonce",
+    body: "Djibril Mbaye a publié une annonce pour Meetup Dev Dakar #13",
+    data: { eventId: "event-007", postId: "post-e07-01" },
+    isRead: false,
+    readAt: null,
+    createdAt: twoHoursAgo,
+  },
+  // event-008 LIVE — Fatou Binetou just checked in
+  {
+    id: "notif-e08-01",
+    userId: EXPANSION_PARTICIPANTS[16].uid,
+    type: "check_in_success",
+    title: "Check-in réussi",
+    body: "Bienvenue au Workshop Design Digital à l'Institut Français de Saint-Louis !",
+    data: { eventId: "event-008" },
+    isRead: true,
+    readAt: oneHourAgo,
+    createdAt: oneHourAgo,
+  },
+  // event-010 — Omar Fintech registration confirmed
+  {
+    id: "notif-e10-01",
+    userId: EXPANSION_PARTICIPANTS[13].uid,
+    type: "registration_confirmed",
+    title: "Inscription confirmée",
+    body: "Votre inscription à la Conférence Fintech Ouest-Africaine est confirmée.",
+    data: { eventId: "event-010" },
+    isRead: true,
+    readAt: twoWeeksAgo,
+    createdAt: twoWeeksAgo,
+  },
+  // event-011 — Binta concert reminder
+  {
+    id: "notif-e11-01",
+    userId: EXPANSION_PARTICIPANTS[12].uid,
+    type: "new_announcement",
+    title: "Nouvelle annonce",
+    body: "Mame Diarra Seck a publié une annonce pour Concert Youssou N'Dour Dakar",
+    data: { eventId: "event-011", postId: "post-e11-01" },
+    isRead: false,
+    readAt: null,
+    createdAt: oneWeekAgo,
+  },
+  // event-014 — Simon Flutter Ziguinchor reminder
+  {
+    id: "notif-e14-01",
+    userId: EXPANSION_PARTICIPANTS[19].uid,
+    type: "registration_confirmed",
+    title: "Inscription confirmée",
+    body: "Votre inscription à la Formation Flutter avancée à Ziguinchor est confirmée.",
+    data: { eventId: "event-014" },
+    isRead: false,
+    readAt: null,
+    createdAt: twoWeeksAgo,
+  },
+  // event-017 — Kouamé AfricaTech Online
+  {
+    id: "notif-e17-01",
+    userId: EXPANSION_PARTICIPANTS[21].uid,
+    type: "registration_confirmed",
+    title: "Inscription confirmée",
+    body: "Vous êtes inscrit(e) à l'AfricaTech Online Conference 2026.",
+    data: { eventId: "event-017" },
+    isRead: true,
+    readAt: twoDaysAgo,
+    createdAt: twoDaysAgo,
+  },
+  // event-020 — Serge atelier IA Abidjan
+  {
+    id: "notif-e20-01",
+    userId: EXPANSION_PARTICIPANTS[23].uid,
+    type: "registration_confirmed",
+    title: "Inscription confirmée",
+    body: "Votre inscription à l'Atelier IA Appliquée — Abidjan est confirmée.",
+    data: { eventId: "event-020" },
+    isRead: false,
+    readAt: null,
+    createdAt: twoWeeksAgo,
+  },
+  // event-009 — Koffi formation IA Bamako (online)
+  {
+    id: "notif-e09-01",
+    userId: EXPANSION_PARTICIPANTS[26].uid, // Koffi (Lomé)
+    type: "registration_confirmed",
+    title: "Inscription confirmée",
+    body: "Votre inscription à la Formation IA pour Cadres Dirigeants est confirmée.",
+    data: { eventId: "event-009" },
+    isRead: false,
+    readAt: null,
+    createdAt: yesterday,
+  },
+];
 
 async function writeNotifications(db: Firestore): Promise<number> {
   const all = [...LEGACY_NOTIFICATIONS, ...EXPANSION_NOTIFICATIONS];
@@ -322,7 +608,18 @@ async function writeNotifications(db: Firestore): Promise<number> {
 }
 
 const LEGACY_PREF_USERS = [IDS.participant1, IDS.participant2, IDS.speakerUser];
-const EXPANSION_PREF_USERS: string[] = [];
+// 6 expansion participants get notification preferences — mix of cities so
+// the admin UI has non-Dakar rows. Other expansion users rely on the
+// onUserCreated trigger's default preferences (which the seed doesn't
+// materialise to avoid bloating the fixture).
+const EXPANSION_PREF_USERS: string[] = [
+  EXPANSION_PARTICIPANTS[0].uid, // Mariama (Dakar)
+  EXPANSION_PARTICIPANTS[10].uid, // Yacine (Saly)
+  EXPANSION_PARTICIPANTS[13].uid, // Omar (Thiès)
+  EXPANSION_PARTICIPANTS[16].uid, // Fatou Binetou (Saint-Louis)
+  EXPANSION_PARTICIPANTS[21].uid, // Kouamé (Abidjan)
+  EXPANSION_PARTICIPANTS[26].uid, // Koffi (Lomé)
+];
 
 async function writeNotificationPreferences(db: Firestore): Promise<number> {
   const all = [...LEGACY_PREF_USERS, ...EXPANSION_PREF_USERS];
@@ -381,7 +678,43 @@ const LEGACY_BROADCASTS: SeedBroadcast[] = [
   },
 ];
 
-const EXPANSION_BROADCASTS: SeedBroadcast[] = [];
+// 2 expansion broadcasts — one on the upcoming Fintech conference
+// (starter tier) and one on the AfricaTech Online (enterprise), so the
+// broadcasts list shows realistic multi-org traffic.
+const EXPANSION_BROADCASTS: SeedBroadcast[] = [
+  {
+    id: "broadcast-e10-01",
+    eventId: "event-010",
+    organizationId: IDS.starterOrgId,
+    title: "Fintech Ouest-Africaine — J-10, préparez votre venue",
+    body: "Plus que 10 jours avant la Conférence Fintech Ouest-Africaine à Thiès ! Retrouvez le plan d'accès et les partenaires hôtels dans le lien inclus. À très vite 🙌",
+    channels: ["email", "push"],
+    recipientFilter: "registered",
+    recipientCount: 4,
+    sentCount: 4,
+    failedCount: 0,
+    status: "sent",
+    createdBy: IDS.starterOrganizer,
+    createdAt: twoDaysAgo,
+    sentAt: twoDaysAgo,
+  },
+  {
+    id: "broadcast-e17-01",
+    eventId: "event-017",
+    organizationId: IDS.enterpriseOrgId,
+    title: "AfricaTech 2026 — programme complet publié",
+    body: "Le programme détaillé de l'AfricaTech Online Conference 2026 est en ligne : 8 tracks, 50 intervenants, 4 démos. Rejoignez-nous le jour J !",
+    channels: ["email"],
+    recipientFilter: "all",
+    recipientCount: 5,
+    sentCount: 5,
+    failedCount: 0,
+    status: "sent",
+    createdBy: IDS.enterpriseOrganizer,
+    createdAt: oneWeekAgo,
+    sentAt: oneWeekAgo,
+  },
+];
 
 async function writeBroadcasts(db: Firestore): Promise<number> {
   const all = [...LEGACY_BROADCASTS, ...EXPANSION_BROADCASTS];
@@ -516,7 +849,78 @@ const LEGACY_AUDIT: AuditEntry[] = [
   },
 ];
 
-const EXPANSION_AUDIT: AuditEntry[] = [];
+// 16 audit entries — one event.created per expansion event — plus a handful
+// of actions (organization.created for org-005, venue.approved for the new
+// venues, user.created for a new staff member) so the admin audit log
+// reflects the PR B + PR C expansion.
+const EXPANSION_AUDIT: AuditEntry[] = [
+  {
+    action: "organization.created",
+    resourceType: "organization",
+    resourceId: IDS.starterOrgId,
+    actorId: IDS.superAdmin,
+    eventId: null,
+    details: { orgName: "Thiès Tech Collective", plan: "starter" },
+  },
+  {
+    action: "venue.approved",
+    resourceType: "venue",
+    resourceId: "venue-008",
+    actorId: IDS.superAdmin,
+    eventId: null,
+    details: { name: "Palais des Congrès de Thiès" },
+  },
+  {
+    action: "venue.approved",
+    resourceType: "venue",
+    resourceId: "venue-010",
+    actorId: IDS.superAdmin,
+    eventId: null,
+    details: { name: "Institut Français de Saint-Louis" },
+  },
+  // 16 event.created entries — one per expansion event.
+  ...[
+    { id: "event-005", title: "Festival Hip-Hop de Saly", actor: IDS.enterpriseOrganizer },
+    { id: "event-006", title: "Marathon de Dakar 2026", actor: IDS.enterpriseOrganizer },
+    { id: "event-007", title: "Meetup Développeurs Dakar #13", actor: IDS.freeOrganizer },
+    { id: "event-008", title: "Workshop Design Digital Saint-Louis", actor: IDS.starterOrganizer },
+    {
+      id: "event-009",
+      title: "Formation IA pour Cadres Dirigeants",
+      actor: IDS.enterpriseOrganizer,
+    },
+    { id: "event-010", title: "Conférence Fintech Ouest-Africaine", actor: IDS.starterOrganizer },
+    {
+      id: "event-011",
+      title: "Concert Youssou N'Dour — Grand Bal de Dakar",
+      actor: IDS.enterpriseOrganizer,
+    },
+    { id: "event-012", title: "Web Summit Thiès — Édition 2026", actor: IDS.organizer },
+    { id: "event-013", title: "Festival Jazz de Saint-Louis", actor: IDS.enterpriseOrganizer },
+    {
+      id: "event-014",
+      title: "Formation Flutter Avancée — Ziguinchor",
+      actor: IDS.starterOrganizer,
+    },
+    {
+      id: "event-015",
+      title: "Meetup Mobile Dakar — Flutter vs React Native",
+      actor: IDS.freeOrganizer,
+    },
+    { id: "event-016", title: "Marathon Régional de Thiès", actor: IDS.starterOrganizer },
+    { id: "event-017", title: "AfricaTech Online Conference 2026", actor: IDS.enterpriseOrganizer },
+    { id: "event-018", title: "Exposition UX Dakar 2026", actor: IDS.organizer },
+    { id: "event-019", title: "Concert Baaba Maal — Nuit de Saly", actor: IDS.organizer },
+    { id: "event-020", title: "Atelier IA Appliquée — Abidjan", actor: IDS.organizer },
+  ].map<AuditEntry>((e) => ({
+    action: "event.created",
+    resourceType: "event",
+    resourceId: e.id,
+    actorId: e.actor,
+    eventId: e.id,
+    details: { title: e.title },
+  })),
+];
 
 async function writeAuditLogs(db: Firestore): Promise<number> {
   const all = [...LEGACY_AUDIT, ...EXPANSION_AUDIT];
