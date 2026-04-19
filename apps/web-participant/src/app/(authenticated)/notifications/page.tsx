@@ -1,14 +1,21 @@
 "use client";
 
 import { useState } from "react";
-import { Bell, CheckCheck, Circle } from "lucide-react";
+import { AlertTriangle, Bell, CheckCheck, Circle, RotateCcw } from "lucide-react";
+import { useLocale, useTranslations } from "next-intl";
 import { useNotifications, useMarkAsRead, useMarkAllAsRead } from "@/hooks/use-notifications";
-import { Button, Card, CardContent, QueryError } from "@teranga/shared-ui";
+import { intlLocale } from "@/lib/intl-locale";
+import {
+  Button,
+  EmptyStateEditorial,
+  SectionHeader,
+} from "@teranga/shared-ui";
 import type { Notification } from "@teranga/shared-types";
-import { useTranslations } from "next-intl";
 
 export default function NotificationsPage() {
-  const _t = useTranslations("common"); void _t;
+  const t = useTranslations("notifications");
+  const locale = useLocale();
+  const regional = intlLocale(locale);
   const [page, setPage] = useState(1);
   const [unreadOnly, setUnreadOnly] = useState(false);
 
@@ -20,32 +27,44 @@ export default function NotificationsPage() {
   const markAllAsRead = useMarkAllAsRead();
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-8">
-      <div className="mb-6 flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Notifications</h1>
-          <p className="text-sm text-muted-foreground">
-            {total} notification{total > 1 ? "s" : ""}
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => setUnreadOnly(!unreadOnly)}>
-            {unreadOnly ? "Toutes" : "Non lues"}
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => markAllAsRead.mutate()}
-            disabled={markAllAsRead.isPending}
-          >
-            <CheckCheck className="mr-1 h-4 w-4" />
-            Tout lire
-          </Button>
-        </div>
-      </div>
+    <div className="mx-auto max-w-2xl px-4 py-8 space-y-6">
+      <SectionHeader
+        kicker="— ALERTES"
+        title={t("title")}
+        subtitle={t("count", { count: total })}
+        size="hero"
+        as="h1"
+        action={
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => setUnreadOnly(!unreadOnly)}>
+              {unreadOnly ? t("filterAll") : t("filterUnread")}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => markAllAsRead.mutate()}
+              disabled={markAllAsRead.isPending}
+            >
+              <CheckCheck className="mr-1 h-4 w-4" />
+              {t("markAllRead")}
+            </Button>
+          </div>
+        }
+      />
 
       {isError ? (
-        <QueryError onRetry={refetch} />
+        <EmptyStateEditorial
+          icon={AlertTriangle}
+          kicker="— ERREUR"
+          title={t("errorTitle")}
+          description={t("errorDescription")}
+          action={
+            <Button variant="outline" onClick={() => refetch()}>
+              <RotateCcw className="mr-2 h-4 w-4" aria-hidden="true" />
+              {t("retry")}
+            </Button>
+          }
+        />
       ) : isLoading ? (
         <div className="space-y-2">
           {[1, 2, 3, 4, 5].map((i) => (
@@ -62,14 +81,11 @@ export default function NotificationsPage() {
           ))}
         </div>
       ) : notifications.length === 0 ? (
-        <Card>
-          <CardContent className="flex flex-col items-center py-12">
-            <Bell className="mb-3 h-10 w-10 text-muted-foreground" />
-            <p className="text-muted-foreground">
-              {unreadOnly ? "Aucune notification non lue" : "Aucune notification"}
-            </p>
-          </CardContent>
-        </Card>
+        <EmptyStateEditorial
+          icon={Bell}
+          kicker="— AUCUNE NOTIFICATION"
+          title={unreadOnly ? t("emptyUnread") : t("empty")}
+        />
       ) : (
         <div className="space-y-2">
           {notifications.map((n: Notification) => (
@@ -79,7 +95,9 @@ export default function NotificationsPage() {
                 if (!n.isRead) markAsRead.mutate(n.id);
               }}
               className={`w-full rounded-lg border p-4 text-left transition-colors ${
-                n.isRead ? "bg-card" : "border-teranga-gold/30 bg-teranga-gold/5"
+                n.isRead
+                  ? "bg-card"
+                  : "border-teranga-gold/30 bg-teranga-gold/5 dark:border-teranga-gold/40 dark:bg-teranga-gold/15"
               }`}
             >
               <div className="flex items-start gap-3">
@@ -90,7 +108,7 @@ export default function NotificationsPage() {
                   <p className="font-medium">{n.title}</p>
                   <p className="text-sm text-muted-foreground">{n.body}</p>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    {new Date(n.createdAt).toLocaleDateString("fr-FR", {
+                    {new Date(n.createdAt).toLocaleDateString(regional, {
                       day: "numeric",
                       month: "short",
                       hour: "2-digit",
@@ -112,10 +130,10 @@ export default function NotificationsPage() {
             disabled={page <= 1}
             onClick={() => setPage(page - 1)}
           >
-            Précédent
+            {t("paginationPrev")}
           </Button>
           <span className="text-sm text-muted-foreground">
-            Page {page} sur {Math.ceil(total / 20)}
+            {t("paginationOf", { page, total: Math.ceil(total / 20) })}
           </span>
           <Button
             variant="outline"
@@ -123,7 +141,7 @@ export default function NotificationsPage() {
             disabled={page * 20 >= total}
             onClick={() => setPage(page + 1)}
           >
-            Suivant
+            {t("paginationNext")}
           </Button>
         </div>
       )}

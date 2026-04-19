@@ -4,12 +4,15 @@ import {
   type Event,
   type Registration,
   type Organization,
+  type OrganizationPlan,
   type OrganizationInvite,
   type Payment,
   type SpeakerProfile,
   type SponsorProfile,
   type Broadcast,
   type Venue,
+  PLAN_LIMITS,
+  PLAN_LIMIT_UNLIMITED,
 } from "@teranga/shared-types";
 
 function uid(): string {
@@ -178,6 +181,34 @@ export function buildOrganization(overrides: Partial<Organization> = {}): Organi
     updatedAt: now,
     ...overrides,
   };
+}
+
+/**
+ * Build an organization with the Phase 2 denormalization fields populated
+ * (`effectiveLimits`, `effectiveFeatures`, `effectivePlanKey`). The effective
+ * fields mirror the hardcoded `PLAN_LIMITS` entry for the given plan so the
+ * new enforcement path produces identical results to the legacy path by
+ * default. Callers can override individual fields to exercise custom plans
+ * or subscription overrides.
+ */
+export function buildOrgWithPlan(
+  plan: OrganizationPlan = "free",
+  overrides: Partial<Organization> = {},
+): Organization {
+  const legacy = PLAN_LIMITS[plan];
+  const toStored = (n: number) => (Number.isFinite(n) ? n : PLAN_LIMIT_UNLIMITED);
+  return buildOrganization({
+    plan,
+    effectiveLimits: {
+      maxEvents: toStored(legacy.maxEvents),
+      maxParticipantsPerEvent: toStored(legacy.maxParticipantsPerEvent),
+      maxMembers: toStored(legacy.maxMembers),
+    },
+    effectiveFeatures: { ...legacy.features },
+    effectivePlanKey: plan,
+    effectiveComputedAt: new Date().toISOString(),
+    ...overrides,
+  });
 }
 
 // ─── Invite Factory ─────────────────────────────────────────────────────────

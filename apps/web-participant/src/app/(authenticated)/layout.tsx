@@ -1,11 +1,11 @@
+import { getTranslations } from "next-intl/server";
 import { Header } from "@/components/layouts/header";
 import { Footer } from "@/components/layouts/footer";
 import { AuthGuard } from "@/components/auth-guard";
 import { EmailVerificationBanner } from "@/components/email-verification-banner";
-import { getTranslations } from "next-intl/server";
 
 export default async function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
-  const _t = await getTranslations("common"); void _t;
+  const tNav = await getTranslations("nav");
   return (
     <div className="flex min-h-screen flex-col">
       {/* Skip to content link — WCAG 2.4.1 */}
@@ -13,7 +13,7 @@ export default async function AuthenticatedLayout({ children }: { children: Reac
         href="#main-content"
         className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[100] focus:bg-primary focus:text-primary-foreground focus:px-4 focus:py-2 focus:rounded-lg focus:text-sm focus:font-medium"
       >
-        Aller au contenu principal
+        {tNav("skipToContent")}
       </a>
       <Header />
       <EmailVerificationBanner />

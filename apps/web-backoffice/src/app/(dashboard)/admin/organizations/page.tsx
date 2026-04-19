@@ -22,10 +22,13 @@ import {
   BreadcrumbLink,
   BreadcrumbPage,
   BreadcrumbSeparator,
+  SectionHeader,
+  StatusPill,
 } from "@teranga/shared-ui";
-import { Building2, Search, ShieldCheck, Ban, CheckCircle, XCircle } from "lucide-react";
+import { Search, ShieldCheck, Ban, CheckCircle, XCircle, Sparkles } from "lucide-react";
 import type { Organization } from "@teranga/shared-types";
 import { useTranslations } from "next-intl";
+import { AssignPlanDialog } from "@/components/admin/AssignPlanDialog";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -72,7 +75,8 @@ const PLAN_OPTIONS = [
 // ─── Page ───────────────────────────────────────────────────────────────────
 
 export default function AdminOrganizationsPage() {
-  const tCommon = useTranslations("common"); void tCommon;
+  const tCommon = useTranslations("common");
+  void tCommon;
   const [search, setSearch] = useState("");
   const [planFilter, setPlanFilter] = useState("");
   const [verifiedFilter, setVerifiedFilter] = useState("");
@@ -93,6 +97,8 @@ export default function AdminOrganizationsPage() {
   const verifyOrg = useVerifyOrganization();
   const updateOrgStatus = useUpdateOrgStatus();
 
+  const [assignTarget, setAssignTarget] = useState<Organization | null>(null);
+
   const handleVerify = (org: Organization) => {
     if (!window.confirm(`Voulez-vous verifier l'organisation "${org.name}" ?`)) {
       return;
@@ -111,11 +117,11 @@ export default function AdminOrganizationsPage() {
   return (
     <div className="space-y-6">
       {/* Breadcrumb */}
-      <Breadcrumb className="mb-4">
+      <Breadcrumb>
         <BreadcrumbList>
           <BreadcrumbItem>
             <BreadcrumbLink asChild>
-              <Link href="/admin">Tableau de bord</Link>
+              <Link href="/dashboard">Tableau de bord</Link>
             </BreadcrumbLink>
           </BreadcrumbItem>
           <BreadcrumbSeparator />
@@ -132,10 +138,13 @@ export default function AdminOrganizationsPage() {
       </Breadcrumb>
 
       {/* Header */}
-      <div className="flex items-center gap-3">
-        <Building2 className="h-7 w-7 text-primary" />
-        <h1 className="text-2xl font-bold text-foreground">Gestion des organisations</h1>
-      </div>
+      <SectionHeader
+        kicker="— ADMINISTRATION"
+        title="Gestion des organisations"
+        subtitle="Vérifiez, suspendez et assignez des plans aux organisations de la plateforme."
+        size="hero"
+        as="h1"
+      />
 
       {/* Filters */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
@@ -244,15 +253,9 @@ export default function AdminOrganizationsPage() {
                   header: "Verifie",
                   render: (org) =>
                     org.isVerified ? (
-                      <ShieldCheck
-                        className="h-5 w-5 text-teranga-green"
-                        aria-label="Verifie"
-                      />
+                      <ShieldCheck className="h-5 w-5 text-teranga-green" aria-label="Verifie" />
                     ) : (
-                      <XCircle
-                        className="h-5 w-5 text-muted-foreground"
-                        aria-label="Non verifie"
-                      />
+                      <XCircle className="h-5 w-5 text-muted-foreground" aria-label="Non verifie" />
                     ),
                 },
                 {
@@ -260,9 +263,9 @@ export default function AdminOrganizationsPage() {
                   header: "Statut",
                   render: (org) =>
                     org.isActive ? (
-                      <Badge variant="success">Actif</Badge>
+                      <StatusPill tone="success" label="Actif" />
                     ) : (
-                      <Badge variant="destructive">Suspendu</Badge>
+                      <StatusPill tone="danger" label="Suspendu" />
                     ),
                 },
                 {
@@ -277,7 +280,7 @@ export default function AdminOrganizationsPage() {
                   key: "actions",
                   header: "Actions",
                   render: (org) => (
-                    <div className="flex items-center justify-end gap-2">
+                    <div className="flex items-center justify-end gap-2 flex-wrap">
                       {!org.isVerified && (
                         <Button
                           variant="outline"
@@ -290,6 +293,15 @@ export default function AdminOrganizationsPage() {
                           Verifier
                         </Button>
                       )}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setAssignTarget(org)}
+                        aria-label={`Assigner un plan à ${org.name}`}
+                      >
+                        <Sparkles className="h-3.5 w-3.5 mr-1" />
+                        Assigner plan
+                      </Button>
                       <Button
                         variant="outline"
                         size="sm"
@@ -348,6 +360,15 @@ export default function AdminOrganizationsPage() {
             </Button>
           </div>
         </div>
+      )}
+
+      {/* Assign-plan dialog (Phase 5: per-org override) */}
+      {assignTarget && (
+        <AssignPlanDialog
+          open={!!assignTarget}
+          org={assignTarget}
+          onClose={() => setAssignTarget(null)}
+        />
       )}
     </div>
   );

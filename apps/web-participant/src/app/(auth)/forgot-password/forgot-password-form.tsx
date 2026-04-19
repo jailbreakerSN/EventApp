@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { useTranslations } from "next-intl";
 import { useAuth } from "@/hooks/use-auth";
 import { ThemeLogo } from "@/components/theme-logo";
 import {
@@ -19,19 +20,27 @@ import {
   FormField,
 } from "@teranga/shared-ui";
 
-const schema = z.object({
-  email: z
-    .string()
-    .trim()
-    .regex(/^[^\s@]+@[^\s@]+\.[^\s@]+$/, { message: "Adresse email invalide" }),
-});
-
-type FormValues = z.infer<typeof schema>;
-
 export function ForgotPasswordForm() {
+  const tAuth = useTranslations("auth");
+  const tValidation = useTranslations("auth.validation");
   const { resetPassword } = useAuth();
   const [success, setSuccess] = useState(false);
   const [submittedEmail, setSubmittedEmail] = useState("");
+
+  const schema = useMemo(
+    () =>
+      z.object({
+        email: z
+          .string()
+          .trim()
+          .regex(/^[^\s@]+@[^\s@]+\.[^\s@]+$/, {
+            message: tValidation("invalidEmail"),
+          }),
+      }),
+    [tValidation],
+  );
+
+  type FormValues = z.infer<typeof schema>;
 
   const {
     register,
@@ -61,6 +70,7 @@ export function ForgotPasswordForm() {
 
   return (
     <Card>
+      <h1 className="sr-only">{tAuth("forgotPasswordTitle")}</h1>
       <CardHeader className="text-center">
         <Link href="/" className="mx-auto mb-2 block">
           <ThemeLogo
@@ -70,23 +80,21 @@ export function ForgotPasswordForm() {
             priority
           />
         </Link>
-        <CardTitle className="text-2xl">Mot de passe oubli&eacute;</CardTitle>
-        <CardDescription>
-          Entrez votre adresse email pour recevoir un lien de
-          r&eacute;initialisation
-        </CardDescription>
+        <CardTitle className="text-2xl">{tAuth("forgotPasswordTitle")}</CardTitle>
+        <CardDescription>{tAuth("forgotPasswordSubtitle")}</CardDescription>
       </CardHeader>
       <CardContent>
         {success ? (
-          <div className="rounded-md bg-green-500/10 p-4 text-sm text-green-700 dark:text-green-400">
-            Si un compte existe avec cet email, un lien de r&eacute;initialisation a
-            &eacute;t&eacute; envoy&eacute; &agrave; <strong>{submittedEmail}</strong>.
-            V&eacute;rifiez votre bo&icirc;te de r&eacute;ception.
+          <div
+            role="status"
+            className="rounded-md bg-teranga-green/10 p-4 text-sm text-teranga-green dark:bg-teranga-green/20"
+          >
+            {tAuth("resetEmailSent", { email: submittedEmail })}
           </div>
         ) : (
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
             <FormField
-              label="Email"
+              label={tAuth("email")}
               htmlFor="email"
               required
               error={errors.email?.message}
@@ -95,27 +103,22 @@ export function ForgotPasswordForm() {
               <Input
                 id="email"
                 type="email"
-                placeholder="votre@email.com"
+                placeholder={tAuth("emailPlaceholder")}
                 autoComplete="email"
                 {...register("email")}
               />
             </FormField>
 
             <Button type="submit" className="w-full" disabled={isSubmitting}>
-              {isSubmitting
-                ? "Envoi en cours..."
-                : "Envoyer le lien de r\u00e9initialisation"}
+              {isSubmitting ? tAuth("sendingResetLink") : tAuth("sendResetLink")}
             </Button>
           </form>
         )}
       </CardContent>
       <CardFooter className="justify-center">
         <p className="text-sm text-muted-foreground">
-          <Link
-            href="/login"
-            className="font-medium text-teranga-gold-dark hover:underline"
-          >
-            Retour &agrave; la connexion
+          <Link href="/login" className="font-medium text-teranga-gold-dark hover:underline">
+            {tAuth("backToLogin")}
           </Link>
         </p>
       </CardFooter>

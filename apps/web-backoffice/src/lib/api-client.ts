@@ -66,8 +66,19 @@ import type {
   CreateBadgeTemplateDto,
   UpdateBadgeTemplateDto,
   GeneratedBadge,
+  UploadUrlResponse,
   Subscription,
   PlanUsage,
+  Plan,
+  CreatePlanDto,
+  UpdatePlanDto,
+  AssignPlanDto,
+  PreviewChangeResponse,
+  PlanAnalytics,
+  BalanceTransaction,
+  BalanceTransactionQuery,
+  OrganizationBalance,
+  AdminUserRow,
 } from "@teranga/shared-types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
@@ -194,7 +205,17 @@ export const eventsApi = {
   search: (query: Partial<EventSearchQuery> = {}) =>
     api.get<PaginatedResponse<Event>>(`/v1/events${buildQuery(query)}`),
 
-  listByOrg: (orgId: string, params: { page?: number; limit?: number; orderBy?: string; orderDir?: string } = {}) =>
+  listByOrg: (
+    orgId: string,
+    params: {
+      page?: number;
+      limit?: number;
+      orderBy?: string;
+      orderDir?: string;
+      category?: string;
+      status?: string;
+    } = {},
+  ) =>
     api.get<PaginatedResponse<Event>>(`/v1/events/org/${orgId}${buildQuery(params)}`),
 
   getById: (id: string) =>
@@ -304,14 +325,29 @@ export const organizationsApi = {
   getUsage: (orgId: string) =>
     api.get<ApiResponse<PlanUsage>>(`/v1/organizations/${orgId}/usage`),
 
-  upgradePlan: (orgId: string, plan: string) =>
-    api.post<ApiResponse<Subscription>>(`/v1/organizations/${orgId}/subscription/upgrade`, { plan }),
+  upgradePlan: (orgId: string, plan: string, cycle?: "monthly" | "annual") =>
+    api.post<ApiResponse<Subscription>>(
+      `/v1/organizations/${orgId}/subscription/upgrade`,
+      cycle ? { plan, cycle } : { plan },
+    ),
 
-  downgradePlan: (orgId: string, plan: string) =>
-    api.post<ApiResponse<null>>(`/v1/organizations/${orgId}/subscription/downgrade`, { plan }),
+  downgradePlan: (orgId: string, plan: string, options: { immediate?: boolean } = {}) =>
+    api.post<ApiResponse<{ scheduled: boolean; effectiveAt?: string }>>(
+      `/v1/organizations/${orgId}/subscription/downgrade`,
+      { plan, immediate: options.immediate ?? false },
+    ),
 
-  cancelSubscription: (orgId: string) =>
-    api.post<ApiResponse<null>>(`/v1/organizations/${orgId}/subscription/cancel`, {}),
+  cancelSubscription: (orgId: string, options: { immediate?: boolean; reason?: string } = {}) =>
+    api.post<ApiResponse<{ scheduled: boolean; effectiveAt?: string }>>(
+      `/v1/organizations/${orgId}/subscription/cancel`,
+      { immediate: options.immediate ?? false, reason: options.reason },
+    ),
+
+  revertScheduledChange: (orgId: string) =>
+    api.post<ApiResponse<null>>(
+      `/v1/organizations/${orgId}/subscription/revert-scheduled`,
+      {},
+    ),
 };
 
 export const invitesApi = {
@@ -411,6 +447,16 @@ export const paymentsApi = {
     api.post<ApiResponse<Payment>>(`/v1/payments/${paymentId}/refund`, body),
 };
 
+export const balanceApi = {
+  getSummary: (orgId: string) =>
+    api.get<ApiResponse<OrganizationBalance>>(`/v1/organizations/${orgId}/balance`),
+
+  listTransactions: (orgId: string, query: Partial<BalanceTransactionQuery> = {}) =>
+    api.get<PaginatedResponse<BalanceTransaction>>(
+      `/v1/organizations/${orgId}/balance-transactions${buildQuery(query)}`,
+    ),
+};
+
 export const payoutsApi = {
   calculate: (eventId: string, periodFrom: string, periodTo: string) =>
     api.get<ApiResponse<{ totalAmount: number; platformFee: number; netAmount: number; paymentCount: number }>>(`/v1/payouts/event/${eventId}/calculate${buildQuery({ periodFrom, periodTo })}`),
@@ -505,7 +551,7 @@ export const adminApi = {
     api.get<ApiResponse<PlatformStats>>("/v1/admin/stats"),
 
   listUsers: (query: Partial<AdminUserQuery> = {}) =>
-    api.get<PaginatedResponse<UserProfile>>(`/v1/admin/users${buildQuery(query)}`),
+    api.get<PaginatedResponse<AdminUserRow>>(`/v1/admin/users${buildQuery(query)}`),
 
   updateUserRoles: (userId: string, roles: string[]) =>
     api.patch<void>(`/v1/admin/users/${userId}/roles`, { roles }),
@@ -527,6 +573,54 @@ export const adminApi = {
 
   listAuditLogs: (query: Partial<AdminAuditQuery> = {}) =>
     api.get<PaginatedResponse<AuditLogEntry>>(`/v1/admin/audit-logs${buildQuery(query)}`),
+
+  // ── Plan Catalog ────────────────────────────────────────────────────────
+  listPlans: (query: { includeArchived?: boolean } = {}) =>
+    api.get<ApiResponse<Plan[]>>(`/v1/admin/plans${buildQuery(query)}`),
+
+  getPlan: (planId: string) =>
+    api.get<ApiResponse<Plan>>(`/v1/admin/plans/${planId}`),
+
+  createPlan: (dto: CreatePlanDto) =>
+    api.post<ApiResponse<Plan>>("/v1/admin/plans", dto),
+
+  updatePlan: (planId: string, dto: UpdatePlanDto) =>
+    api.patch<ApiResponse<Plan>>(`/v1/admin/plans/${planId}`, dto),
+
+  archivePlan: (planId: string) => api.delete(`/v1/admin/plans/${planId}`),
+
+  // Phase 7+ item #5: MRR / cohort dashboard snapshot.
+  getPlanAnalytics: () =>
+    api.get<ApiResponse<PlanAnalytics>>("/v1/admin/plans/analytics"),
+
+  // Phase 7+ item #6: dry-run / impact preview. POST because the body is
+  // a proposed UpdatePlanDto the admin hasn't saved yet — no mutation.
+  previewPlanChange: (planId: string, dto: UpdatePlanDto) =>
+    api.post<ApiResponse<PreviewChangeResponse>>(
+      `/v1/admin/plans/${planId}/preview-change`,
+      dto,
+    ),
+
+  // ── Per-org plan assignment (Phase 5: admin override) ──────────────────
+  assignPlan: (orgId: string, dto: AssignPlanDto) =>
+    api.post<ApiResponse<Subscription>>(
+      `/v1/admin/organizations/${orgId}/subscription/assign`,
+      dto,
+    ),
+
+  getOrgSubscription: (orgId: string) =>
+    api.get<ApiResponse<Subscription | null>>(`/v1/organizations/${orgId}/subscription`),
+};
+
+// ─── Public Plan Catalog (Phase 6) ──────────────────────────────────────────
+// The superadmin-managed Plans collection, exposed to any authenticated user
+// as a read-only list. Used by billing / upgrade / plan-gating UIs instead of
+// the hardcoded PLAN_DISPLAY constant so custom superadmin-created plans
+// render correctly.
+
+export const plansApi = {
+  listPublic: () => api.get<ApiResponse<Plan[]>>("/v1/plans"),
+  getByKey: (key: string) => api.get<ApiResponse<Plan>>(`/v1/plans/${key}`),
 };
 
 // ─── Venues ─────────────────────────────────────────────────────────────────
@@ -595,8 +689,11 @@ export const badgesApi = {
 // ─── Uploads ──────────────────────────────────────────────────────────────
 
 export const uploadsApi = {
-  getEventSignedUrl: (eventId: string, body: { fileName: string; contentType: string; purpose: string }) =>
-    api.post<ApiResponse<{ uploadUrl: string; publicUrl: string }>>(`/v1/events/${eventId}/upload-url`, body),
+  getEventSignedUrl: (
+    eventId: string,
+    body: { fileName: string; contentType: string; purpose: string },
+  ) =>
+    api.post<ApiResponse<UploadUrlResponse>>(`/v1/events/${eventId}/upload-url`, body),
 };
 
 export { ApiError };

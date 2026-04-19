@@ -31,7 +31,7 @@ import {
 } from "lucide-react";
 import { Badge, getStatusVariant } from "@teranga/shared-ui";
 import type { OrgMemberRole } from "@teranga/shared-types";
-import { PLAN_DISPLAY } from "@teranga/shared-types";
+import { usePlansCatalogMap, getPlanDisplay } from "@/hooks/use-plans-catalog";
 import { usePlanGating } from "@/hooks/use-plan-gating";
 import { UsageMeter } from "@/components/plan/UsageMeter";
 import { ArrowUpRight, CreditCard } from "lucide-react";
@@ -455,7 +455,8 @@ export default function OrganizationPage() {
 
 function PlanCard({ plan, memberCount }: { plan: string; memberCount: number }) {
   const { checkLimit } = usePlanGating();
-  const display = PLAN_DISPLAY[plan as keyof typeof PLAN_DISPLAY];
+  const { map: catalog } = usePlansCatalogMap();
+  const display = getPlanDisplay(plan, catalog);
   const events = checkLimit("events");
   const members = checkLimit("members");
 

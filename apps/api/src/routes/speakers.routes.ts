@@ -1,11 +1,17 @@
-import type { FastifyPluginAsync } from "fastify";
+import type { FastifyPluginAsync, FastifyRequest, FastifyReply } from "fastify";
 import { z } from "zod";
 import { authenticate, requireEmailVerified } from "@/middlewares/auth.middleware";
 import { validate } from "@/middlewares/validate.middleware";
 import { requirePermission } from "@/middlewares/permission.middleware";
 import { speakerService } from "@/services/speaker.service";
 import { uploadService } from "@/services/upload.service";
-import { CreateSpeakerSchema, UpdateSpeakerSchema, SpeakerQuerySchema, UploadUrlRequestSchema, type UploadUrlRequest } from "@teranga/shared-types";
+import {
+  CreateSpeakerSchema,
+  UpdateSpeakerSchema,
+  SpeakerQuerySchema,
+  UploadUrlRequestSchema,
+  type UploadUrlRequest,
+} from "@teranga/shared-types";
 
 const ParamsWithEventId = z.object({ eventId: z.string() });
 const ParamsWithSpeakerId = z.object({ speakerId: z.string() });
@@ -47,7 +53,10 @@ export const speakerRoutes: FastifyPluginAsync = async (fastify) => {
     async (request, reply) => {
       const { eventId } = request.params as z.infer<typeof ParamsWithEventId>;
       const { page, limit } = request.query as z.infer<typeof SpeakerQuerySchema>;
-      const result = await speakerService.listEventSpeakers(eventId, { page: page ?? 1, limit: limit ?? 50 });
+      const result = await speakerService.listEventSpeakers(eventId, {
+        page: page ?? 1,
+        limit: limit ?? 50,
+      });
       return reply.send({ success: true, data: result.data, meta: result.meta });
     },
   );
@@ -70,28 +79,34 @@ export const speakerRoutes: FastifyPluginAsync = async (fastify) => {
   );
 
   // ─── Update Speaker ───────────────────────────────────────────────────
-  fastify.put(
-    "/speakers/:speakerId",
-    {
-      preHandler: [
-        authenticate,
-        requireEmailVerified,
-        requirePermission("profile:update_own"),
-        validate({ params: ParamsWithSpeakerId, body: UpdateSpeakerSchema }),
-      ],
-      schema: {
-        tags: ["Speakers"],
-        summary: "Update speaker profile",
-        security: [{ BearerAuth: [] }],
-      },
+  //
+  // PATCH is the canonical verb for partial updates and matches the rest
+  // of the API (events, organizations, ...). PUT was here historically
+  // but both the backoffice and participant clients call PATCH, so PUT
+  // calls were silently 404ing. We expose both verbs to the same handler
+  // — PATCH takes precedence, PUT is kept as an alias for any external
+  // integration that may have standardised on PUT.
+  const updateSpeakerHandler = async (request: FastifyRequest, reply: FastifyReply) => {
+    const { speakerId } = request.params as z.infer<typeof ParamsWithSpeakerId>;
+    const dto = request.body as z.infer<typeof UpdateSpeakerSchema>;
+    const speaker = await speakerService.updateSpeaker(speakerId, dto, request.user!);
+    return reply.send({ success: true, data: speaker });
+  };
+  const updateSpeakerConfig = {
+    preHandler: [
+      authenticate,
+      requireEmailVerified,
+      requirePermission("profile:update_own"),
+      validate({ params: ParamsWithSpeakerId, body: UpdateSpeakerSchema }),
+    ],
+    schema: {
+      tags: ["Speakers"],
+      summary: "Update speaker profile",
+      security: [{ BearerAuth: [] }],
     },
-    async (request, reply) => {
-      const { speakerId } = request.params as z.infer<typeof ParamsWithSpeakerId>;
-      const dto = request.body as z.infer<typeof UpdateSpeakerSchema>;
-      const speaker = await speakerService.updateSpeaker(speakerId, dto, request.user!);
-      return reply.send({ success: true, data: speaker });
-    },
-  );
+  };
+  fastify.patch("/speakers/:speakerId", updateSpeakerConfig, updateSpeakerHandler);
+  fastify.put("/speakers/:speakerId", updateSpeakerConfig, updateSpeakerHandler);
 
   // ─── Delete Speaker ───────────────────────────────────────────────────
   fastify.delete(
@@ -134,7 +149,12 @@ export const speakerRoutes: FastifyPluginAsync = async (fastify) => {
     },
     async (request, reply) => {
       const { speakerId } = request.params as z.infer<typeof ParamsWithSpeakerId>;
-      const result = await uploadService.generateUploadUrl("speaker", speakerId, request.body as UploadUrlRequest, request.user!);
+      const result = await uploadService.generateUploadUrl(
+        "speaker",
+        speakerId,
+        request.body as UploadUrlRequest,
+        request.user!,
+      );
       return reply.send({ success: true, data: result });
     },
   );
@@ -143,10 +163,7 @@ export const speakerRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get(
     "/:eventId/speakers/me",
     {
-      preHandler: [
-        authenticate,
-        validate({ params: ParamsWithEventId }),
-      ],
+      preHandler: [authenticate, validate({ params: ParamsWithEventId })],
       schema: {
         tags: ["Speakers"],
         summary: "Get my speaker profile for an event",

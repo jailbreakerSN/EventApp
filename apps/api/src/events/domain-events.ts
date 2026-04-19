@@ -121,6 +121,23 @@ export interface WaitlistPromotedEvent extends BaseEventPayload {
   organizationId: string;
 }
 
+/**
+ * Emitted when a waitlist-promotion attempt fails AFTER a successful
+ * cancel. The cancel itself committed, but the event now has a
+ * reserved-but-unfilled slot and a waitlisted user who should have
+ * been promoted. Operators need visibility so they can investigate
+ * (firestore transient? stuck registration? bug?) and either retry
+ * manually or compensate.
+ */
+export interface WaitlistPromotionFailedEvent extends BaseEventPayload {
+  eventId: string;
+  organizationId: string;
+  /** The registration whose cancel triggered the promotion attempt. */
+  cancelledRegistrationId: string;
+  /** Short reason string from the caught error. Not user-facing. */
+  reason: string;
+}
+
 // ── Organization ─────────────────────────────────────────────────────────────
 
 export interface OrganizationCreatedEvent extends BaseEventPayload {
@@ -427,6 +444,7 @@ export interface ReceiptGeneratedEvent extends BaseEventPayload {
   receiptId: string;
   paymentId: string;
   eventId: string;
+  organizationId: string;
   userId: string;
   amount: number;
 }
@@ -443,6 +461,56 @@ export interface SubscriptionDowngradedEvent extends BaseEventPayload {
   organizationId: string;
   previousPlan: string;
   newPlan: string;
+}
+
+// ── Subscription lifecycle (Phase 4c) ───────────────────────────────────────
+
+export interface SubscriptionChangeScheduledEvent extends BaseEventPayload {
+  organizationId: string;
+  fromPlan: string;
+  toPlan: string;
+  effectiveAt: string;
+  reason: string;
+}
+
+export interface SubscriptionScheduledRevertedEvent extends BaseEventPayload {
+  organizationId: string;
+  revertedToPlan: string;
+  revertedEffectiveAt: string;
+}
+
+export interface SubscriptionPeriodRolledOverEvent extends BaseEventPayload {
+  organizationId: string;
+  fromPlan: string;
+  toPlan: string;
+  reason: string;
+}
+
+export interface SubscriptionOverriddenEvent extends BaseEventPayload {
+  organizationId: string;
+  previousPlan: string;
+  newPlanKey: string;
+  newPlanId: string;
+  hasOverrides: boolean;
+  validUntil: string | null;
+}
+
+// ── Plan Catalog ─────────────────────────────────────────────────────────────
+
+export interface PlanCreatedEvent extends BaseEventPayload {
+  planId: string;
+  key: string;
+}
+
+export interface PlanUpdatedEvent extends BaseEventPayload {
+  planId: string;
+  key: string;
+  changes: string[];
+}
+
+export interface PlanArchivedEvent extends BaseEventPayload {
+  planId: string;
+  key: string;
 }
 
 // ─── Domain Event Map ────────────────────────────────────────────────────────
@@ -466,6 +534,7 @@ export interface DomainEventMap {
   "event.archived": EventArchivedEvent;
   "event.cloned": EventClonedEvent;
   "waitlist.promoted": WaitlistPromotedEvent;
+  "waitlist.promotion_failed": WaitlistPromotionFailedEvent;
   "ticket_type.added": TicketTypeAddedEvent;
   "ticket_type.updated": TicketTypeUpdatedEvent;
   "ticket_type.removed": TicketTypeRemovedEvent;
@@ -515,6 +584,14 @@ export interface DomainEventMap {
   // Subscription
   "subscription.upgraded": SubscriptionUpgradedEvent;
   "subscription.downgraded": SubscriptionDowngradedEvent;
+  "subscription.change_scheduled": SubscriptionChangeScheduledEvent;
+  "subscription.scheduled_reverted": SubscriptionScheduledRevertedEvent;
+  "subscription.period_rolled_over": SubscriptionPeriodRolledOverEvent;
+  "subscription.overridden": SubscriptionOverriddenEvent;
+  // Plan Catalog
+  "plan.created": PlanCreatedEvent;
+  "plan.updated": PlanUpdatedEvent;
+  "plan.archived": PlanArchivedEvent;
   // Payout
   "payout.created": PayoutCreatedEvent;
   // Admin

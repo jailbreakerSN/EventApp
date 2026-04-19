@@ -5,6 +5,7 @@ import {
 } from "@teranga/shared-types";
 import { speakerRepository } from "@/repositories/speaker.repository";
 import { eventRepository } from "@/repositories/event.repository";
+import { organizationRepository } from "@/repositories/organization.repository";
 import { type AuthUser } from "@/middlewares/auth.middleware";
 import { ConflictError } from "@/errors/app-error";
 import { BaseService } from "./base.service";
@@ -20,6 +21,10 @@ export class SpeakerService extends BaseService {
 
     const event = await eventRepository.findByIdOrThrow(dto.eventId);
     this.requireOrganizationAccess(user, event.organizationId);
+
+    // Gate speaker portal features behind `speakerPortal` (pro+).
+    const org = await organizationRepository.findByIdOrThrow(event.organizationId);
+    this.requirePlanFeature(org, "speakerPortal");
 
     // Check for duplicate speaker (same userId + event)
     if (dto.userId) {
@@ -90,6 +95,12 @@ export class SpeakerService extends BaseService {
       this.requireOrganizationAccess(user, speaker.organizationId);
     }
 
+    // Gate behind `speakerPortal` regardless of which branch — if the org
+    // downgraded below pro, the portal surface is gone and profile mutations
+    // (self or organizer) must be blocked consistently with create/delete.
+    const org = await organizationRepository.findByIdOrThrow(speaker.organizationId);
+    this.requirePlanFeature(org, "speakerPortal");
+
     await speakerRepository.update(speakerId, {
       ...dto,
       updatedAt: new Date().toISOString(),
@@ -105,6 +116,10 @@ export class SpeakerService extends BaseService {
     this.requirePermission(user, "event:manage_speakers");
     const speaker = await speakerRepository.findByIdOrThrow(speakerId);
     this.requireOrganizationAccess(user, speaker.organizationId);
+
+    const org = await organizationRepository.findByIdOrThrow(speaker.organizationId);
+    this.requirePlanFeature(org, "speakerPortal");
+
     await speakerRepository.update(speakerId, {
       isConfirmed: false,
       sessionIds: [],

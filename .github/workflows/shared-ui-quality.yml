@@ -1,0 +1,304 @@
+name: Shared UI Quality Gate
+
+# Runs the @teranga/shared-ui Storybook test-runner against a static
+# Storybook build on every PR that touches the package or this workflow.
+#
+# Two orthogonal checks per story:
+#   1. Accessibility (axe-core) — fails on violations of impact
+#      `critical` or `serious`. `moderate` / `minor` are logged only.
+#   2. Visual regression — screenshots at 1280×720 are diffed against
+#      the baselines committed under
+#      `packages/shared-ui/__image_snapshots__/`. Diffs are uploaded as
+#      an artifact on failure so reviewers can see exactly what
+#      changed.
+#
+# Storybook is built once, served locally with `http-server`, and probed
+# with `wait-on` before the test-runner kicks in. Playwright's Chromium
+# is cached across runs for speed.
+
+on:
+  pull_request:
+    paths:
+      - "packages/shared-ui/**"
+      - ".github/workflows/shared-ui-quality.yml"
+      - "package.json"
+      - "package-lock.json"
+  push:
+    branches: [main, develop]
+    paths:
+      - "packages/shared-ui/**"
+      - ".github/workflows/shared-ui-quality.yml"
+  # Manual trigger for baseline regeneration. When `bootstrap_baselines`
+  # is true, the test-runner is invoked WITHOUT `--ci`, so jest-image-
+  # snapshot auto-writes missing + mismatched baselines. The resulting
+  # `__image_snapshots__/` tree is then uploaded as an artifact for the
+  # dev to download + commit. Use sparingly — it bypasses regression
+  # detection for the duration of that run.
+  workflow_dispatch:
+    inputs:
+      bootstrap_baselines:
+        description: "Regenerate baseline snapshots (disables --ci strict mode, uploads updated images as artifact)"
+        required: true
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "22"
+  # Same npm retry hardening as .github/workflows/ci.yml — absorbs
+  # transient ECONNRESETs on `npm ci`.
+  NPM_CONFIG_FETCH_RETRIES: "5"
+  NPM_CONFIG_FETCH_RETRY_MINTIMEOUT: "10000"
+  NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT: "120000"
+  # Pin Playwright's browser cache so actions/cache can key on it.
+  PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.playwright-browsers
+
+jobs:
+  storybook-quality:
+    name: Storybook (a11y + visual regression)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # `contents: write` lets the auto-commit step push seeded baselines back
+    # to the PR head ref. Scoped to this job only — no other jobs in this
+    # workflow need write access.
+    permissions:
+      contents: write
+    steps:
+      # Check out the PR head ref (not the default merge commit) so we can
+      # push back to it when baselines are auto-seeded. On push /
+      # workflow_dispatch events, `github.head_ref` is empty, so we fall
+      # back to `github.ref_name` — still a proper branch to commit onto.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref || github.ref_name }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build shared-types (required by shared-ui's consumers)
+        run: npx turbo build --filter=@teranga/shared-types
+
+      # ── Playwright browser cache ─────────────────────────────────────
+      # Chromium alone is ~180MB; caching saves ~60s per cold run.
+      #
+      # Subtlety: two playwright-core versions coexist in this monorepo —
+      # one hoisted at the workspace root (pulled in by
+      # @storybook/test-runner, which is what actually launches browsers)
+      # and one nested under packages/shared-ui. They diverge on minor
+      # bumps, and the chromium revision baked into each differs (e.g.
+      # 1.59.x → chromium-1217, 1.56.x → chromium-1194). The test-runner
+      # uses the hoisted one, so we MUST key the cache on that version —
+      # otherwise a stale nested-version cache restores the wrong
+      # chromium and `browserType.launch` fails with
+      # `Executable doesn't exist at …chromium_headless_shell-<rev>`.
+      #
+      # We also hash package-lock.json into the key so any dep tree
+      # change invalidates cleanly, and we do NOT use restore-keys —
+      # a partial-match restore is what produced the version-skew bug.
+      - name: Resolve playwright-core version (hoisted)
+        id: pw-version
+        run: |
+          pw_version=$(node -p "require('playwright-core/package.json').version")
+          echo "version=${pw_version}" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.PLAYWRIGHT_BROWSERS_PATH }}
+          key: playwright-${{ runner.os }}-${{ steps.pw-version.outputs.version }}-${{ hashFiles('package-lock.json') }}-chromium
+
+      # Always run `playwright install chromium` — it's idempotent and
+      # fast (~1s) when the binary is already present. This also repairs
+      # any half-restored cache before the test-runner reaches for it.
+      - name: Install Playwright Chromium (idempotent)
+        run: npx --prefix "${{ github.workspace }}" playwright install chromium
+
+      # OS-level deps (libasound, libnss, ...) must be present even when
+      # the browser binary itself was restored from cache. Run on full
+      # miss only; on hit, assume the system image hasn't changed.
+      - name: Install Playwright system dependencies
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx --prefix "${{ github.workspace }}" playwright install-deps chromium
+
+      # ── Build Storybook ──────────────────────────────────────────────
+      - name: Build Storybook
+        run: npm run build-storybook --workspace=@teranga/shared-ui
+        env:
+          # Skip Storybook telemetry in CI (also set in main.ts, belt +
+          # braces to short-circuit the bootstrap ping).
+          STORYBOOK_DISABLE_TELEMETRY: "true"
+
+      # ── Serve + run the test-runner ──────────────────────────────────
+      # `concurrently -k -s first` kills both processes when the first
+      # one exits, so the http-server is torn down cleanly when the
+      # test-runner completes (pass or fail).
+      #
+      # When `bootstrap_baselines=true` (workflow_dispatch), the `--ci`
+      # flag is omitted so Jest runs in default update-new mode and
+      # jest-image-snapshot writes missing baselines on first encounter.
+      # The updated tree is then uploaded as an artifact below.
+      - name: Run Storybook quality gate (a11y + visual regression)
+        working-directory: packages/shared-ui
+        env:
+          BOOTSTRAP: ${{ github.event.inputs.bootstrap_baselines }}
+        run: |
+          if [ "$BOOTSTRAP" = "true" ]; then
+            CI_FLAG=""
+            echo "::warning::bootstrap_baselines=true — running WITHOUT --ci so baselines are auto-written."
+          else
+            CI_FLAG="--ci"
+          fi
+          npx concurrently -k -s first -n SB,TEST -c magenta,blue \
+            "npx http-server storybook-static --port 6006 --silent" \
+            "npx wait-on tcp:127.0.0.1:6006 && npx test-storybook $CI_FLAG --url http://127.0.0.1:6006 --maxWorkers=2 --no-index-json"
+
+      # ── Auto-seeded baselines ────────────────────────────────────────
+      # The test-runner auto-writes a baseline for any story that doesn't
+      # have one yet (see .storybook/test-runner.ts). Those files appear
+      # as untracked PNGs under `__image_snapshots__/`. Detect them, fail
+      # the job with a clear message, and upload the baselines as an
+      # artifact so the dev can download + commit them in the PR.
+      #
+      # Running *after* the test-runner step with `if: always()` so this
+      # fires whether the test-runner passed or failed for other reasons.
+      - name: Detect auto-seeded baselines
+        id: seeded
+        if: always()
+        run: |
+          set -euo pipefail
+          # Match only top-level baseline PNGs (i.e. not the
+          # `__diff_output__/` or `__received_output__/` renders that
+          # jest-image-snapshot writes when a diff fires). Without the
+          # `[^/]+` constraint the artifact would also pick up diff
+          # images and the `Fail job` step would trip on any mismatch.
+          new_pngs=$(git status --porcelain packages/shared-ui/__image_snapshots__ \
+            | awk '/^\?\? packages\/shared-ui\/__image_snapshots__\/[^/]+\.png$/ {print $2}')
+          if [ -n "$new_pngs" ]; then
+            count=$(echo "$new_pngs" | wc -l | tr -d ' ')
+            echo "count=$count" >> "$GITHUB_OUTPUT"
+            {
+              echo "files<<EOF"
+              echo "$new_pngs"
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+            echo "::warning::$count baseline(s) were auto-seeded in this run. Download the 'shared-ui-seeded-baselines' artifact and commit the PNGs to this PR branch."
+          else
+            echo "count=0" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload auto-seeded baselines (artifact)
+        if: always() && steps.seeded.outputs.count != '0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: shared-ui-seeded-baselines
+          path: packages/shared-ui/__image_snapshots__/*.png
+          retention-days: 14
+          if-no-files-found: error
+
+      # Auto-commit the seeded baselines back to the PR head ref so no
+      # manual artifact download is required. Only runs on internal PRs
+      # (same-repo head), where GITHUB_TOKEN has write access to the
+      # branch. For external forks, push events, or workflow_dispatch
+      # bootstrap runs, we fall through to the artifact-only fail path
+      # below.
+      #
+      # GitHub intentionally does NOT re-trigger workflows on pushes made
+      # with GITHUB_TOKEN (loop prevention), so the act of committing the
+      # seeded PNGs here does NOT spawn another CI run. That is fine: the
+      # baselines are now on the branch, the current job passes with a
+      # notice annotation, and the next human push (or a re-run) will do
+      # a full regression diff against them.
+      - name: Auto-commit seeded baselines to PR branch
+        id: autocommit
+        if: >-
+          always()
+          && steps.seeded.outputs.count != '0'
+          && github.event_name == 'pull_request'
+          && github.event.pull_request.head.repo.full_name == github.repository
+          && github.event.inputs.bootstrap_baselines != 'true'
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          SEEDED_COUNT: ${{ steps.seeded.outputs.count }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add packages/shared-ui/__image_snapshots__/*.png
+          git commit -m "chore(shared-ui): auto-seed ${SEEDED_COUNT} storybook baseline(s) from CI env" \
+                     -m "Rendered in the Ubuntu CI environment and committed on behalf of this PR's author so subsequent runs can diff against them with full regression detection. Generated by the shared-ui-quality workflow."
+          git push origin "HEAD:${HEAD_REF}"
+          echo "committed=true" >> "$GITHUB_OUTPUT"
+          echo "::notice::Auto-committed ${SEEDED_COUNT} baseline(s) to ${HEAD_REF}. GITHUB_TOKEN pushes do not re-trigger this workflow — the next human push will verify them."
+
+      # Fail the job only when baselines were seeded AND the auto-commit
+      # path did NOT apply (external fork, push event, or
+      # workflow_dispatch without bootstrap_baselines=true). The uploaded
+      # artifact above is the manual recovery path.
+      - name: Fail job when baselines cannot be auto-committed
+        if: >-
+          always()
+          && steps.seeded.outputs.count != '0'
+          && steps.autocommit.outputs.committed != 'true'
+          && github.event.inputs.bootstrap_baselines != 'true'
+        run: |
+          echo "::error::${{ steps.seeded.outputs.count }} baseline(s) were auto-seeded but could not be auto-committed (not an internal PR). Download the 'shared-ui-seeded-baselines' artifact, copy the PNGs into packages/shared-ui/__image_snapshots__/, and push the commit. The next CI run will then compare against them normally."
+          echo ""
+          echo "Seeded files:"
+          echo "${{ steps.seeded.outputs.files }}"
+          exit 1
+
+      # ── Failure artifacts ────────────────────────────────────────────
+      # jest-image-snapshot writes diff PNGs + actual renders to
+      # `__image_snapshots__/__diff_output__/` on mismatch. Upload them
+      # so reviewers can eyeball the regression directly from the PR.
+      #
+      # We also always upload `__received_output__/` on failure, so when
+      # a story is NEW (no baseline yet) the received screenshot can be
+      # downloaded and committed by hand without needing to rerun
+      # workflow_dispatch in bootstrap mode.
+      - name: Upload snapshot diffs (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: shared-ui-snapshot-diffs
+          path: |
+            packages/shared-ui/__image_snapshots__/__diff_output__/
+            packages/shared-ui/__image_snapshots__/__received_output__/
+          retention-days: 14
+          if-no-files-found: ignore
+
+      # Bootstrap-mode artifact: on workflow_dispatch with
+      # bootstrap_baselines=true, upload the full (now-updated)
+      # __image_snapshots__/ tree so the dev can download + commit.
+      - name: Upload regenerated baselines (bootstrap mode)
+        if: always() && github.event.inputs.bootstrap_baselines == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: shared-ui-baselines-bootstrap
+          path: packages/shared-ui/__image_snapshots__/
+          retention-days: 14
+          if-no-files-found: warn
+
+      # Also upload the built Storybook on failure so reviewers can
+      # browse stories locally if needed (faster than re-running
+      # storybook build on their machine).
+      - name: Upload Storybook build (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: shared-ui-storybook-static
+          path: packages/shared-ui/storybook-static
+          retention-days: 7
+          if-no-files-found: ignore

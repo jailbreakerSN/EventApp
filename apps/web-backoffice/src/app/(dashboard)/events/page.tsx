@@ -2,8 +2,10 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import type { EventCategory } from "@teranga/shared-types";
 import { useEvents } from "@/hooks/use-events";
 import { formatDate } from "@/lib/utils";
+import { getEventStatusLabel } from "@/lib/event-status";
 import { Search, Plus, ChevronLeft, ChevronRight, Calendar, MapPin, Users } from "lucide-react";
 import {
   Select,
@@ -15,21 +17,20 @@ import {
   type DataTableColumn,
 } from "@teranga/shared-ui";
 
-const STATUS_LABELS: Record<string, string> = {
-  draft: "Brouillon",
-  published: "Publié",
-  cancelled: "Annulé",
-  archived: "Archivé",
-};
-
+// Must match EventCategorySchema in packages/shared-types/src/event.types.ts
+// — any mismatch would send an invalid filter to /v1/events/org/:orgId now
+// that filtering is server-side (the API rejects with 422).
 const CATEGORY_OPTIONS = [
   { value: "", label: "Toutes les catégories" },
   { value: "conference", label: "Conférence" },
   { value: "workshop", label: "Atelier" },
-  { value: "meetup", label: "Meetup" },
   { value: "concert", label: "Concert" },
   { value: "festival", label: "Festival" },
+  { value: "networking", label: "Networking" },
   { value: "sport", label: "Sport" },
+  { value: "exhibition", label: "Exposition" },
+  { value: "ceremony", label: "Cérémonie" },
+  { value: "training", label: "Formation" },
   { value: "other", label: "Autre" },
 ];
 
@@ -42,17 +43,24 @@ export default function EventsPage() {
   const { data, isLoading, isError, refetch } = useEvents({
     page,
     limit,
+    // Category is filtered server-side now — client-side filtering silently
+    // dropped matches on later pages (Firestore paginated `limit` results
+    // before the filter ran).
+    category: (category || undefined) as EventCategory | undefined,
   });
 
   const allEvents = data?.data ?? [];
   const meta = data?.meta;
   const totalPages = meta?.totalPages ?? 1;
 
-  // Client-side search and category filter
+  // Title search stays client-side: Firestore doesn't do full-text search
+  // natively, and our dataset is small enough per page that a substring
+  // match over the current page is acceptable. Switch to Algolia /
+  // Typesense the day the "search misses results on page 2" complaint
+  // arrives.
   const events = allEvents.filter((event) => {
     const matchesSearch = !search || event.title.toLowerCase().includes(search.toLowerCase());
-    const matchesCategory = !category || event.category === category;
-    return matchesSearch && matchesCategory;
+    return matchesSearch;
   });
 
   return (
@@ -186,7 +194,7 @@ export default function EventsPage() {
                   header: "Statut",
                   render: (event) => (
                     <Badge variant={getStatusVariant(event.status)}>
-                      {STATUS_LABELS[event.status] ?? STATUS_LABELS.draft}
+                      {getEventStatusLabel(event.status)}
                     </Badge>
                   ),
                 },

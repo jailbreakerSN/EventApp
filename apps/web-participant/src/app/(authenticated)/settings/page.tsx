@@ -3,12 +3,12 @@
 import { useState, useEffect } from "react";
 import { Bell, Mail, Smartphone, Clock, Eye, MessageSquare, Trash2, Shield } from "lucide-react";
 import { toast } from "sonner";
+import { useTranslations } from "next-intl";
 import {
   useNotificationPreferences,
   useUpdateNotificationPreferences,
 } from "@/hooks/use-notifications";
-import { Card, CardContent } from "@teranga/shared-ui";
-import { useTranslations } from "next-intl";
+import { Button, Card, CardContent, SectionHeader } from "@teranga/shared-ui";
 
 function Toggle({
   checked,
@@ -38,7 +38,7 @@ function Toggle({
         aria-label={label}
         onClick={() => onChange(!checked)}
         className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors flex-shrink-0 ${
-          checked ? "bg-teranga-gold" : "bg-muted"
+          checked ? "bg-teranga-gold dark:bg-teranga-gold-light" : "bg-muted"
         }`}
       >
         <span
@@ -52,7 +52,10 @@ function Toggle({
 }
 
 export default function SettingsPage() {
-  const tCommon = useTranslations("common"); void tCommon;
+  const t = useTranslations("settings");
+  const tNotifications = useTranslations("settings.notifications");
+  const tPrivacy = useTranslations("settings.privacy");
+  const tAccount = useTranslations("settings.account");
   const { data, isLoading } = useNotificationPreferences();
   const update = useUpdateNotificationPreferences();
 
@@ -69,7 +72,6 @@ export default function SettingsPage() {
     }
   )?.data;
 
-  // Privacy state (persisted in localStorage — no backend yet)
   const [profileVisible, setProfileVisible] = useState(true);
   const [allowDirectMessages, setAllowDirectMessages] = useState(true);
 
@@ -87,7 +89,6 @@ export default function SettingsPage() {
     }
   }, []);
 
-  // Delete account confirmation
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   if (isLoading) {
@@ -106,46 +107,44 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-lg px-4 py-8">
-      <h1 className="mb-6 text-2xl font-bold">Paramètres</h1>
+    <div className="mx-auto max-w-lg px-4 py-8 space-y-6">
+      <SectionHeader kicker="— RÉGLAGES" title={t("title")} size="hero" as="h1" />
 
       {/* Notification Preferences */}
       <Card>
         <CardContent className="space-y-4 py-6">
           <h2 className="text-lg font-semibold flex items-center gap-2">
             <Bell className="h-5 w-5 text-teranga-gold" />
-            Notifications
+            {tNotifications("heading")}
           </h2>
-          <p className="text-sm text-muted-foreground">
-            Choisissez comment recevoir vos notifications
-          </p>
+          <p className="text-sm text-muted-foreground">{tNotifications("description")}</p>
 
           <div className="space-y-2">
             <Toggle
               icon={Bell}
-              label="Notifications push"
-              description="Recevez des alertes en temps réel sur votre appareil"
+              label={tNotifications("push")}
+              description={tNotifications("pushDescription")}
               checked={prefs?.push ?? true}
               onChange={(v) => update.mutate({ push: v })}
             />
             <Toggle
               icon={Smartphone}
-              label="SMS"
-              description="Recevez des notifications par SMS"
+              label={tNotifications("sms")}
+              description={tNotifications("smsDescription")}
               checked={prefs?.sms ?? true}
               onChange={(v) => update.mutate({ sms: v })}
             />
             <Toggle
               icon={Mail}
-              label="Email"
-              description="Recevez des résumés et confirmations par email"
+              label={tNotifications("email")}
+              description={tNotifications("emailDescription")}
               checked={prefs?.email ?? true}
               onChange={(v) => update.mutate({ email: v })}
             />
             <Toggle
               icon={Clock}
-              label="Rappels d'événements"
-              description="Recevez un rappel avant le début de vos événements"
+              label={tNotifications("reminders")}
+              description={tNotifications("remindersDescription")}
               checked={prefs?.eventReminders ?? true}
               onChange={(v) => update.mutate({ eventReminders: v })}
             />
@@ -154,21 +153,19 @@ export default function SettingsPage() {
       </Card>
 
       {/* Privacy */}
-      <Card className="mt-6">
+      <Card>
         <CardContent className="space-y-4 py-6">
           <h2 className="text-lg font-semibold flex items-center gap-2">
             <Shield className="h-5 w-5 text-teranga-gold" />
-            Confidentialité
+            {tPrivacy("heading")}
           </h2>
-          <p className="text-sm text-muted-foreground">
-            Contrôlez la visibilité de votre profil et vos interactions
-          </p>
+          <p className="text-sm text-muted-foreground">{tPrivacy("description")}</p>
 
           <div className="space-y-2">
             <Toggle
               icon={Eye}
-              label="Profil visible par les autres participants"
-              description="Les autres participants pourront voir votre nom et votre profil lors des événements"
+              label={tPrivacy("profileVisible")}
+              description={tPrivacy("profileVisibleDescription")}
               checked={profileVisible}
               onChange={(v) => {
                 setProfileVisible(v);
@@ -180,15 +177,13 @@ export default function SettingsPage() {
                 } catch {
                   /* ignore */
                 }
-                toast.success(
-                  v ? "Votre profil est maintenant visible" : "Votre profil est maintenant masqué",
-                );
+                toast.success(v ? tPrivacy("profileVisibleOn") : tPrivacy("profileVisibleOff"));
               }}
             />
             <Toggle
               icon={MessageSquare}
-              label="Autoriser les messages directs"
-              description="Les autres participants pourront vous envoyer des messages"
+              label={tPrivacy("dmAllowed")}
+              description={tPrivacy("dmAllowedDescription")}
               checked={allowDirectMessages}
               onChange={(v) => {
                 setAllowDirectMessages(v);
@@ -200,7 +195,7 @@ export default function SettingsPage() {
                 } catch {
                   /* ignore */
                 }
-                toast.success(v ? "Messages directs activés" : "Messages directs désactivés");
+                toast.success(v ? tPrivacy("dmAllowedOn") : tPrivacy("dmAllowedOff"));
               }}
             />
           </div>
@@ -208,50 +203,46 @@ export default function SettingsPage() {
       </Card>
 
       {/* Account / Danger Zone */}
-      <Card className="mt-6 border-destructive/30">
+      <Card className="border-destructive/30">
         <CardContent className="space-y-4 py-6">
           <h2 className="text-lg font-semibold flex items-center gap-2 text-destructive">
             <Trash2 className="h-5 w-5" />
-            Compte
+            {tAccount("heading")}
           </h2>
-          <p className="text-sm text-muted-foreground">
-            Actions irréversibles concernant votre compte
-          </p>
+          <p className="text-sm text-muted-foreground">{tAccount("description")}</p>
 
           {!showDeleteConfirm ? (
-            <button
+            <Button
+              variant="outline"
               onClick={() => setShowDeleteConfirm(true)}
-              className="w-full rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm font-medium text-destructive hover:bg-destructive/10 transition-colors"
+              className="w-full border-destructive/30 bg-destructive/5 text-destructive hover:bg-destructive/10 hover:text-destructive"
             >
-              Supprimer mon compte
-            </button>
+              {tAccount("delete")}
+            </Button>
           ) : (
             <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 space-y-3">
               <p className="text-sm text-destructive font-medium">
-                Êtes-vous sûr(e) de vouloir supprimer votre compte ?
+                {tAccount("deleteConfirmQuestion")}
               </p>
-              <p className="text-xs text-muted-foreground">
-                Cette action est irréversible. Toutes vos données, inscriptions et messages seront
-                définitivement supprimés.
-              </p>
+              <p className="text-xs text-muted-foreground">{tAccount("deleteConfirmWarning")}</p>
               <div className="flex gap-2">
-                <button
+                <Button
+                  variant="destructive"
                   onClick={() => {
                     setShowDeleteConfirm(false);
-                    toast.info(
-                      "Veuillez contacter le support pour supprimer votre compte : support@teranga-events.com",
-                    );
+                    toast.info(tAccount("deleteContactSupport"));
                   }}
-                  className="flex-1 rounded-lg bg-destructive px-4 py-2 text-sm font-medium text-white hover:bg-destructive/90 transition-colors"
+                  className="flex-1"
                 >
-                  Confirmer la suppression
-                </button>
-                <button
+                  {tAccount("deleteConfirm")}
+                </Button>
+                <Button
+                  variant="outline"
                   onClick={() => setShowDeleteConfirm(false)}
-                  className="flex-1 rounded-lg border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-muted transition-colors"
+                  className="flex-1"
                 >
-                  Annuler
-                </button>
+                  {tAccount("deleteCancel")}
+                </Button>
               </div>
             </div>
           )}

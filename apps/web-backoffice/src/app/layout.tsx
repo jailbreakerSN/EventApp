@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Inter } from "next/font/google";
+import { Inter, Fraunces, JetBrains_Mono } from "next/font/google";
 import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getMessages } from "next-intl/server";
 import "./globals.css";
@@ -9,8 +9,26 @@ import { Toaster, OfflineBanner } from "@teranga/shared-ui";
 const inter = Inter({
   subsets: ["latin"],
   display: "swap",
+  variable: "--font-sans",
   // Limit preloaded weights to keep initial payload small on African 3G networks.
   weight: ["400", "500", "600", "700"],
+});
+
+const fraunces = Fraunces({
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-serif",
+  weight: ["500", "600", "700"],
+  style: ["normal", "italic"],
+  preload: false,
+});
+
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-mono",
+  weight: ["500", "600"],
+  preload: false,
 });
 
 export const metadata: Metadata = {
@@ -39,7 +57,11 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const messages = await getMessages();
 
   return (
-    <html lang={locale} suppressHydrationWarning>
+    <html
+      lang={locale}
+      suppressHydrationWarning
+      className={`${inter.variable} ${fraunces.variable} ${jetbrainsMono.variable}`}
+    >
       <body className={inter.className}>
         <NextIntlClientProvider locale={locale} messages={messages}>
           <OfflineBanner />

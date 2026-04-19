@@ -5,8 +5,8 @@ import { useQuery } from "@tanstack/react-query";
 import { eventsApi } from "@/lib/api-client";
 import { useAuth } from "@/hooks/use-auth";
 import { useFeed } from "@/hooks/use-feed";
-import { MessageSquare, ArrowLeft, Loader2 } from "lucide-react";
-import { QueryError, EmptyState } from "@teranga/shared-ui";
+import { AlertTriangle, ArrowLeft, Loader2, MessageSquare, RotateCcw } from "lucide-react";
+import { Button, EmptyStateEditorial, SectionHeader } from "@teranga/shared-ui";
 import Link from "next/link";
 import { CreatePostForm } from "@/components/feed/CreatePostForm";
 import { FeedPostCard } from "@/components/feed/FeedPostCard";
@@ -16,7 +16,7 @@ import { InfiniteScrollSentinel } from "@/components/feed/InfiniteScrollSentinel
 import { useTranslations } from "next-intl";
 
 export default function FeedPage() {
-  const tCommon = useTranslations("common"); void tCommon;
+  const t = useTranslations("feed");
   const { slug } = useParams<{ slug: string }>();
   const { user } = useAuth();
 
@@ -56,49 +56,69 @@ export default function FeedPage() {
   // Event not found
   if (!event || !eventId) {
     return (
-      <div className="max-w-2xl mx-auto px-4 py-8 text-center">
-        <MessageSquare className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-30" />
-        <p className="text-lg text-muted-foreground">Événement introuvable</p>
-        <Link href="/events" className="mt-4 inline-block text-sm text-primary hover:underline">
-          Retour aux événements
-        </Link>
+      <div className="max-w-2xl mx-auto px-4 py-8">
+        <EmptyStateEditorial
+          icon={MessageSquare}
+          kicker={t("notFoundKicker")}
+          title={t("notFoundTitle")}
+          action={
+            <Link
+              href="/events"
+              className="text-sm font-medium text-teranga-gold-dark hover:underline"
+            >
+              {t("backToEvents")}
+            </Link>
+          }
+        />
       </div>
     );
   }
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-8">
+    <div className="max-w-2xl mx-auto px-4 py-8 space-y-6">
       <Link
         href={`/events/${event.slug}`}
-        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground mb-6"
+        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
       >
-        <ArrowLeft className="h-4 w-4" /> Retour à l&apos;événement
+        <ArrowLeft className="h-4 w-4" /> {t("backToEvent")}
       </Link>
 
-      <div className="flex items-center gap-3 mb-6">
-        <MessageSquare className="h-6 w-6 text-primary" />
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Feed</h1>
-          <p className="text-sm text-muted-foreground">{event.title}</p>
-        </div>
-      </div>
+      <SectionHeader
+        kicker={t("kicker")}
+        title={t("title")}
+        subtitle={event.title}
+        size="hero"
+        as="h1"
+      />
 
       <CreatePostForm eventId={eventId} user={user} />
 
       {isLoadingFeed ? (
-        <div className="space-y-4" role="status" aria-label="Chargement du feed...">
+        <div className="space-y-4" role="status" aria-label={t("loadingLabel")}>
           <FeedPostSkeleton />
           <FeedPostSkeleton />
           <FeedPostSkeleton />
-          <span className="sr-only">Chargement du feed...</span>
+          <span className="sr-only">{t("loadingLabel")}</span>
         </div>
       ) : feedError ? (
-        <QueryError message="Impossible de charger le feed." onRetry={refresh} />
+        <EmptyStateEditorial
+          icon={AlertTriangle}
+          kicker={t("errorKicker")}
+          title={t("errorTitle")}
+          description={t("errorDescription")}
+          action={
+            <Button variant="outline" onClick={refresh}>
+              <RotateCcw className="mr-2 h-4 w-4" aria-hidden="true" />
+              {t("retry")}
+            </Button>
+          }
+        />
       ) : posts.length === 0 ? (
-        <EmptyState
+        <EmptyStateEditorial
           icon={MessageSquare}
-          title="Aucune publication pour le moment"
-          description="Soyez le premier à partager une publication avec les participants."
+          kicker={t("emptyKicker")}
+          title={t("emptyTitle")}
+          description={t("emptyDescription")}
         />
       ) : (
         <>

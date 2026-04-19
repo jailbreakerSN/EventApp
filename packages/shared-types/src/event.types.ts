@@ -217,6 +217,9 @@ export const RegistrationSchema = z.object({
   userId: z.string(),
   ticketTypeId: z.string(),
   eventTitle: z.string().optional(), // denormalized for display
+  eventSlug: z.string().optional(), // denormalized so client can build /events/:slug links without a second fetch
+  eventStartDate: z.string().datetime().optional(), // denormalized for calendar view
+  eventEndDate: z.string().datetime().optional(), // denormalized for calendar view
   ticketTypeName: z.string().optional(), // denormalized for display
   participantName: z.string().nullable().optional(), // denormalized for display
   participantEmail: z.string().nullable().optional(), // denormalized for display

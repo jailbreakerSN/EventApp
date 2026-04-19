@@ -3,19 +3,13 @@ import {
   type CreateInviteDto,
   type OrganizationInvite,
   type Organization,
-  PLAN_LIMITS,
 } from "@teranga/shared-types";
 import { inviteRepository } from "@/repositories/invite.repository";
 import { organizationRepository } from "@/repositories/organization.repository";
 import { userRepository } from "@/repositories/user.repository";
 import { type AuthUser } from "@/middlewares/auth.middleware";
 import { auth, db, COLLECTIONS } from "@/config/firebase";
-import {
-  ConflictError,
-  NotFoundError,
-  ValidationError,
-  PlanLimitError,
-} from "@/errors/app-error";
+import { ConflictError, NotFoundError, ValidationError, PlanLimitError } from "@/errors/app-error";
 import { BaseService } from "./base.service";
 import { eventBus } from "@/events/event-bus";
 import { getRequestId } from "@/context/request-context";
@@ -34,15 +28,16 @@ export class InviteService extends BaseService {
 
     const org = await organizationRepository.findByIdOrThrow(orgId);
 
-    // Check plan limits
-    const limits = PLAN_LIMITS[org.plan];
+    // Check plan limits (reads org.effectiveLimits via BaseService with safe
+    // fallback to PLAN_LIMITS[org.plan] when denormalization is missing)
     const currentMembers = org.memberIds?.length ?? 0;
     const pendingInvites = await inviteRepository.findByOrganization(orgId);
     const pendingCount = pendingInvites.filter((i) => i.status === "pending").length;
 
-    if (currentMembers + pendingCount >= limits.maxMembers) {
+    const { allowed, limit } = this.checkPlanLimit(org, "members", currentMembers + pendingCount);
+    if (!allowed) {
       throw new PlanLimitError(
-        `Maximum ${limits.maxMembers} membres (invitations en attente incluses) sur le plan ${org.plan}`,
+        `Maximum ${limit} membres (invitations en attente incluses) sur le plan ${org.effectivePlanKey ?? org.plan}`,
       );
     }
 
@@ -108,7 +103,9 @@ export class InviteService extends BaseService {
       throw new ValidationError(`Cette invitation a déjà été traitée (${invite.status})`);
     }
     if (new Date(invite.expiresAt) < new Date()) {
-      await inviteRepository.update(invite.id, { status: "expired" } as Partial<OrganizationInvite>);
+      await inviteRepository.update(invite.id, {
+        status: "expired",
+      } as Partial<OrganizationInvite>);
       throw new ValidationError("Cette invitation a expiré");
     }
 
@@ -135,9 +132,9 @@ export class InviteService extends BaseService {
         return;
       }
 
-      const limits = PLAN_LIMITS[org.plan];
-      if (members.length >= limits.maxMembers) {
-        throw new PlanLimitError(`Organization has reached the maximum of ${limits.maxMembers} members`);
+      const { allowed, limit } = this.checkPlanLimit(org, "members", members.length);
+      if (!allowed) {
+        throw new PlanLimitError(`Organization has reached the maximum of ${limit} members`);
       }
 
       tx.update(orgRef, {
@@ -148,14 +145,53 @@ export class InviteService extends BaseService {
         status: "accepted",
         updatedAt: new Date().toISOString(),
       });
+      // Mirror organizationId onto the accepting user's Firestore doc
+      // in the SAME transaction. Firestore rules read organizationId
+      // from the user doc (not claims), so without this mirror the
+      // invitee is granted access by their new custom claims but rules
+      // still see them as unaffiliated — read-denials despite the
+      // invite being accepted.
+      //
+      // Use tx.set(..., { merge: true }) not tx.update() — an invitee
+      // who just signed up may not have a Firestore user doc yet (the
+      // onUserCreated trigger can race with the accept-invite call),
+      // and .update() on a missing doc throws NOT_FOUND and rolls the
+      // whole tx back.
+      tx.set(
+        db.collection(COLLECTIONS.USERS).doc(user.uid),
+        {
+          organizationId: invite.organizationId,
+          updatedAt: new Date().toISOString(),
+        },
+        { merge: true },
+      );
     });
 
-    // Set custom claims for the new member
+    // Set custom claims for the new member AFTER the Firestore
+    // mirror committed. Rule checks only need the doc; claims are
+    // for the API middleware's JWT decoding.
+    //
+    // Unlike addMember / removeMember / updateMemberRole, we do NOT
+    // roll the transaction back on Auth failure: the tx already spans
+    // three docs (org memberIds, invite status, user mirror) and
+    // reversing all three outside of the original tx races with any
+    // concurrent listener. Instead we LOG the drift + re-throw so the
+    // MEDIUM-3 drift detection pill flags the user in /admin/users.
+    // The mutation is idempotent on retry — the user calls accept
+    // again and the outer `members.includes(user.uid)` short-circuit
+    // kicks in, then claims catch up.
     const existingClaims = (await auth.getUser(user.uid)).customClaims ?? {};
-    await auth.setCustomUserClaims(user.uid, {
-      ...existingClaims,
-      organizationId: invite.organizationId,
-    });
+    try {
+      await auth.setCustomUserClaims(user.uid, {
+        ...existingClaims,
+        organizationId: invite.organizationId,
+      });
+    } catch (err) {
+      process.stderr.write(
+        `invite.acceptInvite: setCustomUserClaims FAILED for uid=${user.uid} orgId=${invite.organizationId} — Firestore committed, JWT drift until retry. Error: ${String(err)}\n`,
+      );
+      throw err;
+    }
 
     eventBus.emit("invite.accepted", {
       inviteId: invite.id,
@@ -177,7 +213,9 @@ export class InviteService extends BaseService {
       throw new ValidationError(`Cette invitation a déjà été traitée (${invite.status})`);
     }
     if (new Date(invite.expiresAt) < new Date()) {
-      await inviteRepository.update(invite.id, { status: "expired" } as Partial<OrganizationInvite>);
+      await inviteRepository.update(invite.id, {
+        status: "expired",
+      } as Partial<OrganizationInvite>);
       throw new ValidationError("Cette invitation a expiré");
     }
     if (user.email?.toLowerCase() !== invite.email.toLowerCase()) {

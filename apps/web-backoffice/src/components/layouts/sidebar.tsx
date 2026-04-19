@@ -26,8 +26,8 @@ import { useAuth } from "@/hooks/use-auth";
 import { useSidebar } from "./sidebar-context";
 import { usePlanGating } from "@/hooks/use-plan-gating";
 import { UsageMeter } from "@/components/plan/UsageMeter";
-import { PLAN_DISPLAY } from "@teranga/shared-types";
 import type { UserRole } from "@teranga/shared-types";
+import { usePlansCatalogMap, getPlanDisplay } from "@/hooks/use-plans-catalog";
 import { CreditCard, ArrowUpRight } from "lucide-react";
 import { useTranslations } from "next-intl";
 
@@ -102,6 +102,7 @@ const adminNavItems: NavItem[] = [
   { href: "/admin/organizations", icon: Building2, label: "Organisations", roles: ["super_admin"] },
   { href: "/admin/events", icon: CalendarDays, label: "Événements (tous)", roles: ["super_admin"] },
   { href: "/admin/venues", icon: MapPin, label: "Lieux", roles: ["super_admin"] },
+  { href: "/admin/plans", icon: CreditCard, label: "Plans", roles: ["super_admin"] },
   { href: "/admin/audit", icon: FileText, label: "Journal d'audit", roles: ["super_admin"] },
 ];
 
@@ -295,9 +296,11 @@ export function Sidebar() {
 }
 
 function SidebarPlanWidget() {
-  const _t = useTranslations("common"); void _t;
+  const _t = useTranslations("common");
+  void _t;
   const { plan, checkLimit, isNearLimit } = usePlanGating();
-  const display = PLAN_DISPLAY[plan];
+  const { map: catalog } = usePlansCatalogMap();
+  const display = getPlanDisplay(plan, catalog);
   const events = checkLimit("events");
   const members = checkLimit("members");
 

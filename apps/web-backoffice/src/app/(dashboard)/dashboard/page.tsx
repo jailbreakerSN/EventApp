@@ -2,30 +2,41 @@
 
 import Link from "next/link";
 import { useEvents } from "@/hooks/use-events";
+import { useOrgAnalytics } from "@/hooks/use-organization";
 import { formatDate } from "@/lib/utils";
+import { getEventStatusLabel } from "@/lib/event-status";
 import { Calendar, Users, Ticket, TrendingUp, ArrowRight, Banknote } from "lucide-react";
 import {
   Skeleton,
   Badge,
   getStatusVariant,
   DataTable,
+  SectionHeader,
   type DataTableColumn,
 } from "@teranga/shared-ui";
 
-const STATUS_LABELS: Record<string, string> = {
-  draft: "Brouillon",
-  published: "Publié",
-  cancelled: "Annulé",
-};
-
 export default function DashboardPage() {
+  // Recent-events list for the bottom of the page — kept at 5 for a
+  // focused "last activity" panel.
   const { data, isLoading } = useEvents({ limit: 5, orderBy: "createdAt", orderDir: "desc" });
-
   const events = data?.data ?? [];
-  const total = data?.meta?.total ?? 0;
+
+  // Stat cards read from the org-analytics endpoint (timeframe=all)
+  // so the numbers aggregate across EVERY event, not just the 5 most
+  // recent. Previously the dashboard reduced over the 5-event page and
+  // silently underreported totals for any org with more than five
+  // events — the fix surfaces real org-wide figures.
+  const { data: analyticsData, isLoading: analyticsLoading } = useOrgAnalytics({
+    timeframe: "all",
+  });
+  const summary = analyticsData?.data?.summary;
+  const total = summary?.totalEvents ?? 0;
+  const totalRegistered = summary?.totalRegistrations ?? 0;
+  const totalCheckedIn = summary?.totalCheckedIn ?? 0;
+  // Published count is cheap to derive from the recent events page; an
+  // exact org-wide `publishedCount` would require extending the
+  // analytics summary, which we defer until someone actually asks.
   const publishedCount = events.filter((e) => e.status === "published").length;
-  const totalRegistered = events.reduce((sum, e) => sum + (e.registeredCount ?? 0), 0);
-  const totalCheckedIn = events.reduce((sum, e) => sum + (e.checkedInCount ?? 0), 0);
 
   const formatXOF = (amount: number) =>
     new Intl.NumberFormat("fr-SN", {
@@ -35,42 +46,47 @@ export default function DashboardPage() {
     }).format(amount);
 
   return (
-    <div>
-      <h1 className="text-2xl font-bold text-foreground mb-6">Tableau de bord</h1>
+    <div className="space-y-8">
+      <SectionHeader
+        kicker="— TABLEAU DE BORD"
+        title="Vue d'ensemble"
+        subtitle="Pilotez vos événements et suivez l'activité de votre organisation."
+        size="hero"
+        as="h1"
+      />
 
       {/* Stats cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
         <StatCard
           icon={<Calendar className="h-5 w-5 text-blue-600" />}
           label="Total événements"
-          value={isLoading ? undefined : String(total)}
+          value={analyticsLoading ? undefined : String(total)}
           bgColor="bg-blue-50 dark:bg-blue-900/20"
-          isLoading={isLoading}
+          isLoading={analyticsLoading}
         />
         <StatCard
           icon={<TrendingUp className="h-5 w-5 text-green-600" />}
-          label="Publiés"
+          label="Publiés (récents)"
           value={isLoading ? undefined : String(publishedCount)}
           bgColor="bg-green-50 dark:bg-green-900/20"
           isLoading={isLoading}
+          subtitle="Sur les 5 derniers"
         />
         <StatCard
           icon={<Users className="h-5 w-5 text-purple-600" />}
-          label="Inscrits récents"
-          value={isLoading ? undefined : String(totalRegistered)}
+          label="Total inscrits"
+          value={analyticsLoading ? undefined : String(totalRegistered)}
           bgColor="bg-purple-50 dark:bg-purple-900/20"
-          isLoading={isLoading}
-          trend="up"
-          trendLabel="vs dernier mois"
+          isLoading={analyticsLoading}
+          subtitle="Tous événements confondus"
         />
         <StatCard
           icon={<Ticket className="h-5 w-5 text-orange-600" />}
           label="Check-ins"
-          value={isLoading ? undefined : String(totalCheckedIn)}
+          value={analyticsLoading ? undefined : String(totalCheckedIn)}
           bgColor="bg-orange-50 dark:bg-orange-900/20"
-          isLoading={isLoading}
-          trend="up"
-          trendLabel="vs dernier mois"
+          isLoading={analyticsLoading}
+          subtitle="Tous événements confondus"
         />
         <StatCard
           icon={<Banknote className="h-5 w-5 text-amber-600" />}
@@ -83,18 +99,23 @@ export default function DashboardPage() {
       </div>
 
       {/* Recent events */}
-      <div className="bg-card rounded-xl border border-border">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
-          <h2 className="text-sm font-semibold text-foreground">Événements récents</h2>
-          <Link
-            href="/events"
-            className="text-sm text-primary hover:underline inline-flex items-center gap-1"
-          >
-            Tout voir <ArrowRight className="h-3.5 w-3.5" />
-          </Link>
-        </div>
+      <section className="space-y-4">
+        <SectionHeader
+          kicker="— DERNIÈRE ACTIVITÉ"
+          title="Événements récents"
+          size="section"
+          action={
+            <Link
+              href="/events"
+              className="inline-flex items-center gap-1 font-mono-kicker text-[11px] font-medium uppercase tracking-[0.14em] text-teranga-gold-dark hover:text-teranga-navy transition-colors"
+            >
+              Tout voir <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
+          }
+        />
 
-        <DataTable<(typeof events)[number] & Record<string, unknown>>
+        <div className="bg-card rounded-xl border border-border">
+          <DataTable<(typeof events)[number] & Record<string, unknown>>
           aria-label="Événements récents"
           emptyMessage="Aucun événement pour le moment."
           responsiveCards
@@ -130,7 +151,7 @@ export default function DashboardPage() {
                 header: "Statut",
                 render: (event) => (
                   <Badge variant={getStatusVariant(event.status)}>
-                    {STATUS_LABELS[event.status] ?? STATUS_LABELS.draft}
+                    {getEventStatusLabel(event.status)}
                   </Badge>
                 ),
               },
@@ -146,14 +167,15 @@ export default function DashboardPage() {
             ] as DataTableColumn<(typeof events)[number] & Record<string, unknown>>[]
           }
         />
-        {events.length === 0 && !isLoading && (
-          <div className="p-8 text-center text-muted-foreground">
-            <Link href="/events/new" className="text-primary hover:underline">
-              Créer votre premier événement
-            </Link>
-          </div>
-        )}
-      </div>
+          {events.length === 0 && !isLoading && (
+            <div className="p-8 text-center text-muted-foreground">
+              <Link href="/events/new" className="text-primary hover:underline">
+                Créer votre premier événement
+              </Link>
+            </div>
+          )}
+        </div>
+      </section>
     </div>
   );
 }

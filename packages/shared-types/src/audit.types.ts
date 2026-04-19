@@ -20,6 +20,7 @@ export const AuditActionSchema = z.enum([
   "member.removed",
   "badge.generated",
   "waitlist.promoted",
+  "waitlist.promotion_failed",
   "ticket_type.added",
   "ticket_type.updated",
   "ticket_type.removed",
@@ -29,6 +30,7 @@ export const AuditActionSchema = z.enum([
   "invite.declined",
   "invite.revoked",
   "member.role_changed",
+  "member.role_updated",
   "organization.updated",
   "session.created",
   "session.updated",
@@ -43,6 +45,7 @@ export const AuditActionSchema = z.enum([
   "payment.succeeded",
   "payment.failed",
   "payment.refunded",
+  "receipt.generated",
   // ── Speaker & Sponsor ──────────────────────────────────────────────────────
   "speaker.added",
   "speaker.removed",
@@ -61,6 +64,18 @@ export const AuditActionSchema = z.enum([
   "user.activated",
   "organization.verified",
   "organization.suspended",
+  // ── Plan Catalog ──────────────────────────────────────────────────────────
+  "plan.created",
+  "plan.updated",
+  "plan.archived",
+  // ── Subscription lifecycle (Phase 4c) ─────────────────────────────────────
+  "subscription.upgraded",
+  "subscription.downgraded",
+  "subscription.change_scheduled",
+  "subscription.scheduled_reverted",
+  "subscription.period_rolled_over",
+  // ── Subscription override (Phase 5 — admin per-org assign) ────────────────
+  "subscription.overridden",
 ]);
 
 export type AuditAction = z.infer<typeof AuditActionSchema>;

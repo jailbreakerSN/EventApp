@@ -1,7 +1,9 @@
 # Design Tokens
 
+> **Editorial v2 (2026-04-17)** — this is the canonical token sheet after the Teranga Participant prototype handoff. Any new surface in `apps/web-participant` or `apps/web-backoffice` MUST use these tokens; inlined hex / arbitrary `rounded-[...]` values are rejected in review.
+
 Design tokens are the atomic values that define the visual language of Teranga. They are implemented in:
-- **Web**: TailwindCSS custom theme + CSS variables (`globals.css`)
+- **Web**: TailwindCSS custom theme (`apps/web-participant/tailwind.config.ts`) + CSS variables and editorial utilities (`src/app/globals.css`)
 - **Flutter**: `AppTheme` class (`apps/mobile/lib/core/theme/app_theme.dart`)
 
 ---
@@ -12,14 +14,18 @@ Design tokens are the atomic values that define the visual language of Teranga. 
 
 | Token | Hex | HSL | Usage | Tailwind Class |
 |-------|-----|-----|-------|----------------|
-| `teranga-navy` | `#1A1A2E` | `240 28% 14%` | Primary brand, sidebar, buttons, headings | `bg-teranga-navy` / `text-teranga-navy` |
-| `teranga-navy-light` | `#16213E` | `222 47% 16%` | Hover state for navy, gradient end | `bg-[#16213E]` |
-| `teranga-gold` | `#c59e4b` | `38 46% 53%` | Accent, CTAs, highlights, badges | `bg-teranga-gold` / `text-teranga-gold` |
-| `teranga-gold-light` | `#d1b372` | `38 50% 63%` | Light sand accent, hover states | `bg-teranga-gold-light` |
-| `teranga-gold-dark` | `#a78336` | `38 52% 43%` | Gold text on white (WCAG AA) | `text-teranga-gold-dark` |
-| `teranga-green` | `#0F9B58` | `151 82% 33%` | Success, confirmed status, positive actions | `bg-teranga-green` |
-| `teranga-forest` | `#2a473c` | `160 27% 22%` | Deep teal green from logo palette | `bg-teranga-forest` |
-| `teranga-forest-dark` | `#172721` | `153 27% 12%` | Near-black, dark backgrounds | `bg-teranga-forest-dark` |
+| `teranga-navy` | `#1A1A2E` | `240 28% 14%` | Primary brand, dark CTAs, hero base | `bg-teranga-navy` / `text-teranga-navy` |
+| `teranga-navy-2` | `#16213E` | `222 47% 16%` | Hero gradient mid, button hover | `bg-teranga-navy-2` |
+| `teranga-navy-3` | `#0F0F1C` | `240 30% 8%` | Deepest navy, rare — text on gold, gradient end | `bg-teranga-navy-3` |
+| `teranga-gold` | `#c59e4b` | `38 46% 53%` | Accent, primary gold CTA, pill fills | `bg-teranga-gold` / `text-teranga-gold` |
+| `teranga-gold-light` | `#d1b372` | `38 50% 63%` | Gold hover, italic display accent on dark | `bg-teranga-gold-light` |
+| `teranga-gold-dark` | `#a78336` | `38 52% 43%` | Gold text on white (WCAG AA), mono kickers | `text-teranga-gold-dark` |
+| `teranga-gold-soft` | `#f0e6ce` | `40 60% 87%` | Pale gold surfaces, gold chip background | `bg-teranga-gold-soft` |
+| `teranga-gold-whisper` | `#faf6ee` | `42 67% 96%` | Cream paper, ticket stub background | `bg-teranga-gold-whisper` |
+| `teranga-green` | `#0F9B58` | `151 82% 33%` | Success, confirmed status, live pulse dot | `bg-teranga-green` |
+| `teranga-forest` | `#2a473c` | `160 27% 22%` | Deep teal, hero gradient end | `bg-teranga-forest` |
+| `teranga-forest-dark` | `#172721` | `153 27% 12%` | Near-black, dark-mode backgrounds | `bg-teranga-forest-dark` |
+| `teranga-clay` | `#c86f4b` | `16 54% 54%` | Urgency / scarcity pills, capacity bar end | `bg-teranga-clay` |
 
 ### Semantic Colors
 
@@ -114,45 +120,43 @@ All text/background combinations must meet WCAG AA (4.5:1 for normal text, 3:1 f
 
 ### Font Family
 
-- **Primary (body)**: [Inter](https://fonts.google.com/specimen/Inter) — Variable weight, excellent French diacritic support (e, e, a, c, etc.), highly legible on screens
-- **Display (headings)**: [DM Sans](https://fonts.google.com/specimen/DM+Sans) — Geometric, slightly warmer than Inter, adds personality to headings. Optional — Inter works for both if you prefer simplicity.
-- **Fallback**: `system-ui, -apple-system, sans-serif`
-- **Monospace** (code, QR values): `ui-monospace, 'JetBrains Mono', 'Fira Code', monospace`
+Three families, each with a strict role. All loaded via `next/font/google` with CSS variables so swapping / scaling is centralised.
 
-```js
-// Tailwind config
-fontFamily: {
-  sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
-  display: ['DM Sans', 'Inter', 'system-ui', 'sans-serif'],
-  mono: ['JetBrains Mono', 'Fira Code', 'ui-monospace', 'monospace'],
-}
-```
+- **Sans (body + UI)** — [Inter](https://fonts.google.com/specimen/Inter). Full diacritic coverage for French + Wolof. CSS variable: `--font-sans`. Preloaded weights 400/500/600/700.
+- **Serif (display)** — [Fraunces](https://fonts.google.com/specimen/Fraunces). Variable optical-sizing, italic cut used for gold accents in hero titles. CSS variable: `--font-serif`. Weights 500/600/700 + italic, `preload: false` (loaded lazily to protect 3G payload).
+- **Mono (kickers + codes)** — [JetBrains Mono](https://fonts.google.com/specimen/JetBrains+Mono). Used only for: overline kickers, TER codes, tabular numerals on tickets, QR payloads. CSS variable: `--font-mono`. Weights 500/600, `preload: false`.
+
+**Utility classes** (defined in `globals.css` `@layer utilities`):
+- `.font-serif-display` — applies Fraunces with `font-optical-sizing: auto` and `letter-spacing: -0.01em`. Use for every editorial headline.
+- `.font-mono-kicker` — applies JetBrains Mono. Use for every mono kicker / code chip.
 
 ### Type Scale
 
-Based on TailwindCSS defaults, used consistently across web and mobile:
+Editorial hierarchy. Sizes read as "large display → tight tracking"; body remains 15–17px for comfortable French line lengths.
 
-| Token | Size | Line Height | Weight | Usage |
-|-------|------|-------------|--------|-------|
-| `display` | 36px (text-4xl) | 1.1 | 800 (extrabold) | Landing page hero |
-| `h1` | 30px (text-3xl) | 1.2 | 700 (bold) | Page titles |
-| `h2` | 24px (text-2xl) | 1.3 | 700 (bold) | Section headings |
-| `h3` | 20px (text-xl) | 1.4 | 600 (semibold) | Card titles, subsections |
-| `h4` | 18px (text-lg) | 1.4 | 600 (semibold) | Subheadings |
-| `body` | 14px (text-sm) | 1.5 | 400 (normal) | Default body text |
-| `body-lg` | 16px (text-base) | 1.5 | 400 (normal) | Prominent body text |
-| `caption` | 12px (text-xs) | 1.5 | 400 (normal) | Timestamps, metadata |
-| `overline` | 10px (text-[10px]) | 1.5 | 600 (semibold) | Labels, badges |
+| Token | Size | Line Height | Weight | Tracking | Family | Usage |
+|-------|------|-------------|--------|----------|--------|-------|
+| `hero-display` | 76px | 0.98 | 500 | `-0.03em` | Serif | Homepage hero title |
+| `event-hero` | 68px | 1.0 | 500 | `-0.028em` | Serif | Event detail hero title |
+| `success-headline` | 40px | 1.1 | 600 | `-0.025em` | Serif | Registration success + My events hero |
+| `h1` | 36px | 1.08 | 600 | `-0.02em` | Serif | Section headlines, "Parcourir la saison" |
+| `h2` | 28px | 1.15 | 600 | `-0.02em` | Serif | In-page section titles ("À propos", "Programme") |
+| `card-title` | 22px | 1.15 | 600 | `-0.015em` | Serif | Event card + featured tile titles |
+| `body-lg` | 17px | 1.65 | 400 | — | Sans | About copy, editorial paragraphs |
+| `body` | 15px | 1.5 | 400 | — | Sans | Default body (was 14px — relaxed for FR legibility) |
+| `body-sm` | 13px | 1.5 | 500 | — | Sans | Meta rows, ticket fields |
+| `caption` | 12px | 1.5 | 500 | — | Sans | Timestamps, microcopy |
+| `kicker` | 11px | 1.2 | 500 | `0.14em`, uppercase | Mono | Mono section kickers |
+| `kicker-sm` | 10px | 1.2 | 500 | `0.12em`, uppercase | Mono | Ticket field labels, meta-cell labels |
 
 ### Font Weight Map
 
 | Weight | Name | Usage |
 |--------|------|-------|
 | 400 | Normal | Body text, descriptions |
-| 500 | Medium | Navigation items, table cells |
-| 600 | Semibold | Buttons, labels, card titles |
-| 700 | Bold | Page headings, emphasis |
-| 800 | Extrabold | Display/hero text only |
+| 500 | Medium | Display (Fraunces) + mono kickers + buttons on dark |
+| 600 | Semibold | Display headlines, button labels, card titles |
+| 700 | Bold | Inline prices, tabular numerals, emphasis |
 
 ---
 
@@ -189,14 +193,17 @@ Based on a **4px base unit** (TailwindCSS default):
 
 ## Border Radius
 
-| Token | Value | CSS Variable | Usage |
-|-------|-------|-------------|-------|
-| `radius-sm` | 4px | `calc(var(--radius) - 4px)` | Small elements (badges, tags) |
-| `radius-md` | 6px | `calc(var(--radius) - 2px)` | Inputs, selects |
-| `radius-lg` | 8px | `var(--radius)` | Cards, buttons, panels |
-| `radius-xl` | 12px | — | Larger cards (Flutter uses 12px) |
-| `radius-2xl` | 16px | — | Modal dialogs, feature cards |
-| `radius-full` | 9999px | — | Avatars, status dots, badges |
+Editorial radii live as Tailwind tokens — use them instead of `rounded-[14px]` arbitrary values.
+
+| Token | Value | Tailwind Class | Usage |
+|-------|-------|----------------|-------|
+| `radius-sm` | 4px | `rounded-sm` | Badges, tags, tight inline chips |
+| `radius-md` | 6px | `rounded-md` | Inputs, selects |
+| `radius-lg` | 8px | `rounded-lg` | Secondary buttons, dense cards |
+| `radius-card` | **14px** | `rounded-card` | Event cards, schedule rows, payment cards, empty rows |
+| `radius-tile` | **20px** | `rounded-tile` | Featured tiles, sticky panels (ticket sidebar, order summary) |
+| `radius-pass` | **22px** | `rounded-pass` | Success ticket + badge pass (the largest radius in the system) |
+| `radius-full` | 9999px | `rounded-full` | Avatars, status dots, pill buttons, CTAs |
 
 ---
 
@@ -236,8 +243,42 @@ Based on a **4px base unit** (TailwindCSS default):
 | `transition-fast` | 150ms | `ease-in-out` | Hover effects, toggles |
 | `transition-normal` | 200ms | `ease-in-out` | Color transitions, button states |
 | `transition-slow` | 300ms | `ease-in-out` | Page transitions, slide-in panels |
+| `ticket-reveal` | 600ms | `cubic-bezier(.2,.7,.2,1)` | Registration success + badge page pass reveal |
+| `check-pop` | 400ms | `cubic-bezier(.2,.9,.2,1.2)` | Green checkmark pop on success states |
+| `pulse-dot` | 2s | `ease-in-out infinite` | Live inscrits counter dot (`.teranga-pulse-dot`) |
 
-TailwindCSS: `transition-colors` (default 150ms) is used for interactive element hover states.
+All motion tokens honour `prefers-reduced-motion: reduce` (global rule in `globals.css` collapses durations to 0.001ms). `.teranga-pulse-dot` additionally sets `animation: none` under reduced-motion.
+
+---
+
+## Editorial Utilities
+
+Defined once in `apps/web-participant/src/app/globals.css` `@layer utilities`. Other apps that want the editorial look (web-backoffice, future marketing site) should import the same utility layer.
+
+| Utility | Purpose |
+|---------|---------|
+| `.font-serif-display` | Fraunces + optical-sizing auto + tight tracking |
+| `.font-mono-kicker` | JetBrains Mono for kickers / codes |
+| `.teranga-cover` | Gradient cover with grain + diagonal stripe texture (pseudo-elements). Used on every event cover fallback. |
+| `.teranga-hero-texture` | Gold + clay radial accents + stripe — applied over the navy gradient hero on the homepage. |
+| `.teranga-pulse-dot` | Pulsing green dot for live counters. |
+
+## Cover Gradients (8-palette rotation)
+
+When an event has no `coverImageURL`, fall back to one of eight branded gradients rotated deterministically by `event.id`. Shipped as `apps/web-participant/src/lib/cover-gradient.ts`. Never invent a new gradient inline — always call `getCoverGradient(event.id)`.
+
+| # | Gradient | Tint |
+|---|----------|------|
+| 0 | `navy → forest → gold` | `#c59e4b` |
+| 1 | `clay → gold-dark → forest-dark` | `#c86f4b` |
+| 2 | `forest → navy-2 → green` | `#0F9B58` |
+| 3 | `gold → clay → navy` | `#c59e4b` |
+| 4 | `navy-2 → clay → gold-light` | `#d1b372` |
+| 5 | `green → forest → navy` | `#0F9B58` |
+| 6 | `navy → navy-3` | `#c59e4b` |
+| 7 | `gold-light → gold → gold-dark` | `#a78336` |
+
+The **tint** field is reused by the badge page hero gradient so the navy pass header picks up each event's personality colour.
 
 ---
 

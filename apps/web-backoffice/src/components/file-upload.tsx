@@ -6,9 +6,19 @@ import { Upload, X, Loader2, CheckCircle, AlertCircle } from "lucide-react";
 interface FileUploadProps {
   /**
    * Function to get a signed upload URL from the API.
-   * Should return { uploadUrl, downloadUrl }.
+   * Returns the signed URL, the download URL, and any headers the
+   * server signed into the URL that the client MUST replay on the PUT
+   * request. The signed `x-goog-content-length-range` header is the
+   * canonical way to enforce size on the GCS edge — we pass it back
+   * here so each caller doesn't have to rebuild it, and so the server
+   * remains the single source of truth for size limits.
    */
-  getUploadUrl: (file: File) => Promise<{ uploadUrl: string; downloadUrl: string }>;
+  getUploadUrl: (file: File) => Promise<{
+    uploadUrl: string;
+    downloadUrl: string;
+    /** Headers to merge with the PUT request. Keys are lowercase. */
+    requiredHeaders?: Record<string, string>;
+  }>;
   /**
    * Called after successful upload with the download URL.
    */
@@ -91,13 +101,16 @@ export function FileUpload({
         setError(null);
 
         // Get signed URL
-        const { uploadUrl, downloadUrl } = await getUploadUrl(file);
+        const { uploadUrl, downloadUrl, requiredHeaders } = await getUploadUrl(file);
         setProgress(50);
 
-        // Upload to signed URL
+        // Upload to signed URL. Merge `Content-Type` with any headers
+        // the server signed into the URL (e.g. `x-goog-content-length-range`
+        // which enforces the MAX upload size at the GCS edge). Omitting
+        // them produces a 403 `SignatureDoesNotMatch` from GCS.
         const uploadResponse = await fetch(uploadUrl, {
           method: "PUT",
-          headers: { "Content-Type": file.type },
+          headers: { "Content-Type": file.type, ...(requiredHeaders ?? {}) },
           body: file,
         });
 
@@ -178,11 +191,7 @@ export function FileUpload({
 
         {previewUrl && accept?.includes("image") ? (
           <div className="relative mx-auto w-32 h-32">
-            <img
-              src={previewUrl}
-              alt="Aperçu"
-              className="h-full w-full rounded-lg object-cover"
-            />
+            <img src={previewUrl} alt="Aperçu" className="h-full w-full rounded-lg object-cover" />
             {state !== "uploading" && (
               <button
                 onClick={(e) => {
@@ -222,17 +231,13 @@ export function FileUpload({
           </div>
         )}
 
-        {state === "idle" && (
-          <p className="mt-2 text-sm text-muted-foreground">{helpText}</p>
-        )}
+        {state === "idle" && <p className="mt-2 text-sm text-muted-foreground">{helpText}</p>}
 
         {state === "success" && (
           <p className="mt-2 text-sm text-green-600">Fichier téléversé avec succès</p>
         )}
 
-        {state === "error" && error && (
-          <p className="mt-2 text-sm text-red-600">{error}</p>
-        )}
+        {state === "error" && error && <p className="mt-2 text-sm text-red-600">{error}</p>}
       </div>
     </div>
   );

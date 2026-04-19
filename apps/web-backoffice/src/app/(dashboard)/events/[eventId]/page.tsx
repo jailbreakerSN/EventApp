@@ -42,6 +42,7 @@ import {
   usePromoteRegistration,
 } from "@/hooks/use-registrations";
 import { formatDate, formatCurrency } from "@/lib/utils";
+import { getEventStatusLabel } from "@/lib/event-status";
 import {
   Globe,
   GlobeLock,
@@ -111,14 +112,6 @@ const TABS = [
   "Promos",
 ] as const;
 type Tab = (typeof TABS)[number];
-
-const STATUS_LABELS: Record<string, string> = {
-  draft: "Brouillon",
-  published: "Publié",
-  cancelled: "Annulé",
-  archived: "Archivé",
-  completed: "Terminé",
-};
 
 const REG_STATUS: Record<string, string> = {
   confirmed: "Confirmé",
@@ -275,7 +268,7 @@ export default function EventDetailPage() {
 }
 
 function StatusBadge({ status }: { status: string }) {
-  return <Badge variant={getStatusVariant(status)}>{STATUS_LABELS[status] ?? status}</Badge>;
+  return <Badge variant={getStatusVariant(status)}>{getEventStatusLabel(status)}</Badge>;
 }
 
 function EventActions({ event }: { event: Event }) {
@@ -358,7 +351,7 @@ function EventActions({ event }: { event: Event }) {
             className="inline-flex items-center gap-1.5 bg-yellow-600 text-white rounded-lg px-4 py-2 text-sm font-medium hover:bg-yellow-700 disabled:opacity-50"
           >
             <GlobeLock className="h-4 w-4" />
-            {unpublish.isPending ? "..." : "D��publier"}
+            {unpublish.isPending ? "..." : "Dépublier"}
           </button>
         )}
         {(event.status === "draft" || event.status === "published") && (
@@ -521,9 +514,20 @@ function InfoTab({ event }: { event: Event }) {
           purpose: "cover",
         });
 
+        if (data.maxBytes && coverImageFile.size > data.maxBytes) {
+          const maxMB = Math.round(data.maxBytes / 1024 / 1024);
+          throw new Error(`Image trop volumineuse (max ${maxMB} Mo)`);
+        }
+        // Replay server-signed headers or GCS 403s with
+        // SignatureDoesNotMatch. The server puts
+        // `x-goog-content-length-range` on the URL signature so GCS
+        // rejects oversize files at the edge without trusting us.
         const uploadResponse = await fetch(data.uploadUrl, {
           method: "PUT",
-          headers: { "Content-Type": coverImageFile.type },
+          headers: {
+            "Content-Type": coverImageFile.type,
+            ...(data.requiredHeaders ?? {}),
+          },
           body: coverImageFile,
         });
 
@@ -1409,8 +1413,7 @@ function RegistrationsTab({ eventId }: { eventId: string }) {
                         <button
                           onClick={() =>
                             promote.mutate(reg.id, {
-                              onSuccess: () =>
-                                toast.success("Inscription promue en confirmée."),
+                              onSuccess: () => toast.success("Inscription promue en confirmée."),
                               onError: (err: unknown) => {
                                 const code = (err as { code?: string })?.code;
                                 const message = (err as { message?: string })?.message;
@@ -1759,16 +1762,9 @@ function SessionsTab({ eventId, eventStatus }: { eventId: string; eventStatus: s
       )}
 
       {isLoading ? (
-        <div
-          className="space-y-3"
-          role="status"
-          aria-label="Chargement des sessions"
-        >
+        <div className="space-y-3" role="status" aria-label="Chargement des sessions">
           {Array.from({ length: 3 }).map((_, i) => (
-            <div
-              key={i}
-              className="bg-card rounded-xl border border-border p-4 space-y-2"
-            >
+            <div key={i} className="bg-card rounded-xl border border-border p-4 space-y-2">
               <Skeleton className="h-4 w-1/3" />
               <Skeleton className="h-3 w-2/3" />
               <Skeleton className="h-3 w-1/4" />
@@ -1916,16 +1912,9 @@ function FeedTab({ eventId }: { eventId: string }) {
       </div>
 
       {isLoading ? (
-        <div
-          className="space-y-3"
-          role="status"
-          aria-label="Chargement des publications"
-        >
+        <div className="space-y-3" role="status" aria-label="Chargement des publications">
           {Array.from({ length: 3 }).map((_, i) => (
-            <div
-              key={i}
-              className="bg-card rounded-xl border border-border p-4 space-y-2"
-            >
+            <div key={i} className="bg-card rounded-xl border border-border p-4 space-y-2">
               <div className="flex items-center gap-3">
                 <Skeleton variant="circle" className="h-8 w-8" />
                 <Skeleton className="h-3 w-1/4" />
@@ -2146,8 +2135,10 @@ function PaymentsTab({ eventId }: { eventId: string }) {
 
       {/* Payments Table */}
       {paymentsLoading && (
-        <div className="flex justify-center py-12">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        <div className="space-y-2" role="status" aria-label="Chargement des paiements">
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-10 w-full" />
         </div>
       )}
 
@@ -2163,9 +2154,7 @@ function PaymentsTab({ eventId }: { eventId: string }) {
                 key: "createdAt",
                 header: "Date",
                 primary: true,
-                render: (p) => (
-                  <span className="whitespace-nowrap">{formatDate(p.createdAt)}</span>
-                ),
+                render: (p) => <span className="whitespace-nowrap">{formatDate(p.createdAt)}</span>,
               },
               {
                 key: "amount",
@@ -2368,8 +2357,14 @@ function SpeakersTab({ eventId }: { eventId: string }) {
       )}
 
       {isLoading ? (
-        <div className="flex justify-center py-8">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        <div
+          className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3"
+          role="status"
+          aria-label="Chargement des intervenants"
+        >
+          {[0, 1, 2].map((i) => (
+            <Skeleton key={i} className="h-32 w-full rounded-lg" />
+          ))}
         </div>
       ) : speakers.length === 0 ? (
         <EmptyState
@@ -2547,8 +2542,14 @@ function SponsorsTab({ eventId }: { eventId: string }) {
       )}
 
       {isLoading ? (
-        <div className="flex justify-center py-8">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        <div
+          className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3"
+          role="status"
+          aria-label="Chargement des sponsors"
+        >
+          {[0, 1, 2].map((i) => (
+            <Skeleton key={i} className="h-32 w-full rounded-lg" />
+          ))}
         </div>
       ) : sponsors.length === 0 ? (
         <EmptyState
@@ -2773,11 +2774,7 @@ function PromosTab({ eventId }: { eventId: string }) {
               header: "Expiration",
               hideOnMobile: true,
               render: (p) =>
-                p.expiresAt ? (
-                  <span className="text-xs">{formatDate(p.expiresAt)}</span>
-                ) : (
-                  "—"
-                ),
+                p.expiresAt ? <span className="text-xs">{formatDate(p.expiresAt)}</span> : "—",
             },
             {
               key: "status",

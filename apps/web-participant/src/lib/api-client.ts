@@ -25,6 +25,7 @@ import type {
   UpdateNotificationPreferenceDto,
   SpeakerProfile,
   SponsorProfile,
+  UploadUrlResponse,
 } from "@teranga/shared-types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
@@ -231,10 +232,10 @@ export const feedApi = {
     api.delete<void>(`/v1/events/${eventId}/feed/${postId}/comments/${commentId}`),
 
   getUploadUrl: (eventId: string, body: { fileName: string; contentType: string }) =>
-    api.post<ApiResponse<{ uploadUrl: string; publicUrl: string }>>(
-      `/v1/events/${eventId}/feed/upload-url`,
-      { ...body, purpose: "feed" },
-    ),
+    api.post<ApiResponse<UploadUrlResponse>>(`/v1/events/${eventId}/feed/upload-url`, {
+      ...body,
+      purpose: "feed",
+    }),
 };
 
 export const messagingApi = {
@@ -288,6 +289,11 @@ export const receiptsApi = {
 
   listMy: (params: { page?: number; limit?: number } = {}) =>
     api.get<PaginatedResponse<Receipt>>(`/v1/receipts/my${buildQuery(params)}`),
+
+  getPdf: (receiptId: string) =>
+    api.get<ApiResponse<{ receipt: Receipt; pdfURL: string }>>(
+      `/v1/receipts/${receiptId}/pdf`,
+    ),
 };
 
 export const notificationsApi = {
@@ -311,19 +317,31 @@ export const notificationsApi = {
 };
 
 export const uploadsApi = {
-  getSpeakerSignedUrl: (speakerId: string, body: { fileName: string; contentType: string; purpose: string }) =>
-    api.post<ApiResponse<{ uploadUrl: string; publicUrl: string }>>(`/v1/speakers/${speakerId}/upload-url`, body),
+  getSpeakerSignedUrl: (
+    speakerId: string,
+    body: { fileName: string; contentType: string; purpose: string },
+  ) =>
+    api.post<ApiResponse<UploadUrlResponse>>(
+      `/v1/events/speakers/${speakerId}/upload-url`,
+      body,
+    ),
 };
 
+// NOTE: Speaker/sponsor routes mount under `/v1/events/speakers/:id` and
+// `/v1/events/sponsors/:id` on the API (see apps/api/src/routes/index.ts
+// — the plugin prefix is `/v1/events`). Earlier the client paths dropped
+// the `/events` segment and every speaker/sponsor action from this app
+// silently 404'd. The canonical URLs live on the backoffice client;
+// mirrored here verbatim.
 export const speakersApi = {
   list: (eventId: string) =>
     api.get<PaginatedResponse<SpeakerProfile>>(`/v1/events/${eventId}/speakers`, false),
 
   getById: (speakerId: string) =>
-    api.get<ApiResponse<SpeakerProfile>>(`/v1/speakers/${speakerId}`),
+    api.get<ApiResponse<SpeakerProfile>>(`/v1/events/speakers/${speakerId}`),
 
   update: (speakerId: string, data: Partial<SpeakerProfile>) =>
-    api.patch<ApiResponse<SpeakerProfile>>(`/v1/speakers/${speakerId}`, data),
+    api.patch<ApiResponse<SpeakerProfile>>(`/v1/events/speakers/${speakerId}`, data),
 
   getSessions: (eventId: string, speakerId: string) =>
     api.get<PaginatedResponse<import("@teranga/shared-types").Session>>(
@@ -337,18 +355,34 @@ export const sponsorsApi = {
     api.get<PaginatedResponse<SponsorProfile>>(`/v1/events/${eventId}/sponsors`, false),
 
   getById: (sponsorId: string) =>
-    api.get<ApiResponse<SponsorProfile>>(`/v1/sponsors/${sponsorId}`),
+    api.get<ApiResponse<SponsorProfile>>(`/v1/events/sponsors/${sponsorId}`),
 
   update: (sponsorId: string, data: Partial<SponsorProfile>) =>
-    api.patch<ApiResponse<SponsorProfile>>(`/v1/sponsors/${sponsorId}`, data),
+    api.patch<ApiResponse<SponsorProfile>>(`/v1/events/sponsors/${sponsorId}`, data),
 
   getLeads: (sponsorId: string) =>
-    api.get<PaginatedResponse<{ id: string; name: string; email: string; phone?: string; notes?: string; tags: string[]; scannedAt: string }>>(
-      `/v1/sponsors/${sponsorId}/leads`,
-    ),
+    api.get<
+      PaginatedResponse<{
+        id: string;
+        name: string;
+        email: string;
+        phone?: string;
+        notes?: string;
+        tags: string[];
+        scannedAt: string;
+      }>
+    >(`/v1/events/sponsors/${sponsorId}/leads`),
 
+  // Leads export returns a JSON array, not CSV text. The caller is
+  // responsible for converting to CSV client-side (reusing the
+  // csv-export util when we port it to participant). Previous type
+  // `{ data: string }` caused a `[object Object]` download.
   exportLeads: (sponsorId: string) =>
-    api.get<{ data: string }>(`/v1/sponsors/${sponsorId}/leads/export`),
+    api.get<
+      ApiResponse<
+        { id: string; name: string; email: string; phone?: string; notes?: string; tags: string[]; scannedAt: string }[]
+      >
+    >(`/v1/events/sponsors/${sponsorId}/leads/export`),
 };
 
 export const newsletterApi = {

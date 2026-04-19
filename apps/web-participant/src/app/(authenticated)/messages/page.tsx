@@ -2,52 +2,21 @@
 
 import { useState, useRef, useEffect, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useLocale, useTranslations } from "next-intl";
 import { messagingApi } from "@/lib/api-client";
 import { useAuth } from "@/hooks/use-auth";
-import { MessageSquare, Send, Loader2, ArrowLeft } from "lucide-react";
-import { QueryError } from "@teranga/shared-ui";
+import { intlLocale } from "@/lib/intl-locale";
+import { AlertTriangle, ArrowLeft, Loader2, RotateCcw, Send } from "lucide-react";
+import { Button, EmptyStateEditorial, SectionHeader } from "@teranga/shared-ui";
 import Link from "next/link";
 import type { Conversation, Message } from "@teranga/shared-types";
-import { useTranslations } from "next-intl";
 
-/** Relative time in French */
-function relativeTime(iso: string): string {
-  const now = Date.now();
-  const then = new Date(iso).getTime();
-  const diffMs = now - then;
-  const diffMin = Math.floor(diffMs / 60_000);
-  if (diffMin < 1) return "A l'instant";
-  if (diffMin < 60) return `Il y a ${diffMin}min`;
-  const diffH = Math.floor(diffMin / 60);
-  if (diffH < 24) return `Il y a ${diffH}h`;
-  const diffD = Math.floor(diffH / 24);
-  if (diffD === 1) return "Hier";
-  if (diffD < 7) return `Il y a ${diffD}j`;
-  return new Date(iso).toLocaleDateString("fr-FR", { day: "numeric", month: "short" });
-}
-
-function formatTimestamp(iso: string): string {
-  return new Date(iso).toLocaleString("fr-FR", {
-    day: "numeric",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-/** Truncate a participant ID for display when no name is available */
-function truncateId(id: string): string {
+function truncateId(id: string, fallback: string): string {
+  if (!id) return fallback;
   if (id.length <= 12) return id;
   return `${id.slice(0, 6)}...${id.slice(-4)}`;
 }
 
-/** Get the display name for the other participant in a conversation */
-function getOtherParticipantLabel(conv: Conversation, currentUserId: string): string {
-  const otherId = conv.participantIds.find((id) => id !== currentUserId) ?? conv.participantIds[0];
-  return truncateId(otherId ?? "Inconnu");
-}
-
-/** Group consecutive messages from same sender */
 interface MessageGroup {
   senderId: string;
   messages: Message[];
@@ -67,7 +36,10 @@ function groupMessages(msgs: Message[]): MessageGroup[] {
 }
 
 export default function MessagesPage() {
-  const _t = useTranslations("common"); void _t;
+  const t = useTranslations("messages");
+  const tRel = useTranslations("messages.relative");
+  const locale = useLocale();
+  const regional = intlLocale(locale);
   const qc = useQueryClient();
   const { user } = useAuth();
   const currentUserId = user?.uid ?? "";
@@ -78,9 +50,41 @@ export default function MessagesPage() {
 
   // Auto-refresh relative timestamps every 60s
   useEffect(() => {
-    const interval = setInterval(() => setTick((t) => t + 1), 60_000);
+    const interval = setInterval(() => setTick((n) => n + 1), 60_000);
     return () => clearInterval(interval);
   }, []);
+
+  // Relative time localised via the `messages.relative.*` keys.
+  // Kept inside the component so it closes over the active locale's
+  // translator function (ICU arguments are injected per-call).
+  const relativeTime = (iso: string): string => {
+    const now = Date.now();
+    const then = new Date(iso).getTime();
+    const diffMs = now - then;
+    const diffMin = Math.floor(diffMs / 60_000);
+    if (diffMin < 1) return tRel("now");
+    if (diffMin < 60) return tRel("minutesShort", { n: diffMin });
+    const diffH = Math.floor(diffMin / 60);
+    if (diffH < 24) return tRel("hoursShort", { n: diffH });
+    const diffD = Math.floor(diffH / 24);
+    if (diffD === 1) return tRel("yesterday");
+    if (diffD < 7) return tRel("daysShort", { n: diffD });
+    return new Date(iso).toLocaleDateString(regional, { day: "numeric", month: "short" });
+  };
+
+  const formatTimestamp = (iso: string): string =>
+    new Date(iso).toLocaleString(regional, {
+      day: "numeric",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+
+  const getOtherParticipantLabel = (conv: Conversation): string => {
+    const otherId =
+      conv.participantIds.find((id) => id !== currentUserId) ?? conv.participantIds[0];
+    return truncateId(otherId ?? "", t("unknownParticipant"));
+  };
 
   const {
     data: convData,
@@ -121,7 +125,6 @@ export default function MessagesPage() {
   const conversations = convData?.data ?? [];
   const messages = messagesData?.data ?? [];
 
-  // Sort conversations by most recent message (latest first)
   const sortedConversations = useMemo(() => {
     return [...conversations].sort((a, b) => {
       const aTime = a.lastMessageAt
@@ -134,46 +137,52 @@ export default function MessagesPage() {
     });
   }, [conversations]);
 
-  // Reversed messages for chronological display (oldest first)
   const chronologicalMessages = useMemo(() => [...messages].reverse(), [messages]);
   const messageGroups = useMemo(
     () => groupMessages(chronologicalMessages),
     [chronologicalMessages],
   );
 
-  // Scroll to bottom when messages change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messageGroups]);
 
-  // Selected conversation data
   const selectedConvData = sortedConversations.find((c) => c.id === selectedConv);
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-8">
+    <div className="max-w-4xl mx-auto px-4 py-8 space-y-6">
       <Link
         href="/my-events"
-        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground mb-6"
+        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
       >
-        <ArrowLeft className="h-4 w-4" /> Mes événements
+        <ArrowLeft className="h-4 w-4" /> {t("backToMyEvents")}
       </Link>
 
-      <h1 className="text-2xl font-bold text-foreground mb-6 flex items-center gap-3">
-        <MessageSquare className="h-6 w-6 text-primary" />
-        Messages
-      </h1>
+      <SectionHeader kicker="— MESSAGERIE" title={t("title")} size="hero" as="h1" />
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 min-h-[500px]">
-        {/* Conversation list */}
         <div className="bg-card rounded-xl border border-border overflow-hidden">
           <div className="p-4 border-b border-border">
-            <h2 className="text-sm font-semibold text-foreground">Conversations</h2>
+            <h2 className="text-sm font-semibold text-foreground">{t("listHeading")}</h2>
           </div>
           {convError ? (
-            <QueryError
-              message="Erreur de chargement des conversations."
-              onRetry={() => qc.invalidateQueries({ queryKey: ["conversations"] })}
-            />
+            <div className="p-6">
+              <EmptyStateEditorial
+                icon={AlertTriangle}
+                kicker="— ERREUR"
+                title={t("errorConversations")}
+                action={
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => qc.invalidateQueries({ queryKey: ["conversations"] })}
+                  >
+                    <RotateCcw className="mr-2 h-4 w-4" aria-hidden="true" />
+                    {t("retry")}
+                  </Button>
+                }
+              />
+            </div>
           ) : loadingConvs ? (
             <div className="animate-pulse divide-y divide-border">
               {[1, 2, 3, 4, 5].map((i) => (
@@ -190,14 +199,14 @@ export default function MessagesPage() {
             </div>
           ) : sortedConversations.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground text-sm">
-              Aucune conversation
+              {t("noConversations")}
             </div>
           ) : (
             <div className="divide-y divide-border overflow-y-auto max-h-[450px]">
               {sortedConversations.map((conv) => {
                 const unreadCount = conv.unreadCounts?.[currentUserId] ?? 0;
                 const hasUnread = unreadCount > 0;
-                const otherName = getOtherParticipantLabel(conv, currentUserId);
+                const otherName = getOtherParticipantLabel(conv);
 
                 return (
                   <button
@@ -245,33 +254,42 @@ export default function MessagesPage() {
           )}
         </div>
 
-        {/* Message thread */}
         <div className="md:col-span-2 bg-card rounded-xl border border-border flex flex-col">
           {!selectedConv ? (
             <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
-              S\u00e9lectionnez une conversation
+              {t("selectConversation")}
             </div>
           ) : (
             <>
-              {/* Thread header */}
               {selectedConvData && (
                 <div className="px-4 py-3 border-b border-border flex items-center gap-3">
                   <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-semibold text-sm">
-                    {getOtherParticipantLabel(selectedConvData, currentUserId)
-                      .charAt(0)
-                      .toUpperCase()}
+                    {getOtherParticipantLabel(selectedConvData).charAt(0).toUpperCase()}
                   </div>
                   <span className="font-medium text-sm text-foreground">
-                    {getOtherParticipantLabel(selectedConvData, currentUserId)}
+                    {getOtherParticipantLabel(selectedConvData)}
                   </span>
                 </div>
               )}
 
               <div className="flex-1 overflow-y-auto p-4 space-y-4">
                 {msgsError ? (
-                  <QueryError
-                    message="Erreur de chargement des messages."
-                    onRetry={() => qc.invalidateQueries({ queryKey: ["messages", selectedConv] })}
+                  <EmptyStateEditorial
+                    icon={AlertTriangle}
+                    kicker="— ERREUR"
+                    title={t("errorMessages")}
+                    action={
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                          qc.invalidateQueries({ queryKey: ["messages", selectedConv] })
+                        }
+                      >
+                        <RotateCcw className="mr-2 h-4 w-4" aria-hidden="true" />
+                        {t("retry")}
+                      </Button>
+                    }
                   />
                 ) : loadingMsgs ? (
                   <div className="animate-pulse space-y-4 py-4">
@@ -296,16 +314,17 @@ export default function MessagesPage() {
                   </div>
                 ) : chronologicalMessages.length === 0 ? (
                   <div className="text-center py-8 text-muted-foreground text-sm">
-                    Aucun message. Commencez la conversation !
+                    {t("noMessages")}
                   </div>
                 ) : (
                   messageGroups.map((group, gi) => {
                     const isOwn = group.senderId === currentUserId;
-                    const senderLabel = isOwn ? "Vous" : truncateId(group.senderId);
+                    const senderLabel = isOwn
+                      ? t("you")
+                      : truncateId(group.senderId, t("unknownParticipant"));
 
                     return (
                       <div key={`group-${gi}`} className="space-y-1">
-                        {/* Timestamp separator between groups */}
                         {gi > 0 && (
                           <div className="flex items-center justify-center my-2">
                             <span className="text-[10px] text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
@@ -321,7 +340,6 @@ export default function MessagesPage() {
                           </div>
                         )}
 
-                        {/* Sender name */}
                         <p
                           className={`text-[11px] font-medium mb-0.5 ${
                             isOwn ? "text-right text-primary" : "text-left text-muted-foreground"
@@ -330,7 +348,6 @@ export default function MessagesPage() {
                           {senderLabel}
                         </p>
 
-                        {/* Message bubbles */}
                         {group.messages.map((msg, mi) => (
                           <div
                             key={msg.id}
@@ -352,7 +369,7 @@ export default function MessagesPage() {
                                     isOwn ? "text-white/70" : "text-muted-foreground"
                                   }`}
                                 >
-                                  {new Date(msg.createdAt).toLocaleTimeString("fr-FR", {
+                                  {new Date(msg.createdAt).toLocaleTimeString(regional, {
                                     hour: "2-digit",
                                     minute: "2-digit",
                                   })}
@@ -368,14 +385,13 @@ export default function MessagesPage() {
                 <div ref={messagesEndRef} />
               </div>
 
-              {/* Message input */}
               <div className="border-t border-border p-4">
                 <div className="flex gap-2">
                   <input
                     type="text"
                     value={messageText}
                     onChange={(e) => setMessageText(e.target.value)}
-                    placeholder="\u00c9crire un message..."
+                    placeholder={t("writeMessage")}
                     className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
                     onKeyDown={(e) => {
                       if (e.key === "Enter" && messageText.trim()) {
@@ -387,7 +403,7 @@ export default function MessagesPage() {
                     onClick={() => messageText.trim() && sendMessage.mutate(messageText.trim())}
                     disabled={sendMessage.isPending || !messageText.trim()}
                     className="bg-primary text-white rounded-lg px-4 py-2 text-sm disabled:opacity-50 hover:bg-primary/90 transition-colors"
-                    aria-label="Envoyer le message"
+                    aria-label={t("sendAria")}
                   >
                     {sendMessage.isPending ? (
                       <Loader2 className="h-4 w-4 animate-spin" />

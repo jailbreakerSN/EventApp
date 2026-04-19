@@ -13,83 +13,661 @@
     "confirm": "Confirm",
     "yes": "Yes",
     "no": "No",
+    "viewAll": "View all",
     "viewDetails": "View details",
     "date": "Date",
     "location": "Location",
     "price": "Price",
-    "status": "Status"
+    "status": "Status",
+    "free": "Free",
+    "fromPrice": "From {price}",
+    "errorBoundary": {
+      "kicker": "— ERROR",
+      "title": "Something went wrong",
+      "description": "We couldn’t load this page. Please try again.",
+      "retry": "Retry",
+      "home": "Home",
+      "authKicker": "— ERROR",
+      "authTitle": "Authentication error",
+      "authDescription": "Something went wrong. Please try again.",
+      "unexpectedTitle": "Unexpected error",
+      "unexpectedDescription": "Something went wrong. Please try again."
+    },
+    "notFoundPage": {
+      "kicker": "— PAGE NOT FOUND",
+      "title": "This page no longer exists",
+      "description": "The page you’re looking for doesn’t exist or has been moved.",
+      "cta": "Back to events"
+    }
   },
   "auth": {
-    "login": "Sign in",
-    "logout": "Sign out",
+    "login": "Log in",
+    "logout": "Log out",
     "register": "Sign up",
     "email": "Email address",
+    "emailPlaceholder": "your@email.com",
     "password": "Password",
+    "passwordPlaceholder": "Your password",
     "forgotPassword": "Forgot password?",
     "resetPassword": "Reset password",
     "sessionExpiring": "Your session will expire in 5 minutes due to inactivity.",
-    "sessionExpired": "Session expired. Please sign in again.",
+    "sessionExpired": "Session expired. Please log in again.",
     "verifyEmail": "Verify your email",
     "verificationSent": "A verification email has been sent.",
     "resendVerification": "Resend email",
     "alreadyAccount": "Already have an account?",
     "noAccount": "No account yet?",
     "createAccount": "Create an account",
-    "continueWithGoogle": "Continue with Google"
+    "continueWithGoogle": "Continue with Google",
+    "or": "or",
+    "loginSubtitle": "Log in to access your events",
+    "loginButton": "Log in",
+    "loginButtonLoading": "Logging in...",
+    "registerSubtitle": "Sign up to discover events",
+    "registerButton": "Create my account",
+    "registerButtonLoading": "Signing up...",
+    "fullName": "Full name",
+    "fullNamePlaceholder": "First Last",
+    "passwordHint": "At least 8 characters, 1 uppercase letter, 1 digit",
+    "forgotPasswordTitle": "Forgot password",
+    "forgotPasswordSubtitle": "Enter your email to receive a reset link",
+    "resetEmailSent": "If an account exists with this email, a reset link has been sent to {email}. Check your inbox.",
+    "sendResetLink": "Send reset link",
+    "sendingResetLink": "Sending...",
+    "backToLogin": "Back to login",
+    "verifyEmailSentTo": "A verification email has been sent to {email}. Check your inbox (and spam folder).",
+    "verifyEmailSent": "A verification email has been sent. Check your inbox.",
+    "resendVerificationButton": "Resend verification email",
+    "resendingVerification": "Sending...",
+    "continueToEvents": "Continue to events",
+    "verificationEmailSentToast": "Verification email sent!",
+    "verificationSendFailedToast": "Could not send email. Please try again in a few minutes.",
+    "validation": {
+      "required": "This field is required",
+      "invalidEmail": "Invalid email address",
+      "passwordMin6": "Password must be at least 6 characters",
+      "passwordMin8": "Password must be at least 8 characters",
+      "passwordUppercase": "Password must contain at least one uppercase letter",
+      "passwordDigit": "Password must contain at least one digit"
+    },
+    "errors": {
+      "loginGeneric": "Login error",
+      "loginGoogle": "Google login error",
+      "invalidCredentials": "Incorrect email or password.",
+      "registerGeneric": "Sign-up error",
+      "emailInUse": "An account already exists with this email.",
+      "weakPassword": "Password is too weak."
+    }
   },
   "nav": {
     "home": "Home",
     "events": "Events",
     "myEvents": "My events",
+    "myRegistrations": "My registrations",
     "profile": "Profile",
+    "myProfile": "My profile",
     "settings": "Settings",
-    "notifications": "Notifications"
+    "notifications": "Notifications",
+    "brandHomeAria": "Teranga Events — home",
+    "mainAria": "Main navigation",
+    "mobileAria": "Mobile navigation",
+    "openMenu": "Open menu",
+    "closeMenu": "Close menu",
+    "skipToContent": "Skip to main content"
+  },
+  "theme": {
+    "groupLabel": "Interface theme",
+    "light": "Light",
+    "dark": "Dark",
+    "system": "System"
+  },
+  "footer": {
+    "ariaLabel": "Footer",
+    "tagline": "Senegal's event management platform.",
+    "social": {
+      "facebook": "Follow Teranga Events on Facebook",
+      "twitter": "Follow Teranga Events on Twitter / X",
+      "instagram": "Follow Teranga Events on Instagram",
+      "linkedin": "Follow Teranga Events on LinkedIn"
+    },
+    "discover": {
+      "heading": "Discover",
+      "allEvents": "All events",
+      "categories": "Popular categories",
+      "cities": "Cities",
+      "helpFaq": "Help & FAQ"
+    },
+    "organizers": {
+      "heading": "Organizers",
+      "createEvent": "Create an event",
+      "dashboard": "Dashboard",
+      "pricing": "Pricing"
+    },
+    "legal": {
+      "heading": "Legal",
+      "privacy": "Privacy policy",
+      "terms": "Terms of use",
+      "mentions": "Legal notice"
+    },
+    "copyright": "© 2026 Teranga Events. All rights reserved.",
+    "madeWithLove": "Made with ❤️ in Senegal",
+    "madeWithLoveSr": "love"
+  },
+  "home": {
+    "hero": {
+      "kicker": "✦ Teranga · Dakar · Spring 2026",
+      "srTitle": "Discover events across Senegal — conferences, concerts, workshops and festivals",
+      "titleLead": "African events,",
+      "titleItalicOne": "connected",
+      "titleGlue": "and",
+      "titleItalicTwo": "memorable.",
+      "titleBefore": "Discover events in",
+      "titleHighlight": "Senegal",
+      "subtitle": "Conferences, concerts, workshops and meetups across Senegal. See what's happening this season in Dakar, Thiès, Saly and beyond.",
+      "searchPlaceholder": "Search an event, an organiser, a city…",
+      "searchCta": "Explore",
+      "cta": "Browse all events",
+      "secondaryCta": "How it works"
+    },
+    "heroStats": {
+      "events": "events",
+      "registrations": "registrations",
+      "cities": "cities",
+      "rating": "average rating"
+    },
+    "ticketStub": {
+      "kicker": "Admit One · Personal Pass",
+      "labelDate": "Date",
+      "labelPass": "Pass",
+      "labelZone": "Zone",
+      "defaultTitle": "Dakar Tech Summit 2026",
+      "defaultDate": "May 14 — 16",
+      "defaultPass": "Standard",
+      "defaultZone": "A · CICAD",
+      "defaultHolder": "Aïssatou Diallo",
+      "defaultCode": "TER-DTS26-4F2A1C",
+      "holderLabel": "Holder"
+    },
+    "featured": {
+      "kicker": "— Spotlight this season",
+      "title": "Three events you really shouldn't miss",
+      "subtitle": "Hand-picked by the Teranga editors, among the most anticipated events of Spring 2026 in Dakar and on the Petite Côte.",
+      "cta": "See details"
+    },
+    "browse": {
+      "kicker": "— All events",
+      "title": "Browse the season",
+      "subtitle": "Filter by category, city or budget.",
+      "countLabel": "{count, plural, one {# event} other {# events}}"
+    },
+    "promises": {
+      "one": {
+        "num": "01",
+        "title": "Register in 45 seconds",
+        "description": "One number, one ticket. Wave and Orange Money accepted; pay-on-arrival supported on some events."
+      },
+      "two": {
+        "num": "02",
+        "title": "Offline QR badge",
+        "description": "Your ticket stays available without network. Handy at the door, handy off the grid."
+      },
+      "three": {
+        "num": "03",
+        "title": "Reminders on WhatsApp",
+        "description": "One message 24h before, another at H-1. Nothing more, nothing less."
+      }
+    },
+    "values": {
+      "simpleReg": {
+        "title": "Simple registration",
+        "description": "Pick your ticket and register in seconds."
+      },
+      "qrBadge": {
+        "title": "Secure QR badge",
+        "description": "Your signed QR-coded digital badge for fast, reliable entry."
+      },
+      "community": {
+        "title": "Community",
+        "description": "Join the Senegalese and West African event community."
+      }
+    },
+    "categoriesHeading": "Browse by category",
+    "featuredHeading": "Featured events",
+    "latestHeading": "Latest events",
+    "howItWorks": {
+      "kicker": "— How it works",
+      "heading": "Three steps, one badge",
+      "subheading": "From the first click to the door: everything is tuned so nothing stands between you and the event.",
+      "stepLabel": "Step {n}",
+      "step1": {
+        "title": "Discover",
+        "description": "Browse upcoming events in Dakar and across Senegal"
+      },
+      "step2": {
+        "title": "Register",
+        "description": "Pick your ticket and register in a few clicks"
+      },
+      "step3": { "title": "Attend", "description": "Show your QR badge and enjoy the event" }
+    },
+    "stats": {
+      "events": "events",
+      "participants": "participants",
+      "cities": "cities",
+      "satisfaction": "satisfaction"
+    },
+    "testimonialsHeading": "What our users say",
+    "organizerCta": {
+      "heading": "Organizing an event?",
+      "body": "Create it for free on Teranga and reach thousands of attendees",
+      "primary": "Get started for free",
+      "secondary": "Organizer portal"
+    }
+  },
+  "categories": {
+    "conference": "Conference",
+    "conference_plural": "Conferences",
+    "workshop": "Workshop",
+    "workshop_plural": "Workshops",
+    "concert": "Concert",
+    "concert_plural": "Concerts",
+    "festival": "Festival",
+    "festival_plural": "Festivals",
+    "networking": "Networking",
+    "sport": "Sport",
+    "exhibition": "Exhibition",
+    "exhibition_plural": "Exhibitions",
+    "ceremony": "Ceremony",
+    "ceremony_plural": "Ceremonies",
+    "training": "Training",
+    "training_plural": "Trainings",
+    "other": "Other"
+  },
+  "format": {
+    "in_person": "In person",
+    "online": "Online",
+    "hybrid": "Hybrid"
   },
   "events": {
     "title": "Events",
+    "metaDescription": "Discover events in Senegal — conferences, concerts, workshops, festivals and more.",
     "discover": "Discover events",
-    "noEvents": "No events available yet.",
+    "noEvents": "No events available at the moment.",
     "register": "Register",
     "registered": "Registered",
     "myEvents": "My events",
-    "noMyEvents": "You're not registered to any event.",
+    "noMyEvents": "You are not registered for any event.",
     "noResults": "No events found",
     "noResultsHint": "No events match your criteria. Try broadening your search.",
     "clearFilters": "Clear filters",
+    "compareCta": "Compare events",
+    "list": {
+      "resultsCount": "{count, plural, one {# event found} other {# events found}}"
+    },
+    "card": {
+      "registeredCount": "{count, plural, one {# registered} other {# registered}}",
+      "registeredWithFill": "{count, plural, one {# registered} other {# registered}} · {pct}% full",
+      "remainingSeats": "{count, plural, one {Only # seat left} other {Only # seats left}}",
+      "attendeesCount": "{count} registered"
+    },
     "filters": {
       "today": "Today",
       "thisWeek": "This week",
       "thisWeekend": "This weekend",
       "thisMonth": "This month",
       "free": "Free",
-      "paid": "Paid"
+      "paid": "Paid",
+      "searchPlaceholder": "Search an event...",
+      "allCategories": "All categories",
+      "allFormats": "All formats",
+      "allCities": "All cities",
+      "filterByCity": "Filter by city",
+      "filterByCategory": "Filter by category",
+      "filterByFormat": "Filter by format",
+      "filterByDate": "Filter by date",
+      "filterByPrice": "Filter by price",
+      "reset": "Reset filters",
+      "clear": "Clear"
     },
     "detail": {
+      "featured": "Featured",
+      "venueReferenced": "Referenced venue",
+      "timezone": "Timezone: {tz}",
       "about": "About",
       "speakers": "Speakers",
       "schedule": "Schedule",
+      "scheduleComingSoon": "Schedule coming soon",
+      "scheduleComingSoonHint": "The organiser will publish sessions shortly. Check back soon.",
       "sessions": "Sessions",
       "tickets": "Tickets",
+      "noTickets": "No tickets available.",
+      "registeredCount": "{count, plural, one {# person registered} other {# people registered}}",
+      "seatsCount": "{count} / {max} seats",
+      "remaining": "{count, plural, one {# left} other {# left}}",
       "registerFree": "Register for free",
       "registerPaid": "Register — from {price}",
       "approvalRequired": "Registration subject to organizer approval.",
       "soldOut": "Sold out",
-      "seatsLeft": "{count} seats left",
-      "lastSeats": "Only {count} seats left!",
+      "full": "Full",
+      "seatsLeft": "{count, plural, one {# seat left} other {# seats left}}",
+      "lastSeats": "{count, plural, one {Only 1 seat left!} other {Only # seats left!}}",
+      "popular": "Popular event",
+      "scheduleTimezone": "Times shown in Dakar time (WAIST, UTC+0)",
+      "save": "Save",
+      "saved": "Saved",
       "feedCommunity": "Community feed",
-      "feedHint": "Chat with attendees",
+      "feedHint": "Chat with other attendees",
       "onlineEvent": "Online event",
-      "onlineHint": "The access link will be shared after registration."
+      "onlineHint": "The access link will be shared after registration.",
+      "addToCalendar": "Add to calendar",
+      "similarEvents": "Similar events",
+      "seeOnMaps": "View on Google Maps",
+      "notFound": "Event not found",
+      "share": "Share",
+      "ctaRegister": "Register for this event",
+      "allEvents": "All events",
+      "meta": {
+        "dates": "Dates",
+        "times": "Times",
+        "location": "Location",
+        "format": "Format"
+      },
+      "pricing": {
+        "from": "From",
+        "attendees": "Attendees",
+        "percentFull": "{pct}% full",
+        "seatsRemaining": "{count, plural, one {# seat left} other {# seats left}}",
+        "onlyLeft": "{count, plural, one {Only # seat left} other {Only # seats left}}",
+        "paymentSecured": "Secure checkout · Wave · Orange Money"
+      },
+      "speakerTwitter": "Twitter of {name}",
+      "speakerLinkedin": "LinkedIn of {name}",
+      "speakerWebsite": "Website of {name}"
     }
   },
   "badge": {
     "title": "My badge",
     "download": "Download",
+    "downloadPdf": "Download PDF badge",
+    "downloadPdfAria": "Download PDF badge",
+    "generatingPdf": "Generating...",
+    "pdfError": "PDF badge generation failed. Please try again in a few moments.",
     "scanToCheckin": "Show this QR code at the event entrance.",
-    "addToWallet": "Add to wallet"
+    "notYetAvailable": "Your badge isn't available yet.",
+    "registrationNotFound": "Registration not found.",
+    "backToMyEvents": "Back to my registrations",
+    "addToWallet": "Add to wallet",
+    "offlineHint": "Available offline",
+    "saveOffline": "Save for event day",
+    "saveOfflineAria": "Save this badge for offline access on event day",
+    "savingOffline": "Saving…",
+    "savedOfflineToast": "Badge saved offline ⚡",
+    "savedOfflineChip": "Saved offline",
+    "saveOfflineError": "Couldn’t save offline. Please retry.",
+    "cachedNotice": "You’re offline. This badge is loaded from the local cache."
+  },
+  "registerFlow": {
+    "subtitle": "Registration",
+    "notFound": "Event not found.",
+    "backToEvents": "Back to events",
+    "backToEvent": "Back to the event",
+    "back": "Back",
+    "verifyEmailTitle": "Verify your email address",
+    "verifyEmailBody": "We sent a verification link to {email}. Click it to unlock paid registrations.",
+    "resendVerification": "Resend verification link",
+    "verificationResending": "Sending…",
+    "verificationResent": "Verification link resent. Check your inbox.",
+    "verificationResendError": "Couldn’t send the email. Please try again in a few minutes.",
+    "alreadyRegistered": "You are already registered",
+    "statusPrefix": "Your registration is {status}.",
+    "viewBadge": "View my badge",
+    "myRegistrations": "My registrations",
+    "statusLabels": {
+      "confirmed": "confirmed",
+      "pending": "pending approval",
+      "pending_payment": "pending payment",
+      "waitlisted": "on the waitlist",
+      "checked_in": "checked in"
+    },
+    "selectHeading": "Choose your ticket",
+    "soldOut": "Sold out",
+    "seatsLeft": "{count, plural, one {# seat left} other {# seats left}}",
+    "confirmHeading": "Confirm your registration",
+    "promoHeading": "Promo code",
+    "promoPlaceholder": "Enter your code",
+    "promoApply": "Apply",
+    "promoInvalid": "Invalid code",
+    "promoApplied": "Promo code applied!",
+    "chooseMethod": "Choose your payment method",
+    "methodAria": "Payment method",
+    "methods": {
+      "wave": "Wave",
+      "waveDescription": "Mobile Money — Senegal",
+      "orange_money": "Orange Money",
+      "orangeMoneyDescription": "Payment via #144#",
+      "free_money": "Free Money",
+      "freeMoneyDescription": "Free mobile payment",
+      "card": "Bank card",
+      "cardDescription": "VISA / MasterCard"
+    },
+    "redirectNotice": "You will be redirected to {method} to complete your registration.",
+    "redirectNoticeFallback": "the payment page",
+    "approvalNotice": "This registration is subject to organizer approval.",
+    "redirecting": "Redirecting...",
+    "registering": "Registering...",
+    "confirmFree": "Confirm (free)",
+    "payAmount": "Pay {amount}",
+    "confirm": "Confirm",
+    "successTitle": "Registration confirmed!",
+    "successPendingApproval": "Your registration is awaiting approval.",
+    "successQrReady": "Your QR badge has been generated.",
+    "successSubmit": "Registration confirmed!",
+    "exploreOthers": "Explore other events",
+    "stepper": {
+      "kicker": "Step {step}/{total}",
+      "step1": "Ticket",
+      "step2": "Payment",
+      "step3": "Confirmation"
+    },
+    "summary": {
+      "kicker": "Order summary",
+      "ticketLabel": "Ticket",
+      "serviceFees": "Service fees",
+      "included": "Included",
+      "discount": "Discount",
+      "total": "Total",
+      "refundNote": "Refundable up to 48h before the event, minus fees."
+    },
+    "success": {
+      "kicker": "✦ Registration confirmed",
+      "headline": "Your spot is reserved. See you soon.",
+      "body": "A confirmation email and SMS have been sent. Show this QR code at the event entrance.",
+      "passLabel": "Teranga · Personal Pass",
+      "accessValid": "ACCESS VALID",
+      "codeLabel": "Code",
+      "dateLabel": "Date",
+      "passTypeLabel": "Pass",
+      "placeLabel": "Location",
+      "nextStep": {
+        "verifyEmail": "Verify email",
+        "verifyEmailHint": "Confirm your address to secure your account.",
+        "downloadBadge": "Download badge",
+        "downloadBadgeHint": "Save it offline for event day.",
+        "exploreSchedule": "Explore the programme",
+        "exploreScheduleHint": "Bookmark the sessions you care about."
+      }
+    }
+  },
+  "paymentStatus": {
+    "noPaymentSpecified": "No payment specified.",
+    "backToEvents": "Back to events",
+    "backToEventPrefix": "Back to {title}",
+    "pageTitleFallback": "Payment",
+    "processingHeading": "Payment in progress…",
+    "processingHint": "Your payment is being processed. This page will update automatically.",
+    "successHeading": "Payment confirmed!",
+    "successHint": "Your registration has been confirmed and your QR badge is ready.",
+    "redirectIn": "Redirecting to your badge in {seconds}s...",
+    "viewBadge": "View my badge",
+    "myRegistrations": "My registrations",
+    "exploreOthers": "Explore other events",
+    "failedHeading": "Payment failed",
+    "failedFallback": "The payment could not be processed. Please try again.",
+    "retry": "Try again",
+    "contactSupport": "Contact support",
+    "downloadReceipt": "Download receipt",
+    "generatingReceipt": "Preparing receipt…",
+    "receiptError": "Couldn’t generate the receipt. Please try again in a moment.",
+    "errorHeading": "Error",
+    "errorHint": "Unable to fetch the payment status."
+  },
+  "offlinePage": {
+    "title": "Offline",
+    "heading": "You are offline",
+    "hint": "Check your internet connection and try again.",
+    "retry": "Try again"
+  },
+  "addToCalendar": {
+    "google": "Google Calendar",
+    "googleAria": "Add to Google Calendar",
+    "downloadIcs": "Download (.ics)",
+    "downloadIcsAria": "Download calendar file"
+  },
+  "myEvents": {
+    "title": "My registrations",
+    "kicker": "✦ Hello {name}",
+    "headline": "Your upcoming events",
+    "countLabel": "{count, plural, one {# registration} other {# registrations}}",
+    "countLabelWithPast": "{count, plural, one {# upcoming} other {# upcoming}} · {past, plural, one {# past} other {# past}}",
+    "loadError": "Unable to load your registrations. Please try again.",
+    "emptyTitle": "No registrations yet",
+    "emptyDescription": "Explore upcoming events and register in a few clicks.",
+    "discoverCta": "Discover events",
+    "tabs": {
+      "upcoming": "Upcoming",
+      "past": "Past",
+      "saved": "Saved"
+    },
+    "savedEmptyTitle": "No saved events",
+    "savedEmptyDescription": "Tap the bookmark icon on an event to keep it here.",
+    "pastEmptyTitle": "No past events",
+    "pastEmptyDescription": "Events you attended will show up here.",
+    "details": "Details",
+    "viewSchedule": "Schedule",
+    "settings": "Settings",
+    "browseCta": "Browse",
+    "ticketPrefix": "Ticket",
+    "registeredOn": "Registered on",
+    "waitlistPosition": "Position #{n}",
+    "waitlistPositionAria": "You are number {n} on the waitlist",
+    "badge": "Badge",
+    "refund": "Refund",
+    "refundRequested": "Refund request sent",
+    "refundReason": "Refund request by the participant",
+    "leaveWaitlist": "Leave waitlist",
+    "cancel": "Cancel",
+    "cancelled": "Cancelled",
+    "cancelledSuccess": "Registration cancelled successfully.",
+    "viewToggleAria": "Toggle between list and calendar view",
+    "viewList": "List",
+    "viewCalendar": "Calendar",
+    "calendar": {
+      "prevMonth": "Previous month",
+      "nextMonth": "Next month",
+      "today": "Today",
+      "more": "more",
+      "legend": "Status",
+      "confirmed": "Confirmed",
+      "checkedIn": "Attended",
+      "pending": "Pending",
+      "waitlisted": "Waitlisted",
+      "discoveryLegend": "Other events",
+      "discoveryOn": "Discover other events",
+      "discoveryOff": "Hide others",
+      "closeDialog": "Close"
+    },
+    "paginationPrev": "Previous",
+    "paginationNext": "Next",
+    "paginationOf": "Page {page} / {total}",
+    "cancelDialog": {
+      "title": "Cancel registration",
+      "description": "Are you sure you want to cancel this registration? This action is irreversible.",
+      "confirm": "Yes, cancel",
+      "cancel": "No, keep"
+    },
+    "refundDialog": {
+      "title": "Request a refund",
+      "description": "The refund will be processed according to the organizer's policy. Processing typically takes 5-10 business days.",
+      "confirm": "Confirm request",
+      "cancel": "Cancel"
+    },
+    "status": {
+      "confirmed": "Confirmed",
+      "pending": "Pending",
+      "pending_payment": "Pending payment",
+      "waitlisted": "Waitlisted",
+      "checked_in": "Checked in",
+      "cancelled": "Cancelled",
+      "refund_requested": "Refund requested",
+      "refunded": "Refunded"
+    }
+  },
+  "settings": {
+    "title": "Settings",
+    "notifications": {
+      "heading": "Notifications",
+      "description": "Choose how you receive notifications",
+      "push": "Push notifications",
+      "pushDescription": "Receive real-time alerts on your device",
+      "sms": "SMS",
+      "smsDescription": "Receive notifications by SMS",
+      "email": "Email",
+      "emailDescription": "Receive summaries and confirmations by email",
+      "reminders": "Event reminders",
+      "remindersDescription": "Get a reminder before your events start"
+    },
+    "privacy": {
+      "heading": "Privacy",
+      "description": "Control your profile visibility and interactions",
+      "profileVisible": "Profile visible to other attendees",
+      "profileVisibleDescription": "Other attendees will be able to see your name and profile at events",
+      "profileVisibleOn": "Your profile is now visible",
+      "profileVisibleOff": "Your profile is now hidden",
+      "dmAllowed": "Allow direct messages",
+      "dmAllowedDescription": "Other attendees will be able to send you messages",
+      "dmAllowedOn": "Direct messages enabled",
+      "dmAllowedOff": "Direct messages disabled"
+    },
+    "account": {
+      "heading": "Account",
+      "description": "Irreversible actions on your account",
+      "delete": "Delete my account",
+      "deleteConfirmQuestion": "Are you sure you want to delete your account?",
+      "deleteConfirmWarning": "This action is irreversible. All your data, registrations and messages will be permanently deleted.",
+      "deleteConfirm": "Confirm deletion",
+      "deleteCancel": "Cancel",
+      "deleteContactSupport": "Please contact support to delete your account: support@teranga-events.com"
+    }
+  },
+  "pagination": {
+    "nav": "Pagination",
+    "prev": "Previous page",
+    "next": "Next page",
+    "pageN": "Page {n}"
+  },
+  "offline": {
+    "indicator": "You are offline"
+  },
+  "emailVerificationBanner": {
+    "notVerified": "Your email address isn't verified.",
+    "resendLink": "Resend email",
+    "sending": "Sending...",
+    "close": "Close"
+  },
+  "authGuard": {
+    "checking": "Checking..."
   },
   "feed": {
-    "title": "Feed",
+    "title": "Activity feed",
     "writePost": "Write a post...",
     "noPostsYet": "No posts yet.",
     "beFirstToShare": "Be the first to share a post with attendees.",
@@ -104,30 +682,143 @@
   "notifications": {
     "title": "Notifications",
     "markAllRead": "Mark all read",
-    "empty": "No notifications"
+    "empty": "No notifications",
+    "emptyUnread": "No unread notifications",
+    "count": "{count, plural, one {# notification} other {# notifications}}",
+    "filterAll": "All",
+    "filterUnread": "Unread",
+    "paginationPrev": "Previous",
+    "paginationNext": "Next",
+    "paginationOf": "Page {page} of {total}",
+    "errorTitle": "Couldn’t load notifications",
+    "errorDescription": "We couldn’t fetch your notifications. Please try again in a moment.",
+    "retry": "Retry"
   },
   "messages": {
     "title": "Messages",
-    "noConversations": "No conversations.",
-    "writeMessage": "Write a message..."
+    "listHeading": "Conversations",
+    "backToMyEvents": "My events",
+    "noConversations": "No conversations",
+    "selectConversation": "Select a conversation",
+    "noMessages": "No messages yet. Start the conversation!",
+    "errorConversations": "Failed to load conversations.",
+    "errorMessages": "Failed to load messages.",
+    "retry": "Retry",
+    "you": "You",
+    "unknownParticipant": "Unknown",
+    "writeMessage": "Write a message...",
+    "sendAria": "Send message",
+    "relative": {
+      "now": "Just now",
+      "minutesShort": "{n}m ago",
+      "hoursShort": "{n}h ago",
+      "yesterday": "Yesterday",
+      "daysShort": "{n}d ago"
+    }
   },
   "profile": {
     "title": "My profile",
+    "personalInfoHeading": "Personal information",
     "displayName": "Full name",
+    "displayNamePlaceholder": "First Last",
+    "phone": "Phone",
+    "phonePlaceholder": "+221 77 123 45 67",
     "bio": "Bio",
+    "bioPlaceholder": "Tell us about yourself...",
     "company": "Organization",
     "jobTitle": "Job title",
-    "saveProfile": "Save profile",
-    "profileUpdated": "Profile updated"
+    "preferredLanguage": "Preferred language",
+    "saveProfile": "Save",
+    "savingProfile": "Saving...",
+    "profileUpdated": "Profile updated successfully.",
+    "changePhotoAria": "Change profile photo",
+    "photoAlt": "Profile photo",
+    "photoHint": "Click to change photo (JPG, PNG, WebP - max 5 MB)",
+    "photoInvalidType": "Unsupported file type. Accepted formats: JPG, PNG, WebP.",
+    "photoTooLarge": "File exceeds the 5 MB maximum size.",
+    "photoUploadError": "Failed to upload the photo.",
+    "photoUploaded": "Profile photo updated.",
+    "notAuthenticated": "Not authenticated"
+  },
+  "feed": {
+    "kicker": "— FEED",
+    "title": "Feed",
+    "backToEvent": "Back to the event",
+    "backToEvents": "Back to events",
+    "notFoundKicker": "— NOT FOUND",
+    "notFoundTitle": "Event not found",
+    "loadingLabel": "Loading feed…",
+    "errorKicker": "— ERROR",
+    "errorTitle": "Couldn’t load the feed",
+    "errorDescription": "Check your connection and try again in a moment.",
+    "retry": "Retry",
+    "emptyKicker": "— NO POSTS",
+    "emptyTitle": "No posts yet",
+    "emptyDescription": "Be the first to share something with the other attendees."
+  },
+  "schedule": {
+    "kicker": "— SCHEDULE",
+    "title": "Schedule",
+    "timezone": "Times shown in Dakar time (WAIST, UTC+0)",
+    "back": "Back",
+    "errorKicker": "— ERROR",
+    "errorTitle": "Couldn’t load the schedule",
+    "retry": "Retry",
+    "emptyKicker": "— NO SESSIONS",
+    "emptyTitle": "No sessions scheduled",
+    "emptyDescription": "The programme will be published soon. Check back later.",
+    "speakersCount": "{count, plural, one {# speaker} other {# speakers}}",
+    "addBookmarkShort": "Save to my schedule",
+    "removeBookmarkShort": "Remove from my schedule",
+    "addBookmarkAria": "Add this session to your personal schedule",
+    "removeBookmarkAria": "Remove this session from your personal schedule",
+    "bookmarkCount": "{count, plural, one {# session in your schedule} other {# sessions in your schedule}}"
   },
   "newsletter": {
-    "heading": "Stay informed about Senegal events",
-    "description": "Get the best events near you delivered weekly.",
+    "heading": "Stay informed about events in Senegal",
+    "description": "Get the best events near you every week.",
     "placeholder": "your@email.com",
+    "emailAria": "Email address for the newsletter",
     "submit": "Subscribe",
     "submitting": "Subscribing…",
+    "submittingAria": "Subscribing",
     "success": "Thanks! You're subscribed.",
     "error": "Something went wrong. Please try again.",
-    "privacyNote": "By subscribing, you accept our privacy policy."
+    "privacyPrefix": "By subscribing, you accept our",
+    "privacyLink": "privacy policy",
+    "privacyNote": "By subscribing, you accept our privacy policy.",
+    "validation": {
+      "required": "Please enter your email address.",
+      "invalidEmail": "Invalid email address."
+    }
+  },
+  "share": {
+    "label": "Share",
+    "signupCta": "Register here:",
+    "whatsapp": "Share on WhatsApp",
+    "facebook": "Share on Facebook",
+    "twitter": "Share on X (Twitter)",
+    "copyLink": "Copy link",
+    "copied": "Link copied"
+  },
+  "faq": {
+    "metaTitle": "Help & FAQ | Teranga",
+    "metaDescription": "Answers to frequently asked questions about Teranga Events: registrations, tickets, QR badges, refunds and more.",
+    "back": "Back",
+    "kicker": "— HELP",
+    "title": "Help & FAQ",
+    "subtitle": "Answers to common questions about the platform.",
+    "comingSoonHeading": "Coming soon",
+    "comingSoonBody": "We’re putting together a full FAQ covering registrations, payments, QR badges and more.",
+    "contactPrefix": "In the meantime, reach out if you have questions:",
+    "upcomingSectionsHeading": "Upcoming sections",
+    "upcomingSections": {
+      "register": "How do I register for an event?",
+      "qr": "How does the QR badge work?",
+      "cancel": "Can I cancel my registration?",
+      "contact": "How do I contact the organizer?",
+      "payments": "Payments and refunds",
+      "confirmationEmail": "What if I don’t receive my confirmation email?"
+    }
   }
 }

@@ -5,6 +5,7 @@ import {
 } from "@teranga/shared-types";
 import { broadcastRepository } from "@/repositories/broadcast.repository";
 import { eventRepository } from "@/repositories/event.repository";
+import { organizationRepository } from "@/repositories/organization.repository";
 import { registrationRepository } from "@/repositories/registration.repository";
 import { userRepository } from "@/repositories/user.repository";
 import { notificationService } from "@/services/notification.service";
@@ -23,6 +24,14 @@ export class BroadcastService extends BaseService {
 
     const event = await eventRepository.findByIdOrThrow(dto.eventId);
     this.requireOrganizationAccess(user, event.organizationId);
+
+    // Gate the SMS channel behind `smsNotifications` (pro+). Fail-fast
+    // before the broadcast record is created so the org is not charged
+    // for a partial send that skipped SMS silently.
+    if (dto.channels.includes("sms")) {
+      const org = await organizationRepository.findByIdOrThrow(event.organizationId);
+      this.requirePlanFeature(org, "smsNotifications");
+    }
 
     const now = new Date().toISOString();
 

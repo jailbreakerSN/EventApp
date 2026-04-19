@@ -140,6 +140,20 @@ export type UploadUrlRequest = z.infer<typeof UploadUrlRequestSchema>;
 export const UploadUrlResponseSchema = z.object({
   uploadUrl: z.string().url(),
   publicUrl: z.string().url(),
+  /**
+   * Max bytes the signed URL will accept. Clients should use this to
+   * reject oversize files client-side BEFORE issuing the PUT (faster
+   * UX), but the ultimate enforcement lives on the server via the
+   * signed `x-goog-content-length-range` header.
+   */
+  maxBytes: z.number().int().positive(),
+  /**
+   * Headers the client MUST include on the PUT request. The server
+   * signs these headers into the upload URL — if the client omits
+   * them, GCS returns 403 `SignatureDoesNotMatch`. Merge these with
+   * any other headers (e.g. Content-Type) the PUT already sends.
+   */
+  requiredHeaders: z.record(z.string()),
 });
 
 export type UploadUrlResponse = z.infer<typeof UploadUrlResponseSchema>;

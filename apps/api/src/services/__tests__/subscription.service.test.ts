@@ -50,6 +50,28 @@ vi.mock("@/repositories/event.repository", () => ({
   ),
 }));
 
+// ── Plan repository mock ──────────────────────────────────────────────────
+// Default: catalog lookup returns null. This matches the pre-Phase-2 behavior
+// and leaves the existing test assertions (strict `{ plan: "x" }` matches)
+// untouched. Phase 2 denormalization tests override this per-case.
+const mockPlanRepo = {
+  findByKey: vi.fn().mockResolvedValue(null),
+  findByIdOrThrow: vi.fn(),
+  // Phase 7+ item #4 (trials): `upgrade()` reads trialDays off the resolved
+  // catalog plan via findById. Default to null so upgrade tests that don't
+  // care about trials see the same behaviour they had pre-#4.
+  findById: vi.fn().mockResolvedValue(null),
+};
+
+vi.mock("@/repositories/plan.repository", () => ({
+  planRepository: new Proxy(
+    {},
+    {
+      get: (_target, prop) => (mockPlanRepo as Record<string, unknown>)[prop as string],
+    },
+  ),
+}));
+
 const mockTxGet = vi.fn();
 const mockTxUpdate = vi.fn();
 const mockDocRef = { id: "mock-doc" };
@@ -88,6 +110,10 @@ const service = new SubscriptionService();
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Default: plan catalog lookup returns null → resolveEffectiveForOrg yields
+  // null → upgrade/downgrade tx write contains only { plan } (matches legacy
+  // strict assertions). Phase 2 tests below override per-case.
+  mockPlanRepo.findByKey.mockResolvedValue(null);
 });
 
 // ── Permission denial ────────────────────────────────────────────────────
@@ -395,22 +421,22 @@ describe("SubscriptionService.downgrade", () => {
   it("rejects downgrade when event count exceeds target limit", async () => {
     const user = buildOrganizerUser("org-1");
 
-    // Transaction passes (member count OK), but event count exceeds free limit (3)
-    mockTxGet.mockResolvedValue({
-      exists: true,
-      data: () => ({ plan: "starter", memberIds: ["user-1"] }),
-    });
+    // Event count exceeds free limit (3). After the P3 atomicity hardening
+    // this check runs BEFORE the transaction — Firestore aggregations can't
+    // participate in runTransaction(), so we pre-guard the write instead of
+    // compensating after the fact. Narrow race window but no dual-write
+    // rollback semantics needed.
+    mockOrgRepo.findByIdOrThrow.mockResolvedValue(
+      buildOrganization({ plan: "starter", memberIds: ["user-1"] }),
+    );
     mockEventRepo.countActiveByOrganization.mockResolvedValue(5);
 
     await expect(service.downgrade("org-1", "free", user)).rejects.toThrow(
       "Limite du plan atteinte",
     );
 
-    // Should rollback the plan change
-    expect(mockOrgRepo.update).toHaveBeenCalledWith(
-      "org-1",
-      expect.objectContaining({ plan: "starter" }),
-    );
+    // Pre-guard: no write attempted — neither apply nor rollback.
+    expect(mockOrgRepo.update).not.toHaveBeenCalled();
   });
 
   it("rejects invalid downgrade path (free to starter)", async () => {
@@ -566,5 +592,698 @@ describe("SubscriptionService — super_admin bypass", () => {
 
     const result = await service.upgrade("any-org", { plan: "pro" }, admin);
     expect(result.plan).toBe("pro");
+  });
+});
+
+// ── Phase 2: effective-plan denormalization ───────────────────────────────
+
+function buildCatalogPlan(key: string) {
+  const now = new Date().toISOString();
+  return {
+    id: `plan-${key}`,
+    key,
+    name: { fr: key, en: key },
+    description: null,
+    pricingModel: "fixed" as const,
+    priceXof: key === "pro" ? 29900 : 9900,
+    currency: "XOF" as const,
+    limits:
+      key === "pro"
+        ? { maxEvents: -1, maxParticipantsPerEvent: 2000, maxMembers: 50 }
+        : { maxEvents: 10, maxParticipantsPerEvent: 200, maxMembers: 3 },
+    features: {
+      qrScanning: true,
+      paidTickets: key === "pro",
+      customBadges: true,
+      csvExport: true,
+      smsNotifications: key === "pro",
+      advancedAnalytics: key === "pro",
+      speakerPortal: key === "pro",
+      sponsorPortal: key === "pro",
+      apiAccess: false,
+      whiteLabel: false,
+      promoCodes: true,
+    },
+    isSystem: true,
+    isPublic: true,
+    isArchived: false,
+    sortOrder: 1,
+    createdBy: null,
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+describe("SubscriptionService — Phase 2 denormalization", () => {
+  it("writes effectiveLimits/Features/PlanKey onto the org in the upgrade tx", async () => {
+    const user = buildOrganizerUser("org-1");
+    const pro = buildCatalogPlan("pro");
+    mockPlanRepo.findByKey.mockResolvedValue(pro);
+
+    mockTxGet.mockResolvedValue({
+      exists: true,
+      data: () => ({ plan: "starter", memberIds: ["u1"] }),
+    });
+    mockSubRepo.findByOrganization.mockResolvedValue({
+      id: "sub-1",
+      organizationId: "org-1",
+      plan: "starter",
+    });
+    mockSubRepo.update.mockResolvedValue(undefined);
+    mockSubRepo.findByIdOrThrow.mockResolvedValue({
+      id: "sub-1",
+      organizationId: "org-1",
+      plan: "pro",
+      status: "active",
+    });
+
+    await service.upgrade("org-1", { plan: "pro" }, user);
+
+    expect(mockPlanRepo.findByKey).toHaveBeenCalledWith("pro");
+    const txArg = mockTxUpdate.mock.calls[0][1] as Record<string, unknown>;
+    expect(txArg.plan).toBe("pro");
+    expect(txArg.effectivePlanKey).toBe("pro");
+    // Stored shape: -1 survives, Infinity is never persisted
+    expect(txArg.effectiveLimits).toMatchObject({
+      maxEvents: -1,
+      maxParticipantsPerEvent: 2000,
+      maxMembers: 50,
+    });
+    expect((txArg.effectiveFeatures as Record<string, boolean>).paidTickets).toBe(true);
+    expect(txArg.effectiveComputedAt).toEqual(expect.any(String));
+  });
+
+  it("writes planId onto the subscription doc during upgrade", async () => {
+    const user = buildOrganizerUser("org-1");
+    mockPlanRepo.findByKey.mockResolvedValue(buildCatalogPlan("pro"));
+
+    mockTxGet.mockResolvedValue({
+      exists: true,
+      data: () => ({ plan: "starter", memberIds: ["u1"] }),
+    });
+    mockSubRepo.findByOrganization.mockResolvedValue({
+      id: "sub-1",
+      organizationId: "org-1",
+      plan: "starter",
+    });
+    mockSubRepo.update.mockResolvedValue(undefined);
+    mockSubRepo.findByIdOrThrow.mockResolvedValue({ id: "sub-1", plan: "pro" });
+
+    await service.upgrade("org-1", { plan: "pro" }, user);
+
+    expect(mockSubRepo.update).toHaveBeenCalledWith(
+      "sub-1",
+      expect.objectContaining({ plan: "pro", planId: "plan-pro" }),
+    );
+  });
+
+  it("layers subscription.overrides on top of the base plan", async () => {
+    const user = buildOrganizerUser("org-1");
+    mockPlanRepo.findByKey.mockResolvedValue(buildCatalogPlan("starter"));
+
+    mockTxGet.mockResolvedValue({
+      exists: true,
+      data: () => ({ plan: "free", memberIds: [] }),
+    });
+    // Existing subscription carries a +50 maxEvents override
+    mockSubRepo.findByOrganization.mockResolvedValue({
+      id: "sub-1",
+      organizationId: "org-1",
+      plan: "free",
+      overrides: { limits: { maxEvents: 999 } },
+    });
+    mockSubRepo.update.mockResolvedValue(undefined);
+    mockSubRepo.findByIdOrThrow.mockResolvedValue({ id: "sub-1", plan: "starter" });
+
+    await service.upgrade("org-1", { plan: "starter" }, user);
+
+    const txArg = mockTxUpdate.mock.calls[0][1] as Record<string, unknown>;
+    expect((txArg.effectiveLimits as { maxEvents: number }).maxEvents).toBe(999);
+    // Non-overridden limit from the base plan still present
+    expect((txArg.effectiveLimits as { maxMembers: number }).maxMembers).toBe(3);
+  });
+
+  it("skips denormalization when the catalog lookup returns null (graceful)", async () => {
+    const user = buildOrganizerUser("org-1");
+    mockPlanRepo.findByKey.mockResolvedValue(null);
+
+    mockTxGet.mockResolvedValue({
+      exists: true,
+      data: () => ({ plan: "free", memberIds: [] }),
+    });
+    mockSubRepo.findByOrganization.mockResolvedValue(null);
+    mockSubRepo.create.mockResolvedValue({ id: "sub-x", plan: "starter", status: "active" });
+
+    await service.upgrade("org-1", { plan: "starter" }, user);
+
+    // Legacy strict shape: only the plan field is written
+    expect(mockTxUpdate).toHaveBeenCalledWith(mockDocRef, { plan: "starter" });
+  });
+
+  it("writes effective fields on downgrade", async () => {
+    const user = buildOrganizerUser("org-1");
+    mockPlanRepo.findByKey.mockResolvedValue(buildCatalogPlan("starter"));
+
+    mockTxGet.mockResolvedValue({
+      exists: true,
+      data: () => ({ plan: "pro", memberIds: ["u1"] }),
+    });
+    mockEventRepo.countActiveByOrganization.mockResolvedValue(0);
+    mockSubRepo.findByOrganization.mockResolvedValue({ id: "sub-1", plan: "pro" });
+    mockSubRepo.update.mockResolvedValue(undefined);
+
+    await service.downgrade("org-1", "starter", user);
+
+    const txArg = mockTxUpdate.mock.calls[0][1] as Record<string, unknown>;
+    expect(txArg.plan).toBe("starter");
+    expect(txArg.effectivePlanKey).toBe("starter");
+  });
+});
+
+describe("SubscriptionService.resolveEffectiveForOrg", () => {
+  it("returns null when the plan key is not in the catalog", async () => {
+    mockPlanRepo.findByKey.mockResolvedValue(null);
+    const result = await service.resolveEffectiveForOrg("pro");
+    expect(result).toBeNull();
+  });
+
+  it("returns the resolved effective plan for a catalog hit", async () => {
+    mockPlanRepo.findByKey.mockResolvedValue(buildCatalogPlan("pro"));
+    const result = await service.resolveEffectiveForOrg("pro");
+    expect(result?.planKey).toBe("pro");
+    expect(result?.limits.maxEvents).toBe(Infinity); // runtime form
+  });
+});
+
+// ── Phase 4c: prepaid period honoring ─────────────────────────────────────
+
+describe("SubscriptionService — Phase 4c scheduled downgrade", () => {
+  const inFuture = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+  const inPast = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+  it("SCHEDULES a downgrade when a paid period is still in force (no tx write)", async () => {
+    const user = buildOrganizerUser("org-1");
+
+    mockSubRepo.findByOrganization.mockResolvedValue({
+      id: "sub-1",
+      organizationId: "org-1",
+      plan: "pro",
+      status: "active",
+      currentPeriodEnd: inFuture,
+    });
+    mockOrgRepo.findByIdOrThrow.mockResolvedValue(
+      buildOrganization({ id: "org-1", plan: "pro", memberIds: ["u1"] }),
+    );
+    mockSubRepo.update.mockResolvedValue(undefined);
+
+    const result = await service.downgrade("org-1", "starter", user);
+
+    expect(result).toEqual({ scheduled: true, effectiveAt: inFuture });
+    // No org/tx flip on the scheduled path
+    expect(mockTxUpdate).not.toHaveBeenCalled();
+    // Scheduled change persisted on the subscription doc
+    expect(mockSubRepo.update).toHaveBeenCalledWith(
+      "sub-1",
+      expect.objectContaining({
+        scheduledChange: expect.objectContaining({
+          toPlan: "starter",
+          effectiveAt: inFuture,
+          reason: "downgrade",
+          scheduledBy: user.uid,
+        }),
+      }),
+    );
+    expect(eventBus.emit).toHaveBeenCalledWith(
+      "subscription.change_scheduled",
+      expect.objectContaining({
+        organizationId: "org-1",
+        fromPlan: "pro",
+        toPlan: "starter",
+        effectiveAt: inFuture,
+        reason: "downgrade",
+      }),
+    );
+  });
+
+  it("FLIPS IMMEDIATELY when currentPeriodEnd is in the past", async () => {
+    const user = buildOrganizerUser("org-1");
+
+    mockSubRepo.findByOrganization.mockResolvedValue({
+      id: "sub-1",
+      organizationId: "org-1",
+      plan: "pro",
+      status: "active",
+      currentPeriodEnd: inPast,
+    });
+    // Fall-through: transactional immediate path
+    mockTxGet.mockResolvedValue({
+      exists: true,
+      data: () => ({ plan: "pro", memberIds: ["u1"] }),
+    });
+    mockEventRepo.countActiveByOrganization.mockResolvedValue(0);
+    mockSubRepo.update.mockResolvedValue(undefined);
+
+    const result = await service.downgrade("org-1", "starter", user);
+
+    expect(result).toEqual({ scheduled: false });
+    expect(mockTxUpdate).toHaveBeenCalled(); // immediate tx write happened
+  });
+
+  it("FLIPS IMMEDIATELY when the org is already free (no paid rights to honor)", async () => {
+    const user = buildOrganizerUser("org-1");
+    mockSubRepo.findByOrganization.mockResolvedValue(null); // free org, no sub
+    mockTxGet.mockResolvedValue({
+      exists: true,
+      data: () => ({ plan: "starter", memberIds: [] }),
+    });
+    mockEventRepo.countActiveByOrganization.mockResolvedValue(0);
+    mockSubRepo.update.mockResolvedValue(undefined);
+
+    const result = await service.downgrade("org-1", "free", user);
+    expect(result).toEqual({ scheduled: false });
+  });
+
+  it("FLIPS IMMEDIATELY when caller passes { immediate: true } AND has subscription:override", async () => {
+    const admin = buildSuperAdmin(); // super_admin has all perms incl. subscription:override
+
+    mockSubRepo.findByOrganization.mockResolvedValue({
+      id: "sub-1",
+      organizationId: "org-1",
+      plan: "pro",
+      status: "active",
+      currentPeriodEnd: inFuture, // paid period still in force
+    });
+    mockTxGet.mockResolvedValue({
+      exists: true,
+      data: () => ({ plan: "pro", memberIds: ["u1"] }),
+    });
+    mockEventRepo.countActiveByOrganization.mockResolvedValue(0);
+    mockSubRepo.update.mockResolvedValue(undefined);
+
+    const result = await service.downgrade("org-1", "starter", admin, { immediate: true });
+
+    expect(result).toEqual({ scheduled: false });
+    expect(mockTxUpdate).toHaveBeenCalled(); // immediate path taken despite paid period
+  });
+
+  it("rejects { immediate: true } when caller lacks subscription:override", async () => {
+    const user = buildOrganizerUser("org-1"); // organizer has manage_billing but NOT subscription:override
+
+    mockSubRepo.findByOrganization.mockResolvedValue({
+      id: "sub-1",
+      organizationId: "org-1",
+      plan: "pro",
+      status: "active",
+      currentPeriodEnd: inFuture,
+    });
+
+    await expect(service.downgrade("org-1", "starter", user, { immediate: true })).rejects.toThrow(
+      "Permission manquante : subscription:override",
+    );
+  });
+
+  it("rejects scheduled downgrade when member count would exceed target", async () => {
+    const user = buildOrganizerUser("org-1");
+    mockPlanRepo.findByKey.mockResolvedValue(buildCatalogPlan("starter")); // starter maxMembers=3
+
+    mockSubRepo.findByOrganization.mockResolvedValue({
+      id: "sub-1",
+      organizationId: "org-1",
+      plan: "pro",
+      status: "active",
+      currentPeriodEnd: inFuture,
+    });
+    mockOrgRepo.findByIdOrThrow.mockResolvedValue(
+      buildOrganization({
+        id: "org-1",
+        plan: "pro",
+        memberIds: Array.from({ length: 10 }, (_, i) => `u${i}`),
+      }),
+    );
+
+    await expect(service.downgrade("org-1", "starter", user)).rejects.toThrow("Limite du plan");
+    expect(mockSubRepo.update).not.toHaveBeenCalled();
+  });
+
+  it("cancel() also schedules when a paid period is in force", async () => {
+    const user = buildOrganizerUser("org-1");
+
+    mockSubRepo.findByOrganization.mockResolvedValue({
+      id: "sub-1",
+      organizationId: "org-1",
+      plan: "pro",
+      status: "active",
+      currentPeriodEnd: inFuture,
+    });
+    mockOrgRepo.findByIdOrThrow.mockResolvedValue(
+      buildOrganization({ id: "org-1", plan: "pro", memberIds: [] }),
+    );
+    mockSubRepo.update.mockResolvedValue(undefined);
+
+    const result = await service.cancel("org-1", user);
+
+    expect(result).toEqual({ scheduled: true, effectiveAt: inFuture });
+    expect(mockSubRepo.update).toHaveBeenCalledWith(
+      "sub-1",
+      expect.objectContaining({
+        scheduledChange: expect.objectContaining({
+          toPlan: "free",
+          reason: "cancel",
+        }),
+      }),
+    );
+  });
+});
+
+describe("SubscriptionService.revertScheduledChange", () => {
+  it("clears scheduledChange and emits subscription.scheduled_reverted", async () => {
+    const user = buildOrganizerUser("org-1");
+    mockSubRepo.findByOrganization.mockResolvedValue({
+      id: "sub-1",
+      organizationId: "org-1",
+      plan: "pro",
+      status: "active",
+      scheduledChange: {
+        toPlan: "free",
+        effectiveAt: "2099-01-01T00:00:00.000Z",
+        reason: "cancel",
+        scheduledBy: user.uid,
+        scheduledAt: new Date().toISOString(),
+      },
+    });
+    mockSubRepo.update.mockResolvedValue(undefined);
+
+    await service.revertScheduledChange("org-1", user);
+
+    expect(mockSubRepo.update).toHaveBeenCalledWith(
+      "sub-1",
+      expect.objectContaining({ scheduledChange: null }),
+    );
+    expect(eventBus.emit).toHaveBeenCalledWith(
+      "subscription.scheduled_reverted",
+      expect.objectContaining({
+        organizationId: "org-1",
+        revertedToPlan: "free",
+      }),
+    );
+  });
+
+  it("is a no-op when no scheduled change exists", async () => {
+    const user = buildOrganizerUser("org-1");
+    mockSubRepo.findByOrganization.mockResolvedValue({
+      id: "sub-1",
+      organizationId: "org-1",
+      plan: "pro",
+      status: "active",
+    });
+
+    await expect(service.revertScheduledChange("org-1", user)).resolves.toBeUndefined();
+
+    expect(mockSubRepo.update).not.toHaveBeenCalled();
+    expect(eventBus.emit).not.toHaveBeenCalled();
+  });
+
+  it("is a no-op when no subscription exists at all (free org)", async () => {
+    const user = buildOrganizerUser("org-1");
+    mockSubRepo.findByOrganization.mockResolvedValue(null);
+
+    await expect(service.revertScheduledChange("org-1", user)).resolves.toBeUndefined();
+
+    expect(mockSubRepo.update).not.toHaveBeenCalled();
+  });
+
+  it("rejects non-organizer", async () => {
+    const user = buildAuthUser({ roles: ["participant"] });
+    await expect(service.revertScheduledChange("org-1", user)).rejects.toThrow(
+      "Permission manquante",
+    );
+  });
+});
+
+describe("SubscriptionService.upgrade — clears any scheduled change", () => {
+  it("wipes scheduledChange on upgrade (user changed mind)", async () => {
+    const user = buildOrganizerUser("org-1");
+
+    mockTxGet.mockResolvedValue({
+      exists: true,
+      data: () => ({ plan: "starter", memberIds: ["u1"] }),
+    });
+    mockSubRepo.findByOrganization.mockResolvedValue({
+      id: "sub-1",
+      organizationId: "org-1",
+      plan: "starter",
+      scheduledChange: {
+        toPlan: "free",
+        effectiveAt: "2099-01-01T00:00:00.000Z",
+        reason: "cancel",
+        scheduledBy: user.uid,
+        scheduledAt: new Date().toISOString(),
+      },
+    });
+    mockSubRepo.update.mockResolvedValue(undefined);
+    mockSubRepo.findByIdOrThrow.mockResolvedValue({
+      id: "sub-1",
+      plan: "pro",
+      status: "active",
+    });
+
+    await service.upgrade("org-1", { plan: "pro" }, user);
+
+    expect(mockSubRepo.update).toHaveBeenCalledWith(
+      "sub-1",
+      expect.objectContaining({ scheduledChange: null }),
+    );
+  });
+});
+
+// ── Phase 5: assignPlan (admin per-org override) ──────────────────────────
+
+describe("SubscriptionService.assignPlan", () => {
+  function buildCatalogPlanFull(overrides: Partial<Record<string, unknown>> = {}) {
+    const now = new Date().toISOString();
+    return {
+      id: "plan-custom",
+      key: "custom_acme",
+      name: { fr: "Acme", en: "Acme" },
+      description: null,
+      pricingModel: "custom" as const,
+      priceXof: 49900,
+      currency: "XOF" as const,
+      limits: { maxEvents: 999, maxParticipantsPerEvent: 500, maxMembers: 10 },
+      features: {
+        qrScanning: true,
+        paidTickets: true,
+        customBadges: true,
+        csvExport: true,
+        smsNotifications: true,
+        advancedAnalytics: true,
+        speakerPortal: true,
+        sponsorPortal: true,
+        apiAccess: false,
+        whiteLabel: false,
+        promoCodes: true,
+      },
+      isSystem: false,
+      isPublic: false,
+      isArchived: false,
+      sortOrder: 100,
+      createdBy: "admin-1",
+      createdAt: now,
+      updatedAt: now,
+      ...overrides,
+    };
+  }
+
+  it("rejects non-superadmin (organizer lacks subscription:override)", async () => {
+    const user = buildOrganizerUser("org-1");
+    await expect(service.assignPlan("org-1", { planId: "plan-custom" }, user)).rejects.toThrow(
+      "Permission manquante : subscription:override",
+    );
+  });
+
+  it("rejects participant (lacks manage_billing)", async () => {
+    const participant = buildAuthUser({ roles: ["participant"] });
+    await expect(
+      service.assignPlan("org-1", { planId: "plan-custom" }, participant),
+    ).rejects.toThrow("Permission manquante : organization:manage_billing");
+  });
+
+  it("assigns a catalog plan without overrides (superadmin)", async () => {
+    const admin = buildSuperAdmin();
+    mockPlanRepo.findByIdOrThrow.mockResolvedValue(buildCatalogPlanFull());
+
+    mockTxGet.mockResolvedValue({
+      exists: true,
+      data: () => ({ plan: "free", memberIds: [] }),
+    });
+    mockSubRepo.findByOrganization.mockResolvedValue(null);
+    mockSubRepo.create.mockResolvedValue({
+      id: "sub-new",
+      organizationId: "org-1",
+      plan: "custom_acme",
+      planId: "plan-custom",
+      status: "active",
+    });
+
+    const sub = await service.assignPlan("org-1", { planId: "plan-custom" }, admin);
+
+    expect(mockPlanRepo.findByIdOrThrow).toHaveBeenCalledWith("plan-custom");
+    // tx.update wrote org.plan + denormalized effective fields
+    const txArg = mockTxUpdate.mock.calls[0][1] as Record<string, unknown>;
+    expect(txArg.plan).toBe("custom_acme");
+    expect(txArg.effectivePlanKey).toBe("custom_acme");
+    expect((txArg.effectiveLimits as { maxEvents: number }).maxEvents).toBe(999);
+    // Subscription doc captures planId + assignedBy + assignedAt
+    expect(mockSubRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        planId: "plan-custom",
+        plan: "custom_acme",
+        assignedBy: admin.uid,
+      }),
+    );
+    expect(sub.plan).toBe("custom_acme");
+    // Domain event fires
+    expect(eventBus.emit).toHaveBeenCalledWith(
+      "subscription.overridden",
+      expect.objectContaining({
+        organizationId: "org-1",
+        newPlanId: "plan-custom",
+        newPlanKey: "custom_acme",
+        hasOverrides: false,
+        validUntil: null,
+      }),
+    );
+  });
+
+  it("assigns a plan with overrides (limits + validUntil + priceXof)", async () => {
+    const admin = buildSuperAdmin();
+    mockPlanRepo.findByIdOrThrow.mockResolvedValue(buildCatalogPlanFull());
+
+    mockTxGet.mockResolvedValue({
+      exists: true,
+      data: () => ({ plan: "pro", memberIds: ["u1"] }),
+    });
+    mockSubRepo.findByOrganization.mockResolvedValue({
+      id: "sub-1",
+      organizationId: "org-1",
+      plan: "pro",
+      status: "active",
+    });
+    mockSubRepo.update.mockResolvedValue(undefined);
+    mockSubRepo.findByIdOrThrow.mockResolvedValue({
+      id: "sub-1",
+      organizationId: "org-1",
+      plan: "custom_acme",
+      planId: "plan-custom",
+      status: "active",
+      priceXof: 250000,
+    });
+
+    await service.assignPlan(
+      "org-1",
+      {
+        planId: "plan-custom",
+        overrides: {
+          limits: { maxEvents: -1 }, // unlimited override
+          priceXof: 250000,
+          validUntil: "2099-12-31T00:00:00.000Z",
+          notes: "Deal Sonatel 2026",
+        },
+      },
+      admin,
+    );
+
+    // Override applied to effective snapshot written to the org
+    const txArg = mockTxUpdate.mock.calls[0][1] as Record<string, unknown>;
+    expect((txArg.effectiveLimits as { maxEvents: number }).maxEvents).toBe(-1); // stored form
+    // Subscription doc gets overrides + bespoke price
+    expect(mockSubRepo.update).toHaveBeenCalledWith(
+      "sub-1",
+      expect.objectContaining({
+        overrides: expect.objectContaining({
+          limits: { maxEvents: -1 },
+          priceXof: 250000,
+          validUntil: "2099-12-31T00:00:00.000Z",
+        }),
+        priceXof: 250000,
+        assignedBy: admin.uid,
+      }),
+    );
+    // Event carries hasOverrides + validUntil
+    expect(eventBus.emit).toHaveBeenCalledWith(
+      "subscription.overridden",
+      expect.objectContaining({
+        hasOverrides: true,
+        validUntil: "2099-12-31T00:00:00.000Z",
+      }),
+    );
+  });
+
+  it("wipes any previously scheduled change on assign", async () => {
+    const admin = buildSuperAdmin();
+    mockPlanRepo.findByIdOrThrow.mockResolvedValue(buildCatalogPlanFull());
+    mockTxGet.mockResolvedValue({
+      exists: true,
+      data: () => ({ plan: "pro", memberIds: [] }),
+    });
+    mockSubRepo.findByOrganization.mockResolvedValue({
+      id: "sub-1",
+      organizationId: "org-1",
+      plan: "pro",
+      status: "active",
+      scheduledChange: {
+        toPlan: "free",
+        effectiveAt: "2099-01-01T00:00:00.000Z",
+        reason: "cancel",
+        scheduledBy: admin.uid,
+        scheduledAt: new Date().toISOString(),
+      },
+    });
+    mockSubRepo.update.mockResolvedValue(undefined);
+    mockSubRepo.findByIdOrThrow.mockResolvedValue({
+      id: "sub-1",
+      organizationId: "org-1",
+      plan: "custom_acme",
+      status: "active",
+    });
+
+    await service.assignPlan("org-1", { planId: "plan-custom" }, admin);
+
+    expect(mockSubRepo.update).toHaveBeenCalledWith(
+      "sub-1",
+      expect.objectContaining({ scheduledChange: null }),
+    );
+  });
+
+  it("throws if the org doesn't exist", async () => {
+    const admin = buildSuperAdmin();
+    mockPlanRepo.findByIdOrThrow.mockResolvedValue(buildCatalogPlanFull());
+    mockTxGet.mockResolvedValue({ exists: false });
+
+    await expect(
+      service.assignPlan("missing-org", { planId: "plan-custom" }, admin),
+    ).rejects.toThrow("Organisation introuvable");
+  });
+
+  it("cross-tenant by design — superadmin can assign to any org without membership", async () => {
+    // Superadmin user has no organizationId set — proves we don't call
+    // requireOrganizationAccess.
+    const admin = buildSuperAdmin({ organizationId: undefined });
+    mockPlanRepo.findByIdOrThrow.mockResolvedValue(buildCatalogPlanFull());
+    mockTxGet.mockResolvedValue({
+      exists: true,
+      data: () => ({ plan: "free", memberIds: [] }),
+    });
+    mockSubRepo.findByOrganization.mockResolvedValue(null);
+    mockSubRepo.create.mockResolvedValue({
+      id: "sub-x",
+      organizationId: "any-org",
+      plan: "custom_acme",
+      status: "active",
+    });
+
+    await expect(
+      service.assignPlan("any-org", { planId: "plan-custom" }, admin),
+    ).resolves.toBeDefined();
   });
 });

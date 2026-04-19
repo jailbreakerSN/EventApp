@@ -1,21 +1,24 @@
 import type { Metadata } from "next";
-import { Search } from "lucide-react";
-import { EmptyState } from "@teranga/shared-ui";
+import Link from "next/link";
+import { ArrowRight, Scale, Search } from "lucide-react";
+import { getTranslations } from "next-intl/server";
+import { EmptyStateEditorial, SectionHeader } from "@teranga/shared-ui";
 import { serverEventsApi } from "@/lib/server-api";
 import { EventCard } from "@/components/event-card";
 import { EventFilters } from "@/components/event-filters";
 import { NewsletterSignup } from "@/components/newsletter-signup";
 import { getDateRange } from "@/lib/date-utils";
 import { Pagination } from "@/components/pagination";
-import { getTranslations } from "next-intl/server";
 
-export const revalidate = 60;
+export const dynamic = "force-dynamic";
 
-export const metadata: Metadata = {
-  title: "Événements",
-  description:
-    "Découvrez les événements au Sénégal — conférences, concerts, ateliers, festivals et plus.",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("events");
+  return {
+    title: t("title"),
+    description: t("metaDescription"),
+  };
+}
 
 interface EventsPageProps {
   searchParams: Promise<{
@@ -32,8 +35,7 @@ interface EventsPageProps {
 }
 
 export default async function EventsPage({ searchParams }: EventsPageProps) {
-  const _t = await getTranslations("common"); void _t;
-  const params = await searchParams;
+  const [params, tEvents] = await Promise.all([searchParams, getTranslations("events")]);
   const page = Number(params.page) || 1;
 
   // Resolve date range from shortcut or explicit params
@@ -63,21 +65,34 @@ export default async function EventsPage({ searchParams }: EventsPageProps) {
   const meta = result.meta;
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold">Événements</h1>
-        {/* aria-live announces count updates to screen readers when filters change */}
-        <p
-          className="mt-2 text-muted-foreground"
-          role="status"
-          aria-live="polite"
-          aria-atomic="true"
-        >
-          {meta.total > 0
-            ? `${meta.total} événement${meta.total > 1 ? "s" : ""} trouvé${meta.total > 1 ? "s" : ""}`
-            : "Aucun événement trouvé"}
-        </p>
-      </div>
+    <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 space-y-8">
+      {/* aria-live announces count updates to screen readers when filters change */}
+      <SectionHeader
+        kicker="— ÉVÉNEMENTS"
+        title={tEvents("title")}
+        size="hero"
+        as="h1"
+        subtitle={
+          meta.total > 0
+            ? tEvents("list.resultsCount", { count: meta.total })
+            : tEvents("noResults")
+        }
+        action={
+          <Link
+            href="/events/compare"
+            className="inline-flex items-center gap-2 rounded-full border border-teranga-navy/15 bg-card px-4 py-2 text-sm font-medium text-teranga-navy transition-colors hover:bg-teranga-navy hover:text-white dark:border-teranga-gold/30 dark:text-foreground dark:hover:bg-teranga-gold dark:hover:text-teranga-navy"
+          >
+            <Scale className="h-4 w-4" aria-hidden="true" />
+            {tEvents("compareCta")}
+            <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+          </Link>
+        }
+      />
+      <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {meta.total > 0
+          ? tEvents("list.resultsCount", { count: meta.total })
+          : tEvents("noResults")}
+      </span>
 
       <EventFilters />
 
@@ -95,16 +110,17 @@ export default async function EventsPage({ searchParams }: EventsPageProps) {
           )}
         </>
       ) : (
-        <EmptyState
+        <EmptyStateEditorial
           icon={Search}
-          title="Aucun événement trouvé"
-          description="Aucun événement ne correspond à vos critères. Essayez d'élargir votre recherche."
+          kicker="— AUCUN RÉSULTAT"
+          title={tEvents("noResults")}
+          description={tEvents("noResultsHint")}
           action={
             <a
               href="/events"
               className="text-sm font-medium text-teranga-gold-dark hover:underline"
             >
-              Réinitialiser les filtres
+              {tEvents("clearFilters")}
             </a>
           }
         />

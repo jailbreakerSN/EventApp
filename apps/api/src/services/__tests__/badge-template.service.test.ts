@@ -3,7 +3,7 @@ import { BadgeTemplateService } from "../badge-template.service";
 import { buildOrganizerUser, buildAuthUser, buildOrganization } from "@/__tests__/factories";
 import { type BadgeTemplate, type CreateBadgeTemplateDto } from "@teranga/shared-types";
 
-// ─── Mocks ───────────────────────────────────────────────────���─────────────
+// ─── Mocks ───────────────────────────────────────────────────────────────────
 
 const mockTemplateRepo = {
   create: vi.fn(),
@@ -35,7 +35,7 @@ vi.mock("@/repositories/organization.repository", () => ({
   ),
 }));
 
-// ─── Helpers ────────��─────────────────────────────��────────────────────────
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function buildTemplate(overrides: Partial<BadgeTemplate> = {}): BadgeTemplate {
   const now = new Date().toISOString();
@@ -60,7 +60,7 @@ function buildTemplate(overrides: Partial<BadgeTemplate> = {}): BadgeTemplate {
   };
 }
 
-// ─── Tests ─────────���──────────────────────────────���────────────────────────
+// ─── Tests ─────────────────────────────────────────────────────────────────────
 
 const service = new BadgeTemplateService();
 
@@ -71,7 +71,8 @@ beforeEach(() => {
 describe("BadgeTemplateService.create", () => {
   it("creates a template when user has permission and org access", async () => {
     const user = buildOrganizerUser("org-1");
-    const org = buildOrganization({ id: "org-1" });
+    // customBadges feature requires starter-or-better after P3 gate.
+    const org = buildOrganization({ id: "org-1", plan: "starter" });
     const template = buildTemplate();
 
     mockOrgRepo.findByIdOrThrow.mockResolvedValue(org);
@@ -148,7 +149,9 @@ describe("BadgeTemplateService.remove", () => {
   it("soft-deletes a template", async () => {
     const user = buildOrganizerUser("org-1");
     const template = buildTemplate({ organizationId: "org-1" });
+    const org = buildOrganization({ id: "org-1", plan: "starter" });
     mockTemplateRepo.findByIdOrThrow.mockResolvedValue(template);
+    mockOrgRepo.findByIdOrThrow.mockResolvedValue(org);
     mockTemplateRepo.softDelete.mockResolvedValue(undefined);
 
     await service.remove("tpl-1", user);

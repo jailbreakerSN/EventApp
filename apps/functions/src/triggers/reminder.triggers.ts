@@ -92,7 +92,13 @@ async function sendReminders(
         const nowIso = new Date().toISOString();
 
         for (const userId of batch) {
-          const ref = db.collection(COLLECTIONS.NOTIFICATIONS).doc();
+          // Deterministic ID: one reminder of this kind per user per
+          // event. Scheduled-function retries (Firebase Functions
+          // default at-least-once) converge on the same doc instead
+          // of spamming the user with duplicate 24h / 1h reminders.
+          const ref = db
+            .collection(COLLECTIONS.NOTIFICATIONS)
+            .doc(`reminder_${reminderKey}_${eventId}_${userId}`);
           writeBatch.set(ref, {
             userId,
             type: reminderKey,
@@ -227,7 +233,12 @@ export const sendSessionReminders = onSchedule(
             const writeBatch = db.batch();
 
             for (const userId of batch) {
-              const ref = db.collection(COLLECTIONS.NOTIFICATIONS).doc();
+              // Deterministic ID: one session-reminder of this kind
+              // per user per session. Same rationale as the event-
+              // reminder path above (at-least-once retry dedup).
+              const ref = db
+                .collection(COLLECTIONS.NOTIFICATIONS)
+                .doc(`reminder_${reminderKey}_${sessionId}_${userId}`);
               writeBatch.set(ref, {
                 userId,
                 type: reminderKey,

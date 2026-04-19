@@ -131,18 +131,24 @@ export const onRegistrationConfirmed = onDocumentWritten(
         });
       }
 
-      // Save in-app notification
-      await db.collection(COLLECTIONS.NOTIFICATIONS).add({
-        userId: after.userId,
-        type: "registration_confirmed",
-        title: "Inscription confirmée",
-        body: `Vous êtes inscrit(e) pour ${eventTitle} !`,
-        data: { registrationId: regId, eventId: after.eventId },
-        imageURL: null,
-        isRead: false,
-        readAt: null,
-        createdAt: new Date().toISOString(),
-      });
+      // Save in-app notification with a deterministic doc ID so an
+      // at-least-once trigger retry (Firebase Functions default)
+      // converges on the same doc instead of spamming the user with
+      // duplicate "Inscription confirmée" notifications.
+      await db
+        .collection(COLLECTIONS.NOTIFICATIONS)
+        .doc(`regconfirm_${regId}`)
+        .set({
+          userId: after.userId,
+          type: "registration_confirmed",
+          title: "Inscription confirmée",
+          body: `Vous êtes inscrit(e) pour ${eventTitle} !`,
+          data: { registrationId: regId, eventId: after.eventId },
+          imageURL: null,
+          isRead: false,
+          readAt: null,
+          createdAt: new Date().toISOString(),
+        });
 
       logger.info(`Registration confirmed notification sent`, {
         regId,

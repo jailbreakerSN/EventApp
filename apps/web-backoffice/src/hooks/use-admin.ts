@@ -1,6 +1,14 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { adminApi } from "@/lib/api-client";
-import type { AdminUserQuery, AdminOrgQuery, AdminEventQuery, AdminAuditQuery } from "@teranga/shared-types";
+import type {
+  AdminUserQuery,
+  AdminOrgQuery,
+  AdminEventQuery,
+  AdminAuditQuery,
+  CreatePlanDto,
+  UpdatePlanDto,
+  AssignPlanDto,
+} from "@teranga/shared-types";
 
 // ─── Stats ──────────────────────────────────────────────────────────────────
 
@@ -80,5 +88,105 @@ export function useAdminAuditLogs(params: Partial<AdminAuditQuery> = {}) {
   return useQuery({
     queryKey: ["admin", "audit-logs", params],
     queryFn: () => adminApi.listAuditLogs(params),
+  });
+}
+
+// ─── Plan Catalog ───────────────────────────────────────────────────────────
+
+export function useAdminPlans(params: { includeArchived?: boolean } = {}) {
+  return useQuery({
+    queryKey: ["admin", "plans", params],
+    queryFn: () => adminApi.listPlans(params),
+    staleTime: 30_000,
+  });
+}
+
+/**
+ * Phase 7+ item #5 — MRR / cohort dashboard data hook.
+ *
+ * Point-in-time snapshot. 5-min client staleTime matches the operator's
+ * refresh cadence without hammering the endpoint (each call fans out
+ * orgs × event-count reads on the server).
+ */
+export function useAdminPlanAnalytics() {
+  return useQuery({
+    queryKey: ["admin", "plans", "analytics"],
+    queryFn: () => adminApi.getPlanAnalytics(),
+    staleTime: 5 * 60_000,
+  });
+}
+
+export function useAdminPlan(planId: string | undefined) {
+  return useQuery({
+    queryKey: ["admin", "plans", "detail", planId],
+    queryFn: () => adminApi.getPlan(planId!),
+    enabled: !!planId,
+  });
+}
+
+export function useCreatePlan() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (dto: CreatePlanDto) => adminApi.createPlan(dto),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin", "plans"] }),
+  });
+}
+
+export function useUpdatePlan() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ planId, dto }: { planId: string; dto: UpdatePlanDto }) =>
+      adminApi.updatePlan(planId, dto),
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: ["admin", "plans"] });
+      qc.invalidateQueries({ queryKey: ["admin", "plans", "detail", variables.planId] });
+    },
+  });
+}
+
+/**
+ * Phase 7+ item #6 — dry-run / impact preview hook.
+ *
+ * Call this with the current dirty form state to see how many (and which)
+ * organisations would be affected if the admin presses Save. Does not
+ * mutate anything. Debounce at the call site so we don't hammer the
+ * endpoint on every keystroke.
+ */
+export function usePreviewPlanChange() {
+  return useMutation({
+    mutationFn: ({ planId, dto }: { planId: string; dto: UpdatePlanDto }) =>
+      adminApi.previewPlanChange(planId, dto),
+  });
+}
+
+export function useArchivePlan() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (planId: string) => adminApi.archivePlan(planId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin", "plans"] }),
+  });
+}
+
+// ─── Per-org subscription assign (Phase 5: admin override) ──────────────────
+
+export function useAdminOrgSubscription(orgId: string | undefined) {
+  return useQuery({
+    queryKey: ["admin", "organizations", "subscription", orgId],
+    queryFn: () => adminApi.getOrgSubscription(orgId!),
+    enabled: !!orgId,
+  });
+}
+
+export function useAssignPlan() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ orgId, dto }: { orgId: string; dto: AssignPlanDto }) =>
+      adminApi.assignPlan(orgId, dto),
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: ["admin", "organizations"] });
+      qc.invalidateQueries({
+        queryKey: ["admin", "organizations", "subscription", variables.orgId],
+      });
+    },
   });
 }

@@ -3,26 +3,66 @@
 import { useParams } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { sessionsApi, eventsApi } from "@/lib/api-client";
-import { Calendar, Clock, Mic, Bookmark, Loader2, ArrowLeft } from "lucide-react";
-import { EmptyState } from "@teranga/shared-ui";
+import {
+  Calendar,
+  Clock,
+  MapPin,
+  Mic,
+  Bookmark,
+  Loader2,
+  ArrowLeft,
+  AlertTriangle,
+} from "lucide-react";
+import { EmptyStateEditorial, SectionHeader } from "@teranga/shared-ui";
 import Link from "next/link";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
+import { intlLocale } from "@/lib/intl-locale";
+import type { Session } from "@teranga/shared-types";
 
-function formatTime(iso: string) {
-  return new Date(iso).toLocaleString("fr-FR", {
+function formatTime(iso: string, regional: string) {
+  return new Date(iso).toLocaleTimeString(regional, {
     hour: "2-digit",
     minute: "2-digit",
-    day: "numeric",
-    month: "short",
+    timeZone: "Africa/Dakar",
   });
 }
 
+function formatDayLabel(iso: string) {
+  return new Date(iso).toLocaleDateString("fr-FR", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    timeZone: "Africa/Dakar",
+  });
+}
+
+function groupByDay(sessions: Session[]): Map<string, Session[]> {
+  const sorted = [...sessions].sort(
+    (a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime(),
+  );
+  const map = new Map<string, Session[]>();
+  for (const s of sorted) {
+    const key = formatDayLabel(s.startTime);
+    map.set(key, [...(map.get(key) ?? []), s]);
+  }
+  return map;
+}
+
+function durationLabel(start: string, end: string) {
+  const mins = Math.round((new Date(end).getTime() - new Date(start).getTime()) / 60_000);
+  if (mins < 60) return `${mins} min`;
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return m > 0 ? `${h}h${String(m).padStart(2, "0")}` : `${h}h`;
+}
+
 export default function SchedulePage() {
-  const tCommon = useTranslations("common"); void tCommon;
+  const t = useTranslations("schedule");
+  const locale = useLocale();
+  const regional = intlLocale(locale);
   const { slug } = useParams<{ slug: string }>();
   const qc = useQueryClient();
 
-  // Resolve slug → event (gets us the real eventId)
   const { data: eventData, isLoading: isLoadingEvent } = useQuery({
     queryKey: ["event-by-slug", slug],
     queryFn: () => eventsApi.getBySlug(slug),
@@ -70,6 +110,8 @@ export default function SchedulePage() {
 
   const sessions = sessionsData?.data ?? [];
   const bookmarkedIds = new Set((bookmarksData?.data ?? []).map((b) => b.sessionId));
+  const sessionsByDay = groupByDay(sessions);
+  const hasMultipleDays = sessionsByDay.size > 1;
 
   if (isLoadingEvent || isLoadingSessions) {
     return (
@@ -81,96 +123,198 @@ export default function SchedulePage() {
 
   if (sessionsError) {
     return (
-      <div className="max-w-3xl mx-auto px-4 py-16 text-center">
-        <p className="text-destructive">Impossible de charger le programme.</p>
-        <button
-          onClick={() => qc.invalidateQueries({ queryKey: ["sessions", eventId] })}
-          className="mt-3 text-sm text-primary hover:underline"
-        >
-          Réessayer
-        </button>
+      <div className="max-w-3xl mx-auto px-4 py-16">
+        <EmptyStateEditorial
+          icon={AlertTriangle}
+          kicker={t("errorKicker")}
+          title={t("errorTitle")}
+          action={
+            <button
+              onClick={() => qc.invalidateQueries({ queryKey: ["sessions", eventId] })}
+              className="text-sm font-medium text-teranga-gold-dark hover:underline"
+            >
+              {t("retry")}
+            </button>
+          }
+        />
       </div>
     );
   }
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-8">
+    <div className="max-w-3xl mx-auto px-4 py-8 space-y-8">
       <Link
         href={event ? `/events/${event.slug}` : "/events"}
-        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground mb-6"
+        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground"
       >
-        <ArrowLeft className="h-4 w-4" /> Retour
+        <ArrowLeft className="h-4 w-4" /> {t("back")}
       </Link>
 
-      <div className="flex items-center gap-3 mb-6">
-        <Calendar className="h-6 w-6 text-primary" />
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Programme</h1>
-          {event && <p className="text-sm text-muted-foreground">{event.title}</p>}
+      <SectionHeader
+        kicker={t("kicker")}
+        title={t("title")}
+        subtitle={event?.title}
+        size="hero"
+        as="h1"
+      />
+      <p className="font-mono-kicker text-[11px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
+        — {t("timezone")}
+      </p>
+
+      {/* Bookmark count strip */}
+      {bookmarkedIds.size > 0 && (
+        <div className="flex items-center gap-2 rounded-full border border-teranga-gold/30 bg-teranga-gold/5 px-4 py-2 text-sm">
+          <Bookmark className="h-4 w-4 fill-teranga-gold text-teranga-gold" aria-hidden="true" />
+          <span className="text-foreground">
+            <strong>{bookmarkedIds.size}</strong>{" "}
+            {t("bookmarkCount", { count: bookmarkedIds.size })}
+          </span>
         </div>
-      </div>
+      )}
 
       {sessions.length === 0 ? (
-        <EmptyState
+        <EmptyStateEditorial
           icon={Calendar}
-          title="Aucune session programmée"
-          description="Le programme sera disponible prochainement. Revenez bientôt."
+          kicker={t("emptyKicker")}
+          title={t("emptyTitle")}
+          description={t("emptyDescription")}
         />
       ) : (
-        <div className="space-y-4">
-          {sessions.map((session) => {
-            const isBookmarked = bookmarkedIds.has(session.id);
-            return (
-              <div
-                key={session.id}
-                className={`bg-card rounded-xl border p-5 transition-colors ${isBookmarked ? "border-primary/30 bg-primary/5" : "border-border"}`}
-              >
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <h3 className="font-semibold text-foreground mb-1">{session.title}</h3>
-                    <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground mb-2">
-                      <span className="flex items-center gap-1">
-                        <Clock className="h-3.5 w-3.5" />
-                        {formatTime(session.startTime)} — {formatTime(session.endTime)}
-                      </span>
-                      {session.location && (
-                        <span className="bg-accent text-muted-foreground text-xs px-2 py-0.5 rounded-full">
-                          {session.location}
-                        </span>
-                      )}
-                      {session.speakerIds.length > 0 && (
-                        <span className="flex items-center gap-1">
-                          <Mic className="h-3.5 w-3.5" />
-                          {session.speakerIds.length} intervenant(s)
-                        </span>
-                      )}
-                    </div>
-                    {session.description && (
-                      <p className="text-sm text-muted-foreground line-clamp-3">
-                        {session.description}
-                      </p>
-                    )}
-                  </div>
-                  {session.isBookmarkable && (
-                    <button
-                      onClick={() => toggleBookmark.mutate({ sessionId: session.id, isBookmarked })}
-                      className={`p-2 rounded-lg transition-colors ${isBookmarked ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-foreground hover:bg-muted"}`}
-                      title={
-                        isBookmarked ? "Retirer du programme perso" : "Ajouter au programme perso"
-                      }
-                      aria-label={
-                        isBookmarked
-                          ? "Retirer du programme personnel"
-                          : "Ajouter au programme personnel"
-                      }
-                    >
-                      <Bookmark className={`h-5 w-5 ${isBookmarked ? "fill-current" : ""}`} />
-                    </button>
-                  )}
+        <div className="space-y-10">
+          {Array.from(sessionsByDay.entries()).map(([dayLabel, daySessions]) => (
+            <section key={dayLabel}>
+              {/* Day header — only if multi-day event */}
+              {hasMultipleDays && (
+                <div className="mb-4 flex items-center gap-3">
+                  <p className="font-mono-kicker text-[11px] font-medium uppercase tracking-[0.14em] text-teranga-gold-dark capitalize">
+                    — {dayLabel}
+                  </p>
+                  <div className="flex-1 border-t border-dashed" aria-hidden="true" />
+                </div>
+              )}
+
+              {/* Timeline */}
+              <div className="relative">
+                {/* Vertical time rail */}
+                <div
+                  className="absolute left-[52px] top-2 bottom-2 w-px bg-border"
+                  aria-hidden="true"
+                />
+
+                <div className="space-y-3">
+                  {daySessions.map((session) => {
+                    const isBookmarked = bookmarkedIds.has(session.id);
+                    const duration = durationLabel(session.startTime, session.endTime);
+                    return (
+                      <div key={session.id} className="flex gap-4">
+                        {/* Time column */}
+                        <div className="w-[52px] shrink-0 pt-3.5 text-right">
+                          <span className="font-mono-kicker text-[11px] font-semibold text-teranga-navy dark:text-teranga-gold">
+                            {formatTime(session.startTime, regional)}
+                          </span>
+                        </div>
+
+                        {/* Timeline dot */}
+                        <div className="relative flex shrink-0 flex-col items-center pt-4">
+                          <span
+                            className={`z-10 h-2.5 w-2.5 rounded-full border-2 ${
+                              isBookmarked
+                                ? "border-teranga-gold bg-teranga-gold"
+                                : "border-border bg-card"
+                            }`}
+                            aria-hidden="true"
+                          />
+                        </div>
+
+                        {/* Session card */}
+                        <div
+                          className={`mb-1 flex-1 rounded-card border p-4 transition-colors ${
+                            isBookmarked
+                              ? "border-teranga-gold/40 bg-teranga-gold/5"
+                              : "bg-card hover:border-muted-foreground/30"
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0 flex-1">
+                              <h3 className="font-semibold text-foreground leading-snug">
+                                {session.title}
+                              </h3>
+
+                              {/* Meta row */}
+                              <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                                <span className="flex items-center gap-1">
+                                  <Clock className="h-3 w-3" aria-hidden="true" />
+                                  {formatTime(session.startTime, regional)} —{" "}
+                                  {formatTime(session.endTime, regional)}
+                                  <span className="text-muted-foreground/60">({duration})</span>
+                                </span>
+                                {session.location && (
+                                  <span className="flex items-center gap-1">
+                                    <MapPin className="h-3 w-3" aria-hidden="true" />
+                                    {session.location}
+                                  </span>
+                                )}
+                                {session.speakerIds.length > 0 && (
+                                  <span className="flex items-center gap-1">
+                                    <Mic className="h-3 w-3" aria-hidden="true" />
+                                    {t("speakersCount", { count: session.speakerIds.length })}
+                                  </span>
+                                )}
+                              </div>
+
+                              {session.description && (
+                                <p className="mt-2 text-sm text-muted-foreground line-clamp-2">
+                                  {session.description}
+                                </p>
+                              )}
+
+                              {/* Tags */}
+                              {session.tags.length > 0 && (
+                                <div className="mt-2 flex flex-wrap gap-1.5">
+                                  {session.tags.map((tag) => (
+                                    <span
+                                      key={tag}
+                                      className="rounded-full bg-muted/60 px-2 py-0.5 text-[10px] text-muted-foreground"
+                                    >
+                                      {tag}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Bookmark button */}
+                            {session.isBookmarkable && (
+                              <button
+                                onClick={() =>
+                                  toggleBookmark.mutate({ sessionId: session.id, isBookmarked })
+                                }
+                                className={`shrink-0 rounded-lg p-2 transition-colors ${
+                                  isBookmarked
+                                    ? "text-teranga-gold hover:bg-teranga-gold/10"
+                                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                                }`}
+                                aria-label={
+                                  isBookmarked ? t("removeBookmarkAria") : t("addBookmarkAria")
+                                }
+                                title={
+                                  isBookmarked ? t("removeBookmarkShort") : t("addBookmarkShort")
+                                }
+                              >
+                                <Bookmark
+                                  className={`h-4 w-4 ${isBookmarked ? "fill-current" : ""}`}
+                                />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
-            );
-          })}
+            </section>
+          ))}
         </div>
       )}
     </div>

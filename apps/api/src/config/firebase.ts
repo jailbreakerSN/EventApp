@@ -54,6 +54,7 @@ export const COLLECTIONS = {
   PAYMENTS: "payments",
   RECEIPTS: "receipts",
   PAYOUTS: "payouts",
+  BALANCE_TRANSACTIONS: "balanceTransactions",
   BROADCASTS: "broadcasts",
   NOTIFICATION_PREFERENCES: "notificationPreferences",
   SMS_LOG: "smsLog",
@@ -65,6 +66,7 @@ export const COLLECTIONS = {
   VENUES: "venues",
   NEWSLETTER_SUBSCRIBERS: "newsletterSubscribers",
   SUBSCRIPTIONS: "subscriptions",
+  PLANS: "plans",
   SESSION_BOOKMARKS: "sessionBookmarks",
   COUNTERS: "counters",
 } as const;

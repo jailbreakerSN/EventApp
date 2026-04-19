@@ -3,23 +3,64 @@
 import { useEffect, useState } from "react";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { CheckCircle, XCircle, Loader2, ArrowLeft } from "lucide-react";
+import { CheckCircle, Download, Loader2, XCircle, ArrowLeft } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { useQuery } from "@tanstack/react-query";
-import { eventsApi, registrationsApi } from "@/lib/api-client";
+import { useLocale, useTranslations } from "next-intl";
+import { eventsApi, receiptsApi, registrationsApi } from "@/lib/api-client";
 import { usePaymentStatus } from "@/hooks/use-payments";
-import { Button, Card, CardContent, Spinner, formatCurrency } from "@teranga/shared-ui";
+import {
+  Button,
+  Card,
+  CardContent,
+  EmptyStateEditorial,
+  SectionHeader,
+  Spinner,
+  formatCurrency,
+} from "@teranga/shared-ui";
 import type { Event, Payment, Registration } from "@teranga/shared-types";
-import { useTranslations } from "next-intl";
+import { intlLocale } from "@/lib/intl-locale";
 
 export default function PaymentStatusPage() {
-  const _t = useTranslations("common"); void _t;
+  const t = useTranslations("paymentStatus");
+  const locale = useLocale();
+  const regional = intlLocale(locale);
   const { eventId } = useParams<{ eventId: string }>();
   const searchParams = useSearchParams();
   const router = useRouter();
   const paymentId = searchParams.get("paymentId");
 
   const [redirectCountdown, setRedirectCountdown] = useState<number | null>(null);
+  const [receiptState, setReceiptState] = useState<"idle" | "loading" | "error">("idle");
+
+  const handleReceiptDownload = async () => {
+    if (!paymentId || receiptState === "loading") return;
+    setReceiptState("loading");
+    try {
+      // generate() is idempotent on the API side — returns existing receipt
+      // if one already exists, so calling it every click is safe.
+      const gen = (await receiptsApi.generate(paymentId)) as {
+        data?: { id?: string };
+      };
+      const receiptId = gen?.data?.id;
+      if (!receiptId) {
+        setReceiptState("error");
+        return;
+      }
+      const pdf = (await receiptsApi.getPdf(receiptId)) as {
+        data?: { pdfURL?: string };
+      };
+      const url = pdf?.data?.pdfURL;
+      if (!url) {
+        setReceiptState("error");
+        return;
+      }
+      window.open(url, "_blank");
+      setReceiptState("idle");
+    } catch {
+      setReceiptState("error");
+    }
+  };
 
   const { data: eventData } = useQuery({
     queryKey: ["event", eventId],
@@ -37,7 +78,6 @@ export default function PaymentStatusPage() {
   const isSuccess = status === "succeeded";
   const isFailed = isTerminal && !isSuccess;
 
-  // Fetch registration to get the signed QR code once payment succeeds
   const { data: myRegsData } = useQuery({
     queryKey: ["my-registrations-for-qr", eventId],
     queryFn: () => registrationsApi.getMyRegistrations({ limit: 100 }),
@@ -46,7 +86,6 @@ export default function PaymentStatusPage() {
   const myRegs = (myRegsData as { data?: Registration[] })?.data as Registration[] | undefined;
   const registration = myRegs?.find((r) => r.eventId === eventId && r.status === "confirmed");
 
-  // Auto-redirect to badge page on payment success
   useEffect(() => {
     if (!isSuccess || !registration) return;
 
@@ -68,11 +107,20 @@ export default function PaymentStatusPage() {
 
   if (!paymentId) {
     return (
-      <div className="mx-auto max-w-lg px-4 py-16 text-center">
-        <p className="text-muted-foreground">Aucun paiement sp\u00e9cifi\u00e9.</p>
-        <Link href="/events" className="mt-4 inline-block text-teranga-gold hover:underline">
-          Retour aux \u00e9v\u00e9nements
-        </Link>
+      <div className="mx-auto max-w-lg px-4 py-16">
+        <EmptyStateEditorial
+          icon={XCircle}
+          kicker="— PAIEMENT"
+          title={t("noPaymentSpecified")}
+          action={
+            <Link
+              href="/events"
+              className="text-sm font-medium text-teranga-gold-dark hover:underline"
+            >
+              {t("backToEvents")}
+            </Link>
+          }
+        />
       </div>
     );
   }
@@ -86,126 +134,141 @@ export default function PaymentStatusPage() {
   }
 
   return (
-    <div className="mx-auto max-w-lg px-4 py-8">
+    <div className="mx-auto max-w-lg px-4 py-8 space-y-6">
       <Link
-        href={event ? `/events/${eventId}` : "/events"}
-        className="mb-6 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+        href={event ? `/events/${event.slug}` : "/events"}
+        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
       >
         <ArrowLeft className="h-4 w-4" />
-        {event ? `Retour \u00e0 ${event.title}` : "Retour aux \u00e9v\u00e9nements"}
+        {event ? t("backToEventPrefix", { title: event.title }) : t("backToEvents")}
       </Link>
 
-      <h1 className="text-2xl font-bold">{event?.title ?? "Paiement"}</h1>
+      <SectionHeader
+        kicker="— PAIEMENT"
+        title={event?.title ?? t("pageTitleFallback")}
+        size="hero"
+        as="h1"
+      />
 
-      <Card className="mt-6">
+      <Card>
         <CardContent className="flex flex-col items-center py-8">
-          {/* Processing state */}
           {!isTerminal && (
             <>
               <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-amber-50 dark:bg-amber-950/50">
                 <Loader2 className="h-10 w-10 animate-spin text-amber-500 dark:text-amber-400" />
               </div>
-              <h2 className="mt-4 text-xl font-bold">Paiement en cours\u2026</h2>
-              <p className="mt-2 text-center text-muted-foreground">
-                Votre paiement est en cours de traitement. Cette page se met \u00e0 jour
-                automatiquement.
-              </p>
+              <h2 className="mt-4 text-xl font-bold">{t("processingHeading")}</h2>
+              <p className="mt-2 text-center text-muted-foreground">{t("processingHint")}</p>
               {payment && (
                 <p className="mt-3 text-lg font-semibold text-teranga-gold">
-                  {formatCurrency(payment.amount, payment.currency)}
+                  {formatCurrency(payment.amount, payment.currency, regional)}
                 </p>
               )}
             </>
           )}
 
-          {/* Success state */}
           {isSuccess && payment && (
             <>
               <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-teranga-green/10">
                 <CheckCircle className="h-10 w-10 text-teranga-green" />
               </div>
-              <h2 className="mt-4 text-xl font-bold">Paiement confirm\u00e9 !</h2>
-              <p className="mt-2 text-center text-muted-foreground">
-                Votre inscription a \u00e9t\u00e9 confirm\u00e9e et votre badge QR est pr\u00eat.
-              </p>
+              <h2 className="mt-4 text-xl font-bold">{t("successHeading")}</h2>
+              <p className="mt-2 text-center text-muted-foreground">{t("successHint")}</p>
               <p className="mt-3 text-lg font-semibold text-teranga-green">
-                {formatCurrency(payment.amount, payment.currency)}
+                {formatCurrency(payment.amount, payment.currency, regional)}
               </p>
 
-              {/* Auto-redirect notice */}
               {registration && redirectCountdown !== null && redirectCountdown > 0 && (
-                <p className="mt-3 text-sm text-primary animate-pulse">
-                  Redirection vers votre badge dans {redirectCountdown}s...
+                <p
+                  role="status"
+                  aria-live="polite"
+                  className="mt-3 text-sm text-primary animate-pulse"
+                >
+                  {t("redirectIn", { seconds: redirectCountdown })}
                 </p>
               )}
 
-              {/* Show signed QR code from the registration */}
               {registration?.qrCodeValue && (
                 <div className="mt-6 inline-block rounded-lg bg-white p-4 shadow-md">
                   <QRCodeSVG value={registration.qrCodeValue} size={180} level="M" includeMargin />
                 </div>
               )}
 
-              <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+              <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:justify-center">
                 {registration && (
                   <Link href={`/my-events/${registration.id}/badge`}>
                     <Button className="bg-teranga-gold hover:bg-teranga-gold/90">
-                      Voir mon badge
+                      {t("viewBadge")}
                     </Button>
                   </Link>
                 )}
+                <Button
+                  variant="outline"
+                  onClick={handleReceiptDownload}
+                  disabled={receiptState === "loading"}
+                >
+                  {receiptState === "loading" ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
+                  ) : (
+                    <Download className="mr-2 h-4 w-4" aria-hidden="true" />
+                  )}
+                  {receiptState === "loading"
+                    ? t("generatingReceipt")
+                    : t("downloadReceipt")}
+                </Button>
                 <Link href="/my-events">
                   <Button
                     variant={registration ? "outline" : "default"}
                     className={!registration ? "bg-teranga-gold hover:bg-teranga-gold/90" : ""}
                   >
-                    Mes inscriptions
+                    {t("myRegistrations")}
                   </Button>
                 </Link>
                 <Link href="/events">
-                  <Button variant="outline">Explorer d&apos;autres \u00e9v\u00e9nements</Button>
+                  <Button variant="outline">{t("exploreOthers")}</Button>
                 </Link>
               </div>
+              {receiptState === "error" && (
+                <p className="mt-2 text-center text-sm text-destructive">
+                  {t("receiptError")}
+                </p>
+              )}
             </>
           )}
 
-          {/* Failed / expired state */}
           {isFailed && payment && (
             <>
               <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-red-50 dark:bg-red-950/50">
                 <XCircle className="h-10 w-10 text-red-500 dark:text-red-400" />
               </div>
-              <h2 className="mt-4 text-xl font-bold">Paiement \u00e9chou\u00e9</h2>
+              <h2 className="mt-4 text-xl font-bold">{t("failedHeading")}</h2>
               <p className="mt-2 text-center text-muted-foreground">
-                {payment.failureReason ??
-                  "Le paiement n'a pas pu \u00eatre trait\u00e9. Veuillez r\u00e9essayer."}
+                {payment.failureReason ?? t("failedFallback")}
               </p>
 
               <div className="mt-6 flex flex-col gap-3 sm:flex-row">
                 <Link href={`/register/${eventId}`}>
-                  <Button className="bg-teranga-gold hover:bg-teranga-gold/90">
-                    R\u00e9essayer
-                  </Button>
+                  <Button className="bg-teranga-gold hover:bg-teranga-gold/90">{t("retry")}</Button>
                 </Link>
+                <a href="mailto:contact@teranga.sn?subject=Paiement%20%C3%A9chou%C3%A9">
+                  <Button variant="outline">{t("contactSupport")}</Button>
+                </a>
                 <Link href="/events">
-                  <Button variant="outline">Retour aux \u00e9v\u00e9nements</Button>
+                  <Button variant="ghost">{t("backToEvents")}</Button>
                 </Link>
               </div>
             </>
           )}
 
-          {/* Error state */}
           {isError && (
             <>
               <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-red-50 dark:bg-red-950/50">
                 <XCircle className="h-10 w-10 text-red-500 dark:text-red-400" />
               </div>
-              <h2 className="mt-4 text-xl font-bold">Erreur</h2>
-              <p className="mt-2 text-center text-muted-foreground">
-                Impossible de r\u00e9cup\u00e9rer le statut du paiement.
-              </p>
+              <h2 className="mt-4 text-xl font-bold">{t("errorHeading")}</h2>
+              <p className="mt-2 text-center text-muted-foreground">{t("errorHint")}</p>
               <Link href="/events" className="mt-4">
-                <Button variant="outline">Retour aux \u00e9v\u00e9nements</Button>
+                <Button variant="outline">{t("backToEvents")}</Button>
               </Link>
             </>
           )}

@@ -19,10 +19,16 @@ import {
   TrendingUp,
   Info,
   ArrowLeft,
+  AlertTriangle,
 } from "lucide-react";
 import Link from "next/link";
 import type { SponsorProfile } from "@teranga/shared-types";
-import { Skeleton, DataTable, type DataTableColumn } from "@teranga/shared-ui";
+import {
+  Skeleton,
+  DataTable,
+  EmptyStateEditorial,
+  type DataTableColumn,
+} from "@teranga/shared-ui";
 
 interface Lead {
   id: string;
@@ -108,8 +114,29 @@ export default function SponsorPortalPage() {
   async function handleExportCSV() {
     if (!sponsor) return;
     try {
+      // API returns JSON array of lead objects. Convert to CSV client-
+      // side — previously this code assumed the API returned CSV text
+      // directly and produced a `[object Object]` download because
+      // `result.data` was an object array, not a string.
       const result = await sponsorsApi.exportLeads(sponsor.id);
-      const csvContent = result.data;
+      const leads = result.data;
+      const header = ["id", "name", "email", "phone", "notes", "tags", "scannedAt"];
+      const escapeCsv = (v: unknown): string => {
+        const s = v == null ? "" : String(v);
+        return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+      };
+      const rows = leads.map((l) =>
+        [
+          escapeCsv(l.id),
+          escapeCsv(l.name),
+          escapeCsv(l.email),
+          escapeCsv(l.phone),
+          escapeCsv(l.notes),
+          escapeCsv((l.tags ?? []).join("|")),
+          escapeCsv(l.scannedAt),
+        ].join(","),
+      );
+      const csvContent = [header.join(","), ...rows].join("\n");
       const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
       const link = document.createElement("a");
       link.href = URL.createObjectURL(blob);
@@ -151,8 +178,12 @@ export default function SponsorPortalPage() {
 
   if (error || !sponsor) {
     return (
-      <div className="mx-auto max-w-3xl px-4 py-16 text-center">
-        <p className="text-destructive">{error ?? "Profil introuvable."}</p>
+      <div className="mx-auto max-w-3xl px-4 py-16">
+        <EmptyStateEditorial
+          icon={AlertTriangle}
+          kicker="— INTROUVABLE"
+          title={error ?? "Profil introuvable."}
+        />
       </div>
     );
   }
@@ -402,15 +433,12 @@ export default function SponsorPortalPage() {
           </div>
 
           {leads.length === 0 ? (
-            <div className="rounded-lg border bg-card p-8 text-center shadow-sm">
-              <Users className="mx-auto h-10 w-10 text-muted-foreground" />
-              <p className="mt-3 text-sm text-muted-foreground">
-                Aucun lead collecté pour le moment.
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Les leads apparaîtront ici quand les participants scanneront votre QR code.
-              </p>
-            </div>
+            <EmptyStateEditorial
+              icon={Users}
+              kicker="— AUCUN LEAD"
+              title="Aucun lead collecté pour le moment"
+              description="Les leads apparaîtront ici quand les participants scanneront votre QR code."
+            />
           ) : (
             <DataTable<Lead & Record<string, unknown>>
               aria-label="Leads collectés"

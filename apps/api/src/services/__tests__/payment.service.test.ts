@@ -137,6 +137,7 @@ vi.mock("@/config/firebase", () => ({
     REGISTRATIONS: "registrations",
     EVENTS: "events",
     PAYMENTS: "payments",
+    BALANCE_TRANSACTIONS: "balanceTransactions",
   },
 }));
 
@@ -282,6 +283,44 @@ describe("PaymentService.initiatePayment", () => {
     await expect(
       service.initiatePayment("ev-1", "vip", "crypto" as never, undefined, user),
     ).rejects.toThrow("non disponible");
+  });
+
+  it("rejects returnUrl pointing outside the platform allowlist (open-redirect guard)", async () => {
+    // Regression guard: previously any http/https URL was accepted as
+    // returnUrl, turning us into an open-redirect amplifier off a
+    // trusted Wave/OM checkout. The service now refuses hosts that
+    // aren't PARTICIPANT_WEB_URL / WEB_BACKOFFICE_URL / allowlisted.
+    mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
+    mockProvider.initiate.mockResolvedValue({
+      providerTransactionId: "mock_tx",
+      redirectUrl: "http://mock-checkout",
+    });
+    mockTxGet.mockResolvedValue({ empty: true });
+
+    await expect(
+      service.initiatePayment("ev-1", "vip", "mock", "https://attacker.example.com/phish", user),
+    ).rejects.toThrow(/n'est pas autorisée/);
+  });
+
+  it("accepts returnUrl on localhost in non-production (dev default)", async () => {
+    // Dev / emulator flows pass through localhost:300x; keep them
+    // working while locking down production hosts.
+    mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
+    mockProvider.initiate.mockResolvedValue({
+      providerTransactionId: "mock_tx",
+      redirectUrl: "http://mock-checkout",
+    });
+    mockTxGet.mockResolvedValue({ empty: true });
+
+    await expect(
+      service.initiatePayment(
+        "ev-1",
+        "vip",
+        "mock",
+        "http://localhost:3002/register/ev-1/payment-status",
+        user,
+      ),
+    ).resolves.toBeDefined();
   });
 });
 
@@ -540,6 +579,8 @@ describe("PaymentService.refundPayment", () => {
       .mockResolvedValueOnce(payment)
       .mockResolvedValueOnce({ ...payment, status: "refunded", refundedAmount: 5000 });
     mockProvider.refund.mockResolvedValue({ success: true, providerRefundId: "ref_1" });
+    // Fresh re-read inside the transaction for lost-update safety
+    mockTxGet.mockResolvedValueOnce({ exists: true, data: () => payment });
 
     await service.refundPayment(payment.id, undefined, "Annulé par l'organisateur", organizer);
 
@@ -568,12 +609,38 @@ describe("PaymentService.refundPayment", () => {
       .mockResolvedValueOnce(payment)
       .mockResolvedValueOnce({ ...payment, refundedAmount: 3000 });
     mockProvider.refund.mockResolvedValue({ success: true });
+    mockTxGet.mockResolvedValueOnce({ exists: true, data: () => payment });
 
     await service.refundPayment(payment.id, 3000, undefined, organizer);
 
     expect(mockRunTransaction).toHaveBeenCalled();
     // Partial refund: only payment update (no registration cancel, no event decrement)
     expect(mockTxUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects when a concurrent refund has already applied (fresh read inside tx)", async () => {
+    const payment = buildPayment({
+      status: "succeeded",
+      organizationId: orgId,
+      amount: 5000,
+      refundedAmount: 0,
+    });
+    // Fresh read inside tx shows payment already fully refunded by a
+    // concurrent request — guard must fire and prevent double-write.
+    mockPaymentRepo.findByIdOrThrow.mockResolvedValue(payment);
+    mockProvider.refund.mockResolvedValue({ success: true });
+    mockTxGet.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({ ...payment, status: "refunded", refundedAmount: 5000 }),
+    });
+
+    await expect(
+      service.refundPayment(payment.id, undefined, undefined, organizer),
+    ).rejects.toThrow(/déjà.*remboursé/i);
+
+    // Crucially: NO ledger entry was written despite provider having been
+    // called — the transaction rolled back.
+    expect(mockTxSet).not.toHaveBeenCalled();
   });
 
   it("rejects if payment is not succeeded", async () => {
@@ -633,5 +700,154 @@ describe("PaymentService.refundPayment", () => {
     await expect(
       service.refundPayment(payment.id, undefined, undefined, organizer),
     ).rejects.toThrow("refusé");
+  });
+
+  it("surfaces the specific manual-refund message when provider tags reason", async () => {
+    // Orange Money returns {success:false, reason:"manual_refund_required"}
+    // because OM has no refund API. The service must surface a specific
+    // French message explaining the operator needs to refund via the OM
+    // merchant portal — the generic "refusé" string would leave the
+    // organizer without any actionable next step.
+    const payment = buildPayment({
+      status: "succeeded",
+      organizationId: orgId,
+      amount: 5000,
+      refundedAmount: 0,
+      method: "orange_money",
+    });
+    mockPaymentRepo.findByIdOrThrow.mockResolvedValue(payment);
+    mockProvider.refund.mockResolvedValue({
+      success: false,
+      reason: "manual_refund_required",
+    });
+
+    await expect(
+      service.refundPayment(payment.id, undefined, undefined, organizer),
+    ).rejects.toThrow(/remboursements automatiques|portail marchand/);
+  });
+});
+
+// ─── Ledger writes on handleWebhook(succeeded) ─────────────────────────────
+//
+// Every successful payment must write two balance_transactions entries in
+// the SAME transaction that confirms the payment: +amount (kind=payment)
+// and −fee (kind=platform_fee). This guarantees the /finance page balance
+// is never stale relative to the payments list.
+
+describe("PaymentService.handleWebhook — ledger", () => {
+  it("writes payment + platform_fee ledger entries on success", async () => {
+    const payment = buildPayment({ status: "processing", amount: 10_000 });
+    mockPaymentRepo.findByProviderTransactionId.mockResolvedValue(payment);
+    mockTxGet
+      .mockResolvedValueOnce({ exists: true, data: () => payment })
+      .mockResolvedValueOnce({ exists: true, data: () => buildRegistration() })
+      .mockResolvedValueOnce({
+        exists: true,
+        data: () => buildEvent({ endDate: "2026-06-01T00:00:00.000Z" }),
+      });
+
+    await service.handleWebhook(payment.providerTransactionId!, "succeeded");
+
+    // Two ledger entries written via tx.set(): payment + platform_fee
+    expect(mockTxSet).toHaveBeenCalledTimes(2);
+
+    const setCalls = mockTxSet.mock.calls.map((call) => call[1]);
+    const paymentEntry = setCalls.find((e: { kind: string }) => e.kind === "payment") as
+      | { amount: number; status: string; currency: string }
+      | undefined;
+    const feeEntry = setCalls.find((e: { kind: string }) => e.kind === "platform_fee") as
+      | { amount: number; status: string }
+      | undefined;
+
+    expect(paymentEntry).toBeDefined();
+    expect(paymentEntry!.amount).toBe(10_000); // +gross
+    expect(paymentEntry!.status).toBe("pending");
+    expect(paymentEntry!.currency).toBe("XOF");
+
+    expect(feeEntry).toBeDefined();
+    expect(feeEntry!.amount).toBe(-500); // −5% of 10 000
+    expect(feeEntry!.status).toBe("pending");
+  });
+
+  it("writes no ledger entries on failed payment", async () => {
+    const payment = buildPayment({ status: "processing" });
+    mockPaymentRepo.findByProviderTransactionId.mockResolvedValue(payment);
+    mockTxGet.mockResolvedValueOnce({ exists: true, data: () => payment });
+
+    await service.handleWebhook(payment.providerTransactionId!, "failed", {
+      reason: "Solde insuffisant",
+    });
+
+    expect(mockTxSet).not.toHaveBeenCalled();
+  });
+
+  it("skips ledger writes when payment became terminal concurrently (idempotency)", async () => {
+    const payment = buildPayment({ status: "processing" });
+    mockPaymentRepo.findByProviderTransactionId.mockResolvedValue(payment);
+    // Fresh re-read inside tx shows already succeeded → abort
+    mockTxGet.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({ ...payment, status: "succeeded" }),
+    });
+
+    await service.handleWebhook(payment.providerTransactionId!, "succeeded");
+
+    expect(mockTxSet).not.toHaveBeenCalled();
+  });
+});
+
+// ─── Ledger writes on refundPayment ────────────────────────────────────────
+
+describe("PaymentService.refundPayment — ledger", () => {
+  const orgId = "org-1";
+  const organizer = buildOrganizerUser(orgId);
+
+  it("writes a refund ledger entry with status=available on full refund", async () => {
+    const payment = buildPayment({
+      status: "succeeded",
+      organizationId: orgId,
+      amount: 5_000,
+      refundedAmount: 0,
+    });
+    mockPaymentRepo.findByIdOrThrow
+      .mockResolvedValueOnce(payment)
+      .mockResolvedValueOnce({ ...payment, status: "refunded", refundedAmount: 5_000 });
+    mockProvider.refund.mockResolvedValue({ success: true });
+    mockTxGet.mockResolvedValueOnce({ exists: true, data: () => payment });
+
+    await service.refundPayment(payment.id, undefined, "Annulé par l'organisateur", organizer);
+
+    expect(mockTxSet).toHaveBeenCalledTimes(1);
+    const refundEntry = mockTxSet.mock.calls[0][1] as {
+      kind: string;
+      amount: number;
+      status: string;
+      description: string;
+    };
+    expect(refundEntry.kind).toBe("refund");
+    expect(refundEntry.amount).toBe(-5_000);
+    // Refunds skip the pending window — operator must see balance debited now
+    expect(refundEntry.status).toBe("available");
+    expect(refundEntry.description).toContain("Annulé par l'organisateur");
+  });
+
+  it("writes a partial refund entry matching the refund amount", async () => {
+    const payment = buildPayment({
+      status: "succeeded",
+      organizationId: orgId,
+      amount: 10_000,
+      refundedAmount: 0,
+    });
+    mockPaymentRepo.findByIdOrThrow
+      .mockResolvedValueOnce(payment)
+      .mockResolvedValueOnce({ ...payment, refundedAmount: 3_000 });
+    mockProvider.refund.mockResolvedValue({ success: true });
+    mockTxGet.mockResolvedValueOnce({ exists: true, data: () => payment });
+
+    await service.refundPayment(payment.id, 3_000, undefined, organizer);
+
+    expect(mockTxSet).toHaveBeenCalledTimes(1);
+    const refundEntry = mockTxSet.mock.calls[0][1] as { amount: number };
+    expect(refundEntry.amount).toBe(-3_000);
   });
 });

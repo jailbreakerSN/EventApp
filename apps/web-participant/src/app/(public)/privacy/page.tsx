@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
+import { SectionHeader } from "@teranga/shared-ui";
 
 export const metadata: Metadata = {
   title: "Politique de confidentialité | Teranga",
@@ -10,21 +11,22 @@ export const metadata: Metadata = {
 
 export default function PrivacyPage() {
   return (
-    <div className="mx-auto max-w-3xl px-4 py-12">
+    <div className="mx-auto max-w-3xl px-4 py-12 space-y-10">
       <Link
         href="/"
-        className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors mb-8"
+        className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
       >
         <ArrowLeft size={16} />
         Retour
       </Link>
 
-      <h1 className="text-3xl font-bold tracking-tight mb-2">
-        Politique de confidentialité
-      </h1>
-      <p className="text-sm text-muted-foreground mb-10">
-        Dernière mise à jour : 9 avril 2026
-      </p>
+      <SectionHeader
+        kicker="— CONFIDENTIALITÉ"
+        title="Politique de confidentialité"
+        subtitle="Dernière mise à jour : 9 avril 2026."
+        size="hero"
+        as="h1"
+      />
 
       <div className="space-y-8 text-foreground leading-relaxed">
         <p>
@@ -38,7 +40,7 @@ export default function PrivacyPage() {
 
         {/* Données collectées */}
         <section>
-          <h2 className="text-xl font-semibold mb-3">1. Données collectées</h2>
+          <h2 className="font-serif-display text-2xl font-semibold mb-3">1. Données collectées</h2>
           <p className="mb-2">
             Nous collectons les catégories de données suivantes :
           </p>
@@ -70,7 +72,7 @@ export default function PrivacyPage() {
 
         {/* Utilisation des données */}
         <section>
-          <h2 className="text-xl font-semibold mb-3">
+          <h2 className="font-serif-display text-2xl font-semibold mb-3">
             2. Utilisation des données
           </h2>
           <p className="mb-2">Vos données sont utilisées pour :</p>
@@ -99,7 +101,7 @@ export default function PrivacyPage() {
 
         {/* Partage des données */}
         <section>
-          <h2 className="text-xl font-semibold mb-3">
+          <h2 className="font-serif-display text-2xl font-semibold mb-3">
             3. Partage des données
           </h2>
           <p className="mb-2">
@@ -131,7 +133,7 @@ export default function PrivacyPage() {
 
         {/* Cookies */}
         <section>
-          <h2 className="text-xl font-semibold mb-3">
+          <h2 className="font-serif-display text-2xl font-semibold mb-3">
             4. Cookies et technologies similaires
           </h2>
           <p>
@@ -145,7 +147,7 @@ export default function PrivacyPage() {
 
         {/* Durée de conservation */}
         <section>
-          <h2 className="text-xl font-semibold mb-3">
+          <h2 className="font-serif-display text-2xl font-semibold mb-3">
             5. Durée de conservation
           </h2>
           <ul className="list-disc pl-6 space-y-1">
@@ -173,7 +175,7 @@ export default function PrivacyPage() {
 
         {/* Vos droits */}
         <section>
-          <h2 className="text-xl font-semibold mb-3">6. Vos droits</h2>
+          <h2 className="font-serif-display text-2xl font-semibold mb-3">6. Vos droits</h2>
           <p className="mb-2">
             Conformément à la loi sénégalaise n&deg;&nbsp;2008-12 sur la
             protection des données personnelles et au Règlement Général sur la
@@ -210,7 +212,7 @@ export default function PrivacyPage() {
 
         {/* Sécurité */}
         <section>
-          <h2 className="text-xl font-semibold mb-3">
+          <h2 className="font-serif-display text-2xl font-semibold mb-3">
             7. Sécurité des données
           </h2>
           <p>
@@ -225,7 +227,7 @@ export default function PrivacyPage() {
 
         {/* Contact */}
         <section>
-          <h2 className="text-xl font-semibold mb-3">8. Contact</h2>
+          <h2 className="font-serif-display text-2xl font-semibold mb-3">8. Contact</h2>
           <p>
             Pour toute question relative à cette politique de confidentialité ou
             pour exercer vos droits, vous pouvez nous contacter :

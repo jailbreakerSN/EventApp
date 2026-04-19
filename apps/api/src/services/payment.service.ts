@@ -27,6 +27,8 @@ import { type PaymentProvider } from "@/providers/payment-provider.interface";
 import { mockPaymentProvider } from "@/providers/mock-payment.provider";
 import { wavePaymentProvider } from "@/providers/wave-payment.provider";
 import { orangeMoneyPaymentProvider } from "@/providers/orange-money-payment.provider";
+import { computePlatformFee, computeAvailableOn } from "@/config/finance";
+import { appendLedgerEntry } from "./balance-ledger";
 
 // ─── Provider Registry ──────────────────────────────────────────────────────
 
@@ -59,6 +61,20 @@ function getProvider(method: PaymentMethod): PaymentProvider {
   return provider;
 }
 
+/**
+ * Route-facing lookup for the webhook verifier path. Returns `null` when
+ * the provider string doesn't match a registered provider — callers
+ * translate null into a 404 rather than leaking the registry shape via
+ * an exception. Allows mock in production only if `NODE_ENV !== "production"`,
+ * matching `getProvider` semantics.
+ */
+export function getProviderForWebhook(providerName: string): PaymentProvider | null {
+  const provider = providers[providerName as PaymentMethod];
+  if (!provider) return null;
+  if (IS_PROD && providerName === "mock") return null;
+  return provider;
+}
+
 // ─── Webhook Signature ──────────────────────────────────────────────────────
 
 const WEBHOOK_SECRET =
@@ -84,6 +100,61 @@ export function verifyWebhookSignature(body: string, signature: string): boolean
   const expected = signWebhookPayload(body);
   if (expected.length !== signature.length) return false;
   return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature));
+}
+
+// ─── returnUrl allowlist ────────────────────────────────────────────────────
+//
+// After the user completes payment, the provider redirects their browser
+// to `returnUrl`. Accepting any http(s) URL would turn us into an open
+// redirect chained off a trust-worthy Wave/OM checkout — a classic
+// phishing amplifier. Allow only hosts the platform itself owns:
+// PARTICIPANT_WEB_URL, WEB_BACKOFFICE_URL, plus anything explicitly
+// allow-listed via ALLOWED_RETURN_HOSTS (comma-separated).
+
+function getAllowedReturnHosts(): Set<string> {
+  const hosts = new Set<string>();
+  const add = (value: string | undefined): void => {
+    if (!value) return;
+    try {
+      hosts.add(new URL(value).host.toLowerCase());
+    } catch {
+      /* ignore malformed env values */
+    }
+  };
+  add(process.env.PARTICIPANT_WEB_URL);
+  add(process.env.WEB_BACKOFFICE_URL);
+  (process.env.ALLOWED_RETURN_HOSTS ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .forEach((h) => hosts.add(h.toLowerCase()));
+  // In dev the env vars may not be set; accept localhost so the
+  // emulator flow doesn't break.
+  if (process.env.NODE_ENV !== "production") {
+    hosts.add("localhost:3000");
+    hosts.add("localhost:3001");
+    hosts.add("localhost:3002");
+  }
+  return hosts;
+}
+
+function assertAllowedReturnUrl(returnUrl: string): string {
+  let parsed: URL;
+  try {
+    parsed = new URL(returnUrl);
+  } catch {
+    throw new ValidationError("L'URL de retour est mal formée");
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new ValidationError("L'URL de retour doit utiliser HTTP ou HTTPS");
+  }
+  const allowed = getAllowedReturnHosts();
+  if (!allowed.has(parsed.host.toLowerCase())) {
+    throw new ValidationError(
+      `L'URL de retour ${parsed.host} n'est pas autorisée. Utilisez un domaine de la plateforme.`,
+    );
+  }
+  return returnUrl;
 }
 
 // ─── Service ────────────────────────────────────────────────────────────────
@@ -137,10 +208,11 @@ export class PaymentService extends BaseService {
     const payId = payRef.id;
     const qrCodeValue = signQrPayload(regId, eventId, user.uid);
 
-    const callbackUrl = `${process.env.API_BASE_URL ?? "http://localhost:3000"}/v1/payments/webhook`;
-    const finalReturnUrl =
-      returnUrl ??
-      `${process.env.PARTICIPANT_WEB_URL ?? "http://localhost:3002"}/register/${eventId}/payment-status?paymentId=${payId}`;
+    // Webhook path encodes the provider so the endpoint can route to
+    // the correct signature verifier without a query-string sniff.
+    const callbackUrl = `${process.env.API_BASE_URL ?? "http://localhost:3000"}/v1/payments/webhook/${method}`;
+    const defaultReturnUrl = `${process.env.PARTICIPANT_WEB_URL ?? "http://localhost:3002"}/register/${eventId}/payment-status?paymentId=${payId}`;
+    const finalReturnUrl = returnUrl ? assertAllowedReturnUrl(returnUrl) : defaultReturnUrl;
 
     // Get provider and initiate (outside transaction — provider call is idempotent)
     const provider = getProvider(method);
@@ -151,6 +223,7 @@ export class PaymentService extends BaseService {
       description: `Inscription : ${event.title} — ${ticketType.name}`,
       callbackUrl,
       returnUrl: finalReturnUrl,
+      method,
     });
 
     // ── Atomic: check duplicate + create registration + payment ──
@@ -310,6 +383,53 @@ export class PaymentService extends BaseService {
           );
           tx.update(eventRef, { ticketTypes: updatedTicketTypes });
         }
+
+        // ── Ledger entries ─────────────────────────────────────────────
+        // Writes `payment` (+amount) + `platform_fee` (−fee) inside the
+        // same transaction that confirms the payment. Two entries rather
+        // than one net entry so the UI can show gross revenue and total
+        // fees independently without recomputing from raw payments.
+        //
+        // Attribution fields read from `freshPayment` — the transactional
+        // re-read — so tenant scope (organizationId/eventId/paymentId)
+        // can never drift from whatever else the transaction commits.
+        const platformFee = computePlatformFee(freshPayment.amount);
+        const availableOn = computeAvailableOn(
+          now,
+          eventData?.endDate ?? eventData?.startDate ?? null,
+        );
+        const description = `Billet : ${eventData?.title ?? freshPayment.eventId}`;
+
+        appendLedgerEntry(tx, {
+          organizationId: freshPayment.organizationId,
+          eventId: freshPayment.eventId,
+          paymentId: freshPayment.id,
+          payoutId: null,
+          kind: "payment",
+          amount: freshPayment.amount,
+          status: "pending",
+          availableOn,
+          description,
+          createdBy: "system:payment.webhook",
+          createdAt: now,
+        });
+        if (platformFee > 0) {
+          appendLedgerEntry(tx, {
+            organizationId: freshPayment.organizationId,
+            eventId: freshPayment.eventId,
+            paymentId: freshPayment.id,
+            payoutId: null,
+            kind: "platform_fee",
+            amount: -platformFee,
+            status: "pending",
+            availableOn,
+            description: `Frais plateforme (${Math.round(
+              (platformFee / freshPayment.amount) * 100,
+            )}%)`,
+            createdBy: "system:payment.webhook",
+            createdAt: now,
+          });
+        }
       });
 
       eventBus.emit("payment.succeeded", {
@@ -466,34 +586,101 @@ export class PaymentService extends BaseService {
     const provider = getProvider(payment.method);
     const result = await provider.refund(payment.providerTransactionId!, refundAmount);
     if (!result.success) {
+      // Surface the specific reason when the provider tags it. Orange
+      // Money in particular never supports programmatic refunds — the
+      // operator has to process the refund via their OM merchant
+      // portal, so a generic "provider refused" error would be
+      // misleading and unhelpful.
+      if (result.reason === "manual_refund_required") {
+        throw new ValidationError(
+          "Ce fournisseur de paiement ne prend pas en charge les remboursements automatiques. " +
+            "Contactez votre point de vente Orange Money ou effectuez le remboursement manuel " +
+            "depuis le portail marchand. Marquez ensuite l'inscription comme annulée.",
+        );
+      }
       throw new ValidationError("Le remboursement a été refusé par le fournisseur");
     }
 
     const now = new Date().toISOString();
-    const isFullRefund = refundAmount === payment.amount;
 
-    // Atomic update: payment + registration + event counter
+    // Atomic update: payment + registration + event counter + ledger
+    //
+    // Concurrency note: the guards above (`payment.refundedAmount + refundAmount`)
+    // ran against a doc read OUTSIDE the transaction — susceptible to lost
+    // updates under concurrent refund requests. We re-validate inside the
+    // transaction against a fresh read and bail if the state has drifted,
+    // which makes the DB + ledger writes consistent. A provider-side
+    // idempotency key (Wave 6 payment hardening) remains required to prevent
+    // the provider itself from being hit twice when two concurrent refund
+    // requests slip past the pre-tx guard.
+    let isFullRefund = false;
     await db.runTransaction(async (tx) => {
       const payRef = db.collection(COLLECTIONS.PAYMENTS).doc(paymentId);
+      const paySnap = await tx.get(payRef);
+      if (!paySnap.exists) throw new NotFoundError("Payment", paymentId);
+      const freshPayment = paySnap.data() as Payment;
+
+      // Re-validate against fresh state — a concurrent refund may have
+      // completed between the outer read and this transaction.
+      if (freshPayment.status === "refunded") {
+        throw new ValidationError("Ce paiement a déjà été intégralement remboursé");
+      }
+      if (freshPayment.status !== "succeeded") {
+        throw new ValidationError("Seul un paiement confirmé peut être remboursé");
+      }
+      const remaining = freshPayment.amount - freshPayment.refundedAmount;
+      if (refundAmount > remaining) {
+        throw new ValidationError("Le montant du remboursement dépasse le solde restant");
+      }
+
+      const newRefundedAmount = freshPayment.refundedAmount + refundAmount;
+      isFullRefund = newRefundedAmount === freshPayment.amount;
+
       tx.update(payRef, {
-        status: isFullRefund ? ("refunded" as PaymentStatus) : payment.status,
-        refundedAmount: payment.refundedAmount + refundAmount,
+        status: isFullRefund ? ("refunded" as PaymentStatus) : freshPayment.status,
+        refundedAmount: newRefundedAmount,
         updatedAt: now,
       });
 
       if (isFullRefund) {
-        const regRef = db.collection(COLLECTIONS.REGISTRATIONS).doc(payment.registrationId);
+        const regRef = db.collection(COLLECTIONS.REGISTRATIONS).doc(freshPayment.registrationId);
         tx.update(regRef, {
           status: "cancelled",
           updatedAt: now,
         });
 
-        const eventRef = db.collection(COLLECTIONS.EVENTS).doc(payment.eventId);
+        const eventRef = db.collection(COLLECTIONS.EVENTS).doc(freshPayment.eventId);
         tx.update(eventRef, {
           registeredCount: FieldValue.increment(-1),
           updatedAt: now,
         });
       }
+
+      // ── Ledger entry ───────────────────────────────────────────────────
+      // Refunds debit the balance immediately (status=available) — they
+      // don't wait for the T+N release window. Matches Stripe behaviour
+      // and matches operator intuition: if the customer got their money
+      // back, the org's balance went down RIGHT NOW.
+      //
+      // Attribution fields (organizationId, eventId, paymentId) come from
+      // `freshPayment` — the transactional re-read — not the outer stale
+      // snapshot. `organizationId` / `eventId` are immutable on payments
+      // today so this is belt-and-suspenders; it also matches the pattern
+      // established in handleWebhook() and keeps tenant-scope attribution
+      // defensible in the face of future Admin-SDK migrations.
+      appendLedgerEntry(tx, {
+        organizationId: freshPayment.organizationId,
+        eventId: freshPayment.eventId,
+        paymentId: freshPayment.id,
+        payoutId: null,
+        kind: "refund",
+        amount: -refundAmount,
+        status: "available",
+        availableOn: now,
+        description: reason ? `Remboursement : ${reason}` : "Remboursement",
+        createdBy: user.uid,
+        createdAt: now,
+      });
     });
 
     eventBus.emit("payment.refunded", {

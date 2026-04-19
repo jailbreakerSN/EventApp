@@ -9,7 +9,7 @@ import {
 } from "@/services/newsletter.service";
 
 export const newsletterRoutes: FastifyPluginAsync = async (fastify) => {
-  // ─── Subscribe to Newsletter (public, no auth) ─────────��──────────────────
+  // ─── Subscribe to Newsletter (public, no auth) ─────────────────────────────
   fastify.post(
     "/subscribe",
     {

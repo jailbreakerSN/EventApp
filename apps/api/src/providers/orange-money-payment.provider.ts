@@ -5,6 +5,7 @@ import {
   type InitiateResult,
   type VerifyResult,
   type RefundResult,
+  type VerifyWebhookParams,
 } from "./payment-provider.interface";
 
 /**
@@ -20,10 +21,16 @@ import {
  * - ORANGE_MONEY_MERCHANT_KEY: Merchant key for payment initiation
  */
 
-const OM_API_URL = process.env.ORANGE_MONEY_API_URL ?? "https://api.orange.com/orange-money-webpay/dev/v1";
+const OM_API_URL =
+  process.env.ORANGE_MONEY_API_URL ?? "https://api.orange.com/orange-money-webpay/dev/v1";
 const OM_CLIENT_ID = process.env.ORANGE_MONEY_CLIENT_ID ?? "";
 const OM_CLIENT_SECRET = process.env.ORANGE_MONEY_CLIENT_SECRET ?? "";
 const OM_MERCHANT_KEY = process.env.ORANGE_MONEY_MERCHANT_KEY ?? "";
+// Pre-shared token OM merchants configure in their developer dashboard;
+// OM sends it back on every webhook as `notif_token` header so we can
+// verify the call is authentic. Separate env var from the OAuth secret
+// because it's not a client credential — it's a shared symmetric token.
+const OM_NOTIF_TOKEN = process.env.ORANGE_MONEY_NOTIF_TOKEN ?? "";
 
 // Cache OAuth token in memory
 let cachedToken: { value: string; expiresAt: number } | null = null;
@@ -102,20 +109,17 @@ export class OrangeMoneyPaymentProvider implements PaymentProvider {
   async verify(providerTransactionId: string): Promise<VerifyResult> {
     const token = await getAccessToken();
 
-    const response = await fetch(
-      `${OM_API_URL}/transactionstatus`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          pay_token: providerTransactionId,
-        }),
-        signal: AbortSignal.timeout(30_000),
+    const response = await fetch(`${OM_API_URL}/transactionstatus`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
       },
-    );
+      body: JSON.stringify({
+        pay_token: providerTransactionId,
+      }),
+      signal: AbortSignal.timeout(30_000),
+    });
 
     if (!response.ok) {
       return { status: "failed", metadata: { reason: `OM verify failed: ${response.status}` } };
@@ -140,8 +144,28 @@ export class OrangeMoneyPaymentProvider implements PaymentProvider {
 
   async refund(_providerTransactionId: string, _amount: number): Promise<RefundResult> {
     // Orange Money does not support programmatic refunds via API.
-    // Refunds must be processed manually via the Orange Money merchant portal.
-    return { success: false };
+    // Refunds must be processed manually via the Orange Money merchant
+    // portal. Tag the reason so the payment service can surface a
+    // specific operator-facing message instead of the generic
+    // "provider refused" string.
+    return { success: false, reason: "manual_refund_required" };
+  }
+
+  /**
+   * Verify Orange Money webhook notification token.
+   * OM sends a pre-shared symmetric token on each webhook as a custom
+   * header; we compare it constant-time against the configured value.
+   * Accepts both `x-om-token` and `notif_token` header names — OM's
+   * API went through several rebrandings.
+   */
+  verifyWebhook(params: VerifyWebhookParams): boolean {
+    if (!OM_NOTIF_TOKEN) return false;
+    const received =
+      readHeaderOm(params.headers, "x-om-token") ??
+      readHeaderOm(params.headers, "notif_token") ??
+      readHeaderOm(params.headers, "x-notif-token");
+    if (!received) return false;
+    return OrangeMoneyPaymentProvider.verifyNotifToken(received, OM_NOTIF_TOKEN);
   }
 
   /**
@@ -150,11 +174,17 @@ export class OrangeMoneyPaymentProvider implements PaymentProvider {
   static verifyNotifToken(receivedToken: string, expectedToken: string): boolean {
     if (!receivedToken || !expectedToken) return false;
     if (receivedToken.length !== expectedToken.length) return false;
-    return crypto.timingSafeEqual(
-      Buffer.from(receivedToken),
-      Buffer.from(expectedToken),
-    );
+    return crypto.timingSafeEqual(Buffer.from(receivedToken), Buffer.from(expectedToken));
   }
+}
+
+function readHeaderOm(
+  headers: Record<string, string | string[] | undefined>,
+  name: string,
+): string | null {
+  const v = headers[name];
+  if (Array.isArray(v)) return v[0] ?? null;
+  return v ?? null;
 }
 
 export const orangeMoneyPaymentProvider = new OrangeMoneyPaymentProvider();

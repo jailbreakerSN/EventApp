@@ -286,6 +286,18 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // ─── Balance Transactions (ledger) ──────────────────────────────────────
+    // Append-only ledger; every money movement produces one entry.
+    // Written exclusively by the API inside domain-service transactions
+    // (payment.succeeded, refund, payout.create). Never from the client.
+    // Readable by organizers of the owning org (for the /finance page) and
+    // by super admins (platform oversight).
+    match /balanceTransactions/{txId} {
+      allow read: if isSuperAdmin()
+                  || (isOrganizer() && belongsToOrg(resource.data.organizationId));
+      allow create, update, delete: if false;  // Only Admin SDK (API + schedulers)
+    }
+
     // ─── Offline Sync Data ──────────────────────────────────────────────────
     // Cached registration data for staff QR scanning when offline.
     // Written by Admin SDK, readable only by staff/organizers of the same org.
@@ -497,6 +509,22 @@ service cloud.firestore {
       allow create: if false;
       allow update: if false;
       allow delete: if false;
+    }
+
+    // ─── Plan Catalog ──────────────────────────────────────────────────────
+    // Superadmin-managed catalog of subscription plans. Any authenticated
+    // user can read published (public, non-archived) plans so the billing
+    // page works without elevated permissions. Superadmins can read every
+    // plan, including archived/private ones.
+    // Writes go through the API (admin routes) — client-side mutations are
+    // blocked even for superadmins to preserve audit trail and validation.
+    match /plans/{planId} {
+      allow read: if isAuthenticated()
+                  && resource.data.isPublic == true
+                  && resource.data.isArchived == false;
+      allow read: if isSuperAdmin();
+
+      allow create, update, delete: if false;
     }
   }
 }

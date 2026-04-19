@@ -4,7 +4,11 @@ import { authenticate, requireEmailVerified } from "@/middlewares/auth.middlewar
 import { validate } from "@/middlewares/validate.middleware";
 import { requirePermission } from "@/middlewares/permission.middleware";
 import { subscriptionService } from "@/services/subscription.service";
-import { UpgradePlanSchema, DowngradePlanSchema } from "@teranga/shared-types";
+import {
+  UpgradePlanSchema,
+  DowngradePlanSchema,
+  CancelSubscriptionSchema,
+} from "@teranga/shared-types";
 
 const ParamsOrgId = z.object({ orgId: z.string() });
 
@@ -83,14 +87,42 @@ export const subscriptionRoutes: FastifyPluginAsync = async (app) => {
       ],
     },
     async (request, reply) => {
-      await subscriptionService.downgrade(request.params.orgId, request.body.plan, request.user!);
-      return reply.send({ success: true, data: null });
+      const result = await subscriptionService.downgrade(
+        request.params.orgId,
+        request.body.plan,
+        request.user!,
+        { immediate: request.body.immediate ?? false },
+      );
+      return reply.send({ success: true, data: result });
     },
   );
 
   // POST /v1/organizations/:orgId/subscription/cancel
-  app.post<{ Params: z.infer<typeof ParamsOrgId> }>(
+  app.post<{
+    Params: z.infer<typeof ParamsOrgId>;
+    Body: z.infer<typeof CancelSubscriptionSchema>;
+  }>(
     "/v1/organizations/:orgId/subscription/cancel",
+    {
+      preHandler: [
+        authenticate,
+        requireEmailVerified,
+        requirePermission("organization:manage_billing"),
+        validate({ params: ParamsOrgId, body: CancelSubscriptionSchema }),
+      ],
+    },
+    async (request, reply) => {
+      const result = await subscriptionService.cancel(request.params.orgId, request.user!, {
+        immediate: request.body?.immediate ?? false,
+        reason: request.body?.reason,
+      });
+      return reply.send({ success: true, data: result });
+    },
+  );
+
+  // POST /v1/organizations/:orgId/subscription/revert-scheduled
+  app.post<{ Params: z.infer<typeof ParamsOrgId> }>(
+    "/v1/organizations/:orgId/subscription/revert-scheduled",
     {
       preHandler: [
         authenticate,
@@ -100,7 +132,7 @@ export const subscriptionRoutes: FastifyPluginAsync = async (app) => {
       ],
     },
     async (request, reply) => {
-      await subscriptionService.cancel(request.params.orgId, request.user!);
+      await subscriptionService.revertScheduledChange(request.params.orgId, request.user!);
       return reply.send({ success: true, data: null });
     },
   );

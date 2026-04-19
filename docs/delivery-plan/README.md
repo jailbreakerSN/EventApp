@@ -125,6 +125,8 @@ A 4-phase implementation adding a complete SaaS freemium monetization model with
 **Tests:** 30 new plan-limits tests (401 total)
 **Seed data:** 4 organizations across all plan tiers (free, starter, pro, enterprise) with 3 subscription documents
 
+**Update (Phases 1-6, dynamic plans — 2026-04-15):** The hardcoded `PLAN_LIMITS` constants have been replaced by a superadmin-managed Firestore catalog with per-org overrides, `pricingModel` disambiguation, and prepaid-period honoring. See [`plan-management-phase-7-plus.md`](./plan-management-phase-7-plus.md) for the prioritized Phase 7+ menu (versioning, entitlements, billing cycle, trials, MRR dashboard, coupons, parent-child orgs).
+
 ---
 
 ## What Remains: Path to Production Launch
@@ -446,24 +448,25 @@ See [future-roadmap.md](future-roadmap.md) for post-launch feature ideas.
 
 ## Wave Files
 
-| Wave                     | File                                                           |
-| ------------------------ | -------------------------------------------------------------- |
-| Pre-Wave                 | [wave-0-prerequisites.md](wave-0-prerequisites.md)             |
-| Wave 1                   | [wave-1-core-loop.md](wave-1-core-loop.md)                     |
-| Wave 2                   | [wave-2-offline-checkin.md](wave-2-offline-checkin.md)         |
-| Wave 3                   | [wave-3-participant-web.md](wave-3-participant-web.md)         |
-| Wave 4                   | [wave-4-organizer-tools.md](wave-4-organizer-tools.md)         |
-| Wave 5                   | [wave-5-social-sessions.md](wave-5-social-sessions.md)         |
-| Wave 6                   | [wave-6-payments.md](wave-6-payments.md)                       |
-| Wave 7                   | [wave-7-communications.md](wave-7-communications.md)           |
-| Wave 8                   | [wave-8-portals.md](wave-8-portals.md)                         |
-| MVP Sprint               | [mvp-launch-sprint.md](mvp-launch-sprint.md)                   |
+| Wave                     | File                                                                                                                                                                                                                                                                                                                           |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Pre-Wave                 | [wave-0-prerequisites.md](wave-0-prerequisites.md)                                                                                                                                                                                                                                                                             |
+| Wave 1                   | [wave-1-core-loop.md](wave-1-core-loop.md)                                                                                                                                                                                                                                                                                     |
+| Wave 2                   | [wave-2-offline-checkin.md](wave-2-offline-checkin.md)                                                                                                                                                                                                                                                                         |
+| Wave 3                   | [wave-3-participant-web.md](wave-3-participant-web.md)                                                                                                                                                                                                                                                                         |
+| Wave 4                   | [wave-4-organizer-tools.md](wave-4-organizer-tools.md)                                                                                                                                                                                                                                                                         |
+| Wave 5                   | [wave-5-social-sessions.md](wave-5-social-sessions.md)                                                                                                                                                                                                                                                                         |
+| Wave 6                   | [wave-6-payments.md](wave-6-payments.md)                                                                                                                                                                                                                                                                                       |
+| Wave 7                   | [wave-7-communications.md](wave-7-communications.md)                                                                                                                                                                                                                                                                           |
+| Wave 8                   | [wave-8-portals.md](wave-8-portals.md)                                                                                                                                                                                                                                                                                         |
+| MVP Sprint               | [mvp-launch-sprint.md](mvp-launch-sprint.md)                                                                                                                                                                                                                                                                                   |
 | UX/UI Audit (current)    | [audit-2026-04-13.md](../design-system/audit-2026-04-13.md) + [execution-plan-2026-04-13.md](../design-system/execution-plan-2026-04-13.md) + [implementation-plan-2026-04-13.md](../design-system/implementation-plan-2026-04-13.md) + [p1-closure-2026-04-14.md](../design-system/p1-closure-2026-04-14.md) (**P1 shipped**) |
-| UX/UI Audit (historical) | [ux-ui-audit-2026-04-07.md](../../docs/ux-ui-audit-2026-04-07.md) (superseded), [roadmap-2026-04-13.md](../design-system/roadmap-2026-04-13.md) (superseded) |
-| Super Admin + Venue Host | _(plan in `.claude/plans/`)_                                   |
-| Freemium Model           | _(plan in `.claude/plans/compiled-strolling-backus.md`)_       |
-| Wave 9                   | [wave-9-mobile-app.md](wave-9-mobile-app.md)                   |
-| Wave 10                  | [wave-10-launch.md](wave-10-launch.md)                         |
+| UX/UI Audit (historical) | [ux-ui-audit-2026-04-07.md](../../docs/ux-ui-audit-2026-04-07.md) (superseded), [roadmap-2026-04-13.md](../design-system/roadmap-2026-04-13.md) (superseded)                                                                                                                                                                   |
+| Super Admin + Venue Host | _(plan in `.claude/plans/`)_                                                                                                                                                                                                                                                                                                   |
+| Freemium Model           | _(plan in `.claude/plans/compiled-strolling-backus.md`)_                                                                                                                                                                                                                                                                       |
+| Plan Management Phase 7+ | [plan-management-phase-7-plus.md](plan-management-phase-7-plus.md)                                                                                                                                                                                                                                                             |
+| Wave 9                   | [wave-9-mobile-app.md](wave-9-mobile-app.md)                                                                                                                                                                                                                                                                                   |
+| Wave 10                  | [wave-10-launch.md](wave-10-launch.md)                                                                                                                                                                                                                                                                                         |
 
 ---
 

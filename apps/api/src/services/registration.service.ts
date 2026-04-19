@@ -4,7 +4,7 @@ import {
   type QrScanResult,
   type Event,
   type Organization,
-  PLAN_LIMITS,
+  type UserProfile,
 } from "@teranga/shared-types";
 import { registrationRepository } from "@/repositories/registration.repository";
 import { eventRepository } from "@/repositories/event.repository";
@@ -16,6 +16,7 @@ import { type AuthUser } from "@/middlewares/auth.middleware";
 import {
   ValidationError,
   ConflictError,
+  EmailNotVerifiedError,
   EventFullError,
   RegistrationClosedError,
   QrInvalidError,
@@ -68,17 +69,18 @@ export class RegistrationService extends BaseService {
         const orgSnap = await tx.get(orgRef);
         if (orgSnap.exists) {
           const org = { id: orgSnap.id, ...orgSnap.data() } as Organization;
-          const planLimits = PLAN_LIMITS[org.plan];
-          if (
-            isFinite(planLimits.maxParticipantsPerEvent) &&
-            event.registeredCount >= planLimits.maxParticipantsPerEvent
-          ) {
+          const { allowed, limit } = this.checkPlanLimit(
+            org,
+            "participantsPerEvent",
+            event.registeredCount,
+          );
+          if (!allowed) {
             throw new PlanLimitError(
-              `Maximum ${planLimits.maxParticipantsPerEvent} participants par événement sur le plan ${org.plan}`,
+              `Maximum ${limit} participants par événement sur le plan ${org.effectivePlanKey ?? org.plan}`,
               {
                 current: event.registeredCount,
-                max: planLimits.maxParticipantsPerEvent,
-                plan: org.plan,
+                max: limit,
+                plan: org.effectivePlanKey ?? org.plan,
               },
             );
           }
@@ -102,6 +104,13 @@ export class RegistrationService extends BaseService {
         throw new ValidationError(
           `Type de billet « ${ticketTypeId} » introuvable pour cet événement`,
         );
+      }
+
+      // ── Gate paid registrations behind email verification ──
+      // Free tickets remain low-friction to maximise adoption; paid tickets
+      // must verify email first so receipts + payment notifications land.
+      if (ticketType.price > 0 && !user.emailVerified) {
+        throw new EmailNotVerifiedError();
       }
 
       // Check ticket availability
@@ -130,8 +139,15 @@ export class RegistrationService extends BaseService {
       const regId = regRef.id;
       const qrCodeValue = signQrPayload(regId, eventId, user.uid);
 
-      // Fetch user profile for denormalized display fields
-      const userProfile = await userRepository.findById(user.uid);
+      // Fetch user profile for denormalized display fields. Must go through
+      // tx.get() so the read participates in the transaction's snapshot —
+      // a naked userRepository.findById() here would race against concurrent
+      // profile updates (e.g. display-name edits) between the read set and
+      // the subsequent tx.set(regRef, registration) write.
+      const userSnap = await tx.get(userRepository.ref.doc(user.uid));
+      const userProfile = userSnap.exists
+        ? ({ id: userSnap.id, ...userSnap.data() } as unknown as UserProfile)
+        : null;
 
       const registration: Registration = {
         id: regId,
@@ -139,6 +155,9 @@ export class RegistrationService extends BaseService {
         userId: user.uid,
         ticketTypeId,
         eventTitle: event.title,
+        eventSlug: event.slug,
+        eventStartDate: event.startDate,
+        eventEndDate: event.endDate,
         ticketTypeName: ticketType.name,
         participantName: userProfile?.displayName ?? null,
         participantEmail: userProfile?.email ?? null,
@@ -250,18 +269,22 @@ export class RegistrationService extends BaseService {
         throw new ValidationError("Impossible d'annuler une inscription déjà vérifiée");
       }
 
-      const now = new Date().toISOString();
-      tx.update(regRef, {
-        status: "cancelled",
-        updatedAt: now,
-      });
-
-      // Read event inside tx to capture organizationId for audit trail
+      // Firestore transactions require all reads before any writes — capture
+      // the event (for organizationId + counter decrement) BEFORE mutating
+      // the registration. Skipping this ordering makes the emulator throw
+      // "all reads must precede writes" even though a lot of mocked unit
+      // tests happily pass.
       const eventRef = eventRepository.ref.doc(current.eventId);
       const eventSnap = await tx.get(eventRef);
       const organizationId = eventSnap.exists
         ? ((eventSnap.data() as Record<string, unknown>).organizationId as string)
         : "";
+
+      const now = new Date().toISOString();
+      tx.update(regRef, {
+        status: "cancelled",
+        updatedAt: now,
+      });
 
       // Decrement counter only for statuses that were counted
       if (current.status === "confirmed" || current.status === "pending") {
@@ -288,12 +311,33 @@ export class RegistrationService extends BaseService {
       timestamp: new Date().toISOString(),
     });
 
-    // If a confirmed registration was cancelled, promote next waitlisted
-    // Fire-and-forget: promotion failure should not affect the cancel response
+    // If a confirmed registration was cancelled, promote next waitlisted.
+    // Fire-and-forget: promotion failure must not affect the cancel response,
+    // BUT a silent swallow was hiding data-drift from operators (waitlisted
+    // user still in limbo, event slot still open, zero observability).
+    // Structured log + dedicated domain event surfaces it in Cloud
+    // Logging metrics AND the audit log without blocking the caller.
     if (registration.status === "confirmed") {
       this.promoteNextWaitlisted(eventPayload.eventId, eventPayload.organizationId, user.uid).catch(
-        () => {
-          // Swallowed — audit listener will log the cancellation regardless
+        (err: unknown) => {
+          const reqId = getRequestId();
+          const reason = err instanceof Error ? err.message : String(err);
+          process.stderr.write(
+            `[RegistrationService] reqId=${reqId} waitlist promotion failed for ` +
+              `event=${eventPayload.eventId} org=${eventPayload.organizationId} after ` +
+              `cancel of reg=${registrationId}: ${reason}\n`,
+          );
+          // Emit the dedicated event so the audit listener records it and
+          // any ops metric on `waitlist.promotion_failed` can page.
+          eventBus.emit("waitlist.promotion_failed", {
+            eventId: eventPayload.eventId,
+            organizationId: eventPayload.organizationId,
+            cancelledRegistrationId: registrationId,
+            reason,
+            actorId: user.uid,
+            requestId: reqId,
+            timestamp: new Date().toISOString(),
+          });
         },
       );
     }
@@ -377,6 +421,13 @@ export class RegistrationService extends BaseService {
 
     // Pre-fetch participant info (read-only, no consistency concern)
     const participant = await userRepository.findById(registration.userId);
+
+    // Gate QR check-in behind `qrScanning` (starter+). Looked up via the
+    // event's org since the caller is an authenticated staff/organizer, not
+    // the participant, and the registration itself doesn't carry orgId.
+    const event = await eventRepository.findByIdOrThrow(registration.eventId);
+    const org = await organizationRepository.findByIdOrThrow(event.organizationId);
+    this.requirePlanFeature(org, "qrScanning");
 
     const txResult = await runTransaction(async (tx) => {
       // Re-read registration inside transaction for double-check-in safety

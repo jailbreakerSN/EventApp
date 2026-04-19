@@ -129,6 +129,18 @@ jobs:
               --condition=None --quiet >/dev/null || \
               echo "::warning::Failed to bind $role to $member (may already exist or SA lacks Project IAM Admin)"
           done
+
+          # Grant the Cloud Run runtime SA Token Creator on ITSELF so that
+          # Firebase Admin SDK's getSignedUrl() can call iamcredentials.signBlob
+          # when no private key is present in the environment (Workload
+          # Identity path). Without this, badge PDF downloads 500 with
+          # "Permission 'iam.serviceAccounts.signBlob' denied".
+          gcloud iam service-accounts add-iam-policy-binding "$COMPUTE_SA" \
+            --member="serviceAccount:${COMPUTE_SA}" \
+            --role="roles/iam.serviceAccountTokenCreator" \
+            --project="$PROJECT_ID" \
+            --condition=None --quiet >/dev/null || \
+            echo "::warning::Failed to grant Token Creator on ${COMPUTE_SA} (may already exist or SA lacks Service Account Admin)"
         env:
           SA_KEY: ${{ secrets.GCP_SA_KEY }}
 
@@ -227,6 +239,20 @@ jobs:
             --repository-format=docker \
             --location=europe-west1 \
             --description="Teranga Events container images" \
+            --quiet
+      - name: Apply Artifact Registry cleanup policy
+        # Cost control: every deploy pushes 3 new images tagged with the commit
+        # SHA, and nothing ever deletes them. Storage grows forever at
+        # ~€0.10/GB·month. The policy (infrastructure/artifact-registry/
+        # cleanup-policy.json) keeps the 3 most recent versions of each
+        # package and deletes the rest — server-side, runs every ~24h.
+        # Idempotent: re-applying the same policy is a no-op.
+        run: |
+          set -euo pipefail
+          gcloud artifacts repositories set-cleanup-policies teranga \
+            --location=europe-west1 \
+            --policy=infrastructure/artifact-registry/cleanup-policy.json \
+            --no-dry-run \
             --quiet
       - name: Configure Docker for Artifact Registry
         run: gcloud auth configure-docker europe-west1-docker.pkg.dev --quiet
@@ -508,8 +534,11 @@ jobs:
 
   # ─── Seed staging database (one-time, idempotent) ────────────────────────
   # Runs the seed script against the real Firestore. The script checks for
-  # existing data and skips if the database already has organizations.
-  # Depends on deploy-firebase so rules + indexes are in place first.
+  # existing data and skips the bulk seed if the database already has
+  # organizations — but the plan catalog + effective-limits backfill run
+  # unconditionally on every deploy (they're pure upserts / denormalization
+  # refreshes, safe to re-run). Depends on deploy-firebase so rules +
+  # indexes are in place first.
   seed-staging:
     name: Seed staging database (idempotent)
     runs-on: ubuntu-latest
@@ -525,11 +554,90 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - run: npm ci
-      - name: Run seed script (skips if data exists)
+      - name: Build shared-types
+        # Required because seed-plans.ts and backfill-effective-limits.ts
+        # import from @teranga/shared-types (PLAN_LIMITS, PLAN_DISPLAY,
+        # PLAN_LIMIT_UNLIMITED).
+        run: npx turbo build --filter=@teranga/shared-types
+      - name: Run seed script (upserts plan catalog + backfill; bulk seed skips if data exists)
         env:
           SEED_TARGET: staging
           FIREBASE_PROJECT_ID: ${{ needs.setup.outputs.project_id }}
         run: npx tsx scripts/seed-emulators.ts
+
+  # ─── Seed QA fixture users (independent of the main seed guard) ──────────
+  # PR #59 introduced three role-coverage fixtures (staff / multirole /
+  # authonly) used to validate the admin users table after the
+  # onUserCreated trigger fix. The main `seed-staging` step above skips
+  # the user-creation block once any org exists in staging, so new
+  # fixture users added AFTER the first deploy never land without an
+  # explicit step. This job runs a dedicated idempotent script that
+  # upserts ONLY those three users — safe to re-run on every deploy,
+  # no impact on existing data.
+  seed-qa-fixtures:
+    name: Seed QA fixture users (PR #59)
+    runs-on: ubuntu-latest
+    needs: [setup, seed-staging]
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: Upsert QA fixture users (staff / multirole / authonly)
+        env:
+          SEED_TARGET: staging
+          FIREBASE_PROJECT_ID: ${{ needs.setup.outputs.project_id }}
+        run: npx tsx scripts/seed-qa-fixtures.ts
+
+  # ─── Backfill balance-transactions ledger (PR #62) ───────────────────────
+  # Replays every historical payment/payout into the balance_transactions
+  # ledger so the /finance page balance endpoint (PR 2) returns the
+  # correct lifetime totals on first load, instead of showing 0 until a
+  # new payment webhook fires.
+  #
+  # Idempotent by design: each entry gets a deterministic doc id derived
+  # from sha256(kind|sourceId), so concurrent or repeated runs converge
+  # on the same docs rather than creating duplicates. The script uses an
+  # `exists()` probe before every write, so subsequent deploys on an
+  # already-backfilled database are effectively no-ops (~1 Firestore read
+  # per payment and per payout, negligible at staging scale).
+  #
+  # Rationale for running on every deploy instead of once:
+  #   - A forgotten one-off job is a one-off regression waiting to happen.
+  #   - Idempotent script + cheap no-op means zero cost when there's
+  #     nothing new to backfill.
+  #   - If any live code path ever bypasses the ledger write (bug),
+  #     the next deploy's backfill catches the gap automatically.
+  backfill-ledger:
+    name: Backfill balance ledger (PR #62)
+    runs-on: ubuntu-latest
+    needs: [setup, seed-staging]
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: Build shared-types
+        # Required because the backfill script imports BalanceTransaction
+        # / Payment / Payout types from @teranga/shared-types.
+        run: npx turbo build --filter=@teranga/shared-types
+      - name: Replay payments + payouts into balance_transactions
+        env:
+          SEED_TARGET: staging
+          FIREBASE_PROJECT_ID: ${{ needs.setup.outputs.project_id }}
+        run: npx tsx scripts/backfill-balance-ledger.ts
 
   # ─── Post-deploy smoke test ──────────────────────────────────────────────
   # Replaces the former 10-minute uptime cron: we only probe once after the
@@ -539,7 +647,16 @@ jobs:
   smoke-test:
     name: Smoke test staging endpoints
     runs-on: ubuntu-latest
-    needs: [setup, deploy-api, deploy-web-backoffice, deploy-web-participant, seed-staging]
+    needs:
+      [
+        setup,
+        deploy-api,
+        deploy-web-backoffice,
+        deploy-web-participant,
+        seed-staging,
+        seed-qa-fixtures,
+        backfill-ledger,
+      ]
     environment: staging
     permissions:
       contents: read

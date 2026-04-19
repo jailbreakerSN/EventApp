@@ -4,12 +4,13 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { useState } from "react";
+import { AlertCircle } from "lucide-react";
+import { Button, FormField, StatusPill } from "@teranga/shared-ui";
+import { LoginSchema, type LoginDto } from "@teranga/shared-types";
+import type { UserRole } from "@teranga/shared-types";
 import { useAuth } from "@/hooks/use-auth";
 import { firebaseAuth } from "@/lib/firebase";
-import { LoginSchema, type LoginDto } from "@teranga/shared-types";
-import { useState } from "react";
-import { FormField } from "@teranga/shared-ui";
-import type { UserRole } from "@teranga/shared-types";
 
 const BACKOFFICE_ROLES: UserRole[] = ["organizer", "co_organizer", "super_admin"];
 
@@ -47,7 +48,7 @@ export function LoginForm() {
   };
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-5" noValidate>
       <FormField label="Adresse email" error={errors.email?.message} required htmlFor="email">
         <input
           id="email"
@@ -55,7 +56,8 @@ export function LoginForm() {
           type="email"
           autoComplete="email"
           placeholder="vous@organisation.sn"
-          className="w-full border border-input bg-background rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+          aria-invalid={Boolean(errors.email) || undefined}
+          className="w-full rounded-lg border border-input bg-background px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/70 focus:outline-none focus:ring-2 focus:ring-primary"
         />
       </FormField>
 
@@ -65,27 +67,37 @@ export function LoginForm() {
           {...register("password")}
           type="password"
           autoComplete="current-password"
-          className="w-full border border-input bg-background rounded-lg px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+          aria-invalid={Boolean(errors.password) || undefined}
+          className="w-full rounded-lg border border-input bg-background px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground/70 focus:outline-none focus:ring-2 focus:ring-primary"
         />
       </FormField>
 
       <div className="flex justify-end">
-        <Link href="/forgot-password" className="text-xs text-muted-foreground hover:text-foreground">
-          Mot de passe oubli&eacute; ?
+        <Link
+          href="/forgot-password"
+          className="text-xs font-medium text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+        >
+          Mot de passe oublié&nbsp;?
         </Link>
       </div>
 
       {error && (
-        <p role="alert" className="text-destructive text-sm bg-destructive/10 rounded-lg p-3">{error}</p>
+        <div role="alert" aria-live="polite" className="flex justify-start">
+          <StatusPill
+            tone="danger"
+            icon={<AlertCircle className="h-3 w-3" aria-hidden="true" />}
+            label={error}
+          />
+        </div>
       )}
 
-      <button
+      <Button
         type="submit"
         disabled={isSubmitting}
-        className="w-full bg-primary text-primary-foreground rounded-lg py-2.5 text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60"
+        className="w-full rounded-full bg-teranga-navy text-white hover:bg-teranga-navy/90 dark:bg-teranga-gold dark:text-teranga-navy dark:hover:bg-teranga-gold-light"
       >
         {isSubmitting ? "Connexion..." : "Se connecter"}
-      </button>
+      </Button>
     </form>
   );
 }

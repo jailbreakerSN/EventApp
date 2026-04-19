@@ -1,22 +1,32 @@
+"use client";
+
 import Link from "next/link";
 import Image from "next/image";
 import { Calendar, MapPin, Users } from "lucide-react";
-import { Badge } from "@teranga/shared-ui";
-import { formatDate, formatCurrency } from "@teranga/shared-ui";
+import { Badge, formatDate, formatCurrency } from "@teranga/shared-ui";
+import { useLocale, useTranslations } from "next-intl";
 import type { Event } from "@teranga/shared-types";
+import { intlLocale } from "@/lib/intl-locale";
 
 interface EventCardProps {
   event: Event;
 }
 
 export function EventCard({ event }: EventCardProps) {
+  const locale = useLocale();
+  const t = useTranslations();
+
   const minPrice =
     event.ticketTypes.length > 0 ? Math.min(...event.ticketTypes.map((t) => t.price)) : null;
   const isFree = minPrice === 0 || minPrice === null;
 
-  const priceLabel = isFree ? "Gratuit" : `À partir de ${formatCurrency(minPrice!)}`;
+  const priceLabel = isFree
+    ? t("common.free")
+    : t("common.fromPrice", { price: formatCurrency(minPrice!, "XOF", intlLocale(locale)) });
   const locationLabel = event.location?.name ? `, ${event.location.name}` : "";
-  const cardAriaLabel = `${event.title} — ${formatDate(event.startDate)}${locationLabel} — ${priceLabel}`;
+  const cardAriaLabel = `${event.title} — ${formatDate(event.startDate, intlLocale(locale))}${locationLabel} — ${priceLabel}`;
+
+  const categoryLabel = t(`categories.${event.category}` as `categories.${typeof event.category}`);
 
   return (
     <Link
@@ -43,7 +53,7 @@ export function EventCard({ event }: EventCardProps) {
         )}
         {event.category && (
           <Badge variant="secondary" className="absolute left-3 top-3" aria-hidden="true">
-            {event.category}
+            {categoryLabel}
           </Badge>
         )}
       </div>
@@ -56,7 +66,7 @@ export function EventCard({ event }: EventCardProps) {
         <div className="mt-2 flex flex-col gap-1.5 text-sm text-muted-foreground">
           <div className="flex items-center gap-1.5">
             <Calendar className="h-3.5 w-3.5 flex-shrink-0" aria-hidden="true" />
-            <span>{formatDate(event.startDate)}</span>
+            <span>{formatDate(event.startDate, intlLocale(locale))}</span>
           </div>
           {event.location?.name && (
             <div className="flex items-center gap-1.5">

@@ -13,18 +13,41 @@
     "confirm": "Confirmer",
     "yes": "Oui",
     "no": "Non",
+    "viewAll": "Voir tout",
     "viewDetails": "Voir les détails",
     "date": "Date",
     "location": "Lieu",
     "price": "Prix",
-    "status": "Statut"
+    "status": "Statut",
+    "free": "Gratuit",
+    "fromPrice": "À partir de {price}",
+    "errorBoundary": {
+      "kicker": "— ERREUR",
+      "title": "Une erreur est survenue",
+      "description": "Impossible de charger cette page. Veuillez réessayer.",
+      "retry": "Réessayer",
+      "home": "Accueil",
+      "authKicker": "— ERREUR",
+      "authTitle": "Erreur d’authentification",
+      "authDescription": "Une erreur est survenue. Veuillez réessayer.",
+      "unexpectedTitle": "Erreur inattendue",
+      "unexpectedDescription": "Une erreur est survenue. Veuillez réessayer."
+    },
+    "notFoundPage": {
+      "kicker": "— PAGE INTROUVABLE",
+      "title": "Cette page n’existe plus",
+      "description": "La page que vous recherchez n’existe pas ou a été déplacée.",
+      "cta": "Retour aux événements"
+    }
   },
   "auth": {
     "login": "Connexion",
     "logout": "Déconnexion",
     "register": "Inscription",
     "email": "Adresse e-mail",
+    "emailPlaceholder": "votre@email.com",
     "password": "Mot de passe",
+    "passwordPlaceholder": "Votre mot de passe",
     "forgotPassword": "Mot de passe oublié ?",
     "resetPassword": "Réinitialiser le mot de passe",
     "sessionExpiring": "Votre session va expirer dans 5 minutes en raison d'inactivité.",
@@ -35,18 +58,241 @@
     "alreadyAccount": "Déjà un compte ?",
     "noAccount": "Pas encore de compte ?",
     "createAccount": "Créer un compte",
-    "continueWithGoogle": "Continuer avec Google"
+    "continueWithGoogle": "Continuer avec Google",
+    "or": "ou",
+    "loginSubtitle": "Connectez-vous pour accéder à vos événements",
+    "loginButton": "Se connecter",
+    "loginButtonLoading": "Connexion...",
+    "registerSubtitle": "Inscrivez-vous pour découvrir les événements",
+    "registerButton": "Créer mon compte",
+    "registerButtonLoading": "Inscription...",
+    "fullName": "Nom complet",
+    "fullNamePlaceholder": "Prénom Nom",
+    "passwordHint": "Au moins 8 caractères, 1 majuscule, 1 chiffre",
+    "forgotPasswordTitle": "Mot de passe oublié",
+    "forgotPasswordSubtitle": "Entrez votre adresse email pour recevoir un lien de réinitialisation",
+    "resetEmailSent": "Si un compte existe avec cet email, un lien de réinitialisation a été envoyé à {email}. Vérifiez votre boîte de réception.",
+    "sendResetLink": "Envoyer le lien de réinitialisation",
+    "sendingResetLink": "Envoi en cours...",
+    "backToLogin": "Retour à la connexion",
+    "verifyEmailSentTo": "Un email de vérification a été envoyé à {email}. Consultez votre boîte de réception (et vos spams).",
+    "verifyEmailSent": "Un email de vérification a été envoyé. Consultez votre boîte de réception.",
+    "resendVerificationButton": "Renvoyer l'email de vérification",
+    "resendingVerification": "Envoi en cours...",
+    "continueToEvents": "Continuer vers les événements",
+    "verificationEmailSentToast": "Email de vérification envoyé !",
+    "verificationSendFailedToast": "Impossible d'envoyer l'email. Réessayez dans quelques minutes.",
+    "validation": {
+      "required": "Ce champ est requis",
+      "invalidEmail": "Adresse email invalide",
+      "passwordMin6": "Le mot de passe doit contenir au moins 6 caractères",
+      "passwordMin8": "Le mot de passe doit contenir au moins 8 caractères",
+      "passwordUppercase": "Le mot de passe doit contenir au moins une majuscule",
+      "passwordDigit": "Le mot de passe doit contenir au moins un chiffre"
+    },
+    "errors": {
+      "loginGeneric": "Erreur de connexion",
+      "loginGoogle": "Erreur de connexion Google",
+      "invalidCredentials": "Email ou mot de passe incorrect.",
+      "registerGeneric": "Erreur lors de l'inscription",
+      "emailInUse": "Un compte existe déjà avec cet email.",
+      "weakPassword": "Le mot de passe est trop faible."
+    }
   },
   "nav": {
     "home": "Accueil",
     "events": "Événements",
     "myEvents": "Mes événements",
+    "myRegistrations": "Mes inscriptions",
     "profile": "Profil",
+    "myProfile": "Mon profil",
     "settings": "Paramètres",
-    "notifications": "Notifications"
+    "notifications": "Notifications",
+    "brandHomeAria": "Teranga Events — accueil",
+    "mainAria": "Navigation principale",
+    "mobileAria": "Navigation mobile",
+    "openMenu": "Ouvrir le menu",
+    "closeMenu": "Fermer le menu",
+    "skipToContent": "Aller au contenu principal"
+  },
+  "theme": {
+    "groupLabel": "Thème de l'interface",
+    "light": "Clair",
+    "dark": "Sombre",
+    "system": "Système"
+  },
+  "footer": {
+    "ariaLabel": "Pied de page",
+    "tagline": "La plateforme événementielle du Sénégal.",
+    "social": {
+      "facebook": "Suivez Teranga Events sur Facebook",
+      "twitter": "Suivez Teranga Events sur Twitter / X",
+      "instagram": "Suivez Teranga Events sur Instagram",
+      "linkedin": "Suivez Teranga Events sur LinkedIn"
+    },
+    "discover": {
+      "heading": "Découvrir",
+      "allEvents": "Tous les événements",
+      "categories": "Catégories populaires",
+      "cities": "Villes",
+      "helpFaq": "Aide & FAQ"
+    },
+    "organizers": {
+      "heading": "Organisateurs",
+      "createEvent": "Créer un événement",
+      "dashboard": "Tableau de bord",
+      "pricing": "Tarification"
+    },
+    "legal": {
+      "heading": "Légal",
+      "privacy": "Politique de confidentialité",
+      "terms": "Conditions d'utilisation",
+      "mentions": "Mentions légales"
+    },
+    "copyright": "© 2026 Teranga Events. Tous droits réservés.",
+    "madeWithLove": "Fait avec ❤️ au Sénégal",
+    "madeWithLoveSr": "amour"
+  },
+  "home": {
+    "hero": {
+      "kicker": "✦ Teranga · Dakar · Printemps 2026",
+      "srTitle": "Découvrez les événements au Sénégal — conférences, concerts, ateliers et festivals",
+      "titleLead": "L'événementiel africain,",
+      "titleItalicOne": "connecté",
+      "titleGlue": "et",
+      "titleItalicTwo": "mémorable.",
+      "titleBefore": "Découvrez les événements au",
+      "titleHighlight": "Sénégal",
+      "subtitle": "Conférences, concerts, ateliers et rencontres partout au Sénégal. Découvrez ce qui se passe cette saison à Dakar, Thiès, Saly et ailleurs.",
+      "searchPlaceholder": "Rechercher un événement, un organisateur, une ville…",
+      "searchCta": "Explorer",
+      "cta": "Voir tous les événements",
+      "secondaryCta": "Comment ça marche"
+    },
+    "heroStats": {
+      "events": "événements",
+      "registrations": "inscriptions",
+      "cities": "villes",
+      "rating": "avis moyen"
+    },
+    "ticketStub": {
+      "kicker": "Admit One · Pass Nominatif",
+      "labelDate": "Date",
+      "labelPass": "Pass",
+      "labelZone": "Zone",
+      "defaultTitle": "Dakar Tech Summit 2026",
+      "defaultDate": "14 — 16 mai",
+      "defaultPass": "Standard",
+      "defaultZone": "A · CICAD",
+      "defaultHolder": "Aïssatou Diallo",
+      "defaultCode": "TER-DTS26-4F2A1C",
+      "holderLabel": "Porteur"
+    },
+    "featured": {
+      "kicker": "— À la une cette saison",
+      "title": "Trois événements qu'on ne manquerait pour rien au monde",
+      "subtitle": "Sélectionnés par la rédaction Teranga, parmi les événements les plus attendus du printemps 2026 à Dakar et sur la Petite Côte.",
+      "cta": "Voir les détails"
+    },
+    "browse": {
+      "kicker": "— Tous les événements",
+      "title": "Parcourir la saison",
+      "subtitle": "Filtrez par catégorie, ville ou budget.",
+      "countLabel": "{count, plural, one {# événement} other {# événements}}"
+    },
+    "promises": {
+      "one": {
+        "num": "01",
+        "title": "Inscription en 45 secondes",
+        "description": "Un numéro, un billet. Wave et Orange Money acceptés, paiement à l'arrivée possible selon l'événement."
+      },
+      "two": {
+        "num": "02",
+        "title": "Badge QR hors-ligne",
+        "description": "Votre billet reste accessible sans réseau. Pratique à l'entrée, pratique en brousse."
+      },
+      "three": {
+        "num": "03",
+        "title": "Rappels sur WhatsApp",
+        "description": "Un message 24h avant, un autre à H-1. Rien de plus, rien de moins."
+      }
+    },
+    "values": {
+      "simpleReg": {
+        "title": "Inscription simple",
+        "description": "Choisissez votre billet et inscrivez-vous en quelques secondes."
+      },
+      "qrBadge": {
+        "title": "Badge QR sécurisé",
+        "description": "Votre badge numérique avec QR code signé pour un accès rapide."
+      },
+      "community": {
+        "title": "Communauté",
+        "description": "Rejoignez la communauté événementielle du Sénégal et de l'Afrique de l'Ouest."
+      }
+    },
+    "categoriesHeading": "Explorer par catégorie",
+    "featuredHeading": "Événements à la une",
+    "latestHeading": "Derniers événements",
+    "howItWorks": {
+      "kicker": "— Comment ça marche",
+      "heading": "Trois étapes, un badge",
+      "subheading": "Du premier clic au passage de la porte : tout est pensé pour que rien ne se mette entre vous et l'événement.",
+      "stepLabel": "Étape {n}",
+      "step1": {
+        "title": "Découvrez",
+        "description": "Parcourez les événements à venir à Dakar et au Sénégal"
+      },
+      "step2": {
+        "title": "Inscrivez-vous",
+        "description": "Choisissez votre billet et inscrivez-vous en quelques clics"
+      },
+      "step3": {
+        "title": "Participez",
+        "description": "Présentez votre badge QR et profitez de l'événement"
+      }
+    },
+    "stats": {
+      "events": "événements",
+      "participants": "participants",
+      "cities": "villes",
+      "satisfaction": "satisfaction"
+    },
+    "testimonialsHeading": "Ce que disent nos utilisateurs",
+    "organizerCta": {
+      "heading": "Vous organisez un événement ?",
+      "body": "Créez-le gratuitement sur Teranga et atteignez des milliers de participants",
+      "primary": "Commencer gratuitement",
+      "secondary": "Espace organisateur"
+    }
+  },
+  "categories": {
+    "conference": "Conférence",
+    "conference_plural": "Conférences",
+    "workshop": "Atelier",
+    "workshop_plural": "Ateliers",
+    "concert": "Concert",
+    "concert_plural": "Concerts",
+    "festival": "Festival",
+    "festival_plural": "Festivals",
+    "networking": "Networking",
+    "sport": "Sport",
+    "exhibition": "Exposition",
+    "exhibition_plural": "Expositions",
+    "ceremony": "Cérémonie",
+    "ceremony_plural": "Cérémonies",
+    "training": "Formation",
+    "training_plural": "Formations",
+    "other": "Autre"
+  },
+  "format": {
+    "in_person": "Présentiel",
+    "online": "En ligne",
+    "hybrid": "Hybride"
   },
   "events": {
     "title": "Événements",
+    "metaDescription": "Découvrez les événements au Sénégal — conférences, concerts, ateliers, festivals et plus.",
     "discover": "Découvrez les événements",
     "noEvents": "Aucun événement disponible pour le moment.",
     "register": "S'inscrire",
@@ -56,37 +302,372 @@
     "noResults": "Aucun événement trouvé",
     "noResultsHint": "Aucun événement ne correspond à vos critères. Essayez d'élargir votre recherche.",
     "clearFilters": "Réinitialiser les filtres",
+    "compareCta": "Comparer des événements",
+    "list": {
+      "resultsCount": "{count, plural, one {# événement trouvé} other {# événements trouvés}}"
+    },
+    "card": {
+      "registeredCount": "{count, plural, one {# inscrit} other {# inscrits}}",
+      "registeredWithFill": "{count, plural, one {# inscrit} other {# inscrits}} · {pct}% rempli",
+      "remainingSeats": "{count, plural, one {Plus qu'# place} other {Plus que # places}}",
+      "attendeesCount": "{count} inscrits"
+    },
     "filters": {
       "today": "Aujourd'hui",
       "thisWeek": "Cette semaine",
       "thisWeekend": "Ce weekend",
       "thisMonth": "Ce mois",
       "free": "Gratuit",
-      "paid": "Payant"
+      "paid": "Payant",
+      "searchPlaceholder": "Rechercher un événement...",
+      "allCategories": "Toutes les catégories",
+      "allFormats": "Tous les formats",
+      "allCities": "Toutes les villes",
+      "filterByCity": "Filtrer par ville",
+      "filterByCategory": "Filtrer par catégorie",
+      "filterByFormat": "Filtrer par format",
+      "filterByDate": "Filtrer par date",
+      "filterByPrice": "Filtrer par prix",
+      "reset": "Réinitialiser les filtres",
+      "clear": "Effacer"
     },
     "detail": {
+      "featured": "À la une",
+      "venueReferenced": "Lieu référencé",
+      "timezone": "Fuseau : {tz}",
       "about": "À propos",
       "speakers": "Intervenants",
       "schedule": "Programme",
+      "scheduleComingSoon": "Programme à venir",
+      "scheduleComingSoonHint": "L'organisateur publiera bientôt les sessions. Revenez consulter le programme.",
       "sessions": "Sessions",
       "tickets": "Billets",
+      "noTickets": "Aucun billet disponible.",
+      "registeredCount": "{count, plural, one {# personne inscrite} other {# personnes inscrites}}",
+      "seatsCount": "{count} / {max} places",
+      "remaining": "{count, plural, one {# restant} other {# restants}}",
       "registerFree": "S'inscrire gratuitement",
       "registerPaid": "S'inscrire — à partir de {price}",
+      "ctaRegister": "S'inscrire à l'événement",
       "approvalRequired": "Inscription soumise à approbation de l'organisateur.",
       "soldOut": "Complet",
-      "seatsLeft": "{count} places restantes",
-      "lastSeats": "Plus que {count} places !",
+      "full": "Complet",
+      "seatsLeft": "{count, plural, one {# place restante} other {# places restantes}}",
+      "lastSeats": "{count, plural, one {Plus qu'une place !} other {Plus que # places !}}",
+      "popular": "Événement populaire",
+      "scheduleTimezone": "Horaires en heure de Dakar (WAIST, UTC+0)",
+      "save": "Sauvegarder",
+      "saved": "Sauvegardé",
       "feedCommunity": "Feed communautaire",
       "feedHint": "Échangez avec les participants",
       "onlineEvent": "Événement en ligne",
-      "onlineHint": "Le lien d'accès sera partagé après inscription."
+      "onlineHint": "Le lien d'accès sera partagé après inscription.",
+      "addToCalendar": "Ajouter au calendrier",
+      "similarEvents": "Événements similaires",
+      "seeOnMaps": "Voir sur Google Maps",
+      "notFound": "Événement introuvable",
+      "share": "Partager",
+      "allEvents": "Tous les événements",
+      "meta": {
+        "dates": "Dates",
+        "times": "Horaires",
+        "location": "Lieu",
+        "format": "Format"
+      },
+      "pricing": {
+        "from": "À partir de",
+        "attendees": "Inscrits",
+        "percentFull": "{pct}% rempli",
+        "seatsRemaining": "{count, plural, one {# place restante} other {# places restantes}}",
+        "onlyLeft": "{count, plural, one {Plus qu'# place} other {Plus que # places}}",
+        "paymentSecured": "Paiement sécurisé · Wave · Orange Money"
+      },
+      "speakerTwitter": "Twitter de {name}",
+      "speakerLinkedin": "LinkedIn de {name}",
+      "speakerWebsite": "Site web de {name}"
     }
   },
   "badge": {
     "title": "Mon badge",
     "download": "Télécharger",
+    "downloadPdf": "Télécharger le badge PDF",
+    "downloadPdfAria": "Télécharger le badge PDF",
+    "generatingPdf": "Génération en cours...",
+    "pdfError": "La génération du badge PDF a échoué. Réessayez dans quelques instants.",
     "scanToCheckin": "Présentez ce QR code à l'entrée de l'événement.",
-    "addToWallet": "Ajouter au portefeuille"
+    "notYetAvailable": "Votre badge n'est pas encore disponible.",
+    "registrationNotFound": "Inscription introuvable.",
+    "backToMyEvents": "Retour à mes inscriptions",
+    "addToWallet": "Ajouter au portefeuille",
+    "offlineHint": "Disponible hors-ligne",
+    "saveOffline": "Sauvegarder pour le jour J",
+    "saveOfflineAria": "Sauvegarder ce badge pour un accès hors ligne le jour de l'événement",
+    "savingOffline": "Sauvegarde en cours…",
+    "savedOfflineToast": "Badge sauvegardé hors ligne ⚡",
+    "savedOfflineChip": "Sauvegardé hors ligne",
+    "saveOfflineError": "Impossible de sauvegarder hors ligne. Réessayez.",
+    "cachedNotice": "Vous êtes hors ligne. Ce badge est affiché depuis le cache local."
+  },
+  "registerFlow": {
+    "subtitle": "Inscription",
+    "notFound": "Événement introuvable.",
+    "backToEvents": "Retour aux événements",
+    "backToEvent": "Retour à l'événement",
+    "back": "Retour",
+    "verifyEmailTitle": "Vérifiez votre adresse e-mail",
+    "verifyEmailBody": "Nous avons envoyé un lien de vérification à {email}. Cliquez dessus pour débloquer les inscriptions payantes.",
+    "resendVerification": "Renvoyer le lien de vérification",
+    "verificationResending": "Envoi en cours…",
+    "verificationResent": "Lien de vérification renvoyé. Consultez votre boîte de réception.",
+    "verificationResendError": "Impossible d'envoyer l'email. Réessayez dans quelques minutes.",
+    "alreadyRegistered": "Vous êtes déjà inscrit(e)",
+    "statusPrefix": "Votre inscription est {status}.",
+    "viewBadge": "Voir mon badge",
+    "myRegistrations": "Mes inscriptions",
+    "statusLabels": {
+      "confirmed": "confirmée",
+      "pending": "en attente d'approbation",
+      "pending_payment": "en attente de paiement",
+      "waitlisted": "en liste d'attente",
+      "checked_in": "enregistrée (check-in effectué)"
+    },
+    "selectHeading": "Choisissez votre billet",
+    "soldOut": "Épuisé",
+    "seatsLeft": "{count, plural, one {# place restante} other {# places restantes}}",
+    "confirmHeading": "Confirmer votre inscription",
+    "promoHeading": "Code promo",
+    "promoPlaceholder": "Entrez votre code",
+    "promoApply": "Appliquer",
+    "promoInvalid": "Code invalide",
+    "promoApplied": "Code promo appliqué !",
+    "chooseMethod": "Choisissez votre moyen de paiement",
+    "methodAria": "Moyen de paiement",
+    "methods": {
+      "wave": "Wave",
+      "waveDescription": "Mobile Money — Sénégal",
+      "orange_money": "Orange Money",
+      "orangeMoneyDescription": "Paiement via #144#",
+      "free_money": "Free Money",
+      "freeMoneyDescription": "Paiement mobile Free",
+      "card": "Carte bancaire",
+      "cardDescription": "VISA / MasterCard"
+    },
+    "redirectNotice": "Vous serez redirigé(e) vers {method} pour finaliser votre inscription.",
+    "redirectNoticeFallback": "la page de paiement",
+    "approvalNotice": "Cette inscription est soumise à l'approbation de l'organisateur.",
+    "redirecting": "Redirection...",
+    "registering": "Inscription...",
+    "confirmFree": "Confirmer (gratuit)",
+    "payAmount": "Payer {amount}",
+    "confirm": "Confirmer",
+    "successTitle": "Inscription confirmée !",
+    "successPendingApproval": "Votre inscription est en attente d'approbation.",
+    "successQrReady": "Votre badge QR a été généré.",
+    "successSubmit": "Inscription confirmée !",
+    "exploreOthers": "Explorer d'autres événements",
+    "stepper": {
+      "kicker": "Étape {step}/{total}",
+      "step1": "Billet",
+      "step2": "Paiement",
+      "step3": "Confirmation"
+    },
+    "summary": {
+      "kicker": "Récapitulatif",
+      "ticketLabel": "Billet",
+      "serviceFees": "Frais de service",
+      "included": "Inclus",
+      "discount": "Remise",
+      "total": "Total",
+      "refundNote": "Remboursable jusqu'à 48h avant le début, hors frais."
+    },
+    "success": {
+      "kicker": "✦ Inscription confirmée",
+      "headline": "Votre place est réservée. À très bientôt.",
+      "body": "Un email et un SMS de confirmation viennent d'être envoyés. Présentez ce QR code à l'entrée de l'événement.",
+      "passLabel": "Teranga · Pass Nominatif",
+      "accessValid": "ACCÈS VALIDE",
+      "codeLabel": "Code",
+      "dateLabel": "Date",
+      "passTypeLabel": "Pass",
+      "placeLabel": "Lieu",
+      "nextStep": {
+        "verifyEmail": "Vérifier l'e-mail",
+        "verifyEmailHint": "Confirmez votre adresse pour sécuriser votre compte.",
+        "downloadBadge": "Télécharger le badge",
+        "downloadBadgeHint": "Sauvegardez-le hors ligne pour le jour J.",
+        "exploreSchedule": "Explorer le programme",
+        "exploreScheduleHint": "Marquez les sessions qui vous intéressent."
+      }
+    }
+  },
+  "paymentStatus": {
+    "noPaymentSpecified": "Aucun paiement spécifié.",
+    "backToEvents": "Retour aux événements",
+    "backToEventPrefix": "Retour à {title}",
+    "pageTitleFallback": "Paiement",
+    "processingHeading": "Paiement en cours…",
+    "processingHint": "Votre paiement est en cours de traitement. Cette page se met à jour automatiquement.",
+    "successHeading": "Paiement confirmé !",
+    "successHint": "Votre inscription a été confirmée et votre badge QR est prêt.",
+    "redirectIn": "Redirection vers votre badge dans {seconds}s...",
+    "viewBadge": "Voir mon badge",
+    "myRegistrations": "Mes inscriptions",
+    "exploreOthers": "Explorer d'autres événements",
+    "failedHeading": "Paiement échoué",
+    "failedFallback": "Le paiement n'a pas pu être traité. Veuillez réessayer.",
+    "retry": "Réessayer",
+    "contactSupport": "Contacter le support",
+    "downloadReceipt": "Télécharger le reçu",
+    "generatingReceipt": "Préparation du reçu…",
+    "receiptError": "Impossible de générer le reçu. Réessayez dans quelques instants.",
+    "errorHeading": "Erreur",
+    "errorHint": "Impossible de récupérer le statut du paiement."
+  },
+  "offlinePage": {
+    "title": "Hors ligne",
+    "heading": "Vous êtes hors ligne",
+    "hint": "Vérifiez votre connexion internet et réessayez.",
+    "retry": "Réessayer"
+  },
+  "addToCalendar": {
+    "google": "Google Agenda",
+    "googleAria": "Ajouter à Google Agenda",
+    "downloadIcs": "Télécharger (.ics)",
+    "downloadIcsAria": "Télécharger le fichier calendrier"
+  },
+  "myEvents": {
+    "title": "Mes inscriptions",
+    "kicker": "✦ Bonjour {name}",
+    "headline": "Vos prochains rendez-vous",
+    "countLabel": "{count, plural, one {# inscription} other {# inscriptions}}",
+    "countLabelWithPast": "{count, plural, one {# à venir} other {# à venir}} · {past, plural, one {# passé} other {# passés}}",
+    "loadError": "Impossible de charger vos inscriptions. Veuillez réessayer.",
+    "emptyTitle": "Aucune inscription pour le moment",
+    "emptyDescription": "Explorez les événements à venir et inscrivez-vous en quelques clics.",
+    "discoverCta": "Découvrir les événements",
+    "tabs": {
+      "upcoming": "À venir",
+      "past": "Passés",
+      "saved": "Sauvegardés"
+    },
+    "savedEmptyTitle": "Aucun événement sauvegardé",
+    "savedEmptyDescription": "Cliquez sur l'icône signet d'un événement pour le retrouver ici.",
+    "pastEmptyTitle": "Aucun événement passé",
+    "pastEmptyDescription": "Les événements auxquels vous avez participé apparaîtront ici.",
+    "details": "Détails",
+    "viewSchedule": "Programme",
+    "settings": "Paramètres",
+    "browseCta": "Parcourir",
+    "ticketPrefix": "Billet",
+    "registeredOn": "Inscrit le",
+    "waitlistPosition": "Position #{n}",
+    "waitlistPositionAria": "Vous êtes en position {n} sur la liste d'attente",
+    "badge": "Badge",
+    "refund": "Remboursement",
+    "refundRequested": "Demande de remboursement envoyée",
+    "refundReason": "Demande de remboursement par le participant",
+    "leaveWaitlist": "Quitter la liste d'attente",
+    "cancel": "Annuler",
+    "cancelled": "Annulé",
+    "cancelledSuccess": "Inscription annulée avec succès.",
+    "viewToggleAria": "Basculer entre la vue liste et la vue calendrier",
+    "viewList": "Liste",
+    "viewCalendar": "Calendrier",
+    "calendar": {
+      "prevMonth": "Mois précédent",
+      "nextMonth": "Mois suivant",
+      "today": "Aujourd'hui",
+      "more": "de plus",
+      "legend": "Statuts",
+      "confirmed": "Confirmé",
+      "checkedIn": "Présent",
+      "pending": "En attente",
+      "waitlisted": "Liste d'attente",
+      "discoveryLegend": "Autres événements",
+      "discoveryOn": "Voir d'autres événements",
+      "discoveryOff": "Masquer les autres",
+      "closeDialog": "Fermer"
+    },
+    "paginationPrev": "Précédent",
+    "paginationNext": "Suivant",
+    "paginationOf": "Page {page} / {total}",
+    "cancelDialog": {
+      "title": "Annuler l'inscription",
+      "description": "Êtes-vous sûr(e) de vouloir annuler cette inscription ? Cette action est irréversible.",
+      "confirm": "Oui, annuler",
+      "cancel": "Non, garder"
+    },
+    "refundDialog": {
+      "title": "Demander un remboursement",
+      "description": "Le remboursement sera traité selon la politique de l'organisateur. Le délai de traitement est généralement de 5-10 jours ouvrés.",
+      "confirm": "Confirmer la demande",
+      "cancel": "Annuler"
+    },
+    "status": {
+      "confirmed": "Confirmé",
+      "pending": "En attente",
+      "pending_payment": "Paiement en attente",
+      "waitlisted": "En liste d'attente",
+      "checked_in": "Enregistré",
+      "cancelled": "Annulé",
+      "refund_requested": "Remboursement demandé",
+      "refunded": "Remboursé"
+    }
+  },
+  "settings": {
+    "title": "Paramètres",
+    "notifications": {
+      "heading": "Notifications",
+      "description": "Choisissez comment recevoir vos notifications",
+      "push": "Notifications push",
+      "pushDescription": "Recevez des alertes en temps réel sur votre appareil",
+      "sms": "SMS",
+      "smsDescription": "Recevez des notifications par SMS",
+      "email": "Email",
+      "emailDescription": "Recevez des résumés et confirmations par email",
+      "reminders": "Rappels d'événements",
+      "remindersDescription": "Recevez un rappel avant le début de vos événements"
+    },
+    "privacy": {
+      "heading": "Confidentialité",
+      "description": "Contrôlez la visibilité de votre profil et vos interactions",
+      "profileVisible": "Profil visible par les autres participants",
+      "profileVisibleDescription": "Les autres participants pourront voir votre nom et votre profil lors des événements",
+      "profileVisibleOn": "Votre profil est maintenant visible",
+      "profileVisibleOff": "Votre profil est maintenant masqué",
+      "dmAllowed": "Autoriser les messages directs",
+      "dmAllowedDescription": "Les autres participants pourront vous envoyer des messages",
+      "dmAllowedOn": "Messages directs activés",
+      "dmAllowedOff": "Messages directs désactivés"
+    },
+    "account": {
+      "heading": "Compte",
+      "description": "Actions irréversibles concernant votre compte",
+      "delete": "Supprimer mon compte",
+      "deleteConfirmQuestion": "Êtes-vous sûr(e) de vouloir supprimer votre compte ?",
+      "deleteConfirmWarning": "Cette action est irréversible. Toutes vos données, inscriptions et messages seront définitivement supprimés.",
+      "deleteConfirm": "Confirmer la suppression",
+      "deleteCancel": "Annuler",
+      "deleteContactSupport": "Veuillez contacter le support pour supprimer votre compte : support@teranga-events.com"
+    }
+  },
+  "pagination": {
+    "nav": "Pagination",
+    "prev": "Page précédente",
+    "next": "Page suivante",
+    "pageN": "Page {n}"
+  },
+  "offline": {
+    "indicator": "Vous êtes hors ligne"
+  },
+  "emailVerificationBanner": {
+    "notVerified": "Votre adresse email n'est pas vérifiée.",
+    "resendLink": "Renvoyer l'email",
+    "sending": "Envoi...",
+    "close": "Fermer"
+  },
+  "authGuard": {
+    "checking": "Vérification..."
   },
   "feed": {
     "title": "Fil d'actualité",
@@ -104,30 +685,143 @@
   "notifications": {
     "title": "Notifications",
     "markAllRead": "Tout lire",
-    "empty": "Aucune notification"
+    "empty": "Aucune notification",
+    "emptyUnread": "Aucune notification non lue",
+    "count": "{count, plural, one {# notification} other {# notifications}}",
+    "filterAll": "Toutes",
+    "filterUnread": "Non lues",
+    "paginationPrev": "Précédent",
+    "paginationNext": "Suivant",
+    "paginationOf": "Page {page} sur {total}",
+    "errorTitle": "Chargement impossible",
+    "errorDescription": "Nous n'avons pas pu récupérer vos notifications. Réessayez dans un instant.",
+    "retry": "Réessayer"
   },
   "messages": {
     "title": "Messages",
-    "noConversations": "Aucune conversation.",
-    "writeMessage": "Écrire un message..."
+    "listHeading": "Conversations",
+    "backToMyEvents": "Mes événements",
+    "noConversations": "Aucune conversation",
+    "selectConversation": "Sélectionnez une conversation",
+    "noMessages": "Aucun message. Commencez la conversation !",
+    "errorConversations": "Erreur de chargement des conversations.",
+    "errorMessages": "Erreur de chargement des messages.",
+    "retry": "Réessayer",
+    "you": "Vous",
+    "unknownParticipant": "Inconnu",
+    "writeMessage": "Écrire un message...",
+    "sendAria": "Envoyer le message",
+    "relative": {
+      "now": "À l'instant",
+      "minutesShort": "Il y a {n}min",
+      "hoursShort": "Il y a {n}h",
+      "yesterday": "Hier",
+      "daysShort": "Il y a {n}j"
+    }
   },
   "profile": {
     "title": "Mon profil",
+    "personalInfoHeading": "Informations personnelles",
     "displayName": "Nom complet",
+    "displayNamePlaceholder": "Prénom Nom",
+    "phone": "Téléphone",
+    "phonePlaceholder": "+221 77 123 45 67",
     "bio": "Biographie",
+    "bioPlaceholder": "Parlez-nous de vous...",
     "company": "Organisation",
     "jobTitle": "Poste",
-    "saveProfile": "Enregistrer le profil",
-    "profileUpdated": "Profil mis à jour"
+    "preferredLanguage": "Langue préférée",
+    "saveProfile": "Enregistrer",
+    "savingProfile": "Enregistrement...",
+    "profileUpdated": "Profil mis à jour avec succès.",
+    "changePhotoAria": "Changer la photo de profil",
+    "photoAlt": "Photo de profil",
+    "photoHint": "Cliquez pour changer la photo (JPG, PNG, WebP - max 5 Mo)",
+    "photoInvalidType": "Type de fichier non autorisé. Formats acceptés : JPG, PNG, WebP.",
+    "photoTooLarge": "Le fichier dépasse la taille maximale de 5 Mo.",
+    "photoUploadError": "Erreur lors du téléversement de la photo.",
+    "photoUploaded": "Photo de profil mise à jour.",
+    "notAuthenticated": "Non authentifié"
+  },
+  "feed": {
+    "kicker": "— FIL D'ACTUALITÉ",
+    "title": "Fil d'actualité",
+    "backToEvent": "Retour à l'événement",
+    "backToEvents": "Retour aux événements",
+    "notFoundKicker": "— INTROUVABLE",
+    "notFoundTitle": "Événement introuvable",
+    "loadingLabel": "Chargement du fil d'actualité…",
+    "errorKicker": "— ERREUR",
+    "errorTitle": "Impossible de charger le fil d'actualité",
+    "errorDescription": "Vérifiez votre connexion et réessayez dans un instant.",
+    "retry": "Réessayer",
+    "emptyKicker": "— AUCUNE PUBLICATION",
+    "emptyTitle": "Aucune publication pour le moment",
+    "emptyDescription": "Soyez le premier à partager une publication avec les participants."
+  },
+  "schedule": {
+    "kicker": "— PROGRAMME",
+    "title": "Programme",
+    "timezone": "Horaires en heure de Dakar (WAIST, UTC+0)",
+    "back": "Retour",
+    "errorKicker": "— ERREUR",
+    "errorTitle": "Impossible de charger le programme",
+    "retry": "Réessayer",
+    "emptyKicker": "— AUCUNE SESSION",
+    "emptyTitle": "Aucune session programmée",
+    "emptyDescription": "Le programme sera disponible prochainement. Revenez bientôt.",
+    "speakersCount": "{count, plural, one {# intervenant} other {# intervenants}}",
+    "addBookmarkShort": "Ajouter au programme perso",
+    "removeBookmarkShort": "Retirer du programme perso",
+    "addBookmarkAria": "Ajouter cette session à votre programme personnel",
+    "removeBookmarkAria": "Retirer cette session de votre programme personnel",
+    "bookmarkCount": "{count, plural, one {# session dans votre programme} other {# sessions dans votre programme}}"
   },
   "newsletter": {
     "heading": "Restez informé des événements au Sénégal",
     "description": "Recevez chaque semaine les meilleurs événements près de chez vous.",
     "placeholder": "votre@email.com",
+    "emailAria": "Adresse e-mail pour la newsletter",
     "submit": "S'inscrire",
     "submitting": "Inscription…",
+    "submittingAria": "Inscription en cours",
     "success": "Merci ! Vous êtes inscrit.",
     "error": "Une erreur s'est produite. Veuillez réessayer.",
-    "privacyNote": "En vous inscrivant, vous acceptez notre politique de confidentialité."
+    "privacyPrefix": "En vous inscrivant, vous acceptez notre",
+    "privacyLink": "politique de confidentialité",
+    "privacyNote": "En vous inscrivant, vous acceptez notre politique de confidentialité.",
+    "validation": {
+      "required": "Veuillez saisir votre adresse e-mail.",
+      "invalidEmail": "Adresse e-mail invalide."
+    }
+  },
+  "share": {
+    "label": "Partager",
+    "signupCta": "Inscrivez-vous ici :",
+    "whatsapp": "Partager sur WhatsApp",
+    "facebook": "Partager sur Facebook",
+    "twitter": "Partager sur X (Twitter)",
+    "copyLink": "Copier le lien",
+    "copied": "Lien copié"
+  },
+  "faq": {
+    "metaTitle": "Aide & FAQ | Teranga",
+    "metaDescription": "Réponses aux questions fréquentes sur Teranga Events : inscriptions, billets, QR badges, remboursements et plus.",
+    "back": "Retour",
+    "kicker": "— AIDE",
+    "title": "Aide & FAQ",
+    "subtitle": "Réponses aux questions fréquentes sur la plateforme.",
+    "comingSoonHeading": "Bientôt disponible",
+    "comingSoonBody": "Nous préparons une FAQ complète pour répondre à toutes vos questions sur les inscriptions, les paiements, les QR badges et plus encore.",
+    "contactPrefix": "En attendant, n'hésitez pas à nous contacter si vous avez des questions :",
+    "upcomingSectionsHeading": "Sections à venir",
+    "upcomingSections": {
+      "register": "Comment m'inscrire à un événement ?",
+      "qr": "Comment fonctionne le QR badge ?",
+      "cancel": "Puis-je annuler mon inscription ?",
+      "contact": "Comment contacter l'organisateur ?",
+      "payments": "Paiements et remboursements",
+      "confirmationEmail": "Que faire si je ne reçois pas mon email de confirmation ?"
+    }
   }
 }

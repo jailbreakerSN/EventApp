@@ -258,4 +258,60 @@ describe("UploadService.generateUploadUrl", () => {
       service.generateUploadUrl("feed", "ev-1", { ...dto, purpose: "feed" as const }, user),
     ).rejects.toThrow("registered");
   });
+
+  // ── Sprint 1 PR 4/5: content-length enforcement at the GCS edge ────────
+
+  it("signs a 10 MB content-length cap for images via x-goog-content-length-range", async () => {
+    // Regression guard: the signed URL must include the
+    // `x-goog-content-length-range` extension header so GCS rejects
+    // oversize PUTs at the edge without trusting client-side validation.
+    // Omitting the header → unbounded upload attack surface.
+    const user = buildOrganizerUser("org-1");
+    const event = buildEvent({ id: "ev-1", organizationId: "org-1" });
+    mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
+    mockGetSignedUrl.mockResolvedValueOnce(["https://storage.googleapis.com/signed-image"]);
+
+    const result = await service.generateUploadUrl(
+      "event",
+      "ev-1",
+      { fileName: "cover.jpg", contentType: "image/jpeg", purpose: "cover" },
+      user,
+    );
+
+    const signCall = mockGetSignedUrl.mock.calls.at(-1)?.[0] as {
+      extensionHeaders?: Record<string, string>;
+    };
+    expect(signCall.extensionHeaders).toEqual({
+      "x-goog-content-length-range": `0,${10 * 1024 * 1024}`,
+    });
+    expect(result.maxBytes).toBe(10 * 1024 * 1024);
+    // Response includes the required headers so clients know to
+    // replay them on the PUT (server remains source of truth).
+    expect(result.requiredHeaders).toEqual({
+      "x-goog-content-length-range": `0,${10 * 1024 * 1024}`,
+    });
+  });
+
+  it("signs a 20 MB cap for application/pdf (speaker slides)", async () => {
+    const user = buildOrganizerUser("org-1");
+    mockSpeakerRepo.findByIdOrThrow.mockResolvedValue(
+      buildSpeaker({ id: "spk-1", organizationId: "org-1", userId: "someone-else" }),
+    );
+    mockGetSignedUrl.mockResolvedValueOnce(["https://storage.googleapis.com/signed-pdf"]);
+
+    const result = await service.generateUploadUrl(
+      "speaker",
+      "spk-1",
+      { fileName: "deck.pdf", contentType: "application/pdf", purpose: "slides" },
+      user,
+    );
+
+    const signCall = mockGetSignedUrl.mock.calls.at(-1)?.[0] as {
+      extensionHeaders?: Record<string, string>;
+    };
+    expect(signCall.extensionHeaders).toEqual({
+      "x-goog-content-length-range": `0,${20 * 1024 * 1024}`,
+    });
+    expect(result.maxBytes).toBe(20 * 1024 * 1024);
+  });
 });

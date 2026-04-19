@@ -9,8 +9,9 @@ import {
   type CloneEventDto,
   type Event,
   type EventStatus,
+  type EventCategory,
   type EventSearchQuery,
-  type OrganizationPlan,
+  type Organization,
 } from "@teranga/shared-types";
 import {
   eventRepository,
@@ -58,7 +59,7 @@ export class EventService extends BaseService {
     }
 
     // Check plan limit for active events
-    await this.checkEventLimit(dto.organizationId, org.plan);
+    await this.checkEventLimit(org);
 
     // Validate dates
     if (new Date(dto.endDate) <= new Date(dto.startDate)) {
@@ -119,7 +120,14 @@ export class EventService extends BaseService {
   }
 
   async getBySlug(slug: string, user?: AuthUser): Promise<Event> {
-    const event = await eventRepository.findBySlug(slug);
+    // Try strict slug lookup first, then fall back to ID lookup so links
+    // built from `event.id` (e.g. historical registrations that predate
+    // the eventSlug denormalization) still resolve to the right event
+    // instead of 404'ing.
+    let event = await eventRepository.findBySlug(slug);
+    if (!event) {
+      event = await eventRepository.findById(slug);
+    }
     if (!event) {
       const { NotFoundError } = await import("@/errors/app-error");
       throw new NotFoundError("Event", slug);
@@ -146,6 +154,7 @@ export class EventService extends BaseService {
     organizationId: string,
     user: AuthUser,
     pagination: PaginationParams,
+    filters: { category?: EventCategory; status?: EventStatus } = {},
   ): Promise<PaginatedResult<Event>> {
     this.requirePermission(user, "event:read");
 
@@ -153,7 +162,7 @@ export class EventService extends BaseService {
       throw new ForbiddenError("Accès refusé aux événements de cette organisation");
     }
 
-    return eventRepository.findByOrganization(organizationId, pagination);
+    return eventRepository.findByOrganization(organizationId, pagination, filters);
   }
 
   async update(eventId: string, dto: UpdateEventDto, user: AuthUser): Promise<void> {
@@ -332,7 +341,7 @@ export class EventService extends BaseService {
       // Gate paid tickets behind plan feature
       if (dto.price && dto.price > 0) {
         const org = await organizationRepository.findByIdOrThrow(event.organizationId);
-        this.requirePlanFeature(org.plan, "paidTickets");
+        this.requirePlanFeature(org, "paidTickets");
       }
 
       const updatedTicketTypes = [...event.ticketTypes, newTicketType];
@@ -377,7 +386,18 @@ export class EventService extends BaseService {
       }
 
       const updatedTicketTypes = [...event.ticketTypes];
-      updatedTicketTypes[index] = { ...updatedTicketTypes[index], ...dto };
+      const merged = { ...updatedTicketTypes[index], ...dto };
+      updatedTicketTypes[index] = merged;
+
+      // Gate paid tickets behind plan feature. Checked against the merged
+      // price so raising a free ticket to a paid one — or keeping an
+      // existing paid ticket while editing anything else — both trip the
+      // gate on free/starter plans.
+      if (merged.price > 0) {
+        const org = await organizationRepository.findByIdOrThrow(event.organizationId);
+        this.requirePlanFeature(org, "paidTickets");
+      }
+
       tx.update(docRef, { ticketTypes: updatedTicketTypes, updatedBy: user.uid });
       return { ...event, ticketTypes: updatedTicketTypes };
     });
@@ -560,7 +580,7 @@ export class EventService extends BaseService {
 
     // Check plan limits for event count
     const org = await organizationRepository.findByIdOrThrow(source.organizationId);
-    await this.checkEventLimit(source.organizationId, org.plan);
+    await this.checkEventLimit(org);
 
     // Validate new dates
     if (new Date(dto.newEndDate) <= new Date(dto.newStartDate)) {
@@ -674,17 +694,18 @@ export class EventService extends BaseService {
 
   // ─── Plan Limit Helpers ────────────────────────────────────────────────────
 
-  private async checkEventLimit(organizationId: string, plan: OrganizationPlan): Promise<void> {
+  private async checkEventLimit(org: Organization): Promise<void> {
     const { allowed, current, limit } = this.checkPlanLimit(
-      plan,
+      org,
       "events",
-      await eventRepository.countActiveByOrganization(organizationId),
+      await eventRepository.countActiveByOrganization(org.id),
     );
     if (!allowed) {
-      throw new PlanLimitError(`Maximum ${limit} événements actifs sur le plan ${plan}`, {
+      const planLabel = org.effectivePlanKey ?? org.plan;
+      throw new PlanLimitError(`Maximum ${limit} événements actifs sur le plan ${planLabel}`, {
         current,
         max: limit,
-        plan,
+        plan: planLabel,
       });
     }
   }

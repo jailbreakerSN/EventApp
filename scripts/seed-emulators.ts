@@ -27,24 +27,24 @@
  *   - 12 audit logs (including admin + subscription actions)
  */
 
-// ─── Mode detection ────────────────────────────────────────────────────────
-// Defaults to emulator mode for safety. Set SEED_TARGET=staging (or any other
-// non-empty value) to seed against a real Firestore project.
-//   - emulator: writes to local Firebase emulators (default)
-//   - staging:  writes to real Firestore. Requires GOOGLE_APPLICATION_CREDENTIALS
-//               or Application Default Credentials (set automatically by
-//               google-github-actions/auth in CI). Checks idempotency before
-//               writing, unless SEED_FORCE=true.
+// ─── Safety guards ─────────────────────────────────────────────────────────
+// All target detection, project-id allow-listing and emulator host wiring
+// now lives in scripts/seed/config.ts. This script must assert safety BEFORE
+// initializing the admin SDK — otherwise a typo in FIREBASE_PROJECT_ID would
+// connect to the wrong Firestore before the guard runs.
 
-const SEED_TARGET = process.env.SEED_TARGET ?? "emulator";
-const SEED_FORCE = process.env.SEED_FORCE === "true";
-const PROJECT_ID = process.env.FIREBASE_PROJECT_ID ?? "teranga-app-990a8";
+import {
+  PROJECT_ID,
+  PROJECT_LABEL,
+  SEED_FORCE,
+  SEED_TARGET,
+  assertSafeTarget,
+  configureEmulatorHosts,
+  Dates,
+} from "./seed/config";
 
-if (SEED_TARGET === "emulator") {
-  process.env.FIRESTORE_EMULATOR_HOST = "localhost:8080";
-  process.env.FIREBASE_AUTH_EMULATOR_HOST = "localhost:9099";
-  process.env.FIREBASE_STORAGE_EMULATOR_HOST = "localhost:9199";
-}
+configureEmulatorHosts();
+assertSafeTarget();
 
 import { initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
@@ -55,18 +55,21 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 
 // ─── Time helpers ──────────────────────────────────────────────────────────
+// Aliases preserved so the sprawling document bodies below keep reading
+// naturally (`createdAt: yesterday`, `startDate: inOneWeek`, ...). The
+// actual offsets live in scripts/seed/config.ts → Dates.
 
-const now = new Date().toISOString();
-const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
-const inOneWeek = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-const inOneWeekPlus1h = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000 + 3600000).toISOString();
-const inOneWeekPlus2h = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000 + 7200000).toISOString();
-const inOneWeekPlus3h = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000 + 10800000).toISOString();
-const inOneWeekPlus4h = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000 + 14400000).toISOString();
-const inTwoWeeks = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
-const inOneMonth = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+const now = Dates.now;
+const oneHourAgo = Dates.oneHourAgo;
+const yesterday = Dates.yesterday;
+const twoDaysAgo = Dates.twoDaysAgo;
+const inOneWeek = Dates.inOneWeek;
+const inOneWeekPlus1h = Dates.inOneWeekPlus1h;
+const inOneWeekPlus2h = Dates.inOneWeekPlus2h;
+const inOneWeekPlus3h = Dates.inOneWeekPlus3h;
+const inOneWeekPlus4h = Dates.inOneWeekPlus4h;
+const inTwoWeeks = Dates.inTwoWeeks;
+const inOneMonth = Dates.inOneMonth;
 
 // ─── IDs ─────────────────────────────────────────────────────────────────
 
@@ -86,6 +89,23 @@ const IDS = {
   venueManager: "venuemanager-uid-001",
   freeOrganizer: "freeorg-uid-001",
   enterpriseOrganizer: "enterprise-uid-001",
+  // Role-coverage fixtures added for PR #59 (fix: onUserCreated race) —
+  // each one validates a different branch of the role-display contract
+  // in the admin users table at /admin/users.
+  //   - `staffUser`: the only `staff` role in the platform, closes a
+  //     regression gap where no seeded user carried that role at all.
+  //   - `multiRoleUser`: carries two roles (organizer + speaker) — common
+  //     real-world shape (an organizer who also speaks at their own
+  //     event) and proves the admin UI renders the FULL `roles[]` array,
+  //     not just `roles[0]`.
+  //   - `authOnlyUser`: created via auth.createUser without a companion
+  //     Firestore profile write — exercises the trigger's "no existing
+  //     profile → default to participant" path. The admin UI should show
+  //     this one with the Participant badge, which is the ONE row where
+  //     that label is semantically correct.
+  staffUser: "staff-uid-001",
+  multiRoleUser: "multirole-uid-001",
+  authOnlyUser: "authonly-uid-001",
   // Events
   conference: "event-001",
   workshop: "event-002",
@@ -146,19 +166,69 @@ async function ensureUser(
 }
 
 async function seed() {
-  console.log(`🌱 Seeding Firebase (target=${SEED_TARGET}, project=${PROJECT_ID})...\n`);
+  const label = PROJECT_LABEL[PROJECT_ID] ?? PROJECT_ID;
+  console.log(
+    `🌱 Seeding Firebase (target=${SEED_TARGET}, project=${PROJECT_ID}, label=${label})...\n`,
+  );
+
+  // ─── Always-run: plan catalog + effective-limits backfill ──────────────
+  // These two steps are pure upserts / denormalization refreshes — safe to
+  // run on every deploy regardless of whether the database is "empty" or
+  // not. They MUST run before the idempotency guard below so that existing
+  // staging/prod environments (which skip the rest of the seed) still get
+  // the four system plans and fresh effective-limits snapshots.
+  //
+  // - seedPlans: upserts free/starter/pro/enterprise by deterministic key,
+  //   preserving createdAt on re-run.
+  // - backfillEffectiveLimits: recomputes effectiveLimits/Features for every
+  //   org from the catalog + any subscription overrides. Idempotent.
+
+  console.log("💼 Seeding plan catalog (always runs)...");
+  {
+    const { seedPlans } = await import("./seed-plans");
+    const n = await seedPlans(db);
+    console.log(`  ✓ ${n} system plans upserted (free, starter, pro, enterprise)`);
+  }
+
+  console.log("🔁 Backfilling effective plan limits on organizations (always runs)...");
+  {
+    const { backfillEffectiveLimits } = await import("./backfill-effective-limits");
+    try {
+      const result = await backfillEffectiveLimits(db);
+      console.log(`  ✓ ${result.updated}/${result.total} organizations updated`);
+      if (result.skipped > 0) {
+        console.log(`  ⚠ ${result.skipped} skipped (missing plan in catalog):`);
+        for (const entry of result.missingPlan) {
+          console.log(`    - ${entry}`);
+        }
+      }
+    } catch (err) {
+      // A fresh project with zero organizations yet is fine — the backfill
+      // throws only when the plans catalog is empty, which we just seeded
+      // above. Any other error should surface.
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("catalogue de plans est vide")) {
+        console.log("  ⚠ Skipping backfill: catalog still empty (should never happen).");
+      } else {
+        throw err;
+      }
+    }
+  }
 
   // ─── Idempotency guard ─────────────────────────────────────────────────
-  // Only relevant in non-emulator mode: skip if data exists, unless forced.
-  // Emulator is ephemeral — always re-seed.
+  // Only relevant in non-emulator mode: skip the rest of the seed if data
+  // exists, unless forced. Emulator is ephemeral — always re-seed.
+  // IMPORTANT: this guard must come AFTER the plan catalog and effective-
+  // limits backfill so those steps reach production even when the rest of
+  // the seed is skipped.
   if (SEED_TARGET !== "emulator" && !SEED_FORCE) {
     const existing = await db.collection("organizations").limit(1).get();
     if (!existing.empty) {
-      console.log("✓ Database already contains organizations. Skipping seed.");
-      console.log("  Set SEED_FORCE=true to re-run anyway (destructive).");
+      console.log("\n✓ Database already contains organizations. Skipping remaining seed.");
+      console.log("  Set SEED_FORCE=true to re-run the full seed (destructive).");
       return;
     }
-    console.log("✓ Database is empty. Proceeding with initial seed.\n");
+    console.log("\n✓ Database is empty. Proceeding with initial seed.\n");
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -227,6 +297,39 @@ async function seed() {
     { roles: ["organizer"], organizationId: IDS.enterpriseOrgId },
   );
 
+  // ─── Role-coverage fixtures for PR #59 (onUserCreated race fix) ────────
+  // Covers three cases the pre-existing roster didn't exercise. After
+  // seeding, visit /admin/users and confirm each row shows its real role
+  // badge (no more "Participant" for everyone).
+
+  // 1. `staff` — QR check-in agent role. Not seeded before.
+  await ensureUser(
+    IDS.staffUser,
+    { email: "staff@teranga.dev", password: "password123", displayName: "Moussa Sy" },
+    { roles: ["staff"], organizationId: IDS.orgId },
+  );
+
+  // 2. Multi-role user (organizer + speaker) — the admin UI renders the
+  // full `roles[]` array; this row exposes any "only first role wins"
+  // regression. Common IRL shape: an organizer who also speaks at their
+  // own event.
+  await ensureUser(
+    IDS.multiRoleUser,
+    { email: "multirole@teranga.dev", password: "password123", displayName: "Khadija Diop" },
+    { roles: ["organizer", "speaker"], organizationId: IDS.orgId },
+  );
+
+  // 3. Auth-only user — created via auth.createUser with NO companion
+  // Firestore profile write below. Exercises the trigger's "no existing
+  // profile → default to participant" path. This is the ONE row in the
+  // admin table where the Participant badge is semantically correct
+  // (fresh signup with no provisioning metadata).
+  await ensureUser(
+    IDS.authOnlyUser,
+    { email: "authonly@teranga.dev", password: "password123", displayName: "Thierno Wade" },
+    {}, // no custom claims — trigger's default is what we're validating
+  );
+
   console.log("  ✓ organizer@teranga.dev / password123 (organizer, pro plan)");
   console.log("  ✓ coorganizer@teranga.dev / password123 (co_organizer)");
   console.log("  ✓ participant@teranga.dev / password123 (participant)");
@@ -237,6 +340,11 @@ async function seed() {
   console.log("  ✓ venue@teranga.dev / password123 (venue_manager, starter plan)");
   console.log("  ✓ free@teranga.dev / password123 (organizer, free plan)");
   console.log("  ✓ enterprise@teranga.dev / password123 (organizer, enterprise plan)");
+  console.log("  ✓ staff@teranga.dev / password123 (staff — PR #59 fixture)");
+  console.log("  ✓ multirole@teranga.dev / password123 (organizer+speaker — PR #59 fixture)");
+  console.log(
+    "  ✓ authonly@teranga.dev / password123 (auth-only, default participant — PR #59 fixture)",
+  );
 
   // ═══════════════════════════════════════════════════════════════════════════
   // 2. ORGANIZATION
@@ -436,19 +544,54 @@ async function seed() {
       phone: "+221770006666",
       bio: "Head of Events, Groupe Sonatel — événements corporate pan-africains",
     },
+    // ─── PR #59 role-coverage fixtures ──────────────────────────────────────
+    // See the IDS comment block above for the rationale per user.
+    // NOTE: `authOnlyUser` is intentionally absent from this array — we want
+    // the onUserCreated trigger to create its profile with the default
+    // `roles: ["participant"]`, exercising the "fresh signup" branch of the
+    // fix. If you add a Firestore doc here, you'll collapse the coverage.
+    {
+      uid: IDS.staffUser,
+      email: "staff@teranga.dev",
+      displayName: "Moussa Sy",
+      roles: ["staff"],
+      organizationId: IDS.orgId,
+      phone: "+221770003333",
+      bio: "Responsable contrôle d'accès — scans QR à l'entrée des événements",
+    },
+    {
+      uid: IDS.multiRoleUser,
+      email: "multirole@teranga.dev",
+      displayName: "Khadija Diop",
+      roles: ["organizer", "speaker"],
+      organizationId: IDS.orgId,
+      phone: "+221770004444",
+      bio: "Organise et intervient sur les meetups Flutter Dakar",
+    },
   ];
 
   for (const profile of userProfiles) {
+    // merge:true so we don't clobber fields the onUserCreated trigger
+    // wrote (preferredLanguage, fcmTokens, isEmailVerified). Post-PR #59
+    // the trigger is idempotent (skips if the doc already exists), but
+    // order of operations here is: auth.createUser → trigger fires and
+    // writes defaults → seed loop runs and would full-overwrite. Without
+    // merge the seeded docs silently lose those default fields, which
+    // then fail Zod parse on the API side the next time a listUsers
+    // call materialises them.
     await db
       .collection("users")
       .doc(profile.uid)
-      .set({
-        ...profile,
-        photoURL: null,
-        isActive: true,
-        createdAt: twoDaysAgo,
-        updatedAt: now,
-      });
+      .set(
+        {
+          ...profile,
+          photoURL: null,
+          isActive: true,
+          createdAt: twoDaysAgo,
+          updatedAt: now,
+        },
+        { merge: true },
+      );
   }
 
   console.log(`  ✓ ${userProfiles.length} user profiles created`);
@@ -881,6 +1024,34 @@ async function seed() {
 
   const epochBase36 = Date.now().toString(36);
 
+  // Denormalized event metadata copied onto each registration. The API
+  // populates these four fields automatically on real writes (see
+  // apps/api/src/services/registration.service.ts); the seed has to mirror
+  // that contract or the calendar + my-events surfaces render empty dates.
+  const eventDenorm = {
+    [IDS.conference]: {
+      eventTitle: "Dakar Tech Summit 2026",
+      eventSlug: "dakar-tech-summit-2026",
+      eventStartDate: inOneWeek,
+      eventEndDate: inTwoWeeks,
+    },
+    [IDS.paidEvent]: {
+      eventTitle: "Masterclass IA Générative",
+      eventSlug: "masterclass-ia-generative",
+      eventStartDate: inTwoWeeks,
+      eventEndDate: inTwoWeeks,
+    },
+  } as const;
+
+  // Display names for the same two events' ticket types, surfaced in
+  // registration cards / ticket passes.
+  const ticketNames: Record<string, string> = {
+    "ticket-standard-001": "Standard",
+    "ticket-vip-001": "VIP",
+    "ticket-standard-004": "Early Bird",
+    "ticket-vip-004": "Premium",
+  };
+
   // Reg 1: Participant 1 → Conference (confirmed, checked in)
   await db
     .collection("registrations")
@@ -890,6 +1061,10 @@ async function seed() {
       eventId: IDS.conference,
       userId: IDS.participant1,
       ticketTypeId: "ticket-standard-001",
+      ticketTypeName: ticketNames["ticket-standard-001"],
+      participantName: "Aminata Fall",
+      participantEmail: "participant@teranga.dev",
+      ...eventDenorm[IDS.conference],
       status: "confirmed",
       qrCodeValue: `${IDS.reg1}:${IDS.conference}:${IDS.participant1}:${epochBase36}:demo-hmac-sig-001`,
       checkedInAt: oneHourAgo,
@@ -909,6 +1084,10 @@ async function seed() {
       eventId: IDS.conference,
       userId: IDS.participant2,
       ticketTypeId: "ticket-standard-001",
+      ticketTypeName: ticketNames["ticket-standard-001"],
+      participantName: "Ousmane Ndiaye",
+      participantEmail: "participant2@teranga.dev",
+      ...eventDenorm[IDS.conference],
       status: "confirmed",
       qrCodeValue: `${IDS.reg2}:${IDS.conference}:${IDS.participant2}:${epochBase36}:demo-hmac-sig-002`,
       checkedInAt: null,
@@ -928,6 +1107,10 @@ async function seed() {
       eventId: IDS.conference,
       userId: IDS.speakerUser,
       ticketTypeId: "ticket-standard-001",
+      ticketTypeName: ticketNames["ticket-standard-001"],
+      participantName: "Ibrahima Gueye",
+      participantEmail: "speaker@teranga.dev",
+      ...eventDenorm[IDS.conference],
       status: "confirmed",
       qrCodeValue: `${IDS.reg3}:${IDS.conference}:${IDS.speakerUser}:${epochBase36}:demo-hmac-sig-003`,
       checkedInAt: null,
@@ -947,6 +1130,10 @@ async function seed() {
       eventId: IDS.conference,
       userId: IDS.sponsorUser,
       ticketTypeId: "ticket-vip-001",
+      ticketTypeName: ticketNames["ticket-vip-001"],
+      participantName: "Aissatou Ba",
+      participantEmail: "sponsor@teranga.dev",
+      ...eventDenorm[IDS.conference],
       status: "confirmed",
       qrCodeValue: `${IDS.reg4}:${IDS.conference}:${IDS.sponsorUser}:${epochBase36}:demo-hmac-sig-004`,
       checkedInAt: null,
@@ -958,13 +1145,20 @@ async function seed() {
     });
 
   // Reg 5: Participant 1 → Paid event (pending_payment)
+  // qrCodeValue is a placeholder sentinel because RegistrationSchema requires
+  // a non-nullable string; real pending_payment registrations get the HMAC-
+  // signed payload on confirmation.
   await db.collection("registrations").doc(IDS.reg5).set({
     id: IDS.reg5,
     eventId: IDS.paidEvent,
     userId: IDS.participant1,
     ticketTypeId: "ticket-standard-004",
+    ticketTypeName: ticketNames["ticket-standard-004"],
+    participantName: "Aminata Fall",
+    participantEmail: "participant@teranga.dev",
+    ...eventDenorm[IDS.paidEvent],
     status: "pending_payment",
-    qrCodeValue: null,
+    qrCodeValue: `pending:${IDS.reg5}`,
     checkedInAt: null,
     checkedInBy: null,
     accessZoneId: null,
@@ -982,6 +1176,10 @@ async function seed() {
       eventId: IDS.paidEvent,
       userId: IDS.participant2,
       ticketTypeId: "ticket-vip-004",
+      ticketTypeName: ticketNames["ticket-vip-004"],
+      participantName: "Ousmane Ndiaye",
+      participantEmail: "participant2@teranga.dev",
+      ...eventDenorm[IDS.paidEvent],
       status: "confirmed",
       qrCodeValue: `${IDS.reg6}:${IDS.paidEvent}:${IDS.participant2}:${epochBase36}:demo-hmac-sig-006`,
       checkedInAt: null,
@@ -1799,6 +1997,9 @@ async function seed() {
 
   console.log(`  ✓ ${auditEvents.length} audit log entries (including venue & admin actions)`);
 
+  // NOTE: plan catalog is seeded up-front (always-runs block near the top of
+  // seed()) so this function no longer needs a dedicated plan-catalog step.
+
   // ═══════════════════════════════════════════════════════════════════════════
   // 20. SUBSCRIPTIONS (Freemium Model)
   // ═══════════════════════════════════════════════════════════════════════════
@@ -1862,6 +2063,27 @@ async function seed() {
   console.log("  ✓ sub-002: Teranga Events (pro, 29 900 XOF/mois)");
   console.log("  ✓ sub-003: Sonatel Events (enterprise, custom)");
   console.log("  ✓ Startup Dakar — no subscription (free plan)");
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 20b. BACKFILL EFFECTIVE LIMITS (Phase 2 denormalization)
+  // ═══════════════════════════════════════════════════════════════════════════
+  //
+  // The always-runs block near the top of seed() also calls
+  // backfillEffectiveLimits, but on a fresh seed that call sees zero orgs
+  // (orgs are created later in this function). Re-run here so the 4 freshly
+  // seeded orgs get their effective* fields populated. Idempotent — safe to
+  // run multiple times.
+
+  console.log("\n🔁 Backfilling effective plan limits onto freshly-seeded organizations...");
+  const { backfillEffectiveLimits: backfillLate } = await import("./backfill-effective-limits");
+  const backfill = await backfillLate(db);
+  console.log(`  ✓ ${backfill.updated}/${backfill.total} organizations updated`);
+  if (backfill.skipped > 0) {
+    console.log(`  ⚠ ${backfill.skipped} skipped (missing plan in catalog):`);
+    for (const entry of backfill.missingPlan) {
+      console.log(`    - ${entry}`);
+    }
+  }
 
   // ═══════════════════════════════════════════════════════════════════════════
   // DONE

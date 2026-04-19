@@ -1,4 +1,4 @@
-import type { FastifyPluginAsync } from "fastify";
+import type { FastifyPluginAsync, FastifyRequest, FastifyReply } from "fastify";
 import { z } from "zod";
 import { authenticate, requireEmailVerified } from "@/middlewares/auth.middleware";
 import { validate } from "@/middlewares/validate.middleware";
@@ -82,28 +82,31 @@ export const sponsorRoutes: FastifyPluginAsync = async (fastify) => {
   );
 
   // ─── Update Sponsor ───────────────────────────────────────────────────
-  fastify.put(
-    "/sponsors/:sponsorId",
-    {
-      preHandler: [
-        authenticate,
-        requireEmailVerified,
-        requireAnyPermission(["sponsor:manage_booth", "event:manage_sponsors"]),
-        validate({ params: ParamsWithSponsorId, body: UpdateSponsorSchema }),
-      ],
-      schema: {
-        tags: ["Sponsors"],
-        summary: "Update sponsor profile / booth",
-        security: [{ BearerAuth: [] }],
-      },
+  //
+  // Same PATCH/PUT dual-verb story as speakers.routes.ts: clients call
+  // PATCH, historical route was PUT-only, calls silently 404'd. PATCH is
+  // the canonical REST verb for partial updates; PUT kept as alias.
+  const updateSponsorHandler = async (request: FastifyRequest, reply: FastifyReply) => {
+    const { sponsorId } = request.params as z.infer<typeof ParamsWithSponsorId>;
+    const dto = request.body as z.infer<typeof UpdateSponsorSchema>;
+    const sponsor = await sponsorService.updateSponsor(sponsorId, dto, request.user!);
+    return reply.send({ success: true, data: sponsor });
+  };
+  const updateSponsorConfig = {
+    preHandler: [
+      authenticate,
+      requireEmailVerified,
+      requireAnyPermission(["sponsor:manage_booth", "event:manage_sponsors"]),
+      validate({ params: ParamsWithSponsorId, body: UpdateSponsorSchema }),
+    ],
+    schema: {
+      tags: ["Sponsors"],
+      summary: "Update sponsor profile / booth",
+      security: [{ BearerAuth: [] }],
     },
-    async (request, reply) => {
-      const { sponsorId } = request.params as z.infer<typeof ParamsWithSponsorId>;
-      const dto = request.body as z.infer<typeof UpdateSponsorSchema>;
-      const sponsor = await sponsorService.updateSponsor(sponsorId, dto, request.user!);
-      return reply.send({ success: true, data: sponsor });
-    },
-  );
+  };
+  fastify.patch("/sponsors/:sponsorId", updateSponsorConfig, updateSponsorHandler);
+  fastify.put("/sponsors/:sponsorId", updateSponsorConfig, updateSponsorHandler);
 
   // ─── Delete Sponsor ───────────────────────────────────────────────────
   fastify.delete(

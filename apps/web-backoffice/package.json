@@ -13,6 +13,7 @@
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",
     "@tanstack/react-query": "^5.62.10",
+    "@teranga/shared-config": "*",
     "@teranga/shared-types": "*",
     "@teranga/shared-ui": "^0.1.0",
     "class-variance-authority": "^0.7.1",
