@@ -104,25 +104,10 @@ export const EXPANSION_VENUE_IDS = [
   "venue-014", // Bamako — Centre International de Conférences
 ] as const;
 
-/** 16 additional events spread across categories, formats, plans, cities. */
-export const EXPANSION_EVENT_IDS = [
-  "event-005", // Festival hip-hop Saly (past, completed)
-  "event-006", // Marathon Dakar 2026 (past, completed)
-  "event-007", // Meetup Dev Abidjan (LIVE now)
-  "event-008", // Workshop Digital Saint-Louis (LIVE now)
-  "event-009", // Formation IA Bamako (upcoming, online)
-  "event-010", // Conférence Fintech Dakar (upcoming, hybrid)
-  "event-011", // Concert Youssou N'Dour Dakar
-  "event-012", // Web Summit Thiès
-  "event-013", // Festival Jazz Saint-Louis
-  "event-014", // Training Flutter Ziguinchor
-  "event-015", // Meetup Mobile Lomé
-  "event-016", // Sport Marathon Thiès
-  "event-017", // AfricaTech Online Conference
-  "event-018", // Exposition UX Dakar
-  "event-019", // Concert Baaba Maal Saly
-  "event-020", // Atelier IA Abidjan
-] as const;
+// NOTE: there is no `EXPANSION_EVENT_IDS` constant here — the expansion
+// event catalogue lives in `04-events.ts` as `EXPANSION_EVENT_DENORM`, with
+// full title / slug / dates / organisation metadata. Downstream modules
+// should import from there, not from a flat ID list.
 
 /**
  * 27 additional participant users — realistic francophone West African

@@ -21,18 +21,13 @@ import type { Firestore } from "firebase-admin/firestore";
 import { Dates } from "./config";
 import { IDS } from "./ids";
 import { EXPANSION_PARTICIPANTS } from "./02-users";
+import { EXPANSION_EVENT_DENORM, findTicketType } from "./04-events";
 
 const {
   now,
-  twoHoursAgo,
   oneHourAgo,
   yesterday,
   twoWeeksAgo,
-  oneMonthAgo,
-  fortyFiveDaysAgo,
-  inThreeHours,
-  inFourHours,
-  inFiveDays,
   inOneWeek,
   inOneWeekPlus1h,
   inOneWeekPlus2h,
@@ -41,11 +36,7 @@ const {
   inTenDays,
   inTwoWeeks,
   inThreeWeeks,
-  inOneMonth,
-  inFortyFiveDays,
   inTwoMonths,
-  inSeventyFiveDays,
-  inThreeMonths,
 } = Dates;
 
 // Shared across registrations + badges. The epoch is only used as a replay-
@@ -216,6 +207,32 @@ const LEGACY_REGISTRATIONS: SeedRegistration[] = [
 // denormalised count is what the UI surfaces; the actual reg rows are a
 // representative sample.
 
+/**
+ * Which ticket-type each expansion registration consumes. The other fields
+ * (title / slug / start / end) come from `EXPANSION_EVENT_DENORM` in
+ * `04-events.ts` — the events module is the single source of truth for
+ * event metadata. This module only chooses *which* of the event's
+ * ticket-types the demo registrations buy.
+ */
+const PRIMARY_TICKET_ID_BY_EVENT: Record<string, string> = {
+  "event-005": "ticket-pass-005",
+  "event-006": "ticket-marathon-006",
+  "event-007": "ticket-free-007",
+  "event-008": "ticket-workshop-008",
+  "event-009": "ticket-formation-009",
+  "event-010": "ticket-on-site-010",
+  "event-011": "ticket-pelouse-011",
+  "event-012": "ticket-early-012",
+  "event-013": "ticket-pass-013",
+  "event-014": "ticket-onsite-014",
+  "event-015": "ticket-free-015",
+  "event-016": "ticket-semi-016",
+  "event-017": "ticket-free-017",
+  "event-018": "ticket-expo-018",
+  "event-019": "ticket-concert-019",
+  "event-020": "ticket-stream-020",
+};
+
 type ExpansionEventMeta = {
   title: string;
   slug: string;
@@ -225,136 +242,35 @@ type ExpansionEventMeta = {
   ticketTypeName: string;
 };
 
-const EXPANSION_EVENT_META: Record<string, ExpansionEventMeta> = {
-  "event-005": {
-    title: "Festival Hip-Hop de Saly",
-    slug: "festival-hip-hop-saly-2026",
-    startDate: fortyFiveDaysAgo,
-    endDate: fortyFiveDaysAgo,
-    ticketTypeId: "ticket-pass-005",
-    ticketTypeName: "Pass 3 jours",
-  },
-  "event-006": {
-    title: "Marathon de Dakar 2026",
-    slug: "marathon-dakar-2026",
-    startDate: oneMonthAgo,
-    endDate: oneMonthAgo,
-    ticketTypeId: "ticket-marathon-006",
-    ticketTypeName: "Dossard marathon",
-  },
-  "event-007": {
-    title: "Meetup Développeurs Dakar #13 (LIVE)",
-    slug: "meetup-dev-dakar-13",
-    startDate: twoHoursAgo,
-    endDate: inFourHours,
-    ticketTypeId: "ticket-free-007",
-    ticketTypeName: "Entrée libre",
-  },
-  "event-008": {
-    title: "Workshop Design Digital Saint-Louis (LIVE)",
-    slug: "workshop-digital-saint-louis",
-    startDate: oneHourAgo,
-    endDate: inThreeHours,
-    ticketTypeId: "ticket-workshop-008",
-    ticketTypeName: "Participant",
-  },
-  "event-009": {
-    title: "Formation IA pour Cadres Dirigeants",
-    slug: "formation-ia-cadres-bamako",
-    startDate: inFiveDays,
-    endDate: inFiveDays,
-    ticketTypeId: "ticket-formation-009",
-    ticketTypeName: "Place formation",
-  },
-  "event-010": {
-    title: "Conférence Fintech Ouest-Africaine",
-    slug: "conference-fintech-ouest-africaine",
-    startDate: inTenDays,
-    endDate: inTenDays,
-    ticketTypeId: "ticket-on-site-010",
-    ticketTypeName: "Sur place",
-  },
-  "event-011": {
-    title: "Concert Youssou N'Dour — Grand Bal de Dakar",
-    slug: "concert-youssou-ndour-dakar-2026",
-    startDate: inTwoWeeks,
-    endDate: inTwoWeeks,
-    ticketTypeId: "ticket-pelouse-011",
-    ticketTypeName: "Pelouse",
-  },
-  "event-012": {
-    title: "Web Summit Thiès — Édition 2026",
-    slug: "web-summit-thies-2026",
-    startDate: inThreeWeeks,
-    endDate: inThreeWeeks,
-    ticketTypeId: "ticket-early-012",
-    ticketTypeName: "Early Bird",
-  },
-  "event-013": {
-    title: "Festival Jazz de Saint-Louis",
-    slug: "festival-jazz-saint-louis-2026",
-    startDate: inThreeWeeks,
-    endDate: inThreeWeeks,
-    ticketTypeId: "ticket-pass-013",
-    ticketTypeName: "Pass 4 jours",
-  },
-  "event-014": {
-    title: "Formation Flutter Avancée — Ziguinchor",
-    slug: "formation-flutter-avancee-ziguinchor",
-    startDate: inOneMonth,
-    endDate: inOneMonth,
-    ticketTypeId: "ticket-onsite-014",
-    ticketTypeName: "Sur place (Ziguinchor)",
-  },
-  "event-015": {
-    title: "Meetup Mobile Dakar — Flutter vs React Native",
-    slug: "meetup-mobile-dakar-flutter-vs-rn",
-    startDate: inOneWeek,
-    endDate: inOneWeekPlus1h,
-    ticketTypeId: "ticket-free-015",
-    ticketTypeName: "Entrée libre",
-  },
-  "event-016": {
-    title: "Marathon Régional de Thiès",
-    slug: "marathon-regional-thies-2026",
-    startDate: inFortyFiveDays,
-    endDate: inFortyFiveDays,
-    ticketTypeId: "ticket-semi-016",
-    ticketTypeName: "Dossard semi (21 km)",
-  },
-  "event-017": {
-    title: "AfricaTech Online Conference 2026",
-    slug: "africatech-online-2026",
-    startDate: inTwoMonths,
-    endDate: inTwoMonths,
-    ticketTypeId: "ticket-free-017",
-    ticketTypeName: "Participation libre",
-  },
-  "event-018": {
-    title: "Exposition UX Dakar 2026",
-    slug: "exposition-ux-dakar-2026",
-    startDate: inSeventyFiveDays,
-    endDate: inSeventyFiveDays,
-    ticketTypeId: "ticket-expo-018",
-    ticketTypeName: "Visite expo",
-  },
-  "event-019": {
-    title: "Concert Baaba Maal — Nuit de Saly",
-    slug: "concert-baaba-maal-saly",
-    startDate: inFortyFiveDays,
-    endDate: inFortyFiveDays,
-    ticketTypeId: "ticket-concert-019",
-    ticketTypeName: "Place concert",
-  },
-  "event-020": {
-    title: "Atelier IA Appliquée — Abidjan",
-    slug: "atelier-ia-appliquee-abidjan",
-    startDate: inThreeMonths,
-    endDate: inThreeMonths,
-    ticketTypeId: "ticket-stream-020",
-    ticketTypeName: "En ligne",
-  },
-};
+/**
+ * Merge `EXPANSION_EVENT_DENORM` (title/slug/dates from 04-events.ts) with
+ * `PRIMARY_TICKET_ID_BY_EVENT` (ticket choice owned by this module) at
+ * module load. Failing fast here (throw on a missing event / ticket)
+ * catches drift between 04-events.ts and the fan-out table below before
+ * any Firestore write happens.
+ */
+const EXPANSION_EVENT_META: Record<string, ExpansionEventMeta> = (() => {
+  const out: Record<string, ExpansionEventMeta> = {};
+  for (const event of EXPANSION_EVENT_DENORM) {
+    const ticketTypeId = PRIMARY_TICKET_ID_BY_EVENT[event.id];
+    if (!ticketTypeId) {
+      throw new Error(`PRIMARY_TICKET_ID_BY_EVENT missing entry for ${event.id}`);
+    }
+    const ticket = findTicketType(event.id, ticketTypeId);
+    if (!ticket) {
+      throw new Error(`Event ${event.id} has no ticket-type with id ${ticketTypeId}`);
+    }
+    out[event.id] = {
+      title: event.title,
+      slug: event.slug,
+      startDate: event.startDate,
+      endDate: event.endDate,
+      ticketTypeId,
+      ticketTypeName: ticket.name,
+    };
+  }
+  return out;
+})();
 
 /**
  * One line = one registration. `p` is the 0-based index into

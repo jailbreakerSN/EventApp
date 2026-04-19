@@ -52,12 +52,31 @@ const {
 } = Dates;
 
 /**
- * Shape we actually write to Firestore. Kept loose (not z.infer<EventSchema>)
- * because the seed writes denormalised fields that the Zod schema marks as
- * optional — forcing the full inferred type here would trigger spurious
- * `undefined` vs `null` friction on re-seed.
+ * Shape we actually write to Firestore. Kept loose on most fields (not
+ * `z.infer<EventSchema>`) because the seed writes denormalised fields the
+ * Zod schema marks as optional — forcing the full inferred type here would
+ * trigger spurious `undefined` vs `null` friction on re-seed. The six
+ * fields we *do* type strictly are the ones downstream modules
+ * (`05-activity.ts`, `06-social.ts`) consume to keep their denorms and
+ * audit entries consistent with this module.
  */
-type SeedEvent = Record<string, unknown> & { id: string };
+type SeedTicketType = {
+  id: string;
+  name: string;
+  price: number;
+  [key: string]: unknown;
+};
+
+type SeedEvent = Record<string, unknown> & {
+  id: string;
+  title: string;
+  slug: string;
+  startDate: string;
+  endDate: string;
+  ticketTypes: SeedTicketType[];
+  createdBy: string;
+  organizationId: string;
+};
 
 // ─── Legacy events (preserved byte-for-byte) ─────────────────────────────
 // ⚠ DO NOT EDIT fields on these four. They are the anchor for every inline
@@ -1349,6 +1368,46 @@ const EXPANSION_EVENTS: SeedEvent[] = [
   ...NEAR_TERM_EVENTS,
   ...FAR_FUTURE_EVENTS,
 ];
+
+// ─── Public surface consumed by 05-activity.ts and 06-social.ts ─────────
+// The events module is the single source of truth for title / slug / dates
+// on each expansion event. Downstream modules import these helpers rather
+// than re-typing the metadata, so a title change here can't silently leave
+// stale denorms on registrations or audit rows.
+
+export type ExpansionEventDenorm = {
+  id: string;
+  title: string;
+  slug: string;
+  startDate: string;
+  endDate: string;
+  organizationId: string;
+  createdBy: string;
+};
+
+/**
+ * Denormalised view of the 16 expansion events. Derived at module load so
+ * the array stays in lockstep with `EXPANSION_EVENTS` above. Keeps only the
+ * fields downstream modules actually consume — downstream doesn't need
+ * `ticketTypes`, `coverImageURL`, venue wiring, etc.
+ */
+export const EXPANSION_EVENT_DENORM: readonly ExpansionEventDenorm[] = EXPANSION_EVENTS.map(
+  (e) => ({
+    id: e.id,
+    title: e.title,
+    slug: e.slug,
+    startDate: e.startDate,
+    endDate: e.endDate,
+    organizationId: e.organizationId,
+    createdBy: e.createdBy,
+  }),
+);
+
+/** Ticket-type lookup for the activity module's registration fan-out. */
+export function findTicketType(eventId: string, ticketTypeId: string): SeedTicketType | undefined {
+  const event = EXPANSION_EVENTS.find((e) => e.id === eventId);
+  return event?.ticketTypes.find((t) => t.id === ticketTypeId);
+}
 
 // ─── Seed ────────────────────────────────────────────────────────────────
 
