@@ -89,7 +89,14 @@ class ApiError extends Error {
   constructor(
     public readonly code: string,
     message: string,
-    public readonly status: number
+    public readonly status: number,
+    /**
+     * Structured payload the server attached via `AppError.toJSON`. The
+     * shape is error-specific — e.g. `QR_ALREADY_USED` carries
+     * `{ checkedInByName, checkedInDeviceId, checkedInAt }` for the
+     * duplicate-scan card.
+     */
+    public readonly details?: Record<string, unknown>
   ) {
     super(message);
     this.name = "ApiError";
@@ -161,7 +168,8 @@ async function request<T>(
     throw new ApiError(
       data.error?.code ?? "UNKNOWN",
       data.error?.message ?? "Request failed",
-      response.status
+      response.status,
+      data.error?.details as Record<string, unknown> | undefined
     );
   }
 

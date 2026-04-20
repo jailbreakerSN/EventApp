@@ -41,6 +41,25 @@ import {
   Search,
 } from "lucide-react";
 
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+/**
+ * Short relative time — "il y a 12 s", "il y a 3 min". Used on the
+ * duplicate-scan card where the gate staff needs a quick "how long ago
+ * did the first scan land?" without pulling in a date-fns bundle.
+ */
+function formatRelative(iso: string): string {
+  const deltaMs = Date.now() - new Date(iso).getTime();
+  if (!Number.isFinite(deltaMs) || deltaMs < 0) return "à l'instant";
+  const sec = Math.floor(deltaMs / 1000);
+  if (sec < 60) return `il y a ${sec} s`;
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `il y a ${min} min`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `il y a ${hr} h`;
+  return new Date(iso).toLocaleString("fr-FR");
+}
+
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 type ScanStatus =
@@ -59,6 +78,12 @@ interface ScanResult {
   accessZone?: string | null;
   checkedInAt?: string | null;
   errorMessage?: string;
+  // Duplicate-scan enrichment (badge-journey-review 3.5) — lets the
+  // "Déjà validé" card name the scanner who got there first instead of
+  // leaving the staff member guessing.
+  checkedInBy?: string | null;
+  checkedInByName?: string | null;
+  checkedInDeviceId?: string | null;
 }
 
 // ─── Main Page ──────────────────────────────────────────────────────────────
@@ -274,16 +299,33 @@ function ScannerTab({
 
       scheduleClear();
     } catch (err: unknown) {
-      const error = err as { code?: string; message?: string; status?: number };
+      const error = err as {
+        code?: string;
+        message?: string;
+        status?: number;
+        details?: Record<string, unknown>;
+      };
       const code = error.code ?? "";
       const message = error.message ?? "Erreur inconnue";
 
       if (code === "QR_ALREADY_USED" || error.status === 409) {
+        // Duplicate-scan enrichment (badge-journey-review 3.5). Pull the
+        // scanner identity off `error.details` so the red card can show
+        // "Déjà validé par Aminata" instead of a bare message.
+        const d = error.details ?? {};
         setScanResult({
           status: "already_checked_in",
           errorMessage: message,
+          checkedInAt: (d.checkedInAt as string | null | undefined) ?? null,
+          checkedInBy: (d.checkedInBy as string | null | undefined) ?? null,
+          checkedInByName: (d.checkedInByName as string | null | undefined) ?? null,
+          checkedInDeviceId: (d.checkedInDeviceId as string | null | undefined) ?? null,
         });
-        toast.warning("Deja enregistre", { description: message });
+        const toastDescription =
+          d.checkedInByName && d.checkedInAt
+            ? `Déjà validé par ${d.checkedInByName} · ${formatRelative(d.checkedInAt as string)}`
+            : message;
+        toast.warning("Deja enregistre", { description: toastDescription });
       } else if (code === "QR_EXPIRED" || error.status === 410) {
         // Badge signed validity window is in the past. Surface as its own
         // state so staff can distinguish fraud attempts from scanner errors.
@@ -544,6 +586,15 @@ function ScanResultCard({ result }: { result: ScanResult }) {
   }
 
   if (result.status === "already_checked_in") {
+    // Build the "scanned by who, when" subhead from the server-supplied
+    // details. When both are present, give staff the full picture
+    // ("Aminata Fall · il y a 12 s") so they can call across the aisle
+    // rather than treat it as a fraud signal by default.
+    const scannedByLine =
+      result.checkedInByName && result.checkedInAt
+        ? `${result.checkedInByName} · ${formatRelative(result.checkedInAt)}`
+        : (result.checkedInByName ??
+          (result.checkedInAt ? formatRelative(result.checkedInAt) : null));
     return (
       <div className="rounded-xl border-2 border-amber-500 bg-amber-50 dark:bg-amber-900/20 p-6 animate-in fade-in duration-300">
         <div className="flex items-start gap-4">
@@ -554,9 +605,19 @@ function ScanResultCard({ result }: { result: ScanResult }) {
             <h3 className="text-xl font-bold text-amber-800 dark:text-amber-300">
               Deja enregistre
             </h3>
+            {scannedByLine && (
+              <p className="text-base font-semibold text-amber-900 dark:text-amber-200 mt-1">
+                Validé par {scannedByLine}
+              </p>
+            )}
             <p className="text-sm text-amber-700 dark:text-amber-400 mt-1">
               {result.errorMessage ?? "Ce badge a deja ete scanne"}
             </p>
+            {result.checkedInDeviceId && (
+              <p className="text-xs text-amber-600 dark:text-amber-500 mt-1 font-mono">
+                Appareil : {result.checkedInDeviceId}
+              </p>
+            )}
           </div>
         </div>
       </div>
