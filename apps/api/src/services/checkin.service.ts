@@ -328,11 +328,15 @@ export class CheckinService extends BaseService {
           }
         }
 
-        // Apply check-in using the offline scannedAt timestamp
+        // Apply check-in using the offline scannedAt timestamp. Device id
+        // is persisted on the registration for quick "who scanned this?"
+        // lookups; the full attestation (nonce, client vs server time)
+        // rides on the domain event into auditLogs.
         tx.update(regRef, {
           status: "checked_in" as RegistrationStatus,
           checkedInAt: item.scannedAt,
           checkedInBy: user.uid,
+          checkedInDeviceId: item.scannerDeviceId ?? null,
           accessZoneId: item.accessZoneId ?? null,
           updatedAt: new Date().toISOString(),
         });
@@ -352,17 +356,24 @@ export class CheckinService extends BaseService {
       const participant = await userRepository.findById(registration.userId);
 
       if (txResult.status === "success") {
+        const serverConfirmedAt = new Date().toISOString();
         eventBus.emit("checkin.completed", {
           eventId,
           registrationId: registration.id,
           participantId: registration.userId,
           staffId: user.uid,
           accessZoneId: item.accessZoneId ?? null,
+          // Server-confirmed timestamp (when the write landed) vs the
+          // client-reported scan timestamp. Offline reconciliation can
+          // open a sizeable gap between the two — forensics needs both.
           checkedInAt: item.scannedAt,
+          clientScannedAt: item.scannedAt,
+          scannerDeviceId: item.scannerDeviceId ?? null,
+          scannerNonce: item.scannerNonce ?? null,
           source: "offline_sync",
           actorId: user.uid,
           requestId: getRequestId(),
-          timestamp: new Date().toISOString(),
+          timestamp: serverConfirmedAt,
         });
       }
 

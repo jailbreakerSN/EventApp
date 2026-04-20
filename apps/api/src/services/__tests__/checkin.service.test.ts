@@ -67,8 +67,9 @@ vi.mock("@/repositories/organization.repository", () => ({
   ),
 }));
 
+const { mockEventEmit } = vi.hoisted(() => ({ mockEventEmit: vi.fn() }));
 vi.mock("@/events/event-bus", () => ({
-  eventBus: { emit: vi.fn() },
+  eventBus: { emit: mockEventEmit },
 }));
 
 vi.mock("@/context/request-context", () => ({
@@ -214,6 +215,81 @@ describe("CheckinService.bulkSync", () => {
     expect(result.succeeded).toBe(1);
     expect(result.failed).toBe(0);
     expect(result.results[0].status).toBe("success");
+  });
+
+  it("persists scanner attestation (device id on registration, nonce + client time on audit event)", async () => {
+    const user = buildStaffUser({ organizationId: "org-1" });
+    const reg = buildRegistration({ eventId: event.id, status: "confirmed" });
+    const scannedAt = new Date(Date.now() - 60_000).toISOString();
+
+    mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
+    mockRegRepo.findByQrCode.mockResolvedValue(reg);
+    mockTxGetReg.mockResolvedValue({
+      exists: true,
+      id: reg.id,
+      data: () => ({ ...reg, id: undefined }),
+    });
+    mockUserRepo.findById.mockResolvedValue({ displayName: "Test User" });
+
+    await service.bulkSync(
+      event.id,
+      [
+        {
+          localId: "local-1",
+          qrCodeValue: reg.qrCodeValue,
+          scannedAt,
+          scannerDeviceId: "device-ios-abc123",
+          scannerNonce: "deadbeefcafebabe",
+        },
+      ],
+      user,
+    );
+
+    // Registration doc: device id persisted for O(1) "who scanned this" lookups.
+    const regUpdate = mockTxUpdate.mock.calls.find(
+      (call) => (call[1] as Record<string, unknown>).status === "checked_in",
+    );
+    expect(regUpdate).toBeDefined();
+    expect((regUpdate![1] as Record<string, unknown>).checkedInDeviceId).toBe("device-ios-abc123");
+
+    // Audit event: nonce + client-reported time + live/offline source.
+    const completedCall = mockEventEmit.mock.calls.find((c) => c[0] === "checkin.completed");
+    expect(completedCall).toBeDefined();
+    const payload = completedCall![1] as Record<string, unknown>;
+    expect(payload.scannerDeviceId).toBe("device-ios-abc123");
+    expect(payload.scannerNonce).toBe("deadbeefcafebabe");
+    expect(payload.clientScannedAt).toBe(scannedAt);
+    expect(payload.source).toBe("offline_sync");
+  });
+
+  it("accepts items without attestation and writes null (backward compat with older app builds)", async () => {
+    const user = buildStaffUser({ organizationId: "org-1" });
+    const reg = buildRegistration({ eventId: event.id, status: "confirmed" });
+
+    mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
+    mockRegRepo.findByQrCode.mockResolvedValue(reg);
+    mockTxGetReg.mockResolvedValue({
+      exists: true,
+      id: reg.id,
+      data: () => ({ ...reg, id: undefined }),
+    });
+    mockUserRepo.findById.mockResolvedValue({ displayName: "Test User" });
+
+    await service.bulkSync(
+      event.id,
+      [{ localId: "local-1", qrCodeValue: reg.qrCodeValue, scannedAt: new Date().toISOString() }],
+      user,
+    );
+
+    const regUpdate = mockTxUpdate.mock.calls.find(
+      (call) => (call[1] as Record<string, unknown>).status === "checked_in",
+    );
+    expect((regUpdate![1] as Record<string, unknown>).checkedInDeviceId).toBeNull();
+
+    const completedCall = mockEventEmit.mock.calls.find((c) => c[0] === "checkin.completed");
+    const payload = completedCall![1] as Record<string, unknown>;
+    expect(payload.scannerDeviceId).toBeNull();
+    expect(payload.scannerNonce).toBeNull();
   });
 
   it("returns invalid_qr for bad QR codes", async () => {

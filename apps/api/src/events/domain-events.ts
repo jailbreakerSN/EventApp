@@ -42,6 +42,17 @@ export interface CheckInCompletedEvent extends BaseEventPayload {
   accessZoneId?: string | null;
   checkedInAt?: string;
   source?: "live" | "offline_sync";
+  // Device attestation — WHICH physical scanner accepted the QR. Paired
+  // with `scannerNonce`, this feeds the future security dashboard's
+  // velocity check (same QR, different device within N minutes ⇒
+  // screenshot-share signal). Both optional because older app builds
+  // don't send them; listeners treat missing fields as "unattested".
+  scannerDeviceId?: string | null;
+  scannerNonce?: string | null;
+  // Client-reported scan time, carried separately from the server's
+  // `checkedInAt` because offline reconciliation can land much later
+  // than the actual scan. Forensics needs both.
+  clientScannedAt?: string | null;
 }
 
 export interface BulkCheckinSyncedEvent extends BaseEventPayload {

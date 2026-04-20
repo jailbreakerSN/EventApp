@@ -227,6 +227,12 @@ export const RegistrationSchema = z.object({
   qrCodeValue: z.string(), // unique QR payload
   checkedInAt: z.string().datetime().nullable().optional(),
   checkedInBy: z.string().nullable().optional(), // staff uid
+  // Device attestation — id of the scanner device that accepted the QR.
+  // Optional because older mobile app builds don't send it yet, and the
+  // manual-checkin flow (backoffice search) has no device. Stored here
+  // for O(1) "who scanned this" lookups; the full audit trail (nonce,
+  // server-confirmed timestamp) lives in auditLogs.
+  checkedInDeviceId: z.string().nullable().optional(),
   accessZoneId: z.string().nullable().optional(), // zone scanned at
   notes: z.string().nullable().optional(),
   promotedFromWaitlistAt: z.string().datetime().nullable().optional(),
