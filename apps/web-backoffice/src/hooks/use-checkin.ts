@@ -2,7 +2,8 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { checkinApi } from "@/lib/api-client";
-import type { CheckinHistoryQuery } from "@teranga/shared-types";
+import { usePlanGating } from "@/hooks/use-plan-gating";
+import type { AnomalyQuery, CheckinHistoryQuery } from "@teranga/shared-types";
 
 export function useCheckinStats(eventId: string) {
   return useQuery({
@@ -13,10 +14,33 @@ export function useCheckinStats(eventId: string) {
   });
 }
 
-export function useCheckinHistory(
+/**
+ * Polls the security-anomalies endpoint for the live dashboard widget.
+ * Gated client-side by `advancedAnalytics` so free/starter orgs don't
+ * burn the per-minute rate limit (the server rejects them anyway, but
+ * the skipped fetch keeps the upsell card responsive and avoids the
+ * 30/min budget being consumed by someone tab-switching).
+ *
+ * `paused` lets the caller freeze polling — e.g. while an evidence
+ * drill-down is expanded — so the row the user is inspecting doesn't
+ * re-render out from under them.
+ */
+export function useCheckinAnomalies(
   eventId: string,
-  params: Partial<CheckinHistoryQuery> = {},
+  params: Partial<AnomalyQuery> = {},
+  opts: { paused?: boolean } = {},
 ) {
+  const { canUse } = usePlanGating();
+  const enabled = !!eventId && canUse("advancedAnalytics");
+  return useQuery({
+    queryKey: ["checkin", "anomalies", eventId, params],
+    queryFn: () => checkinApi.getAnomalies(eventId, params),
+    enabled,
+    refetchInterval: opts.paused ? false : 10_000,
+  });
+}
+
+export function useCheckinHistory(eventId: string, params: Partial<CheckinHistoryQuery> = {}) {
   return useQuery({
     queryKey: ["checkin", "history", eventId, params],
     queryFn: () => checkinApi.getHistory(eventId, params),

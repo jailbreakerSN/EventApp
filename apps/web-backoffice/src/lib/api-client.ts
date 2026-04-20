@@ -11,6 +11,8 @@ import type {
   CheckinStats,
   CheckinLogEntry,
   CheckinHistoryQuery,
+  AnomalyQuery,
+  AnomalyResponse,
   CreateAccessZoneDto,
   UpdateAccessZoneDto,
   Organization,
@@ -292,6 +294,11 @@ export const checkinApi = {
       checkedInAt: string | null;
       reason: string | null;
     }>>("/v1/registrations/checkin", { qrCodeValue, accessZoneId }),
+
+  getAnomalies: (eventId: string, params: Partial<AnomalyQuery> = {}) =>
+    api.get<ApiResponse<AnomalyResponse>>(
+      `/v1/events/${eventId}/checkin/anomalies${buildQuery(params)}`,
+    ),
 };
 
 export const accessZonesApi = {
