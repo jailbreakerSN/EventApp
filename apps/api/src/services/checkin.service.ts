@@ -143,7 +143,7 @@ export class CheckinService extends BaseService {
 
     // Process each item individually for granular conflict resolution
     for (const item of items) {
-      const result = await this.processCheckinItem(eventId, item, user);
+      const result = await this.processCheckinItem(eventId, event.organizationId, item, user);
       results.push(result);
       if (result.status === "success") {
         succeeded++;
@@ -174,6 +174,7 @@ export class CheckinService extends BaseService {
 
   private async processCheckinItem(
     eventId: string,
+    organizationId: string,
     item: BulkCheckinItem,
     user: AuthUser,
   ): Promise<BulkCheckinResult> {
@@ -369,6 +370,7 @@ export class CheckinService extends BaseService {
         const serverConfirmedAt = new Date().toISOString();
         eventBus.emit("checkin.completed", {
           eventId,
+          organizationId,
           registrationId: registration.id,
           participantId: registration.userId,
           staffId: user.uid,

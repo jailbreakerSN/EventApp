@@ -37,6 +37,11 @@ export interface RegistrationApprovedEvent extends BaseEventPayload {
 export interface CheckInCompletedEvent extends BaseEventPayload {
   registrationId: string;
   eventId: string;
+  // Organization owning the event. Carried on the event payload so the
+  // audit listener can stamp `auditLogs.organizationId` without a
+  // second Firestore read — cross-org audit queries otherwise hit a
+  // null column (security-review follow-up).
+  organizationId: string;
   participantId: string;
   staffId: string;
   accessZoneId?: string | null;
@@ -275,7 +280,22 @@ export interface BadgeGeneratedEvent extends BaseEventPayload {
   badgeId: string;
   registrationId: string;
   eventId: string;
+  organizationId: string;
   userId: string;
+}
+
+/**
+ * Aggregate event for `BadgeService.bulkGenerate`. Per-badge
+ * `badge.generated` emission would flood the audit trail for a 500-user
+ * event without adding signal; we carry a single summary per bulk call.
+ * Mirrors the existing `checkin.bulk_synced` pattern.
+ */
+export interface BadgeBulkGeneratedEvent extends BaseEventPayload {
+  eventId: string;
+  organizationId: string;
+  templateId: string | null;
+  /** Number of new badge docs created in this bulk call. */
+  created: number;
 }
 
 // ── Broadcast ──────────────────────────────────────────────────────────────
@@ -592,6 +612,7 @@ export interface DomainEventMap {
   "member.removed": MemberRemovedEvent;
   "member.role_updated": MemberRoleUpdatedEvent;
   "badge.generated": BadgeGeneratedEvent;
+  "badge.bulk_generated": BadgeBulkGeneratedEvent;
   "payment.initiated": PaymentInitiatedEvent;
   "payment.succeeded": PaymentSucceededEvent;
   "payment.failed": PaymentFailedEvent;

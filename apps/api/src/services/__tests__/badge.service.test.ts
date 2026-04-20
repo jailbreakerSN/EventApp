@@ -12,6 +12,7 @@ import {
 
 const mockEventRepo = {
   findByIdOrThrow: vi.fn(),
+  findById: vi.fn(),
 };
 
 const mockRegistrationRepo = {
@@ -553,6 +554,9 @@ describe("BadgeService.getMyBadge", () => {
       empty: false,
       docs: [{ id: registration.id, data: () => registration }],
     });
+    // `getMyBadge` resolves the event doc after the tx commits to stamp
+    // `organizationId` on the `badge.generated` audit emit.
+    mockEventRepo.findById.mockResolvedValue(buildEvent({ id: "ev-1", organizationId: "org-1" }));
 
     const result = await service.getMyBadge("ev-1", user);
 

@@ -209,6 +209,7 @@ describe("Notification Listener", () => {
       badgeId: "badge-1",
       registrationId: "reg-1",
       eventId: "ev-1",
+      organizationId: "org-1",
       userId: "u-1",
       actorId: "system",
       requestId: "req-3",

@@ -575,6 +575,7 @@ export class RegistrationService extends BaseService {
     eventBus.emit("checkin.completed", {
       registrationId: registration.id,
       eventId: txResult.eventId,
+      organizationId: event.organizationId,
       participantId: registration.userId,
       staffId: user.uid,
       accessZoneId,
