@@ -12,6 +12,7 @@ import { organizationRepository } from "@/repositories/organization.repository";
 import { userRepository } from "@/repositories/user.repository";
 import { type PaginationParams, type PaginatedResult } from "@/repositories/base.repository";
 import { runTransaction, FieldValue } from "@/repositories/transaction.helper";
+import { db, COLLECTIONS } from "@/config/firebase";
 import { type AuthUser } from "@/middlewares/auth.middleware";
 import {
   ValidationError,
@@ -25,6 +26,7 @@ import {
   QrNotYetValidError,
   NotFoundError,
   PlanLimitError,
+  ZoneFullError,
 } from "@/errors/app-error";
 import { BaseService } from "./base.service";
 import {
@@ -35,6 +37,7 @@ import {
   computeValidityWindow,
 } from "./qr-signing";
 import { resolveEventKeyFromEvent } from "./qr-key-resolver";
+import { computeLockKey, type ScanPolicy } from "./checkin-policy";
 import { eventBus } from "@/events/event-bus";
 import { getRequestId } from "@/context/request-context";
 
@@ -479,6 +482,30 @@ export class RegistrationService extends BaseService {
       throw new QrExpiredError(new Date(window.notAfter).toISOString());
     }
 
+    // Pre-build a random id + createdAt for the shadow `checkins` doc.
+    // The same fields participate in the tx for every outcome (success
+    // → status "success", "already" → "duplicate", anything else is
+    // already handled above / cannot reach here).
+    const checkinRef = db.collection(COLLECTIONS.CHECKINS).doc();
+    const checkinBase = {
+      id: checkinRef.id,
+      eventId: registration.eventId,
+      registrationId: registration.id,
+      organizationId: event.organizationId,
+      userId: registration.userId,
+      scannedBy: user.uid,
+      scannerDeviceId: scannerDeviceId ?? null,
+      scannerNonce: scannerNonce ?? null,
+      accessZoneId: accessZoneId ?? null,
+      source: "live" as const,
+      clientScannedAt: null,
+      qrPayloadVersion: parsed.version,
+      qrKid: parsed.kid ?? null,
+      requestId: getRequestId() ?? null,
+      idempotencyKey: null,
+      createdAt: new Date().toISOString(),
+    };
+
     // Transaction returns a tagged envelope — the "already checked in"
     // branch needs enrichment (staff display name) that can't happen inside
     // the tx, so we surface the raw identifiers and resolve them below.
@@ -498,18 +525,51 @@ export class RegistrationService extends BaseService {
         };
 
     const txResult = await runTransaction<TxOutcome>(async (tx) => {
-      // Re-read registration inside transaction for double-check-in safety
+      // All reads FIRST so the tx body is Firestore-legal (reads-then-
+      // writes). Parallel get on registration + event is safe inside a
+      // transaction — both land in one server round-trip.
       const regRef = registrationRepository.ref.doc(registration.id);
-      const regSnap = await tx.get(regRef);
+      const eventRef = eventRepository.ref.doc(registration.eventId);
+      const [regSnap, eventSnap] = await Promise.all([tx.get(regRef), tx.get(eventRef)]);
+
       if (!regSnap.exists) {
         throw new QrInvalidError("Inscription introuvable");
       }
       const current = { id: regSnap.id, ...regSnap.data() } as Registration;
+      const eventDoc = eventSnap.exists
+        ? ({ id: eventSnap.id, ...eventSnap.data() } as Event)
+        : null;
 
-      if (current.status === "checked_in") {
-        // Return — don't throw. The outer service enriches with the staff's
-        // display name (needs a second read the tx can't make) before
-        // surfacing a 409 to the client.
+      // Short-circuit on non-confirmed statuses that the scan path cannot
+      // heal (cancelled, pending, etc.). `checked_in` is NOT an early exit
+      // any more — under `multi_day` / `multi_zone` a second scan is
+      // legitimate as long as the per-policy lock is free.
+      if (current.status !== "confirmed" && current.status !== "checked_in") {
+        throw new QrInvalidError(`Registration status is '${current.status}'`);
+      }
+
+      const now = new Date().toISOString();
+      const scanPolicy = (eventDoc?.scanPolicy ?? "single") as ScanPolicy;
+      const lockKey = computeLockKey({
+        registrationId: registration.id,
+        policy: scanPolicy,
+        accessZoneId,
+        scannedAtIso: now,
+        timezone: eventDoc?.timezone ?? "Africa/Dakar",
+      });
+      const lockRef = db.collection(COLLECTIONS.CHECKIN_LOCKS).doc(lockKey);
+      const lockSnap = await tx.get(lockRef);
+
+      if (lockSnap.exists) {
+        // Duplicate under the active policy. Leave a forensic row; the
+        // registration's first-successful-scan cache is untouched.
+        tx.set(checkinRef, {
+          ...checkinBase,
+          scannedAt: now,
+          status: "duplicate",
+          rejectCode: "invalid_status",
+          reason: `Déjà enregistré le ${current.checkedInAt ?? "—"} (policy ${scanPolicy})`,
+        });
         return {
           kind: "already",
           checkedInAt: current.checkedInAt ?? null,
@@ -517,41 +577,85 @@ export class RegistrationService extends BaseService {
           checkedInDeviceId: current.checkedInDeviceId ?? null,
         };
       }
-      if (current.status !== "confirmed") {
-        throw new QrInvalidError(`Registration status is '${current.status}'`);
+
+      // Zone enforcement — applies to every successful scan, including
+      // secondary scans under multi_zone / multi_day. Refuse the scan if
+      // the target zone is at capacity; same 409 staff sees on the bulk
+      // path (`checkin.service.ts:327-340`).
+      if (accessZoneId && eventDoc) {
+        const zone = eventDoc.accessZones.find((z) => z.id === accessZoneId);
+        if (zone?.capacity) {
+          const zoneCount =
+            (eventDoc as unknown as { zoneCheckedInCounts?: Record<string, number> })
+              .zoneCheckedInCounts?.[accessZoneId] ?? 0;
+          if (zoneCount >= zone.capacity) {
+            throw new ZoneFullError({
+              id: zone.id,
+              name: zone.name,
+              capacity: zone.capacity,
+            });
+          }
+        }
       }
 
-      const now = new Date().toISOString();
+      // Success — create the lock (atomic uniqueness guard) and the
+      // forensic row; flip registration status only on the first-ever
+      // successful scan so the analytics counter stays true to "unique
+      // participants admitted".
+      tx.create(lockRef, { createdAt: now, policy: scanPolicy });
 
-      // Update registration to checked_in. Device id is persisted directly
-      // on the registration for O(1) "who scanned this" lookups; the nonce
-      // + full forensic trail rides on the domain event into auditLogs.
-      tx.update(regRef, {
-        status: "checked_in",
-        checkedInAt: now,
-        checkedInBy: user.uid,
-        checkedInDeviceId: scannerDeviceId ?? null,
-        accessZoneId: accessZoneId ?? null,
-        updatedAt: now,
+      const isFirstSuccess = current.status !== "checked_in";
+      if (isFirstSuccess) {
+        tx.update(regRef, {
+          status: "checked_in",
+          checkedInAt: now,
+          checkedInBy: user.uid,
+          checkedInDeviceId: scannerDeviceId ?? null,
+          accessZoneId: accessZoneId ?? null,
+          updatedAt: now,
+        });
+      } else {
+        // Secondary success under multi-entry — don't clobber the first-
+        // scan cache fields, just bump `updatedAt` so change-feed
+        // listeners pick up the activity.
+        tx.update(regRef, { updatedAt: now });
+      }
+
+      // Event counters.
+      //   `checkedInCount` is the unique-participant count — bump only
+      //     on the first successful scan so `multi_day` / `multi_zone`
+      //     don't inflate the "how many humans came through" metric.
+      //   `zoneCheckedInCounts[zoneId]` is the per-zone throughput
+      //     count — bump on every successful scan into a zone so staff
+      //     can see "lunch already fed 312 people" even though only
+      //     200 came through the gate.
+      const eventUpdate: Record<string, unknown> = { updatedAt: now };
+      if (isFirstSuccess) {
+        eventUpdate.checkedInCount = FieldValue.increment(1);
+      }
+      if (accessZoneId) {
+        eventUpdate[`zoneCheckedInCounts.${accessZoneId}`] = FieldValue.increment(1);
+      }
+      tx.update(eventRef, eventUpdate);
+
+      // Shadow-write the per-scan forensic row alongside the legacy
+      // registration flip. Readers migrate in a follow-up commit; for
+      // now the `registrations` collection remains the source of truth.
+      tx.set(checkinRef, {
+        ...checkinBase,
+        scannedAt: now,
+        status: "success",
+        rejectCode: null,
+        reason: null,
       });
-
-      // Increment event check-in counter
-      const eventRef = eventRepository.ref.doc(current.eventId);
-      tx.update(eventRef, {
-        checkedInCount: FieldValue.increment(1),
-        updatedAt: now,
-      });
-
-      // Read event inside tx for ticket/zone resolution
-      const eventSnap = await tx.get(eventRef);
-      const event = eventSnap.exists ? ({ id: eventSnap.id, ...eventSnap.data() } as Event) : null;
 
       return {
         kind: "success",
         checkedInAt: now,
         eventId: current.eventId,
-        ticketTypeName: event?.ticketTypes.find((t) => t.id === current.ticketTypeId)?.name ?? null,
-        accessZoneName: event?.accessZones.find((z) => z.id === accessZoneId)?.name ?? null,
+        ticketTypeName:
+          eventDoc?.ticketTypes.find((t) => t.id === current.ticketTypeId)?.name ?? null,
+        accessZoneName: eventDoc?.accessZones.find((z) => z.id === accessZoneId)?.name ?? null,
       };
     });
 

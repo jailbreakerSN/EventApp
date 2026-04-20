@@ -126,6 +126,10 @@ export class EventService extends BaseService {
       // the overlap window.
       qrKid: generateEventKid(),
       qrKidHistory: [],
+      // Default to single-scan semantics. Organizers flip to
+      // multi_zone / multi_day post-create via `EventService.setScanPolicy`
+      // (shipping next commit).
+      scanPolicy: "single",
       createdBy: user.uid,
       updatedBy: user.uid,
       publishedAt: null,
@@ -394,6 +398,74 @@ export class EventService extends BaseService {
     });
 
     return { qrKid: result.newKid };
+  }
+
+  /**
+   * Flip the event's `scanPolicy`. Enables `multi_day` (once per
+   * participant per day in the event's timezone) or `multi_zone`
+   * (once per participant per access zone) without forcing the
+   * organizer to recreate the event. Default post-create stays
+   * `"single"`.
+   *
+   * Transactional so the read + write land in one snapshot — prevents
+   * two concurrent flips from oscillating the field.
+   */
+  async setScanPolicy(
+    eventId: string,
+    policy: "single" | "multi_day" | "multi_zone",
+    user: AuthUser,
+  ): Promise<{ scanPolicy: "single" | "multi_day" | "multi_zone" }> {
+    this.requirePermission(user, "event:update");
+
+    const result = await db.runTransaction(async (tx) => {
+      const docRef = db.collection(COLLECTIONS.EVENTS).doc(eventId);
+      const snap = await tx.get(docRef);
+      if (!snap.exists) {
+        const { NotFoundError } = await import("@/errors/app-error");
+        throw new NotFoundError("Event", eventId);
+      }
+      const event = { id: snap.id, ...snap.data() } as Event;
+      this.requireOrganizationAccess(user, event.organizationId);
+
+      // Multi-entry scan policies (multi_day, multi_zone) are a paid
+      // feature — gate behind `advancedAnalytics` (pro+). "single" is
+      // always available so free / starter orgs can never get stuck
+      // if they mis-configured an event before downgrading.
+      if (policy !== "single") {
+        const org = await organizationRepository.findByIdOrThrow(event.organizationId);
+        this.requirePlanFeature(org, "advancedAnalytics");
+      }
+
+      const previous = event.scanPolicy ?? "single";
+      if (previous === policy) {
+        // No-op: don't stamp updatedAt on a noise edit.
+        return { previous, organizationId: event.organizationId, changed: false };
+      }
+
+      tx.update(docRef, {
+        scanPolicy: policy,
+        updatedBy: user.uid,
+        updatedAt: new Date().toISOString(),
+      });
+
+      return { previous, organizationId: event.organizationId, changed: true };
+    });
+
+    if (result.changed) {
+      // Use the generic `event.updated` channel — policy flips aren't
+      // frequent enough to warrant their own action code, and
+      // `changes.scanPolicy` is enough for the audit query.
+      eventBus.emit("event.updated", {
+        eventId,
+        organizationId: result.organizationId,
+        changes: { scanPolicy: policy, previousScanPolicy: result.previous },
+        actorId: user.uid,
+        requestId: getRequestId(),
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    return { scanPolicy: policy };
   }
 
   async archive(eventId: string, user: AuthUser): Promise<void> {
@@ -753,6 +825,7 @@ export class EventService extends BaseService {
       // signing key, even if the clone is otherwise identical.
       qrKid: generateEventKid(),
       qrKidHistory: [],
+      scanPolicy: source.scanPolicy ?? "single",
       isPublic: source.isPublic,
       isFeatured: false,
       requiresApproval: source.requiresApproval,

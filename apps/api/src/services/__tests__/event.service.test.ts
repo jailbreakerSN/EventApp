@@ -920,3 +920,111 @@ describe("EventService.rotateQrKey", () => {
     expect(mockTxUpdate).not.toHaveBeenCalled();
   });
 });
+
+describe("EventService.setScanPolicy", () => {
+  // Multi-entry policies are gated behind `advancedAnalytics` (pro+).
+  // Each test sets the org plan explicitly so the gate under test is
+  // the one we want to exercise.
+  const proOrg = buildOrganization({ id: "org-1", plan: "pro" });
+  const freeOrg = buildOrganization({ id: "org-1", plan: "free" });
+
+  it("flips the policy and emits event.updated with the before/after", async () => {
+    const user = buildOrganizerUser("org-1");
+    const event = buildEvent({ id: "ev-1", organizationId: "org-1", scanPolicy: "single" });
+    mockTxGet.mockResolvedValue({
+      exists: true,
+      id: event.id,
+      data: () => ({ ...event, id: undefined }),
+    });
+    mockOrgRepo.findByIdOrThrow.mockResolvedValue(proOrg);
+
+    const result = await service.setScanPolicy(event.id, "multi_day", user);
+
+    expect(result.scanPolicy).toBe("multi_day");
+    expect(mockTxUpdate).toHaveBeenCalledTimes(1);
+    const [, payload] = mockTxUpdate.mock.calls[0];
+    expect(payload.scanPolicy).toBe("multi_day");
+
+    const updatedEmit = mockEventEmit.mock.calls.find((c) => c[0] === "event.updated");
+    expect(updatedEmit).toBeDefined();
+    const changes = (updatedEmit![1] as Record<string, unknown>).changes as Record<string, unknown>;
+    expect(changes.scanPolicy).toBe("multi_day");
+    expect(changes.previousScanPolicy).toBe("single");
+  });
+
+  it("no-ops (no write, no event) when the policy matches the current value", async () => {
+    const user = buildOrganizerUser("org-1");
+    const event = buildEvent({ id: "ev-1", organizationId: "org-1", scanPolicy: "multi_zone" });
+    mockTxGet.mockResolvedValue({
+      exists: true,
+      id: event.id,
+      data: () => ({ ...event, id: undefined }),
+    });
+    mockOrgRepo.findByIdOrThrow.mockResolvedValue(proOrg);
+
+    const result = await service.setScanPolicy(event.id, "multi_zone", user);
+
+    expect(result.scanPolicy).toBe("multi_zone");
+    expect(mockTxUpdate).not.toHaveBeenCalled();
+    const updatedEmit = mockEventEmit.mock.calls.find((c) => c[0] === "event.updated");
+    expect(updatedEmit).toBeUndefined();
+  });
+
+  it("allows flipping TO single on free plans (no paid-feature gate when stepping down)", async () => {
+    const user = buildOrganizerUser("org-1");
+    const event = buildEvent({
+      id: "ev-1",
+      organizationId: "org-1",
+      scanPolicy: "multi_zone",
+    });
+    mockTxGet.mockResolvedValue({
+      exists: true,
+      id: event.id,
+      data: () => ({ ...event, id: undefined }),
+    });
+    mockOrgRepo.findByIdOrThrow.mockResolvedValue(freeOrg);
+
+    const result = await service.setScanPolicy(event.id, "single", user);
+    expect(result.scanPolicy).toBe("single");
+    expect(mockTxUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects flipping to multi_day / multi_zone without advancedAnalytics (free + starter)", async () => {
+    const user = buildOrganizerUser("org-1");
+    const event = buildEvent({ id: "ev-1", organizationId: "org-1", scanPolicy: "single" });
+    mockTxGet.mockResolvedValue({
+      exists: true,
+      id: event.id,
+      data: () => ({ ...event, id: undefined }),
+    });
+    mockOrgRepo.findByIdOrThrow.mockResolvedValue(freeOrg);
+
+    await expect(service.setScanPolicy(event.id, "multi_zone", user)).rejects.toThrow(
+      /advancedAnalytics|plan|Limite/i,
+    );
+    expect(mockTxUpdate).not.toHaveBeenCalled();
+  });
+
+  it("rejects callers from a different org", async () => {
+    const user = buildOrganizerUser("org-other");
+    const event = buildEvent({ id: "ev-1", organizationId: "org-1", scanPolicy: "single" });
+    mockTxGet.mockResolvedValue({
+      exists: true,
+      id: event.id,
+      data: () => ({ ...event, id: undefined }),
+    });
+
+    await expect(service.setScanPolicy(event.id, "multi_zone", user)).rejects.toThrow(
+      "Accès refusé",
+    );
+    expect(mockTxUpdate).not.toHaveBeenCalled();
+  });
+
+  it("rejects without event:update permission", async () => {
+    const user = buildAuthUser({ roles: ["participant"] });
+    await expect(service.setScanPolicy("ev-1", "multi_zone", user)).rejects.toThrow(
+      "Permission manquante",
+    );
+    expect(mockTxUpdate).not.toHaveBeenCalled();
+  });
+});

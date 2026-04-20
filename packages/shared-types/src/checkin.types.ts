@@ -101,6 +101,177 @@ export const CheckInRequestSchema = z.object({
 
 export type CheckInRequest = z.infer<typeof CheckInRequestSchema>;
 
+// ─── Per-scan forensic record (checkins collection) ────────────────────────
+// Every scan attempt — successful, duplicate, or rejected — writes a row
+// here. The existing `registration.status === "checked_in"` / `checkedInAt`
+// fields remain as the denormalised "first-ever successful entry" cache;
+// this collection adds the forensic trail (device id, nonce, client vs
+// server time split, reject reason) that Sprint C item 4.3's security
+// dashboard needs.
+//
+// Shadow-write phase: services write to both `registrations` (legacy
+// cache, unchanged semantics) and `checkins` (new forensic log). No
+// reader migrates in this commit — that ships in a follow-up.
+
+export const CheckinRecordStatusSchema = z.enum(["success", "duplicate", "rejected"]);
+export type CheckinRecordStatus = z.infer<typeof CheckinRecordStatusSchema>;
+
+export const CheckinSourceSchema = z.enum(["live", "offline_sync"]);
+export type CheckinSource = z.infer<typeof CheckinSourceSchema>;
+
+/**
+ * Maps the per-item bulk-sync outcome enum onto the reject classification
+ * we persist. Reused by `BulkCheckinResultStatusSchema` so the two stay
+ * in lockstep — any new reject reason added there must land here too.
+ */
+export const CheckinRejectCodeSchema = z.enum([
+  "invalid_qr",
+  "not_found",
+  "cancelled",
+  "invalid_status",
+  "zone_full",
+  "expired",
+  "not_yet_valid",
+]);
+export type CheckinRejectCode = z.infer<typeof CheckinRejectCodeSchema>;
+
+export const CheckinRecordSchema = z.object({
+  id: z.string(),
+  registrationId: z.string(),
+  eventId: z.string(),
+  organizationId: z.string(),
+  userId: z.string(),
+
+  // Authoritative server-confirmed timestamp.
+  scannedAt: z.string().datetime(),
+  // Device-reported scan time. Diverges from `scannedAt` on the
+  // `offline_sync` path — the gap is the reconcile lag, which 4.3's
+  // anomaly widget flags.
+  clientScannedAt: z.string().datetime().nullable(),
+  // Staff uid that accepted the scan.
+  scannedBy: z.string(),
+  scannerDeviceId: z.string().nullable(),
+  scannerNonce: z.string().nullable(),
+  accessZoneId: z.string().nullable(),
+
+  status: CheckinRecordStatusSchema,
+  source: CheckinSourceSchema,
+  // Populated for `duplicate` / `rejected` rows; null on `success`.
+  rejectCode: CheckinRejectCodeSchema.nullable(),
+  reason: z.string().nullable(),
+
+  // Pins which QR credential was scanned. `qrKid` is non-null only for
+  // v4 — lets the rotation forensics page show "scan accepted a QR
+  // signed by key X rotated Y days ago".
+  qrPayloadVersion: z.enum(["v1", "v2", "v3", "v4"]).nullable(),
+  qrKid: z.string().nullable(),
+
+  // Request-context breadcrumb so auditLogs + checkins can be joined.
+  requestId: z.string().nullable(),
+  // Client-supplied idempotency key for offline reconcile bursts;
+  // equals `bulkItem.localId` on that path, null on live scans.
+  idempotencyKey: z.string().nullable(),
+
+  createdAt: z.string().datetime(),
+});
+
+export type CheckinRecord = z.infer<typeof CheckinRecordSchema>;
+
+// ─── Checkins list query ───────────────────────────────────────────────────
+// Parameters for `GET /v1/events/:eventId/checkins`. Used by the security
+// dashboard + any downstream forensic query UI. Kept minimal on purpose —
+// the anomaly endpoint (item 4.3) owns its own richer query shape.
+export const CheckinListQuerySchema = z.object({
+  status: CheckinRecordStatusSchema.optional(),
+  accessZoneId: z.string().optional(),
+  since: z.string().datetime().optional(),
+  until: z.string().datetime().optional(),
+  page: z.coerce.number().int().positive().default(1),
+  limit: z.coerce.number().int().positive().max(100).default(20),
+});
+
+export type CheckinListQuery = z.infer<typeof CheckinListQuerySchema>;
+
+// ─── Security anomalies ─────────────────────────────────────────────────────
+// Discriminated union so the widget has one row renderer for every kind.
+// Adding a new anomaly kind later (e.g. `clock_skew`, `zone_exceeded`)
+// extends the union without breaking the wire contract.
+const AnomalyEvidenceSchema = z.object({
+  checkinId: z.string(),
+  scannedAt: z.string().datetime(),
+  scannerDeviceId: z.string().nullable(),
+  scannedBy: z.string(),
+  registrationId: z.string(),
+  accessZoneId: z.string().nullable(),
+});
+
+export type AnomalyEvidence = z.infer<typeof AnomalyEvidenceSchema>;
+
+export const DuplicateAnomalySchema = z.object({
+  kind: z.literal("duplicate"),
+  detectedAt: z.string().datetime(),
+  severity: z.enum(["info", "warning", "critical"]),
+  registrationId: z.string(),
+  evidence: z.array(AnomalyEvidenceSchema).min(1),
+});
+
+export const DeviceMismatchAnomalySchema = z.object({
+  kind: z.literal("device_mismatch"),
+  detectedAt: z.string().datetime(),
+  severity: z.enum(["info", "warning", "critical"]),
+  registrationId: z.string(),
+  /** Distinct device ids the same registration landed on within the window. */
+  deviceIds: z.array(z.string()).min(2),
+  evidence: z.array(AnomalyEvidenceSchema).min(2),
+});
+
+export const VelocityOutlierAnomalySchema = z.object({
+  kind: z.literal("velocity_outlier"),
+  detectedAt: z.string().datetime(),
+  severity: z.enum(["info", "warning", "critical"]),
+  /** Staff uid processing the burst. */
+  scannedBy: z.string(),
+  scannerDeviceId: z.string().nullable(),
+  /** Scans inside the one-minute window around `detectedAt`. */
+  count: z.number().int(),
+  evidence: z.array(AnomalyEvidenceSchema).min(1),
+});
+
+export type DuplicateAnomaly = z.infer<typeof DuplicateAnomalySchema>;
+export type DeviceMismatchAnomaly = z.infer<typeof DeviceMismatchAnomalySchema>;
+export type VelocityOutlierAnomaly = z.infer<typeof VelocityOutlierAnomalySchema>;
+
+export const AnomalySchema = z.discriminatedUnion("kind", [
+  DuplicateAnomalySchema,
+  DeviceMismatchAnomalySchema,
+  VelocityOutlierAnomalySchema,
+]);
+
+export type Anomaly = z.infer<typeof AnomalySchema>;
+
+export const AnomalyQuerySchema = z.object({
+  /** Sliding window (minutes) for device-mismatch + velocity. Clamped 1–60. */
+  windowMinutes: z.coerce.number().int().min(1).max(60).default(10),
+  /** Per-minute scan count above which `scannedBy` trips a velocity outlier. */
+  velocityThreshold: z.coerce.number().int().min(5).max(600).default(60),
+});
+
+export type AnomalyQuery = z.infer<typeof AnomalyQuerySchema>;
+
+export const AnomalyResponseSchema = z.object({
+  duplicates: z.array(DuplicateAnomalySchema),
+  deviceMismatches: z.array(DeviceMismatchAnomalySchema),
+  velocityOutliers: z.array(VelocityOutlierAnomalySchema),
+  meta: z.object({
+    windowMinutes: z.number().int(),
+    velocityThreshold: z.number().int(),
+    scannedRows: z.number().int(),
+    truncated: z.boolean(),
+  }),
+});
+
+export type AnomalyResponse = z.infer<typeof AnomalyResponseSchema>;
+
 /**
  * Query-param DTO for `GET /v1/checkin/:eventId/sync`. Both fields are
  * optional — omitting them keeps the legacy plaintext response. Together

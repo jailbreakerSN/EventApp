@@ -124,6 +124,7 @@ export function buildEvent(overrides: Partial<Event> = {}): Event {
     templateId: null,
     qrKid: null,
     qrKidHistory: [],
+    scanPolicy: "single",
     createdBy: uid(),
     updatedBy: uid(),
     createdAt: now,

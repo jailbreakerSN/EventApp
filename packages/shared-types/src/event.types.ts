@@ -168,6 +168,18 @@ export const EventSchema = z.object({
   venueId: z.string().nullable().optional(),
   venueName: z.string().nullable().optional(), // denormalized from Venue
   requiresApproval: z.boolean().default(false), // waitlist feature
+  // Scan policy — governs when a second scan of the same badge is allowed.
+  //   "single"     : one scan per registration, period. Second scan →
+  //                  duplicate (current behaviour, safe default).
+  //   "multi_day"  : one scan per registration per calendar day in the
+  //                  event's timezone. Enables 3-day festivals.
+  //   "multi_zone" : one scan per (registration, accessZoneId) pair.
+  //                  Enables access → lunch → afterparty gating.
+  // A new scan that would exceed the policy is persisted as a duplicate
+  // in the `checkins` collection but does not flip the registration
+  // status again; first-ever successful scan remains the canonical
+  // "checked in" event for counters + analytics.
+  scanPolicy: z.enum(["single", "multi_day", "multi_zone"]).default("single"),
   templateId: z.string().nullable().optional(), // created from a template
   createdBy: z.string(), // Firebase UID
   updatedBy: z.string(),
@@ -214,6 +226,10 @@ export const CreateEventSchema = EventSchema.omit({
   // Rotation lives behind a dedicated service method.
   qrKid: true,
   qrKidHistory: true,
+  // `scanPolicy` is also server-owned at create time (defaults to
+  // "single"); organizers flip it via a dedicated `setScanPolicy`
+  // service method once the event is live.
+  scanPolicy: true,
 });
 
 export type CreateEventDto = z.infer<typeof CreateEventSchema>;
@@ -223,6 +239,17 @@ export const UpdateEventSchema = CreateEventSchema.partial().omit({
 });
 
 export type UpdateEventDto = z.infer<typeof UpdateEventSchema>;
+
+// ─── Scan policy request ───────────────────────────────────────────────────
+// Body schema for `POST /v1/events/:eventId/scan-policy`. Kept in
+// shared-types so the backoffice policy-picker and the API agree on the
+// enum shape. `multi_day` / `multi_zone` are plan-gated (advancedAnalytics)
+// server-side — the Zod schema alone does not enforce that.
+export const SetScanPolicySchema = z.object({
+  policy: z.enum(["single", "multi_day", "multi_zone"]),
+});
+
+export type SetScanPolicyDto = z.infer<typeof SetScanPolicySchema>;
 
 // ─── Registration ─────────────────────────────────────────────────────────────
 

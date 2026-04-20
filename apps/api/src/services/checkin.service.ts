@@ -6,6 +6,14 @@ import {
   type CheckinStats,
   type CheckinLogEntry,
   type CheckinHistoryQuery,
+  type CheckinListQuery,
+  type CheckinRecord,
+  type AnomalyQuery,
+  type AnomalyResponse,
+  type AnomalyEvidence,
+  type DuplicateAnomaly,
+  type DeviceMismatchAnomaly,
+  type VelocityOutlierAnomaly,
   type OfflineSyncData,
   type Registration,
   type RegistrationStatus,
@@ -25,6 +33,7 @@ import {
   SCAN_CLOCK_SKEW_MS,
 } from "./qr-signing";
 import { resolveEventKeyFromEvent } from "./qr-key-resolver";
+import { computeLockKey, type ScanPolicy } from "./checkin-policy";
 
 // Maximum gap we'll accept between the client's `scannedAt` and the server's
 // `now` on the bulk-sync path. A staff device can legitimately have been
@@ -34,6 +43,18 @@ import { resolveEventKeyFromEvent } from "./qr-key-resolver";
 const MAX_OFFLINE_RECONCILE_LAG_MS = 7 * 24 * 60 * 60 * 1000;
 import { eventBus } from "@/events/event-bus";
 import { getRequestId } from "@/context/request-context";
+
+/** Shape-shift a full `CheckinRecord` into the slim anomaly-evidence row. */
+function toEvidence(row: CheckinRecord): AnomalyEvidence {
+  return {
+    checkinId: row.id,
+    scannedAt: row.scannedAt,
+    scannerDeviceId: row.scannerDeviceId,
+    scannedBy: row.scannedBy,
+    registrationId: row.registrationId,
+    accessZoneId: row.accessZoneId,
+  };
+}
 
 export class CheckinService extends BaseService {
   /**
@@ -301,26 +322,43 @@ export class CheckinService extends BaseService {
           };
         }
 
-        // Already checked in
-        if (current.status === "checked_in") {
-          return {
-            status: "already_checked_in" as BulkCheckinResultStatus,
-            reason: `Already checked in at ${current.checkedInAt ?? "unknown time"}`,
-            checkedInAt: current.checkedInAt ?? null,
-          };
-        }
-
-        // Only confirmed registrations can be checked in
-        if (current.status !== "confirmed") {
+        // Non-confirmed statuses that the scan path cannot heal
+        // (pending, waitlisted, etc.). `checked_in` is NOT an early
+        // exit any more — multi_day / multi_zone allow secondary scans
+        // as long as the policy lock is free.
+        if (current.status !== "confirmed" && current.status !== "checked_in") {
           return {
             status: "invalid_status" as BulkCheckinResultStatus,
             reason: `Registration status is '${current.status}'`,
           };
         }
 
+        // Lock lookup — same pattern as the live path. The lock key
+        // encodes the (registrationId, scope) pair derived from
+        // `event.scanPolicy`. `item.scannedAt` drives the day-bucket
+        // derivation for `multi_day` because offline reconciles can
+        // land days after the actual scan.
+        const scanPolicy = (eventData?.scanPolicy ?? "single") as ScanPolicy;
+        const lockKey = computeLockKey({
+          registrationId: registration.id,
+          policy: scanPolicy,
+          accessZoneId: item.accessZoneId,
+          scannedAtIso: item.scannedAt,
+          timezone: eventData?.timezone ?? "Africa/Dakar",
+        });
+        const lockRef = db.collection(COLLECTIONS.CHECKIN_LOCKS).doc(lockKey);
+        const lockSnap = await tx.get(lockRef);
+
+        if (lockSnap.exists) {
+          return {
+            status: "already_checked_in" as BulkCheckinResultStatus,
+            reason: `Already checked in at ${current.checkedInAt ?? "unknown time"} (policy ${scanPolicy})`,
+            checkedInAt: current.checkedInAt ?? null,
+          };
+        }
+
         // Zone capacity check — reuses the event snap already read for the
-        // validity window (a second tx.get after a tx.set is illegal in
-        // Firestore transactions, so we must consolidate reads).
+        // validity window.
         const { FieldValue } = await import("firebase-admin/firestore");
         const eventRef = eventRefForWindow;
 
@@ -339,27 +377,41 @@ export class CheckinService extends BaseService {
           }
         }
 
-        // Apply check-in using the offline scannedAt timestamp. Device id
-        // is persisted on the registration for quick "who scanned this?"
-        // lookups; the full attestation (nonce, client vs server time)
-        // rides on the domain event into auditLogs.
-        tx.update(regRef, {
-          status: "checked_in" as RegistrationStatus,
-          checkedInAt: item.scannedAt,
-          checkedInBy: user.uid,
-          checkedInDeviceId: item.scannerDeviceId ?? null,
-          accessZoneId: item.accessZoneId ?? null,
-          updatedAt: new Date().toISOString(),
-        });
+        // Claim the policy lock — future scans for the same
+        // (registration, scope) land at this doc id and see it exists.
+        tx.create(lockRef, { createdAt: new Date().toISOString(), policy: scanPolicy });
 
-        // Increment event checkedInCount + zone counter
-        const updateData: Record<string, unknown> = {
-          checkedInCount: FieldValue.increment(1),
-        };
+        const isFirstSuccess = current.status !== "checked_in";
+        if (isFirstSuccess) {
+          // First-ever successful scan: flip the registration cache +
+          // bump the unique-participant counter.
+          tx.update(regRef, {
+            status: "checked_in" as RegistrationStatus,
+            checkedInAt: item.scannedAt,
+            checkedInBy: user.uid,
+            checkedInDeviceId: item.scannerDeviceId ?? null,
+            accessZoneId: item.accessZoneId ?? null,
+            updatedAt: new Date().toISOString(),
+          });
+        } else {
+          // Secondary success under multi-entry. Don't overwrite the
+          // first-scan cache fields; just bump `updatedAt`.
+          tx.update(regRef, { updatedAt: new Date().toISOString() });
+        }
+
+        // Event counters — unique-participant count bumps only on
+        // first success; per-zone counter bumps on every success into
+        // a zone so the "lunch fed 312" number stays honest.
+        const updateData: Record<string, unknown> = {};
+        if (isFirstSuccess) {
+          updateData.checkedInCount = FieldValue.increment(1);
+        }
         if (item.accessZoneId) {
           updateData[`zoneCheckedInCounts.${item.accessZoneId}`] = FieldValue.increment(1);
         }
-        tx.update(eventRef, updateData);
+        if (Object.keys(updateData).length > 0) {
+          tx.update(eventRef, updateData);
+        }
 
         return { status: "success" as BulkCheckinResultStatus, checkedInAt: item.scannedAt };
       });
@@ -388,6 +440,28 @@ export class CheckinService extends BaseService {
           timestamp: serverConfirmedAt,
         });
       }
+
+      // Shadow-write per-scan forensic row (badge-journey-review §3.3
+      // commit 1). Best-effort + fire-and-forget — the legacy
+      // registration flip happened inside the tx above and is the
+      // authoritative check-in signal; a failure to write the forensic
+      // row leaves the trail one scan short but does not affect the
+      // scan outcome. Once readers migrate (follow-up commit) this will
+      // move inside the tx proper.
+      void this.writeShadowCheckin({
+        eventId,
+        organizationId,
+        registration,
+        item,
+        parsed,
+        user,
+        outcomeStatus: txResult.status,
+        outcomeReason: txResult.reason,
+      }).catch((err: unknown) => {
+        process.stderr.write(
+          `[checkin-service] shadow checkins write failed for reg=${registration.id}: ${err}\n`,
+        );
+      });
 
       return {
         localId: item.localId,
@@ -564,6 +638,264 @@ export class CheckinService extends BaseService {
         totalPages: Math.ceil((query.q ? entries.length : total) / limit),
       },
     };
+  }
+
+  /**
+   * Shadow-write a per-scan forensic row into the `checkins` collection.
+   * Runs outside the main check-in transaction — shadow-write phase, the
+   * registration flip in the tx remains the authoritative check-in signal.
+   * Once `checkins` readers land (follow-up commit) this moves inside the
+   * tx proper and becomes part of the atomic state change.
+   */
+  // ─── Per-scan forensic list (3.3 c3/5) ─────────────────────────────────
+  // Reads from the `checkins` collection — the new per-scan forensic log.
+  // Legacy `getHistory` at :502 stays on the registrations table for
+  // back-compat with events that predate the shadow-write.
+  async listCheckins(
+    eventId: string,
+    query: CheckinListQuery,
+    user: AuthUser,
+  ): Promise<{
+    data: CheckinRecord[];
+    meta: { page: number; limit: number; total: number; totalPages: number };
+  }> {
+    this.requirePermission(user, "checkin:view_log");
+    const event = await eventRepository.findByIdOrThrow(eventId);
+    this.requireOrganizationAccess(user, event.organizationId);
+
+    // Compose the query. Composite index
+    // `(eventId, status, scannedAt)` at
+    // `firestore.indexes.json` handles the hot path; `accessZoneId`
+    // + time-range filters fall back to
+    // `(eventId, accessZoneId, scannedAt)` or the two-field
+    // `(eventId, scannedAt)` index depending on which filter the
+    // caller passes.
+    let q = db.collection(COLLECTIONS.CHECKINS).where("eventId", "==", eventId);
+    if (query.status) q = q.where("status", "==", query.status);
+    if (query.accessZoneId) q = q.where("accessZoneId", "==", query.accessZoneId);
+    if (query.since) q = q.where("scannedAt", ">=", query.since);
+    if (query.until) q = q.where("scannedAt", "<=", query.until);
+
+    const countSnap = await q.count().get();
+    const total = countSnap.data().count;
+    const offset = (query.page - 1) * query.limit;
+    const pageSnap = await q.orderBy("scannedAt", "desc").offset(offset).limit(query.limit).get();
+    const data = pageSnap.docs.map((d) => d.data() as CheckinRecord);
+
+    return {
+      data,
+      meta: {
+        page: query.page,
+        limit: query.limit,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / query.limit)),
+      },
+    };
+  }
+
+  // ─── Security anomalies (4.3) ──────────────────────────────────────────
+  // Three signals surfaced per event:
+  //   - duplicates: rows with `status === "duplicate"`.
+  //   - device_mismatch: same registration seen on ≥2 scannerDeviceIds
+  //     within `windowMinutes`. Canonical screenshot-share signature.
+  //   - velocity_outlier: staff uid processing > velocityThreshold scans
+  //     in any 60 s rolling bucket. Scripted attack or misconfigured
+  //     scanner.
+  //
+  // Gated behind `advancedAnalytics` plan feature (pro+) so freemium
+  // tiers don't carry the read cost. Two Firestore reads (duplicates +
+  // success window) issued in parallel; grouping is client-side.
+  async getAnomalies(
+    eventId: string,
+    query: AnomalyQuery,
+    user: AuthUser,
+  ): Promise<AnomalyResponse> {
+    this.requirePermission(user, "checkin:view_log");
+    const event = await eventRepository.findByIdOrThrow(eventId);
+    this.requireOrganizationAccess(user, event.organizationId);
+
+    const org = await organizationRepository.findByIdOrThrow(event.organizationId);
+    this.requirePlanFeature(org, "advancedAnalytics");
+
+    const windowMs = query.windowMinutes * 60 * 1000;
+    const windowStartIso = new Date(Date.now() - windowMs).toISOString();
+    const MAX_ROWS = 5000;
+
+    // Run both index scans in parallel.
+    const duplicatesPromise = db
+      .collection(COLLECTIONS.CHECKINS)
+      .where("eventId", "==", eventId)
+      .where("status", "==", "duplicate")
+      .orderBy("scannedAt", "desc")
+      .limit(100)
+      .get();
+
+    const windowPromise = db
+      .collection(COLLECTIONS.CHECKINS)
+      .where("eventId", "==", eventId)
+      .where("status", "==", "success")
+      .orderBy("scannedAt", "desc")
+      .limit(MAX_ROWS)
+      .get();
+
+    const [dupSnap, winSnap] = await Promise.all([duplicatesPromise, windowPromise]);
+    const detectedAt = new Date().toISOString();
+
+    // ── Duplicates
+    const duplicates: DuplicateAnomaly[] = dupSnap.docs.map((d) => {
+      const row = d.data() as CheckinRecord;
+      return {
+        kind: "duplicate",
+        detectedAt,
+        severity: "warning",
+        registrationId: row.registrationId,
+        evidence: [
+          {
+            checkinId: row.id,
+            scannedAt: row.scannedAt,
+            scannerDeviceId: row.scannerDeviceId,
+            scannedBy: row.scannedBy,
+            registrationId: row.registrationId,
+            accessZoneId: row.accessZoneId,
+          },
+        ],
+      };
+    });
+
+    // Filter success rows to the window. We overfetch above because
+    // Firestore can't `orderBy` two fields with different direction
+    // without another composite, and the `limit(MAX_ROWS)` is a cheap
+    // safety cap.
+    const windowRows = winSnap.docs
+      .map((d) => d.data() as CheckinRecord)
+      .filter((r) => r.scannedAt >= windowStartIso);
+    const truncated = winSnap.size === MAX_ROWS;
+
+    // ── Device mismatch — group by registrationId, emit if ≥2 deviceIds
+    const byReg = new Map<string, CheckinRecord[]>();
+    for (const r of windowRows) {
+      if (!r.scannerDeviceId) continue; // unattested rows don't count
+      const group = byReg.get(r.registrationId);
+      if (group) group.push(r);
+      else byReg.set(r.registrationId, [r]);
+    }
+    const deviceMismatches: DeviceMismatchAnomaly[] = [];
+    for (const [regId, rows] of byReg) {
+      const devices = new Set(rows.map((r) => r.scannerDeviceId!));
+      if (devices.size < 2) continue;
+      deviceMismatches.push({
+        kind: "device_mismatch",
+        detectedAt,
+        severity: "critical",
+        registrationId: regId,
+        deviceIds: [...devices],
+        evidence: rows.slice(0, 10).map(toEvidence),
+      });
+    }
+
+    // ── Velocity outlier — group by scannedBy into 60 s buckets
+    const velocityOutliers: VelocityOutlierAnomaly[] = [];
+    const byStaff = new Map<string, CheckinRecord[]>();
+    for (const r of windowRows) {
+      const group = byStaff.get(r.scannedBy);
+      if (group) group.push(r);
+      else byStaff.set(r.scannedBy, [r]);
+    }
+    for (const [staff, rows] of byStaff) {
+      if (rows.length <= query.velocityThreshold) continue;
+      // Sort ascending + sweep a 60 s window.
+      const sorted = [...rows].sort((a, b) => a.scannedAt.localeCompare(b.scannedAt));
+      let left = 0;
+      let peakBucket: CheckinRecord[] = [];
+      for (let right = 0; right < sorted.length; right++) {
+        while (
+          left < right &&
+          new Date(sorted[right].scannedAt).getTime() - new Date(sorted[left].scannedAt).getTime() >
+            60_000
+        ) {
+          left++;
+        }
+        const bucket = sorted.slice(left, right + 1);
+        if (bucket.length > peakBucket.length) peakBucket = bucket;
+      }
+      if (peakBucket.length > query.velocityThreshold) {
+        velocityOutliers.push({
+          kind: "velocity_outlier",
+          detectedAt,
+          severity: peakBucket.length > query.velocityThreshold * 2 ? "critical" : "warning",
+          scannedBy: staff,
+          scannerDeviceId: peakBucket[0].scannerDeviceId,
+          count: peakBucket.length,
+          evidence: peakBucket.slice(0, 10).map(toEvidence),
+        });
+      }
+    }
+
+    return {
+      duplicates,
+      deviceMismatches,
+      velocityOutliers,
+      meta: {
+        windowMinutes: query.windowMinutes,
+        velocityThreshold: query.velocityThreshold,
+        scannedRows: windowRows.length,
+        truncated,
+      },
+    };
+  }
+
+  private async writeShadowCheckin(ctx: {
+    eventId: string;
+    organizationId: string;
+    registration: Registration;
+    item: BulkCheckinItem;
+    parsed: { version: "v1" | "v2" | "v3" | "v4"; kid?: string | null };
+    user: AuthUser;
+    outcomeStatus: BulkCheckinResultStatus;
+    outcomeReason?: string | null;
+  }): Promise<void> {
+    // Map the bulk-sync outcome enum onto the persisted status tri-state.
+    const status: "success" | "duplicate" | "rejected" =
+      ctx.outcomeStatus === "success"
+        ? "success"
+        : ctx.outcomeStatus === "already_checked_in"
+          ? "duplicate"
+          : "rejected";
+    // Reuse the same reject-code alphabet as the wire enum where it maps
+    // cleanly. "already_checked_in" is surfaced as a duplicate status so
+    // it needs a separate reject-code value — reuse the neighbouring
+    // "invalid_status" which is the closest semantic match.
+    const rejectCode: string | null =
+      ctx.outcomeStatus === "success"
+        ? null
+        : ctx.outcomeStatus === "already_checked_in"
+          ? "invalid_status"
+          : ctx.outcomeStatus;
+
+    const ref = db.collection(COLLECTIONS.CHECKINS).doc();
+    const serverConfirmedAt = new Date().toISOString();
+    await ref.set({
+      id: ref.id,
+      registrationId: ctx.registration.id,
+      eventId: ctx.eventId,
+      organizationId: ctx.organizationId,
+      userId: ctx.registration.userId,
+      scannedAt: serverConfirmedAt,
+      clientScannedAt: ctx.item.scannedAt,
+      scannedBy: ctx.user.uid,
+      scannerDeviceId: ctx.item.scannerDeviceId ?? null,
+      scannerNonce: ctx.item.scannerNonce ?? null,
+      accessZoneId: ctx.item.accessZoneId ?? null,
+      status,
+      source: "offline_sync" as const,
+      rejectCode,
+      reason: ctx.outcomeReason ?? null,
+      qrPayloadVersion: ctx.parsed.version,
+      qrKid: ctx.parsed.kid ?? null,
+      requestId: getRequestId() ?? null,
+      idempotencyKey: ctx.item.localId,
+      createdAt: serverConfirmedAt,
+    });
   }
 }
 

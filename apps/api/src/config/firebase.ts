@@ -50,6 +50,17 @@ export const COLLECTIONS = {
   OFFLINE_SYNC: "offlineSync",
   AUDIT_LOGS: "auditLogs",
   CHECKIN_FEED: "checkinFeed",
+  // Dedicated per-scan forensic collection. One doc per scan ATTEMPT
+  // (success / duplicate / rejected). See badge-journey-review §3.3
+  // for the design + migration strategy.
+  CHECKINS: "checkins",
+  // Uniqueness-enforcement lock docs for the scanPolicy machinery.
+  // Doc id encodes the (registrationId, scope) pair — scope is either
+  // the full registration (single), the zone id (multi_zone), or the
+  // event-timezone day bucket (multi_day). Transactional exists-check
+  // inside the scan path is what makes multi-entry correct under
+  // concurrency. Admin-SDK-only at the rules layer.
+  CHECKIN_LOCKS: "checkinLocks",
   INVITES: "invites",
   PAYMENTS: "payments",
   RECEIPTS: "receipts",

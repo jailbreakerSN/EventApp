@@ -26,6 +26,8 @@ import {
   PaginationSchema,
   EventCategorySchema,
   EventStatusSchema,
+  SetScanPolicySchema,
+  type SetScanPolicyDto,
 } from "@teranga/shared-types";
 
 const ParamsWithEventId = z.object({ eventId: z.string() });
@@ -251,6 +253,34 @@ export const eventRoutes: FastifyPluginAsync = async (fastify) => {
     async (request, reply) => {
       const { eventId } = request.params as z.infer<typeof ParamsWithEventId>;
       const result = await eventService.rotateQrKey(eventId, request.user!);
+      return reply.send({ success: true, data: result });
+    },
+  );
+
+  // ─── Set scan policy ─────────────────────────────────────────────────────
+  // Flip the event's scanPolicy between single / multi_day / multi_zone.
+  // Dedicated endpoint (vs overloading /events PATCH) because the flip
+  // has real behavioural consequences on the scan pipeline — worth
+  // making the caller's intent explicit.
+  fastify.post(
+    "/:eventId/scan-policy",
+    {
+      preHandler: [
+        authenticate,
+        requireEmailVerified,
+        requirePermission("event:update"),
+        validate({ params: ParamsWithEventId, body: SetScanPolicySchema }),
+      ],
+      schema: {
+        tags: ["Events"],
+        summary: "Set the event's scan policy (single / multi_day / multi_zone)",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const { eventId } = request.params as z.infer<typeof ParamsWithEventId>;
+      const { policy } = request.body as SetScanPolicyDto;
+      const result = await eventService.setScanPolicy(eventId, policy, request.user!);
       return reply.send({ success: true, data: result });
     },
   );

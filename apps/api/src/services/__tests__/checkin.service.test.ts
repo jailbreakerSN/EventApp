@@ -93,29 +93,53 @@ vi.mock("@/services/qr-signing", () => ({
 }));
 
 const mockTxUpdate = vi.fn();
+const mockTxCreate = vi.fn();
 const mockTxGetReg = vi.fn();
 const mockTxGetEvent = vi.fn();
-// Tagged refs so the in-tx dispatch can tell registration reads apart from
-// event reads — processCheckinItem does `Promise.all([tx.get(regRef),
-// tx.get(eventRef)])` and we need the right snap back for each.
+// `mockTxGetLock` defaults to "no lock present" so the scan-policy
+// gate lets the success path through. Tests that exercise the
+// duplicate path override this with `{ exists: true }`.
+const mockTxGetLock = vi.fn().mockResolvedValue({ exists: false });
+
+// Tagged refs so the in-tx dispatch routes each read to the right mock.
+// processCheckinItem does two parallel reads (reg + event) then later
+// a single lock read — all three land on this router.
 const regRef = { id: "mock-reg", __collection: "registrations" };
 const eventRef = { id: "mock-event", __collection: "events" };
+const lockRef = { id: "mock-lock", __collection: "checkinLocks" };
 
 vi.mock("@/config/firebase", () => ({
   db: {
     runTransaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => {
       const tx = {
-        get: (ref: { __collection?: string }) =>
-          ref.__collection === "events" ? mockTxGetEvent() : mockTxGetReg(),
+        get: (ref: { __collection?: string }) => {
+          if (ref.__collection === "events") return mockTxGetEvent();
+          if (ref.__collection === "checkinLocks") return mockTxGetLock();
+          return mockTxGetReg();
+        },
         update: mockTxUpdate,
+        create: mockTxCreate,
+        set: vi.fn(),
       };
       return fn(tx);
     }),
     collection: vi.fn((name: string) => ({
-      doc: vi.fn(() => (name === "events" ? eventRef : regRef)),
+      // Stub doc with a .set() so the shadow-write path in
+      // processCheckinItem (fire-and-forget checkins write after tx
+      // commits) doesn't log `ref.set is not a function` in tests.
+      // Assertions on shadow-write shape live in the integration suite.
+      doc: vi.fn(() => ({
+        ...(name === "events" ? eventRef : name === "checkinLocks" ? lockRef : regRef),
+        set: vi.fn().mockResolvedValue(undefined),
+      })),
     })),
   },
-  COLLECTIONS: { REGISTRATIONS: "registrations", EVENTS: "events" },
+  COLLECTIONS: {
+    REGISTRATIONS: "registrations",
+    EVENTS: "events",
+    CHECKINS: "checkins",
+    CHECKIN_LOCKS: "checkinLocks",
+  },
 }));
 
 // ─── Tests ─────────────────────────────────────────────────────────────────
@@ -339,6 +363,11 @@ describe("CheckinService.bulkSync", () => {
       id: reg.id,
       data: () => ({ ...reg, id: undefined }),
     });
+    // Under the scan-policy refactor, a second scan is now classified as
+    // `already_checked_in` only if a lock for the (registration, scope)
+    // exists — not just because `registration.status === "checked_in"`.
+    // Force the lock to exist so this test reaches the duplicate path.
+    mockTxGetLock.mockResolvedValueOnce({ exists: true });
 
     const result = await service.bulkSync(
       event.id,
@@ -416,5 +445,64 @@ describe("CheckinService.getStats", () => {
     mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
 
     await expect(service.getStats(event.id, user)).rejects.toThrow("Accès refusé");
+  });
+});
+
+// ─── listCheckins / getAnomalies (Sprint C 3.3 c3/5 + 4.3) ─────────────────
+// The full chain (where × N → orderBy → offset → limit → get) is painful to
+// exercise against a hand-rolled mock; happy-path correctness is covered
+// end-to-end in the integration suite. These unit cases lock in the
+// guards: permission, org-access, plan-feature gate.
+
+describe("CheckinService.listCheckins", () => {
+  it("rejects a participant without checkin:view_log", async () => {
+    const user = buildAuthUser({ roles: ["participant"] });
+    await expect(service.listCheckins("ev-1", { page: 1, limit: 20 }, user)).rejects.toThrow(
+      "Permission manquante",
+    );
+  });
+
+  it("rejects staff from a different org", async () => {
+    const user = buildOrganizerUser("org-other");
+    const event = buildEvent({ organizationId: "org-1" });
+    mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
+
+    await expect(service.listCheckins(event.id, { page: 1, limit: 20 }, user)).rejects.toThrow(
+      "Accès refusé",
+    );
+  });
+});
+
+describe("CheckinService.getAnomalies", () => {
+  it("rejects a participant without checkin:view_log", async () => {
+    const user = buildAuthUser({ roles: ["participant"] });
+    await expect(
+      service.getAnomalies("ev-1", { windowMinutes: 10, velocityThreshold: 60 }, user),
+    ).rejects.toThrow("Permission manquante");
+  });
+
+  it("rejects staff from a different org", async () => {
+    const user = buildOrganizerUser("org-other");
+    const event = buildEvent({ organizationId: "org-1" });
+    mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
+
+    await expect(
+      service.getAnomalies(event.id, { windowMinutes: 10, velocityThreshold: 60 }, user),
+    ).rejects.toThrow("Accès refusé");
+  });
+
+  it("rejects orgs without the advancedAnalytics plan feature (free / starter)", async () => {
+    const user = buildOrganizerUser("org-1");
+    const event = buildEvent({ organizationId: "org-1" });
+    mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
+    // Free + starter tiers don't have advancedAnalytics. beforeEach mocked
+    // starter; override to be explicit.
+    mockOrgRepo.findByIdOrThrow.mockResolvedValue(
+      buildOrganization({ id: "org-1", plan: "starter" }),
+    );
+
+    await expect(
+      service.getAnomalies(event.id, { windowMinutes: 10, velocityThreshold: 60 }, user),
+    ).rejects.toThrow(/plan|feature|advanced/i);
   });
 });
