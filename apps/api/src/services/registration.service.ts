@@ -416,8 +416,17 @@ export class RegistrationService extends BaseService {
    * QR signature is verified before the transaction. Inside the transaction
    * we re-read the registration to ensure no double check-in under concurrency.
    */
-  async checkIn(qrCodeValue: string, user: AuthUser, accessZoneId?: string): Promise<QrScanResult> {
+  async checkIn(
+    qrCodeValue: string,
+    user: AuthUser,
+    opts: {
+      accessZoneId?: string;
+      scannerDeviceId?: string;
+      scannerNonce?: string;
+    } = {},
+  ): Promise<QrScanResult> {
     this.requirePermission(user, "checkin:scan");
+    const { accessZoneId, scannerDeviceId, scannerNonce } = opts;
 
     // Verify QR signature (stateless, no DB needed)
     const parsed = verifyQrPayload(qrCodeValue);
@@ -480,11 +489,14 @@ export class RegistrationService extends BaseService {
 
       const now = new Date().toISOString();
 
-      // Update registration to checked_in
+      // Update registration to checked_in. Device id is persisted directly
+      // on the registration for O(1) "who scanned this" lookups; the nonce
+      // + full forensic trail rides on the domain event into auditLogs.
       tx.update(regRef, {
         status: "checked_in",
         checkedInAt: now,
         checkedInBy: user.uid,
+        checkedInDeviceId: scannerDeviceId ?? null,
         accessZoneId: accessZoneId ?? null,
         updatedAt: now,
       });
@@ -518,6 +530,11 @@ export class RegistrationService extends BaseService {
       actorId: user.uid,
       requestId: getRequestId(),
       timestamp: txResult.checkedInAt,
+      source: "live",
+      scannerDeviceId: scannerDeviceId ?? null,
+      scannerNonce: scannerNonce ?? null,
+      clientScannedAt: null, // live scan — client time == server time within one hop
+      checkedInAt: txResult.checkedInAt,
     });
 
     return {

@@ -46,11 +46,41 @@ export type OfflineSyncData = z.infer<typeof OfflineSyncDataSchema>;
 
 // ─── Bulk Check-in Sync ──────────────────────────────────────────────────────
 
+// ─── Scanner device attestation ────────────────────────────────────────────
+// Every scan (live or offline-queued) should carry the scanner device's
+// stable id + a per-scan nonce. Combined with the server-recorded staff
+// uid these let the organizer dashboard (Sprint C item 4.3) reconstruct
+// "same QR seen on different devices within N minutes" velocity patterns —
+// the canonical screenshot-share fraud signature. Both fields are still
+// OPTIONAL on the wire so older mobile app builds keep working; the
+// server treats missing fields as "unattested".
+//
+// Constraints:
+// - `scannerDeviceId` is a stable per-install identifier generated on
+//   first staff login (Flutter: device_info_plus + secure storage;
+//   Web: crypto.randomUUID() persisted in IndexedDB). Up to 120 chars
+//   to accommodate vendor-specific ids (Apple IDFV, Android SSAID).
+// - `scannerNonce` is a fresh per-scan token — a 128-bit CSPRNG value
+//   encoded as 32 hex chars. Primarily an audit breadcrumb: two scans
+//   with the same nonce from two different devices is a clear replay
+//   signal.
+export const ScannerAttestationSchema = z.object({
+  scannerDeviceId: z.string().min(1).max(120).optional(),
+  scannerNonce: z
+    .string()
+    .regex(/^[0-9a-f]{16,64}$/i, "scannerNonce must be 16–64 lowercase hex chars")
+    .optional(),
+});
+
+export type ScannerAttestation = z.infer<typeof ScannerAttestationSchema>;
+
 export const BulkCheckinItemSchema = z.object({
   localId: z.string(), // client-generated UUID for dedup
   qrCodeValue: z.string(),
   accessZoneId: z.string().nullable().optional(),
   scannedAt: z.string().datetime(), // device local time
+  scannerDeviceId: ScannerAttestationSchema.shape.scannerDeviceId,
+  scannerNonce: ScannerAttestationSchema.shape.scannerNonce,
 });
 
 export type BulkCheckinItem = z.infer<typeof BulkCheckinItemSchema>;

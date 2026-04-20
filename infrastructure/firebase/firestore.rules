@@ -159,7 +159,7 @@ service cloud.firestore {
                         get(/databases/$(database)/documents/events/$(resource.data.eventId)).data.organizationId
                     )
                     && onlyChanges(['status', 'checkedInAt', 'checkedInBy',
-                                    'accessZoneId', 'updatedAt'])
+                                    'checkedInDeviceId', 'accessZoneId', 'updatedAt'])
                     && immutableOnUpdate(['userId', 'eventId', 'ticketTypeId', 'createdAt']);
 
       // Super admin can update any field

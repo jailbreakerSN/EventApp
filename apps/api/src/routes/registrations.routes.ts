@@ -14,6 +14,14 @@ const RegisterBody = z.object({
 const CheckInBody = z.object({
   qrCodeValue: z.string(),
   accessZoneId: z.string().optional(),
+  // Scanner attestation. Both fields optional on the wire so older mobile
+  // app builds keep working; server persists what's provided and carries
+  // the rest as `null` in the audit trail.
+  scannerDeviceId: z.string().min(1).max(120).optional(),
+  scannerNonce: z
+    .string()
+    .regex(/^[0-9a-f]{16,64}$/i, "scannerNonce must be 16–64 lowercase hex chars")
+    .optional(),
 });
 
 const ParamsWithRegistrationId = z.object({ registrationId: z.string() });
@@ -218,8 +226,14 @@ export const registrationRoutes: FastifyPluginAsync = async (fastify) => {
       },
     },
     async (request, reply) => {
-      const { qrCodeValue, accessZoneId } = request.body as z.infer<typeof CheckInBody>;
-      const result = await registrationService.checkIn(qrCodeValue, request.user!, accessZoneId);
+      const { qrCodeValue, accessZoneId, scannerDeviceId, scannerNonce } = request.body as z.infer<
+        typeof CheckInBody
+      >;
+      const result = await registrationService.checkIn(qrCodeValue, request.user!, {
+        accessZoneId,
+        scannerDeviceId,
+        scannerNonce,
+      });
       return reply.send({ success: true, data: result });
     },
   );
