@@ -51,9 +51,24 @@ export function usePlanGating() {
       return { allowed: true, current: 0, limit: fallbackLimit, percent: 0 };
     }
     const data = resource === "events" ? usage.events : usage.members;
-    const percent = isFinite(data.limit) ? Math.round((data.current / data.limit) * 100) : 0;
+    // ─── Defensive percent math ─────────────────────────────────────────────
+    // The UI renders `{percent}%` directly into a meter label, so we MUST
+    // return a finite value in [0, 100]. Three edge cases to neutralise:
+    //   - limit <= 0 → division-by-zero (Infinity or NaN). Can happen on
+    //     a custom plan override with maxEvents: 0. Treat as "at cap".
+    //   - current < 0 → shouldn't happen but guard anyway (negative UI).
+    //   - current > limit → over-cap (server should block new creates but
+    //     existing rows may exceed during a downgrade). Clamp to 100.
+    //   - limit === Infinity → unlimited plan; percent stays 0 so the
+    //     sidebar meter stays empty rather than rendering `0%` of ∞.
+    let percent = 0;
+    if (Number.isFinite(data.limit) && data.limit > 0) {
+      const raw = Math.round((Math.max(0, data.current) / data.limit) * 100);
+      percent = Math.min(100, Math.max(0, raw));
+    }
+    const allowed = !Number.isFinite(data.limit) || (data.limit > 0 && data.current < data.limit);
     return {
-      allowed: !isFinite(data.limit) || data.current < data.limit,
+      allowed,
       current: data.current,
       limit: data.limit,
       percent,

@@ -164,3 +164,100 @@ describe("PlanGate — access denied, fallback variants", () => {
     expect(screen.getByText(/Disponible avec le plan Pro/)).toBeInTheDocument();
   });
 });
+
+// ─── SPEC: keyboard-bypass floor (post-audit) ──────────────────────────────
+// Pre-audit: `blur` and `disabled` variants used `aria-hidden` +
+// `pointer-events-none` + `select-none`. None of those attributes
+// remove the subtree from the KEYBOARD tab order — a user could press
+// Tab to focus a gated button and hit Enter to activate it. That's
+// both a WCAG 2.1.1 violation (focusable content under `aria-hidden`)
+// and a soft paywall bypass for any interactive gated UI.
+//
+// The fix is `inert`, a HTML standard attribute that removes the
+// entire subtree from focus traversal AND accessibility tree. These
+// tests pin the invariant so a future refactor that drops `inert`
+// fails CI.
+describe("PlanGate — keyboard-bypass floor", () => {
+  beforeEach(() => {
+    mockCanUse.mockReturnValue(false);
+  });
+
+  it("blur: wrapper has the `inert` attribute so children can't be tabbed to", () => {
+    render(
+      <PlanGate feature="advancedAnalytics" fallback="blur">
+        <button data-testid="gated-btn" onClick={() => {}}>
+          Gated action
+        </button>
+      </PlanGate>,
+    );
+    const btn = screen.getByTestId("gated-btn");
+    // Walk up to find the inert wrapper.
+    let node: HTMLElement | null = btn;
+    let foundInert = false;
+    while (node) {
+      if (node.hasAttribute("inert")) {
+        foundInert = true;
+        break;
+      }
+      node = node.parentElement;
+    }
+    expect(foundInert).toBe(true);
+  });
+
+  it("disabled: wrapper has the `inert` attribute", () => {
+    render(
+      <PlanGate feature="advancedAnalytics" fallback="disabled">
+        <button data-testid="gated-btn">Gated action</button>
+      </PlanGate>,
+    );
+    const btn = screen.getByTestId("gated-btn");
+    let node: HTMLElement | null = btn;
+    let foundInert = false;
+    while (node) {
+      if (node.hasAttribute("inert")) {
+        foundInert = true;
+        break;
+      }
+      node = node.parentElement;
+    }
+    expect(foundInert).toBe(true);
+  });
+
+  it("blur: interactive children do NOT respond to click (defense-in-depth)", () => {
+    // Even if `inert` somehow gets stripped by a polyfill / older browser,
+    // `pointer-events-none` on the wrapper is a second layer that blocks
+    // mouse. We pin both layers — `inert` (the primary barrier) above +
+    // `pointer-events-none` (this test) so a partial regression is still
+    // caught.
+    const onClick = vi.fn();
+    render(
+      <PlanGate feature="advancedAnalytics" fallback="blur">
+        <button data-testid="gated-btn" onClick={onClick}>
+          Gated action
+        </button>
+      </PlanGate>,
+    );
+    // Parent has pointer-events-none — clicking "through" it fires on
+    // the backdrop, not the child. happy-dom doesn't fully honor
+    // pointer-events in dispatch, so we assert the class directly.
+    const btn = screen.getByTestId("gated-btn");
+    expect(btn.parentElement).toHaveClass("pointer-events-none");
+  });
+
+  it("granted access: children render WITHOUT `inert` (no regression on happy path)", () => {
+    mockCanUse.mockReturnValue(true);
+    render(
+      <PlanGate feature="advancedAnalytics">
+        <button data-testid="granted-btn">Allowed action</button>
+      </PlanGate>,
+    );
+    const btn = screen.getByTestId("granted-btn");
+    // Walk up the tree: the button must be reachable without crossing
+    // an inert boundary.
+    let node: HTMLElement | null = btn;
+    while (node) {
+      expect(node.hasAttribute("inert")).toBe(false);
+      node = node.parentElement;
+    }
+  });
+});

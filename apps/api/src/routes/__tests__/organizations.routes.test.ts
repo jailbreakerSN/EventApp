@@ -334,13 +334,21 @@ describe("POST /v1/organizations/:orgId/invites", () => {
     // The service's Invite object contains `token` because the email
     // delivery path needs it, but the HTTP response must strip it so
     // the token never lands in browser DevTools, logs, or exports.
+    //
+    // Uses a token with the SAME shape as production (64-char hex from
+    // crypto.randomBytes(32)). The literal-string search at the end of
+    // this test also catches any FUTURE secret field that ever gets
+    // added to the service return value and forgotten in the strip —
+    // a `recoveryToken`, `rotatedToken`, etc. would all share the hex
+    // shape, so the regex catches them too.
+    const realisticToken = "a".repeat(32) + "b".repeat(32); // 64 hex chars
     mockInviteService.createInvite.mockResolvedValue({
       id: "inv-1",
       organizationId: "org-1",
       email: "teammate@example.com",
       role: "member",
       status: "pending",
-      token: "SECRET-INVITE-TOKEN-DO-NOT-LEAK",
+      token: realisticToken,
       expiresAt: new Date().toISOString(),
       createdAt: new Date().toISOString(),
     });
@@ -355,9 +363,15 @@ describe("POST /v1/organizations/:orgId/invites", () => {
     const body = JSON.parse(res.body);
     expect(body.data).toMatchObject({ id: "inv-1", email: "teammate@example.com" });
     expect(body.data.token).toBeUndefined();
-    // Belt-and-braces string search: even if the shape drifted, the
-    // literal secret must not appear anywhere in the response body.
-    expect(res.body).not.toContain("SECRET-INVITE-TOKEN-DO-NOT-LEAK");
+    // Structural: no `token` field on the DTO.
+    expect(Object.keys(body.data)).not.toContain("token");
+    // Literal: the exact value we injected must not appear.
+    expect(res.body).not.toContain(realisticToken);
+    // Shape-based: any 64-char hex sequence in the body is suspect —
+    // catches future fields that rename `token` to something else but
+    // still carry the same secret shape (e.g. `recoveryToken`,
+    // `rotatedToken`, `reissuedToken`).
+    expect(res.body).not.toMatch(/[a-f0-9]{64}/);
   });
 
   it("403 as participant", async () => {
@@ -379,6 +393,10 @@ describe("POST /v1/organizations/:orgId/invites", () => {
 
 describe("GET /v1/organizations/:orgId/invites", () => {
   it("list response strips tokens from every item (token-leak floor)", async () => {
+    // Same hex-shape argument as the POST test — realistic tokens so
+    // the shape-based regex catches any future field renaming.
+    const tokenA = "a".repeat(64);
+    const tokenB = "b".repeat(64);
     mockInviteService.listByOrganization.mockResolvedValue([
       {
         id: "inv-1",
@@ -386,7 +404,7 @@ describe("GET /v1/organizations/:orgId/invites", () => {
         email: "a@example.com",
         role: "member",
         status: "pending",
-        token: "SECRET-A",
+        token: tokenA,
         expiresAt: new Date().toISOString(),
         createdAt: new Date().toISOString(),
       },
@@ -396,7 +414,7 @@ describe("GET /v1/organizations/:orgId/invites", () => {
         email: "b@example.com",
         role: "admin",
         status: "pending",
-        token: "SECRET-B",
+        token: tokenB,
         expiresAt: new Date().toISOString(),
         createdAt: new Date().toISOString(),
       },
@@ -412,9 +430,12 @@ describe("GET /v1/organizations/:orgId/invites", () => {
     expect(body.data).toHaveLength(2);
     for (const invite of body.data as Array<Record<string, unknown>>) {
       expect(invite.token).toBeUndefined();
+      expect(Object.keys(invite)).not.toContain("token");
     }
-    expect(res.body).not.toContain("SECRET-A");
-    expect(res.body).not.toContain("SECRET-B");
+    expect(res.body).not.toContain(tokenA);
+    expect(res.body).not.toContain(tokenB);
+    // Shape-based catch: any 64-char hex leaked anywhere in the body.
+    expect(res.body).not.toMatch(/[a-f0-9]{64}/);
   });
 });
 

@@ -38,8 +38,17 @@ export function PlanGate({ feature, fallback = "blur", children }: PlanGateProps
   }
 
   if (fallback === "disabled") {
+    // Same rationale as the `blur` branch: `inert` is required to block
+    // keyboard activation of focusable children (buttons / links /
+    // inputs) inside the disabled region. `aria-disabled` alone is an
+    // advisory attribute that does NOT remove the subtree from the tab
+    // order.
     return (
-      <div className="relative opacity-50 pointer-events-none select-none" aria-disabled="true">
+      <div
+        className="relative opacity-50 pointer-events-none select-none"
+        aria-disabled="true"
+        inert
+      >
         {children}
         <div className="absolute top-2 right-2 flex items-center gap-1 px-2 py-1 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 rounded-md text-xs font-medium">
           <Lock className="h-3 w-3" />
@@ -50,9 +59,20 @@ export function PlanGate({ feature, fallback = "blur", children }: PlanGateProps
   }
 
   // fallback === "blur" — soft wall
+  //
+  // `inert` fully removes children from keyboard focus, pointer events,
+  // AND the accessibility tree. Without it, `aria-hidden` + `pointer-events`
+  // still let a keyboard user tab to focusable children (buttons, links,
+  // inputs) inside the blurred region and activate them with Enter /
+  // Space — a WCAG 2.1 violation AND a soft paywall bypass for any
+  // interactive gated content. With `inert` the whole subtree is skipped
+  // in the tab order, matches the visual semantic.
+  //
+  // Supported everywhere we run (Chromium, Firefox, Safari since 2023).
+  // React 19 passes `inert` through to the DOM when set as `inert` boolean.
   return (
     <div className="relative">
-      <div className="blur-sm pointer-events-none select-none" aria-hidden="true">
+      <div className="blur-sm pointer-events-none select-none" aria-hidden="true" inert>
         {children}
       </div>
       <div className="absolute inset-0 flex flex-col items-center justify-center bg-background/60 backdrop-blur-[1px] rounded-xl">

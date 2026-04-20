@@ -237,6 +237,133 @@ describe("usePlanGating — checkLimit + isNearLimit", () => {
   });
 });
 
+// ─── SPEC: percent is always a finite number in [0, 100] ──────────────────
+// The percent value lands directly in the sidebar meter as `{percent}%`.
+// If it's ever `NaN`, `Infinity`, or > 100 we get "NaN%", "Infinity%" or
+// a meter bar that overflows its container. These tests exercise the
+// defensive math that the happy-path tests above don't cover — real
+// bugs that could ship if the hook regresses.
+describe("usePlanGating — checkLimit boundary math (post-audit spec)", () => {
+  beforeEach(() => {
+    mockUseAuth.mockReturnValue({ user: { uid: "u-1", organizationId: "org-1" } });
+    mockUseOrganization.mockReturnValue({
+      data: { data: { id: "org-1", plan: "starter" } },
+    });
+  });
+
+  it("limit=0 → percent=0 and allowed=false (no NaN / Infinity leak)", async () => {
+    // Custom-plan override with `maxEvents: 0` could legitimately reach
+    // the hook. Pre-audit code did `current/0 = NaN` → `Math.round(NaN)
+    // = NaN` → rendered "NaN%" in the DOM.
+    mockGetUsage.mockResolvedValue({
+      data: {
+        events: { current: 0, limit: 0 },
+        members: { current: 0, limit: 3 },
+      },
+    });
+    const { result } = renderHook(() => usePlanGating(), { wrapper });
+    await waitFor(() => expect(result.current.usage).toBeDefined());
+
+    const events = result.current.checkLimit("events");
+    expect(Number.isFinite(events.percent)).toBe(true);
+    expect(events.percent).toBe(0);
+    expect(events.allowed).toBe(false); // at cap — can't create more
+  });
+
+  it("limit=0 with current=1 → still finite (0-cap plan with legacy rows)", async () => {
+    // Post-downgrade scenario: org had a 10-event starter plan, used 1,
+    // then dropped to a hand-crafted `maxEvents: 0` custom plan. The
+    // existing row stays until cancelled but the hook must not crash.
+    mockGetUsage.mockResolvedValue({
+      data: {
+        events: { current: 1, limit: 0 },
+        members: { current: 0, limit: 3 },
+      },
+    });
+    const { result } = renderHook(() => usePlanGating(), { wrapper });
+    await waitFor(() => expect(result.current.usage).toBeDefined());
+
+    const events = result.current.checkLimit("events");
+    expect(Number.isFinite(events.percent)).toBe(true); // no Infinity
+    expect(events.percent).toBe(0); // clamped — no "Infinity%"
+    expect(events.allowed).toBe(false);
+  });
+
+  it("current > limit → percent clamped to 100 (over-cap during downgrade)", async () => {
+    // A starter org had 10 events, downgraded to a 3-event custom plan.
+    // `current=10, limit=3` → pre-audit produced 333%. Meter bar would
+    // overflow the container and any `percent > 100` UI conditional
+    // would behave weirdly.
+    mockGetUsage.mockResolvedValue({
+      data: {
+        events: { current: 10, limit: 3 },
+        members: { current: 0, limit: 3 },
+      },
+    });
+    const { result } = renderHook(() => usePlanGating(), { wrapper });
+    await waitFor(() => expect(result.current.usage).toBeDefined());
+
+    const events = result.current.checkLimit("events");
+    expect(events.percent).toBe(100); // clamped
+    expect(events.allowed).toBe(false);
+    expect(result.current.isNearLimit("events")).toBe(true);
+  });
+
+  it("current < 0 → floored to 0 (defensive)", async () => {
+    // Should never happen (counters never go negative) but guard the
+    // rendering boundary so a backend bug can't paint a negative meter.
+    mockGetUsage.mockResolvedValue({
+      data: {
+        events: { current: -5, limit: 10 },
+        members: { current: 0, limit: 3 },
+      },
+    });
+    const { result } = renderHook(() => usePlanGating(), { wrapper });
+    await waitFor(() => expect(result.current.usage).toBeDefined());
+
+    expect(result.current.checkLimit("events").percent).toBe(0);
+  });
+
+  it("isNearLimit boundary: 79% false, 80% true, 100% true", async () => {
+    // Pin the threshold so `>= 80` never accidentally becomes `> 80`
+    // (or vice versa). The 80% cutoff is the sidebar upgrade nudge
+    // trigger — product-owned copy depends on this exact boundary.
+    mockGetUsage.mockResolvedValue({
+      data: {
+        events: { current: 79, limit: 100 },
+        members: { current: 0, limit: 3 },
+      },
+    });
+    let { result, rerender } = renderHook(() => usePlanGating(), { wrapper });
+    await waitFor(() => expect(result.current.usage).toBeDefined());
+    expect(result.current.isNearLimit("events")).toBe(false);
+
+    mockGetUsage.mockResolvedValue({
+      data: {
+        events: { current: 80, limit: 100 },
+        members: { current: 0, limit: 3 },
+      },
+    });
+    ({ result, rerender } = renderHook(() => usePlanGating(), { wrapper }));
+    await waitFor(() => expect(result.current.usage).toBeDefined());
+    expect(result.current.isNearLimit("events")).toBe(true);
+
+    mockGetUsage.mockResolvedValue({
+      data: {
+        events: { current: 100, limit: 100 },
+        members: { current: 0, limit: 3 },
+      },
+    });
+    ({ result, rerender } = renderHook(() => usePlanGating(), { wrapper }));
+    await waitFor(() => expect(result.current.usage).toBeDefined());
+    expect(result.current.isNearLimit("events")).toBe(true);
+
+    // Silence unused-var lint on `rerender` — we re-`renderHook` between
+    // asserts because React Query caches across runs.
+    void rerender;
+  });
+});
+
 describe("usePlanGating — query enablement", () => {
   it("does not fire the usage query when the user has no org", () => {
     mockUseAuth.mockReturnValue({ user: null });
