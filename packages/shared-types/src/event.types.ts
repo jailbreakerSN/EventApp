@@ -240,6 +240,17 @@ export const UpdateEventSchema = CreateEventSchema.partial().omit({
 
 export type UpdateEventDto = z.infer<typeof UpdateEventSchema>;
 
+// ─── Scan policy request ───────────────────────────────────────────────────
+// Body schema for `POST /v1/events/:eventId/scan-policy`. Kept in
+// shared-types so the backoffice policy-picker and the API agree on the
+// enum shape. `multi_day` / `multi_zone` are plan-gated (advancedAnalytics)
+// server-side — the Zod schema alone does not enforce that.
+export const SetScanPolicySchema = z.object({
+  policy: z.enum(["single", "multi_day", "multi_zone"]),
+});
+
+export type SetScanPolicyDto = z.infer<typeof SetScanPolicySchema>;
+
 // ─── Registration ─────────────────────────────────────────────────────────────
 
 export const RegistrationStatusSchema = z.enum([

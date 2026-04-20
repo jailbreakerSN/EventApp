@@ -427,6 +427,15 @@ export class EventService extends BaseService {
       const event = { id: snap.id, ...snap.data() } as Event;
       this.requireOrganizationAccess(user, event.organizationId);
 
+      // Multi-entry scan policies (multi_day, multi_zone) are a paid
+      // feature — gate behind `advancedAnalytics` (pro+). "single" is
+      // always available so free / starter orgs can never get stuck
+      // if they mis-configured an event before downgrading.
+      if (policy !== "single") {
+        const org = await organizationRepository.findByIdOrThrow(event.organizationId);
+        this.requirePlanFeature(org, "advancedAnalytics");
+      }
+
       const previous = event.scanPolicy ?? "single";
       if (previous === policy) {
         // No-op: don't stamp updatedAt on a noise edit.

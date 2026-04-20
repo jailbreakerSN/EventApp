@@ -922,6 +922,12 @@ describe("EventService.rotateQrKey", () => {
 });
 
 describe("EventService.setScanPolicy", () => {
+  // Multi-entry policies are gated behind `advancedAnalytics` (pro+).
+  // Each test sets the org plan explicitly so the gate under test is
+  // the one we want to exercise.
+  const proOrg = buildOrganization({ id: "org-1", plan: "pro" });
+  const freeOrg = buildOrganization({ id: "org-1", plan: "free" });
+
   it("flips the policy and emits event.updated with the before/after", async () => {
     const user = buildOrganizerUser("org-1");
     const event = buildEvent({ id: "ev-1", organizationId: "org-1", scanPolicy: "single" });
@@ -930,6 +936,7 @@ describe("EventService.setScanPolicy", () => {
       id: event.id,
       data: () => ({ ...event, id: undefined }),
     });
+    mockOrgRepo.findByIdOrThrow.mockResolvedValue(proOrg);
 
     const result = await service.setScanPolicy(event.id, "multi_day", user);
 
@@ -953,6 +960,7 @@ describe("EventService.setScanPolicy", () => {
       id: event.id,
       data: () => ({ ...event, id: undefined }),
     });
+    mockOrgRepo.findByIdOrThrow.mockResolvedValue(proOrg);
 
     const result = await service.setScanPolicy(event.id, "multi_zone", user);
 
@@ -960,6 +968,41 @@ describe("EventService.setScanPolicy", () => {
     expect(mockTxUpdate).not.toHaveBeenCalled();
     const updatedEmit = mockEventEmit.mock.calls.find((c) => c[0] === "event.updated");
     expect(updatedEmit).toBeUndefined();
+  });
+
+  it("allows flipping TO single on free plans (no paid-feature gate when stepping down)", async () => {
+    const user = buildOrganizerUser("org-1");
+    const event = buildEvent({
+      id: "ev-1",
+      organizationId: "org-1",
+      scanPolicy: "multi_zone",
+    });
+    mockTxGet.mockResolvedValue({
+      exists: true,
+      id: event.id,
+      data: () => ({ ...event, id: undefined }),
+    });
+    mockOrgRepo.findByIdOrThrow.mockResolvedValue(freeOrg);
+
+    const result = await service.setScanPolicy(event.id, "single", user);
+    expect(result.scanPolicy).toBe("single");
+    expect(mockTxUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects flipping to multi_day / multi_zone without advancedAnalytics (free + starter)", async () => {
+    const user = buildOrganizerUser("org-1");
+    const event = buildEvent({ id: "ev-1", organizationId: "org-1", scanPolicy: "single" });
+    mockTxGet.mockResolvedValue({
+      exists: true,
+      id: event.id,
+      data: () => ({ ...event, id: undefined }),
+    });
+    mockOrgRepo.findByIdOrThrow.mockResolvedValue(freeOrg);
+
+    await expect(service.setScanPolicy(event.id, "multi_zone", user)).rejects.toThrow(
+      /advancedAnalytics|plan|Limite/i,
+    );
+    expect(mockTxUpdate).not.toHaveBeenCalled();
   });
 
   it("rejects callers from a different org", async () => {

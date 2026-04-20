@@ -26,6 +26,8 @@ import {
   PaginationSchema,
   EventCategorySchema,
   EventStatusSchema,
+  SetScanPolicySchema,
+  type SetScanPolicyDto,
 } from "@teranga/shared-types";
 
 const ParamsWithEventId = z.object({ eventId: z.string() });
@@ -267,12 +269,7 @@ export const eventRoutes: FastifyPluginAsync = async (fastify) => {
         authenticate,
         requireEmailVerified,
         requirePermission("event:update"),
-        validate({
-          params: ParamsWithEventId,
-          body: z.object({
-            policy: z.enum(["single", "multi_day", "multi_zone"]),
-          }),
-        }),
+        validate({ params: ParamsWithEventId, body: SetScanPolicySchema }),
       ],
       schema: {
         tags: ["Events"],
@@ -282,7 +279,7 @@ export const eventRoutes: FastifyPluginAsync = async (fastify) => {
     },
     async (request, reply) => {
       const { eventId } = request.params as z.infer<typeof ParamsWithEventId>;
-      const { policy } = request.body as { policy: "single" | "multi_day" | "multi_zone" };
+      const { policy } = request.body as SetScanPolicyDto;
       const result = await eventService.setScanPolicy(eventId, policy, request.user!);
       return reply.send({ success: true, data: result });
     },
