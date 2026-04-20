@@ -25,6 +25,7 @@ import {
   QrNotYetValidError,
   NotFoundError,
   PlanLimitError,
+  ZoneFullError,
 } from "@/errors/app-error";
 import { BaseService } from "./base.service";
 import {
@@ -521,6 +522,38 @@ export class RegistrationService extends BaseService {
         throw new QrInvalidError(`Registration status is '${current.status}'`);
       }
 
+      // All reads happen BEFORE any write (Firestore transaction contract).
+      // The previous revision wrote to eventRef before reading it — the
+      // Admin SDK buffers writes so it "worked", but that's fragile and
+      // broke the reads-first invariant the firestore-transaction-auditor
+      // enforces. Fix while we're here adding zone enforcement.
+      const eventRef = eventRepository.ref.doc(current.eventId);
+      const eventSnap = await tx.get(eventRef);
+      const eventDoc = eventSnap.exists
+        ? ({ id: eventSnap.id, ...eventSnap.data() } as Event)
+        : null;
+
+      // Zone enforcement — mirrors the bulk-sync path
+      // (`checkin.service.ts:327-340`). If the scanned zone has a
+      // capacity and is full, refuse the scan with `ZoneFullError`
+      // (409) so gate staff can redirect the participant. The same
+      // participant can still pass through a different zone.
+      if (accessZoneId && eventDoc) {
+        const zone = eventDoc.accessZones.find((z) => z.id === accessZoneId);
+        if (zone?.capacity) {
+          const zoneCount =
+            (eventDoc as unknown as { zoneCheckedInCounts?: Record<string, number> })
+              .zoneCheckedInCounts?.[accessZoneId] ?? 0;
+          if (zoneCount >= zone.capacity) {
+            throw new ZoneFullError({
+              id: zone.id,
+              name: zone.name,
+              capacity: zone.capacity,
+            });
+          }
+        }
+      }
+
       const now = new Date().toISOString();
 
       // Update registration to checked_in. Device id is persisted directly
@@ -535,23 +568,27 @@ export class RegistrationService extends BaseService {
         updatedAt: now,
       });
 
-      // Increment event check-in counter
-      const eventRef = eventRepository.ref.doc(current.eventId);
-      tx.update(eventRef, {
+      // Increment event check-in counter + zone counter. The zone
+      // increment is keyed by `zoneCheckedInCounts.${zoneId}` so the
+      // bulk-sync path and the live path write the same Firestore
+      // structure — the stats aggregator doesn't care which path got
+      // there.
+      const eventUpdate: Record<string, unknown> = {
         checkedInCount: FieldValue.increment(1),
         updatedAt: now,
-      });
-
-      // Read event inside tx for ticket/zone resolution
-      const eventSnap = await tx.get(eventRef);
-      const event = eventSnap.exists ? ({ id: eventSnap.id, ...eventSnap.data() } as Event) : null;
+      };
+      if (accessZoneId) {
+        eventUpdate[`zoneCheckedInCounts.${accessZoneId}`] = FieldValue.increment(1);
+      }
+      tx.update(eventRef, eventUpdate);
 
       return {
         kind: "success",
         checkedInAt: now,
         eventId: current.eventId,
-        ticketTypeName: event?.ticketTypes.find((t) => t.id === current.ticketTypeId)?.name ?? null,
-        accessZoneName: event?.accessZones.find((z) => z.id === accessZoneId)?.name ?? null,
+        ticketTypeName:
+          eventDoc?.ticketTypes.find((t) => t.id === current.ticketTypeId)?.name ?? null,
+        accessZoneName: eventDoc?.accessZones.find((z) => z.id === accessZoneId)?.name ?? null,
       };
     });
 
