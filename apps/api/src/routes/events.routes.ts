@@ -229,6 +229,32 @@ export const eventRoutes: FastifyPluginAsync = async (fastify) => {
     },
   );
 
+  // ─── Rotate QR signing key ───────────────────────────────────────────────
+  // Organizer-driven after a suspected key leak (lost staff device, etc.).
+  // New registrations sign under the new `kid`; already-issued badges keep
+  // verifying because the retired `kid` stays in `qrKidHistory`.
+  fastify.post(
+    "/:eventId/qr-key/rotate",
+    {
+      preHandler: [
+        authenticate,
+        requireEmailVerified,
+        requirePermission("event:update"),
+        validate({ params: ParamsWithEventId }),
+      ],
+      schema: {
+        tags: ["Events"],
+        summary: "Rotate the event's QR signing key",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const { eventId } = request.params as z.infer<typeof ParamsWithEventId>;
+      const result = await eventService.rotateQrKey(eventId, request.user!);
+      return reply.send({ success: true, data: result });
+    },
+  );
+
   // ─── Ticket Type: Add ───────────────────────────────────────────────────
   fastify.post(
     "/:eventId/ticket-types",

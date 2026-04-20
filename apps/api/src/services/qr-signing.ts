@@ -2,14 +2,23 @@ import crypto from "node:crypto";
 import { config } from "@/config/index";
 
 // ─── QR Code Security ────────────────────────────────────────────────────────
-// Supported QR payload formats. New registrations sign v3; v2 and v1 are still
-// accepted at scan time so already-issued badges keep working through the
-// rollout window.
+// Supported QR payload formats. New registrations sign v4; older formats are
+// still accepted at scan time so already-issued badges keep working through
+// the rollout window.
+//
+//   v4 (7 parts): regId:eventId:userId:notBeforeBase36:notAfterBase36:kid:signature
+//      - `kid` is an 8-char base36 identifier resolved to a per-event HMAC
+//        key via HKDF-SHA256(QR_MASTER, salt=eventId,
+//        info="teranga/qr/v4/${kid}"). Rotation → new kid on the event →
+//        new derived key → newly-issued badges verify under the new key;
+//        already-issued badges keep verifying because their kid is in the
+//        payload and the retired kid stays in `event.qrKidHistory` until
+//        the operator forcibly re-seals.
 //
 //   v3 (6 parts): regId:eventId:userId:notBeforeBase36:notAfterBase36:signature
 //      - `notBefore` / `notAfter` are epoch milliseconds in base36. The scan
-//        path treats them as a hard validity window, so an old QR can no
-//        longer be replayed months after the event.
+//        path treats them as a hard validity window. Signed with the legacy
+//        global `QR_SECRET` key.
 //
 //   v2 (5 parts): regId:eventId:userId:epochBase36:signature
 //      - `epoch` is the issue timestamp (present but never validated).
@@ -24,16 +33,28 @@ export interface QrParsed {
   userId: string;
   /** Issue timestamp (v2) or notBefore (v3). ISO 8601. */
   createdAt?: string;
-  /** Earliest valid scan time — signed into v3 payloads only. ISO 8601. */
+  /** Earliest valid scan time — signed into v3+v4 payloads. ISO 8601. */
   notBefore?: string;
-  /** Latest valid scan time — signed into v3 payloads only. ISO 8601. */
+  /** Latest valid scan time — signed into v3+v4 payloads. ISO 8601. */
   notAfter?: string;
+  /** Signing key id — signed into v4 payloads only. */
+  kid?: string;
   /** Payload version — callers use this to decide whether to backfill window. */
-  version: "v1" | "v2" | "v3";
+  version: "v1" | "v2" | "v3" | "v4";
 }
 
 export function hmacSign(payload: string): string {
   const hmac = crypto.createHmac("sha256", config.QR_SECRET);
+  hmac.update(payload);
+  return hmac.digest("hex");
+}
+
+/**
+ * HMAC-SHA256 with an explicit key. Used by the v4 path where each event
+ * owns a derived key rather than sharing the global `QR_SECRET`.
+ */
+export function hmacSignWithKey(key: Buffer, payload: string): string {
+  const hmac = crypto.createHmac("sha256", key);
   hmac.update(payload);
   return hmac.digest("hex");
 }
@@ -74,6 +95,78 @@ export function signQrPayload(
   return `${payload}:${hmacSign(payload)}`;
 }
 
+// ─── v4: per-event HKDF-derived keys + kid rotation ────────────────────────
+// HKDF-SHA256 domain-separates events (salt = eventId) and key generations
+// (info carries the kid). QR_MASTER is distinct from QR_SECRET so the v4
+// rollout can proceed without touching the v3 key path. When QR_MASTER is
+// unset in config we fall back to QR_SECRET — transitional, production
+// should provision both until every live event has been migrated to v4.
+
+const V4_HKDF_INFO_PREFIX = "teranga/qr/v4/";
+const V4_KEY_LEN = 32;
+/** Base36 alphabet subset used when generating kids — alnum, no ambiguity. */
+const V4_KID_LEN = 8;
+
+/** Generate a fresh 8-char base36 `kid`. Used on event create + rotation. */
+export function generateEventKid(): string {
+  // 5 random bytes gives us ≈ 40 bits of entropy — plenty for "unique
+  // across this event's rotation history" while keeping the QR compact.
+  const raw = crypto.randomBytes(5).readUIntBE(0, 5);
+  return raw.toString(36).padStart(V4_KID_LEN, "0").slice(-V4_KID_LEN);
+}
+
+function v4MasterKey(): Buffer {
+  return Buffer.from(config.QR_MASTER ?? config.QR_SECRET, "utf8");
+}
+
+/**
+ * Derive the per-event HMAC key for v4 signing. Pure function — callers
+ * pass the `kid` they looked up on the event document (or `undefined` for
+ * the freshly-rotated current kid). Returns a 32-byte key suitable for
+ * HMAC-SHA256.
+ */
+export function deriveEventKey(eventId: string, kid: string): Buffer {
+  if (!eventId) throw new Error("deriveEventKey: eventId required");
+  if (!kid) throw new Error("deriveEventKey: kid required");
+  return Buffer.from(
+    crypto.hkdfSync(
+      "sha256",
+      v4MasterKey(),
+      Buffer.from(eventId, "utf8"),
+      Buffer.from(V4_HKDF_INFO_PREFIX + kid, "utf8"),
+      V4_KEY_LEN,
+    ),
+  );
+}
+
+/**
+ * Sign a v4 payload. `kid` goes BEFORE the signature so the parser's
+ * `parts.length` dispatch still lands the signature in the last slot —
+ * v1/v2/v3 branches keep working unchanged.
+ */
+export function signQrPayloadV4(
+  registrationId: string,
+  eventId: string,
+  userId: string,
+  notBefore: number,
+  notAfter: number,
+  kid: string,
+): string {
+  if (!Number.isFinite(notBefore) || !Number.isFinite(notAfter) || notAfter <= notBefore) {
+    throw new Error(
+      `signQrPayloadV4: invalid validity window notBefore=${notBefore} notAfter=${notAfter}`,
+    );
+  }
+  if (!/^[0-9a-z]{4,16}$/.test(kid)) {
+    throw new Error(`signQrPayloadV4: invalid kid ${kid}`);
+  }
+  const nb = Math.floor(notBefore).toString(36);
+  const na = Math.floor(notAfter).toString(36);
+  const payload = `${registrationId}:${eventId}:${userId}:${nb}:${na}:${kid}`;
+  const key = deriveEventKey(eventId, kid);
+  return `${payload}:${hmacSignWithKey(key, payload)}`;
+}
+
 /**
  * Legacy v2 signer — retained only for tests and one-off migration tooling.
  * Production code must use `signQrPayload` (v3).
@@ -89,8 +182,50 @@ export function signQrPayloadV1(registrationId: string, eventId: string, userId:
   return `${payload}:${hmacSign(payload)}`;
 }
 
-export function verifyQrPayload(qrValue: string): QrParsed | null {
+/**
+ * Resolver for v4 per-event keys. Caller's responsibility to look up the
+ * event's `qrKid` (and `qrKidHistory` for rotation-window overlap) and
+ * call `deriveEventKey` — we keep the crypto module independent of the
+ * repository layer. When the resolver is omitted, v4 payloads are
+ * rejected (fail-closed), so the sync legacy callers keep working
+ * without risk of silently accepting a v4 that was never verified.
+ */
+export type EventKeyResolver = (
+  eventId: string,
+  kid: string,
+) => Promise<Buffer | null> | Buffer | null;
+
+export async function verifyQrPayload(
+  qrValue: string,
+  resolveEventKey?: EventKeyResolver,
+): Promise<QrParsed | null> {
   const parts = qrValue.split(":");
+
+  // v4 (7 parts): id:eventId:userId:notBefore:notAfter:kid:signature
+  if (parts.length === 7) {
+    const [registrationId, eventId, userId, nb, na, kid, signature] = parts;
+    if (!/^[0-9a-z]{4,16}$/.test(kid)) return null;
+    // Fail closed: a v4 payload with no resolver cannot be verified.
+    // Unawaited-Promise-truthy footgun is gone — callers await this
+    // function, and the static type forces them to.
+    if (!resolveEventKey) return null;
+    const key = await resolveEventKey(eventId, kid);
+    if (!key) return null;
+    const payload = `${registrationId}:${eventId}:${userId}:${nb}:${na}:${kid}`;
+    if (!timingSafeCompare(signature, hmacSignWithKey(key, payload))) return null;
+    const notBeforeMs = parseInt(nb, 36);
+    const notAfterMs = parseInt(na, 36);
+    if (!Number.isFinite(notBeforeMs) || !Number.isFinite(notAfterMs)) return null;
+    return {
+      registrationId,
+      eventId,
+      userId,
+      notBefore: new Date(notBeforeMs).toISOString(),
+      notAfter: new Date(notAfterMs).toISOString(),
+      kid,
+      version: "v4",
+    };
+  }
 
   // v3 (6 parts): id:eventId:userId:notBefore(b36):notAfter(b36):signature
   if (parts.length === 6) {

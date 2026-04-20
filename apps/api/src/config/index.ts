@@ -30,6 +30,14 @@ const envSchema = z.object({
   AT_SENDER_ID: z.string().default("Teranga"),
 
   QR_SECRET: z.string().min(32, "QR_SECRET must be at least 32 characters"),
+  // v4 QR signing derives per-event HMAC keys via HKDF-SHA256(QR_MASTER,
+  // salt=eventId, info=`teranga/qr/v4/${kid}`). Keeping it separate from
+  // QR_SECRET means we can roll out v4 without touching the v3 key path
+  // and rotate the v4 master independently. Optional during the rollout
+  // window; when unset, v4 signing falls back to QR_SECRET so existing
+  // deployments stay green — production should set it explicitly before
+  // any event flips to v4 issuance.
+  QR_MASTER: z.string().min(32, "QR_MASTER must be at least 32 characters").optional(),
   WEBHOOK_SECRET: z.string().min(16).default("dev-webhook-secret-change-in-prod"),
 
   // ─── Observability (optional) ──────────────────────────────────────────────

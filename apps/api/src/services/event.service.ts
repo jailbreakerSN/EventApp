@@ -28,6 +28,7 @@ import { COLLECTIONS } from "@/config/firebase";
 import { BaseService } from "./base.service";
 import { eventBus } from "@/events/event-bus";
 import { getRequestId } from "@/context/request-context";
+import { generateEventKid } from "./qr-signing";
 
 // ─── Slug generation ─────────────────────────────────────────────────────────
 
@@ -118,6 +119,13 @@ export class EventService extends BaseService {
       venueName: venueName ?? dto.venueName ?? null,
       registeredCount: 0,
       checkedInCount: 0,
+      // Mint a fresh v4 signing-key id at event create. All newly-issued
+      // badges for this event will sign with HKDF(QR_MASTER, eventId, kid);
+      // rotation replaces `qrKid` and pushes the old value to
+      // `qrKidHistory` so already-issued badges keep verifying through
+      // the overlap window.
+      qrKid: generateEventKid(),
+      qrKidHistory: [],
       createdBy: user.uid,
       updatedBy: user.uid,
       publishedAt: null,
@@ -317,6 +325,51 @@ export class EventService extends BaseService {
       requestId: getRequestId(),
       timestamp: new Date().toISOString(),
     });
+  }
+
+  /**
+   * Rotate the event's QR signing key id. Used when a staff device has
+   * been lost or a key is suspected compromised.
+   *
+   * Effect:
+   *   - Mint a new `qrKid`. Push the old value to `qrKidHistory` with
+   *     a `retiredAt` stamp so already-issued badges keep verifying
+   *     through the rotation window.
+   *   - Newly-issued registrations (via `registrationService.register` /
+   *     `paymentService.initiatePayment`) will sign with the new key.
+   *   - Existing badges are NOT re-signed; their payload carries the
+   *     retired `kid` and the resolver resolves it via `qrKidHistory`.
+   *   - A hard "event compromised" flow would clear `qrKidHistory` and
+   *     re-seal all active registrations — left as operator-driven
+   *     follow-up, not automatic on this rotation.
+   */
+  async rotateQrKey(eventId: string, user: AuthUser): Promise<{ qrKid: string }> {
+    this.requirePermission(user, "event:update");
+    const event = await eventRepository.findByIdOrThrow(eventId);
+    this.requireOrganizationAccess(user, event.organizationId);
+
+    const newKid = generateEventKid();
+    const history = [...(event.qrKidHistory ?? [])];
+    if (event.qrKid) {
+      history.push({ kid: event.qrKid, retiredAt: new Date().toISOString() });
+    }
+
+    await eventRepository.update(eventId, {
+      qrKid: newKid,
+      qrKidHistory: history,
+      updatedBy: user.uid,
+    });
+
+    eventBus.emit("event.updated", {
+      eventId,
+      organizationId: event.organizationId,
+      actorId: user.uid,
+      requestId: getRequestId(),
+      timestamp: new Date().toISOString(),
+      changes: { qrKid: newKid, action: "qr_key_rotated" },
+    });
+
+    return { qrKid: newKid };
   }
 
   async archive(eventId: string, user: AuthUser): Promise<void> {
@@ -672,6 +725,10 @@ export class EventService extends BaseService {
       maxAttendees: source.maxAttendees ?? null,
       registeredCount: 0,
       checkedInCount: 0,
+      // Fresh kid for the cloned event — never reuse the source event's
+      // signing key, even if the clone is otherwise identical.
+      qrKid: generateEventKid(),
+      qrKidHistory: [],
       isPublic: source.isPublic,
       isFeatured: false,
       requiresApproval: source.requiresApproval,

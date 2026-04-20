@@ -413,26 +413,26 @@ describe("SECURITY: Input Validation", () => {
       const qr = await import("../qr-signing");
       const signed = qr.signQrPayload("reg-1", "event-1", "user-1", WIDE_NB, WIDE_NA);
       const tampered = signed.replace("reg-1", "reg-2");
-      expect(qr.verifyQrPayload(tampered)).toBeFalsy();
+      expect(await qr.verifyQrPayload(tampered)).toBeFalsy();
     });
 
     it("truncated signatures are rejected", async () => {
       const qr = await import("../qr-signing");
       const signed = qr.signQrPayload("reg-1", "event-1", "user-1", WIDE_NB, WIDE_NA);
       const truncated = signed.slice(0, -10);
-      expect(qr.verifyQrPayload(truncated)).toBeFalsy();
+      expect(await qr.verifyQrPayload(truncated)).toBeFalsy();
     });
 
     it("valid QR codes are accepted", async () => {
       const qr = await import("../qr-signing");
       const signed = qr.signQrPayload("reg-1", "event-1", "user-1", WIDE_NB, WIDE_NA);
-      expect(qr.verifyQrPayload(signed)).toBeTruthy();
+      expect(await qr.verifyQrPayload(signed)).toBeTruthy();
     });
 
     it("empty/malformed QR codes are rejected", async () => {
       const qr = await import("../qr-signing");
-      expect(qr.verifyQrPayload("")).toBeFalsy();
-      expect(qr.verifyQrPayload("no-colons")).toBeFalsy();
+      expect(await qr.verifyQrPayload("")).toBeFalsy();
+      expect(await qr.verifyQrPayload("no-colons")).toBeFalsy();
     });
   });
 });

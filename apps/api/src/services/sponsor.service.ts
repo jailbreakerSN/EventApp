@@ -14,6 +14,7 @@ import { type AuthUser } from "@/middlewares/auth.middleware";
 import { ConflictError, ValidationError } from "@/errors/app-error";
 import { BaseService } from "./base.service";
 import { verifyQrPayload } from "./qr-signing";
+import { resolveEventKeyFromEvent } from "./qr-key-resolver";
 import { eventBus } from "@/events/event-bus";
 import { getRequestId } from "@/context/request-context";
 
@@ -174,8 +175,9 @@ export class SponsorService extends BaseService {
 
     const [, eventId, userId] = qrParts;
 
-    // Verify QR signature
-    if (!verifyQrPayload(dto.qrCodeValue)) {
+    // Verify QR signature — pass the v4 resolver so badges signed with
+    // a per-event key still verify when a sponsor scans.
+    if (!(await verifyQrPayload(dto.qrCodeValue, resolveEventKeyFromEvent))) {
       throw new ValidationError("Signature QR invalide");
     }
 
