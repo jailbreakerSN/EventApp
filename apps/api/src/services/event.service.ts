@@ -19,7 +19,9 @@ import {
   type EventSearchFilters,
 } from "@/repositories/event.repository";
 import { organizationRepository } from "@/repositories/organization.repository";
+import { subscriptionRepository } from "@/repositories/subscription.repository";
 import { venueRepository } from "@/repositories/venue.repository";
+import { PLAN_LIMITS, PLAN_LIMIT_UNLIMITED } from "@teranga/shared-types";
 import { type PaginationParams, type PaginatedResult } from "@/repositories/base.repository";
 import { type AuthUser } from "@/middlewares/auth.middleware";
 import { ForbiddenError, ValidationError, PlanLimitError } from "@/errors/app-error";
@@ -892,11 +894,8 @@ export class EventService extends BaseService {
   // ─── Plan Limit Helpers ────────────────────────────────────────────────────
 
   private async checkEventLimit(org: Organization): Promise<void> {
-    const { allowed, current, limit } = this.checkPlanLimit(
-      org,
-      "events",
-      await eventRepository.countActiveByOrganization(org.id),
-    );
+    const current = await eventRepository.countActiveByOrganization(org.id);
+    const { allowed, limit } = this.checkPlanLimit(org, "events", current);
     if (!allowed) {
       const planLabel = org.effectivePlanKey ?? org.plan;
       throw new PlanLimitError(`Maximum ${limit} événements actifs sur le plan ${planLabel}`, {
@@ -904,6 +903,47 @@ export class EventService extends BaseService {
         max: limit,
         plan: planLabel,
       });
+    }
+
+    // ─── Scheduled-downgrade freeze (Q2a, post-audit) ───────────────────
+    // If the org has a pending downgrade, honour the TARGET plan's
+    // event cap starting immediately — not at `effectiveAt`. Otherwise
+    // an organizer can schedule the downgrade, create events above the
+    // target's cap, and then the rollover job silently refuses to flip
+    // (pre-check sees current > target). Result: org sits in "scheduled
+    // downgrade" state permanently, billed at the old plan.
+    //
+    // Conservative rule: if a downgrade is scheduled, block new event
+    // creation as soon as we'd exceed the TARGET plan's cap. Organizers
+    // can always revert the scheduled change via
+    // `subscriptionService.revertScheduledChange` if they change their
+    // mind — no data stranded.
+    const sub = await subscriptionRepository.findByOrganization(org.id);
+    const target = sub?.scheduledChange?.toPlan;
+    if (target && target !== org.plan) {
+      // `toPlan` is `z.string()` to accommodate custom plan keys, but
+      // the known tiers live in `PLAN_LIMITS`. Narrow to the known set;
+      // unknown custom keys fall through — their limits come from the
+      // catalog and are already enforced at schedule time.
+      const targetPlan =
+        target === "free" || target === "starter" || target === "pro" || target === "enterprise"
+          ? PLAN_LIMITS[target]
+          : undefined;
+      if (targetPlan) {
+        const targetMaxEvents =
+          targetPlan.maxEvents === PLAN_LIMIT_UNLIMITED ? Infinity : targetPlan.maxEvents;
+        if (Number.isFinite(targetMaxEvents) && current >= targetMaxEvents) {
+          throw new PlanLimitError(
+            `Une bascule vers le plan ${target} est programmée. ` +
+              `Impossible de créer plus de ${targetMaxEvents} événements actifs avant la bascule.`,
+            {
+              current,
+              max: targetMaxEvents,
+              plan: target,
+            },
+          );
+        }
+      }
     }
   }
 }

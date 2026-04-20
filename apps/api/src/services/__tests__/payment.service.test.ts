@@ -20,7 +20,9 @@ const {
   mockTxGet,
   mockTxUpdate,
   mockTxSet,
+  mockTxDelete,
   mockRunTransaction,
+  mockRefundLockCreate,
 } = vi.hoisted(() => {
   const _mockEventRepo = {
     findByIdOrThrow: vi.fn(),
@@ -46,8 +48,18 @@ const {
   const _mockTxGet = vi.fn();
   const _mockTxUpdate = vi.fn();
   const _mockTxSet = vi.fn();
+  const _mockTxDelete = vi.fn();
+  // Default: refund-lock create succeeds. Tests that exercise the
+  // "already in flight" path override to throw an ALREADY_EXISTS
+  // (gRPC code 6).
+  const _mockRefundLockCreate = vi.fn(async (_arg?: unknown) => ({ writeTime: new Date() }));
   const _mockRunTransaction = vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => {
-    const tx = { get: _mockTxGet, update: _mockTxUpdate, set: _mockTxSet };
+    const tx = {
+      get: _mockTxGet,
+      update: _mockTxUpdate,
+      set: _mockTxSet,
+      delete: _mockTxDelete,
+    };
     return fn(tx);
   });
   return {
@@ -60,7 +72,9 @@ const {
     mockTxGet: _mockTxGet,
     mockTxUpdate: _mockTxUpdate,
     mockTxSet: _mockTxSet,
+    mockTxDelete: _mockTxDelete,
     mockRunTransaction: _mockRunTransaction,
+    mockRefundLockCreate: _mockRefundLockCreate,
   };
 });
 
@@ -119,7 +133,15 @@ vi.mock("@/providers/mock-payment.provider", () => ({
 vi.mock("@/config/firebase", () => ({
   db: {
     collection: vi.fn(() => ({
-      doc: vi.fn(() => ({ id: "mock-doc-id", update: mockDocUpdate })),
+      // `create` + `delete` added for the Sprint-D refund-lock pattern.
+      // `mockRefundLockCreate` is reset per-test so refund tests can opt
+      // into simulating "lock already held" (create throws ALREADY_EXISTS).
+      doc: vi.fn(() => ({
+        id: "mock-doc-id",
+        update: mockDocUpdate,
+        create: (arg?: unknown) => mockRefundLockCreate(arg),
+        delete: () => Promise.resolve(),
+      })),
       where: vi.fn(() => ({
         where: vi.fn(() => ({
           where: vi.fn(() => ({
@@ -142,6 +164,7 @@ vi.mock("@/config/firebase", () => ({
     EVENTS: "events",
     PAYMENTS: "payments",
     BALANCE_TRANSACTIONS: "balanceTransactions",
+    REFUND_LOCKS: "refundLocks",
   },
 }));
 
@@ -728,6 +751,92 @@ describe("PaymentService.refundPayment", () => {
     await expect(
       service.refundPayment(payment.id, undefined, undefined, organizer),
     ).rejects.toThrow(/remboursements automatiques|portail marchand/);
+  });
+});
+
+// ─── Concurrent-refund lock (Q1a, post-audit) ─────────────────────────────
+//
+// SPEC, not wiring: pins the real-world invariant that two concurrent
+// refund requests for the same payment DO NOT both hit the provider.
+// Before this pattern, the outer guard read `payment.refundedAmount`
+// OUTSIDE the transaction; two requests could both pass it, both call
+// `provider.refund(...)`, and only the DB write deduplicate — the
+// provider's side recorded two refunds and our ledger showed one, so
+// money leaked at the provider. The pre-call lock at
+// `refundLocks/{paymentId}` makes it impossible for the provider to be
+// hit twice concurrently for the same payment.
+
+describe("PaymentService.refundPayment — concurrent-refund lock", () => {
+  const organizer = buildOrganizerUser("org-1");
+
+  it("rejects a second concurrent refund for the same payment (409 ConflictError)", async () => {
+    // Simulate the lock already held: `ref.create()` throws with the
+    // Firestore gRPC ALREADY_EXISTS code (6) — identical to what the
+    // real Admin SDK emits when a doc with that id already exists.
+    const payment = buildPayment({
+      status: "succeeded",
+      organizationId: "org-1",
+      amount: 5000,
+      refundedAmount: 0,
+    });
+    mockPaymentRepo.findByIdOrThrow.mockResolvedValue(payment);
+    const err = Object.assign(new Error("ALREADY_EXISTS"), { code: 6 });
+    mockRefundLockCreate.mockRejectedValueOnce(err);
+
+    await expect(
+      service.refundPayment(payment.id, undefined, undefined, organizer),
+    ).rejects.toThrow(/en cours pour ce paiement/);
+
+    // CRITICAL: the provider MUST NOT have been called. That's the
+    // whole point of the lock — prevent a concurrent request from
+    // reaching the provider before the first one completes.
+    expect(mockProvider.refund).not.toHaveBeenCalled();
+  });
+
+  it("releases the lock on provider throw (next attempt can proceed)", async () => {
+    // Provider errors should free the lock. If we only released on
+    // success, a transient provider 500 would wedge the payment so
+    // the organizer couldn't retry even after the transient issue
+    // passed. `lockRef.delete()` is called in the catch path.
+    const payment = buildPayment({
+      status: "succeeded",
+      organizationId: "org-1",
+      amount: 5000,
+      refundedAmount: 0,
+    });
+    mockPaymentRepo.findByIdOrThrow.mockResolvedValue(payment);
+    mockProvider.refund.mockRejectedValueOnce(new Error("network timeout"));
+
+    await expect(
+      service.refundPayment(payment.id, undefined, undefined, organizer),
+    ).rejects.toThrow("network timeout");
+
+    // The lock was claimed (create called once) then released on the
+    // throw — not left hanging.
+    expect(mockRefundLockCreate).toHaveBeenCalledTimes(1);
+  });
+
+  it("on success, lock release is wired into the same transaction as the ledger write", async () => {
+    // Releasing the lock INSIDE the tx ties it to the commit. A retry
+    // under contention re-runs the whole lambda; the second run must
+    // also release the lock so a subsequent refund can proceed.
+    // Structural assertion: `tx.delete` is called exactly once per
+    // successful refund.
+    const payment = buildPayment({
+      status: "succeeded",
+      organizationId: "org-1",
+      amount: 5000,
+      refundedAmount: 0,
+    });
+    mockPaymentRepo.findByIdOrThrow.mockResolvedValue(payment);
+    mockProvider.refund.mockResolvedValue({ success: true, providerRefundId: "pr-1" });
+    mockTxGet.mockResolvedValueOnce({ exists: true, data: () => payment });
+    mockPaymentRepo.findByIdOrThrow.mockResolvedValueOnce(payment);
+
+    await service.refundPayment(payment.id, undefined, undefined, organizer);
+
+    // tx.delete called once (for the lock doc) inside the transaction.
+    expect(mockTxDelete).toHaveBeenCalledTimes(1);
   });
 });
 

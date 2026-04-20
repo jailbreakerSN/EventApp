@@ -595,9 +595,44 @@ export class PaymentService extends BaseService {
       throw new ValidationError("Le montant du remboursement dépasse le solde restant");
     }
 
+    // ─── Concurrent-refund lock (pre-provider call) ───────────────────────
+    // Atomically claim the refund-in-flight lock for this paymentId. If a
+    // concurrent refund is already mid-flight, `create()` throws with the
+    // gRPC ALREADY_EXISTS code (6) and we reject before touching the
+    // provider. Without this, two simultaneous "Refund" clicks both
+    // passed the outer guard and both hit the provider — only the DB
+    // write deduplicated, leaving the provider with two refund records.
+    // Lock is released after the DB transaction commits (success path) or
+    // after provider failure (catch path). A stale-sweep job can purge
+    // anything older than the provider timeout (30 s) as a safety net.
+    const lockRef = db.collection(COLLECTIONS.REFUND_LOCKS).doc(paymentId);
+    try {
+      await lockRef.create({
+        paymentId,
+        refundAmount,
+        actorId: user.uid,
+        createdAt: new Date().toISOString(),
+      });
+    } catch (err: unknown) {
+      if (err && typeof err === "object" && "code" in err && err.code === 6) {
+        throw new ConflictError(
+          "Un remboursement est déjà en cours pour ce paiement. Réessayez dans quelques secondes.",
+        );
+      }
+      throw err;
+    }
+
     // Call provider refund
     const provider = getProvider(payment.method);
-    const result = await provider.refund(payment.providerTransactionId!, refundAmount);
+    let result: { success: boolean; reason?: string };
+    try {
+      result = await provider.refund(payment.providerTransactionId!, refundAmount);
+    } catch (err) {
+      // Release the lock on provider exception so subsequent retries can
+      // attempt the refund without waiting for the sweep job.
+      await lockRef.delete().catch(() => {});
+      throw err;
+    }
     if (!result.success) {
       // Surface the specific reason when the provider tags it. Orange
       // Money in particular never supports programmatic refunds — the
@@ -616,16 +651,20 @@ export class PaymentService extends BaseService {
 
     const now = new Date().toISOString();
 
-    // Atomic update: payment + registration + event counter + ledger
+    // Atomic update: payment + registration + event counter + ledger +
+    // refund-lock release.
     //
-    // Concurrency note: the guards above (`payment.refundedAmount + refundAmount`)
-    // ran against a doc read OUTSIDE the transaction — susceptible to lost
-    // updates under concurrent refund requests. We re-validate inside the
-    // transaction against a fresh read and bail if the state has drifted,
-    // which makes the DB + ledger writes consistent. A provider-side
-    // idempotency key (Wave 6 payment hardening) remains required to prevent
-    // the provider itself from being hit twice when two concurrent refund
-    // requests slip past the pre-tx guard.
+    // Defense-in-depth for concurrent refunds:
+    //   1. Pre-call lock at `refundLocks/{paymentId}` via `ref.create()`
+    //      — first caller wins, second gets 409 before touching the
+    //      provider. Provider is hit at most once per (payment) at a time.
+    //   2. In-transaction fresh re-read — protects against the lock
+    //      being stale / missed (e.g. manual deletion) by checking
+    //      `payment.status` + `refundedAmount` again against a fresh
+    //      snapshot and aborting if the state has drifted.
+    //   3. Lock release is inside this transaction — tied to the DB
+    //      commit, so a retry on contention doesn't release a lock that
+    //      still protects an in-flight provider call.
     let isFullRefund = false;
     await db.runTransaction(async (tx) => {
       const payRef = db.collection(COLLECTIONS.PAYMENTS).doc(paymentId);
@@ -694,6 +733,12 @@ export class PaymentService extends BaseService {
         createdBy: user.uid,
         createdAt: now,
       });
+
+      // Release the refund-in-flight lock inside the SAME transaction
+      // that commits the ledger write. Ties lock release to DB success —
+      // if the transaction aborts (retry / contention), the lock stays
+      // and the next attempt cleanly rejects concurrent callers.
+      tx.delete(lockRef);
     });
 
     eventBus.emit("payment.refunded", {
