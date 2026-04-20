@@ -119,3 +119,15 @@ The Flutter mobile app already has a foundation from Wave 1 (event discovery, re
 - **Riverpod** providers exist for events, registrations — extend for new features
 - **Battery optimization**: Scanner screen should minimize background work, keep camera active efficiently
 - **Offline-first mindset**: Every screen should handle no-connectivity gracefully with cached data and queued writes
+
+---
+
+## Badge-journey Flutter client tasks (from 2026-04-20 review)
+
+These items are **server-ready** — all backend work landed on `develop` via Sprints A + B + C (April 2026), including the encrypted sync envelope, `ttlAt` contract, device attestation acceptance, 409 duplicate-scan payload, and v4 HKDF/kid signing. The Flutter implementation is blocked only on Wave 9 scheduling; no further API or shared-types changes are required before the mobile work starts.
+
+- [ ] **OfflineCacheRepository** — honour `ttlAt` returned by `GET /v1/events/:eventId/sync`; auto-purge cached offline-sync payload on expiry (default `event.endDate + 24 h`). Lives in `apps/mobile/lib/features/checkin/data/offline_cache_repository.dart` or similar.
+- [ ] **Encrypted offline-sync client** — opt in with `?encrypted=v1&clientPublicKey=<b64url-x25519-pub>`; generate an ephemeral X25519 keypair per sync, perform ECDH + HKDF-SHA256 (info=`teranga/sync/v1`) → AES-256-GCM decryption. Reference: `apps/api/src/services/offline-sync-crypto.ts` for the server half.
+- [ ] **Scanner device attestation on scan** — send `scannerDeviceId` (stable per-install, first-login-generated via `device_info_plus` + `flutter_secure_storage`) and `scannerNonce` (128-bit CSPRNG hex) on every scan, live and bulk-sync. Both already accepted server-side (see `packages/shared-types/src/checkin.types.ts` `ScannerAttestationSchema` and `CheckInRequestSchema`).
+- [ ] **Duplicate-scan UI** — when the server returns 409 `QR_ALREADY_USED` with `{ checkedInByName, checkedInDeviceId, checkedInAt }`, show a red toast "Déjà validé par {name} il y a {relative}". Mirrors the web backoffice treatment.
+- [ ] **v4 QR verification offline** — once the scanner caches the per-event signing kid + derived key, verify v4 QR locally (HMAC-SHA256 with HKDF-derived key). Falls back to v3/v2/v1 compatibility for legacy events. See `apps/api/src/services/qr-signing.ts`.
