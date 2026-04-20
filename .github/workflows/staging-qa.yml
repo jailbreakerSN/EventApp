@@ -1,0 +1,104 @@
+name: Staging QA (Playwright)
+
+# When it runs:
+#  - Automatically on every successful `deploy-staging.yml` workflow run
+#    (via workflow_run trigger).
+#  - Manually from the Actions tab (workflow_dispatch) for ad-hoc QA.
+#
+# Artefacts:
+#  - playwright-report-<run-id>.zip — full HTML report with traces for
+#    failed tests (open in Playwright Inspector: `npx playwright show-trace`).
+#  - Retained for 14 days.
+#
+# Required secrets (repo settings → Secrets and variables → Actions):
+#  - STAGING_BACKOFFICE     — URL of the staging backoffice deploy
+#  - STAGING_PARTICIPANT    — URL of the staging participant deploy
+#
+# Optional secrets (unlock extra specs):
+#  - STAGING_API                     — enables api-security.spec.ts
+#  - STAGING_UNVERIFIED_ID_TOKEN     — unlocks the 403 EMAIL_NOT_VERIFIED assertion
+
+on:
+  workflow_run:
+    workflows: ["Deploy Staging"]
+    types: [completed]
+    branches: [develop]
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: "Optional subset — e.g. 'smoke' or 'a11y'. Leave empty for full suite."
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  qa:
+    # Skip if the upstream deploy failed.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: scripts/staging-qa/package.json
+
+      - name: Install Playwright deps
+        working-directory: scripts/staging-qa
+        run: |
+          npm install --no-audit --no-fund
+          npx playwright install --with-deps chromium
+
+      - name: Run tests
+        working-directory: scripts/staging-qa
+        env:
+          CI: "true"
+          STAGING_BACKOFFICE: ${{ secrets.STAGING_BACKOFFICE }}
+          STAGING_PARTICIPANT: ${{ secrets.STAGING_PARTICIPANT }}
+          STAGING_API: ${{ secrets.STAGING_API }}
+          STAGING_UNVERIFIED_ID_TOKEN: ${{ secrets.STAGING_UNVERIFIED_ID_TOKEN }}
+        run: |
+          if [ -n "${{ github.event.inputs.suite }}" ]; then
+            npx playwright test "tests/${{ github.event.inputs.suite }}.spec.ts"
+          else
+            npx playwright test
+          fi
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-${{ github.run_id }}
+          path: scripts/staging-qa/playwright-report
+          retention-days: 14
+
+      - name: Upload test-results (traces on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ github.run_id }}
+          path: scripts/staging-qa/test-results
+          retention-days: 14
+
+      - name: Summarise results
+        if: always()
+        run: |
+          if [ -f scripts/staging-qa/playwright-report/index.html ]; then
+            echo "### Staging QA — report available ✅" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Download the \`playwright-report-${{ github.run_id }}\` artefact and open \`index.html\` locally, or run \`npx playwright show-report scripts/staging-qa/playwright-report\`." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### Staging QA — no report produced ❌" >> $GITHUB_STEP_SUMMARY
+            echo "Check the \`Run tests\` step logs." >> $GITHUB_STEP_SUMMARY
+          fi
