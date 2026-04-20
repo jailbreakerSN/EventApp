@@ -260,6 +260,11 @@ jobs:
         run: npx eslint apps/web-backoffice/src/
       - name: Type-check
         run: npm run type-check --workspace=apps/web-backoffice
+      # Component + hook tests (Vitest + happy-dom + Testing Library).
+      # Pure Node runner — no browser, no emulator, fits the free-tier
+      # 2-core ubuntu-latest budget.
+      - name: Tests
+        run: npm run test --workspace=apps/web-backoffice
       - name: Build
         run: npm run build --workspace=apps/web-backoffice
         env:
