@@ -119,6 +119,21 @@ export interface EventUpdatedEvent extends BaseEventPayload {
   changes: Record<string, unknown>;
 }
 
+/**
+ * Fires when an organizer rotates the event's QR signing key id. Distinct
+ * from `event.updated` so the audit trail can tell "rotated the HMAC key"
+ * apart from "edited the event description" — both matter for different
+ * reasons at post-event forensics. `previousKid` carries the value that
+ * was just retired (→ `qrKidHistory`); null only on the very first
+ * rotation of an event that somehow predates the create-time kid mint.
+ */
+export interface EventQrKeyRotatedEvent extends BaseEventPayload {
+  eventId: string;
+  organizationId: string;
+  newKid: string;
+  previousKid: string | null;
+}
+
 export interface EventPublishedEvent extends BaseEventPayload {
   event: Event;
   organizationId: string;
@@ -560,6 +575,7 @@ export interface DomainEventMap {
   "access_zone.removed": AccessZoneRemovedEvent;
   "event.created": EventCreatedEvent;
   "event.updated": EventUpdatedEvent;
+  "event.qr_key_rotated": EventQrKeyRotatedEvent;
   "event.published": EventPublishedEvent;
   "event.unpublished": EventUnpublishedEvent;
   "event.cancelled": EventCancelledEvent;

@@ -115,8 +115,33 @@ export function generateEventKid(): string {
   return raw.toString(36).padStart(V4_KID_LEN, "0").slice(-V4_KID_LEN);
 }
 
+// Tracks whether we've already warned about the `QR_MASTER → QR_SECRET`
+// fallback, to avoid spamming stderr once per v4 sign/verify.
+let v4FallbackWarned = false;
+
 function v4MasterKey(): Buffer {
-  return Buffer.from(config.QR_MASTER ?? config.QR_SECRET, "utf8");
+  if (config.QR_MASTER) return Buffer.from(config.QR_MASTER, "utf8");
+
+  // Fallback path — v4 deriving a key from QR_SECRET means an attacker
+  // who steals QR_SECRET (the v3 global key) can also mint v4 keys for
+  // every event. That defeats the isolation property of v4. We log
+  // loudly so operators notice, and hard-fail in production so the
+  // deployment can't silently ship without QR_MASTER set.
+  if (process.env.NODE_ENV === "production") {
+    throw new Error(
+      "QR_MASTER is required in production. v4 signing cannot fall back to QR_SECRET — " +
+        "that would collapse the v3/v4 key isolation. Set QR_MASTER to a distinct secret " +
+        "(≥32 chars) and redeploy.",
+    );
+  }
+  if (!v4FallbackWarned) {
+    v4FallbackWarned = true;
+    process.stderr.write(
+      "[qr-signing] WARN QR_MASTER unset — v4 signing falls back to QR_SECRET. " +
+        "Per-event key isolation is REDUCED until QR_MASTER is set. Production boots will refuse.\n",
+    );
+  }
+  return Buffer.from(config.QR_SECRET, "utf8");
 }
 
 /**

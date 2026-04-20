@@ -139,6 +139,27 @@ export function registerAuditListeners(): void {
     });
   });
 
+  // QR signing-key rotation lives on its own action so post-event
+  // forensics can ask "who rotated keys on this event" without parsing
+  // a `details.changes.action` sub-field off the generic `event.updated`
+  // stream.
+  eventBus.on("event.qr_key_rotated", async (payload) => {
+    await auditService.log({
+      action: "event.qr_key_rotated",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "event",
+      resourceId: payload.eventId,
+      eventId: payload.eventId,
+      organizationId: payload.organizationId,
+      details: {
+        newKid: payload.newKid,
+        previousKid: payload.previousKid,
+      },
+    });
+  });
+
   eventBus.on("event.published", async (payload) => {
     await auditService.log({
       action: "event.published",
