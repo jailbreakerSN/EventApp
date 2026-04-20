@@ -26,16 +26,20 @@ export const OfflineSyncDataSchema = z.object({
   syncedAt: z.string().datetime(),
   totalRegistrations: z.number().int(),
   registrations: z.array(OfflineSyncRegistrationSchema),
-  accessZones: z.array(z.object({
-    id: z.string(),
-    name: z.string(),
-    color: z.string(),
-    capacity: z.number().int().positive().nullable().optional(),
-  })),
-  ticketTypes: z.array(z.object({
-    id: z.string(),
-    name: z.string(),
-  })),
+  accessZones: z.array(
+    z.object({
+      id: z.string(),
+      name: z.string(),
+      color: z.string(),
+      capacity: z.number().int().positive().nullable().optional(),
+    }),
+  ),
+  ticketTypes: z.array(
+    z.object({
+      id: z.string(),
+      name: z.string(),
+    }),
+  ),
 });
 
 export type OfflineSyncData = z.infer<typeof OfflineSyncDataSchema>;
@@ -43,10 +47,10 @@ export type OfflineSyncData = z.infer<typeof OfflineSyncDataSchema>;
 // ─── Bulk Check-in Sync ──────────────────────────────────────────────────────
 
 export const BulkCheckinItemSchema = z.object({
-  localId: z.string(),                        // client-generated UUID for dedup
+  localId: z.string(), // client-generated UUID for dedup
   qrCodeValue: z.string(),
   accessZoneId: z.string().nullable().optional(),
-  scannedAt: z.string().datetime(),           // device local time
+  scannedAt: z.string().datetime(), // device local time
 });
 
 export type BulkCheckinItem = z.infer<typeof BulkCheckinItemSchema>;
@@ -58,13 +62,15 @@ export const BulkCheckinRequestSchema = z.object({
 export type BulkCheckinRequest = z.infer<typeof BulkCheckinRequestSchema>;
 
 export const BulkCheckinResultStatusSchema = z.enum([
-  "success",          // checked in successfully
+  "success", // checked in successfully
   "already_checked_in", // was already checked in (by another scanner)
-  "cancelled",        // registration was cancelled — cancel wins
-  "invalid_qr",      // QR signature invalid
-  "not_found",        // registration not found
-  "invalid_status",   // registration in non-checkable status (pending, waitlisted)
-  "zone_full",        // access zone at capacity
+  "cancelled", // registration was cancelled — cancel wins
+  "invalid_qr", // QR signature invalid
+  "not_found", // registration not found
+  "invalid_status", // registration in non-checkable status (pending, waitlisted)
+  "zone_full", // access zone at capacity
+  "expired", // scan happened after the signed validity window (with skew)
+  "not_yet_valid", // scan happened before the signed validity window (with skew)
 ]);
 
 export type BulkCheckinResultStatus = z.infer<typeof BulkCheckinResultStatusSchema>;
@@ -75,7 +81,7 @@ export const BulkCheckinResultSchema = z.object({
   registrationId: z.string().nullable(),
   participantName: z.string().nullable().optional(),
   checkedInAt: z.string().datetime().nullable().optional(),
-  reason: z.string().nullable().optional(),    // human-readable reason for non-success
+  reason: z.string().nullable().optional(), // human-readable reason for non-success
 });
 
 export type BulkCheckinResult = z.infer<typeof BulkCheckinResultSchema>;
@@ -108,12 +114,14 @@ export const CheckinStatsSchema = z.object({
   totalPending: z.number().int(),
   totalCancelled: z.number().int(),
   byZone: z.array(ZoneStatsSchema),
-  byTicketType: z.array(z.object({
-    ticketTypeId: z.string(),
-    ticketTypeName: z.string(),
-    registered: z.number().int(),
-    checkedIn: z.number().int(),
-  })),
+  byTicketType: z.array(
+    z.object({
+      ticketTypeId: z.string(),
+      ticketTypeName: z.string(),
+      registered: z.number().int(),
+      checkedIn: z.number().int(),
+    }),
+  ),
   lastCheckinAt: z.string().datetime().nullable(),
 });
 
@@ -132,7 +140,10 @@ export type CreateAccessZoneDto = z.infer<typeof CreateAccessZoneSchema>;
 
 export const UpdateAccessZoneSchema = z.object({
   name: z.string().min(1).max(100).optional(),
-  color: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
+  color: z
+    .string()
+    .regex(/^#[0-9A-Fa-f]{6}$/)
+    .optional(),
   allowedTicketTypes: z.array(z.string()).optional(),
   capacity: z.number().int().positive().nullable().optional(),
 });
@@ -142,7 +153,7 @@ export type UpdateAccessZoneDto = z.infer<typeof UpdateAccessZoneSchema>;
 // ─── Manual Check-in Search ─────────────────────────────────────────────────
 
 export const ManualCheckinSearchSchema = z.object({
-  q: z.string().min(2).max(200),  // search by name or email
+  q: z.string().min(2).max(200), // search by name or email
   limit: z.coerce.number().int().positive().max(20).default(10),
 });
 

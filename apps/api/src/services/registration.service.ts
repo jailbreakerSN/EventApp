@@ -21,11 +21,13 @@ import {
   RegistrationClosedError,
   QrInvalidError,
   QrAlreadyUsedError,
+  QrExpiredError,
+  QrNotYetValidError,
   NotFoundError,
   PlanLimitError,
 } from "@/errors/app-error";
 import { BaseService } from "./base.service";
-import { signQrPayload, verifyQrPayload } from "./qr-signing";
+import { signQrPayload, verifyQrPayload, checkScanTime, computeValidityWindow } from "./qr-signing";
 import { eventBus } from "@/events/event-bus";
 import { getRequestId } from "@/context/request-context";
 
@@ -137,7 +139,17 @@ export class RegistrationService extends BaseService {
       const now = new Date().toISOString();
       const regRef = registrationRepository.ref.doc();
       const regId = regRef.id;
-      const qrCodeValue = signQrPayload(regId, eventId, user.uid);
+      // v3 QR embeds the validity window in the signed payload. The scan
+      // path rejects QRs outside [notBefore, notAfter], so a stolen/shared
+      // badge can't be replayed after the event.
+      const window = computeValidityWindow(event.startDate, event.endDate);
+      const qrCodeValue = signQrPayload(
+        regId,
+        eventId,
+        user.uid,
+        window.notBefore,
+        window.notAfter,
+      );
 
       // Fetch user profile for denormalized display fields. Must go through
       // tx.get() so the read participates in the transaction's snapshot —
@@ -428,6 +440,27 @@ export class RegistrationService extends BaseService {
     const event = await eventRepository.findByIdOrThrow(registration.eventId);
     const org = await organizationRepository.findByIdOrThrow(event.organizationId);
     this.requirePlanFeature(org, "qrScanning");
+
+    // Validity window check. v3 QRs carry `notBefore`/`notAfter` in the signed
+    // payload — those are authoritative. v1/v2 QRs predate the window field,
+    // so we fall back to the canonical window derived from the event dates
+    // (same formula the signer uses), which still shuts the "valid forever"
+    // door on legacy badges.
+    const nowMs = Date.now();
+    const window =
+      parsed.notBefore && parsed.notAfter
+        ? {
+            notBefore: new Date(parsed.notBefore).getTime(),
+            notAfter: new Date(parsed.notAfter).getTime(),
+          }
+        : computeValidityWindow(event.startDate, event.endDate);
+    const verdict = checkScanTime(nowMs, window.notBefore, window.notAfter);
+    if (verdict === "too_early") {
+      throw new QrNotYetValidError(new Date(window.notBefore).toISOString());
+    }
+    if (verdict === "expired") {
+      throw new QrExpiredError(new Date(window.notAfter).toISOString());
+    }
 
     const txResult = await runTransaction(async (tx) => {
       // Re-read registration inside transaction for double-check-in safety

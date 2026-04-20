@@ -18,7 +18,7 @@ import { userRepository } from "@/repositories/user.repository";
 import type { DocumentSnapshot } from "firebase-admin/firestore";
 import { type AuthUser } from "@/middlewares/auth.middleware";
 import { BaseService } from "./base.service";
-import { verifyQrPayload } from "./qr-signing";
+import { verifyQrPayload, checkScanTime, computeValidityWindow } from "./qr-signing";
 import { eventBus } from "@/events/event-bus";
 import { getRequestId } from "@/context/request-context";
 
@@ -192,9 +192,48 @@ export class CheckinService extends BaseService {
     try {
       const txResult = await db.runTransaction(async (tx) => {
         const regRef = db.collection(COLLECTIONS.REGISTRATIONS).doc(registration.id);
-        const snap = await tx.get(regRef);
+        const eventRefForWindow = db.collection(COLLECTIONS.EVENTS).doc(eventId);
+        const [snap, eventSnapForWindow] = await Promise.all([
+          tx.get(regRef),
+          tx.get(eventRefForWindow),
+        ]);
         if (!snap.exists) {
           return { status: "not_found" as BulkCheckinResultStatus, reason: "Registration deleted" };
+        }
+
+        // Validity window enforcement. For v3 QRs the window is authoritative
+        // inside the signed payload; for legacy v1/v2 QRs we fall back to a
+        // window derived from the event dates — same formula the signer uses.
+        // The scanned-at timestamp comes from the staff device (offline), so
+        // clock skew is absorbed by the `checkScanTime` grace bounds.
+        const eventData = eventSnapForWindow.data();
+        const window =
+          parsed.notBefore && parsed.notAfter
+            ? {
+                notBefore: new Date(parsed.notBefore).getTime(),
+                notAfter: new Date(parsed.notAfter).getTime(),
+              }
+            : eventData?.startDate && eventData?.endDate
+              ? computeValidityWindow(eventData.startDate, eventData.endDate)
+              : null;
+        if (window) {
+          const verdict = checkScanTime(
+            new Date(item.scannedAt).getTime(),
+            window.notBefore,
+            window.notAfter,
+          );
+          if (verdict === "too_early") {
+            return {
+              status: "not_yet_valid" as BulkCheckinResultStatus,
+              reason: `Badge not yet valid (opens ${new Date(window.notBefore).toISOString()})`,
+            };
+          }
+          if (verdict === "expired") {
+            return {
+              status: "expired" as BulkCheckinResultStatus,
+              reason: `Badge expired (closed ${new Date(window.notAfter).toISOString()})`,
+            };
+          }
         }
 
         const current = { id: snap.id, ...snap.data() } as Registration;
@@ -224,13 +263,13 @@ export class CheckinService extends BaseService {
           };
         }
 
-        // Zone capacity check
-        const eventRef = db.collection(COLLECTIONS.EVENTS).doc(eventId);
+        // Zone capacity check — reuses the event snap already read for the
+        // validity window (a second tx.get after a tx.set is illegal in
+        // Firestore transactions, so we must consolidate reads).
         const { FieldValue } = await import("firebase-admin/firestore");
+        const eventRef = eventRefForWindow;
 
         if (item.accessZoneId) {
-          const eventSnap = await tx.get(eventRef);
-          const eventData = eventSnap.data();
           const zone = eventData?.accessZones?.find(
             (z: { id: string; capacity?: number | null }) => z.id === item.accessZoneId,
           );

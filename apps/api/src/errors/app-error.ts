@@ -156,6 +156,38 @@ export class QrAlreadyUsedError extends AppError {
   }
 }
 
+/**
+ * Raised when a scan arrives AFTER the badge's signed validity window
+ * (`notAfter`, with clock-skew grace). Shields against replay of QR codes
+ * from past events.
+ */
+export class QrExpiredError extends AppError {
+  constructor(notAfter?: string) {
+    super({
+      message: "Ce badge a expiré et ne peut plus être utilisé.",
+      code: ERROR_CODES.QR_EXPIRED,
+      statusCode: 410,
+      details: notAfter ? { notAfter } : undefined,
+    });
+  }
+}
+
+/**
+ * Raised when a scan arrives BEFORE the badge's signed validity window
+ * (`notBefore`, with clock-skew grace). Prevents staff from accidentally
+ * pre-scanning a badge days before doors open.
+ */
+export class QrNotYetValidError extends AppError {
+  constructor(notBefore?: string) {
+    super({
+      message: "Ce badge n'est pas encore valide. Veuillez réessayer à l'heure de l'événement.",
+      code: ERROR_CODES.QR_NOT_YET_VALID,
+      statusCode: 425,
+      details: notBefore ? { notBefore } : undefined,
+    });
+  }
+}
+
 export class PlanLimitError extends AppError {
   constructor(
     limit: string,
