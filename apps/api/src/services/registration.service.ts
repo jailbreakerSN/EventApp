@@ -471,7 +471,25 @@ export class RegistrationService extends BaseService {
       throw new QrExpiredError(new Date(window.notAfter).toISOString());
     }
 
-    const txResult = await runTransaction(async (tx) => {
+    // Transaction returns a tagged envelope — the "already checked in"
+    // branch needs enrichment (staff display name) that can't happen inside
+    // the tx, so we surface the raw identifiers and resolve them below.
+    type TxOutcome =
+      | {
+          kind: "success";
+          checkedInAt: string;
+          eventId: string;
+          ticketTypeName: string | null;
+          accessZoneName: string | null;
+        }
+      | {
+          kind: "already";
+          checkedInAt: string | null;
+          checkedInBy: string | null;
+          checkedInDeviceId: string | null;
+        };
+
+    const txResult = await runTransaction<TxOutcome>(async (tx) => {
       // Re-read registration inside transaction for double-check-in safety
       const regRef = registrationRepository.ref.doc(registration.id);
       const regSnap = await tx.get(regRef);
@@ -481,7 +499,15 @@ export class RegistrationService extends BaseService {
       const current = { id: regSnap.id, ...regSnap.data() } as Registration;
 
       if (current.status === "checked_in") {
-        throw new QrAlreadyUsedError(current.checkedInAt ?? undefined);
+        // Return — don't throw. The outer service enriches with the staff's
+        // display name (needs a second read the tx can't make) before
+        // surfacing a 409 to the client.
+        return {
+          kind: "already",
+          checkedInAt: current.checkedInAt ?? null,
+          checkedInBy: current.checkedInBy ?? null,
+          checkedInDeviceId: current.checkedInDeviceId ?? null,
+        };
       }
       if (current.status !== "confirmed") {
         throw new QrInvalidError(`Registration status is '${current.status}'`);
@@ -513,12 +539,29 @@ export class RegistrationService extends BaseService {
       const event = eventSnap.exists ? ({ id: eventSnap.id, ...eventSnap.data() } as Event) : null;
 
       return {
+        kind: "success",
         checkedInAt: now,
         eventId: current.eventId,
         ticketTypeName: event?.ticketTypes.find((t) => t.id === current.ticketTypeId)?.name ?? null,
         accessZoneName: event?.accessZones.find((z) => z.id === accessZoneId)?.name ?? null,
       };
     });
+
+    if (txResult.kind === "already") {
+      // Resolve the scanner's display name outside the tx — gate staff see
+      // "Déjà validé par Aminata il y a 12 s" instead of a bare uid.
+      let checkedInByName: string | null = null;
+      if (txResult.checkedInBy) {
+        const staff = await userRepository.findById(txResult.checkedInBy);
+        checkedInByName = staff?.displayName ?? null;
+      }
+      throw new QrAlreadyUsedError({
+        checkedInAt: txResult.checkedInAt,
+        checkedInBy: txResult.checkedInBy,
+        checkedInByName,
+        checkedInDeviceId: txResult.checkedInDeviceId,
+      });
+    }
 
     // Emit domain event AFTER transaction commits
     eventBus.emit("checkin.completed", {

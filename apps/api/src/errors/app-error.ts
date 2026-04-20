@@ -145,13 +145,39 @@ export class QrInvalidError extends AppError {
   }
 }
 
+/**
+ * Raised when a scan targets a registration that is already `checked_in`.
+ *
+ * Details carry everything the gate staff need to distinguish a fraud
+ * attempt from a "colleague got there first" moment — the scanner's
+ * display name, their device id, and when the original scan landed.
+ * Backoffice surfaces these on the red "Déjà validé par Aminata il y a
+ * 12 s" card (badge-journey-review item 3.5).
+ */
 export class QrAlreadyUsedError extends AppError {
-  constructor(checkedInAt?: string) {
+  constructor(
+    details:
+      | string
+      | {
+          checkedInAt?: string | null;
+          /** uid of the staff who performed the first (winning) scan. */
+          checkedInBy?: string | null;
+          /** Denormalised display name for UI — resolved by the caller. */
+          checkedInByName?: string | null;
+          /** Device id persisted on the registration when the first scan landed. */
+          checkedInDeviceId?: string | null;
+        } = {},
+  ) {
+    // Back-compat: the old single-arg shape `new QrAlreadyUsedError(at)` is
+    // kept so no in-flight callsite changes with this PR. New callers pass
+    // the details object directly.
+    const normalised = typeof details === "string" ? { checkedInAt: details } : details;
+    const hasAny = Object.values(normalised).some((v) => v !== null && v !== undefined);
     super({
       message: "Ce badge a déjà été scanné",
       code: ERROR_CODES.QR_ALREADY_USED,
       statusCode: 409,
-      details: checkedInAt ? { checkedInAt } : undefined,
+      details: hasAny ? normalised : undefined,
     });
   }
 }
