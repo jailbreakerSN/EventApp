@@ -6,6 +6,14 @@ import {
   type CheckinStats,
   type CheckinLogEntry,
   type CheckinHistoryQuery,
+  type CheckinListQuery,
+  type CheckinRecord,
+  type AnomalyQuery,
+  type AnomalyResponse,
+  type AnomalyEvidence,
+  type DuplicateAnomaly,
+  type DeviceMismatchAnomaly,
+  type VelocityOutlierAnomaly,
   type OfflineSyncData,
   type Registration,
   type RegistrationStatus,
@@ -34,6 +42,18 @@ import { resolveEventKeyFromEvent } from "./qr-key-resolver";
 const MAX_OFFLINE_RECONCILE_LAG_MS = 7 * 24 * 60 * 60 * 1000;
 import { eventBus } from "@/events/event-bus";
 import { getRequestId } from "@/context/request-context";
+
+/** Shape-shift a full `CheckinRecord` into the slim anomaly-evidence row. */
+function toEvidence(row: CheckinRecord): AnomalyEvidence {
+  return {
+    checkinId: row.id,
+    scannedAt: row.scannedAt,
+    scannerDeviceId: row.scannerDeviceId,
+    scannedBy: row.scannedBy,
+    registrationId: row.registrationId,
+    accessZoneId: row.accessZoneId,
+  };
+}
 
 export class CheckinService extends BaseService {
   /**
@@ -595,6 +615,203 @@ export class CheckinService extends BaseService {
    * Once `checkins` readers land (follow-up commit) this moves inside the
    * tx proper and becomes part of the atomic state change.
    */
+  // ─── Per-scan forensic list (3.3 c3/5) ─────────────────────────────────
+  // Reads from the `checkins` collection — the new per-scan forensic log.
+  // Legacy `getHistory` at :502 stays on the registrations table for
+  // back-compat with events that predate the shadow-write.
+  async listCheckins(
+    eventId: string,
+    query: CheckinListQuery,
+    user: AuthUser,
+  ): Promise<{
+    data: CheckinRecord[];
+    meta: { page: number; limit: number; total: number; totalPages: number };
+  }> {
+    this.requirePermission(user, "checkin:view_log");
+    const event = await eventRepository.findByIdOrThrow(eventId);
+    this.requireOrganizationAccess(user, event.organizationId);
+
+    // Compose the query. Composite index
+    // `(eventId, status, scannedAt)` at
+    // `firestore.indexes.json` handles the hot path; `accessZoneId`
+    // + time-range filters fall back to
+    // `(eventId, accessZoneId, scannedAt)` or the two-field
+    // `(eventId, scannedAt)` index depending on which filter the
+    // caller passes.
+    let q = db.collection(COLLECTIONS.CHECKINS).where("eventId", "==", eventId);
+    if (query.status) q = q.where("status", "==", query.status);
+    if (query.accessZoneId) q = q.where("accessZoneId", "==", query.accessZoneId);
+    if (query.since) q = q.where("scannedAt", ">=", query.since);
+    if (query.until) q = q.where("scannedAt", "<=", query.until);
+
+    const countSnap = await q.count().get();
+    const total = countSnap.data().count;
+    const offset = (query.page - 1) * query.limit;
+    const pageSnap = await q.orderBy("scannedAt", "desc").offset(offset).limit(query.limit).get();
+    const data = pageSnap.docs.map((d) => d.data() as CheckinRecord);
+
+    return {
+      data,
+      meta: {
+        page: query.page,
+        limit: query.limit,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / query.limit)),
+      },
+    };
+  }
+
+  // ─── Security anomalies (4.3) ──────────────────────────────────────────
+  // Three signals surfaced per event:
+  //   - duplicates: rows with `status === "duplicate"`.
+  //   - device_mismatch: same registration seen on ≥2 scannerDeviceIds
+  //     within `windowMinutes`. Canonical screenshot-share signature.
+  //   - velocity_outlier: staff uid processing > velocityThreshold scans
+  //     in any 60 s rolling bucket. Scripted attack or misconfigured
+  //     scanner.
+  //
+  // Gated behind `advancedAnalytics` plan feature (pro+) so freemium
+  // tiers don't carry the read cost. Two Firestore reads (duplicates +
+  // success window) issued in parallel; grouping is client-side.
+  async getAnomalies(
+    eventId: string,
+    query: AnomalyQuery,
+    user: AuthUser,
+  ): Promise<AnomalyResponse> {
+    this.requirePermission(user, "checkin:view_log");
+    const event = await eventRepository.findByIdOrThrow(eventId);
+    this.requireOrganizationAccess(user, event.organizationId);
+
+    const org = await organizationRepository.findByIdOrThrow(event.organizationId);
+    this.requirePlanFeature(org, "advancedAnalytics");
+
+    const windowMs = query.windowMinutes * 60 * 1000;
+    const windowStartIso = new Date(Date.now() - windowMs).toISOString();
+    const MAX_ROWS = 5000;
+
+    // Run both index scans in parallel.
+    const duplicatesPromise = db
+      .collection(COLLECTIONS.CHECKINS)
+      .where("eventId", "==", eventId)
+      .where("status", "==", "duplicate")
+      .orderBy("scannedAt", "desc")
+      .limit(100)
+      .get();
+
+    const windowPromise = db
+      .collection(COLLECTIONS.CHECKINS)
+      .where("eventId", "==", eventId)
+      .where("status", "==", "success")
+      .orderBy("scannedAt", "desc")
+      .limit(MAX_ROWS)
+      .get();
+
+    const [dupSnap, winSnap] = await Promise.all([duplicatesPromise, windowPromise]);
+    const detectedAt = new Date().toISOString();
+
+    // ── Duplicates
+    const duplicates: DuplicateAnomaly[] = dupSnap.docs.map((d) => {
+      const row = d.data() as CheckinRecord;
+      return {
+        kind: "duplicate",
+        detectedAt,
+        severity: "warning",
+        registrationId: row.registrationId,
+        evidence: [
+          {
+            checkinId: row.id,
+            scannedAt: row.scannedAt,
+            scannerDeviceId: row.scannerDeviceId,
+            scannedBy: row.scannedBy,
+            registrationId: row.registrationId,
+            accessZoneId: row.accessZoneId,
+          },
+        ],
+      };
+    });
+
+    // Filter success rows to the window. We overfetch above because
+    // Firestore can't `orderBy` two fields with different direction
+    // without another composite, and the `limit(MAX_ROWS)` is a cheap
+    // safety cap.
+    const windowRows = winSnap.docs
+      .map((d) => d.data() as CheckinRecord)
+      .filter((r) => r.scannedAt >= windowStartIso);
+    const truncated = winSnap.size === MAX_ROWS;
+
+    // ── Device mismatch — group by registrationId, emit if ≥2 deviceIds
+    const byReg = new Map<string, CheckinRecord[]>();
+    for (const r of windowRows) {
+      if (!r.scannerDeviceId) continue; // unattested rows don't count
+      const group = byReg.get(r.registrationId);
+      if (group) group.push(r);
+      else byReg.set(r.registrationId, [r]);
+    }
+    const deviceMismatches: DeviceMismatchAnomaly[] = [];
+    for (const [regId, rows] of byReg) {
+      const devices = new Set(rows.map((r) => r.scannerDeviceId!));
+      if (devices.size < 2) continue;
+      deviceMismatches.push({
+        kind: "device_mismatch",
+        detectedAt,
+        severity: "critical",
+        registrationId: regId,
+        deviceIds: [...devices],
+        evidence: rows.slice(0, 10).map(toEvidence),
+      });
+    }
+
+    // ── Velocity outlier — group by scannedBy into 60 s buckets
+    const velocityOutliers: VelocityOutlierAnomaly[] = [];
+    const byStaff = new Map<string, CheckinRecord[]>();
+    for (const r of windowRows) {
+      const group = byStaff.get(r.scannedBy);
+      if (group) group.push(r);
+      else byStaff.set(r.scannedBy, [r]);
+    }
+    for (const [staff, rows] of byStaff) {
+      if (rows.length <= query.velocityThreshold) continue;
+      // Sort ascending + sweep a 60 s window.
+      const sorted = [...rows].sort((a, b) => a.scannedAt.localeCompare(b.scannedAt));
+      let left = 0;
+      let peakBucket: CheckinRecord[] = [];
+      for (let right = 0; right < sorted.length; right++) {
+        while (
+          left < right &&
+          new Date(sorted[right].scannedAt).getTime() - new Date(sorted[left].scannedAt).getTime() >
+            60_000
+        ) {
+          left++;
+        }
+        const bucket = sorted.slice(left, right + 1);
+        if (bucket.length > peakBucket.length) peakBucket = bucket;
+      }
+      if (peakBucket.length > query.velocityThreshold) {
+        velocityOutliers.push({
+          kind: "velocity_outlier",
+          detectedAt,
+          severity: peakBucket.length > query.velocityThreshold * 2 ? "critical" : "warning",
+          scannedBy: staff,
+          scannerDeviceId: peakBucket[0].scannerDeviceId,
+          count: peakBucket.length,
+          evidence: peakBucket.slice(0, 10).map(toEvidence),
+        });
+      }
+    }
+
+    return {
+      duplicates,
+      deviceMismatches,
+      velocityOutliers,
+      meta: {
+        windowMinutes: query.windowMinutes,
+        velocityThreshold: query.velocityThreshold,
+        scannedRows: windowRows.length,
+        truncated,
+      },
+    };
+  }
+
   private async writeShadowCheckin(ctx: {
     eventId: string;
     organizationId: string;

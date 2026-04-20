@@ -11,9 +11,13 @@ import { ValidationError } from "@/errors/app-error";
 import {
   BulkCheckinRequestSchema,
   CheckinHistoryQuerySchema,
+  CheckinListQuerySchema,
+  AnomalyQuerySchema,
   OfflineSyncQuerySchema,
   type BulkCheckinRequest,
   type CheckinHistoryQuery,
+  type CheckinListQuery,
+  type AnomalyQuery,
   type OfflineSyncQuery,
 } from "@teranga/shared-types";
 
@@ -145,6 +149,60 @@ export const checkinRoutes: FastifyPluginAsync = async (fastify) => {
       const { eventId } = request.params as z.infer<typeof ParamsWithEventId>;
       const stats = await checkinService.getStats(eventId, request.user!);
       return reply.send({ success: true, data: stats });
+    },
+  );
+
+  // ─── Per-scan forensic list (badge-journey 3.3 c3/5) ─────────────────────
+  // Reads from the new `checkins` collection — one row per scan attempt
+  // (success / duplicate / rejected) with device attestation + reject-code
+  // + QR version. Legacy `getHistory` at `/:eventId/checkin/history`
+  // stays on the registrations table for back-compat with events that
+  // predate the shadow-write.
+  fastify.get(
+    "/:eventId/checkins",
+    {
+      preHandler: [
+        authenticate,
+        validate({ params: ParamsWithEventId, query: CheckinListQuerySchema }),
+        requirePermission("checkin:view_log"),
+      ],
+      schema: {
+        tags: ["Check-in"],
+        summary: "List per-scan forensic records for an event",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const { eventId } = request.params as z.infer<typeof ParamsWithEventId>;
+      const query = request.query as CheckinListQuery;
+      const result = await checkinService.listCheckins(eventId, query, request.user!);
+      return reply.send({ success: true, data: result.data, meta: result.meta });
+    },
+  );
+
+  // ─── Security anomalies (badge-journey 4.3) ──────────────────────────────
+  // Surfaces duplicates, device mismatches (same QR on two devices
+  // within `windowMinutes`), and velocity outliers (scripted scanner).
+  // Gated behind the `advancedAnalytics` plan feature — Pro + Enterprise.
+  fastify.get(
+    "/:eventId/checkin/anomalies",
+    {
+      preHandler: [
+        authenticate,
+        validate({ params: ParamsWithEventId, query: AnomalyQuerySchema }),
+        requirePermission("checkin:view_log"),
+      ],
+      schema: {
+        tags: ["Check-in"],
+        summary: "Detect security anomalies across recent scans",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const { eventId } = request.params as z.infer<typeof ParamsWithEventId>;
+      const query = request.query as AnomalyQuery;
+      const result = await checkinService.getAnomalies(eventId, query, request.user!);
+      return reply.send({ success: true, data: result });
     },
   );
 };

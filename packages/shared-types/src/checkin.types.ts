@@ -177,6 +177,101 @@ export const CheckinRecordSchema = z.object({
 
 export type CheckinRecord = z.infer<typeof CheckinRecordSchema>;
 
+// ─── Checkins list query ───────────────────────────────────────────────────
+// Parameters for `GET /v1/events/:eventId/checkins`. Used by the security
+// dashboard + any downstream forensic query UI. Kept minimal on purpose —
+// the anomaly endpoint (item 4.3) owns its own richer query shape.
+export const CheckinListQuerySchema = z.object({
+  status: CheckinRecordStatusSchema.optional(),
+  accessZoneId: z.string().optional(),
+  since: z.string().datetime().optional(),
+  until: z.string().datetime().optional(),
+  page: z.coerce.number().int().positive().default(1),
+  limit: z.coerce.number().int().positive().max(100).default(20),
+});
+
+export type CheckinListQuery = z.infer<typeof CheckinListQuerySchema>;
+
+// ─── Security anomalies ─────────────────────────────────────────────────────
+// Discriminated union so the widget has one row renderer for every kind.
+// Adding a new anomaly kind later (e.g. `clock_skew`, `zone_exceeded`)
+// extends the union without breaking the wire contract.
+const AnomalyEvidenceSchema = z.object({
+  checkinId: z.string(),
+  scannedAt: z.string().datetime(),
+  scannerDeviceId: z.string().nullable(),
+  scannedBy: z.string(),
+  registrationId: z.string(),
+  accessZoneId: z.string().nullable(),
+});
+
+export type AnomalyEvidence = z.infer<typeof AnomalyEvidenceSchema>;
+
+export const DuplicateAnomalySchema = z.object({
+  kind: z.literal("duplicate"),
+  detectedAt: z.string().datetime(),
+  severity: z.enum(["info", "warning", "critical"]),
+  registrationId: z.string(),
+  evidence: z.array(AnomalyEvidenceSchema).min(1),
+});
+
+export const DeviceMismatchAnomalySchema = z.object({
+  kind: z.literal("device_mismatch"),
+  detectedAt: z.string().datetime(),
+  severity: z.enum(["info", "warning", "critical"]),
+  registrationId: z.string(),
+  /** Distinct device ids the same registration landed on within the window. */
+  deviceIds: z.array(z.string()).min(2),
+  evidence: z.array(AnomalyEvidenceSchema).min(2),
+});
+
+export const VelocityOutlierAnomalySchema = z.object({
+  kind: z.literal("velocity_outlier"),
+  detectedAt: z.string().datetime(),
+  severity: z.enum(["info", "warning", "critical"]),
+  /** Staff uid processing the burst. */
+  scannedBy: z.string(),
+  scannerDeviceId: z.string().nullable(),
+  /** Scans inside the one-minute window around `detectedAt`. */
+  count: z.number().int(),
+  evidence: z.array(AnomalyEvidenceSchema).min(1),
+});
+
+export type DuplicateAnomaly = z.infer<typeof DuplicateAnomalySchema>;
+export type DeviceMismatchAnomaly = z.infer<typeof DeviceMismatchAnomalySchema>;
+export type VelocityOutlierAnomaly = z.infer<typeof VelocityOutlierAnomalySchema>;
+
+export const AnomalySchema = z.discriminatedUnion("kind", [
+  DuplicateAnomalySchema,
+  DeviceMismatchAnomalySchema,
+  VelocityOutlierAnomalySchema,
+]);
+
+export type Anomaly = z.infer<typeof AnomalySchema>;
+
+export const AnomalyQuerySchema = z.object({
+  /** Sliding window (minutes) for device-mismatch + velocity. Clamped 1–60. */
+  windowMinutes: z.coerce.number().int().min(1).max(60).default(10),
+  /** Per-minute scan count above which `scannedBy` trips a velocity outlier. */
+  velocityThreshold: z.coerce.number().int().min(5).max(600).default(60),
+});
+
+export type AnomalyQuery = z.infer<typeof AnomalyQuerySchema>;
+
+export const AnomalyResponseSchema = z.object({
+  duplicates: z.array(DuplicateAnomalySchema),
+  deviceMismatches: z.array(DeviceMismatchAnomalySchema),
+  velocityOutliers: z.array(VelocityOutlierAnomalySchema),
+  meta: z.object({
+    windowMinutes: z.number().int(),
+    velocityThreshold: z.number().int(),
+    scannedRows: z.number().int(),
+    truncated: z.boolean(),
+  }),
+});
+
+export type AnomalyResponse = z.infer<typeof AnomalyResponseSchema>;
+
 /**
  * Query-param DTO for `GET /v1/checkin/:eventId/sync`. Both fields are
  * optional — omitting them keeps the legacy plaintext response. Together
