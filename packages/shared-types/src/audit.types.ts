@@ -9,6 +9,7 @@ export const AuditActionSchema = z.enum([
   "registration.cancelled",
   "registration.approved",
   "checkin.completed",
+  "checkin.offline_sync.downloaded",
   "event.created",
   "event.updated",
   "event.published",

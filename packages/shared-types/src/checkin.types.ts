@@ -40,9 +40,67 @@ export const OfflineSyncDataSchema = z.object({
       name: z.string(),
     }),
   ),
+  // Client-side cache TTL hint. Staff devices should auto-purge the cached
+  // payload after this timestamp (`event.endDate + 24 h` by default). Shipped
+  // in the plaintext response and as a cleartext field on the encrypted
+  // envelope so clients can schedule the purge without having to decrypt.
+  ttlAt: z.string().datetime(),
 });
 
 export type OfflineSyncData = z.infer<typeof OfflineSyncDataSchema>;
+
+// ─── Encrypted sync envelope (opt-in) ──────────────────────────────────────
+// Staff devices cache every confirmed registration's signed QR value for
+// offline scanning, which makes the offline-sync payload the most sensitive
+// blob the API ships. Leaking one staff device = leaking every badge for
+// that event.
+//
+// Opt-in via `?encrypted=v1&clientPublicKey=<b64url-x25519-pub>`. Response
+// then carries the same payload sealed with ECDH-on-Curve25519 → HKDF-SHA256
+// → AES-256-GCM:
+//
+//   1. Client generates an ephemeral X25519 keypair at sync time; sends pub.
+//   2. Server generates its own ephemeral X25519 keypair.
+//   3. Shared secret = ECDH(server_priv, client_pub).
+//   4. AES key = HKDF-SHA256(shared_secret, salt=none, info="teranga/sync/v1").
+//   5. ciphertext = AES-256-GCM(key, nonce, plaintext, aad=eventId).
+//   6. Client derives the same key with ECDH(client_priv, server_pub) and
+//      decrypts. Forward-secret because both keypairs are ephemeral; the
+//      API never sees the client's private key.
+//
+// `ttlAt` stays outside the ciphertext so the client can schedule its
+// purge without decrypting (e.g. for a pre-flight fast-path that just
+// checks whether the cache is still fresh).
+export const EncryptedSyncEnvelopeSchema = z.object({
+  protocol: z.literal("ecdh-x25519-aes256gcm-v1"),
+  eventId: z.string(),
+  serverPublicKey: z.string().regex(/^[A-Za-z0-9_-]+$/, "base64url without padding"),
+  nonce: z.string().regex(/^[A-Za-z0-9_-]+$/, "base64url without padding"),
+  ciphertext: z.string().regex(/^[A-Za-z0-9_-]+$/, "base64url without padding"),
+  tag: z.string().regex(/^[A-Za-z0-9_-]+$/, "base64url without padding"),
+  syncedAt: z.string().datetime(),
+  ttlAt: z.string().datetime(),
+});
+
+export type EncryptedSyncEnvelope = z.infer<typeof EncryptedSyncEnvelopeSchema>;
+
+/**
+ * Query-param DTO for `GET /v1/checkin/:eventId/sync`. Both fields are
+ * optional — omitting them keeps the legacy plaintext response. Together
+ * they opt into the encrypted envelope above.
+ */
+export const OfflineSyncQuerySchema = z.object({
+  encrypted: z.literal("v1").optional(),
+  clientPublicKey: z
+    .string()
+    .regex(/^[A-Za-z0-9_-]+$/, "base64url without padding")
+    .optional(),
+  // Scanner device id for the download audit event (mirrors the attestation
+  // pattern added on the scan side). Optional for back-compat.
+  scannerDeviceId: z.string().min(1).max(120).optional(),
+});
+
+export type OfflineSyncQuery = z.infer<typeof OfflineSyncQuerySchema>;
 
 // ─── Bulk Check-in Sync ──────────────────────────────────────────────────────
 

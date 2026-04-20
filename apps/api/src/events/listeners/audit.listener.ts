@@ -74,6 +74,33 @@ export function registerAuditListeners(): void {
         participantId: payload.participantId,
         staffId: payload.staffId,
         accessZoneId: payload.accessZoneId ?? null,
+        source: payload.source ?? "live",
+        // Device attestation — landed in the audit trail for post-event
+        // forensics even if the UI doesn't surface them yet (Sprint C 4.3).
+        scannerDeviceId: payload.scannerDeviceId ?? null,
+        scannerNonce: payload.scannerNonce ?? null,
+        clientScannedAt: payload.clientScannedAt ?? null,
+        serverConfirmedAt: payload.checkedInAt ?? payload.timestamp,
+      },
+    });
+  });
+
+  eventBus.on("checkin.offline_sync.downloaded", async (payload) => {
+    await auditService.log({
+      action: "checkin.offline_sync.downloaded",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "event",
+      resourceId: payload.eventId,
+      eventId: payload.eventId,
+      organizationId: payload.organizationId,
+      details: {
+        staffId: payload.staffId,
+        scannerDeviceId: payload.scannerDeviceId ?? null,
+        encrypted: payload.encrypted,
+        itemCount: payload.itemCount,
+        ttlAt: payload.ttlAt,
       },
     });
   });
