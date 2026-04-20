@@ -125,6 +125,14 @@ export default function BadgePage() {
     if (!registration?.eventId || offlineState === "saving") return;
     setOfflineState("saving");
     try {
+      // Two independent caches — never couple them. The QR payload is the
+      // authoritative credential and is already in IndexedDB by the time
+      // this handler runs (stashed by the effect above on first fetch);
+      // `getMyBadge()` re-ups it and `getMyBadgePdf()` warms the Service
+      // Worker's PDF cache. If the PDF fetch fails the participant still
+      // walks into the venue — the scanner only needs the QR value that
+      // lives in IndexedDB.
+      //
       // Issue both fetches through the app (with auth) so the SW's fetch
       // handler caches the responses. The postMessage-based CACHE_BADGE
       // path can't reach auth-gated routes — the SW would call fetch(url)

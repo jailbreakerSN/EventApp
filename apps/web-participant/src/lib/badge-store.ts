@@ -3,6 +3,25 @@
 /**
  * Minimal IndexedDB-backed store for badge payloads.
  *
+ * ─── Offline contract (Sprint D 2.3) ──────────────────────────────────────
+ * This store is what actually keeps the badge usable when the participant
+ * is offline at the venue gate. Two layers cache in parallel and MUST stay
+ * independent — coupling them defeats the point:
+ *
+ *   1. IndexedDB (this file) — the QR payload + holder metadata. This is
+ *      the minimum needed to render `<TicketPass>` with a scannable QR.
+ *      Written synchronously on every successful `/v1/badges/me/:eventId`
+ *      fetch by `badge/page.tsx`, before any PDF network call fires.
+ *   2. Service Worker (`public/sw.js` — `badgesCache(locale)` rule) — the
+ *      full PDF blob for `/v1/badges/me/:eventId/pdf`. Cached on user-
+ *      initiated "Save for event day" action. Lives in a different cache
+ *      namespace and is NOT required for the gate to scan the participant.
+ *
+ * The page's fallback path (`badge/page.tsx` — `loadBadge()` then merge)
+ * renders the QR from IndexedDB alone even if the PDF fetch fails or has
+ * never run. Anyone adding PDF-dependent logic to the offline path should
+ * instead read from here — the QR value is the authoritative credential.
+ *
  * Why IndexedDB and not localStorage? Badges are keyed by `registrationId`
  * and we want per-record access, quotas that scale beyond 5 MB, and async
  * reads that don't block the main thread. Service workers can't read
