@@ -69,27 +69,33 @@ function ensurePermissions(request: FastifyRequest, reply: FastifyReply): Set<Pe
 // ─── Single Permission ───────────────────────────────────────────────────────
 
 export function requirePermission(permission: Permission) {
-  return async (request: FastifyRequest, reply: FastifyReply) => {
+  const handler = async (request: FastifyRequest, reply: FastifyReply) => {
     const perms = ensurePermissions(request, reply);
     if (!perms) return; // 401 already sent
 
     if (!hasPermission(perms, permission)) {
-      request.log.warn(
-        { uid: request.user!.uid, required: permission },
-        "Permission check failed",
-      );
+      request.log.warn({ uid: request.user!.uid, required: permission }, "Permission check failed");
       return reply.status(403).send({
         success: false,
         error: { code: "FORBIDDEN", message: `Missing permission: ${permission}` },
       });
     }
   };
+  // Non-enumerable marker so the route-inventory snapshot test can read
+  // the guarded permission without parsing closures. Never read by the
+  // request pipeline itself — purely an introspection hook.
+  Object.defineProperty(handler, "__permission", {
+    value: permission,
+    enumerable: false,
+    writable: false,
+  });
+  return handler;
 }
 
 // ─── All Permissions (AND) ───────────────────────────────────────────────────
 
 export function requireAllPermissions(permissions: Permission[]) {
-  return async (request: FastifyRequest, reply: FastifyReply) => {
+  const handler = async (request: FastifyRequest, reply: FastifyReply) => {
     const perms = ensurePermissions(request, reply);
     if (!perms) return;
 
@@ -104,12 +110,18 @@ export function requireAllPermissions(permissions: Permission[]) {
       });
     }
   };
+  Object.defineProperty(handler, "__permissionsAll", {
+    value: [...permissions],
+    enumerable: false,
+    writable: false,
+  });
+  return handler;
 }
 
 // ─── Any Permission (OR) ────────────────────────────────────────────────────
 
 export function requireAnyPermission(permissions: Permission[]) {
-  return async (request: FastifyRequest, reply: FastifyReply) => {
+  const handler = async (request: FastifyRequest, reply: FastifyReply) => {
     const perms = ensurePermissions(request, reply);
     if (!perms) return;
 
@@ -124,6 +136,12 @@ export function requireAnyPermission(permissions: Permission[]) {
       });
     }
   };
+  Object.defineProperty(handler, "__permissionsAny", {
+    value: [...permissions],
+    enumerable: false,
+    writable: false,
+  });
+  return handler;
 }
 
 // ─── Organization Scope ─────────────────────────────────────────────────────

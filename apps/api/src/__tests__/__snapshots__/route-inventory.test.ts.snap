@@ -1,0 +1,176 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`route inventory > matches the snapshot 1`] = `
+"GET /health none
+GET /ready none
+GET /v1/admin/audit-logs auth perms=[platform:manage]
+GET /v1/admin/events auth perms=[platform:manage]
+GET /v1/admin/organizations auth perms=[platform:manage]
+PATCH /v1/admin/organizations/:orgId/status auth perms=[platform:manage]
+POST /v1/admin/organizations/:orgId/subscription/assign auth perms=[platform:manage]
+PATCH /v1/admin/organizations/:orgId/verify auth perms=[platform:manage]
+GET /v1/admin/plans auth perms=[plan:manage]
+POST /v1/admin/plans auth perms=[plan:manage]
+DELETE /v1/admin/plans/:planId auth perms=[plan:manage]
+GET /v1/admin/plans/:planId auth perms=[plan:manage]
+PATCH /v1/admin/plans/:planId auth perms=[plan:manage]
+POST /v1/admin/plans/:planId/preview-change auth perms=[plan:manage]
+GET /v1/admin/plans/analytics auth perms=[platform:manage]
+GET /v1/admin/stats auth perms=[platform:manage]
+GET /v1/admin/users auth perms=[platform:manage]
+PATCH /v1/admin/users/:userId/roles auth perms=[platform:manage]
+PATCH /v1/admin/users/:userId/status auth perms=[platform:manage]
+GET /v1/badge-templates auth
+POST /v1/badge-templates auth emailVerified perms=[badge:generate]
+DELETE /v1/badge-templates/:templateId auth emailVerified perms=[badge:generate]
+GET /v1/badge-templates/:templateId auth
+PATCH /v1/badge-templates/:templateId auth emailVerified perms=[badge:generate]
+GET /v1/badges/:badgeId/download auth perms=[badge:view_own]
+POST /v1/badges/bulk-generate auth emailVerified perms=[badge:bulk_generate]
+POST /v1/badges/generate auth emailVerified perms=[badge:generate]
+GET /v1/badges/me/:eventId auth perms=[badge:view_own]
+GET /v1/badges/me/:eventId/pdf auth perms=[badge:view_own]
+GET /v1/badges/offline-sync/:eventId auth perms=[checkin:sync_offline]
+GET /v1/conversations auth perms=[messaging:read_own]
+POST /v1/conversations auth emailVerified perms=[messaging:send]
+GET /v1/conversations/:conversationId/messages auth perms=[messaging:read_own]
+POST /v1/conversations/:conversationId/messages auth emailVerified perms=[messaging:send]
+POST /v1/conversations/:conversationId/read auth emailVerified perms=[messaging:read_own]
+GET /v1/events auth
+POST /v1/events auth emailVerified perms=[event:create]
+DELETE /v1/events/:eventId auth emailVerified perms=[event:delete]
+GET /v1/events/:eventId auth
+PATCH /v1/events/:eventId auth emailVerified perms=[event:update]
+POST /v1/events/:eventId/access-zones auth emailVerified perms=[event:update]
+DELETE /v1/events/:eventId/access-zones/:zoneId auth emailVerified perms=[event:update]
+PATCH /v1/events/:eventId/access-zones/:zoneId auth emailVerified perms=[event:update]
+POST /v1/events/:eventId/broadcast auth emailVerified perms=[broadcast:send]
+GET /v1/events/:eventId/broadcasts auth perms=[broadcast:read]
+GET /v1/events/:eventId/calendar.ics none
+POST /v1/events/:eventId/cancel auth emailVerified perms=[event:update]
+GET /v1/events/:eventId/checkin/anomalies auth perms=[checkin:view_log]
+GET /v1/events/:eventId/checkin/history auth perms=[checkin:view_log]
+GET /v1/events/:eventId/checkin/stats auth perms=[checkin:view_log]
+POST /v1/events/:eventId/checkin/sync auth emailVerified perms=[checkin:scan]
+GET /v1/events/:eventId/checkins auth perms=[checkin:view_log]
+POST /v1/events/:eventId/clone auth emailVerified perms=[event:create]
+GET /v1/events/:eventId/feed auth perms=[feed:read]
+POST /v1/events/:eventId/feed auth emailVerified perms=[feed:create_post]
+DELETE /v1/events/:eventId/feed/:postId auth emailVerified perms=[feed:create_post]
+PATCH /v1/events/:eventId/feed/:postId auth emailVerified perms=[feed:create_post]
+GET /v1/events/:eventId/feed/:postId/comments auth perms=[feed:read]
+POST /v1/events/:eventId/feed/:postId/comments auth emailVerified perms=[feed:create_post]
+DELETE /v1/events/:eventId/feed/:postId/comments/:commentId auth emailVerified perms=[feed:create_post]
+POST /v1/events/:eventId/feed/:postId/like auth emailVerified perms=[feed:read]
+POST /v1/events/:eventId/feed/:postId/pin auth emailVerified perms=[feed:moderate]
+POST /v1/events/:eventId/feed/upload-url auth emailVerified perms=[feed:create_post]
+GET /v1/events/:eventId/promo-codes auth perms=[event:read]
+POST /v1/events/:eventId/promo-codes auth emailVerified perms=[event:update]
+POST /v1/events/:eventId/promo-codes/validate none
+POST /v1/events/:eventId/publish auth emailVerified perms=[event:publish]
+POST /v1/events/:eventId/qr-key/rotate auth emailVerified perms=[event:update]
+POST /v1/events/:eventId/scan-policy auth emailVerified perms=[event:update]
+GET /v1/events/:eventId/sessions auth
+POST /v1/events/:eventId/sessions auth emailVerified perms=[event:create]
+GET /v1/events/:eventId/sessions-bookmarks auth
+DELETE /v1/events/:eventId/sessions/:sessionId auth emailVerified perms=[event:update]
+GET /v1/events/:eventId/sessions/:sessionId auth
+PATCH /v1/events/:eventId/sessions/:sessionId auth emailVerified perms=[event:update]
+DELETE /v1/events/:eventId/sessions/:sessionId/bookmark auth emailVerified
+POST /v1/events/:eventId/sessions/:sessionId/bookmark auth emailVerified
+GET /v1/events/:eventId/speakers none
+POST /v1/events/:eventId/speakers auth emailVerified perms=[event:manage_speakers]
+GET /v1/events/:eventId/speakers/me auth
+GET /v1/events/:eventId/sponsors none
+POST /v1/events/:eventId/sponsors auth emailVerified perms=[event:manage_sponsors]
+GET /v1/events/:eventId/sync auth perms=[checkin:sync_offline]
+POST /v1/events/:eventId/ticket-types auth emailVerified perms=[event:update]
+DELETE /v1/events/:eventId/ticket-types/:ticketTypeId auth emailVerified perms=[event:update]
+PATCH /v1/events/:eventId/ticket-types/:ticketTypeId auth emailVerified perms=[event:update]
+POST /v1/events/:eventId/unpublish auth emailVerified perms=[event:publish]
+POST /v1/events/:eventId/upload-url auth emailVerified perms=[event:update]
+GET /v1/events/by-slug/:slug auth
+GET /v1/events/org/:orgId auth perms=[event:read]
+DELETE /v1/events/promo-codes/:promoCodeId auth emailVerified perms=[event:update]
+DELETE /v1/events/speakers/:speakerId auth emailVerified perms=[event:manage_speakers]
+GET /v1/events/speakers/:speakerId none
+PATCH /v1/events/speakers/:speakerId auth emailVerified perms=[profile:update_own]
+PUT /v1/events/speakers/:speakerId auth emailVerified perms=[profile:update_own]
+POST /v1/events/speakers/:speakerId/upload-url auth emailVerified perms=[profile:update_own]
+DELETE /v1/events/sponsors/:sponsorId auth emailVerified perms=[event:manage_sponsors]
+GET /v1/events/sponsors/:sponsorId none
+PATCH /v1/events/sponsors/:sponsorId auth emailVerified flags=[any(event:manage_sponsors,sponsor:manage_booth)]
+PUT /v1/events/sponsors/:sponsorId auth emailVerified flags=[any(event:manage_sponsors,sponsor:manage_booth)]
+GET /v1/events/sponsors/:sponsorId/leads auth perms=[sponsor:view_leads]
+POST /v1/events/sponsors/:sponsorId/leads auth emailVerified perms=[sponsor:collect_leads]
+GET /v1/events/sponsors/:sponsorId/leads/export auth perms=[sponsor:view_leads]
+POST /v1/events/sponsors/:sponsorId/upload-url auth emailVerified perms=[sponsor:manage_booth]
+POST /v1/invites/accept auth emailVerified
+POST /v1/invites/decline auth emailVerified
+POST /v1/newsletter/send auth perms=[platform:manage]
+POST /v1/newsletter/subscribe none
+GET /v1/notifications auth perms=[notification:read_own]
+PATCH /v1/notifications/:notificationId/read auth emailVerified perms=[notification:read_own]
+GET /v1/notifications/preferences auth perms=[notification:read_own]
+PUT /v1/notifications/preferences auth emailVerified perms=[notification:read_own]
+PATCH /v1/notifications/read-all auth perms=[notification:read_own]
+GET /v1/notifications/unread-count auth perms=[notification:read_own]
+POST /v1/organizations auth emailVerified perms=[organization:create]
+GET /v1/organizations/:orgId auth perms=[organization:read]
+PATCH /v1/organizations/:orgId auth emailVerified perms=[organization:update]
+GET /v1/organizations/:orgId/analytics auth perms=[event:read]
+GET /v1/organizations/:orgId/balance auth perms=[payment:view_reports]
+GET /v1/organizations/:orgId/balance-transactions auth perms=[payment:view_reports]
+GET /v1/organizations/:orgId/invites auth perms=[organization:read]
+POST /v1/organizations/:orgId/invites auth emailVerified perms=[organization:manage_members]
+DELETE /v1/organizations/:orgId/invites/:inviteId auth emailVerified perms=[organization:manage_members]
+DELETE /v1/organizations/:orgId/members auth emailVerified perms=[organization:manage_members]
+POST /v1/organizations/:orgId/members auth emailVerified perms=[organization:manage_members]
+PATCH /v1/organizations/:orgId/members/:memberId/role auth emailVerified perms=[organization:manage_members]
+GET /v1/organizations/:orgId/subscription auth perms=[organization:manage_billing]
+POST /v1/organizations/:orgId/subscription/cancel auth emailVerified perms=[organization:manage_billing]
+POST /v1/organizations/:orgId/subscription/downgrade auth emailVerified perms=[organization:manage_billing]
+POST /v1/organizations/:orgId/subscription/revert-scheduled auth emailVerified perms=[organization:manage_billing]
+POST /v1/organizations/:orgId/subscription/upgrade auth emailVerified perms=[organization:manage_billing]
+GET /v1/organizations/:orgId/usage auth perms=[organization:read]
+POST /v1/payments/:paymentId/refund auth emailVerified perms=[payment:refund]
+GET /v1/payments/:paymentId/status auth perms=[payment:read_own]
+GET /v1/payments/event/:eventId auth perms=[payment:read_all]
+GET /v1/payments/event/:eventId/summary auth perms=[payment:view_reports]
+POST /v1/payments/initiate auth emailVerified perms=[payment:initiate]
+GET /v1/payments/mock-checkout/:txId none
+POST /v1/payments/mock-checkout/:txId/complete none
+POST /v1/payments/webhook none
+POST /v1/payments/webhook/:provider none
+GET /v1/payouts/:payoutId auth perms=[payout:read]
+POST /v1/payouts/event/:eventId auth emailVerified perms=[payout:create]
+GET /v1/payouts/event/:eventId/calculate auth perms=[payout:read]
+GET /v1/payouts/organization/:orgId auth perms=[payout:read]
+GET /v1/plans auth
+GET /v1/plans/:key auth
+POST /v1/receipts/:paymentId/generate auth emailVerified perms=[payment:read_own]
+GET /v1/receipts/:receiptId auth perms=[payment:read_own]
+GET /v1/receipts/:receiptId/pdf auth perms=[payment:read_own]
+GET /v1/receipts/my auth perms=[payment:read_own]
+POST /v1/registrations auth perms=[registration:create]
+DELETE /v1/registrations/:registrationId auth flags=[any(registration:cancel_any,registration:cancel_own)]
+PATCH /v1/registrations/:registrationId auth emailVerified
+POST /v1/registrations/:registrationId/approve auth emailVerified perms=[registration:approve]
+POST /v1/registrations/:registrationId/cancel auth flags=[any(registration:cancel_any,registration:cancel_own)]
+POST /v1/registrations/checkin auth perms=[checkin:scan]
+GET /v1/registrations/event/:eventId auth perms=[registration:read_all]
+GET /v1/registrations/me auth
+GET /v1/users/:userId auth emailVerified perms=[profile:read_any]
+GET /v1/users/me auth
+PATCH /v1/users/me auth
+POST /v1/users/me/fcm-token auth
+GET /v1/venues none
+POST /v1/venues auth emailVerified perms=[venue:create]
+GET /v1/venues/:venueId none
+PATCH /v1/venues/:venueId auth emailVerified perms=[venue:update]
+POST /v1/venues/:venueId/approve auth emailVerified perms=[venue:approve]
+GET /v1/venues/:venueId/events none
+POST /v1/venues/:venueId/reactivate auth emailVerified perms=[venue:manage_all]
+POST /v1/venues/:venueId/suspend auth emailVerified perms=[venue:manage_all]
+GET /v1/venues/mine auth"
+`;

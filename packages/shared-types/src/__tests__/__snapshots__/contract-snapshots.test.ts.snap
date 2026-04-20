@@ -1,0 +1,4853 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`shared-types contract snapshots > AnomalyResponseSchema shape is stable 1`] = `
+{
+  "fields": {
+    "deviceMismatches": {
+      "required": true,
+      "shape": {
+        "element": {
+          "fields": {
+            "detectedAt": {
+              "required": true,
+              "shape": {
+                "checks": [
+                  "datetime",
+                ],
+                "kind": "string",
+              },
+            },
+            "deviceIds": {
+              "required": true,
+              "shape": {
+                "element": {
+                  "kind": "string",
+                },
+                "kind": "array",
+              },
+            },
+            "evidence": {
+              "required": true,
+              "shape": {
+                "element": {
+                  "fields": {
+                    "accessZoneId": {
+                      "required": true,
+                      "shape": {
+                        "inner": {
+                          "kind": "string",
+                        },
+                        "kind": "nullable",
+                      },
+                    },
+                    "checkinId": {
+                      "required": true,
+                      "shape": {
+                        "kind": "string",
+                      },
+                    },
+                    "registrationId": {
+                      "required": true,
+                      "shape": {
+                        "kind": "string",
+                      },
+                    },
+                    "scannedAt": {
+                      "required": true,
+                      "shape": {
+                        "checks": [
+                          "datetime",
+                        ],
+                        "kind": "string",
+                      },
+                    },
+                    "scannedBy": {
+                      "required": true,
+                      "shape": {
+                        "kind": "string",
+                      },
+                    },
+                    "scannerDeviceId": {
+                      "required": true,
+                      "shape": {
+                        "inner": {
+                          "kind": "string",
+                        },
+                        "kind": "nullable",
+                      },
+                    },
+                  },
+                  "kind": "object",
+                },
+                "kind": "array",
+              },
+            },
+            "kind": {
+              "required": true,
+              "shape": {
+                "kind": "literal",
+                "value": "device_mismatch",
+              },
+            },
+            "registrationId": {
+              "required": true,
+              "shape": {
+                "kind": "string",
+              },
+            },
+            "severity": {
+              "required": true,
+              "shape": {
+                "kind": "enum",
+                "values": [
+                  "critical",
+                  "info",
+                  "warning",
+                ],
+              },
+            },
+          },
+          "kind": "object",
+        },
+        "kind": "array",
+      },
+    },
+    "duplicates": {
+      "required": true,
+      "shape": {
+        "element": {
+          "fields": {
+            "detectedAt": {
+              "required": true,
+              "shape": {
+                "checks": [
+                  "datetime",
+                ],
+                "kind": "string",
+              },
+            },
+            "evidence": {
+              "required": true,
+              "shape": {
+                "element": {
+                  "fields": {
+                    "accessZoneId": {
+                      "required": true,
+                      "shape": {
+                        "inner": {
+                          "kind": "string",
+                        },
+                        "kind": "nullable",
+                      },
+                    },
+                    "checkinId": {
+                      "required": true,
+                      "shape": {
+                        "kind": "string",
+                      },
+                    },
+                    "registrationId": {
+                      "required": true,
+                      "shape": {
+                        "kind": "string",
+                      },
+                    },
+                    "scannedAt": {
+                      "required": true,
+                      "shape": {
+                        "checks": [
+                          "datetime",
+                        ],
+                        "kind": "string",
+                      },
+                    },
+                    "scannedBy": {
+                      "required": true,
+                      "shape": {
+                        "kind": "string",
+                      },
+                    },
+                    "scannerDeviceId": {
+                      "required": true,
+                      "shape": {
+                        "inner": {
+                          "kind": "string",
+                        },
+                        "kind": "nullable",
+                      },
+                    },
+                  },
+                  "kind": "object",
+                },
+                "kind": "array",
+              },
+            },
+            "kind": {
+              "required": true,
+              "shape": {
+                "kind": "literal",
+                "value": "duplicate",
+              },
+            },
+            "registrationId": {
+              "required": true,
+              "shape": {
+                "kind": "string",
+              },
+            },
+            "severity": {
+              "required": true,
+              "shape": {
+                "kind": "enum",
+                "values": [
+                  "critical",
+                  "info",
+                  "warning",
+                ],
+              },
+            },
+          },
+          "kind": "object",
+        },
+        "kind": "array",
+      },
+    },
+    "meta": {
+      "required": true,
+      "shape": {
+        "fields": {
+          "scannedRows": {
+            "required": true,
+            "shape": {
+              "checks": [
+                "int",
+              ],
+              "kind": "number",
+            },
+          },
+          "truncated": {
+            "required": true,
+            "shape": {
+              "kind": "boolean",
+            },
+          },
+          "velocityThreshold": {
+            "required": true,
+            "shape": {
+              "checks": [
+                "int",
+              ],
+              "kind": "number",
+            },
+          },
+          "windowMinutes": {
+            "required": true,
+            "shape": {
+              "checks": [
+                "int",
+              ],
+              "kind": "number",
+            },
+          },
+        },
+        "kind": "object",
+      },
+    },
+    "velocityOutliers": {
+      "required": true,
+      "shape": {
+        "element": {
+          "fields": {
+            "count": {
+              "required": true,
+              "shape": {
+                "checks": [
+                  "int",
+                ],
+                "kind": "number",
+              },
+            },
+            "detectedAt": {
+              "required": true,
+              "shape": {
+                "checks": [
+                  "datetime",
+                ],
+                "kind": "string",
+              },
+            },
+            "evidence": {
+              "required": true,
+              "shape": {
+                "element": {
+                  "fields": {
+                    "accessZoneId": {
+                      "required": true,
+                      "shape": {
+                        "inner": {
+                          "kind": "string",
+                        },
+                        "kind": "nullable",
+                      },
+                    },
+                    "checkinId": {
+                      "required": true,
+                      "shape": {
+                        "kind": "string",
+                      },
+                    },
+                    "registrationId": {
+                      "required": true,
+                      "shape": {
+                        "kind": "string",
+                      },
+                    },
+                    "scannedAt": {
+                      "required": true,
+                      "shape": {
+                        "checks": [
+                          "datetime",
+                        ],
+                        "kind": "string",
+                      },
+                    },
+                    "scannedBy": {
+                      "required": true,
+                      "shape": {
+                        "kind": "string",
+                      },
+                    },
+                    "scannerDeviceId": {
+                      "required": true,
+                      "shape": {
+                        "inner": {
+                          "kind": "string",
+                        },
+                        "kind": "nullable",
+                      },
+                    },
+                  },
+                  "kind": "object",
+                },
+                "kind": "array",
+              },
+            },
+            "kind": {
+              "required": true,
+              "shape": {
+                "kind": "literal",
+                "value": "velocity_outlier",
+              },
+            },
+            "scannedBy": {
+              "required": true,
+              "shape": {
+                "kind": "string",
+              },
+            },
+            "scannerDeviceId": {
+              "required": true,
+              "shape": {
+                "inner": {
+                  "kind": "string",
+                },
+                "kind": "nullable",
+              },
+            },
+            "severity": {
+              "required": true,
+              "shape": {
+                "kind": "enum",
+                "values": [
+                  "critical",
+                  "info",
+                  "warning",
+                ],
+              },
+            },
+          },
+          "kind": "object",
+        },
+        "kind": "array",
+      },
+    },
+  },
+  "kind": "object",
+}
+`;
+
+exports[`shared-types contract snapshots > AnomalySchema shape is stable 1`] = `
+{
+  "discriminator": "kind",
+  "kind": "discriminatedUnion",
+  "options": [
+    {
+      "fields": {
+        "detectedAt": {
+          "required": true,
+          "shape": {
+            "checks": [
+              "datetime",
+            ],
+            "kind": "string",
+          },
+        },
+        "evidence": {
+          "required": true,
+          "shape": {
+            "element": {
+              "fields": {
+                "accessZoneId": {
+                  "required": true,
+                  "shape": {
+                    "inner": {
+                      "kind": "string",
+                    },
+                    "kind": "nullable",
+                  },
+                },
+                "checkinId": {
+                  "required": true,
+                  "shape": {
+                    "kind": "string",
+                  },
+                },
+                "registrationId": {
+                  "required": true,
+                  "shape": {
+                    "kind": "string",
+                  },
+                },
+                "scannedAt": {
+                  "required": true,
+                  "shape": {
+                    "checks": [
+                      "datetime",
+                    ],
+                    "kind": "string",
+                  },
+                },
+                "scannedBy": {
+                  "required": true,
+                  "shape": {
+                    "kind": "string",
+                  },
+                },
+                "scannerDeviceId": {
+                  "required": true,
+                  "shape": {
+                    "inner": {
+                      "kind": "string",
+                    },
+                    "kind": "nullable",
+                  },
+                },
+              },
+              "kind": "object",
+            },
+            "kind": "array",
+          },
+        },
+        "kind": {
+          "required": true,
+          "shape": {
+            "kind": "literal",
+            "value": "duplicate",
+          },
+        },
+        "registrationId": {
+          "required": true,
+          "shape": {
+            "kind": "string",
+          },
+        },
+        "severity": {
+          "required": true,
+          "shape": {
+            "kind": "enum",
+            "values": [
+              "critical",
+              "info",
+              "warning",
+            ],
+          },
+        },
+      },
+      "kind": "object",
+    },
+    {
+      "fields": {
+        "detectedAt": {
+          "required": true,
+          "shape": {
+            "checks": [
+              "datetime",
+            ],
+            "kind": "string",
+          },
+        },
+        "deviceIds": {
+          "required": true,
+          "shape": {
+            "element": {
+              "kind": "string",
+            },
+            "kind": "array",
+          },
+        },
+        "evidence": {
+          "required": true,
+          "shape": {
+            "element": {
+              "fields": {
+                "accessZoneId": {
+                  "required": true,
+                  "shape": {
+                    "inner": {
+                      "kind": "string",
+                    },
+                    "kind": "nullable",
+                  },
+                },
+                "checkinId": {
+                  "required": true,
+                  "shape": {
+                    "kind": "string",
+                  },
+                },
+                "registrationId": {
+                  "required": true,
+                  "shape": {
+                    "kind": "string",
+                  },
+                },
+                "scannedAt": {
+                  "required": true,
+                  "shape": {
+                    "checks": [
+                      "datetime",
+                    ],
+                    "kind": "string",
+                  },
+                },
+                "scannedBy": {
+                  "required": true,
+                  "shape": {
+                    "kind": "string",
+                  },
+                },
+                "scannerDeviceId": {
+                  "required": true,
+                  "shape": {
+                    "inner": {
+                      "kind": "string",
+                    },
+                    "kind": "nullable",
+                  },
+                },
+              },
+              "kind": "object",
+            },
+            "kind": "array",
+          },
+        },
+        "kind": {
+          "required": true,
+          "shape": {
+            "kind": "literal",
+            "value": "device_mismatch",
+          },
+        },
+        "registrationId": {
+          "required": true,
+          "shape": {
+            "kind": "string",
+          },
+        },
+        "severity": {
+          "required": true,
+          "shape": {
+            "kind": "enum",
+            "values": [
+              "critical",
+              "info",
+              "warning",
+            ],
+          },
+        },
+      },
+      "kind": "object",
+    },
+    {
+      "fields": {
+        "count": {
+          "required": true,
+          "shape": {
+            "checks": [
+              "int",
+            ],
+            "kind": "number",
+          },
+        },
+        "detectedAt": {
+          "required": true,
+          "shape": {
+            "checks": [
+              "datetime",
+            ],
+            "kind": "string",
+          },
+        },
+        "evidence": {
+          "required": true,
+          "shape": {
+            "element": {
+              "fields": {
+                "accessZoneId": {
+                  "required": true,
+                  "shape": {
+                    "inner": {
+                      "kind": "string",
+                    },
+                    "kind": "nullable",
+                  },
+                },
+                "checkinId": {
+                  "required": true,
+                  "shape": {
+                    "kind": "string",
+                  },
+                },
+                "registrationId": {
+                  "required": true,
+                  "shape": {
+                    "kind": "string",
+                  },
+                },
+                "scannedAt": {
+                  "required": true,
+                  "shape": {
+                    "checks": [
+                      "datetime",
+                    ],
+                    "kind": "string",
+                  },
+                },
+                "scannedBy": {
+                  "required": true,
+                  "shape": {
+                    "kind": "string",
+                  },
+                },
+                "scannerDeviceId": {
+                  "required": true,
+                  "shape": {
+                    "inner": {
+                      "kind": "string",
+                    },
+                    "kind": "nullable",
+                  },
+                },
+              },
+              "kind": "object",
+            },
+            "kind": "array",
+          },
+        },
+        "kind": {
+          "required": true,
+          "shape": {
+            "kind": "literal",
+            "value": "velocity_outlier",
+          },
+        },
+        "scannedBy": {
+          "required": true,
+          "shape": {
+            "kind": "string",
+          },
+        },
+        "scannerDeviceId": {
+          "required": true,
+          "shape": {
+            "inner": {
+              "kind": "string",
+            },
+            "kind": "nullable",
+          },
+        },
+        "severity": {
+          "required": true,
+          "shape": {
+            "kind": "enum",
+            "values": [
+              "critical",
+              "info",
+              "warning",
+            ],
+          },
+        },
+      },
+      "kind": "object",
+    },
+  ],
+}
+`;
+
+exports[`shared-types contract snapshots > AuditLogEntrySchema shape is stable 1`] = `
+{
+  "fields": {
+    "action": {
+      "required": true,
+      "shape": {
+        "kind": "enum",
+        "values": [
+          "badge.bulk_generated",
+          "badge.generated",
+          "broadcast.sent",
+          "checkin.bulk_synced",
+          "checkin.completed",
+          "checkin.offline_sync.downloaded",
+          "event.archived",
+          "event.cancelled",
+          "event.cloned",
+          "event.created",
+          "event.published",
+          "event.qr_key_rotated",
+          "event.unpublished",
+          "event.updated",
+          "feed_post.created",
+          "feed_post.deleted",
+          "feed_post.pinned",
+          "invite.accepted",
+          "invite.created",
+          "invite.declined",
+          "invite.revoked",
+          "member.added",
+          "member.removed",
+          "member.role_changed",
+          "member.role_updated",
+          "message.sent",
+          "organization.created",
+          "organization.suspended",
+          "organization.updated",
+          "organization.verified",
+          "payment.failed",
+          "payment.initiated",
+          "payment.refunded",
+          "payment.succeeded",
+          "payout.created",
+          "plan.archived",
+          "plan.created",
+          "plan.updated",
+          "receipt.generated",
+          "registration.approved",
+          "registration.cancelled",
+          "registration.created",
+          "session.created",
+          "session.deleted",
+          "session.updated",
+          "speaker.added",
+          "speaker.removed",
+          "sponsor.added",
+          "sponsor.lead_captured",
+          "sponsor.removed",
+          "subscription.change_scheduled",
+          "subscription.downgraded",
+          "subscription.overridden",
+          "subscription.period_rolled_over",
+          "subscription.scheduled_reverted",
+          "subscription.upgraded",
+          "ticket_type.added",
+          "ticket_type.removed",
+          "ticket_type.updated",
+          "user.activated",
+          "user.role_changed",
+          "user.suspended",
+          "venue.approved",
+          "venue.created",
+          "venue.reactivated",
+          "venue.suspended",
+          "venue.updated",
+          "waitlist.promoted",
+          "waitlist.promotion_failed",
+        ],
+      },
+    },
+    "actorId": {
+      "required": true,
+      "shape": {
+        "kind": "string",
+      },
+    },
+    "details": {
+      "required": true,
+      "shape": {
+        "key": {
+          "kind": "string",
+        },
+        "kind": "record",
+        "value": {
+          "kind": "unknown",
+        },
+      },
+    },
+    "eventId": {
+      "required": true,
+      "shape": {
+        "inner": {
+          "kind": "string",
+        },
+        "kind": "nullable",
+      },
+    },
+    "id": {
+      "required": true,
+      "shape": {
+        "kind": "string",
+      },
+    },
+    "organizationId": {
+      "required": true,
+      "shape": {
+        "inner": {
+          "kind": "string",
+        },
+        "kind": "nullable",
+      },
+    },
+    "requestId": {
+      "required": true,
+      "shape": {
+        "kind": "string",
+      },
+    },
+    "resourceId": {
+      "required": true,
+      "shape": {
+        "kind": "string",
+      },
+    },
+    "resourceType": {
+      "required": true,
+      "shape": {
+        "kind": "string",
+      },
+    },
+    "timestamp": {
+      "required": true,
+      "shape": {
+        "checks": [
+          "datetime",
+        ],
+        "kind": "string",
+      },
+    },
+  },
+  "kind": "object",
+}
+`;
+
+exports[`shared-types contract snapshots > BulkCheckinRequestSchema shape is stable 1`] = `
+{
+  "fields": {
+    "items": {
+      "required": true,
+      "shape": {
+        "element": {
+          "fields": {
+            "accessZoneId": {
+              "required": false,
+              "shape": {
+                "inner": {
+                  "inner": {
+                    "kind": "string",
+                  },
+                  "kind": "nullable",
+                },
+                "kind": "optional",
+              },
+            },
+            "localId": {
+              "required": true,
+              "shape": {
+                "kind": "string",
+              },
+            },
+            "qrCodeValue": {
+              "required": true,
+              "shape": {
+                "kind": "string",
+              },
+            },
+            "scannedAt": {
+              "required": true,
+              "shape": {
+                "checks": [
+                  "datetime",
+                ],
+                "kind": "string",
+              },
+            },
+            "scannerDeviceId": {
+              "required": false,
+              "shape": {
+                "inner": {
+                  "checks": [
+                    "max",
+                    "min",
+                  ],
+                  "kind": "string",
+                },
+                "kind": "optional",
+              },
+            },
+            "scannerNonce": {
+              "required": false,
+              "shape": {
+                "inner": {
+                  "checks": [
+                    "regex",
+                  ],
+                  "kind": "string",
+                },
+                "kind": "optional",
+              },
+            },
+          },
+          "kind": "object",
+        },
+        "kind": "array",
+      },
+    },
+  },
+  "kind": "object",
+}
+`;
+
+exports[`shared-types contract snapshots > BulkCheckinResponseSchema shape is stable 1`] = `
+{
+  "fields": {
+    "eventId": {
+      "required": true,
+      "shape": {
+        "kind": "string",
+      },
+    },
+    "failed": {
+      "required": true,
+      "shape": {
+        "checks": [
+          "int",
+        ],
+        "kind": "number",
+      },
+    },
+    "processed": {
+      "required": true,
+      "shape": {
+        "checks": [
+          "int",
+        ],
+        "kind": "number",
+      },
+    },
+    "results": {
+      "required": true,
+      "shape": {
+        "element": {
+          "fields": {
+            "checkedInAt": {
+              "required": false,
+              "shape": {
+                "inner": {
+                  "inner": {
+                    "checks": [
+                      "datetime",
+                    ],
+                    "kind": "string",
+                  },
+                  "kind": "nullable",
+                },
+                "kind": "optional",
+              },
+            },
+            "localId": {
+              "required": true,
+              "shape": {
+                "kind": "string",
+              },
+            },
+            "participantName": {
+              "required": false,
+              "shape": {
+                "inner": {
+                  "inner": {
+                    "kind": "string",
+                  },
+                  "kind": "nullable",
+                },
+                "kind": "optional",
+              },
+            },
+            "reason": {
+              "required": false,
+              "shape": {
+                "inner": {
+                  "inner": {
+                    "kind": "string",
+                  },
+                  "kind": "nullable",
+                },
+                "kind": "optional",
+              },
+            },
+            "registrationId": {
+              "required": true,
+              "shape": {
+                "inner": {
+                  "kind": "string",
+                },
+                "kind": "nullable",
+              },
+            },
+            "status": {
+              "required": true,
+              "shape": {
+                "kind": "enum",
+                "values": [
+                  "already_checked_in",
+                  "cancelled",
+                  "expired",
+                  "invalid_qr",
+                  "invalid_status",
+                  "not_found",
+                  "not_yet_valid",
+                  "success",
+                  "zone_full",
+                ],
+              },
+            },
+          },
+          "kind": "object",
+        },
+        "kind": "array",
+      },
+    },
+    "succeeded": {
+      "required": true,
+      "shape": {
+        "checks": [
+          "int",
+        ],
+        "kind": "number",
+      },
+    },
+  },
+  "kind": "object",
+}
+`;
+
+exports[`shared-types contract snapshots > CheckInRequestSchema shape is stable 1`] = `
+{
+  "fields": {
+    "accessZoneId": {
+      "required": false,
+      "shape": {
+        "inner": {
+          "kind": "string",
+        },
+        "kind": "optional",
+      },
+    },
+    "qrCodeValue": {
+      "required": true,
+      "shape": {
+        "kind": "string",
+      },
+    },
+    "scannerDeviceId": {
+      "required": false,
+      "shape": {
+        "inner": {
+          "checks": [
+            "max",
+            "min",
+          ],
+          "kind": "string",
+        },
+        "kind": "optional",
+      },
+    },
+    "scannerNonce": {
+      "required": false,
+      "shape": {
+        "inner": {
+          "checks": [
+            "regex",
+          ],
+          "kind": "string",
+        },
+        "kind": "optional",
+      },
+    },
+  },
+  "kind": "object",
+}
+`;
+
+exports[`shared-types contract snapshots > CheckinRecordSchema shape is stable 1`] = `
+{
+  "fields": {
+    "accessZoneId": {
+      "required": true,
+      "shape": {
+        "inner": {
+          "kind": "string",
+        },
+        "kind": "nullable",
+      },
+    },
+    "clientScannedAt": {
+      "required": true,
+      "shape": {
+        "inner": {
+          "checks": [
+            "datetime",
+          ],
+          "kind": "string",
+        },
+        "kind": "nullable",
+      },
+    },
+    "createdAt": {
+      "required": true,
+      "shape": {
+        "checks": [
+          "datetime",
+        ],
+        "kind": "string",
+      },
+    },
+    "eventId": {
+      "required": true,
+      "shape": {
+        "kind": "string",
+      },
+    },
+    "id": {
+      "required": true,
+      "shape": {
+        "kind": "string",
+      },
+    },
+    "idempotencyKey": {
+      "required": true,
+      "shape": {
+        "inner": {
+          "kind": "string",
+        },
+        "kind": "nullable",
+      },
+    },
+    "organizationId": {
+      "required": true,
+      "shape": {
+        "kind": "string",
+      },
+    },
+    "qrKid": {
+      "required": true,
+      "shape": {
+        "inner": {
+          "kind": "string",
+        },
+        "kind": "nullable",
+      },
+    },
+    "qrPayloadVersion": {
+      "required": true,
+      "shape": {
+        "inner": {
+          "kind": "enum",
+          "values": [
+            "v1",
+            "v2",
+            "v3",
+            "v4",
+          ],
+        },
+        "kind": "nullable",
+      },
+    },
+    "reason": {
+      "required": true,
+      "shape": {
+        "inner": {
+          "kind": "string",
+        },
+        "kind": "nullable",
+      },
+    },
+    "registrationId": {
+      "required": true,
+      "shape": {
+        "kind": "string",
+      },
+    },
+    "rejectCode": {
+      "required": true,
+      "shape": {
+        "inner": {
+          "kind": "enum",
+          "values": [
+            "cancelled",
+            "expired",
+            "invalid_qr",
+            "invalid_status",
+            "not_found",
+            "not_yet_valid",
+            "zone_full",
+          ],
+        },
+        "kind": "nullable",
+      },
+    },
+    "requestId": {
+      "required": true,
+      "shape": {
+        "inner": {
+          "kind": "string",
+        },
+        "kind": "nullable",
+      },
+    },
+    "scannedAt": {
+      "required": true,
+      "shape": {
+        "checks": [
+          "datetime",
+        ],
+        "kind": "string",
+      },
+    },
+    "scannedBy": {
+      "required": true,
+      "shape": {
+        "kind": "string",
+      },
+    },
+    "scannerDeviceId": {
+      "required": true,
+      "shape": {
+        "inner": {
+          "kind": "string",
+        },
+        "kind": "nullable",
+      },
+    },
+    "scannerNonce": {
+      "required": true,
+      "shape": {
+        "inner": {
+          "kind": "string",
+        },
+        "kind": "nullable",
+      },
+    },
+    "source": {
+      "required": true,
+      "shape": {
+        "kind": "enum",
+        "values": [
+          "live",
+          "offline_sync",
+        ],
+      },
+    },
+    "status": {
+      "required": true,
+      "shape": {
+        "kind": "enum",
+        "values": [
+          "duplicate",
+          "rejected",
+          "success",
+        ],
+      },
+    },
+    "userId": {
+      "required": true,
+      "shape": {
+        "kind": "string",
+      },
+    },
+  },
+  "kind": "object",
+}
+`;
+
+exports[`shared-types contract snapshots > CreateEventSchema shape is stable 1`] = `
+{
+  "fields": {
+    "accessZones": {
+      "required": false,
+      "shape": {
+        "hasDefault": true,
+        "inner": {
+          "element": {
+            "fields": {
+              "allowedTicketTypes": {
+                "required": true,
+                "shape": {
+                  "element": {
+                    "kind": "string",
+                  },
+                  "kind": "array",
+                },
+              },
+              "capacity": {
+                "required": false,
+                "shape": {
+                  "inner": {
+                    "inner": {
+                      "checks": [
+                        "int",
+                        "min",
+                      ],
+                      "kind": "number",
+                    },
+                    "kind": "nullable",
+                  },
+                  "kind": "optional",
+                },
+              },
+              "color": {
+                "required": true,
+                "shape": {
+                  "checks": [
+                    "regex",
+                  ],
+                  "kind": "string",
+                },
+              },
+              "id": {
+                "required": true,
+                "shape": {
+                  "kind": "string",
+                },
+              },
+              "name": {
+                "required": true,
+                "shape": {
+                  "kind": "string",
+                },
+              },
+            },
+            "kind": "object",
+          },
+          "kind": "array",
+        },
+        "kind": "default",
+      },
+    },
+    "bannerImageURL": {
+      "required": false,
+      "shape": {
+        "inner": {
+          "inner": {
+            "checks": [
+              "url",
+            ],
+            "kind": "string",
+          },
+          "kind": "nullable",
+        },
+        "kind": "optional",
+      },
+    },
+    "category": {
+      "required": true,
+      "shape": {
+        "kind": "enum",
+        "values": [
+          "ceremony",
+          "concert",
+          "conference",
+          "exhibition",
+          "festival",
+          "networking",
+          "other",
+          "sport",
+          "training",
+          "workshop",
+        ],
+      },
+    },
+    "coverImageURL": {
+      "required": false,
+      "shape": {
+        "inner": {
+          "inner": {
+            "checks": [
+              "url",
+            ],
+            "kind": "string",
+          },
+          "kind": "nullable",
+        },
+        "kind": "optional",
+      },
+    },
+    "description": {
+      "required": true,
+      "shape": {
+        "checks": [
+          "max",
+        ],
+        "kind": "string",
+      },
+    },
+    "endDate": {
+      "required": true,
+      "shape": {
+        "checks": [
+          "datetime",
+        ],
+        "kind": "string",
+      },
+    },
+    "format": {
+      "required": false,
+      "shape": {
+        "hasDefault": true,
+        "inner": {
+          "kind": "enum",
+          "values": [
+            "hybrid",
+            "in_person",
+            "online",
+          ],
+        },
+        "kind": "default",
+      },
+    },
+    "isFeatured": {
+      "required": false,
+      "shape": {
+        "hasDefault": true,
+        "inner": {
+          "kind": "boolean",
+        },
+        "kind": "default",
+      },
+    },
+    "isPublic": {
+      "required": false,
+      "shape": {
+        "hasDefault": true,
+        "inner": {
+          "kind": "boolean",
+        },
+        "kind": "default",
+      },
+    },
+    "location": {
+      "required": true,
+      "shape": {
+        "fields": {
+          "address": {
+            "required": true,
+            "shape": {
+              "kind": "string",
+            },
+          },
+          "city": {
+            "required": true,
+            "shape": {
+              "kind": "string",
+            },
+          },
+          "coordinates": {
+            "required": false,
+            "shape": {
+              "inner": {
+                "fields": {
+                  "lat": {
+                    "required": true,
+                    "shape": {
+                      "kind": "number",
+                    },
+                  },
+                  "lng": {
+                    "required": true,
+                    "shape": {
+                      "kind": "number",
+                    },
+                  },
+                },
+                "kind": "object",
+              },
+              "kind": "optional",
+            },
+          },
+          "country": {
+            "required": false,
+            "shape": {
+              "hasDefault": true,
+              "inner": {
+                "checks": [
+                  "length",
+                ],
+                "kind": "string",
+              },
+              "kind": "default",
+            },
+          },
+          "googleMapsUrl": {
+            "required": false,
+            "shape": {
+              "inner": {
+                "checks": [
+                  "url",
+                ],
+                "kind": "string",
+              },
+              "kind": "optional",
+            },
+          },
+          "name": {
+            "required": true,
+            "shape": {
+              "kind": "string",
+            },
+          },
+          "streamUrl": {
+            "required": false,
+            "shape": {
+              "inner": {
+                "checks": [
+                  "url",
+                ],
+                "kind": "string",
+              },
+              "kind": "optional",
+            },
+          },
+        },
+        "kind": "object",
+      },
+    },
+    "maxAttendees": {
+      "required": false,
+      "shape": {
+        "inner": {
+          "inner": {
+            "checks": [
+              "int",
+              "min",
+            ],
+            "kind": "number",
+          },
+          "kind": "nullable",
+        },
+        "kind": "optional",
+      },
+    },
+    "organizationId": {
+      "required": true,
+      "shape": {
+        "kind": "string",
+      },
+    },
+    "requiresApproval": {
+      "required": false,
+      "shape": {
+        "hasDefault": true,
+        "inner": {
+          "kind": "boolean",
+        },
+        "kind": "default",
+      },
+    },
+    "shortDescription": {
+      "required": false,
+      "shape": {
+        "inner": {
+          "inner": {
+            "checks": [
+              "max",
+            ],
+            "kind": "string",
+          },
+          "kind": "nullable",
+        },
+        "kind": "optional",
+      },
+    },
+    "startDate": {
+      "required": true,
+      "shape": {
+        "checks": [
+          "datetime",
+        ],
+        "kind": "string",
+      },
+    },
+    "status": {
+      "required": false,
+      "shape": {
+        "hasDefault": true,
+        "inner": {
+          "kind": "enum",
+          "values": [
+            "archived",
+            "cancelled",
+            "completed",
+            "draft",
+            "published",
+          ],
+        },
+        "kind": "default",
+      },
+    },
+    "tags": {
+      "required": false,
+      "shape": {
+        "hasDefault": true,
+        "inner": {
+          "element": {
+            "kind": "string",
+          },
+          "kind": "array",
+        },
+        "kind": "default",
+      },
+    },
+    "templateId": {
+      "required": false,
+      "shape": {
+        "inner": {
+          "inner": {
+            "kind": "string",
+          },
+          "kind": "nullable",
+        },
+        "kind": "optional",
+      },
+    },
+    "ticketTypes": {
+      "required": false,
+      "shape": {
+        "hasDefault": true,
+        "inner": {
+          "element": {
+            "fields": {
+              "accessZoneIds": {
+                "required": false,
+                "shape": {
+                  "hasDefault": true,
+                  "inner": {
+                    "element": {
+                      "kind": "string",
+                    },
+                    "kind": "array",
+                  },
+                  "kind": "default",
+                },
+              },
+              "currency": {
+                "required": false,
+                "shape": {
+                  "hasDefault": true,
+                  "inner": {
+                    "kind": "enum",
+                    "values": [
+                      "EUR",
+                      "USD",
+                      "XOF",
+                    ],
+                  },
+                  "kind": "default",
+                },
+              },
+              "description": {
+                "required": false,
+                "shape": {
+                  "inner": {
+                    "kind": "string",
+                  },
+                  "kind": "optional",
+                },
+              },
+              "id": {
+                "required": true,
+                "shape": {
+                  "kind": "string",
+                },
+              },
+              "isVisible": {
+                "required": false,
+                "shape": {
+                  "hasDefault": true,
+                  "inner": {
+                    "kind": "boolean",
+                  },
+                  "kind": "default",
+                },
+              },
+              "name": {
+                "required": true,
+                "shape": {
+                  "kind": "string",
+                },
+              },
+              "price": {
+                "required": false,
+                "shape": {
+                  "hasDefault": true,
+                  "inner": {
+                    "checks": [
+                      "int",
+                      "min",
+                    ],
+                    "kind": "number",
+                  },
+                  "kind": "default",
+                },
+              },
+              "saleEndDate": {
+                "required": false,
+                "shape": {
+                  "inner": {
+                    "inner": {
+                      "checks": [
+                        "datetime",
+                      ],
+                      "kind": "string",
+                    },
+                    "kind": "nullable",
+                  },
+                  "kind": "optional",
+                },
+              },
+              "saleStartDate": {
+                "required": false,
+                "shape": {
+                  "inner": {
+                    "inner": {
+                      "checks": [
+                        "datetime",
+                      ],
+                      "kind": "string",
+                    },
+                    "kind": "nullable",
+                  },
+                  "kind": "optional",
+                },
+              },
+              "soldCount": {
+                "required": false,
+                "shape": {
+                  "hasDefault": true,
+                  "inner": {
+                    "checks": [
+                      "int",
+                    ],
+                    "kind": "number",
+                  },
+                  "kind": "default",
+                },
+              },
+              "totalQuantity": {
+                "required": true,
+                "shape": {
+                  "inner": {
+                    "checks": [
+                      "int",
+                      "min",
+                    ],
+                    "kind": "number",
+                  },
+                  "kind": "nullable",
+                },
+              },
+            },
+            "kind": "object",
+          },
+          "kind": "array",
+        },
+        "kind": "default",
+      },
+    },
+    "timezone": {
+      "required": false,
+      "shape": {
+        "hasDefault": true,
+        "inner": {
+          "kind": "string",
+        },
+        "kind": "default",
+      },
+    },
+    "title": {
+      "required": true,
+      "shape": {
+        "checks": [
+          "max",
+          "min",
+        ],
+        "kind": "string",
+      },
+    },
+    "venueId": {
+      "required": false,
+      "shape": {
+        "inner": {
+          "inner": {
+            "kind": "string",
+          },
+          "kind": "nullable",
+        },
+        "kind": "optional",
+      },
+    },
+    "venueName": {
+      "required": false,
+      "shape": {
+        "inner": {
+          "inner": {
+            "kind": "string",
+          },
+          "kind": "nullable",
+        },
+        "kind": "optional",
+      },
+    },
+  },
+  "kind": "object",
+}
+`;
+
+exports[`shared-types contract snapshots > EncryptedSyncEnvelopeSchema shape is stable 1`] = `
+{
+  "fields": {
+    "ciphertext": {
+      "required": true,
+      "shape": {
+        "checks": [
+          "regex",
+        ],
+        "kind": "string",
+      },
+    },
+    "eventId": {
+      "required": true,
+      "shape": {
+        "kind": "string",
+      },
+    },
+    "nonce": {
+      "required": true,
+      "shape": {
+        "checks": [
+          "regex",
+        ],
+        "kind": "string",
+      },
+    },
+    "protocol": {
+      "required": true,
+      "shape": {
+        "kind": "literal",
+        "value": "ecdh-x25519-aes256gcm-v1",
+      },
+    },
+    "serverPublicKey": {
+      "required": true,
+      "shape": {
+        "checks": [
+          "regex",
+        ],
+        "kind": "string",
+      },
+    },
+    "syncedAt": {
+      "required": true,
+      "shape": {
+        "checks": [
+          "datetime",
+        ],
+        "kind": "string",
+      },
+    },
+    "tag": {
+      "required": true,
+      "shape": {
+        "checks": [
+          "regex",
+        ],
+        "kind": "string",
+      },
+    },
+    "ttlAt": {
+      "required": true,
+      "shape": {
+        "checks": [
+          "datetime",
+        ],
+        "kind": "string",
+      },
+    },
+  },
+  "kind": "object",
+}
+`;
+
+exports[`shared-types contract snapshots > EventSchema shape is stable 1`] = `
+{
+  "fields": {
+    "accessZones": {
+      "required": false,
+      "shape": {
+        "hasDefault": true,
+        "inner": {
+          "element": {
+            "fields": {
+              "allowedTicketTypes": {
+                "required": true,
+                "shape": {
+                  "element": {
+                    "kind": "string",
+                  },
+                  "kind": "array",
+                },
+              },
+              "capacity": {
+                "required": false,
+                "shape": {
+                  "inner": {
+                    "inner": {
+                      "checks": [
+                        "int",
+                        "min",
+                      ],
+                      "kind": "number",
+                    },
+                    "kind": "nullable",
+                  },
+                  "kind": "optional",
+                },
+              },
+              "color": {
+                "required": true,
+                "shape": {
+                  "checks": [
+                    "regex",
+                  ],
+                  "kind": "string",
+                },
+              },
+              "id": {
+                "required": true,
+                "shape": {
+                  "kind": "string",
+                },
+              },
+              "name": {
+                "required": true,
+                "shape": {
+                  "kind": "string",
+                },
+              },
+            },
+            "kind": "object",
+          },
+          "kind": "array",
+        },
+        "kind": "default",
+      },
+    },
+    "bannerImageURL": {
+      "required": false,
+      "shape": {
+        "inner": {
+          "inner": {
+            "checks": [
+              "url",
+            ],
+            "kind": "string",
+          },
+          "kind": "nullable",
+        },
+        "kind": "optional",
+      },
+    },
+    "category": {
+      "required": true,
+      "shape": {
+        "kind": "enum",
+        "values": [
+          "ceremony",
+          "concert",
+          "conference",
+          "exhibition",
+          "festival",
+          "networking",
+          "other",
+          "sport",
+          "training",
+          "workshop",
+        ],
+      },
+    },
+    "checkedInCount": {
+      "required": false,
+      "shape": {
+        "hasDefault": true,
+        "inner": {
+          "checks": [
+            "int",
+          ],
+          "kind": "number",
+        },
+        "kind": "default",
+      },
+    },
+    "coverImageURL": {
+      "required": false,
+      "shape": {
+        "inner": {
+          "inner": {
+            "checks": [
+              "url",
+            ],
+            "kind": "string",
+          },
+          "kind": "nullable",
+        },
+        "kind": "optional",
+      },
+    },
+    "createdAt": {
+      "required": true,
+      "shape": {
+        "checks": [
+          "datetime",
+        ],
+        "kind": "string",
+      },
+    },
+    "createdBy": {
+      "required": true,
+      "shape": {
+        "kind": "string",
+      },
+    },
+    "description": {
+      "required": true,
+      "shape": {
+        "checks": [
+          "max",
+        ],
+        "kind": "string",
+      },
+    },
+    "endDate": {
+      "required": true,
+      "shape": {
+        "checks": [
+          "datetime",
+        ],
+        "kind": "string",
+      },
+    },
+    "format": {
+      "required": false,
+      "shape": {
+        "hasDefault": true,
+        "inner": {
+          "kind": "enum",
+          "values": [
+            "hybrid",
+            "in_person",
+            "online",
+          ],
+        },
+        "kind": "default",
+      },
+    },
+    "id": {
+      "required": true,
+      "shape": {
+        "kind": "string",
+      },
+    },
+    "isFeatured": {
+      "required": false,
+      "shape": {
+        "hasDefault": true,
+        "inner": {
+          "kind": "boolean",
+        },
+        "kind": "default",
+      },
+    },
+    "isPublic": {
+      "required": false,
+      "shape": {
+        "hasDefault": true,
+        "inner": {
+          "kind": "boolean",
+        },
+        "kind": "default",
+      },
+    },
+    "location": {
+      "required": true,
+      "shape": {
+        "fields": {
+          "address": {
+            "required": true,
+            "shape": {
+              "kind": "string",
+            },
+          },
+          "city": {
+            "required": true,
+            "shape": {
+              "kind": "string",
+            },
+          },
+          "coordinates": {
+            "required": false,
+            "shape": {
+              "inner": {
+                "fields": {
+                  "lat": {
+                    "required": true,
+                    "shape": {
+                      "kind": "number",
+                    },
+                  },
+                  "lng": {
+                    "required": true,
+                    "shape": {
+                      "kind": "number",
+                    },
+                  },
+                },
+                "kind": "object",
+              },
+              "kind": "optional",
+            },
+          },
+          "country": {
+            "required": false,
+            "shape": {
+              "hasDefault": true,
+              "inner": {
+                "checks": [
+                  "length",
+                ],
+                "kind": "string",
+              },
+              "kind": "default",
+            },
+          },
+          "googleMapsUrl": {
+            "required": false,
+            "shape": {
+              "inner": {
+                "checks": [
+                  "url",
+                ],
+                "kind": "string",
+              },
+              "kind": "optional",
+            },
+          },
+          "name": {
+            "required": true,
+            "shape": {
+              "kind": "string",
+            },
+          },
+          "streamUrl": {
+            "required": false,
+            "shape": {
+              "inner": {
+                "checks": [
+                  "url",
+                ],
+                "kind": "string",
+              },
+              "kind": "optional",
+            },
+          },
+        },
+        "kind": "object",
+      },
+    },
+    "maxAttendees": {
+      "required": false,
+      "shape": {
+        "inner": {
+          "inner": {
+            "checks": [
+              "int",
+              "min",
+            ],
+            "kind": "number",
+          },
+          "kind": "nullable",
+        },
+        "kind": "optional",
+      },
+    },
+    "organizationId": {
+      "required": true,
+      "shape": {
+        "kind": "string",
+      },
+    },
+    "publishedAt": {
+      "required": false,
+      "shape": {
+        "inner": {
+          "inner": {
+            "checks": [
+              "datetime",
+            ],
+            "kind": "string",
+          },
+          "kind": "nullable",
+        },
+        "kind": "optional",
+      },
+    },
+    "qrKid": {
+      "required": false,
+      "shape": {
+        "inner": {
+          "inner": {
+            "checks": [
+              "regex",
+            ],
+            "kind": "string",
+          },
+          "kind": "nullable",
+        },
+        "kind": "optional",
+      },
+    },
+    "qrKidHistory": {
+      "required": false,
+      "shape": {
+        "hasDefault": true,
+        "inner": {
+          "element": {
+            "fields": {
+              "kid": {
+                "required": true,
+                "shape": {
+                  "checks": [
+                    "regex",
+                  ],
+                  "kind": "string",
+                },
+              },
+              "retiredAt": {
+                "required": true,
+                "shape": {
+                  "checks": [
+                    "datetime",
+                  ],
+                  "kind": "string",
+                },
+              },
+            },
+            "kind": "object",
+          },
+          "kind": "array",
+        },
+        "kind": "default",
+      },
+    },
+    "registeredCount": {
+      "required": false,
+      "shape": {
+        "hasDefault": true,
+        "inner": {
+          "checks": [
+            "int",
+          ],
+          "kind": "number",
+        },
+        "kind": "default",
+      },
+    },
+    "requiresApproval": {
+      "required": false,
+      "shape": {
+        "hasDefault": true,
+        "inner": {
+          "kind": "boolean",
+        },
+        "kind": "default",
+      },
+    },
+    "scanPolicy": {
+      "required": false,
+      "shape": {
+        "hasDefault": true,
+        "inner": {
+          "kind": "enum",
+          "values": [
+            "multi_day",
+            "multi_zone",
+            "single",
+          ],
+        },
+        "kind": "default",
+      },
+    },
+    "shortDescription": {
+      "required": false,
+      "shape": {
+        "inner": {
+          "inner": {
+            "checks": [
+              "max",
+            ],
+            "kind": "string",
+          },
+          "kind": "nullable",
+        },
+        "kind": "optional",
+      },
+    },
+    "slug": {
+      "required": true,
+      "shape": {
+        "checks": [
+          "regex",
+        ],
+        "kind": "string",
+      },
+    },
+    "startDate": {
+      "required": true,
+      "shape": {
+        "checks": [
+          "datetime",
+        ],
+        "kind": "string",
+      },
+    },
+    "status": {
+      "required": false,
+      "shape": {
+        "hasDefault": true,
+        "inner": {
+          "kind": "enum",
+          "values": [
+            "archived",
+            "cancelled",
+            "completed",
+            "draft",
+            "published",
+          ],
+        },
+        "kind": "default",
+      },
+    },
+    "tags": {
+      "required": false,
+      "shape": {
+        "hasDefault": true,
+        "inner": {
+          "element": {
+            "kind": "string",
+          },
+          "kind": "array",
+        },
+        "kind": "default",
+      },
+    },
+    "templateId": {
+      "required": false,
+      "shape": {
+        "inner": {
+          "inner": {
+            "kind": "string",
+          },
+          "kind": "nullable",
+        },
+        "kind": "optional",
+      },
+    },
+    "ticketTypes": {
+      "required": false,
+      "shape": {
+        "hasDefault": true,
+        "inner": {
+          "element": {
+            "fields": {
+              "accessZoneIds": {
+                "required": false,
+                "shape": {
+                  "hasDefault": true,
+                  "inner": {
+                    "element": {
+                      "kind": "string",
+                    },
+                    "kind": "array",
+                  },
+                  "kind": "default",
+                },
+              },
+              "currency": {
+                "required": false,
+                "shape": {
+                  "hasDefault": true,
+                  "inner": {
+                    "kind": "enum",
+                    "values": [
+                      "EUR",
+                      "USD",
+                      "XOF",
+                    ],
+                  },
+                  "kind": "default",
+                },
+              },
+              "description": {
+                "required": false,
+                "shape": {
+                  "inner": {
+                    "kind": "string",
+                  },
+                  "kind": "optional",
+                },
+              },
+              "id": {
+                "required": true,
+                "shape": {
+                  "kind": "string",
+                },
+              },
+              "isVisible": {
+                "required": false,
+                "shape": {
+                  "hasDefault": true,
+                  "inner": {
+                    "kind": "boolean",
+                  },
+                  "kind": "default",
+                },
+              },
+              "name": {
+                "required": true,
+                "shape": {
+                  "kind": "string",
+                },
+              },
+              "price": {
+                "required": false,
+                "shape": {
+                  "hasDefault": true,
+                  "inner": {
+                    "checks": [
+                      "int",
+                      "min",
+                    ],
+                    "kind": "number",
+                  },
+                  "kind": "default",
+                },
+              },
+              "saleEndDate": {
+                "required": false,
+                "shape": {
+                  "inner": {
+                    "inner": {
+                      "checks": [
+                        "datetime",
+                      ],
+                      "kind": "string",
+                    },
+                    "kind": "nullable",
+                  },
+                  "kind": "optional",
+                },
+              },
+              "saleStartDate": {
+                "required": false,
+                "shape": {
+                  "inner": {
+                    "inner": {
+                      "checks": [
+                        "datetime",
+                      ],
+                      "kind": "string",
+                    },
+                    "kind": "nullable",
+                  },
+                  "kind": "optional",
+                },
+              },
+              "soldCount": {
+                "required": false,
+                "shape": {
+                  "hasDefault": true,
+                  "inner": {
+                    "checks": [
+                      "int",
+                    ],
+                    "kind": "number",
+                  },
+                  "kind": "default",
+                },
+              },
+              "totalQuantity": {
+                "required": true,
+                "shape": {
+                  "inner": {
+                    "checks": [
+                      "int",
+                      "min",
+                    ],
+                    "kind": "number",
+                  },
+                  "kind": "nullable",
+                },
+              },
+            },
+            "kind": "object",
+          },
+          "kind": "array",
+        },
+        "kind": "default",
+      },
+    },
+    "timezone": {
+      "required": false,
+      "shape": {
+        "hasDefault": true,
+        "inner": {
+          "kind": "string",
+        },
+        "kind": "default",
+      },
+    },
+    "title": {
+      "required": true,
+      "shape": {
+        "checks": [
+          "max",
+          "min",
+        ],
+        "kind": "string",
+      },
+    },
+    "updatedAt": {
+      "required": true,
+      "shape": {
+        "checks": [
+          "datetime",
+        ],
+        "kind": "string",
+      },
+    },
+    "updatedBy": {
+      "required": true,
+      "shape": {
+        "kind": "string",
+      },
+    },
+    "venueId": {
+      "required": false,
+      "shape": {
+        "inner": {
+          "inner": {
+            "kind": "string",
+          },
+          "kind": "nullable",
+        },
+        "kind": "optional",
+      },
+    },
+    "venueName": {
+      "required": false,
+      "shape": {
+        "inner": {
+          "inner": {
+            "kind": "string",
+          },
+          "kind": "nullable",
+        },
+        "kind": "optional",
+      },
+    },
+  },
+  "kind": "object",
+}
+`;
+
+exports[`shared-types contract snapshots > GeneratedBadgeSchema shape is stable 1`] = `
+{
+  "fields": {
+    "downloadCount": {
+      "required": false,
+      "shape": {
+        "hasDefault": true,
+        "inner": {
+          "checks": [
+            "int",
+          ],
+          "kind": "number",
+        },
+        "kind": "default",
+      },
+    },
+    "error": {
+      "required": false,
+      "shape": {
+        "inner": {
+          "inner": {
+            "kind": "string",
+          },
+          "kind": "nullable",
+        },
+        "kind": "optional",
+      },
+    },
+    "eventId": {
+      "required": true,
+      "shape": {
+        "kind": "string",
+      },
+    },
+    "generatedAt": {
+      "required": true,
+      "shape": {
+        "checks": [
+          "datetime",
+        ],
+        "kind": "string",
+      },
+    },
+    "id": {
+      "required": true,
+      "shape": {
+        "kind": "string",
+      },
+    },
+    "pdfURL": {
+      "required": false,
+      "shape": {
+        "inner": {
+          "inner": {
+            "checks": [
+              "url",
+            ],
+            "kind": "string",
+          },
+          "kind": "nullable",
+        },
+        "kind": "optional",
+      },
+    },
+    "qrCodeValue": {
+      "required": true,
+      "shape": {
+        "kind": "string",
+      },
+    },
+    "registrationId": {
+      "required": true,
+      "shape": {
+        "kind": "string",
+      },
+    },
+    "status": {
+      "required": false,
+      "shape": {
+        "hasDefault": true,
+        "inner": {
+          "kind": "enum",
+          "values": [
+            "failed",
+            "generated",
+            "pending",
+          ],
+        },
+        "kind": "default",
+      },
+    },
+    "templateId": {
+      "required": true,
+      "shape": {
+        "kind": "string",
+      },
+    },
+    "userId": {
+      "required": true,
+      "shape": {
+        "kind": "string",
+      },
+    },
+  },
+  "kind": "object",
+}
+`;
+
+exports[`shared-types contract snapshots > OfflineSyncDataSchema shape is stable 1`] = `
+{
+  "fields": {
+    "accessZones": {
+      "required": true,
+      "shape": {
+        "element": {
+          "fields": {
+            "capacity": {
+              "required": false,
+              "shape": {
+                "inner": {
+                  "inner": {
+                    "checks": [
+                      "int",
+                      "min",
+                    ],
+                    "kind": "number",
+                  },
+                  "kind": "nullable",
+                },
+                "kind": "optional",
+              },
+            },
+            "color": {
+              "required": true,
+              "shape": {
+                "kind": "string",
+              },
+            },
+            "id": {
+              "required": true,
+              "shape": {
+                "kind": "string",
+              },
+            },
+            "name": {
+              "required": true,
+              "shape": {
+                "kind": "string",
+              },
+            },
+          },
+          "kind": "object",
+        },
+        "kind": "array",
+      },
+    },
+    "eventId": {
+      "required": true,
+      "shape": {
+        "kind": "string",
+      },
+    },
+    "eventTitle": {
+      "required": true,
+      "shape": {
+        "kind": "string",
+      },
+    },
+    "organizationId": {
+      "required": true,
+      "shape": {
+        "kind": "string",
+      },
+    },
+    "registrations": {
+      "required": true,
+      "shape": {
+        "element": {
+          "fields": {
+            "accessZoneIds": {
+              "required": true,
+              "shape": {
+                "element": {
+                  "kind": "string",
+                },
+                "kind": "array",
+              },
+            },
+            "checkedIn": {
+              "required": true,
+              "shape": {
+                "kind": "boolean",
+              },
+            },
+            "checkedInAt": {
+              "required": true,
+              "shape": {
+                "inner": {
+                  "checks": [
+                    "datetime",
+                  ],
+                  "kind": "string",
+                },
+                "kind": "nullable",
+              },
+            },
+            "id": {
+              "required": true,
+              "shape": {
+                "kind": "string",
+              },
+            },
+            "participantEmail": {
+              "required": true,
+              "shape": {
+                "inner": {
+                  "kind": "string",
+                },
+                "kind": "nullable",
+              },
+            },
+            "participantName": {
+              "required": true,
+              "shape": {
+                "inner": {
+                  "kind": "string",
+                },
+                "kind": "nullable",
+              },
+            },
+            "qrCodeValue": {
+              "required": true,
+              "shape": {
+                "kind": "string",
+              },
+            },
+            "status": {
+              "required": true,
+              "shape": {
+                "kind": "enum",
+                "values": [
+                  "cancelled",
+                  "checked_in",
+                  "confirmed",
+                  "pending",
+                  "pending_payment",
+                  "waitlisted",
+                ],
+              },
+            },
+            "ticketTypeId": {
+              "required": true,
+              "shape": {
+                "kind": "string",
+              },
+            },
+            "ticketTypeName": {
+              "required": true,
+              "shape": {
+                "kind": "string",
+              },
+            },
+            "userId": {
+              "required": true,
+              "shape": {
+                "kind": "string",
+              },
+            },
+          },
+          "kind": "object",
+        },
+        "kind": "array",
+      },
+    },
+    "syncedAt": {
+      "required": true,
+      "shape": {
+        "checks": [
+          "datetime",
+        ],
+        "kind": "string",
+      },
+    },
+    "ticketTypes": {
+      "required": true,
+      "shape": {
+        "element": {
+          "fields": {
+            "id": {
+              "required": true,
+              "shape": {
+                "kind": "string",
+              },
+            },
+            "name": {
+              "required": true,
+              "shape": {
+                "kind": "string",
+              },
+            },
+          },
+          "kind": "object",
+        },
+        "kind": "array",
+      },
+    },
+    "totalRegistrations": {
+      "required": true,
+      "shape": {
+        "checks": [
+          "int",
+        ],
+        "kind": "number",
+      },
+    },
+    "ttlAt": {
+      "required": true,
+      "shape": {
+        "checks": [
+          "datetime",
+        ],
+        "kind": "string",
+      },
+    },
+  },
+  "kind": "object",
+}
+`;
+
+exports[`shared-types contract snapshots > OrganizationPlanSchema shape is stable 1`] = `
+{
+  "kind": "enum",
+  "values": [
+    "enterprise",
+    "free",
+    "pro",
+    "starter",
+  ],
+}
+`;
+
+exports[`shared-types contract snapshots > OrganizationSchema shape is stable 1`] = `
+{
+  "fields": {
+    "city": {
+      "required": false,
+      "shape": {
+        "inner": {
+          "inner": {
+            "kind": "string",
+          },
+          "kind": "nullable",
+        },
+        "kind": "optional",
+      },
+    },
+    "country": {
+      "required": false,
+      "shape": {
+        "hasDefault": true,
+        "inner": {
+          "checks": [
+            "length",
+          ],
+          "kind": "string",
+        },
+        "kind": "default",
+      },
+    },
+    "coverURL": {
+      "required": false,
+      "shape": {
+        "inner": {
+          "inner": {
+            "checks": [
+              "url",
+            ],
+            "kind": "string",
+          },
+          "kind": "nullable",
+        },
+        "kind": "optional",
+      },
+    },
+    "createdAt": {
+      "required": true,
+      "shape": {
+        "checks": [
+          "datetime",
+        ],
+        "kind": "string",
+      },
+    },
+    "description": {
+      "required": false,
+      "shape": {
+        "inner": {
+          "inner": {
+            "checks": [
+              "max",
+            ],
+            "kind": "string",
+          },
+          "kind": "nullable",
+        },
+        "kind": "optional",
+      },
+    },
+    "effectiveComputedAt": {
+      "required": false,
+      "shape": {
+        "inner": {
+          "checks": [
+            "datetime",
+          ],
+          "kind": "string",
+        },
+        "kind": "optional",
+      },
+    },
+    "effectiveFeatures": {
+      "required": false,
+      "shape": {
+        "inner": {
+          "fields": {
+            "advancedAnalytics": {
+              "required": true,
+              "shape": {
+                "kind": "boolean",
+              },
+            },
+            "apiAccess": {
+              "required": true,
+              "shape": {
+                "kind": "boolean",
+              },
+            },
+            "csvExport": {
+              "required": true,
+              "shape": {
+                "kind": "boolean",
+              },
+            },
+            "customBadges": {
+              "required": true,
+              "shape": {
+                "kind": "boolean",
+              },
+            },
+            "paidTickets": {
+              "required": true,
+              "shape": {
+                "kind": "boolean",
+              },
+            },
+            "promoCodes": {
+              "required": true,
+              "shape": {
+                "kind": "boolean",
+              },
+            },
+            "qrScanning": {
+              "required": true,
+              "shape": {
+                "kind": "boolean",
+              },
+            },
+            "smsNotifications": {
+              "required": true,
+              "shape": {
+                "kind": "boolean",
+              },
+            },
+            "speakerPortal": {
+              "required": true,
+              "shape": {
+                "kind": "boolean",
+              },
+            },
+            "sponsorPortal": {
+              "required": true,
+              "shape": {
+                "kind": "boolean",
+              },
+            },
+            "whiteLabel": {
+              "required": true,
+              "shape": {
+                "kind": "boolean",
+              },
+            },
+          },
+          "kind": "object",
+        },
+        "kind": "optional",
+      },
+    },
+    "effectiveLimits": {
+      "required": false,
+      "shape": {
+        "inner": {
+          "fields": {
+            "maxEvents": {
+              "required": true,
+              "shape": {
+                "checks": [
+                  "int",
+                ],
+                "kind": "number",
+              },
+            },
+            "maxMembers": {
+              "required": true,
+              "shape": {
+                "checks": [
+                  "int",
+                ],
+                "kind": "number",
+              },
+            },
+            "maxParticipantsPerEvent": {
+              "required": true,
+              "shape": {
+                "checks": [
+                  "int",
+                ],
+                "kind": "number",
+              },
+            },
+          },
+          "kind": "object",
+        },
+        "kind": "optional",
+      },
+    },
+    "effectivePlanKey": {
+      "required": false,
+      "shape": {
+        "inner": {
+          "kind": "string",
+        },
+        "kind": "optional",
+      },
+    },
+    "email": {
+      "required": false,
+      "shape": {
+        "inner": {
+          "inner": {
+            "checks": [
+              "email",
+            ],
+            "kind": "string",
+          },
+          "kind": "nullable",
+        },
+        "kind": "optional",
+      },
+    },
+    "id": {
+      "required": true,
+      "shape": {
+        "kind": "string",
+      },
+    },
+    "isActive": {
+      "required": false,
+      "shape": {
+        "hasDefault": true,
+        "inner": {
+          "kind": "boolean",
+        },
+        "kind": "default",
+      },
+    },
+    "isVerified": {
+      "required": false,
+      "shape": {
+        "hasDefault": true,
+        "inner": {
+          "kind": "boolean",
+        },
+        "kind": "default",
+      },
+    },
+    "logoURL": {
+      "required": false,
+      "shape": {
+        "inner": {
+          "inner": {
+            "checks": [
+              "url",
+            ],
+            "kind": "string",
+          },
+          "kind": "nullable",
+        },
+        "kind": "optional",
+      },
+    },
+    "memberIds": {
+      "required": false,
+      "shape": {
+        "hasDefault": true,
+        "inner": {
+          "element": {
+            "kind": "string",
+          },
+          "kind": "array",
+        },
+        "kind": "default",
+      },
+    },
+    "name": {
+      "required": true,
+      "shape": {
+        "checks": [
+          "max",
+          "min",
+        ],
+        "kind": "string",
+      },
+    },
+    "ownerId": {
+      "required": true,
+      "shape": {
+        "kind": "string",
+      },
+    },
+    "phone": {
+      "required": false,
+      "shape": {
+        "inner": {
+          "inner": {
+            "kind": "string",
+          },
+          "kind": "nullable",
+        },
+        "kind": "optional",
+      },
+    },
+    "plan": {
+      "required": false,
+      "shape": {
+        "hasDefault": true,
+        "inner": {
+          "kind": "enum",
+          "values": [
+            "enterprise",
+            "free",
+            "pro",
+            "starter",
+          ],
+        },
+        "kind": "default",
+      },
+    },
+    "slug": {
+      "required": true,
+      "shape": {
+        "checks": [
+          "regex",
+        ],
+        "kind": "string",
+      },
+    },
+    "updatedAt": {
+      "required": true,
+      "shape": {
+        "checks": [
+          "datetime",
+        ],
+        "kind": "string",
+      },
+    },
+    "website": {
+      "required": false,
+      "shape": {
+        "inner": {
+          "inner": {
+            "checks": [
+              "url",
+            ],
+            "kind": "string",
+          },
+          "kind": "nullable",
+        },
+        "kind": "optional",
+      },
+    },
+  },
+  "kind": "object",
+}
+`;
+
+exports[`shared-types contract snapshots > PaymentSchema shape is stable 1`] = `
+{
+  "fields": {
+    "amount": {
+      "required": true,
+      "shape": {
+        "checks": [
+          "int",
+          "min",
+        ],
+        "kind": "number",
+      },
+    },
+    "callbackUrl": {
+      "required": true,
+      "shape": {
+        "inner": {
+          "kind": "string",
+        },
+        "kind": "nullable",
+      },
+    },
+    "completedAt": {
+      "required": true,
+      "shape": {
+        "inner": {
+          "checks": [
+            "datetime",
+          ],
+          "kind": "string",
+        },
+        "kind": "nullable",
+      },
+    },
+    "createdAt": {
+      "required": true,
+      "shape": {
+        "checks": [
+          "datetime",
+        ],
+        "kind": "string",
+      },
+    },
+    "currency": {
+      "required": true,
+      "shape": {
+        "kind": "literal",
+        "value": "XOF",
+      },
+    },
+    "eventId": {
+      "required": true,
+      "shape": {
+        "kind": "string",
+      },
+    },
+    "failureReason": {
+      "required": true,
+      "shape": {
+        "inner": {
+          "kind": "string",
+        },
+        "kind": "nullable",
+      },
+    },
+    "id": {
+      "required": true,
+      "shape": {
+        "kind": "string",
+      },
+    },
+    "initiatedAt": {
+      "required": true,
+      "shape": {
+        "checks": [
+          "datetime",
+        ],
+        "kind": "string",
+      },
+    },
+    "method": {
+      "required": true,
+      "shape": {
+        "kind": "enum",
+        "values": [
+          "card",
+          "free_money",
+          "mock",
+          "orange_money",
+          "wave",
+        ],
+      },
+    },
+    "organizationId": {
+      "required": true,
+      "shape": {
+        "kind": "string",
+      },
+    },
+    "providerMetadata": {
+      "required": true,
+      "shape": {
+        "inner": {
+          "key": {
+            "kind": "string",
+          },
+          "kind": "record",
+          "value": {
+            "kind": "unknown",
+          },
+        },
+        "kind": "nullable",
+      },
+    },
+    "providerTransactionId": {
+      "required": true,
+      "shape": {
+        "inner": {
+          "kind": "string",
+        },
+        "kind": "nullable",
+      },
+    },
+    "redirectUrl": {
+      "required": true,
+      "shape": {
+        "inner": {
+          "kind": "string",
+        },
+        "kind": "nullable",
+      },
+    },
+    "refundedAmount": {
+      "required": false,
+      "shape": {
+        "hasDefault": true,
+        "inner": {
+          "checks": [
+            "int",
+          ],
+          "kind": "number",
+        },
+        "kind": "default",
+      },
+    },
+    "registrationId": {
+      "required": true,
+      "shape": {
+        "kind": "string",
+      },
+    },
+    "returnUrl": {
+      "required": true,
+      "shape": {
+        "inner": {
+          "kind": "string",
+        },
+        "kind": "nullable",
+      },
+    },
+    "status": {
+      "required": true,
+      "shape": {
+        "kind": "enum",
+        "values": [
+          "expired",
+          "failed",
+          "pending",
+          "processing",
+          "refunded",
+          "succeeded",
+        ],
+      },
+    },
+    "updatedAt": {
+      "required": true,
+      "shape": {
+        "checks": [
+          "datetime",
+        ],
+        "kind": "string",
+      },
+    },
+    "userId": {
+      "required": true,
+      "shape": {
+        "kind": "string",
+      },
+    },
+  },
+  "kind": "object",
+}
+`;
+
+exports[`shared-types contract snapshots > PayoutSchema shape is stable 1`] = `
+{
+  "fields": {
+    "completedAt": {
+      "required": true,
+      "shape": {
+        "inner": {
+          "checks": [
+            "datetime",
+          ],
+          "kind": "string",
+        },
+        "kind": "nullable",
+      },
+    },
+    "createdAt": {
+      "required": true,
+      "shape": {
+        "checks": [
+          "datetime",
+        ],
+        "kind": "string",
+      },
+    },
+    "eventId": {
+      "required": true,
+      "shape": {
+        "kind": "string",
+      },
+    },
+    "id": {
+      "required": true,
+      "shape": {
+        "kind": "string",
+      },
+    },
+    "netAmount": {
+      "required": true,
+      "shape": {
+        "checks": [
+          "int",
+        ],
+        "kind": "number",
+      },
+    },
+    "organizationId": {
+      "required": true,
+      "shape": {
+        "kind": "string",
+      },
+    },
+    "paymentIds": {
+      "required": true,
+      "shape": {
+        "element": {
+          "kind": "string",
+        },
+        "kind": "array",
+      },
+    },
+    "periodFrom": {
+      "required": true,
+      "shape": {
+        "checks": [
+          "datetime",
+        ],
+        "kind": "string",
+      },
+    },
+    "periodTo": {
+      "required": true,
+      "shape": {
+        "checks": [
+          "datetime",
+        ],
+        "kind": "string",
+      },
+    },
+    "platformFee": {
+      "required": true,
+      "shape": {
+        "checks": [
+          "int",
+        ],
+        "kind": "number",
+      },
+    },
+    "platformFeeRate": {
+      "required": true,
+      "shape": {
+        "kind": "number",
+      },
+    },
+    "status": {
+      "required": true,
+      "shape": {
+        "kind": "enum",
+        "values": [
+          "completed",
+          "failed",
+          "pending",
+          "processing",
+        ],
+      },
+    },
+    "totalAmount": {
+      "required": true,
+      "shape": {
+        "checks": [
+          "int",
+        ],
+        "kind": "number",
+      },
+    },
+    "updatedAt": {
+      "required": true,
+      "shape": {
+        "checks": [
+          "datetime",
+        ],
+        "kind": "string",
+      },
+    },
+  },
+  "kind": "object",
+}
+`;
+
+exports[`shared-types contract snapshots > PlanUsageSchema shape is stable 1`] = `
+{
+  "fields": {
+    "events": {
+      "required": true,
+      "shape": {
+        "fields": {
+          "current": {
+            "required": true,
+            "shape": {
+              "checks": [
+                "int",
+              ],
+              "kind": "number",
+            },
+          },
+          "limit": {
+            "required": true,
+            "shape": {
+              "kind": "number",
+            },
+          },
+        },
+        "kind": "object",
+      },
+    },
+    "features": {
+      "required": true,
+      "shape": {
+        "key": {
+          "kind": "string",
+        },
+        "kind": "record",
+        "value": {
+          "kind": "boolean",
+        },
+      },
+    },
+    "members": {
+      "required": true,
+      "shape": {
+        "fields": {
+          "current": {
+            "required": true,
+            "shape": {
+              "checks": [
+                "int",
+              ],
+              "kind": "number",
+            },
+          },
+          "limit": {
+            "required": true,
+            "shape": {
+              "kind": "number",
+            },
+          },
+        },
+        "kind": "object",
+      },
+    },
+    "plan": {
+      "required": true,
+      "shape": {
+        "kind": "enum",
+        "values": [
+          "enterprise",
+          "free",
+          "pro",
+          "starter",
+        ],
+      },
+    },
+  },
+  "kind": "object",
+}
+`;
+
+exports[`shared-types contract snapshots > RegistrationSchema shape is stable 1`] = `
+{
+  "fields": {
+    "accessZoneId": {
+      "required": false,
+      "shape": {
+        "inner": {
+          "inner": {
+            "kind": "string",
+          },
+          "kind": "nullable",
+        },
+        "kind": "optional",
+      },
+    },
+    "checkedInAt": {
+      "required": false,
+      "shape": {
+        "inner": {
+          "inner": {
+            "checks": [
+              "datetime",
+            ],
+            "kind": "string",
+          },
+          "kind": "nullable",
+        },
+        "kind": "optional",
+      },
+    },
+    "checkedInBy": {
+      "required": false,
+      "shape": {
+        "inner": {
+          "inner": {
+            "kind": "string",
+          },
+          "kind": "nullable",
+        },
+        "kind": "optional",
+      },
+    },
+    "checkedInDeviceId": {
+      "required": false,
+      "shape": {
+        "inner": {
+          "inner": {
+            "kind": "string",
+          },
+          "kind": "nullable",
+        },
+        "kind": "optional",
+      },
+    },
+    "createdAt": {
+      "required": true,
+      "shape": {
+        "checks": [
+          "datetime",
+        ],
+        "kind": "string",
+      },
+    },
+    "eventEndDate": {
+      "required": false,
+      "shape": {
+        "inner": {
+          "checks": [
+            "datetime",
+          ],
+          "kind": "string",
+        },
+        "kind": "optional",
+      },
+    },
+    "eventId": {
+      "required": true,
+      "shape": {
+        "kind": "string",
+      },
+    },
+    "eventSlug": {
+      "required": false,
+      "shape": {
+        "inner": {
+          "kind": "string",
+        },
+        "kind": "optional",
+      },
+    },
+    "eventStartDate": {
+      "required": false,
+      "shape": {
+        "inner": {
+          "checks": [
+            "datetime",
+          ],
+          "kind": "string",
+        },
+        "kind": "optional",
+      },
+    },
+    "eventTitle": {
+      "required": false,
+      "shape": {
+        "inner": {
+          "kind": "string",
+        },
+        "kind": "optional",
+      },
+    },
+    "id": {
+      "required": true,
+      "shape": {
+        "kind": "string",
+      },
+    },
+    "notes": {
+      "required": false,
+      "shape": {
+        "inner": {
+          "inner": {
+            "kind": "string",
+          },
+          "kind": "nullable",
+        },
+        "kind": "optional",
+      },
+    },
+    "participantEmail": {
+      "required": false,
+      "shape": {
+        "inner": {
+          "inner": {
+            "kind": "string",
+          },
+          "kind": "nullable",
+        },
+        "kind": "optional",
+      },
+    },
+    "participantName": {
+      "required": false,
+      "shape": {
+        "inner": {
+          "inner": {
+            "kind": "string",
+          },
+          "kind": "nullable",
+        },
+        "kind": "optional",
+      },
+    },
+    "promotedFromWaitlistAt": {
+      "required": false,
+      "shape": {
+        "inner": {
+          "inner": {
+            "checks": [
+              "datetime",
+            ],
+            "kind": "string",
+          },
+          "kind": "nullable",
+        },
+        "kind": "optional",
+      },
+    },
+    "qrCodeValue": {
+      "required": true,
+      "shape": {
+        "kind": "string",
+      },
+    },
+    "status": {
+      "required": false,
+      "shape": {
+        "hasDefault": true,
+        "inner": {
+          "kind": "enum",
+          "values": [
+            "cancelled",
+            "checked_in",
+            "confirmed",
+            "pending",
+            "pending_payment",
+            "waitlisted",
+          ],
+        },
+        "kind": "default",
+      },
+    },
+    "ticketTypeId": {
+      "required": true,
+      "shape": {
+        "kind": "string",
+      },
+    },
+    "ticketTypeName": {
+      "required": false,
+      "shape": {
+        "inner": {
+          "kind": "string",
+        },
+        "kind": "optional",
+      },
+    },
+    "updatedAt": {
+      "required": true,
+      "shape": {
+        "checks": [
+          "datetime",
+        ],
+        "kind": "string",
+      },
+    },
+    "userId": {
+      "required": true,
+      "shape": {
+        "kind": "string",
+      },
+    },
+  },
+  "kind": "object",
+}
+`;
+
+exports[`shared-types contract snapshots > RegistrationStatusSchema shape is stable 1`] = `
+{
+  "kind": "enum",
+  "values": [
+    "cancelled",
+    "checked_in",
+    "confirmed",
+    "pending",
+    "pending_payment",
+    "waitlisted",
+  ],
+}
+`;
+
+exports[`shared-types contract snapshots > SubscriptionSchema shape is stable 1`] = `
+{
+  "fields": {
+    "assignedAt": {
+      "required": false,
+      "shape": {
+        "inner": {
+          "checks": [
+            "datetime",
+          ],
+          "kind": "string",
+        },
+        "kind": "optional",
+      },
+    },
+    "assignedBy": {
+      "required": false,
+      "shape": {
+        "inner": {
+          "kind": "string",
+        },
+        "kind": "optional",
+      },
+    },
+    "billingCycle": {
+      "required": false,
+      "shape": {
+        "inner": {
+          "kind": "enum",
+          "values": [
+            "annual",
+            "monthly",
+          ],
+        },
+        "kind": "optional",
+      },
+    },
+    "cancelReason": {
+      "required": false,
+      "shape": {
+        "inner": {
+          "inner": {
+            "kind": "string",
+          },
+          "kind": "nullable",
+        },
+        "kind": "optional",
+      },
+    },
+    "cancelledAt": {
+      "required": true,
+      "shape": {
+        "inner": {
+          "checks": [
+            "datetime",
+          ],
+          "kind": "string",
+        },
+        "kind": "nullable",
+      },
+    },
+    "createdAt": {
+      "required": true,
+      "shape": {
+        "checks": [
+          "datetime",
+        ],
+        "kind": "string",
+      },
+    },
+    "currentPeriodEnd": {
+      "required": true,
+      "shape": {
+        "checks": [
+          "datetime",
+        ],
+        "kind": "string",
+      },
+    },
+    "currentPeriodStart": {
+      "required": true,
+      "shape": {
+        "checks": [
+          "datetime",
+        ],
+        "kind": "string",
+      },
+    },
+    "id": {
+      "required": true,
+      "shape": {
+        "kind": "string",
+      },
+    },
+    "organizationId": {
+      "required": true,
+      "shape": {
+        "kind": "string",
+      },
+    },
+    "overrides": {
+      "required": false,
+      "shape": {
+        "inner": {
+          "fields": {
+            "features": {
+              "required": false,
+              "shape": {
+                "inner": {
+                  "fields": {
+                    "advancedAnalytics": {
+                      "required": false,
+                      "shape": {
+                        "inner": {
+                          "kind": "boolean",
+                        },
+                        "kind": "optional",
+                      },
+                    },
+                    "apiAccess": {
+                      "required": false,
+                      "shape": {
+                        "inner": {
+                          "kind": "boolean",
+                        },
+                        "kind": "optional",
+                      },
+                    },
+                    "csvExport": {
+                      "required": false,
+                      "shape": {
+                        "inner": {
+                          "kind": "boolean",
+                        },
+                        "kind": "optional",
+                      },
+                    },
+                    "customBadges": {
+                      "required": false,
+                      "shape": {
+                        "inner": {
+                          "kind": "boolean",
+                        },
+                        "kind": "optional",
+                      },
+                    },
+                    "paidTickets": {
+                      "required": false,
+                      "shape": {
+                        "inner": {
+                          "kind": "boolean",
+                        },
+                        "kind": "optional",
+                      },
+                    },
+                    "promoCodes": {
+                      "required": false,
+                      "shape": {
+                        "inner": {
+                          "kind": "boolean",
+                        },
+                        "kind": "optional",
+                      },
+                    },
+                    "qrScanning": {
+                      "required": false,
+                      "shape": {
+                        "inner": {
+                          "kind": "boolean",
+                        },
+                        "kind": "optional",
+                      },
+                    },
+                    "smsNotifications": {
+                      "required": false,
+                      "shape": {
+                        "inner": {
+                          "kind": "boolean",
+                        },
+                        "kind": "optional",
+                      },
+                    },
+                    "speakerPortal": {
+                      "required": false,
+                      "shape": {
+                        "inner": {
+                          "kind": "boolean",
+                        },
+                        "kind": "optional",
+                      },
+                    },
+                    "sponsorPortal": {
+                      "required": false,
+                      "shape": {
+                        "inner": {
+                          "kind": "boolean",
+                        },
+                        "kind": "optional",
+                      },
+                    },
+                    "whiteLabel": {
+                      "required": false,
+                      "shape": {
+                        "inner": {
+                          "kind": "boolean",
+                        },
+                        "kind": "optional",
+                      },
+                    },
+                  },
+                  "kind": "object",
+                },
+                "kind": "optional",
+              },
+            },
+            "limits": {
+              "required": false,
+              "shape": {
+                "inner": {
+                  "fields": {
+                    "maxEvents": {
+                      "required": false,
+                      "shape": {
+                        "inner": {
+                          "inner": {
+                            "checks": [
+                              "int",
+                            ],
+                            "kind": "number",
+                          },
+                          "kind": "effects",
+                        },
+                        "kind": "optional",
+                      },
+                    },
+                    "maxMembers": {
+                      "required": false,
+                      "shape": {
+                        "inner": {
+                          "inner": {
+                            "checks": [
+                              "int",
+                            ],
+                            "kind": "number",
+                          },
+                          "kind": "effects",
+                        },
+                        "kind": "optional",
+                      },
+                    },
+                    "maxParticipantsPerEvent": {
+                      "required": false,
+                      "shape": {
+                        "inner": {
+                          "inner": {
+                            "checks": [
+                              "int",
+                            ],
+                            "kind": "number",
+                          },
+                          "kind": "effects",
+                        },
+                        "kind": "optional",
+                      },
+                    },
+                  },
+                  "kind": "object",
+                },
+                "kind": "optional",
+              },
+            },
+            "notes": {
+              "required": false,
+              "shape": {
+                "inner": {
+                  "checks": [
+                    "max",
+                  ],
+                  "kind": "string",
+                },
+                "kind": "optional",
+              },
+            },
+            "priceXof": {
+              "required": false,
+              "shape": {
+                "inner": {
+                  "checks": [
+                    "int",
+                    "min",
+                  ],
+                  "kind": "number",
+                },
+                "kind": "optional",
+              },
+            },
+            "validUntil": {
+              "required": false,
+              "shape": {
+                "inner": {
+                  "inner": {
+                    "checks": [
+                      "datetime",
+                    ],
+                    "kind": "string",
+                  },
+                  "kind": "nullable",
+                },
+                "kind": "optional",
+              },
+            },
+          },
+          "kind": "object",
+        },
+        "kind": "optional",
+      },
+    },
+    "paymentMethod": {
+      "required": true,
+      "shape": {
+        "inner": {
+          "kind": "enum",
+          "values": [
+            "card",
+            "free_money",
+            "mock",
+            "orange_money",
+            "wave",
+          ],
+        },
+        "kind": "nullable",
+      },
+    },
+    "plan": {
+      "required": true,
+      "shape": {
+        "kind": "enum",
+        "values": [
+          "enterprise",
+          "free",
+          "pro",
+          "starter",
+        ],
+      },
+    },
+    "planId": {
+      "required": false,
+      "shape": {
+        "inner": {
+          "kind": "string",
+        },
+        "kind": "optional",
+      },
+    },
+    "priceXof": {
+      "required": true,
+      "shape": {
+        "checks": [
+          "int",
+        ],
+        "kind": "number",
+      },
+    },
+    "scheduledChange": {
+      "required": false,
+      "shape": {
+        "inner": {
+          "inner": {
+            "fields": {
+              "effectiveAt": {
+                "required": true,
+                "shape": {
+                  "checks": [
+                    "datetime",
+                  ],
+                  "kind": "string",
+                },
+              },
+              "note": {
+                "required": false,
+                "shape": {
+                  "inner": {
+                    "checks": [
+                      "max",
+                    ],
+                    "kind": "string",
+                  },
+                  "kind": "optional",
+                },
+              },
+              "reason": {
+                "required": true,
+                "shape": {
+                  "kind": "enum",
+                  "values": [
+                    "admin_override",
+                    "cancel",
+                    "downgrade",
+                    "plan_archived",
+                    "trial_ended",
+                  ],
+                },
+              },
+              "scheduledAt": {
+                "required": true,
+                "shape": {
+                  "checks": [
+                    "datetime",
+                  ],
+                  "kind": "string",
+                },
+              },
+              "scheduledBy": {
+                "required": true,
+                "shape": {
+                  "kind": "string",
+                },
+              },
+              "toPlan": {
+                "required": true,
+                "shape": {
+                  "kind": "string",
+                },
+              },
+              "toPlanId": {
+                "required": false,
+                "shape": {
+                  "inner": {
+                    "kind": "string",
+                  },
+                  "kind": "optional",
+                },
+              },
+              "toPlanOverrides": {
+                "required": false,
+                "shape": {
+                  "inner": {
+                    "fields": {
+                      "features": {
+                        "required": false,
+                        "shape": {
+                          "inner": {
+                            "fields": {
+                              "advancedAnalytics": {
+                                "required": false,
+                                "shape": {
+                                  "inner": {
+                                    "kind": "boolean",
+                                  },
+                                  "kind": "optional",
+                                },
+                              },
+                              "apiAccess": {
+                                "required": false,
+                                "shape": {
+                                  "inner": {
+                                    "kind": "boolean",
+                                  },
+                                  "kind": "optional",
+                                },
+                              },
+                              "csvExport": {
+                                "required": false,
+                                "shape": {
+                                  "inner": {
+                                    "kind": "boolean",
+                                  },
+                                  "kind": "optional",
+                                },
+                              },
+                              "customBadges": {
+                                "required": false,
+                                "shape": {
+                                  "inner": {
+                                    "kind": "boolean",
+                                  },
+                                  "kind": "optional",
+                                },
+                              },
+                              "paidTickets": {
+                                "required": false,
+                                "shape": {
+                                  "inner": {
+                                    "kind": "boolean",
+                                  },
+                                  "kind": "optional",
+                                },
+                              },
+                              "promoCodes": {
+                                "required": false,
+                                "shape": {
+                                  "inner": {
+                                    "kind": "boolean",
+                                  },
+                                  "kind": "optional",
+                                },
+                              },
+                              "qrScanning": {
+                                "required": false,
+                                "shape": {
+                                  "inner": {
+                                    "kind": "boolean",
+                                  },
+                                  "kind": "optional",
+                                },
+                              },
+                              "smsNotifications": {
+                                "required": false,
+                                "shape": {
+                                  "inner": {
+                                    "kind": "boolean",
+                                  },
+                                  "kind": "optional",
+                                },
+                              },
+                              "speakerPortal": {
+                                "required": false,
+                                "shape": {
+                                  "inner": {
+                                    "kind": "boolean",
+                                  },
+                                  "kind": "optional",
+                                },
+                              },
+                              "sponsorPortal": {
+                                "required": false,
+                                "shape": {
+                                  "inner": {
+                                    "kind": "boolean",
+                                  },
+                                  "kind": "optional",
+                                },
+                              },
+                              "whiteLabel": {
+                                "required": false,
+                                "shape": {
+                                  "inner": {
+                                    "kind": "boolean",
+                                  },
+                                  "kind": "optional",
+                                },
+                              },
+                            },
+                            "kind": "object",
+                          },
+                          "kind": "optional",
+                        },
+                      },
+                      "limits": {
+                        "required": false,
+                        "shape": {
+                          "inner": {
+                            "fields": {
+                              "maxEvents": {
+                                "required": false,
+                                "shape": {
+                                  "inner": {
+                                    "inner": {
+                                      "checks": [
+                                        "int",
+                                      ],
+                                      "kind": "number",
+                                    },
+                                    "kind": "effects",
+                                  },
+                                  "kind": "optional",
+                                },
+                              },
+                              "maxMembers": {
+                                "required": false,
+                                "shape": {
+                                  "inner": {
+                                    "inner": {
+                                      "checks": [
+                                        "int",
+                                      ],
+                                      "kind": "number",
+                                    },
+                                    "kind": "effects",
+                                  },
+                                  "kind": "optional",
+                                },
+                              },
+                              "maxParticipantsPerEvent": {
+                                "required": false,
+                                "shape": {
+                                  "inner": {
+                                    "inner": {
+                                      "checks": [
+                                        "int",
+                                      ],
+                                      "kind": "number",
+                                    },
+                                    "kind": "effects",
+                                  },
+                                  "kind": "optional",
+                                },
+                              },
+                            },
+                            "kind": "object",
+                          },
+                          "kind": "optional",
+                        },
+                      },
+                      "notes": {
+                        "required": false,
+                        "shape": {
+                          "inner": {
+                            "checks": [
+                              "max",
+                            ],
+                            "kind": "string",
+                          },
+                          "kind": "optional",
+                        },
+                      },
+                      "priceXof": {
+                        "required": false,
+                        "shape": {
+                          "inner": {
+                            "checks": [
+                              "int",
+                              "min",
+                            ],
+                            "kind": "number",
+                          },
+                          "kind": "optional",
+                        },
+                      },
+                      "validUntil": {
+                        "required": false,
+                        "shape": {
+                          "inner": {
+                            "inner": {
+                              "checks": [
+                                "datetime",
+                              ],
+                              "kind": "string",
+                            },
+                            "kind": "nullable",
+                          },
+                          "kind": "optional",
+                        },
+                      },
+                    },
+                    "kind": "object",
+                  },
+                  "kind": "optional",
+                },
+              },
+            },
+            "kind": "object",
+          },
+          "kind": "nullable",
+        },
+        "kind": "optional",
+      },
+    },
+    "status": {
+      "required": true,
+      "shape": {
+        "kind": "enum",
+        "values": [
+          "active",
+          "cancelled",
+          "past_due",
+          "trialing",
+        ],
+      },
+    },
+    "updatedAt": {
+      "required": true,
+      "shape": {
+        "checks": [
+          "datetime",
+        ],
+        "kind": "string",
+      },
+    },
+  },
+  "kind": "object",
+}
+`;
+
+exports[`shared-types contract snapshots > UploadUrlResponseSchema shape is stable 1`] = `
+{
+  "fields": {
+    "maxBytes": {
+      "required": true,
+      "shape": {
+        "checks": [
+          "int",
+          "min",
+        ],
+        "kind": "number",
+      },
+    },
+    "publicUrl": {
+      "required": true,
+      "shape": {
+        "checks": [
+          "url",
+        ],
+        "kind": "string",
+      },
+    },
+    "requiredHeaders": {
+      "required": true,
+      "shape": {
+        "key": {
+          "kind": "string",
+        },
+        "kind": "record",
+        "value": {
+          "kind": "string",
+        },
+      },
+    },
+    "uploadUrl": {
+      "required": true,
+      "shape": {
+        "checks": [
+          "url",
+        ],
+        "kind": "string",
+      },
+    },
+  },
+  "kind": "object",
+}
+`;
+
+exports[`shared-types contract snapshots > UserProfileSchema shape is stable 1`] = `
+{
+  "fields": {
+    "bio": {
+      "required": false,
+      "shape": {
+        "inner": {
+          "inner": {
+            "checks": [
+              "max",
+            ],
+            "kind": "string",
+          },
+          "kind": "nullable",
+        },
+        "kind": "optional",
+      },
+    },
+    "createdAt": {
+      "required": true,
+      "shape": {
+        "checks": [
+          "datetime",
+        ],
+        "kind": "string",
+      },
+    },
+    "displayName": {
+      "required": true,
+      "shape": {
+        "checks": [
+          "max",
+          "min",
+        ],
+        "kind": "string",
+      },
+    },
+    "email": {
+      "required": true,
+      "shape": {
+        "checks": [
+          "email",
+        ],
+        "kind": "string",
+      },
+    },
+    "fcmTokens": {
+      "required": false,
+      "shape": {
+        "inner": {
+          "element": {
+            "kind": "string",
+          },
+          "kind": "array",
+        },
+        "kind": "optional",
+      },
+    },
+    "isActive": {
+      "required": false,
+      "shape": {
+        "hasDefault": true,
+        "inner": {
+          "kind": "boolean",
+        },
+        "kind": "default",
+      },
+    },
+    "isEmailVerified": {
+      "required": false,
+      "shape": {
+        "hasDefault": true,
+        "inner": {
+          "kind": "boolean",
+        },
+        "kind": "default",
+      },
+    },
+    "orgRole": {
+      "required": false,
+      "shape": {
+        "inner": {
+          "inner": {
+            "kind": "enum",
+            "values": [
+              "admin",
+              "member",
+              "owner",
+              "viewer",
+            ],
+          },
+          "kind": "nullable",
+        },
+        "kind": "optional",
+      },
+    },
+    "organizationId": {
+      "required": false,
+      "shape": {
+        "inner": {
+          "inner": {
+            "kind": "string",
+          },
+          "kind": "nullable",
+        },
+        "kind": "optional",
+      },
+    },
+    "phone": {
+      "required": false,
+      "shape": {
+        "inner": {
+          "inner": {
+            "kind": "string",
+          },
+          "kind": "nullable",
+        },
+        "kind": "optional",
+      },
+    },
+    "photoURL": {
+      "required": false,
+      "shape": {
+        "inner": {
+          "inner": {
+            "checks": [
+              "url",
+            ],
+            "kind": "string",
+          },
+          "kind": "nullable",
+        },
+        "kind": "optional",
+      },
+    },
+    "preferredLanguage": {
+      "required": false,
+      "shape": {
+        "hasDefault": true,
+        "inner": {
+          "kind": "enum",
+          "values": [
+            "en",
+            "fr",
+            "wo",
+          ],
+        },
+        "kind": "default",
+      },
+    },
+    "roles": {
+      "required": true,
+      "shape": {
+        "element": {
+          "kind": "enum",
+          "values": [
+            "co_organizer",
+            "organizer",
+            "participant",
+            "speaker",
+            "sponsor",
+            "staff",
+            "super_admin",
+            "venue_manager",
+          ],
+        },
+        "kind": "array",
+      },
+    },
+    "uid": {
+      "required": true,
+      "shape": {
+        "kind": "string",
+      },
+    },
+    "updatedAt": {
+      "required": true,
+      "shape": {
+        "checks": [
+          "datetime",
+        ],
+        "kind": "string",
+      },
+    },
+  },
+  "kind": "object",
+}
+`;
