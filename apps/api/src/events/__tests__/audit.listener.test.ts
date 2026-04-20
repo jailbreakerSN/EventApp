@@ -334,4 +334,147 @@ describe("Audit Listener", () => {
       }),
     );
   });
+
+  // ─── SPEC: dynamic completeness check (post-audit) ─────────────────────
+  // Pre-audit, the suite hard-coded `toHaveBeenCalledTimes(18)` which
+  // silently rotted when new domain events were added to
+  // `audit.listener.ts`. 67 handlers are registered today but only 18
+  // were being checked — a new event type could land with no audit
+  // mapping and no test would fail.
+  //
+  // This test fails loud when:
+  //   - a new `eventBus.on(...)` handler is added but the reference
+  //     count below isn't updated (forces a code-review sync point),
+  //   - OR someone removes a handler without updating the count
+  //     (deletions are real; the count must shift deliberately).
+  //
+  // The reference number is NOT a goal — it's a "sync checkpoint".
+  // When you add or remove an audit handler, bump the number AND
+  // make sure `audit.listener.test.ts` has coverage for the new
+  // event's mapping.
+  describe("audit listener — dynamic handler completeness", () => {
+    it("registers the expected number of eventBus listeners (reference count)", () => {
+      // Fresh bus so only this registration is counted — the outer
+      // beforeEach already ran `removeAllListeners` + registers once.
+      // We recount against the live registry.
+      eventBus.removeAllListeners();
+      const registered: string[] = [];
+      const originalOn = eventBus.on.bind(eventBus);
+      const spy = vi
+        .spyOn(eventBus, "on")
+        // Cast through unknown — the typed EventBus signature rejects
+        // an untyped (name, handler) forward, but we're intentionally
+        // intercepting the generic case for completeness counting.
+        .mockImplementation(((name: unknown, handler: unknown) => {
+          registered.push(name as string);
+          return (originalOn as unknown as (n: unknown, h: unknown) => void)(name, handler);
+        }) as unknown as typeof eventBus.on);
+
+      registerAuditListeners();
+      spy.mockRestore();
+
+      // When this count changes deliberately (you added a domain event
+      // + its audit handler), bump this number AND add a targeted
+      // emission test somewhere in this file that verifies the new
+      // mapping writes the right `action` / `resourceType` to the
+      // audit log. If you removed a handler, also drop the matching
+      // emission test so stale expectations don't silently pass.
+      const EXPECTED_HANDLER_COUNT = 67;
+
+      expect(registered).toHaveLength(EXPECTED_HANDLER_COUNT);
+      // Each registered event name should be unique — a double
+      // registration would cause the audit to fire twice for one
+      // domain event.
+      expect(new Set(registered).size).toBe(registered.length);
+    });
+
+    it("every registered handler calls auditService.log when its event fires (structural check)", async () => {
+      // Re-register cleanly for this test so the listener count is
+      // independent of other tests in this file that already ran.
+      eventBus.removeAllListeners();
+
+      // Capture the registered event names the same way as above.
+      const registered: string[] = [];
+      const originalOn = eventBus.on.bind(eventBus);
+      const spy = vi
+        .spyOn(eventBus, "on")
+        // Cast through unknown — the typed EventBus signature rejects
+        // an untyped (name, handler) forward, but we're intentionally
+        // intercepting the generic case for completeness counting.
+        .mockImplementation(((name: unknown, handler: unknown) => {
+          registered.push(name as string);
+          return (originalOn as unknown as (n: unknown, h: unknown) => void)(name, handler);
+        }) as unknown as typeof eventBus.on);
+      registerAuditListeners();
+      spy.mockRestore();
+
+      // For each captured event name, emit a minimal payload that
+      // satisfies the shared fields every audit handler reads
+      // (`actorId`, `requestId`, `timestamp`). Per-event extra fields
+      // default to empty / null / "stub" — we're testing the mapping
+      // is wired, not the detailed shape.
+      for (const name of registered) {
+        // Cast to the typed emit signature — we're iterating over the
+        // full DomainEventName union at runtime with a permissive stub
+        // payload; the type-narrow per-event is out of scope here.
+        (eventBus.emit as unknown as (n: string, p: unknown) => void)(name, {
+          actorId: "structural-test",
+          requestId: `req-${name}`,
+          timestamp: new Date().toISOString(),
+          // Cast-through fallback fields commonly needed:
+          eventId: "e-stub",
+          organizationId: "o-stub",
+          registrationId: "r-stub",
+          userId: "u-stub",
+          memberId: "m-stub",
+          planId: "p-stub",
+          subscriptionId: "s-stub",
+          changes: {},
+          reason: "stub",
+          // Registration + Event + Org shaped stubs for handlers that
+          // cast the payload into a full domain object:
+          registration: {
+            id: "r-stub",
+            eventId: "e-stub",
+            userId: "u-stub",
+            status: "confirmed",
+          },
+          event: {
+            id: "e-stub",
+            organizationId: "o-stub",
+            title: "stub",
+            status: "published",
+          },
+          organization: { id: "o-stub", name: "Stub Org" },
+          // checkin-specific:
+          registrationId_: "r-stub",
+          checkedInBy: "staff-stub",
+          source: "live",
+          // event lifecycle:
+          eventStatus: "published",
+          ticketTypeId: "tt-stub",
+          ticketTypeName: "Stub",
+          sourceEventId: "e-stub-src",
+          // member ops:
+          role: "member",
+          // payment / subscription:
+          amount: 0,
+          newKid: "kid-new",
+          previousKid: "kid-old",
+          itemCount: 0,
+        });
+      }
+
+      await flush();
+
+      // Every listener must fire auditService.log at least once on its
+      // own emit. The exact arg shapes are verified by the targeted
+      // tests above — this is the "no silent drops" floor.
+      // If any handler threw or bailed without calling log, the count
+      // would be less than the listener count.
+      expect(
+        (auditService.log as unknown as { mock: { calls: unknown[] } }).mock.calls.length,
+      ).toBeGreaterThanOrEqual(registered.length);
+    });
+  });
 });

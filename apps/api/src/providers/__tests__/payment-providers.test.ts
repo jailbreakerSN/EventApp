@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // ─── Mock fetch globally ────────────────────────────────────────────────────
 const mockFetch = vi.fn();
@@ -275,5 +275,184 @@ describe("verifyWebhook — per-provider signature verification", () => {
     expect(provider.verifyWebhook({ rawBody, headers: { "x-webhook-signature": "bad" } })).toBe(
       false,
     );
+  });
+});
+
+// ─── SPEC: Orange Money OAuth token cache expiry (post-audit) ────────────
+// The OM provider caches the OAuth access token in a module-level
+// closure (`cachedToken: { value, expiresAt }`) and refetches when
+// `Date.now() >= expiresAt`. A 60 s grace window is baked in:
+// `expiresAt = now + (expires_in - 60) * 1000`. Before this pass the
+// suite never exercised the boundary — a regression that dropped the
+// grace, flipped the comparison (`>` instead of `<`), or stopped
+// honouring `expires_in` would have slipped past unit tests and only
+// surfaced in production as silent 401s from OM after a token expired.
+//
+// Structural test using `vi.useFakeTimers`. Each case dynamically
+// imports the provider to get a fresh module-scope cache.
+describe("OrangeMoneyPaymentProvider — OAuth token cache expiry boundary", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.resetModules();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("returns the cached token on subsequent calls while `now < expiresAt`", async () => {
+    vi.useFakeTimers();
+    const t0 = new Date("2026-01-01T12:00:00Z").getTime();
+    vi.setSystemTime(t0);
+
+    // Token lifetime: 3600 s → expiresAt = t0 + (3600 - 60) * 1000
+    mockFetch.mockImplementation(async (url: string) => {
+      if (String(url).includes("oauth")) {
+        return { ok: true, json: async () => ({ access_token: "tok_A", expires_in: 3600 }) };
+      }
+      return {
+        ok: true,
+        json: async () => ({
+          pay_token: "om_1",
+          payment_url: "https://om.test/1",
+          notif_token: "nt",
+        }),
+      };
+    });
+
+    const { OrangeMoneyPaymentProvider } = await import("../orange-money-payment.provider");
+    const provider = new OrangeMoneyPaymentProvider();
+
+    // 1st initiate: 2 fetches (OAuth + payment)
+    await provider.initiate({
+      paymentId: "p1",
+      amount: 1000,
+      currency: "XOF",
+      description: "",
+      callbackUrl: "",
+      returnUrl: "",
+    });
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+
+    // Advance to 1 s BEFORE the cached expiresAt (= t0 + 3540 s - 1 s).
+    // Must still be a cache hit. Expected fetches: 2 + 1 (payment) = 3.
+    vi.setSystemTime(t0 + (3540 - 1) * 1000);
+    await provider.initiate({
+      paymentId: "p2",
+      amount: 1000,
+      currency: "XOF",
+      description: "",
+      callbackUrl: "",
+      returnUrl: "",
+    });
+    expect(mockFetch).toHaveBeenCalledTimes(3);
+  });
+
+  it("refetches the token when `now >= expiresAt` (grace-window enforced)", async () => {
+    vi.useFakeTimers();
+    const t0 = new Date("2026-01-01T12:00:00Z").getTime();
+    vi.setSystemTime(t0);
+
+    const oauthReturns: Array<{ access_token: string; expires_in: number }> = [
+      { access_token: "tok_A", expires_in: 3600 },
+      { access_token: "tok_B", expires_in: 3600 },
+    ];
+    let oauthCalls = 0;
+    mockFetch.mockImplementation(async (url: string) => {
+      if (String(url).includes("oauth")) {
+        const payload = oauthReturns[oauthCalls++];
+        return { ok: true, json: async () => payload };
+      }
+      return {
+        ok: true,
+        json: async () => ({
+          pay_token: "om_x",
+          payment_url: "https://om.test/x",
+          notif_token: "nt",
+        }),
+      };
+    });
+
+    const { OrangeMoneyPaymentProvider } = await import("../orange-money-payment.provider");
+    const provider = new OrangeMoneyPaymentProvider();
+
+    await provider.initiate({
+      paymentId: "p1",
+      amount: 1000,
+      currency: "XOF",
+      description: "",
+      callbackUrl: "",
+      returnUrl: "",
+    });
+    expect(oauthCalls).toBe(1); // first fetch
+
+    // Advance PAST expiresAt (t0 + 3540 s + 1 ms). Cache must now be
+    // stale, triggering a refetch. Total oauth calls: 2.
+    vi.setSystemTime(t0 + 3540 * 1000 + 1);
+    await provider.initiate({
+      paymentId: "p2",
+      amount: 1000,
+      currency: "XOF",
+      description: "",
+      callbackUrl: "",
+      returnUrl: "",
+    });
+    expect(oauthCalls).toBe(2);
+  });
+
+  it("uses `expires_in - 60 s` grace window (sanity)", async () => {
+    // Pre-expiry grace is the reason for the `-60` in the provider.
+    // If someone regresses this to `-0` (token cached for its full
+    // lifetime), OM might 401 us the moment we serve a nearly-expired
+    // token. Verify by using a SHORT expires_in: 60 s lifetime → the
+    // cache becomes stale immediately (Date.now() + (60 - 60)*1000 =
+    // Date.now()), so a SECOND initiate in the same tick already
+    // triggers a refetch.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-01-01T12:00:00Z").getTime());
+
+    let oauthCalls = 0;
+    mockFetch.mockImplementation(async (url: string) => {
+      if (String(url).includes("oauth")) {
+        oauthCalls++;
+        return { ok: true, json: async () => ({ access_token: "tok_X", expires_in: 60 }) };
+      }
+      return {
+        ok: true,
+        json: async () => ({
+          pay_token: "om_y",
+          payment_url: "https://om.test/y",
+          notif_token: "nt",
+        }),
+      };
+    });
+
+    const { OrangeMoneyPaymentProvider } = await import("../orange-money-payment.provider");
+    const provider = new OrangeMoneyPaymentProvider();
+
+    await provider.initiate({
+      paymentId: "p1",
+      amount: 1000,
+      currency: "XOF",
+      description: "",
+      callbackUrl: "",
+      returnUrl: "",
+    });
+    // Advance 1 ms so Date.now() is strictly past the computed expiresAt.
+    vi.setSystemTime(Date.now() + 1);
+    await provider.initiate({
+      paymentId: "p2",
+      amount: 1000,
+      currency: "XOF",
+      description: "",
+      callbackUrl: "",
+      returnUrl: "",
+    });
+    // Two oauth fetches: the grace window is zero-effective on a 60 s
+    // token, so the second initiate must refetch. If someone removes
+    // the grace and uses `data.expires_in * 1000` directly, the second
+    // initiate would reuse the still-live token and oauthCalls would
+    // be 1 — this assertion catches that regression.
+    expect(oauthCalls).toBe(2);
   });
 });
