@@ -239,7 +239,7 @@ function AnomalyRow({
           <div className="flex items-center gap-2 flex-wrap">
             <span className={`text-sm font-semibold ${severityClass.text}`}>{label}</span>
             <span className="text-xs text-muted-foreground">
-              {formatRelative(anomaly.detectedAt)}
+              {formatRelative(latestScan(anomaly))}
             </span>
           </div>
           <p className="text-sm text-muted-foreground mt-0.5">{explainer}</p>
@@ -297,8 +297,12 @@ function flattenAnomalies(response: AnomalyResponse): Anomaly[] {
     ...response.deviceMismatches,
     ...response.velocityOutliers,
   ];
-  // Sort severity first, then by most recent. Critical events float to
-  // the top; within a severity tier newest wins.
+  // Sort severity first, then by most recent evidence. Critical events
+  // float to the top; within a severity tier the anomaly whose latest
+  // scan is newest wins. We deliberately do NOT use `detectedAt` here —
+  // the server stamps that with query-time `new Date()`, so it's the
+  // same value for every row in a single response and useless for
+  // ordering.
   const severityWeight: Record<Anomaly["severity"], number> = {
     critical: 0,
     warning: 1,
@@ -307,18 +311,40 @@ function flattenAnomalies(response: AnomalyResponse): Anomaly[] {
   return all.sort((a, b) => {
     const s = severityWeight[a.severity] - severityWeight[b.severity];
     if (s !== 0) return s;
-    return b.detectedAt.localeCompare(a.detectedAt);
+    return latestScan(b).localeCompare(latestScan(a));
   });
 }
 
+/**
+ * Latest `scannedAt` inside an anomaly's evidence. Used both for
+ * severity-tied sort order and for the "il y a N min" label on the row —
+ * the gate supervisor cares about when the offending scan actually
+ * landed, not when our query noticed it.
+ */
+function latestScan(anomaly: Anomaly): string {
+  let max = "";
+  for (const e of anomaly.evidence) {
+    if (e.scannedAt > max) max = e.scannedAt;
+  }
+  return max;
+}
+
+/**
+ * Stable React key — survives polling. Must NOT include `detectedAt`:
+ * the backend recomputes `detectedAt = new Date()` on every request, so
+ * embedding it would flip the key every 10 s and collapse any expanded
+ * drill-down mid-read. Instead, pin on the anomaly's natural identity:
+ * `kind + registration/staff id`. Two successive polls that re-detect
+ * the same fraud pattern render as the same row, preserving expansion.
+ */
 function anomalyKey(anomaly: Anomaly): string {
   switch (anomaly.kind) {
     case "duplicate":
-      return `dup:${anomaly.registrationId}:${anomaly.detectedAt}`;
+      return `dup:${anomaly.registrationId}`;
     case "device_mismatch":
-      return `dev:${anomaly.registrationId}:${anomaly.detectedAt}`;
+      return `dev:${anomaly.registrationId}`;
     case "velocity_outlier":
-      return `vel:${anomaly.scannedBy}:${anomaly.detectedAt}`;
+      return `vel:${anomaly.scannedBy}`;
   }
 }
 
