@@ -78,6 +78,10 @@ export type QrScanResult = z.infer<typeof QrScanResultSchema>;
 export const OfflineEventDataSchema = z.object({
   eventId: z.string(),
   downloadedAt: z.string().datetime(),
+  // Staff-device cache TTL hint — `event.endDate + 24 h`. Devices should
+  // auto-purge the cached payload after this timestamp so a lost phone
+  // doesn't carry live QRs forever.
+  ttlAt: z.string().datetime().optional(),
   registrations: z.array(
     z.object({
       qrCodeValue: z.string(),

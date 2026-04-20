@@ -126,14 +126,53 @@ and an actual differentiator.
 
 ## 6. Implementation tracker
 
-| Item                                           | Status      | PR / commit                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| ---------------------------------------------- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1.3 — validity window in payload               | shipped     | `claude/fix-badge-pdf-generation-wAhdP` — v3 QR format                                                                                                                                                                                                                                                                                                                                                                                                           |
-| 3.1 — staleness check at scan                  | shipped     | same commit — enforced in `registrationService.checkIn` + `checkinService.bulkSync`, with v1/v2 fallback derived from event dates                                                                                                                                                                                                                                                                                                                                |
-| 3.2a — device attestation                      | shipped     | same branch — `scannerDeviceId` + `scannerNonce` accepted on both live (`POST /registrations/checkin`) and bulk-sync paths; device id persisted on the registration, full attestation (nonce, `clientScannedAt`, server-confirmed time, `source`) rides the `checkin.completed` audit event; `scannedAt` sanity bounds from the prior pass retained (future > skew / past > 7 d → `invalid_qr`); fields optional on the wire so older mobile builds keep working |
-| 3.5 — backoffice shows expired / not-yet-valid | shipped     | same branch — dedicated toast + `ScanResultCard` for each code                                                                                                                                                                                                                                                                                                                                                                                                   |
-| 4.2 — encrypted offline sync                   | queued      |                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| Sprint B+                                      | not started |                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| Item                                           | Status                        | PR / commit                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| ---------------------------------------------- | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1.3 — validity window in payload               | shipped                       | `claude/fix-badge-pdf-generation-wAhdP` — v3 QR format                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| 3.1 — staleness check at scan                  | shipped                       | same commit — enforced in `registrationService.checkIn` + `checkinService.bulkSync`, with v1/v2 fallback derived from event dates                                                                                                                                                                                                                                                                                                                                                                                             |
+| 3.2a — device attestation                      | shipped                       | same branch — `scannerDeviceId` + `scannerNonce` accepted on both live (`POST /registrations/checkin`) and bulk-sync paths; device id persisted on the registration, full attestation (nonce, `clientScannedAt`, server-confirmed time, `source`) rides the `checkin.completed` audit event; `scannedAt` sanity bounds from the prior pass retained (future > skew / past > 7 d → `invalid_qr`); fields optional on the wire so older mobile builds keep working                                                              |
+| 3.5 — backoffice shows expired / not-yet-valid | shipped                       | same branch — dedicated toast + `ScanResultCard` for each code                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| 4.2 — encrypted offline sync + download audit  | server shipped; mobile queued | same branch — `GET /v1/checkin/:eventId/sync` opt-in ECDH-X25519 → HKDF-SHA256 → AES-256-GCM envelope (`?encrypted=v1&clientPublicKey=…`), plaintext kept as default for back-compat; `ttlAt` (`event.endDate + 24 h`) always returned so clients can schedule their purge without decrypting; every call — encrypted or not — emits `checkin.offline_sync.downloaded` with `{ staffId, scannerDeviceId, encrypted, itemCount, ttlAt }` into `auditLogs`. Flutter-side purge + encryption client still to ship — see §7 below |
+| Sprint B+                                      | not started                   |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+
+## 7. Client follow-up — Flutter staff cache TTL purge (4.2b mobile side, queued)
+
+Server now returns `ttlAt` in both sync paths. The staff device must
+auto-purge the cached bundle after it to contain blast radius if the
+device is lost. Design spec produced by the planning pass (grounded in
+the current Flutter code layout):
+
+- **Add** `apps/mobile/lib/features/scanner/data/offline_cache_repository.dart`
+  to own read / write / purge on Hive box `offlineEvents` (opened at
+  `apps/mobile/lib/main.dart:48`). Store each entry as
+  `{ registrations, downloadedAt, ttlAt }` keyed by `eventId`.
+- **Purge triggers** — both purely local Hive ops, no network needed:
+  1. Startup sweep in `main.dart` right after the box opens, before
+     `runApp`.
+  2. `WidgetsBindingObserver` on the root `ConsumerWidget`
+     (`apps/mobile/lib/app.dart:9`) that re-runs the sweep on
+     `AppLifecycleState.resumed`.
+  3. Read-path guard in `scanner_page.dart:54-64`: if `ttlAt <= now`,
+     treat the entry as missing and show the existing
+     "Synchronisez d'abord" state.
+- **Clock-skew grace:** 6 h buffer on the comparison (`now > ttlAt + 6h`
+  triggers purge) — avoids wiping mid-event on a fast-clock device.
+  Flutter app also stashes the `Date` response header from the last
+  online API call as `lastServerTimeSkewMs` in the `settings` box;
+  subtract it from `now` before comparing.
+- **What to wipe:** only the `offlineEvents` entry for the expired
+  `eventId`, plus matching `pending` items in the `checkinQueue` box
+  (filter by eventId — never blanket-clear). Auth, settings, and
+  server-side audit logs untouched.
+- **Encryption client** (paired with 4.2a above): Flutter generates an
+  ephemeral X25519 keypair per sync, sends the public half as
+  `?encrypted=v1&clientPublicKey=<b64url>`, derives the AES key via
+  ECDH + HKDF-SHA256 (`info = "teranga/offline-sync/v1"`), unseals with
+  AES-256-GCM using `eventId` as AAD. Private half never leaves memory.
+
+Web backoffice check-in page (`apps/web-backoffice/.../checkin/page.tsx`)
+is online-only (no service worker, no IndexedDB offline store) — no
+purge work required there beyond the existing 10 s react-query refetch.
 
 ### Migration impact (v3 QR rollout)
 

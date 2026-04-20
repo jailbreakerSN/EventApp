@@ -759,9 +759,13 @@ export class BadgeService extends BaseService {
     const users = await userRepository.batchGet(userIds);
     const userMap = new Map(users.map((u) => [u.uid, u]));
 
+    // TTL hint — staff devices purge the cached payload at `event.endDate + 24h`.
+    const ttlAt = new Date(new Date(event.endDate).getTime() + 24 * 60 * 60 * 1000).toISOString();
+
     return {
       eventId,
       downloadedAt: new Date().toISOString(),
+      ttlAt,
       registrations: allRegistrations.map((reg) => {
         const participant = userMap.get(reg.userId);
         const ticketType = event.ticketTypes.find((t) => t.id === reg.ticketTypeId);

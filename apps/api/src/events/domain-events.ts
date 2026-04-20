@@ -63,6 +63,26 @@ export interface BulkCheckinSyncedEvent extends BaseEventPayload {
   failed: number;
 }
 
+/**
+ * Fires every time a staff device pulls the offline sync bundle. Because the
+ * payload contains every confirmed registration's signed QR, we need a
+ * per-download forensic trail — if a device later leaks badges we can
+ * correlate by `staffId`, `scannerDeviceId`, and event. `encrypted` reports
+ * whether the client requested the ECDH envelope; once the Flutter scanner
+ * opts in this should be `true` in steady state.
+ */
+export interface OfflineSyncDownloadedEvent extends BaseEventPayload {
+  eventId: string;
+  organizationId: string;
+  staffId: string;
+  scannerDeviceId?: string | null;
+  encrypted: boolean;
+  /** Registration count shipped in the payload — useful for anomaly alerts. */
+  itemCount: number;
+  /** Client-side cache TTL — the `event.endDate + 24h` we returned. */
+  ttlAt: string;
+}
+
 // ── Access Zone ─────────────────────────────────────────────────────────────
 
 export interface AccessZoneAddedEvent extends BaseEventPayload {
@@ -534,6 +554,7 @@ export interface DomainEventMap {
   "registration.approved": RegistrationApprovedEvent;
   "checkin.completed": CheckInCompletedEvent;
   "checkin.bulk_synced": BulkCheckinSyncedEvent;
+  "checkin.offline_sync.downloaded": OfflineSyncDownloadedEvent;
   "access_zone.added": AccessZoneAddedEvent;
   "access_zone.updated": AccessZoneUpdatedEvent;
   "access_zone.removed": AccessZoneRemovedEvent;

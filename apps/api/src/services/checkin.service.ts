@@ -74,11 +74,19 @@ export class CheckinService extends BaseService {
     const users = await userRepository.batchGet(userIds);
     const userMap = new Map(users.map((u) => [u.uid ?? u.id, u]));
 
+    // TTL hint for the staff device's cache purge (badge-journey-review 4.2b).
+    // 24 h past event end — long enough to cover reconciliation lag for
+    // late scans, short enough that a lost device doesn't carry live QRs
+    // forever. Kept outside any future encrypted envelope so the client
+    // can schedule the purge without decrypting the payload.
+    const ttlAt = new Date(new Date(event.endDate).getTime() + 24 * 60 * 60 * 1000).toISOString();
+
     return {
       eventId,
       organizationId: event.organizationId,
       eventTitle: event.title,
       syncedAt: new Date().toISOString(),
+      ttlAt,
       totalRegistrations: allRegistrations.length,
       registrations: allRegistrations.map((reg) => {
         const participant = userMap.get(reg.userId);
