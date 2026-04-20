@@ -523,6 +523,7 @@
     "browseCta": "Saytu",
     "ticketPrefix": "Billet",
     "registeredOn": "Bind ci",
+    "refShort": "Réf. {ref}",
     "waitlistPosition": "Palaas #{n}",
     "waitlistPositionAria": "Nga ci palaas {n} ci liste d'attente bi",
     "badge": "Badge",

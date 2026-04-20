@@ -195,7 +195,6 @@ export default async function HomePage() {
                 locale={regional}
                 categoryLabel={tCategories(`${event.category}` as "conference")}
                 detailsCta={tHome("featured.cta")}
-                registerCta={tCommon("viewDetails")}
                 dateLabel={tCommon("date")}
                 locationLabel={tCommon("location")}
                 priceLabel={tCommon("price")}
@@ -243,13 +242,11 @@ export default async function HomePage() {
         {/* Event grid */}
         {latestEvents.length > 0 ? (
           <div className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {latestEvents.map((event, i) => (
+            {latestEvents.map((event) => (
               <EditorialEventCard
                 key={event.id}
                 {...mapEventToEditorialCardProps({
                   event,
-                  index: i + 1,
-                  total: latestEvents.length,
                   locale: regional,
                   t: {
                     common: (k) => tCommon(k),
@@ -387,7 +384,6 @@ function FeaturedTile({
   locale,
   categoryLabel,
   detailsCta,
-  registerCta,
   dateLabel,
   locationLabel,
   priceLabel,
@@ -400,7 +396,6 @@ function FeaturedTile({
   locale: string;
   categoryLabel: string;
   detailsCta: string;
-  registerCta: string;
   dateLabel: string;
   locationLabel: string;
   priceLabel: string;
@@ -491,19 +486,13 @@ function FeaturedTile({
           </dl>
         </div>
 
-        <div className="flex flex-col gap-3 sm:flex-row">
+        <div className="flex">
           <Link
             href={`/events/${event.slug}`}
-            className="inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-full bg-teranga-navy px-6 text-sm font-semibold text-white transition-colors hover:bg-teranga-navy/90 dark:bg-teranga-gold dark:text-teranga-navy dark:hover:bg-teranga-gold-light"
-          >
-            {registerCta}
-            <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
-          </Link>
-          <Link
-            href={`/events/${event.slug}`}
-            className="inline-flex h-12 items-center justify-center gap-2 rounded-full border px-6 text-sm font-semibold text-foreground transition-colors hover:bg-muted"
+            className="inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-full bg-teranga-navy px-6 text-sm font-semibold text-white transition-colors hover:bg-teranga-navy/90 dark:bg-teranga-gold dark:text-teranga-navy dark:hover:bg-teranga-gold-light sm:flex-none sm:px-8"
           >
             {detailsCta}
+            <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
           </Link>
         </div>
       </div>

@@ -680,8 +680,11 @@ function UpcomingRow({
               {reg.ticketTypeName ?? reg.ticketTypeId}
             </span>
             <span aria-hidden="true">·</span>
-            <span className="font-mono-kicker tracking-[0.04em]">
-              {reg.qrCodeValue?.slice(0, 18) ?? reg.id.slice(0, 12)}
+            <span
+              className="font-mono-kicker uppercase tracking-[0.08em]"
+              title={reg.id}
+            >
+              {t("refShort", { ref: reg.id.slice(-8).toUpperCase() })}
             </span>
             <span aria-hidden="true">·</span>
             <span>

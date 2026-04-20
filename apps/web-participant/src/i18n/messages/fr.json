@@ -562,6 +562,7 @@
     "browseCta": "Parcourir",
     "ticketPrefix": "Billet",
     "registeredOn": "Inscrit le",
+    "refShort": "Réf. {ref}",
     "waitlistPosition": "Position #{n}",
     "waitlistPositionAria": "Vous êtes en position {n} sur la liste d'attente",
     "badge": "Badge",
