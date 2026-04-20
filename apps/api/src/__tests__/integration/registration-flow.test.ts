@@ -40,8 +40,8 @@ describe("Integration: registration flow", () => {
     expect(reg.eventId).toBe(event.id);
     expect(reg.userId).toBe(participant.uid);
     expect(reg.status).toBe("confirmed");
-    // v2 QR payload: regId:eventId:userId:epochBase36:hmacHex
-    expect(reg.qrCodeValue.split(":")).toHaveLength(5);
+    // v3 QR payload: regId:eventId:userId:notBeforeBase36:notAfterBase36:hmacHex
+    expect(reg.qrCodeValue.split(":")).toHaveLength(6);
 
     const after = await readEvent(event.id);
     expect(after?.registeredCount).toBe(1);

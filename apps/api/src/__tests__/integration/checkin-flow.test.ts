@@ -88,7 +88,13 @@ describe("Integration: check-in flow", () => {
 
     // Valid signature for (regA, event, user), but we swap the last segment
     // so the HMAC no longer matches.
-    const valid = signQrPayload("reg-real", event.id, "user-real");
+    const valid = signQrPayload(
+      "reg-real",
+      event.id,
+      "user-real",
+      Date.now() - 86_400_000,
+      Date.now() + 365 * 86_400_000,
+    );
     const tampered = valid.replace(/:[0-9a-f]+$/, ":deadbeefdeadbeefdeadbeefdeadbeef");
 
     const res = await checkinService.bulkSync(
@@ -163,5 +169,97 @@ describe("Integration: check-in flow", () => {
     expect(res.failed).toBe(1);
     expect(res.results.map((r) => r.status)).toEqual(["success", "invalid_qr", "success"]);
     expect((await readEvent(event.id))?.checkedInCount).toBe(2);
+  });
+
+  it("QR whose signed validity window is fully in the past → expired (no check-in)", async () => {
+    const { id: orgId } = await createOrgOnPlan("starter");
+    const event = await createEvent(orgId);
+    const staff = buildStaffUser({ organizationId: orgId });
+
+    // Window ended 48h ago — well outside the 2h clock-skew grace.
+    const reg = await createRegistration(event.id, "user-a", {
+      qrNotBefore: Date.now() - 72 * 60 * 60 * 1000,
+      qrNotAfter: Date.now() - 48 * 60 * 60 * 1000,
+    });
+
+    const res = await checkinService.bulkSync(
+      event.id,
+      [
+        {
+          localId: "1",
+          qrCodeValue: reg.qrCodeValue,
+          scannedAt: new Date().toISOString(),
+        },
+      ],
+      staff,
+    );
+
+    expect(res.results[0].status).toBe("expired");
+    expect((await readRegistration(reg.id))?.status).toBe("confirmed");
+    expect((await readEvent(event.id))?.checkedInCount).toBe(0);
+  });
+
+  it("bulk sync rejects items whose scannedAt is too far in the future", async () => {
+    const { id: orgId } = await createOrgOnPlan("starter");
+    const event = await createEvent(orgId);
+    const staff = buildStaffUser({ organizationId: orgId });
+    const reg = await createRegistration(event.id, "user-a");
+
+    // Half a day in the future — well past the 2h clock-skew grace.
+    const futureScan = new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString();
+    const res = await checkinService.bulkSync(
+      event.id,
+      [{ localId: "1", qrCodeValue: reg.qrCodeValue, scannedAt: futureScan }],
+      staff,
+    );
+
+    expect(res.results[0].status).toBe("invalid_qr");
+    expect((await readRegistration(reg.id))?.status).toBe("confirmed");
+  });
+
+  it("bulk sync rejects items whose scannedAt is older than the 7-day reconcile lag", async () => {
+    const { id: orgId } = await createOrgOnPlan("starter");
+    const event = await createEvent(orgId);
+    const staff = buildStaffUser({ organizationId: orgId });
+    const reg = await createRegistration(event.id, "user-a");
+
+    // 30 days ago — way beyond the 7-day reconcile ceiling.
+    const staleScan = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    const res = await checkinService.bulkSync(
+      event.id,
+      [{ localId: "1", qrCodeValue: reg.qrCodeValue, scannedAt: staleScan }],
+      staff,
+    );
+
+    expect(res.results[0].status).toBe("invalid_qr");
+    expect((await readRegistration(reg.id))?.status).toBe("confirmed");
+  });
+
+  it("QR whose window opens in the future → not_yet_valid (no check-in)", async () => {
+    const { id: orgId } = await createOrgOnPlan("starter");
+    const event = await createEvent(orgId);
+    const staff = buildStaffUser({ organizationId: orgId });
+
+    // Window opens 48h from now — outside the 2h grace.
+    const reg = await createRegistration(event.id, "user-a", {
+      qrNotBefore: Date.now() + 48 * 60 * 60 * 1000,
+      qrNotAfter: Date.now() + 72 * 60 * 60 * 1000,
+    });
+
+    const res = await checkinService.bulkSync(
+      event.id,
+      [
+        {
+          localId: "1",
+          qrCodeValue: reg.qrCodeValue,
+          scannedAt: new Date().toISOString(),
+        },
+      ],
+      staff,
+    );
+
+    expect(res.results[0].status).toBe("not_yet_valid");
+    expect((await readRegistration(reg.id))?.status).toBe("confirmed");
+    expect((await readEvent(event.id))?.checkedInCount).toBe(0);
   });
 });

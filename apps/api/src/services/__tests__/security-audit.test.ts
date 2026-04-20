@@ -404,25 +404,28 @@ describe("SECURITY: Input Validation", () => {
   });
 
   describe("QR code signing integrity", () => {
-    // QR signing tests are covered in qr-signing.test.ts (13 tests)
+    // QR signing tests are covered in qr-signing.test.ts
     // Here we verify the security invariants hold
+    const WIDE_NB = Date.now() - 86400_000;
+    const WIDE_NA = Date.now() + 365 * 86400_000;
+
     it("tampered QR codes are rejected (falsy)", async () => {
       const qr = await import("../qr-signing");
-      const signed = qr.signQrPayload("reg-1", "event-1", "user-1");
+      const signed = qr.signQrPayload("reg-1", "event-1", "user-1", WIDE_NB, WIDE_NA);
       const tampered = signed.replace("reg-1", "reg-2");
       expect(qr.verifyQrPayload(tampered)).toBeFalsy();
     });
 
     it("truncated signatures are rejected", async () => {
       const qr = await import("../qr-signing");
-      const signed = qr.signQrPayload("reg-1", "event-1", "user-1");
+      const signed = qr.signQrPayload("reg-1", "event-1", "user-1", WIDE_NB, WIDE_NA);
       const truncated = signed.slice(0, -10);
       expect(qr.verifyQrPayload(truncated)).toBeFalsy();
     });
 
     it("valid QR codes are accepted", async () => {
       const qr = await import("../qr-signing");
-      const signed = qr.signQrPayload("reg-1", "event-1", "user-1");
+      const signed = qr.signQrPayload("reg-1", "event-1", "user-1", WIDE_NB, WIDE_NA);
       expect(qr.verifyQrPayload(signed)).toBeTruthy();
     });
 

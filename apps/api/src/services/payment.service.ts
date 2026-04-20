@@ -20,7 +20,7 @@ import {
   EventFullError,
 } from "@/errors/app-error";
 import { BaseService } from "./base.service";
-import { signQrPayload } from "./qr-signing";
+import { signQrPayload, computeValidityWindow } from "./qr-signing";
 import { eventBus } from "@/events/event-bus";
 import { getRequestId } from "@/context/request-context";
 import { type PaymentProvider } from "@/providers/payment-provider.interface";
@@ -206,7 +206,16 @@ export class PaymentService extends BaseService {
     const payRef = db.collection(COLLECTIONS.PAYMENTS).doc();
     const regId = regRef.id;
     const payId = payRef.id;
-    const qrCodeValue = signQrPayload(regId, eventId, user.uid);
+    // v3 QR with an embedded validity window derived from the event dates.
+    // Scan path rejects anything outside [notBefore, notAfter] (+ clock skew).
+    const qrWindow = computeValidityWindow(event.startDate, event.endDate);
+    const qrCodeValue = signQrPayload(
+      regId,
+      eventId,
+      user.uid,
+      qrWindow.notBefore,
+      qrWindow.notAfter,
+    );
 
     // Webhook path encodes the provider so the endpoint can route to
     // the correct signature verifier without a query-string sniff.

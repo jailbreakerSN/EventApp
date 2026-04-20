@@ -78,22 +78,40 @@ vi.mock("@/context/request-context", () => ({
 vi.mock("@/services/qr-signing", () => ({
   verifyQrPayload: vi.fn((qr: string) => {
     if (qr.startsWith("invalid")) return null;
-    return { registrationId: "reg-1", eventId: "ev-1", userId: "user-1" };
+    return { registrationId: "reg-1", eventId: "ev-1", userId: "user-1", version: "v3" };
   }),
+  // Wide-open window so the bulk-sync staleness check never fires in this
+  // suite — coverage for the window itself lives in qr-signing.test.ts
+  // and the integration suite.
+  checkScanTime: vi.fn(() => "valid"),
+  computeValidityWindow: vi.fn(() => ({
+    notBefore: Date.now() - 86_400_000,
+    notAfter: Date.now() + 365 * 86_400_000,
+  })),
+  SCAN_CLOCK_SKEW_MS: 2 * 60 * 60 * 1000,
 }));
 
 const mockTxUpdate = vi.fn();
-const mockTxGet = vi.fn();
-const mockDocRef = { id: "mock-doc" };
+const mockTxGetReg = vi.fn();
+const mockTxGetEvent = vi.fn();
+// Tagged refs so the in-tx dispatch can tell registration reads apart from
+// event reads — processCheckinItem does `Promise.all([tx.get(regRef),
+// tx.get(eventRef)])` and we need the right snap back for each.
+const regRef = { id: "mock-reg", __collection: "registrations" };
+const eventRef = { id: "mock-event", __collection: "events" };
 
 vi.mock("@/config/firebase", () => ({
   db: {
     runTransaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => {
-      const tx = { get: mockTxGet, update: mockTxUpdate };
+      const tx = {
+        get: (ref: { __collection?: string }) =>
+          ref.__collection === "events" ? mockTxGetEvent() : mockTxGetReg(),
+        update: mockTxUpdate,
+      };
       return fn(tx);
     }),
-    collection: vi.fn(() => ({
-      doc: vi.fn(() => mockDocRef),
+    collection: vi.fn((name: string) => ({
+      doc: vi.fn(() => (name === "events" ? eventRef : regRef)),
     })),
   },
   COLLECTIONS: { REGISTRATIONS: "registrations", EVENTS: "events" },
@@ -107,7 +125,21 @@ beforeEach(() => {
   vi.clearAllMocks();
   // bulkSync is gated behind the `qrScanning` plan feature — every test
   // needs a starter-or-better org returned by the repository lookup.
-  mockOrgRepo.findByIdOrThrow.mockResolvedValue(buildOrganization({ id: "org-1", plan: "starter" }));
+  mockOrgRepo.findByIdOrThrow.mockResolvedValue(
+    buildOrganization({ id: "org-1", plan: "starter" }),
+  );
+  // Default event snap carries startDate + endDate so the window-check
+  // fallback path doesn't fail closed. Tests that need a custom event
+  // payload (e.g. zone capacity) can override.
+  mockTxGetEvent.mockResolvedValue({
+    exists: true,
+    data: () => ({
+      startDate: new Date(Date.now() - 86_400_000).toISOString(),
+      endDate: new Date(Date.now() + 86_400_000).toISOString(),
+      accessZones: [],
+      zoneCheckedInCounts: {},
+    }),
+  });
 });
 
 describe("CheckinService.getOfflineSyncData", () => {
@@ -165,7 +197,7 @@ describe("CheckinService.bulkSync", () => {
 
     mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
     mockRegRepo.findByQrCode.mockResolvedValue(reg);
-    mockTxGet.mockResolvedValue({
+    mockTxGetReg.mockResolvedValue({
       exists: true,
       id: reg.id,
       data: () => ({ ...reg, id: undefined }),
@@ -204,7 +236,7 @@ describe("CheckinService.bulkSync", () => {
 
     mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
     mockRegRepo.findByQrCode.mockResolvedValue(reg);
-    mockTxGet.mockResolvedValue({
+    mockTxGetReg.mockResolvedValue({
       exists: true,
       id: reg.id,
       data: () => ({ ...reg, id: undefined }),
@@ -226,7 +258,7 @@ describe("CheckinService.bulkSync", () => {
 
     mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
     mockRegRepo.findByQrCode.mockResolvedValue(reg);
-    mockTxGet.mockResolvedValue({
+    mockTxGetReg.mockResolvedValue({
       exists: true,
       id: reg.id,
       data: () => ({ ...reg, id: undefined }),

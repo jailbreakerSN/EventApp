@@ -388,11 +388,20 @@ export async function createEvent(orgId: string, overrides: Partial<Event> = {})
 export async function createRegistration(
   eventId: string,
   userId: string,
-  overrides: Partial<Registration> = {},
+  overrides: Partial<Registration> & {
+    qrNotBefore?: number;
+    qrNotAfter?: number;
+  } = {},
 ): Promise<Registration> {
   const id = overrides.id ?? `reg-${Math.random().toString(36).slice(2, 10)}`;
   const now = new Date().toISOString();
-  const qrCodeValue = overrides.qrCodeValue ?? signQrPayload(id, eventId, userId);
+  // Wide-open validity window so integration tests don't fail on real-clock
+  // staleness checks. Production signs with the event's [start-24h, end+6h].
+  // Tests that specifically exercise the window enforcement can narrow it
+  // via `qrNotBefore` / `qrNotAfter` overrides.
+  const qrNb = overrides.qrNotBefore ?? Date.now() - 86_400_000;
+  const qrNa = overrides.qrNotAfter ?? Date.now() + 365 * 86_400_000;
+  const qrCodeValue = overrides.qrCodeValue ?? signQrPayload(id, eventId, userId, qrNb, qrNa);
 
   const reg: Registration = {
     id,

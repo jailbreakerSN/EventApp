@@ -101,6 +101,10 @@ vi.mock("@/context/request-context", () => ({
 
 vi.mock("@/services/qr-signing", () => ({
   signQrPayload: vi.fn(() => "signed-qr-code"),
+  computeValidityWindow: vi.fn(() => ({
+    notBefore: Date.now() - 86_400_000,
+    notAfter: Date.now() + 365 * 86_400_000,
+  })),
 }));
 
 vi.mock("@/providers/mock-payment.provider", () => ({

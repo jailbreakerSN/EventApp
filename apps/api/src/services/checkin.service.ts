@@ -18,7 +18,19 @@ import { userRepository } from "@/repositories/user.repository";
 import type { DocumentSnapshot } from "firebase-admin/firestore";
 import { type AuthUser } from "@/middlewares/auth.middleware";
 import { BaseService } from "./base.service";
-import { verifyQrPayload } from "./qr-signing";
+import {
+  verifyQrPayload,
+  checkScanTime,
+  computeValidityWindow,
+  SCAN_CLOCK_SKEW_MS,
+} from "./qr-signing";
+
+// Maximum gap we'll accept between the client's `scannedAt` and the server's
+// `now` on the bulk-sync path. A staff device can legitimately have been
+// offline for days after scanning, but we cap the lag at 7 days so a
+// tampered app can't replay arbitrarily old QRs under the guise of offline
+// reconciliation. Tune with field data once multi-day events are in prod.
+const MAX_OFFLINE_RECONCILE_LAG_MS = 7 * 24 * 60 * 60 * 1000;
 import { eventBus } from "@/events/event-bus";
 import { getRequestId } from "@/context/request-context";
 
@@ -163,7 +175,40 @@ export class CheckinService extends BaseService {
         localId: item.localId,
         status: "invalid_qr",
         registrationId: null,
-        reason: "Invalid QR signature",
+        reason: "Signature QR invalide",
+      };
+    }
+
+    // Sanity-bound the client-reported scan time before using it as "now" for
+    // the validity window. Offline staff devices can legitimately reconcile
+    // days after a scan, but a tampered app could backdate `scannedAt` into
+    // a past validity window to replay an expired QR. A 7-day lag ceiling
+    // and a skew-bounded future guard accept legitimate offline work while
+    // rejecting obvious forgeries.
+    const scannedAtMs = new Date(item.scannedAt).getTime();
+    if (!Number.isFinite(scannedAtMs)) {
+      return {
+        localId: item.localId,
+        status: "invalid_qr",
+        registrationId: null,
+        reason: "Horodatage de scan invalide",
+      };
+    }
+    const nowMs = Date.now();
+    if (scannedAtMs > nowMs + SCAN_CLOCK_SKEW_MS) {
+      return {
+        localId: item.localId,
+        status: "invalid_qr",
+        registrationId: null,
+        reason: "Horodatage de scan dans le futur — appareil probablement compromis",
+      };
+    }
+    if (nowMs - scannedAtMs > MAX_OFFLINE_RECONCILE_LAG_MS) {
+      return {
+        localId: item.localId,
+        status: "invalid_qr",
+        registrationId: null,
+        reason: "Scan hors-ligne trop ancien pour être réconcilié",
       };
     }
 
@@ -192,9 +237,47 @@ export class CheckinService extends BaseService {
     try {
       const txResult = await db.runTransaction(async (tx) => {
         const regRef = db.collection(COLLECTIONS.REGISTRATIONS).doc(registration.id);
-        const snap = await tx.get(regRef);
+        const eventRefForWindow = db.collection(COLLECTIONS.EVENTS).doc(eventId);
+        const [snap, eventSnapForWindow] = await Promise.all([
+          tx.get(regRef),
+          tx.get(eventRefForWindow),
+        ]);
         if (!snap.exists) {
           return { status: "not_found" as BulkCheckinResultStatus, reason: "Registration deleted" };
+        }
+
+        // Validity window enforcement. For v3 QRs the window is authoritative
+        // inside the signed payload; for legacy v1/v2 QRs we fall back to a
+        // window derived from the event dates — same formula the signer uses.
+        // If the event is missing dates (should never happen, but defensive)
+        // we fail CLOSED rather than let the scan through unchecked.
+        const eventData = eventSnapForWindow.data();
+        let window: { notBefore: number; notAfter: number } | null = null;
+        if (parsed.notBefore && parsed.notAfter) {
+          window = {
+            notBefore: new Date(parsed.notBefore).getTime(),
+            notAfter: new Date(parsed.notAfter).getTime(),
+          };
+        } else if (eventData?.startDate && eventData?.endDate) {
+          window = computeValidityWindow(eventData.startDate, eventData.endDate);
+        } else {
+          return {
+            status: "invalid_status" as BulkCheckinResultStatus,
+            reason: "Fenêtre de validité introuvable pour cet événement",
+          };
+        }
+        const verdict = checkScanTime(scannedAtMs, window.notBefore, window.notAfter);
+        if (verdict === "too_early") {
+          return {
+            status: "not_yet_valid" as BulkCheckinResultStatus,
+            reason: `Badge non encore valide (ouverture le ${new Date(window.notBefore).toISOString()})`,
+          };
+        }
+        if (verdict === "expired") {
+          return {
+            status: "expired" as BulkCheckinResultStatus,
+            reason: `Badge expiré (clôture le ${new Date(window.notAfter).toISOString()})`,
+          };
         }
 
         const current = { id: snap.id, ...snap.data() } as Registration;
@@ -224,13 +307,13 @@ export class CheckinService extends BaseService {
           };
         }
 
-        // Zone capacity check
-        const eventRef = db.collection(COLLECTIONS.EVENTS).doc(eventId);
+        // Zone capacity check — reuses the event snap already read for the
+        // validity window (a second tx.get after a tx.set is illegal in
+        // Firestore transactions, so we must consolidate reads).
         const { FieldValue } = await import("firebase-admin/firestore");
+        const eventRef = eventRefForWindow;
 
         if (item.accessZoneId) {
-          const eventSnap = await tx.get(eventRef);
-          const eventData = eventSnap.data();
           const zone = eventData?.accessZones?.find(
             (z: { id: string; capacity?: number | null }) => z.id === item.accessZoneId,
           );

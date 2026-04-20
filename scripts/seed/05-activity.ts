@@ -39,10 +39,13 @@ const {
   inTwoMonths,
 } = Dates;
 
-// Shared across registrations + badges. The epoch is only used as a replay-
-// detection anchor on the QR payload — in the seed we fix it at start-up so
-// every re-seed produces the same QR for a given registration.
-const epochBase36 = Date.now().toString(36);
+// v3 QR validity window baked into the signed payload. For seed data we use
+// a wide range (yesterday → one year out) so demo registrations stay
+// scannable across all seeded events without rewriting fixtures per event.
+// The `demo-hmac-sig-*` signatures are placeholders — the verifier will
+// reject them at scan time just as it did with the pre-v3 seed strings.
+const seedNotBeforeBase36 = Math.floor(Date.now() - 86_400_000).toString(36);
+const seedNotAfterBase36 = Math.floor(Date.now() + 365 * 86_400_000).toString(36);
 
 // ─── Registrations ─────────────────────────────────────────────────────────
 // Denormalised event metadata copied onto each registration. The API
@@ -105,7 +108,7 @@ const LEGACY_REGISTRATIONS: SeedRegistration[] = [
     participantName: "Aminata Fall",
     participantEmail: "participant@teranga.dev",
     status: "confirmed",
-    qrCodeValue: `${IDS.reg1}:${IDS.conference}:${IDS.participant1}:${epochBase36}:demo-hmac-sig-001`,
+    qrCodeValue: `${IDS.reg1}:${IDS.conference}:${IDS.participant1}:${seedNotBeforeBase36}:${seedNotAfterBase36}:demo-hmac-sig-001`,
     checkedInAt: oneHourAgo,
     checkedInBy: IDS.organizer,
     notes: null,
@@ -120,7 +123,7 @@ const LEGACY_REGISTRATIONS: SeedRegistration[] = [
     participantName: "Ousmane Ndiaye",
     participantEmail: "participant2@teranga.dev",
     status: "confirmed",
-    qrCodeValue: `${IDS.reg2}:${IDS.conference}:${IDS.participant2}:${epochBase36}:demo-hmac-sig-002`,
+    qrCodeValue: `${IDS.reg2}:${IDS.conference}:${IDS.participant2}:${seedNotBeforeBase36}:${seedNotAfterBase36}:demo-hmac-sig-002`,
     checkedInAt: null,
     checkedInBy: null,
     notes: null,
@@ -135,7 +138,7 @@ const LEGACY_REGISTRATIONS: SeedRegistration[] = [
     participantName: "Ibrahima Gueye",
     participantEmail: "speaker@teranga.dev",
     status: "confirmed",
-    qrCodeValue: `${IDS.reg3}:${IDS.conference}:${IDS.speakerUser}:${epochBase36}:demo-hmac-sig-003`,
+    qrCodeValue: `${IDS.reg3}:${IDS.conference}:${IDS.speakerUser}:${seedNotBeforeBase36}:${seedNotAfterBase36}:demo-hmac-sig-003`,
     checkedInAt: null,
     checkedInBy: null,
     notes: "Intervenant",
@@ -150,7 +153,7 @@ const LEGACY_REGISTRATIONS: SeedRegistration[] = [
     participantName: "Aissatou Ba",
     participantEmail: "sponsor@teranga.dev",
     status: "confirmed",
-    qrCodeValue: `${IDS.reg4}:${IDS.conference}:${IDS.sponsorUser}:${epochBase36}:demo-hmac-sig-004`,
+    qrCodeValue: `${IDS.reg4}:${IDS.conference}:${IDS.sponsorUser}:${seedNotBeforeBase36}:${seedNotAfterBase36}:demo-hmac-sig-004`,
     checkedInAt: null,
     checkedInBy: null,
     notes: "Sponsor TechCorp",
@@ -183,7 +186,7 @@ const LEGACY_REGISTRATIONS: SeedRegistration[] = [
     participantName: "Ousmane Ndiaye",
     participantEmail: "participant2@teranga.dev",
     status: "confirmed",
-    qrCodeValue: `${IDS.reg6}:${IDS.paidEvent}:${IDS.participant2}:${epochBase36}:demo-hmac-sig-006`,
+    qrCodeValue: `${IDS.reg6}:${IDS.paidEvent}:${IDS.participant2}:${seedNotBeforeBase36}:${seedNotAfterBase36}:demo-hmac-sig-006`,
     checkedInAt: null,
     checkedInBy: null,
     notes: null,
@@ -407,7 +410,7 @@ function materialiseExpansionRegs(): SeedRegistration[] {
       participantName: participant.displayName,
       participantEmail: participant.email,
       status: checkedIn ? "checked_in" : "confirmed",
-      qrCodeValue: `${id}:${entry.eventId}:${participant.uid}:${epochBase36}:demo-hmac-exp-${ord}`,
+      qrCodeValue: `${id}:${entry.eventId}:${participant.uid}:${seedNotBeforeBase36}:${seedNotAfterBase36}:demo-hmac-exp-${ord}`,
       checkedInAt,
       checkedInBy: checkedIn ? IDS.staffUser : null,
       notes,
@@ -465,14 +468,14 @@ async function writeBadges(db: Firestore): Promise<number> {
       registrationId: IDS.reg1,
       eventId: IDS.conference,
       userId: IDS.participant1,
-      qrCodeValue: `${IDS.reg1}:${IDS.conference}:${IDS.participant1}:${epochBase36}:demo-hmac-sig-001`,
+      qrCodeValue: `${IDS.reg1}:${IDS.conference}:${IDS.participant1}:${seedNotBeforeBase36}:${seedNotAfterBase36}:demo-hmac-sig-001`,
     },
     {
       id: "badge-002",
       registrationId: IDS.reg2,
       eventId: IDS.conference,
       userId: IDS.participant2,
-      qrCodeValue: `${IDS.reg2}:${IDS.conference}:${IDS.participant2}:${epochBase36}:demo-hmac-sig-002`,
+      qrCodeValue: `${IDS.reg2}:${IDS.conference}:${IDS.participant2}:${seedNotBeforeBase36}:${seedNotAfterBase36}:demo-hmac-sig-002`,
     },
   ];
   await Promise.all(
