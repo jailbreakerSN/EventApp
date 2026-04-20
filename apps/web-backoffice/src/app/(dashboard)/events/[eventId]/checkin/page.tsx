@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useEvent } from "@/hooks/use-events";
 import { useCheckinStats, useCheckinHistory, usePerformCheckin } from "@/hooks/use-checkin";
+import { AnomalyWidget } from "@/components/checkin/AnomalyWidget";
 import { toast } from "sonner";
 import {
   Card,
@@ -761,6 +762,9 @@ function DashboardTab({
           </p>
         </CardContent>
       </Card>
+
+      {/* Security anomalies — live fraud signals (Sprint C 4.3). */}
+      <AnomalyWidget eventId={eventId} />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         {/* Zone capacity */}
