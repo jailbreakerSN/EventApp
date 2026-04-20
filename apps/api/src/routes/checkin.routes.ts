@@ -187,6 +187,13 @@ export const checkinRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get(
     "/:eventId/checkin/anomalies",
     {
+      // Per-endpoint rate limit — the anomaly scan does up to 5 000 row
+      // reads on a large event and the widget polls every ~10 s. 30
+      // req/min per user is ample for the widget's poll cadence while
+      // blocking a compromised token from sweeping the collection.
+      config: {
+        rateLimit: { max: 30, timeWindow: "1 minute" },
+      },
       preHandler: [
         authenticate,
         validate({ params: ParamsWithEventId, query: AnomalyQuerySchema }),
