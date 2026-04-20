@@ -124,10 +124,25 @@ and an actual differentiator.
 
 ## 6. Implementation tracker
 
-| Item                             | Status      | PR / commit                                                                                                                       |
-| -------------------------------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| 1.3 — validity window in payload | shipped     | `claude/fix-badge-pdf-generation-wAhdP` — v3 QR format                                                                            |
-| 3.1 — staleness check at scan    | shipped     | same commit — enforced in `registrationService.checkIn` + `checkinService.bulkSync`, with v1/v2 fallback derived from event dates |
-| 4.2 — encrypted offline sync     | queued      |                                                                                                                                   |
-| 3.2a — device attestation        | queued      |                                                                                                                                   |
-| Sprint B+                        | not started |                                                                                                                                   |
+| Item                                           | Status      | PR / commit                                                                                                                                                          |
+| ---------------------------------------------- | ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1.3 — validity window in payload               | shipped     | `claude/fix-badge-pdf-generation-wAhdP` — v3 QR format                                                                                                               |
+| 3.1 — staleness check at scan                  | shipped     | same commit — enforced in `registrationService.checkIn` + `checkinService.bulkSync`, with v1/v2 fallback derived from event dates                                    |
+| 3.2a — device attestation (partial)            | shipped     | same branch — server rejects bulk-sync items where `scannedAt` is in the future (> skew) or older than 7 days; full device-id + session-key attestation still queued |
+| 3.5 — backoffice shows expired / not-yet-valid | shipped     | same branch — dedicated toast + `ScanResultCard` for each code                                                                                                       |
+| 4.2 — encrypted offline sync                   | queued      |                                                                                                                                                                      |
+| Sprint B+                                      | not started |                                                                                                                                                                      |
+
+### Migration impact (v3 QR rollout)
+
+- **New registrations after this deploy** are signed v3 with a window of
+  `[event.startDate − 24 h, event.endDate + 6 h]` (+ 2 h clock-skew grace
+  on both edges at scan time).
+- **Existing v1/v2 registrations** keep verifying. At scan time we backfill
+  the window from the event dates — same formula — so legacy badges also
+  get the staleness shield.
+- **Participants with confirmed registrations for PAST events** will now
+  see `QR_EXPIRED` when trying to open or scan their badge. Intended
+  behaviour, but customer support should be briefed on this new error
+  path ("votre badge a expiré à la clôture de l'événement").
+- No backfill job is needed — the fallback handles legacy QRs in place.

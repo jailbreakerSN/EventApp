@@ -199,6 +199,42 @@ describe("Integration: check-in flow", () => {
     expect((await readEvent(event.id))?.checkedInCount).toBe(0);
   });
 
+  it("bulk sync rejects items whose scannedAt is too far in the future", async () => {
+    const { id: orgId } = await createOrgOnPlan("starter");
+    const event = await createEvent(orgId);
+    const staff = buildStaffUser({ organizationId: orgId });
+    const reg = await createRegistration(event.id, "user-a");
+
+    // Half a day in the future — well past the 2h clock-skew grace.
+    const futureScan = new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString();
+    const res = await checkinService.bulkSync(
+      event.id,
+      [{ localId: "1", qrCodeValue: reg.qrCodeValue, scannedAt: futureScan }],
+      staff,
+    );
+
+    expect(res.results[0].status).toBe("invalid_qr");
+    expect((await readRegistration(reg.id))?.status).toBe("confirmed");
+  });
+
+  it("bulk sync rejects items whose scannedAt is older than the 7-day reconcile lag", async () => {
+    const { id: orgId } = await createOrgOnPlan("starter");
+    const event = await createEvent(orgId);
+    const staff = buildStaffUser({ organizationId: orgId });
+    const reg = await createRegistration(event.id, "user-a");
+
+    // 30 days ago — way beyond the 7-day reconcile ceiling.
+    const staleScan = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    const res = await checkinService.bulkSync(
+      event.id,
+      [{ localId: "1", qrCodeValue: reg.qrCodeValue, scannedAt: staleScan }],
+      staff,
+    );
+
+    expect(res.results[0].status).toBe("invalid_qr");
+    expect((await readRegistration(reg.id))?.status).toBe("confirmed");
+  });
+
   it("QR whose window opens in the future → not_yet_valid (no check-in)", async () => {
     const { id: orgId } = await createOrgOnPlan("starter");
     const event = await createEvent(orgId);

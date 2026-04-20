@@ -43,7 +43,14 @@ import {
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
-type ScanStatus = "idle" | "loading" | "success" | "already_checked_in" | "error";
+type ScanStatus =
+  | "idle"
+  | "loading"
+  | "success"
+  | "already_checked_in"
+  | "expired"
+  | "not_yet_valid"
+  | "error";
 
 interface ScanResult {
   status: ScanStatus;
@@ -277,6 +284,16 @@ function ScannerTab({
           errorMessage: message,
         });
         toast.warning("Deja enregistre", { description: message });
+      } else if (code === "QR_EXPIRED" || error.status === 410) {
+        // Badge signed validity window is in the past. Surface as its own
+        // state so staff can distinguish fraud attempts from scanner errors.
+        setScanResult({ status: "expired", errorMessage: message });
+        toast.error("Badge expiré", { description: message });
+      } else if (code === "QR_NOT_YET_VALID" || error.status === 425) {
+        // Trying to check in before the validity window opens — typically a
+        // staff misconfiguration (wrong event date) or someone testing early.
+        setScanResult({ status: "not_yet_valid", errorMessage: message });
+        toast.warning("Badge pas encore valide", { description: message });
       } else {
         setScanResult({
           status: "error",
@@ -539,6 +556,46 @@ function ScanResultCard({ result }: { result: ScanResult }) {
             </h3>
             <p className="text-sm text-amber-700 dark:text-amber-400 mt-1">
               {result.errorMessage ?? "Ce badge a deja ete scanne"}
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (result.status === "expired") {
+    return (
+      <div className="rounded-xl border-2 border-red-500 bg-red-50 dark:bg-red-900/20 p-6 animate-in fade-in duration-300">
+        <div className="flex items-start gap-4">
+          <div className="bg-red-100 dark:bg-red-900/40 p-3 rounded-full">
+            <XCircle className="h-8 w-8 text-red-600 dark:text-red-400" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h3 className="text-xl font-bold text-red-800 dark:text-red-300">Badge expiré</h3>
+            <p className="text-sm text-red-700 dark:text-red-400 mt-1">
+              {result.errorMessage ??
+                "La fenêtre de validité de ce badge est dépassée. Refuser l’entrée."}
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (result.status === "not_yet_valid") {
+    return (
+      <div className="rounded-xl border-2 border-amber-500 bg-amber-50 dark:bg-amber-900/20 p-6 animate-in fade-in duration-300">
+        <div className="flex items-start gap-4">
+          <div className="bg-amber-100 dark:bg-amber-900/40 p-3 rounded-full">
+            <AlertTriangle className="h-8 w-8 text-amber-600 dark:text-amber-400" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h3 className="text-xl font-bold text-amber-800 dark:text-amber-300">
+              Badge pas encore valide
+            </h3>
+            <p className="text-sm text-amber-700 dark:text-amber-400 mt-1">
+              {result.errorMessage ??
+                "Ce badge ne sera valide qu’à l’ouverture des portes de l’événement."}
             </p>
           </div>
         </div>
