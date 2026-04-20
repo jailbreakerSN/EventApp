@@ -112,10 +112,21 @@ vi.mock("@/config/firebase", () => ({
       return fn(tx);
     }),
     collection: vi.fn((name: string) => ({
-      doc: vi.fn(() => (name === "events" ? eventRef : regRef)),
+      // Stub doc with a .set() so the shadow-write path in
+      // processCheckinItem (fire-and-forget checkins write after tx
+      // commits) doesn't log `ref.set is not a function` in tests.
+      // Assertions on shadow-write shape live in the integration suite.
+      doc: vi.fn(() => ({
+        ...(name === "events" ? eventRef : regRef),
+        set: vi.fn().mockResolvedValue(undefined),
+      })),
     })),
   },
-  COLLECTIONS: { REGISTRATIONS: "registrations", EVENTS: "events" },
+  COLLECTIONS: {
+    REGISTRATIONS: "registrations",
+    EVENTS: "events",
+    CHECKINS: "checkins",
+  },
 }));
 
 // ─── Tests ─────────────────────────────────────────────────────────────────
@@ -416,5 +427,64 @@ describe("CheckinService.getStats", () => {
     mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
 
     await expect(service.getStats(event.id, user)).rejects.toThrow("Accès refusé");
+  });
+});
+
+// ─── listCheckins / getAnomalies (Sprint C 3.3 c3/5 + 4.3) ─────────────────
+// The full chain (where × N → orderBy → offset → limit → get) is painful to
+// exercise against a hand-rolled mock; happy-path correctness is covered
+// end-to-end in the integration suite. These unit cases lock in the
+// guards: permission, org-access, plan-feature gate.
+
+describe("CheckinService.listCheckins", () => {
+  it("rejects a participant without checkin:view_log", async () => {
+    const user = buildAuthUser({ roles: ["participant"] });
+    await expect(service.listCheckins("ev-1", { page: 1, limit: 20 }, user)).rejects.toThrow(
+      "Permission manquante",
+    );
+  });
+
+  it("rejects staff from a different org", async () => {
+    const user = buildOrganizerUser("org-other");
+    const event = buildEvent({ organizationId: "org-1" });
+    mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
+
+    await expect(service.listCheckins(event.id, { page: 1, limit: 20 }, user)).rejects.toThrow(
+      "Accès refusé",
+    );
+  });
+});
+
+describe("CheckinService.getAnomalies", () => {
+  it("rejects a participant without checkin:view_log", async () => {
+    const user = buildAuthUser({ roles: ["participant"] });
+    await expect(
+      service.getAnomalies("ev-1", { windowMinutes: 10, velocityThreshold: 60 }, user),
+    ).rejects.toThrow("Permission manquante");
+  });
+
+  it("rejects staff from a different org", async () => {
+    const user = buildOrganizerUser("org-other");
+    const event = buildEvent({ organizationId: "org-1" });
+    mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
+
+    await expect(
+      service.getAnomalies(event.id, { windowMinutes: 10, velocityThreshold: 60 }, user),
+    ).rejects.toThrow("Accès refusé");
+  });
+
+  it("rejects orgs without the advancedAnalytics plan feature (free / starter)", async () => {
+    const user = buildOrganizerUser("org-1");
+    const event = buildEvent({ organizationId: "org-1" });
+    mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
+    // Free + starter tiers don't have advancedAnalytics. beforeEach mocked
+    // starter; override to be explicit.
+    mockOrgRepo.findByIdOrThrow.mockResolvedValue(
+      buildOrganization({ id: "org-1", plan: "starter" }),
+    );
+
+    await expect(
+      service.getAnomalies(event.id, { windowMinutes: 10, velocityThreshold: 60 }, user),
+    ).rejects.toThrow(/plan|feature|advanced/i);
   });
 });
