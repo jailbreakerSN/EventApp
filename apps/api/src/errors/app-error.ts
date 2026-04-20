@@ -113,6 +113,27 @@ export class EventFullError extends AppError {
   }
 }
 
+/**
+ * Raised by the live-scan check-in path when the scanned badge would
+ * exceed an access zone's `capacity`. Mirrors the `zone_full` bulk-sync
+ * result so staff see the same gating semantics regardless of whether
+ * the scan is reconciled live or from the offline queue.
+ */
+export class ZoneFullError extends AppError {
+  constructor(zone: { id: string; name: string; capacity: number | null | undefined }) {
+    super({
+      message: `La zone « ${zone.name} » a atteint sa capacité (${zone.capacity ?? "—"}).`,
+      code: ERROR_CODES.EVENT_FULL,
+      statusCode: 409,
+      details: {
+        zoneId: zone.id,
+        zoneName: zone.name,
+        capacity: zone.capacity ?? null,
+      },
+    });
+  }
+}
+
 export class RegistrationClosedError extends AppError {
   constructor(eventId: string) {
     super({
