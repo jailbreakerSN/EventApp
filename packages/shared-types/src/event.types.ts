@@ -174,6 +174,27 @@ export const EventSchema = z.object({
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
   publishedAt: z.string().datetime().nullable().optional(),
+  // ─── v4 QR signing key id ───────────────────────────────────────────────
+  // Opaque 8-char base36 identifier used by HKDF as part of the per-event
+  // HMAC key derivation: `key = HKDF(QR_MASTER, salt=eventId,
+  // info="teranga/qr/v4/${qrKid}")`. Rotated via
+  // `event.service.ts#rotateQrKey`; the retired value rides on
+  // `qrKidHistory` so already-issued badges keep verifying during the
+  // rotation window. Optional so legacy events that still sign v3 QRs
+  // don't fail validation at the schema layer.
+  qrKid: z
+    .string()
+    .regex(/^[0-9a-z]{4,16}$/)
+    .nullable()
+    .optional(),
+  qrKidHistory: z
+    .array(
+      z.object({
+        kid: z.string().regex(/^[0-9a-z]{4,16}$/),
+        retiredAt: z.string().datetime(),
+      }),
+    )
+    .default([]),
 });
 
 export type Event = z.infer<typeof EventSchema>;
@@ -188,6 +209,11 @@ export const CreateEventSchema = EventSchema.omit({
   createdAt: true,
   updatedAt: true,
   publishedAt: true,
+  // QR signing metadata is server-owned — organizers don't set it on
+  // create, and they can't edit it via the generic update path either.
+  // Rotation lives behind a dedicated service method.
+  qrKid: true,
+  qrKidHistory: true,
 });
 
 export type CreateEventDto = z.infer<typeof CreateEventSchema>;

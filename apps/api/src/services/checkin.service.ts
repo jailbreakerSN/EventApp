@@ -24,6 +24,7 @@ import {
   computeValidityWindow,
   SCAN_CLOCK_SKEW_MS,
 } from "./qr-signing";
+import { resolveEventKeyFromEvent } from "./qr-key-resolver";
 
 // Maximum gap we'll accept between the client's `scannedAt` and the server's
 // `now` on the bulk-sync path. A staff device can legitimately have been
@@ -176,8 +177,9 @@ export class CheckinService extends BaseService {
     item: BulkCheckinItem,
     user: AuthUser,
   ): Promise<BulkCheckinResult> {
-    // Verify QR signature
-    const parsed = verifyQrPayload(item.qrCodeValue);
+    // Verify QR signature — v4 payloads resolve their per-event HMAC key
+    // from Firestore via the resolver; v1/v2/v3 branches ignore it.
+    const parsed = await verifyQrPayload(item.qrCodeValue, resolveEventKeyFromEvent);
     if (!parsed) {
       return {
         localId: item.localId,

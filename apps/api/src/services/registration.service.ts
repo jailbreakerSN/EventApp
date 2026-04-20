@@ -27,7 +27,14 @@ import {
   PlanLimitError,
 } from "@/errors/app-error";
 import { BaseService } from "./base.service";
-import { signQrPayload, verifyQrPayload, checkScanTime, computeValidityWindow } from "./qr-signing";
+import {
+  signQrPayload,
+  signQrPayloadV4,
+  verifyQrPayload,
+  checkScanTime,
+  computeValidityWindow,
+} from "./qr-signing";
+import { resolveEventKeyFromEvent } from "./qr-key-resolver";
 import { eventBus } from "@/events/event-bus";
 import { getRequestId } from "@/context/request-context";
 
@@ -139,17 +146,15 @@ export class RegistrationService extends BaseService {
       const now = new Date().toISOString();
       const regRef = registrationRepository.ref.doc();
       const regId = regRef.id;
-      // v3 QR embeds the validity window in the signed payload. The scan
-      // path rejects QRs outside [notBefore, notAfter], so a stolen/shared
-      // badge can't be replayed after the event.
+      // v3 embeds the validity window; v4 adds a per-event `kid` so a
+      // rotation on one event doesn't compromise the others. Signer picks
+      // v4 when the event already has a kid (new events since the
+      // badge-journey-review rollout), otherwise falls back to v3 for
+      // legacy events whose docs pre-date the qrKid field.
       const window = computeValidityWindow(event.startDate, event.endDate);
-      const qrCodeValue = signQrPayload(
-        regId,
-        eventId,
-        user.uid,
-        window.notBefore,
-        window.notAfter,
-      );
+      const qrCodeValue = event.qrKid
+        ? signQrPayloadV4(regId, eventId, user.uid, window.notBefore, window.notAfter, event.qrKid)
+        : signQrPayload(regId, eventId, user.uid, window.notBefore, window.notAfter);
 
       // Fetch user profile for denormalized display fields. Must go through
       // tx.get() so the read participates in the transaction's snapshot —
@@ -428,8 +433,11 @@ export class RegistrationService extends BaseService {
     this.requirePermission(user, "checkin:scan");
     const { accessZoneId, scannerDeviceId, scannerNonce } = opts;
 
-    // Verify QR signature (stateless, no DB needed)
-    const parsed = verifyQrPayload(qrCodeValue);
+    // Verify QR signature. v1/v2/v3 resolve synchronously from QR_SECRET;
+    // v4 needs a per-event key — we resolve by reading the event doc's
+    // `qrKid` (current) or `qrKidHistory[]` (retired but still within the
+    // rotation window) and deriving the HMAC key from QR_MASTER.
+    const parsed = await verifyQrPayload(qrCodeValue, resolveEventKeyFromEvent);
     if (!parsed) {
       throw new QrInvalidError("Signature invalide");
     }
