@@ -342,34 +342,58 @@ export class EventService extends BaseService {
    *   - A hard "event compromised" flow would clear `qrKidHistory` and
    *     re-seal all active registrations — left as operator-driven
    *     follow-up, not automatic on this rotation.
+   *
+   * Transactional so two concurrent rotation requests can't each read
+   * the same `qrKid`, each push it to history, and each write — the
+   * second would silently drop the first rotation's history entry.
+   * The read + write must land in one snapshot.
    */
   async rotateQrKey(eventId: string, user: AuthUser): Promise<{ qrKid: string }> {
     this.requirePermission(user, "event:update");
-    const event = await eventRepository.findByIdOrThrow(eventId);
-    this.requireOrganizationAccess(user, event.organizationId);
 
-    const newKid = generateEventKid();
-    const history = [...(event.qrKidHistory ?? [])];
-    if (event.qrKid) {
-      history.push({ kid: event.qrKid, retiredAt: new Date().toISOString() });
-    }
+    const result = await db.runTransaction(async (tx) => {
+      const docRef = db.collection(COLLECTIONS.EVENTS).doc(eventId);
+      const snap = await tx.get(docRef);
+      if (!snap.exists) {
+        const { NotFoundError } = await import("@/errors/app-error");
+        throw new NotFoundError("Event", eventId);
+      }
+      const event = { id: snap.id, ...snap.data() } as Event;
+      this.requireOrganizationAccess(user, event.organizationId);
 
-    await eventRepository.update(eventId, {
-      qrKid: newKid,
-      qrKidHistory: history,
-      updatedBy: user.uid,
+      const newKid = generateEventKid();
+      const previousKid = event.qrKid ?? null;
+      const history = [...(event.qrKidHistory ?? [])];
+      if (previousKid) {
+        history.push({ kid: previousKid, retiredAt: new Date().toISOString() });
+      }
+
+      tx.update(docRef, {
+        qrKid: newKid,
+        qrKidHistory: history,
+        updatedBy: user.uid,
+        updatedAt: new Date().toISOString(),
+      });
+
+      return { newKid, previousKid, organizationId: event.organizationId };
     });
 
-    eventBus.emit("event.updated", {
+    // Dedicated event name so `auditLogs` distinguishes a key rotation
+    // from a generic event edit. Listener writes `action:
+    // "event.qr_key_rotated"` with `{ newKid, previousKid }` details —
+    // post-event forensics can query "who rotated this event's key,
+    // when" by action name alone.
+    eventBus.emit("event.qr_key_rotated", {
       eventId,
-      organizationId: event.organizationId,
+      organizationId: result.organizationId,
+      newKid: result.newKid,
+      previousKid: result.previousKid,
       actorId: user.uid,
       requestId: getRequestId(),
       timestamp: new Date().toISOString(),
-      changes: { qrKid: newKid, action: "qr_key_rotated" },
     });
 
-    return { qrKid: newKid };
+    return { qrKid: result.newKid };
   }
 
   async archive(eventId: string, user: AuthUser): Promise<void> {

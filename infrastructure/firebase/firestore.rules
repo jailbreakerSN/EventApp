@@ -97,7 +97,13 @@ service cloud.firestore {
                     || isSuperAdmin())
                     // Prevent cross-tenant migration: organizationId and createdBy are immutable
                     && request.resource.data.organizationId == resource.data.organizationId
-                    && immutableOnUpdate(['createdBy', 'organizationId']);
+                    // QR signing metadata is server-owned. A compromised
+                    // organizer SDK token could otherwise overwrite `qrKid`
+                    // with a value the attacker controls, derive the
+                    // matching HKDF key, and mint forged valid v4 QRs.
+                    // Rotation must flow exclusively through
+                    // `POST /v1/events/:eventId/qr-key/rotate` (Admin SDK).
+                    && immutableOnUpdate(['createdBy', 'organizationId', 'qrKid', 'qrKidHistory']);
 
       // Soft-delete only — set status to 'archived'
       allow delete: if false;

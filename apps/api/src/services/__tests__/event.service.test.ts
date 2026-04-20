@@ -59,8 +59,9 @@ vi.mock("@/repositories/venue.repository", () => ({
   },
 }));
 
+const { mockEventEmit } = vi.hoisted(() => ({ mockEventEmit: vi.fn() }));
 vi.mock("@/events/event-bus", () => ({
-  eventBus: { emit: vi.fn() },
+  eventBus: { emit: mockEventEmit },
 }));
 
 vi.mock("@/context/request-context", () => ({
@@ -858,5 +859,64 @@ describe("EventService.clone", () => {
     const createCall = mockEventRepo.create.mock.calls[0][0];
     expect(createCall.ticketTypes).toHaveLength(0);
     expect(createCall.accessZones).toHaveLength(0);
+  });
+});
+
+describe("EventService.rotateQrKey", () => {
+  it("rotates the kid inside a transaction and appends the previous one to history", async () => {
+    const user = buildOrganizerUser("org-1");
+    const event = buildEvent({
+      id: "ev-1",
+      organizationId: "org-1",
+      qrKid: "oldkid01",
+      qrKidHistory: [{ kid: "older000", retiredAt: "2026-04-01T00:00:00.000Z" }],
+    });
+
+    mockTxGet.mockResolvedValue({
+      exists: true,
+      id: event.id,
+      data: () => ({ ...event, id: undefined }),
+    });
+
+    const result = await service.rotateQrKey(event.id, user);
+
+    expect(result.qrKid).toMatch(/^[0-9a-z]{4,16}$/);
+    expect(result.qrKid).not.toBe("oldkid01");
+
+    // One transactional update, no repository-level update (the old
+    // non-atomic path would have hit eventRepo.update).
+    expect(mockTxUpdate).toHaveBeenCalledTimes(1);
+    const [, writePayload] = mockTxUpdate.mock.calls[0];
+    expect(writePayload.qrKid).toBe(result.qrKid);
+    expect(writePayload.qrKidHistory).toHaveLength(2);
+    expect(writePayload.qrKidHistory[1].kid).toBe("oldkid01");
+    expect(writePayload.updatedBy).toBe(user.uid);
+    // Dedicated event so auditLogs can distinguish the rotation.
+    const rotated = mockEventEmit.mock.calls.find((c) => c[0] === "event.qr_key_rotated");
+    expect(rotated).toBeDefined();
+    const payload = rotated![1] as Record<string, unknown>;
+    expect(payload.newKid).toBe(result.qrKid);
+    expect(payload.previousKid).toBe("oldkid01");
+    expect(payload.eventId).toBe(event.id);
+  });
+
+  it("rejects rotation from a user outside the event's org", async () => {
+    const user = buildOrganizerUser("org-other");
+    const event = buildEvent({ id: "ev-1", organizationId: "org-1", qrKid: "oldkid01" });
+    mockTxGet.mockResolvedValue({
+      exists: true,
+      id: event.id,
+      data: () => ({ ...event, id: undefined }),
+    });
+
+    await expect(service.rotateQrKey(event.id, user)).rejects.toThrow("Accès refusé");
+    expect(mockTxUpdate).not.toHaveBeenCalled();
+  });
+
+  it("rejects rotation without event:update permission", async () => {
+    const user = buildAuthUser({ roles: ["participant"] });
+
+    await expect(service.rotateQrKey("ev-1", user)).rejects.toThrow("Permission manquante");
+    expect(mockTxUpdate).not.toHaveBeenCalled();
   });
 });
