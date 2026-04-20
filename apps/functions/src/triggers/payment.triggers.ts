@@ -97,40 +97,30 @@ export const onPaymentSucceeded = onDocumentWritten(
       const regData = reg.data();
       if (!regData) return;
 
-      // Atomic duplicate check + create inside a transaction. Previously
-      // this was a check-then-set pair of separate operations: two
-      // concurrent fires (API event-bus emit + Firestore payment-status
-      // trigger both reacting to the same payment.succeeded) could both
-      // pass the `existingBadge.empty` check and both call `set()`,
-      // producing two badge docs for one registration. The transaction
-      // forces the second caller to observe the first's write and skip.
-      //
-      // Mirrors the pattern already used by registration.triggers.ts:213
-      // so the two badge-creation paths (payment-completed and
-      // registration-confirmed for free events) stay safe against the
-      // same class of race.
-      const badgeRef = db.collection(COLLECTIONS.BADGES).doc();
-      let createdBadgeId: string | null = null;
+      // Deterministic badge doc id — single source of truth for the
+      // (eventId, userId) pair. Four writers (this trigger, the
+      // registration-confirmed trigger, the organizer `generate` /
+      // `bulkGenerate` API, and the on-demand `getMyBadge`) all land
+      // on the same doc, so concurrent fires collapse to one document
+      // without needing the old where-query-based duplicate check.
+      const userId = after.userId ?? regData.userId;
+      const badgeId = `${after.eventId}_${userId}`;
+      const badgeRef = db.collection(COLLECTIONS.BADGES).doc(badgeId);
+      let didCreate = false;
       await db.runTransaction(async (tx) => {
-        const existingBadge = await tx.get(
-          db
-            .collection(COLLECTIONS.BADGES)
-            .where("registrationId", "==", after.registrationId)
-            .limit(1),
-        );
-
-        if (!existingBadge.empty) {
+        const existing = await tx.get(badgeRef);
+        if (existing.exists) {
           logger.info("Badge already exists for registration, skipping", {
             registrationId: after.registrationId,
+            badgeId,
           });
           return;
         }
-
         tx.set(badgeRef, {
-          id: badgeRef.id,
+          id: badgeId,
           registrationId: after.registrationId,
           eventId: after.eventId,
-          userId: after.userId ?? regData.userId,
+          userId,
           qrCodeValue: regData.qrCodeValue,
           status: "pending",
           templateId: null,
@@ -139,14 +129,14 @@ export const onPaymentSucceeded = onDocumentWritten(
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         });
-        createdBadgeId = badgeRef.id;
+        didCreate = true;
       });
 
-      if (createdBadgeId) {
+      if (didCreate) {
         logger.info("Badge creation triggered by payment success", {
           paymentId: event.data?.after?.id,
           registrationId: after.registrationId,
-          badgeId: createdBadgeId,
+          badgeId,
         });
       }
     } catch (err) {

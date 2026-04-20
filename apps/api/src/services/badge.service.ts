@@ -112,23 +112,22 @@ export class BadgeService extends BaseService {
     const event = await eventRepository.findByIdOrThrow(registration.eventId);
     this.requireOrganizationAccess(user, event.organizationId);
 
-    // Check if badge already exists
-    const existingSnap = await this.badgesCollection
-      .where("registrationId", "==", registrationId)
-      .limit(1)
-      .get();
-
-    if (!existingSnap.empty) {
-      // Return existing badge instead of creating duplicate
-      const doc = existingSnap.docs[0];
-      return { id: doc.id, ...doc.data() } as GeneratedBadge;
+    // Deterministic doc id — same shape every badge writer now uses. The
+    // read-then-write is wrapped in a transaction to avoid the race where
+    // two concurrent `generate()` calls (organizer + cloud trigger firing
+    // on the same registration confirmation) both pass an "exists?" check
+    // and both write. Fast path: outer existence check returns without
+    // opening a transaction when the badge is already present.
+    const docId = `${registration.eventId}_${registration.userId}`;
+    const docRef = this.badgesCollection.doc(docId);
+    const existing = await docRef.get();
+    if (existing.exists) {
+      return { id: existing.id, ...existing.data() } as GeneratedBadge;
     }
 
-    // Create badge doc — Cloud Function picks it up
     const now = new Date().toISOString();
-    const docRef = this.badgesCollection.doc();
     const badge: GeneratedBadge = {
-      id: docRef.id,
+      id: docId,
       registrationId,
       eventId: registration.eventId,
       userId: registration.userId,
@@ -141,19 +140,31 @@ export class BadgeService extends BaseService {
       downloadCount: 0,
     };
 
-    await docRef.set(badge);
-
-    eventBus.emit("badge.generated", {
-      badgeId: badge.id,
-      registrationId,
-      eventId: registration.eventId,
-      userId: registration.userId,
-      actorId: user.uid,
-      requestId: getRequestId(),
-      timestamp: now,
+    const created = await db.runTransaction(async (tx) => {
+      const fresh = await tx.get(docRef);
+      if (fresh.exists) {
+        return { id: fresh.id, ...fresh.data() } as GeneratedBadge;
+      }
+      tx.set(docRef, badge);
+      return badge;
     });
 
-    return badge;
+    // Only emit the audit event when we actually wrote a new doc. Comparing
+    // `generatedAt` keeps the check allocation-free vs. tagging the result
+    // with a separate `didCreate` field.
+    if (created.generatedAt === now) {
+      eventBus.emit("badge.generated", {
+        badgeId: created.id,
+        registrationId,
+        eventId: registration.eventId,
+        userId: registration.userId,
+        actorId: user.uid,
+        requestId: getRequestId(),
+        timestamp: now,
+      });
+    }
+
+    return created;
   }
 
   /**
@@ -175,9 +186,13 @@ export class BadgeService extends BaseService {
       throw new NotFoundError("BadgeTemplate", templateId);
     }
 
-    // Find which registrations already have badges
+    // Discover which (eventId, userId) pairs already have a badge. We key
+    // by userId rather than registrationId because the deterministic doc
+    // id is `${eventId}_${userId}` — that's the single source of truth
+    // every writer agrees on, so checking by registrationId would miss
+    // badges created before this registration flipped to confirmed.
     const existingBadgesSnap = await this.badgesCollection.where("eventId", "==", eventId).get();
-    const existingRegIds = new Set(existingBadgesSnap.docs.map((d) => d.data().registrationId));
+    const existingUserIds = new Set(existingBadgesSnap.docs.map((d) => d.data().userId as string));
 
     const CHUNK_SIZE = 500;
     let queued = 0;
@@ -198,31 +213,61 @@ export class BadgeService extends BaseService {
       lastDoc = page.lastDoc;
       hasMore = page.data.length === CHUNK_SIZE;
 
-      // Filter out registrations that already have badges
-      const toCreate = page.data.filter((reg) => !existingRegIds.has(reg.id));
+      // Filter out registrations that already have badges, and also dedupe
+      // within this page so two registrations for the same user (shouldn't
+      // happen in prod, but defensive) don't collide in the same batch.
+      const seenThisPage = new Set<string>();
+      const toCreate = page.data.filter((reg) => {
+        if (existingUserIds.has(reg.userId)) return false;
+        if (seenThisPage.has(reg.userId)) return false;
+        seenThisPage.add(reg.userId);
+        return true;
+      });
       if (toCreate.length === 0) continue;
 
-      // New batch per chunk to keep memory bounded
-      const batch = db.batch();
-      for (const reg of toCreate) {
-        const docRef = this.badgesCollection.doc();
-        batch.set(docRef, {
-          id: docRef.id,
-          registrationId: reg.id,
-          eventId,
-          userId: reg.userId,
-          templateId,
-          status: "pending",
-          pdfURL: null,
-          qrCodeValue: reg.qrCodeValue,
-          error: null,
-          generatedAt: now,
-          downloadCount: 0,
-        });
-        queued++;
+      // Per-item `docRef.create()` instead of `batch.set()` — the former
+      // is an atomic create-if-missing that throws ALREADY_EXISTS on
+      // conflict, so a concurrent `getMyBadge` / `generate` / trigger
+      // that wins the race between our `existingUserIds` snapshot and
+      // this write cannot be overwritten (batched `set` without merge
+      // would silently clobber any `pdfURL` / `status: "generated"` the
+      // winning writer had already landed — caught by the transaction
+      // auditor).
+      //
+      // `Promise.allSettled` runs creates in parallel per chunk (≤500
+      // RPCs); rejections from ALREADY_EXISTS are a no-op for the
+      // queued counter since the badge is already there. Any other
+      // rejection rethrows so the organizer sees a real error.
+      const results = await Promise.allSettled(
+        toCreate.map(async (reg) => {
+          const badgeId = `${eventId}_${reg.userId}`;
+          await this.badgesCollection.doc(badgeId).create({
+            id: badgeId,
+            registrationId: reg.id,
+            eventId,
+            userId: reg.userId,
+            templateId,
+            status: "pending",
+            pdfURL: null,
+            qrCodeValue: reg.qrCodeValue,
+            error: null,
+            generatedAt: now,
+            downloadCount: 0,
+          });
+        }),
+      );
+      for (const r of results) {
+        if (r.status === "fulfilled") {
+          queued++;
+          continue;
+        }
+        // gRPC ALREADY_EXISTS = code 6. Silently skip — another writer
+        // landed the badge first, which is exactly the invariant we
+        // wanted to preserve.
+        const code = (r.reason as { code?: number })?.code;
+        if (code === 6) continue;
+        throw r.reason;
       }
-
-      await batch.commit();
     }
 
     return { queued };

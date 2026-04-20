@@ -205,24 +205,26 @@ async function createBadgeForRegistration(
     logger.warn(`Failed to find default template for registration ${regId}`, err);
   }
 
-  // Atomic duplicate check + create inside a transaction
+  // Deterministic badge doc id — same shape `BadgeService.getMyBadge` uses,
+  // so the registration-confirmed trigger, the payment-succeeded trigger,
+  // the on-demand participant fetch, and the organizer-initiated
+  // `generate()` / `bulkGenerate()` all converge on one doc per
+  // (eventId, userId). A prior version used random ids with a query-based
+  // duplicate check → concurrent writes from two paths could slip through
+  // the window between the read and the write.
   const now = new Date().toISOString();
-  const badgeRef = db.collection(COLLECTIONS.BADGES).doc();
+  const badgeId = `${eventId}_${userId}`;
+  const badgeRef = db.collection(COLLECTIONS.BADGES).doc(badgeId);
 
   try {
     await db.runTransaction(async (tx) => {
-      // Check for existing badge inside the transaction
-      const existingBadge = await tx.get(
-        db.collection(COLLECTIONS.BADGES).where("registrationId", "==", regId).limit(1),
-      );
-
-      if (!existingBadge.empty) {
-        logger.info(`Badge already exists for registration ${regId}, skipping`);
+      const existing = await tx.get(badgeRef);
+      if (existing.exists) {
+        logger.info(`Badge ${badgeId} already exists for registration ${regId}, skipping`);
         return;
       }
-
       tx.set(badgeRef, {
-        id: badgeRef.id,
+        id: badgeId,
         registrationId: regId,
         eventId,
         userId,
@@ -236,7 +238,7 @@ async function createBadgeForRegistration(
       });
     });
 
-    logger.info(`Badge ${badgeRef.id} created for registration ${regId}`, {
+    logger.info(`Badge ${badgeId} created for registration ${regId}`, {
       eventId,
       userId,
       templateId: templateId || "none",
