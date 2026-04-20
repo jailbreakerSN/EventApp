@@ -138,8 +138,8 @@ function EditorialEventCard({
   coverImageUrl,
   categoryLabel,
   urgencyLabel,
-  index = 1,
-  total = 1,
+  index,
+  total,
   dateLabel,
   cityLabel,
   title,
@@ -189,9 +189,11 @@ function EditorialEventCard({
               {categoryLabel}
             </span>
           )}
-          <span className="font-mono-kicker text-[10px] tracking-[0.1em] text-white/70">
-            TER · {String(index).padStart(3, "0")}/{String(total).padStart(3, "0")}
-          </span>
+          {index !== undefined && total !== undefined && total > 1 ? (
+            <span className="font-mono-kicker text-[10px] tracking-[0.1em] text-white/70">
+              TER · {String(index).padStart(3, "0")}/{String(total).padStart(3, "0")}
+            </span>
+          ) : null}
         </div>
       </div>
       <div className="flex flex-1 flex-col gap-3.5 p-6" aria-hidden="true">

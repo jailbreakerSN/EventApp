@@ -38,7 +38,8 @@ const preset: Partial<Config> = {
           green: "#0F9B58", // success/confirmed states
           forest: "#2a473c", // deep teal green from logo
           "forest-dark": "#172721", // near-black, dark backgrounds
-          clay: "#c86f4b", // urgency / warning / accent
+          clay: "#c86f4b", // urgency / warning / accent (pill fills only)
+          "clay-dark": "#a65b3d", // text-safe clay on white (WCAG AA ~4.8:1)
         },
         // ── shadcn HSL bindings (values live in app globals.css) ────────────
         border: "hsl(var(--border))",

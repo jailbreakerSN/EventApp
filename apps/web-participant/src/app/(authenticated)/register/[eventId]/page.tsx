@@ -389,11 +389,13 @@ export default function RegisterPage() {
             className="mb-6 flex flex-wrap items-start gap-3 rounded-card border border-teranga-clay/30 bg-teranga-clay/5 p-4 dark:border-teranga-clay/40 dark:bg-teranga-clay/15"
           >
             <AlertTriangle
-              className="mt-0.5 h-5 w-5 flex-shrink-0 text-teranga-clay"
+              className="mt-0.5 h-5 w-5 flex-shrink-0 text-teranga-clay-dark"
               aria-hidden="true"
             />
             <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold text-teranga-clay">{t("verifyEmailTitle")}</p>
+              <p className="text-sm font-semibold text-teranga-clay-dark">
+                {t("verifyEmailTitle")}
+              </p>
               <p className="mt-1 text-sm text-muted-foreground">
                 {t("verifyEmailBody", { email: user?.email ?? "" })}
               </p>
@@ -466,7 +468,7 @@ export default function RegisterPage() {
                           <p className="mt-1 text-sm text-muted-foreground">{ticket.description}</p>
                         )}
                         {remaining !== null && !soldOut && remaining < 20 && (
-                          <p className="mt-2 flex items-center gap-1.5 text-[11px] font-medium text-teranga-clay">
+                          <p className="mt-2 flex items-center gap-1.5 text-[11px] font-medium text-teranga-clay-dark">
                             <span
                               aria-hidden="true"
                               className="inline-block h-1 w-1 rounded-full bg-teranga-clay"

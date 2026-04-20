@@ -680,8 +680,11 @@ function UpcomingRow({
               {reg.ticketTypeName ?? reg.ticketTypeId}
             </span>
             <span aria-hidden="true">·</span>
-            <span className="font-mono-kicker tracking-[0.04em]">
-              {reg.qrCodeValue?.slice(0, 18) ?? reg.id.slice(0, 12)}
+            <span
+              className="font-mono-kicker uppercase tracking-[0.08em]"
+              title={reg.id}
+            >
+              {t("refShort", { ref: reg.id.slice(-8).toUpperCase() })}
             </span>
             <span aria-hidden="true">·</span>
             <span>
@@ -726,7 +729,7 @@ function UpcomingRow({
               size="sm"
               onClick={onRefund}
               disabled={isRefunding}
-              className="w-full rounded-full text-teranga-clay hover:bg-teranga-clay/10 hover:text-teranga-clay"
+              className="w-full rounded-full text-teranga-clay-dark hover:bg-teranga-clay/10 hover:text-teranga-clay-dark"
             >
               <RotateCcw className="mr-1.5 h-4 w-4" aria-hidden="true" />
               {t("refund")}

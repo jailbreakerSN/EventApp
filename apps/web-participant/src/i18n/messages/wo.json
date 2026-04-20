@@ -377,11 +377,13 @@
       },
       "pricing": {
         "from": "Dale fi",
+        "freeKicker": "Dugg",
         "attendees": "Ñi bind",
         "percentFull": "{pct}% fees",
         "seatsRemaining": "{count, plural, one {# seat des} other {# seat des}}",
         "onlyLeft": "{count, plural, one {Des na # palaas} other {Des na # palaas}}",
-        "paymentSecured": "Paye bu kaaraange · Wave · Orange Money"
+        "paymentSecured": "Paye bu kaaraange · Wave · Orange Money",
+        "freeNoPayment": "Bind bu amul paye — du laaj xaalis"
       },
       "speakerTwitter": "Twitter bu {name}",
       "speakerLinkedin": "LinkedIn bu {name}",
@@ -521,6 +523,7 @@
     "browseCta": "Saytu",
     "ticketPrefix": "Billet",
     "registeredOn": "Bind ci",
+    "refShort": "Réf. {ref}",
     "waitlistPosition": "Palaas #{n}",
     "waitlistPositionAria": "Nga ci palaas {n} ci liste d'attente bi",
     "badge": "Badge",
