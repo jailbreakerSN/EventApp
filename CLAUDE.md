@@ -236,13 +236,14 @@ Other packages import from `@teranga/shared-types` and depend on the compiled ou
 
 ### QR Badge Security
 
-- **v2 format** (current): `registrationId:eventId:userId:epochBase36:hmacSignature` (5 colon-separated parts)
+- **v3 format** (current): `registrationId:eventId:userId:notBeforeBase36:notAfterBase36:hmacSignature` (6 parts)
+- **v2 format** (legacy, still accepted): `registrationId:eventId:userId:epochBase36:hmacSignature` (5 parts)
 - **v1 format** (legacy, still accepted): `registrationId:eventId:userId:hmacSignature` (4 parts)
 - Signed with HMAC-SHA256 using `QR_SECRET` — full 64-char hex digest, no truncation
 - Verified with `crypto.timingSafeEqual` (constant-time comparison to prevent timing attacks)
-- v2 includes a base36 epoch timestamp for replay detection
+- v3 bakes the validity window (`notBefore` / `notAfter`, epoch ms in base36) into the signed payload. Scan path rejects QRs outside `[notBefore − 2 h, notAfter + 2 h]` (clock-skew grace). For v1/v2 QRs the scan path backfills the window from `event.startDate − 24 h` / `event.endDate + 6 h` — same formula the signer uses.
 - Staff app validates offline against locally cached registration list (synced via Firestore)
-- QR signing functions are in `apps/api/src/services/qr-signing.ts` (exported, imported by registration service and tests)
+- QR signing functions are in `apps/api/src/services/qr-signing.ts` (exported, imported by registration service and tests). See `docs/badge-journey-review-2026-04-20.md` for the full credential journey + sequencing.
 
 ### Firestore Rules Key Principles
 
@@ -535,11 +536,11 @@ flutter build ios --release           # iOS (requires macOS)
 
 ## Environment Aliases
 
-| Alias      | Firebase Project      | Usage                                     |
-| ---------- | --------------------- | ----------------------------------------- |
-| default    | `teranga-app-990a8`   | Local dev + staging (shared single env)   |
-| staging    | `teranga-app-990a8`   | Alias — same project as default           |
-| production | `teranga-events-prod` | Live production                           |
+| Alias      | Firebase Project      | Usage                                   |
+| ---------- | --------------------- | --------------------------------------- |
+| default    | `teranga-app-990a8`   | Local dev + staging (shared single env) |
+| staging    | `teranga-app-990a8`   | Alias — same project as default         |
+| production | `teranga-events-prod` | Live production                         |
 
 Switch with: `firebase use <alias>`
 

@@ -9,10 +9,12 @@
 ## 1. The journey today
 
 1. **Register** — `POST /v1/registrations` wraps the whole thing in a transaction,
-   assigns status (`confirmed` / `pending` / `waitlisted`), and signs the QR on the
-   server: `registrationId:eventId:userId:epochBase36:HMAC-SHA256`
+   assigns status (`confirmed` / `pending` / `waitlisted`), and signs a v3 QR on
+   the server:
+   `registrationId:eventId:userId:notBeforeBase36:notAfterBase36:HMAC-SHA256`
    (`apps/api/src/services/registration.service.ts:140`,
-   `apps/api/src/services/qr-signing.ts:33`).
+   `apps/api/src/services/qr-signing.ts:59`). v2/v1 QRs keep verifying; the
+   scan path backfills the validity window from the event dates for them.
 2. **Badge** — two paths today: on‑demand participant render
    (`badge.service.ts:313`, deterministic doc id `${eventId}_${userId}`),
    and organizer‑initiated Cloud Function rendering that uploads to Storage
