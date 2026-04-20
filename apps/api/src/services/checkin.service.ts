@@ -33,6 +33,7 @@ import {
   SCAN_CLOCK_SKEW_MS,
 } from "./qr-signing";
 import { resolveEventKeyFromEvent } from "./qr-key-resolver";
+import { computeLockKey, type ScanPolicy } from "./checkin-policy";
 
 // Maximum gap we'll accept between the client's `scannedAt` and the server's
 // `now` on the bulk-sync path. A staff device can legitimately have been
@@ -321,26 +322,43 @@ export class CheckinService extends BaseService {
           };
         }
 
-        // Already checked in
-        if (current.status === "checked_in") {
-          return {
-            status: "already_checked_in" as BulkCheckinResultStatus,
-            reason: `Already checked in at ${current.checkedInAt ?? "unknown time"}`,
-            checkedInAt: current.checkedInAt ?? null,
-          };
-        }
-
-        // Only confirmed registrations can be checked in
-        if (current.status !== "confirmed") {
+        // Non-confirmed statuses that the scan path cannot heal
+        // (pending, waitlisted, etc.). `checked_in` is NOT an early
+        // exit any more — multi_day / multi_zone allow secondary scans
+        // as long as the policy lock is free.
+        if (current.status !== "confirmed" && current.status !== "checked_in") {
           return {
             status: "invalid_status" as BulkCheckinResultStatus,
             reason: `Registration status is '${current.status}'`,
           };
         }
 
+        // Lock lookup — same pattern as the live path. The lock key
+        // encodes the (registrationId, scope) pair derived from
+        // `event.scanPolicy`. `item.scannedAt` drives the day-bucket
+        // derivation for `multi_day` because offline reconciles can
+        // land days after the actual scan.
+        const scanPolicy = (eventData?.scanPolicy ?? "single") as ScanPolicy;
+        const lockKey = computeLockKey({
+          registrationId: registration.id,
+          policy: scanPolicy,
+          accessZoneId: item.accessZoneId,
+          scannedAtIso: item.scannedAt,
+          timezone: eventData?.timezone ?? "Africa/Dakar",
+        });
+        const lockRef = db.collection(COLLECTIONS.CHECKIN_LOCKS).doc(lockKey);
+        const lockSnap = await tx.get(lockRef);
+
+        if (lockSnap.exists) {
+          return {
+            status: "already_checked_in" as BulkCheckinResultStatus,
+            reason: `Already checked in at ${current.checkedInAt ?? "unknown time"} (policy ${scanPolicy})`,
+            checkedInAt: current.checkedInAt ?? null,
+          };
+        }
+
         // Zone capacity check — reuses the event snap already read for the
-        // validity window (a second tx.get after a tx.set is illegal in
-        // Firestore transactions, so we must consolidate reads).
+        // validity window.
         const { FieldValue } = await import("firebase-admin/firestore");
         const eventRef = eventRefForWindow;
 
@@ -359,27 +377,41 @@ export class CheckinService extends BaseService {
           }
         }
 
-        // Apply check-in using the offline scannedAt timestamp. Device id
-        // is persisted on the registration for quick "who scanned this?"
-        // lookups; the full attestation (nonce, client vs server time)
-        // rides on the domain event into auditLogs.
-        tx.update(regRef, {
-          status: "checked_in" as RegistrationStatus,
-          checkedInAt: item.scannedAt,
-          checkedInBy: user.uid,
-          checkedInDeviceId: item.scannerDeviceId ?? null,
-          accessZoneId: item.accessZoneId ?? null,
-          updatedAt: new Date().toISOString(),
-        });
+        // Claim the policy lock — future scans for the same
+        // (registration, scope) land at this doc id and see it exists.
+        tx.create(lockRef, { createdAt: new Date().toISOString(), policy: scanPolicy });
 
-        // Increment event checkedInCount + zone counter
-        const updateData: Record<string, unknown> = {
-          checkedInCount: FieldValue.increment(1),
-        };
+        const isFirstSuccess = current.status !== "checked_in";
+        if (isFirstSuccess) {
+          // First-ever successful scan: flip the registration cache +
+          // bump the unique-participant counter.
+          tx.update(regRef, {
+            status: "checked_in" as RegistrationStatus,
+            checkedInAt: item.scannedAt,
+            checkedInBy: user.uid,
+            checkedInDeviceId: item.scannerDeviceId ?? null,
+            accessZoneId: item.accessZoneId ?? null,
+            updatedAt: new Date().toISOString(),
+          });
+        } else {
+          // Secondary success under multi-entry. Don't overwrite the
+          // first-scan cache fields; just bump `updatedAt`.
+          tx.update(regRef, { updatedAt: new Date().toISOString() });
+        }
+
+        // Event counters — unique-participant count bumps only on
+        // first success; per-zone counter bumps on every success into
+        // a zone so the "lunch fed 312" number stays honest.
+        const updateData: Record<string, unknown> = {};
+        if (isFirstSuccess) {
+          updateData.checkedInCount = FieldValue.increment(1);
+        }
         if (item.accessZoneId) {
           updateData[`zoneCheckedInCounts.${item.accessZoneId}`] = FieldValue.increment(1);
         }
-        tx.update(eventRef, updateData);
+        if (Object.keys(updateData).length > 0) {
+          tx.update(eventRef, updateData);
+        }
 
         return { status: "success" as BulkCheckinResultStatus, checkedInAt: item.scannedAt };
       });

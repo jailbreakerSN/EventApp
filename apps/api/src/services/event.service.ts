@@ -126,6 +126,10 @@ export class EventService extends BaseService {
       // the overlap window.
       qrKid: generateEventKid(),
       qrKidHistory: [],
+      // Default to single-scan semantics. Organizers flip to
+      // multi_zone / multi_day post-create via `EventService.setScanPolicy`
+      // (shipping next commit).
+      scanPolicy: "single",
       createdBy: user.uid,
       updatedBy: user.uid,
       publishedAt: null,
@@ -753,6 +757,7 @@ export class EventService extends BaseService {
       // signing key, even if the clone is otherwise identical.
       qrKid: generateEventKid(),
       qrKidHistory: [],
+      scanPolicy: source.scanPolicy ?? "single",
       isPublic: source.isPublic,
       isFeatured: false,
       requiresApproval: source.requiresApproval,

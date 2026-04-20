@@ -93,21 +93,33 @@ vi.mock("@/services/qr-signing", () => ({
 }));
 
 const mockTxUpdate = vi.fn();
+const mockTxCreate = vi.fn();
 const mockTxGetReg = vi.fn();
 const mockTxGetEvent = vi.fn();
-// Tagged refs so the in-tx dispatch can tell registration reads apart from
-// event reads — processCheckinItem does `Promise.all([tx.get(regRef),
-// tx.get(eventRef)])` and we need the right snap back for each.
+// `mockTxGetLock` defaults to "no lock present" so the scan-policy
+// gate lets the success path through. Tests that exercise the
+// duplicate path override this with `{ exists: true }`.
+const mockTxGetLock = vi.fn().mockResolvedValue({ exists: false });
+
+// Tagged refs so the in-tx dispatch routes each read to the right mock.
+// processCheckinItem does two parallel reads (reg + event) then later
+// a single lock read — all three land on this router.
 const regRef = { id: "mock-reg", __collection: "registrations" };
 const eventRef = { id: "mock-event", __collection: "events" };
+const lockRef = { id: "mock-lock", __collection: "checkinLocks" };
 
 vi.mock("@/config/firebase", () => ({
   db: {
     runTransaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => {
       const tx = {
-        get: (ref: { __collection?: string }) =>
-          ref.__collection === "events" ? mockTxGetEvent() : mockTxGetReg(),
+        get: (ref: { __collection?: string }) => {
+          if (ref.__collection === "events") return mockTxGetEvent();
+          if (ref.__collection === "checkinLocks") return mockTxGetLock();
+          return mockTxGetReg();
+        },
         update: mockTxUpdate,
+        create: mockTxCreate,
+        set: vi.fn(),
       };
       return fn(tx);
     }),
@@ -117,7 +129,7 @@ vi.mock("@/config/firebase", () => ({
       // commits) doesn't log `ref.set is not a function` in tests.
       // Assertions on shadow-write shape live in the integration suite.
       doc: vi.fn(() => ({
-        ...(name === "events" ? eventRef : regRef),
+        ...(name === "events" ? eventRef : name === "checkinLocks" ? lockRef : regRef),
         set: vi.fn().mockResolvedValue(undefined),
       })),
     })),
@@ -126,6 +138,7 @@ vi.mock("@/config/firebase", () => ({
     REGISTRATIONS: "registrations",
     EVENTS: "events",
     CHECKINS: "checkins",
+    CHECKIN_LOCKS: "checkinLocks",
   },
 }));
 
@@ -350,6 +363,11 @@ describe("CheckinService.bulkSync", () => {
       id: reg.id,
       data: () => ({ ...reg, id: undefined }),
     });
+    // Under the scan-policy refactor, a second scan is now classified as
+    // `already_checked_in` only if a lock for the (registration, scope)
+    // exists — not just because `registration.status === "checked_in"`.
+    // Force the lock to exist so this test reaches the duplicate path.
+    mockTxGetLock.mockResolvedValueOnce({ exists: true });
 
     const result = await service.bulkSync(
       event.id,

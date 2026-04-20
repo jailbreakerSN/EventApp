@@ -37,6 +37,7 @@ import {
   computeValidityWindow,
 } from "./qr-signing";
 import { resolveEventKeyFromEvent } from "./qr-key-resolver";
+import { computeLockKey, type ScanPolicy } from "./checkin-policy";
 import { eventBus } from "@/events/event-bus";
 import { getRequestId } from "@/context/request-context";
 
@@ -524,29 +525,51 @@ export class RegistrationService extends BaseService {
         };
 
     const txResult = await runTransaction<TxOutcome>(async (tx) => {
-      // Re-read registration inside transaction for double-check-in safety
+      // All reads FIRST so the tx body is Firestore-legal (reads-then-
+      // writes). Parallel get on registration + event is safe inside a
+      // transaction — both land in one server round-trip.
       const regRef = registrationRepository.ref.doc(registration.id);
-      const regSnap = await tx.get(regRef);
+      const eventRef = eventRepository.ref.doc(registration.eventId);
+      const [regSnap, eventSnap] = await Promise.all([tx.get(regRef), tx.get(eventRef)]);
+
       if (!regSnap.exists) {
         throw new QrInvalidError("Inscription introuvable");
       }
       const current = { id: regSnap.id, ...regSnap.data() } as Registration;
+      const eventDoc = eventSnap.exists
+        ? ({ id: eventSnap.id, ...eventSnap.data() } as Event)
+        : null;
 
-      if (current.status === "checked_in") {
-        // Shadow-write: duplicate scans now leave a forensic trail
-        // instead of vanishing as a bare 409. The registration cache is
-        // unchanged (still reflects the first successful scan).
-        const now = new Date().toISOString();
+      // Short-circuit on non-confirmed statuses that the scan path cannot
+      // heal (cancelled, pending, etc.). `checked_in` is NOT an early exit
+      // any more — under `multi_day` / `multi_zone` a second scan is
+      // legitimate as long as the per-policy lock is free.
+      if (current.status !== "confirmed" && current.status !== "checked_in") {
+        throw new QrInvalidError(`Registration status is '${current.status}'`);
+      }
+
+      const now = new Date().toISOString();
+      const scanPolicy = (eventDoc?.scanPolicy ?? "single") as ScanPolicy;
+      const lockKey = computeLockKey({
+        registrationId: registration.id,
+        policy: scanPolicy,
+        accessZoneId,
+        scannedAtIso: now,
+        timezone: eventDoc?.timezone ?? "Africa/Dakar",
+      });
+      const lockRef = db.collection(COLLECTIONS.CHECKIN_LOCKS).doc(lockKey);
+      const lockSnap = await tx.get(lockRef);
+
+      if (lockSnap.exists) {
+        // Duplicate under the active policy. Leave a forensic row; the
+        // registration's first-successful-scan cache is untouched.
         tx.set(checkinRef, {
           ...checkinBase,
           scannedAt: now,
           status: "duplicate",
           rejectCode: "invalid_status",
-          reason: `Déjà enregistré le ${current.checkedInAt ?? "—"}`,
+          reason: `Déjà enregistré le ${current.checkedInAt ?? "—"} (policy ${scanPolicy})`,
         });
-        // Return — don't throw. The outer service enriches with the staff's
-        // display name (needs a second read the tx can't make) before
-        // surfacing a 409 to the client.
         return {
           kind: "already",
           checkedInAt: current.checkedInAt ?? null,
@@ -554,26 +577,11 @@ export class RegistrationService extends BaseService {
           checkedInDeviceId: current.checkedInDeviceId ?? null,
         };
       }
-      if (current.status !== "confirmed") {
-        throw new QrInvalidError(`Registration status is '${current.status}'`);
-      }
 
-      // All reads happen BEFORE any write (Firestore transaction contract).
-      // The previous revision wrote to eventRef before reading it — the
-      // Admin SDK buffers writes so it "worked", but that's fragile and
-      // broke the reads-first invariant the firestore-transaction-auditor
-      // enforces. Fix while we're here adding zone enforcement.
-      const eventRef = eventRepository.ref.doc(current.eventId);
-      const eventSnap = await tx.get(eventRef);
-      const eventDoc = eventSnap.exists
-        ? ({ id: eventSnap.id, ...eventSnap.data() } as Event)
-        : null;
-
-      // Zone enforcement — mirrors the bulk-sync path
-      // (`checkin.service.ts:327-340`). If the scanned zone has a
-      // capacity and is full, refuse the scan with `ZoneFullError`
-      // (409) so gate staff can redirect the participant. The same
-      // participant can still pass through a different zone.
+      // Zone enforcement — applies to every successful scan, including
+      // secondary scans under multi_zone / multi_day. Refuse the scan if
+      // the target zone is at capacity; same 409 staff sees on the bulk
+      // path (`checkin.service.ts:327-340`).
       if (accessZoneId && eventDoc) {
         const zone = eventDoc.accessZones.find((z) => z.id === accessZoneId);
         if (zone?.capacity) {
@@ -590,29 +598,41 @@ export class RegistrationService extends BaseService {
         }
       }
 
-      const now = new Date().toISOString();
+      // Success — create the lock (atomic uniqueness guard) and the
+      // forensic row; flip registration status only on the first-ever
+      // successful scan so the analytics counter stays true to "unique
+      // participants admitted".
+      tx.create(lockRef, { createdAt: now, policy: scanPolicy });
 
-      // Update registration to checked_in. Device id is persisted directly
-      // on the registration for O(1) "who scanned this" lookups; the nonce
-      // + full forensic trail rides on the domain event into auditLogs.
-      tx.update(regRef, {
-        status: "checked_in",
-        checkedInAt: now,
-        checkedInBy: user.uid,
-        checkedInDeviceId: scannerDeviceId ?? null,
-        accessZoneId: accessZoneId ?? null,
-        updatedAt: now,
-      });
+      const isFirstSuccess = current.status !== "checked_in";
+      if (isFirstSuccess) {
+        tx.update(regRef, {
+          status: "checked_in",
+          checkedInAt: now,
+          checkedInBy: user.uid,
+          checkedInDeviceId: scannerDeviceId ?? null,
+          accessZoneId: accessZoneId ?? null,
+          updatedAt: now,
+        });
+      } else {
+        // Secondary success under multi-entry — don't clobber the first-
+        // scan cache fields, just bump `updatedAt` so change-feed
+        // listeners pick up the activity.
+        tx.update(regRef, { updatedAt: now });
+      }
 
-      // Increment event check-in counter + zone counter. The zone
-      // increment is keyed by `zoneCheckedInCounts.${zoneId}` so the
-      // bulk-sync path and the live path write the same Firestore
-      // structure — the stats aggregator doesn't care which path got
-      // there.
-      const eventUpdate: Record<string, unknown> = {
-        checkedInCount: FieldValue.increment(1),
-        updatedAt: now,
-      };
+      // Event counters.
+      //   `checkedInCount` is the unique-participant count — bump only
+      //     on the first successful scan so `multi_day` / `multi_zone`
+      //     don't inflate the "how many humans came through" metric.
+      //   `zoneCheckedInCounts[zoneId]` is the per-zone throughput
+      //     count — bump on every successful scan into a zone so staff
+      //     can see "lunch already fed 312 people" even though only
+      //     200 came through the gate.
+      const eventUpdate: Record<string, unknown> = { updatedAt: now };
+      if (isFirstSuccess) {
+        eventUpdate.checkedInCount = FieldValue.increment(1);
+      }
       if (accessZoneId) {
         eventUpdate[`zoneCheckedInCounts.${accessZoneId}`] = FieldValue.increment(1);
       }
