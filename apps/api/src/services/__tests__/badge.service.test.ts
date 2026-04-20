@@ -180,22 +180,43 @@ vi.mock("firebase-admin/firestore", () => ({
 // run end-to-end without producing real PDF bytes. Returns a 4-byte
 // "%PDF" buffer so callers can assert on a non-empty Buffer.
 vi.mock("pdf-lib", () => {
+  // A6 at 2.83465 pt/mm → ~297.6 × 419.5
   const fakePage = {
-    getSize: () => ({ width: 240, height: 153 }),
+    getSize: () => ({ width: 297.64, height: 419.53 }),
+    getWidth: () => 297.64,
+    getHeight: () => 419.53,
     drawRectangle: vi.fn(),
+    drawCircle: vi.fn(),
+    drawLine: vi.fn(),
     drawText: vi.fn(),
     drawImage: vi.fn(),
+    drawSvgPath: vi.fn(),
+  };
+  // widthOfTextAtSize ≈ charCount * size * 0.5 is good enough for the
+  // layout helpers (wrapText, centered text). We don't need font metrics
+  // accuracy in unit tests — only non-zero return values.
+  const fakeFont = {
+    widthOfTextAtSize: (s: string, size: number) => s.length * size * 0.5,
   };
   const fakeDoc = {
     addPage: vi.fn(() => fakePage),
-    embedFont: vi.fn(async () => ({ name: "stub" })),
+    embedFont: vi.fn(async () => fakeFont),
     embedPng: vi.fn(async () => ({ name: "qr" })),
     save: vi.fn(async () => new Uint8Array([0x25, 0x50, 0x44, 0x46])),
+    setTitle: vi.fn(),
+    setAuthor: vi.fn(),
+    setSubject: vi.fn(),
+    setCreator: vi.fn(),
   };
   return {
     PDFDocument: { create: vi.fn(async () => fakeDoc) },
     rgb: vi.fn((r: number, g: number, b: number) => ({ r, g, b })),
-    StandardFonts: { HelveticaBold: "HelveticaBold", Helvetica: "Helvetica" },
+    StandardFonts: {
+      Helvetica: "Helvetica",
+      HelveticaBold: "HelveticaBold",
+      TimesRomanBold: "TimesRomanBold",
+      CourierBold: "CourierBold",
+    },
   };
 });
 
