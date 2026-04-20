@@ -606,7 +606,7 @@ export default async function EventDetailPage({ params }: PageProps) {
                         </p>
                       </div>
                       {remaining !== null && remaining > 0 && remaining < 20 && (
-                        <p className="mt-2.5 flex items-center gap-1.5 text-[11px] font-medium text-teranga-clay">
+                        <p className="mt-2.5 flex items-center gap-1.5 text-[11px] font-medium text-teranga-clay-dark">
                           <span
                             aria-hidden="true"
                             className="inline-block h-1 w-1 rounded-full bg-teranga-clay"

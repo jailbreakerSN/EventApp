@@ -729,7 +729,7 @@ function UpcomingRow({
               size="sm"
               onClick={onRefund}
               disabled={isRefunding}
-              className="w-full rounded-full text-teranga-clay hover:bg-teranga-clay/10 hover:text-teranga-clay"
+              className="w-full rounded-full text-teranga-clay-dark hover:bg-teranga-clay/10 hover:text-teranga-clay-dark"
             >
               <RotateCcw className="mr-1.5 h-4 w-4" aria-hidden="true" />
               {t("refund")}
