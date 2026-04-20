@@ -122,6 +122,8 @@ export function buildEvent(overrides: Partial<Event> = {}): Event {
     venueName: null,
     requiresApproval: false,
     templateId: null,
+    qrKid: null,
+    qrKidHistory: [],
     createdBy: uid(),
     updatedBy: uid(),
     createdAt: now,

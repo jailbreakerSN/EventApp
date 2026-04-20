@@ -20,7 +20,7 @@ import {
   EventFullError,
 } from "@/errors/app-error";
 import { BaseService } from "./base.service";
-import { signQrPayload, computeValidityWindow } from "./qr-signing";
+import { signQrPayload, signQrPayloadV4, computeValidityWindow } from "./qr-signing";
 import { eventBus } from "@/events/event-bus";
 import { getRequestId } from "@/context/request-context";
 import { type PaymentProvider } from "@/providers/payment-provider.interface";
@@ -206,16 +206,20 @@ export class PaymentService extends BaseService {
     const payRef = db.collection(COLLECTIONS.PAYMENTS).doc();
     const regId = regRef.id;
     const payId = payRef.id;
-    // v3 QR with an embedded validity window derived from the event dates.
-    // Scan path rejects anything outside [notBefore, notAfter] (+ clock skew).
+    // QR signing: v4 (per-event `kid` + HKDF-derived key) when the event
+    // has migrated to the new signing scheme; v3 fallback for legacy
+    // events whose docs predate the `qrKid` field.
     const qrWindow = computeValidityWindow(event.startDate, event.endDate);
-    const qrCodeValue = signQrPayload(
-      regId,
-      eventId,
-      user.uid,
-      qrWindow.notBefore,
-      qrWindow.notAfter,
-    );
+    const qrCodeValue = event.qrKid
+      ? signQrPayloadV4(
+          regId,
+          eventId,
+          user.uid,
+          qrWindow.notBefore,
+          qrWindow.notAfter,
+          event.qrKid,
+        )
+      : signQrPayload(regId, eventId, user.uid, qrWindow.notBefore, qrWindow.notAfter);
 
     // Webhook path encodes the provider so the endpoint can route to
     // the correct signature verifier without a query-string sniff.

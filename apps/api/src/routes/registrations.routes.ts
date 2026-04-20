@@ -4,17 +4,20 @@ import { authenticate, requireEmailVerified } from "@/middlewares/auth.middlewar
 import { validate } from "@/middlewares/validate.middleware";
 import { requirePermission, requireAnyPermission } from "@/middlewares/permission.middleware";
 import { registrationService } from "@/services/registration.service";
-import { PaginationSchema } from "@teranga/shared-types";
+import { PaginationSchema, CheckInRequestSchema } from "@teranga/shared-types";
 
 const RegisterBody = z.object({
   eventId: z.string(),
   ticketTypeId: z.string(),
 });
 
-const CheckInBody = z.object({
-  qrCodeValue: z.string(),
-  accessZoneId: z.string().optional(),
-});
+// Route body schema is imported from `@teranga/shared-types` — keeping it
+// there lets the Flutter scanner + web-backoffice check-in UI build
+// against the same contract. Scanner attestation fields (`scannerDeviceId`,
+// `scannerNonce`) are optional on the wire so older mobile builds still
+// work; server persists what's provided and carries the rest as `null`
+// in the audit trail.
+const CheckInBody = CheckInRequestSchema;
 
 const ParamsWithRegistrationId = z.object({ registrationId: z.string() });
 
@@ -218,8 +221,14 @@ export const registrationRoutes: FastifyPluginAsync = async (fastify) => {
       },
     },
     async (request, reply) => {
-      const { qrCodeValue, accessZoneId } = request.body as z.infer<typeof CheckInBody>;
-      const result = await registrationService.checkIn(qrCodeValue, request.user!, accessZoneId);
+      const { qrCodeValue, accessZoneId, scannerDeviceId, scannerNonce } = request.body as z.infer<
+        typeof CheckInBody
+      >;
+      const result = await registrationService.checkIn(qrCodeValue, request.user!, {
+        accessZoneId,
+        scannerDeviceId,
+        scannerNonce,
+      });
       return reply.send({ success: true, data: result });
     },
   );

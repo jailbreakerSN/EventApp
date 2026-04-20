@@ -4,6 +4,9 @@ import { authenticate, requireEmailVerified } from "@/middlewares/auth.middlewar
 import { validate } from "@/middlewares/validate.middleware";
 import { requirePermission } from "@/middlewares/permission.middleware";
 import { badgeService } from "@/services/badge.service";
+import { eventRepository } from "@/repositories/event.repository";
+import { eventBus } from "@/events/event-bus";
+import { getRequestId } from "@/context/request-context";
 import { BadgeGenerateRequestSchema, BulkBadgeGenerateRequestSchema } from "@teranga/shared-types";
 
 const ParamsWithEventId = z.object({ eventId: z.string() });
@@ -143,6 +146,11 @@ export const badgeRoutes: FastifyPluginAsync = async (fastify) => {
   );
 
   // ─── Offline Sync Data (Staff) ───────────────────────────────────────────
+  // Legacy alias — kept for existing Flutter builds. Prefer
+  // `GET /v1/checkin/:eventId/sync` for new work (supports the encrypted
+  // envelope + query-param audit fields). This route still emits the
+  // `checkin.offline_sync.downloaded` audit event so the forensics trail
+  // covers both shapes.
   fastify.get(
     "/offline-sync/:eventId",
     {
@@ -160,6 +168,22 @@ export const badgeRoutes: FastifyPluginAsync = async (fastify) => {
     async (request, reply) => {
       const { eventId } = request.params as z.infer<typeof ParamsWithEventId>;
       const data = await badgeService.getOfflineSyncData(eventId, request.user!);
+      // One extra read to resolve `organizationId` for the audit event.
+      // This route is being deprecated; not worth denormalising the
+      // service return shape just to avoid the trip.
+      const event = await eventRepository.findByIdOrThrow(eventId);
+      eventBus.emit("checkin.offline_sync.downloaded", {
+        eventId,
+        organizationId: event.organizationId,
+        staffId: request.user!.uid,
+        scannerDeviceId: null,
+        encrypted: false,
+        itemCount: data.registrations.length,
+        ttlAt: data.ttlAt ?? data.downloadedAt,
+        actorId: request.user!.uid,
+        requestId: getRequestId(),
+        timestamp: new Date().toISOString(),
+      });
       return reply.send({ success: true, data });
     },
   );

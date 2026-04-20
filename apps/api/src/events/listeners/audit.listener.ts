@@ -69,11 +69,61 @@ export function registerAuditListeners(): void {
       resourceType: "registration",
       resourceId: payload.registrationId,
       eventId: payload.eventId,
-      organizationId: null,
+      organizationId: payload.organizationId,
       details: {
         participantId: payload.participantId,
         staffId: payload.staffId,
         accessZoneId: payload.accessZoneId ?? null,
+        source: payload.source ?? "live",
+        // Device attestation — landed in the audit trail for post-event
+        // forensics even if the UI doesn't surface them yet (Sprint C 4.3).
+        scannerDeviceId: payload.scannerDeviceId ?? null,
+        scannerNonce: payload.scannerNonce ?? null,
+        clientScannedAt: payload.clientScannedAt ?? null,
+        serverConfirmedAt: payload.checkedInAt ?? payload.timestamp,
+      },
+    });
+  });
+
+  // Aggregate fire when staff reconcile a batch of offline scans. The
+  // individual `checkin.completed` records already landed for each item;
+  // this one captures the batch envelope (counts + staff id) so a
+  // security dashboard can flag "staff X reconciled 1 200 scans at once
+  // from a device the api hasn't seen before".
+  eventBus.on("checkin.bulk_synced", async (payload) => {
+    await auditService.log({
+      action: "checkin.bulk_synced",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "event",
+      resourceId: payload.eventId,
+      eventId: payload.eventId,
+      organizationId: payload.organizationId,
+      details: {
+        processed: payload.processed,
+        succeeded: payload.succeeded,
+        failed: payload.failed,
+      },
+    });
+  });
+
+  eventBus.on("checkin.offline_sync.downloaded", async (payload) => {
+    await auditService.log({
+      action: "checkin.offline_sync.downloaded",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "event",
+      resourceId: payload.eventId,
+      eventId: payload.eventId,
+      organizationId: payload.organizationId,
+      details: {
+        staffId: payload.staffId,
+        scannerDeviceId: payload.scannerDeviceId ?? null,
+        encrypted: payload.encrypted,
+        itemCount: payload.itemCount,
+        ttlAt: payload.ttlAt,
       },
     });
   });
@@ -108,6 +158,27 @@ export function registerAuditListeners(): void {
       organizationId: payload.organizationId,
       details: {
         changes: payload.changes,
+      },
+    });
+  });
+
+  // QR signing-key rotation lives on its own action so post-event
+  // forensics can ask "who rotated keys on this event" without parsing
+  // a `details.changes.action` sub-field off the generic `event.updated`
+  // stream.
+  eventBus.on("event.qr_key_rotated", async (payload) => {
+    await auditService.log({
+      action: "event.qr_key_rotated",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "event",
+      resourceId: payload.eventId,
+      eventId: payload.eventId,
+      organizationId: payload.organizationId,
+      details: {
+        newKid: payload.newKid,
+        previousKid: payload.previousKid,
       },
     });
   });
@@ -167,6 +238,25 @@ export function registerAuditListeners(): void {
       eventId: payload.eventId,
       organizationId: payload.organizationId,
       details: {},
+    });
+  });
+
+  // `event.cloned` was emitted by `EventService.clone()` but had no audit
+  // mapping — cloning an event left no trail. The new clone carries a
+  // fresh `qrKid`, so rotation metadata forensics also depended on this.
+  eventBus.on("event.cloned", async (payload) => {
+    await auditService.log({
+      action: "event.cloned",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "event",
+      resourceId: payload.newEventId,
+      eventId: payload.newEventId,
+      organizationId: payload.organizationId,
+      details: {
+        sourceEventId: payload.sourceEventId,
+      },
     });
   });
 
@@ -285,10 +375,31 @@ export function registerAuditListeners(): void {
       resourceType: "badge",
       resourceId: payload.badgeId,
       eventId: payload.eventId,
-      organizationId: null,
+      organizationId: payload.organizationId,
       details: {
         registrationId: payload.registrationId,
         userId: payload.userId,
+      },
+    });
+  });
+
+  // Aggregate for `BadgeService.bulkGenerate`. Individual per-badge
+  // events would flood the trail on a 500-participant event; the
+  // summary carries enough to answer "who bulk-generated badges on
+  // this event, when, how many".
+  eventBus.on("badge.bulk_generated", async (payload) => {
+    await auditService.log({
+      action: "badge.bulk_generated",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "event",
+      resourceId: payload.eventId,
+      eventId: payload.eventId,
+      organizationId: payload.organizationId,
+      details: {
+        templateId: payload.templateId,
+        created: payload.created,
       },
     });
   });

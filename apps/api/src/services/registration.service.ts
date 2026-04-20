@@ -27,7 +27,14 @@ import {
   PlanLimitError,
 } from "@/errors/app-error";
 import { BaseService } from "./base.service";
-import { signQrPayload, verifyQrPayload, checkScanTime, computeValidityWindow } from "./qr-signing";
+import {
+  signQrPayload,
+  signQrPayloadV4,
+  verifyQrPayload,
+  checkScanTime,
+  computeValidityWindow,
+} from "./qr-signing";
+import { resolveEventKeyFromEvent } from "./qr-key-resolver";
 import { eventBus } from "@/events/event-bus";
 import { getRequestId } from "@/context/request-context";
 
@@ -139,17 +146,15 @@ export class RegistrationService extends BaseService {
       const now = new Date().toISOString();
       const regRef = registrationRepository.ref.doc();
       const regId = regRef.id;
-      // v3 QR embeds the validity window in the signed payload. The scan
-      // path rejects QRs outside [notBefore, notAfter], so a stolen/shared
-      // badge can't be replayed after the event.
+      // v3 embeds the validity window; v4 adds a per-event `kid` so a
+      // rotation on one event doesn't compromise the others. Signer picks
+      // v4 when the event already has a kid (new events since the
+      // badge-journey-review rollout), otherwise falls back to v3 for
+      // legacy events whose docs pre-date the qrKid field.
       const window = computeValidityWindow(event.startDate, event.endDate);
-      const qrCodeValue = signQrPayload(
-        regId,
-        eventId,
-        user.uid,
-        window.notBefore,
-        window.notAfter,
-      );
+      const qrCodeValue = event.qrKid
+        ? signQrPayloadV4(regId, eventId, user.uid, window.notBefore, window.notAfter, event.qrKid)
+        : signQrPayload(regId, eventId, user.uid, window.notBefore, window.notAfter);
 
       // Fetch user profile for denormalized display fields. Must go through
       // tx.get() so the read participates in the transaction's snapshot —
@@ -416,11 +421,23 @@ export class RegistrationService extends BaseService {
    * QR signature is verified before the transaction. Inside the transaction
    * we re-read the registration to ensure no double check-in under concurrency.
    */
-  async checkIn(qrCodeValue: string, user: AuthUser, accessZoneId?: string): Promise<QrScanResult> {
+  async checkIn(
+    qrCodeValue: string,
+    user: AuthUser,
+    opts: {
+      accessZoneId?: string;
+      scannerDeviceId?: string;
+      scannerNonce?: string;
+    } = {},
+  ): Promise<QrScanResult> {
     this.requirePermission(user, "checkin:scan");
+    const { accessZoneId, scannerDeviceId, scannerNonce } = opts;
 
-    // Verify QR signature (stateless, no DB needed)
-    const parsed = verifyQrPayload(qrCodeValue);
+    // Verify QR signature. v1/v2/v3 resolve synchronously from QR_SECRET;
+    // v4 needs a per-event key — we resolve by reading the event doc's
+    // `qrKid` (current) or `qrKidHistory[]` (retired but still within the
+    // rotation window) and deriving the HMAC key from QR_MASTER.
+    const parsed = await verifyQrPayload(qrCodeValue, resolveEventKeyFromEvent);
     if (!parsed) {
       throw new QrInvalidError("Signature invalide");
     }
@@ -462,7 +479,25 @@ export class RegistrationService extends BaseService {
       throw new QrExpiredError(new Date(window.notAfter).toISOString());
     }
 
-    const txResult = await runTransaction(async (tx) => {
+    // Transaction returns a tagged envelope — the "already checked in"
+    // branch needs enrichment (staff display name) that can't happen inside
+    // the tx, so we surface the raw identifiers and resolve them below.
+    type TxOutcome =
+      | {
+          kind: "success";
+          checkedInAt: string;
+          eventId: string;
+          ticketTypeName: string | null;
+          accessZoneName: string | null;
+        }
+      | {
+          kind: "already";
+          checkedInAt: string | null;
+          checkedInBy: string | null;
+          checkedInDeviceId: string | null;
+        };
+
+    const txResult = await runTransaction<TxOutcome>(async (tx) => {
       // Re-read registration inside transaction for double-check-in safety
       const regRef = registrationRepository.ref.doc(registration.id);
       const regSnap = await tx.get(regRef);
@@ -472,7 +507,15 @@ export class RegistrationService extends BaseService {
       const current = { id: regSnap.id, ...regSnap.data() } as Registration;
 
       if (current.status === "checked_in") {
-        throw new QrAlreadyUsedError(current.checkedInAt ?? undefined);
+        // Return — don't throw. The outer service enriches with the staff's
+        // display name (needs a second read the tx can't make) before
+        // surfacing a 409 to the client.
+        return {
+          kind: "already",
+          checkedInAt: current.checkedInAt ?? null,
+          checkedInBy: current.checkedInBy ?? null,
+          checkedInDeviceId: current.checkedInDeviceId ?? null,
+        };
       }
       if (current.status !== "confirmed") {
         throw new QrInvalidError(`Registration status is '${current.status}'`);
@@ -480,11 +523,14 @@ export class RegistrationService extends BaseService {
 
       const now = new Date().toISOString();
 
-      // Update registration to checked_in
+      // Update registration to checked_in. Device id is persisted directly
+      // on the registration for O(1) "who scanned this" lookups; the nonce
+      // + full forensic trail rides on the domain event into auditLogs.
       tx.update(regRef, {
         status: "checked_in",
         checkedInAt: now,
         checkedInBy: user.uid,
+        checkedInDeviceId: scannerDeviceId ?? null,
         accessZoneId: accessZoneId ?? null,
         updatedAt: now,
       });
@@ -501,6 +547,7 @@ export class RegistrationService extends BaseService {
       const event = eventSnap.exists ? ({ id: eventSnap.id, ...eventSnap.data() } as Event) : null;
 
       return {
+        kind: "success",
         checkedInAt: now,
         eventId: current.eventId,
         ticketTypeName: event?.ticketTypes.find((t) => t.id === current.ticketTypeId)?.name ?? null,
@@ -508,16 +555,38 @@ export class RegistrationService extends BaseService {
       };
     });
 
+    if (txResult.kind === "already") {
+      // Resolve the scanner's display name outside the tx — gate staff see
+      // "Déjà validé par Aminata il y a 12 s" instead of a bare uid.
+      let checkedInByName: string | null = null;
+      if (txResult.checkedInBy) {
+        const staff = await userRepository.findById(txResult.checkedInBy);
+        checkedInByName = staff?.displayName ?? null;
+      }
+      throw new QrAlreadyUsedError({
+        checkedInAt: txResult.checkedInAt,
+        checkedInBy: txResult.checkedInBy,
+        checkedInByName,
+        checkedInDeviceId: txResult.checkedInDeviceId,
+      });
+    }
+
     // Emit domain event AFTER transaction commits
     eventBus.emit("checkin.completed", {
       registrationId: registration.id,
       eventId: txResult.eventId,
+      organizationId: event.organizationId,
       participantId: registration.userId,
       staffId: user.uid,
       accessZoneId,
       actorId: user.uid,
       requestId: getRequestId(),
       timestamp: txResult.checkedInAt,
+      source: "live",
+      scannerDeviceId: scannerDeviceId ?? null,
+      scannerNonce: scannerNonce ?? null,
+      clientScannedAt: null, // live scan — client time == server time within one hop
+      checkedInAt: txResult.checkedInAt,
     });
 
     return {

@@ -28,6 +28,7 @@ import { COLLECTIONS } from "@/config/firebase";
 import { BaseService } from "./base.service";
 import { eventBus } from "@/events/event-bus";
 import { getRequestId } from "@/context/request-context";
+import { generateEventKid } from "./qr-signing";
 
 // ─── Slug generation ─────────────────────────────────────────────────────────
 
@@ -118,6 +119,13 @@ export class EventService extends BaseService {
       venueName: venueName ?? dto.venueName ?? null,
       registeredCount: 0,
       checkedInCount: 0,
+      // Mint a fresh v4 signing-key id at event create. All newly-issued
+      // badges for this event will sign with HKDF(QR_MASTER, eventId, kid);
+      // rotation replaces `qrKid` and pushes the old value to
+      // `qrKidHistory` so already-issued badges keep verifying through
+      // the overlap window.
+      qrKid: generateEventKid(),
+      qrKidHistory: [],
       createdBy: user.uid,
       updatedBy: user.uid,
       publishedAt: null,
@@ -317,6 +325,75 @@ export class EventService extends BaseService {
       requestId: getRequestId(),
       timestamp: new Date().toISOString(),
     });
+  }
+
+  /**
+   * Rotate the event's QR signing key id. Used when a staff device has
+   * been lost or a key is suspected compromised.
+   *
+   * Effect:
+   *   - Mint a new `qrKid`. Push the old value to `qrKidHistory` with
+   *     a `retiredAt` stamp so already-issued badges keep verifying
+   *     through the rotation window.
+   *   - Newly-issued registrations (via `registrationService.register` /
+   *     `paymentService.initiatePayment`) will sign with the new key.
+   *   - Existing badges are NOT re-signed; their payload carries the
+   *     retired `kid` and the resolver resolves it via `qrKidHistory`.
+   *   - A hard "event compromised" flow would clear `qrKidHistory` and
+   *     re-seal all active registrations — left as operator-driven
+   *     follow-up, not automatic on this rotation.
+   *
+   * Transactional so two concurrent rotation requests can't each read
+   * the same `qrKid`, each push it to history, and each write — the
+   * second would silently drop the first rotation's history entry.
+   * The read + write must land in one snapshot.
+   */
+  async rotateQrKey(eventId: string, user: AuthUser): Promise<{ qrKid: string }> {
+    this.requirePermission(user, "event:update");
+
+    const result = await db.runTransaction(async (tx) => {
+      const docRef = db.collection(COLLECTIONS.EVENTS).doc(eventId);
+      const snap = await tx.get(docRef);
+      if (!snap.exists) {
+        const { NotFoundError } = await import("@/errors/app-error");
+        throw new NotFoundError("Event", eventId);
+      }
+      const event = { id: snap.id, ...snap.data() } as Event;
+      this.requireOrganizationAccess(user, event.organizationId);
+
+      const newKid = generateEventKid();
+      const previousKid = event.qrKid ?? null;
+      const history = [...(event.qrKidHistory ?? [])];
+      if (previousKid) {
+        history.push({ kid: previousKid, retiredAt: new Date().toISOString() });
+      }
+
+      tx.update(docRef, {
+        qrKid: newKid,
+        qrKidHistory: history,
+        updatedBy: user.uid,
+        updatedAt: new Date().toISOString(),
+      });
+
+      return { newKid, previousKid, organizationId: event.organizationId };
+    });
+
+    // Dedicated event name so `auditLogs` distinguishes a key rotation
+    // from a generic event edit. Listener writes `action:
+    // "event.qr_key_rotated"` with `{ newKid, previousKid }` details —
+    // post-event forensics can query "who rotated this event's key,
+    // when" by action name alone.
+    eventBus.emit("event.qr_key_rotated", {
+      eventId,
+      organizationId: result.organizationId,
+      newKid: result.newKid,
+      previousKid: result.previousKid,
+      actorId: user.uid,
+      requestId: getRequestId(),
+      timestamp: new Date().toISOString(),
+    });
+
+    return { qrKid: result.newKid };
   }
 
   async archive(eventId: string, user: AuthUser): Promise<void> {
@@ -672,6 +749,10 @@ export class EventService extends BaseService {
       maxAttendees: source.maxAttendees ?? null,
       registeredCount: 0,
       checkedInCount: 0,
+      // Fresh kid for the cloned event — never reuse the source event's
+      // signing key, even if the clone is otherwise identical.
+      qrKid: generateEventKid(),
+      qrKidHistory: [],
       isPublic: source.isPublic,
       isFeatured: false,
       requiresApproval: source.requiresApproval,

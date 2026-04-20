@@ -37,11 +37,27 @@ export interface RegistrationApprovedEvent extends BaseEventPayload {
 export interface CheckInCompletedEvent extends BaseEventPayload {
   registrationId: string;
   eventId: string;
+  // Organization owning the event. Carried on the event payload so the
+  // audit listener can stamp `auditLogs.organizationId` without a
+  // second Firestore read — cross-org audit queries otherwise hit a
+  // null column (security-review follow-up).
+  organizationId: string;
   participantId: string;
   staffId: string;
   accessZoneId?: string | null;
   checkedInAt?: string;
   source?: "live" | "offline_sync";
+  // Device attestation — WHICH physical scanner accepted the QR. Paired
+  // with `scannerNonce`, this feeds the future security dashboard's
+  // velocity check (same QR, different device within N minutes ⇒
+  // screenshot-share signal). Both optional because older app builds
+  // don't send them; listeners treat missing fields as "unattested".
+  scannerDeviceId?: string | null;
+  scannerNonce?: string | null;
+  // Client-reported scan time, carried separately from the server's
+  // `checkedInAt` because offline reconciliation can land much later
+  // than the actual scan. Forensics needs both.
+  clientScannedAt?: string | null;
 }
 
 export interface BulkCheckinSyncedEvent extends BaseEventPayload {
@@ -50,6 +66,26 @@ export interface BulkCheckinSyncedEvent extends BaseEventPayload {
   processed: number;
   succeeded: number;
   failed: number;
+}
+
+/**
+ * Fires every time a staff device pulls the offline sync bundle. Because the
+ * payload contains every confirmed registration's signed QR, we need a
+ * per-download forensic trail — if a device later leaks badges we can
+ * correlate by `staffId`, `scannerDeviceId`, and event. `encrypted` reports
+ * whether the client requested the ECDH envelope; once the Flutter scanner
+ * opts in this should be `true` in steady state.
+ */
+export interface OfflineSyncDownloadedEvent extends BaseEventPayload {
+  eventId: string;
+  organizationId: string;
+  staffId: string;
+  scannerDeviceId?: string | null;
+  encrypted: boolean;
+  /** Registration count shipped in the payload — useful for anomaly alerts. */
+  itemCount: number;
+  /** Client-side cache TTL — the `event.endDate + 24h` we returned. */
+  ttlAt: string;
 }
 
 // ── Access Zone ─────────────────────────────────────────────────────────────
@@ -86,6 +122,21 @@ export interface EventUpdatedEvent extends BaseEventPayload {
   eventId: string;
   organizationId: string;
   changes: Record<string, unknown>;
+}
+
+/**
+ * Fires when an organizer rotates the event's QR signing key id. Distinct
+ * from `event.updated` so the audit trail can tell "rotated the HMAC key"
+ * apart from "edited the event description" — both matter for different
+ * reasons at post-event forensics. `previousKid` carries the value that
+ * was just retired (→ `qrKidHistory`); null only on the very first
+ * rotation of an event that somehow predates the create-time kid mint.
+ */
+export interface EventQrKeyRotatedEvent extends BaseEventPayload {
+  eventId: string;
+  organizationId: string;
+  newKid: string;
+  previousKid: string | null;
 }
 
 export interface EventPublishedEvent extends BaseEventPayload {
@@ -229,7 +280,22 @@ export interface BadgeGeneratedEvent extends BaseEventPayload {
   badgeId: string;
   registrationId: string;
   eventId: string;
+  organizationId: string;
   userId: string;
+}
+
+/**
+ * Aggregate event for `BadgeService.bulkGenerate`. Per-badge
+ * `badge.generated` emission would flood the audit trail for a 500-user
+ * event without adding signal; we carry a single summary per bulk call.
+ * Mirrors the existing `checkin.bulk_synced` pattern.
+ */
+export interface BadgeBulkGeneratedEvent extends BaseEventPayload {
+  eventId: string;
+  organizationId: string;
+  templateId: string | null;
+  /** Number of new badge docs created in this bulk call. */
+  created: number;
 }
 
 // ── Broadcast ──────────────────────────────────────────────────────────────
@@ -523,11 +589,13 @@ export interface DomainEventMap {
   "registration.approved": RegistrationApprovedEvent;
   "checkin.completed": CheckInCompletedEvent;
   "checkin.bulk_synced": BulkCheckinSyncedEvent;
+  "checkin.offline_sync.downloaded": OfflineSyncDownloadedEvent;
   "access_zone.added": AccessZoneAddedEvent;
   "access_zone.updated": AccessZoneUpdatedEvent;
   "access_zone.removed": AccessZoneRemovedEvent;
   "event.created": EventCreatedEvent;
   "event.updated": EventUpdatedEvent;
+  "event.qr_key_rotated": EventQrKeyRotatedEvent;
   "event.published": EventPublishedEvent;
   "event.unpublished": EventUnpublishedEvent;
   "event.cancelled": EventCancelledEvent;
@@ -544,6 +612,7 @@ export interface DomainEventMap {
   "member.removed": MemberRemovedEvent;
   "member.role_updated": MemberRoleUpdatedEvent;
   "badge.generated": BadgeGeneratedEvent;
+  "badge.bulk_generated": BadgeBulkGeneratedEvent;
   "payment.initiated": PaymentInitiatedEvent;
   "payment.succeeded": PaymentSucceededEvent;
   "payment.failed": PaymentFailedEvent;

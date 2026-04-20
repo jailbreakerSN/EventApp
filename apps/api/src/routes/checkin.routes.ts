@@ -4,31 +4,86 @@ import { authenticate, requireEmailVerified } from "@/middlewares/auth.middlewar
 import { validate } from "@/middlewares/validate.middleware";
 import { requirePermission } from "@/middlewares/permission.middleware";
 import { checkinService } from "@/services/checkin.service";
+import { eventBus } from "@/events/event-bus";
+import { getRequestId } from "@/context/request-context";
+import { sealOfflineSyncPayload } from "@/services/offline-sync-crypto";
+import { ValidationError } from "@/errors/app-error";
 import {
   BulkCheckinRequestSchema,
   CheckinHistoryQuerySchema,
+  OfflineSyncQuerySchema,
   type BulkCheckinRequest,
   type CheckinHistoryQuery,
+  type OfflineSyncQuery,
 } from "@teranga/shared-types";
 
 const ParamsWithEventId = z.object({ eventId: z.string() });
 
 export const checkinRoutes: FastifyPluginAsync = async (fastify) => {
   // ─── Offline Sync Data ─────────────────────────────────────────────────────
+  // Returns the plaintext payload by default. Clients that support the
+  // encrypted envelope opt in by passing `?encrypted=v1&clientPublicKey=<b64url>`;
+  // older scanner builds keep getting the plaintext shape unchanged.
+  // Every successful call — encrypted or not — emits an audit event so
+  // post-event forensics can reconstruct who pulled what and when.
   fastify.get(
     "/:eventId/sync",
     {
       preHandler: [
         authenticate,
-        validate({ params: ParamsWithEventId }),
+        validate({ params: ParamsWithEventId, query: OfflineSyncQuerySchema }),
         requirePermission("checkin:sync_offline"),
       ],
       schema: { tags: ["Check-in"], summary: "Get offline sync data for event" },
     },
     async (request, reply) => {
       const { eventId } = request.params as z.infer<typeof ParamsWithEventId>;
+      const query = request.query as OfflineSyncQuery;
       const data = await checkinService.getOfflineSyncData(eventId, request.user!);
-      return reply.send({ success: true, data });
+
+      const wantsEncryption = query.encrypted === "v1";
+      if (wantsEncryption && !query.clientPublicKey) {
+        throw new ValidationError(
+          "clientPublicKey is required when requesting the encrypted envelope",
+        );
+      }
+
+      // Build the response body FIRST. If `sealOfflineSyncPayload`
+      // throws on a malformed `clientPublicKey` we want the error to
+      // bubble out BEFORE the audit event is emitted — otherwise
+      // `auditLogs` records a download the client never received.
+      let responseBody: Record<string, unknown>;
+      if (wantsEncryption) {
+        // aad = eventId so a ciphertext leaked from event A cannot be
+        // replayed as event B's payload — GCM will tag-fail on open.
+        const envelope = sealOfflineSyncPayload(data, query.clientPublicKey!, eventId);
+        responseBody = {
+          ...envelope,
+          eventId,
+          syncedAt: data.syncedAt,
+          ttlAt: data.ttlAt,
+        };
+      } else {
+        responseBody = data as unknown as Record<string, unknown>;
+      }
+
+      // Emit after a successful seal (encrypted path) or unconditionally
+      // for the plaintext path. The `reply.send` below cannot throw
+      // synchronously, so this is the true "we're about to deliver" point.
+      eventBus.emit("checkin.offline_sync.downloaded", {
+        eventId,
+        organizationId: data.organizationId,
+        staffId: request.user!.uid,
+        scannerDeviceId: query.scannerDeviceId ?? null,
+        encrypted: wantsEncryption,
+        itemCount: data.totalRegistrations,
+        ttlAt: data.ttlAt,
+        actorId: request.user!.uid,
+        requestId: getRequestId(),
+        timestamp: new Date().toISOString(),
+      });
+
+      return reply.send({ success: true, data: responseBody });
     },
   );
 
@@ -61,7 +116,11 @@ export const checkinRoutes: FastifyPluginAsync = async (fastify) => {
         validate({ params: ParamsWithEventId, query: CheckinHistoryQuerySchema }),
         requirePermission("checkin:view_log"),
       ],
-      schema: { tags: ["Check-in"], summary: "Get paginated check-in history", security: [{ BearerAuth: [] }] },
+      schema: {
+        tags: ["Check-in"],
+        summary: "Get paginated check-in history",
+        security: [{ BearerAuth: [] }],
+      },
     },
     async (request, reply) => {
       const { eventId } = request.params as z.infer<typeof ParamsWithEventId>;

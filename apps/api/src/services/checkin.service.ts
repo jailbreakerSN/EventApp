@@ -24,6 +24,7 @@ import {
   computeValidityWindow,
   SCAN_CLOCK_SKEW_MS,
 } from "./qr-signing";
+import { resolveEventKeyFromEvent } from "./qr-key-resolver";
 
 // Maximum gap we'll accept between the client's `scannedAt` and the server's
 // `now` on the bulk-sync path. A staff device can legitimately have been
@@ -74,11 +75,19 @@ export class CheckinService extends BaseService {
     const users = await userRepository.batchGet(userIds);
     const userMap = new Map(users.map((u) => [u.uid ?? u.id, u]));
 
+    // TTL hint for the staff device's cache purge (badge-journey-review 4.2b).
+    // 24 h past event end — long enough to cover reconciliation lag for
+    // late scans, short enough that a lost device doesn't carry live QRs
+    // forever. Kept outside any future encrypted envelope so the client
+    // can schedule the purge without decrypting the payload.
+    const ttlAt = new Date(new Date(event.endDate).getTime() + 24 * 60 * 60 * 1000).toISOString();
+
     return {
       eventId,
       organizationId: event.organizationId,
       eventTitle: event.title,
       syncedAt: new Date().toISOString(),
+      ttlAt,
       totalRegistrations: allRegistrations.length,
       registrations: allRegistrations.map((reg) => {
         const participant = userMap.get(reg.userId);
@@ -134,7 +143,7 @@ export class CheckinService extends BaseService {
 
     // Process each item individually for granular conflict resolution
     for (const item of items) {
-      const result = await this.processCheckinItem(eventId, item, user);
+      const result = await this.processCheckinItem(eventId, event.organizationId, item, user);
       results.push(result);
       if (result.status === "success") {
         succeeded++;
@@ -165,11 +174,13 @@ export class CheckinService extends BaseService {
 
   private async processCheckinItem(
     eventId: string,
+    organizationId: string,
     item: BulkCheckinItem,
     user: AuthUser,
   ): Promise<BulkCheckinResult> {
-    // Verify QR signature
-    const parsed = verifyQrPayload(item.qrCodeValue);
+    // Verify QR signature — v4 payloads resolve their per-event HMAC key
+    // from Firestore via the resolver; v1/v2/v3 branches ignore it.
+    const parsed = await verifyQrPayload(item.qrCodeValue, resolveEventKeyFromEvent);
     if (!parsed) {
       return {
         localId: item.localId,
@@ -328,11 +339,15 @@ export class CheckinService extends BaseService {
           }
         }
 
-        // Apply check-in using the offline scannedAt timestamp
+        // Apply check-in using the offline scannedAt timestamp. Device id
+        // is persisted on the registration for quick "who scanned this?"
+        // lookups; the full attestation (nonce, client vs server time)
+        // rides on the domain event into auditLogs.
         tx.update(regRef, {
           status: "checked_in" as RegistrationStatus,
           checkedInAt: item.scannedAt,
           checkedInBy: user.uid,
+          checkedInDeviceId: item.scannerDeviceId ?? null,
           accessZoneId: item.accessZoneId ?? null,
           updatedAt: new Date().toISOString(),
         });
@@ -352,17 +367,25 @@ export class CheckinService extends BaseService {
       const participant = await userRepository.findById(registration.userId);
 
       if (txResult.status === "success") {
+        const serverConfirmedAt = new Date().toISOString();
         eventBus.emit("checkin.completed", {
           eventId,
+          organizationId,
           registrationId: registration.id,
           participantId: registration.userId,
           staffId: user.uid,
           accessZoneId: item.accessZoneId ?? null,
+          // Server-confirmed timestamp (when the write landed) vs the
+          // client-reported scan timestamp. Offline reconciliation can
+          // open a sizeable gap between the two — forensics needs both.
           checkedInAt: item.scannedAt,
+          clientScannedAt: item.scannedAt,
+          scannerDeviceId: item.scannerDeviceId ?? null,
+          scannerNonce: item.scannerNonce ?? null,
           source: "offline_sync",
           actorId: user.uid,
           requestId: getRequestId(),
-          timestamp: new Date().toISOString(),
+          timestamp: serverConfirmedAt,
         });
       }
 
