@@ -373,11 +373,13 @@
       },
       "pricing": {
         "from": "From",
+        "freeKicker": "Access",
         "attendees": "Attendees",
         "percentFull": "{pct}% full",
         "seatsRemaining": "{count, plural, one {# seat left} other {# seats left}}",
         "onlyLeft": "{count, plural, one {Only # seat left} other {Only # seats left}}",
-        "paymentSecured": "Secure checkout · Wave · Orange Money"
+        "paymentSecured": "Secure checkout · Wave · Orange Money",
+        "freeNoPayment": "Free registration — no payment required"
       },
       "speakerTwitter": "Twitter of {name}",
       "speakerLinkedin": "LinkedIn of {name}",

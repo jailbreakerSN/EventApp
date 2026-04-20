@@ -543,7 +543,7 @@ export default async function EventDetailPage({ params }: PageProps) {
               <div className="flex items-baseline justify-between gap-4">
                 <div>
                   <p className="font-mono-kicker text-[10px] font-medium uppercase tracking-[0.14em] text-muted-foreground">
-                    {tDetail("pricing.from")}
+                    {isFree ? tDetail("pricing.freeKicker") : tDetail("pricing.from")}
                   </p>
                   <p className="font-serif-display mt-1 text-[32px] font-semibold leading-none tracking-[-0.02em] tabular-nums">
                     {isFree ? tCommon("free") : formatCurrency(minPrice!, "XOF", regional)}
@@ -662,7 +662,9 @@ export default async function EventDetailPage({ params }: PageProps) {
                 {!isFull && <ArrowRight className="h-4 w-4" aria-hidden="true" />}
               </Link>
               <p className="mt-2.5 text-center text-[11px] text-muted-foreground">
-                {tDetail("pricing.paymentSecured")}
+                {isFree
+                  ? tDetail("pricing.freeNoPayment")
+                  : tDetail("pricing.paymentSecured")}
               </p>
               {event.requiresApproval && (
                 <p className="mt-1.5 text-center text-[11px] text-muted-foreground">

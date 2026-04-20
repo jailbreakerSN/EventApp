@@ -309,7 +309,7 @@
     "card": {
       "registeredCount": "{count, plural, one {# inscrit} other {# inscrits}}",
       "registeredWithFill": "{count, plural, one {# inscrit} other {# inscrits}} · {pct}% rempli",
-      "remainingSeats": "{count, plural, one {Plus qu'# place} other {Plus que # places}}",
+      "remainingSeats": "{count, plural, one {Plus qu’# place} other {Plus que # places}}",
       "attendeesCount": "{count} inscrits"
     },
     "filters": {
@@ -376,11 +376,13 @@
       },
       "pricing": {
         "from": "À partir de",
+        "freeKicker": "Accès",
         "attendees": "Inscrits",
         "percentFull": "{pct}% rempli",
         "seatsRemaining": "{count, plural, one {# place restante} other {# places restantes}}",
-        "onlyLeft": "{count, plural, one {Plus qu'# place} other {Plus que # places}}",
-        "paymentSecured": "Paiement sécurisé · Wave · Orange Money"
+        "onlyLeft": "{count, plural, one {Plus qu’# place} other {Plus que # places}}",
+        "paymentSecured": "Paiement sécurisé · Wave · Orange Money",
+        "freeNoPayment": "Inscription gratuite — aucun paiement requis"
       },
       "speakerTwitter": "Twitter de {name}",
       "speakerLinkedin": "LinkedIn de {name}",
