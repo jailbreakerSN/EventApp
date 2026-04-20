@@ -48,7 +48,28 @@ export const checkinRoutes: FastifyPluginAsync = async (fastify) => {
         );
       }
 
-      const auditAt = new Date().toISOString();
+      // Build the response body FIRST. If `sealOfflineSyncPayload`
+      // throws on a malformed `clientPublicKey` we want the error to
+      // bubble out BEFORE the audit event is emitted — otherwise
+      // `auditLogs` records a download the client never received.
+      let responseBody: Record<string, unknown>;
+      if (wantsEncryption) {
+        // aad = eventId so a ciphertext leaked from event A cannot be
+        // replayed as event B's payload — GCM will tag-fail on open.
+        const envelope = sealOfflineSyncPayload(data, query.clientPublicKey!, eventId);
+        responseBody = {
+          ...envelope,
+          eventId,
+          syncedAt: data.syncedAt,
+          ttlAt: data.ttlAt,
+        };
+      } else {
+        responseBody = data as unknown as Record<string, unknown>;
+      }
+
+      // Emit after a successful seal (encrypted path) or unconditionally
+      // for the plaintext path. The `reply.send` below cannot throw
+      // synchronously, so this is the true "we're about to deliver" point.
       eventBus.emit("checkin.offline_sync.downloaded", {
         eventId,
         organizationId: data.organizationId,
@@ -59,25 +80,10 @@ export const checkinRoutes: FastifyPluginAsync = async (fastify) => {
         ttlAt: data.ttlAt,
         actorId: request.user!.uid,
         requestId: getRequestId(),
-        timestamp: auditAt,
+        timestamp: new Date().toISOString(),
       });
 
-      if (wantsEncryption) {
-        // aad = eventId so a ciphertext leaked from event A cannot be
-        // replayed as event B's payload — GCM will tag-fail on open.
-        const envelope = sealOfflineSyncPayload(data, query.clientPublicKey!, eventId);
-        return reply.send({
-          success: true,
-          data: {
-            ...envelope,
-            eventId,
-            syncedAt: data.syncedAt,
-            ttlAt: data.ttlAt,
-          },
-        });
-      }
-
-      return reply.send({ success: true, data });
+      return reply.send({ success: true, data: responseBody });
     },
   );
 

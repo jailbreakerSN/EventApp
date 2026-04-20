@@ -84,6 +84,23 @@ export const EncryptedSyncEnvelopeSchema = z.object({
 
 export type EncryptedSyncEnvelope = z.infer<typeof EncryptedSyncEnvelopeSchema>;
 
+// ─── Live check-in request body ────────────────────────────────────────────
+// Shape for `POST /v1/registrations/checkin`. Lives in shared-types so the
+// API layer and any mobile / web client stay in lockstep on the scanner
+// attestation optional fields (CLAUDE.md: "All request bodies validated
+// with Zod schemas from @teranga/shared-types").
+export const CheckInRequestSchema = z.object({
+  qrCodeValue: z.string(),
+  accessZoneId: z.string().optional(),
+  scannerDeviceId: z.string().min(1).max(120).optional(),
+  scannerNonce: z
+    .string()
+    .regex(/^[0-9a-f]{16,64}$/i, "scannerNonce must be 16–64 lowercase hex chars")
+    .optional(),
+});
+
+export type CheckInRequest = z.infer<typeof CheckInRequestSchema>;
+
 /**
  * Query-param DTO for `GET /v1/checkin/:eventId/sync`. Both fields are
  * optional — omitting them keeps the legacy plaintext response. Together

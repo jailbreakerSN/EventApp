@@ -4,25 +4,20 @@ import { authenticate, requireEmailVerified } from "@/middlewares/auth.middlewar
 import { validate } from "@/middlewares/validate.middleware";
 import { requirePermission, requireAnyPermission } from "@/middlewares/permission.middleware";
 import { registrationService } from "@/services/registration.service";
-import { PaginationSchema } from "@teranga/shared-types";
+import { PaginationSchema, CheckInRequestSchema } from "@teranga/shared-types";
 
 const RegisterBody = z.object({
   eventId: z.string(),
   ticketTypeId: z.string(),
 });
 
-const CheckInBody = z.object({
-  qrCodeValue: z.string(),
-  accessZoneId: z.string().optional(),
-  // Scanner attestation. Both fields optional on the wire so older mobile
-  // app builds keep working; server persists what's provided and carries
-  // the rest as `null` in the audit trail.
-  scannerDeviceId: z.string().min(1).max(120).optional(),
-  scannerNonce: z
-    .string()
-    .regex(/^[0-9a-f]{16,64}$/i, "scannerNonce must be 16–64 lowercase hex chars")
-    .optional(),
-});
+// Route body schema is imported from `@teranga/shared-types` — keeping it
+// there lets the Flutter scanner + web-backoffice check-in UI build
+// against the same contract. Scanner attestation fields (`scannerDeviceId`,
+// `scannerNonce`) are optional on the wire so older mobile builds still
+// work; server persists what's provided and carries the rest as `null`
+// in the audit trail.
+const CheckInBody = CheckInRequestSchema;
 
 const ParamsWithRegistrationId = z.object({ registrationId: z.string() });
 
