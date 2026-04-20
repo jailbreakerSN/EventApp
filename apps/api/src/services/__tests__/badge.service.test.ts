@@ -66,6 +66,7 @@ vi.mock("@/context/request-context", () => ({
 const {
   mockBadgeDocSet,
   mockBadgeDocGet,
+  mockBadgeDocCreate,
   mockBadgeDocUpdate,
   mockBadgeDocRef,
   mockTemplateDocGet,
@@ -80,7 +81,17 @@ const {
   const badgeDocSet = vi.fn().mockResolvedValue(undefined);
   const badgeDocGet = vi.fn();
   const badgeDocUpdate = vi.fn().mockResolvedValue(undefined);
-  const badgeDocRef = { id: "badge-1", set: badgeDocSet, get: badgeDocGet, update: badgeDocUpdate };
+  // `docRef.create()` is the atomic create-if-missing used by
+  // `bulkGenerate` to avoid clobbering concurrent winners. Default
+  // resolves; tests that exercise the ALREADY_EXISTS branch override.
+  const badgeDocCreate = vi.fn().mockResolvedValue(undefined);
+  const badgeDocRef = {
+    id: "badge-1",
+    set: badgeDocSet,
+    get: badgeDocGet,
+    update: badgeDocUpdate,
+    create: badgeDocCreate,
+  };
   const templateDocGet = vi.fn();
   const templateDocRef = { get: templateDocGet };
   const badgeWhereGet = vi.fn();
@@ -100,6 +111,7 @@ const {
   return {
     mockBadgeDocSet: badgeDocSet,
     mockBadgeDocGet: badgeDocGet,
+    mockBadgeDocCreate: badgeDocCreate,
     mockBadgeDocUpdate: badgeDocUpdate,
     mockBadgeDocRef: badgeDocRef,
     mockTemplateDocGet: templateDocGet,
@@ -234,6 +246,11 @@ const service = new BadgeService();
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Default badge-doc snapshot is "not yet written" so the new
+  // deterministic-id create-if-missing path in `BadgeService.generate` /
+  // `getMyBadge` falls through to the transaction. Individual tests that
+  // exercise the "already exists" branch override this.
+  mockBadgeDocGet.mockResolvedValue({ exists: false });
 });
 
 describe("BadgeService.generate", () => {
@@ -251,21 +268,29 @@ describe("BadgeService.generate", () => {
     mockRegistrationRepo.findByIdOrThrow.mockResolvedValue(registration);
     mockTemplateDocGet.mockResolvedValue({ exists: true });
     mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
-    mockBadgeWhereGet.mockResolvedValue({ empty: true });
 
     const result = await service.generate(registration.id, "tpl-1", user);
 
     expect(result.registrationId).toBe(registration.id);
     expect(result.status).toBe("pending");
-    expect(mockBadgeDocSet).toHaveBeenCalled();
+    // The create-if-missing path writes through the transaction helper.
+    expect(mockTxSet).toHaveBeenCalled();
   });
 
   it("returns existing badge instead of creating duplicate", async () => {
+    // After the "collapse writers" refactor the uniqueness check is a
+    // direct doc.get() on `${eventId}_${userId}` rather than the legacy
+    // where("registrationId", "==", ...) scan. Tests flipped to the same
+    // lookup path.
     const user = buildOrganizerUser(orgId);
-    const registration = buildRegistration({ status: "confirmed", eventId: "ev-1" });
+    const registration = buildRegistration({
+      status: "confirmed",
+      eventId: "ev-1",
+      userId: "user-1",
+    });
     const event = buildEvent({ id: "ev-1", organizationId: orgId });
     const existingBadge = {
-      id: "existing-badge",
+      id: "ev-1_user-1",
       registrationId: registration.id,
       status: "generated",
     };
@@ -273,14 +298,15 @@ describe("BadgeService.generate", () => {
     mockRegistrationRepo.findByIdOrThrow.mockResolvedValue(registration);
     mockTemplateDocGet.mockResolvedValue({ exists: true });
     mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
-    mockBadgeWhereGet.mockResolvedValue({
-      empty: false,
-      docs: [{ id: "existing-badge", data: () => existingBadge }],
+    mockBadgeDocGet.mockResolvedValue({
+      exists: true,
+      id: "ev-1_user-1",
+      data: () => existingBadge,
     });
 
     const result = await service.generate(registration.id, "tpl-1", user);
 
-    expect(result.id).toBe("existing-badge");
+    expect(result.id).toBe("ev-1_user-1");
     expect(mockBadgeDocSet).not.toHaveBeenCalled();
   });
 
@@ -348,12 +374,16 @@ describe("BadgeService.generate", () => {
 describe("BadgeService.bulkGenerate", () => {
   const orgId = "org-1";
 
-  it("queues badges for confirmed registrations", async () => {
+  it("queues badges for confirmed registrations via atomic per-doc create", async () => {
+    // After collapse-writers, bulkGenerate uses `docRef.create()` per
+    // registration instead of `batch.set()` — that's the atomic
+    // create-if-missing path that can't clobber a concurrent winner's
+    // `pdfURL` / `status` fields. Assertions follow the new shape.
     const user = buildOrganizerUser(orgId);
     const event = buildEvent({ id: "ev-1", organizationId: orgId });
     const registrations = [
-      buildRegistration({ id: "reg-1", eventId: "ev-1", status: "confirmed" }),
-      buildRegistration({ id: "reg-2", eventId: "ev-1", status: "confirmed" }),
+      buildRegistration({ id: "reg-1", eventId: "ev-1", userId: "u-1", status: "confirmed" }),
+      buildRegistration({ id: "reg-2", eventId: "ev-1", userId: "u-2", status: "confirmed" }),
     ];
 
     mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
@@ -368,8 +398,81 @@ describe("BadgeService.bulkGenerate", () => {
     const result = await service.bulkGenerate("ev-1", "tpl-1", user);
 
     expect(result.queued).toBe(2);
-    expect(mockBatchSet).toHaveBeenCalledTimes(2);
-    expect(mockBatchCommit).toHaveBeenCalled();
+    expect(mockBadgeDocCreate).toHaveBeenCalledTimes(2);
+  });
+
+  it("skips registrations whose badge was created by a concurrent writer (ALREADY_EXISTS)", async () => {
+    // Simulates the bulkGenerate race window: snapshot of existing badges
+    // is empty, but by the time the creates land another writer
+    // (`getMyBadge`, a trigger) has created the same `${eventId}_${userId}`
+    // doc. Firestore returns gRPC code 6 (ALREADY_EXISTS); bulkGenerate
+    // treats that as "someone else got there first" and does not bump
+    // the queued counter.
+    //
+    // Both the cursor mock and the create mock are fully reset up-front
+    // because `vi.clearAllMocks()` in beforeEach only clears call history,
+    // not queued `mockResolvedValueOnce` values — residue from earlier
+    // tests otherwise makes this flaky under the parallel
+    // `Promise.allSettled` consumer.
+    const user = buildOrganizerUser(orgId);
+    const event = buildEvent({ id: "ev-1", organizationId: orgId });
+    const registrations = [
+      buildRegistration({ id: "reg-1", eventId: "ev-1", userId: "u-1", status: "confirmed" }),
+      buildRegistration({ id: "reg-2", eventId: "ev-1", userId: "u-2", status: "confirmed" }),
+    ];
+
+    mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
+    mockTemplateDocGet.mockResolvedValue({ exists: true });
+    mockBadgeWhereGet.mockResolvedValue({ docs: [] });
+
+    mockRegistrationRepo.findByEventCursor.mockReset();
+    let cursorCalls = 0;
+    mockRegistrationRepo.findByEventCursor.mockImplementation(async () => {
+      cursorCalls += 1;
+      if (cursorCalls === 1) return { data: registrations, lastDoc: null };
+      return { data: [], lastDoc: null };
+    });
+
+    mockBadgeDocCreate.mockReset();
+    let createCalls = 0;
+    mockBadgeDocCreate.mockImplementation(async () => {
+      createCalls += 1;
+      if (createCalls === 1) return undefined;
+      throw Object.assign(new Error("ALREADY_EXISTS"), { code: 6 });
+    });
+
+    const result = await service.bulkGenerate("ev-1", "tpl-1", user);
+
+    expect(result.queued).toBe(1);
+    expect(mockBadgeDocCreate).toHaveBeenCalledTimes(2);
+  });
+
+  it("rethrows on non-ALREADY_EXISTS create failures (e.g. permission denied)", async () => {
+    const user = buildOrganizerUser(orgId);
+    const event = buildEvent({ id: "ev-1", organizationId: orgId });
+    const registrations = [
+      buildRegistration({ id: "reg-1", eventId: "ev-1", userId: "u-1", status: "confirmed" }),
+    ];
+
+    mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
+    mockTemplateDocGet.mockResolvedValue({ exists: true });
+    mockBadgeWhereGet.mockResolvedValue({ docs: [] });
+
+    mockRegistrationRepo.findByEventCursor.mockReset();
+    let cursorCalls = 0;
+    mockRegistrationRepo.findByEventCursor.mockImplementation(async () => {
+      cursorCalls += 1;
+      if (cursorCalls === 1) return { data: registrations, lastDoc: null };
+      return { data: [], lastDoc: null };
+    });
+
+    // gRPC PERMISSION_DENIED = code 7 — not a concurrent-write signal.
+    mockBadgeDocCreate.mockReset();
+    mockBadgeDocCreate.mockImplementation(async () => {
+      throw Object.assign(new Error("PERMISSION_DENIED"), { code: 7 });
+    });
+
+    await expect(service.bulkGenerate("ev-1", "tpl-1", user)).rejects.toThrow("PERMISSION_DENIED");
   });
 
   // Note: bulkGenerate deduplication (skip existing badges) requires complex
