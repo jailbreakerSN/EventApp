@@ -59,6 +59,22 @@ vi.mock("@/repositories/venue.repository", () => ({
   },
 }));
 
+// Scheduled-downgrade freeze (Q2a): `checkEventLimit` now reads the
+// subscription to apply the target-plan cap as soon as a downgrade is
+// scheduled. Default: no scheduled change. Tests exercising the
+// scheduled-downgrade spec override `findByOrganization` per-test.
+const { mockSubRepo } = vi.hoisted(() => ({
+  mockSubRepo: { findByOrganization: vi.fn() },
+}));
+vi.mock("@/repositories/subscription.repository", () => ({
+  subscriptionRepository: new Proxy(
+    {},
+    {
+      get: (_t, p) => (mockSubRepo as Record<string, unknown>)[p as string],
+    },
+  ),
+}));
+
 const { mockEventEmit } = vi.hoisted(() => ({ mockEventEmit: vi.fn() }));
 vi.mock("@/events/event-bus", () => ({
   eventBus: { emit: mockEventEmit },
@@ -94,6 +110,9 @@ beforeEach(() => {
   vi.clearAllMocks();
   // Default: org has room for more events (below plan limit)
   mockEventRepo.countActiveByOrganization.mockResolvedValue(0);
+  // Default: no scheduled downgrade. Scheduled-downgrade freeze tests
+  // override this per-test to simulate a pending plan flip.
+  mockSubRepo.findByOrganization.mockResolvedValue(null);
 });
 
 describe("EventService.create", () => {
@@ -226,6 +245,127 @@ describe("EventService.getById", () => {
     mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
 
     await expect(service.getById(event.id, user)).rejects.toThrow("Accès refusé");
+  });
+});
+
+// ─── SPEC: scheduled-downgrade event-creation freeze (Q2a, post-audit) ───
+// Pre-audit, once an organizer scheduled a downgrade (e.g. pro → starter)
+// they could keep creating events up to the CURRENT plan's cap during
+// the scheduled window. At rollover, the daily job saw `current > target`
+// and silently refused to flip, leaving the org on the old plan forever.
+// Spec: when a downgrade is scheduled, the TARGET plan's cap applies
+// immediately — the organizer loses the extra headroom the moment they
+// schedule the flip, preventing the stranded-scheduled-change state.
+describe("EventService.create — scheduled-downgrade freeze (spec)", () => {
+  it("blocks event creation when active-event count >= target plan cap", async () => {
+    const user = buildOrganizerUser("org-1");
+    const org = buildOrganization({ id: "org-1", plan: "pro" });
+    // Pro allows unlimited events; org currently has 15 active.
+    mockOrgRepo.findByIdOrThrow.mockResolvedValue(org);
+    mockEventRepo.countActiveByOrganization.mockResolvedValue(15);
+    // Scheduled downgrade to starter (max 10 events) → new creates
+    // must reject because we're already above the target cap.
+    mockSubRepo.findByOrganization.mockResolvedValue({
+      id: "sub-1",
+      organizationId: "org-1",
+      scheduledChange: {
+        toPlan: "starter",
+        effectiveAt: new Date(Date.now() + 7 * 86_400_000).toISOString(),
+        reason: "downgrade",
+        scheduledBy: "user-1",
+        scheduledAt: new Date().toISOString(),
+      },
+    });
+
+    const dto = {
+      organizationId: "org-1",
+      title: "Blocked event",
+      description: "should not land",
+      category: "conference" as const,
+      format: "in_person" as const,
+      status: "draft" as const,
+      startDate: new Date(Date.now() + 86400000).toISOString(),
+      endDate: new Date(Date.now() + 2 * 86400000).toISOString(),
+      timezone: "Africa/Dakar",
+      location: { name: "X", address: "Y", city: "Dakar", country: "SN" },
+      isPublic: true,
+      isFeatured: false,
+      requiresApproval: false,
+      maxAttendees: 100,
+      tags: [],
+      ticketTypes: [
+        {
+          id: "t1",
+          name: "Standard",
+          price: 0,
+          currency: "XOF" as const,
+          totalQuantity: 100,
+          soldCount: 0,
+          accessZoneIds: [],
+          isVisible: true,
+        },
+      ],
+      accessZones: [],
+    } as unknown as CreateEventDto;
+
+    await expect(service.create(dto, user)).rejects.toThrow(/bascule vers le plan starter/);
+    expect(mockEventRepo.create).not.toHaveBeenCalled();
+  });
+
+  it("allows creation when active-event count is below the target plan cap", async () => {
+    // Current usage is 3, scheduled target is starter (cap 10). Still
+    // within target — creation should succeed. Makes sure the freeze
+    // isn't over-aggressive and doesn't block legitimate activity.
+    const user = buildOrganizerUser("org-1");
+    const org = buildOrganization({ id: "org-1", plan: "pro" });
+    mockOrgRepo.findByIdOrThrow.mockResolvedValue(org);
+    mockEventRepo.countActiveByOrganization.mockResolvedValue(3);
+    mockSubRepo.findByOrganization.mockResolvedValue({
+      id: "sub-1",
+      organizationId: "org-1",
+      scheduledChange: {
+        toPlan: "starter",
+        effectiveAt: new Date(Date.now() + 7 * 86_400_000).toISOString(),
+        reason: "downgrade",
+        scheduledBy: "user-1",
+        scheduledAt: new Date().toISOString(),
+      },
+    });
+    mockEventRepo.create.mockResolvedValue(buildEvent({ id: "ev-ok" }));
+
+    const dto = {
+      organizationId: "org-1",
+      title: "Allowed event",
+      description: "fits target",
+      category: "conference" as const,
+      format: "in_person" as const,
+      status: "draft" as const,
+      startDate: new Date(Date.now() + 86400000).toISOString(),
+      endDate: new Date(Date.now() + 2 * 86400000).toISOString(),
+      timezone: "Africa/Dakar",
+      location: { name: "X", address: "Y", city: "Dakar", country: "SN" },
+      isPublic: true,
+      isFeatured: false,
+      requiresApproval: false,
+      maxAttendees: 100,
+      tags: [],
+      ticketTypes: [
+        {
+          id: "t1",
+          name: "Standard",
+          price: 0,
+          currency: "XOF" as const,
+          totalQuantity: 100,
+          soldCount: 0,
+          accessZoneIds: [],
+          isVisible: true,
+        },
+      ],
+      accessZones: [],
+    } as unknown as CreateEventDto;
+
+    await expect(service.create(dto, user)).resolves.toBeDefined();
+    expect(mockEventRepo.create).toHaveBeenCalled();
   });
 });
 

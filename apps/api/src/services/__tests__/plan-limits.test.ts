@@ -58,6 +58,16 @@ vi.mock("@/repositories/venue.repository", () => ({
   },
 }));
 
+// Stub subscription repo — checkEventLimit calls findByOrganization
+// for the Q2a scheduled-downgrade freeze. These plan-limit tests don't
+// exercise that path (they test the baseline plan caps), so default to
+// "no scheduled change".
+vi.mock("@/repositories/subscription.repository", () => ({
+  subscriptionRepository: {
+    findByOrganization: vi.fn().mockResolvedValue(null),
+  },
+}));
+
 vi.mock("@/events/event-bus", () => ({
   eventBus: { emit: vi.fn() },
 }));
@@ -536,12 +546,7 @@ describe("Paid ticket feature gating", () => {
     });
     // No orgRepo mock — free merged price bypasses the feature check.
 
-    const result = await eventService.updateTicketType(
-      event.id,
-      "tt-1",
-      { price: 0 },
-      user,
-    );
+    const result = await eventService.updateTicketType(event.id, "tt-1", { price: 0 }, user);
 
     expect(result.ticketTypes[0].price).toBe(0);
   });

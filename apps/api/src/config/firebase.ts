@@ -61,6 +61,17 @@ export const COLLECTIONS = {
   // inside the scan path is what makes multi-entry correct under
   // concurrency. Admin-SDK-only at the rules layer.
   CHECKIN_LOCKS: "checkinLocks",
+  // In-flight lock docs for refund serialisation. Doc id = paymentId.
+  // Before calling the payment provider's refund API, the service
+  // atomically creates a lock doc via `ref.create()`; if the create
+  // throws ALREADY_EXISTS another refund for the same payment is
+  // mid-flight, and the second caller gets a 409 before the provider
+  // is hit a second time. Without this, two concurrent "Refund" clicks
+  // both reach the provider and only the DB write deduplicates — the
+  // provider records two refunds but our ledger shows one. Lock is
+  // released inside the refund transaction (same commit as the ledger
+  // write).
+  REFUND_LOCKS: "refundLocks",
   INVITES: "invites",
   PAYMENTS: "payments",
   RECEIPTS: "receipts",
