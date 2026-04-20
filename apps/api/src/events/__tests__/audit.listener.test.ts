@@ -69,6 +69,7 @@ describe("Audit Listener", () => {
     const payload: CheckInCompletedEvent = {
       registrationId: "reg-2",
       eventId: "ev-1",
+      organizationId: "org-1",
       participantId: "u-2",
       staffId: "staff-1",
       accessZoneId: "zone-vip",
@@ -177,6 +178,7 @@ describe("Audit Listener", () => {
     eventBus.emit("checkin.completed", {
       registrationId: "r4",
       eventId: "e1",
+      organizationId: "o1",
       participantId: "u1",
       staffId: "s1",
       actorId: "s1",
@@ -243,6 +245,7 @@ describe("Audit Listener", () => {
       badgeId: "b1",
       registrationId: "r1",
       eventId: "e1",
+      organizationId: "o1",
       userId: "u1",
       actorId: "a1",
       requestId: "req11",

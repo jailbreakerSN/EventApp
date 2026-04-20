@@ -325,7 +325,7 @@ function ScannerTab({
           d.checkedInByName && d.checkedInAt
             ? `Déjà validé par ${d.checkedInByName} · ${formatRelative(d.checkedInAt as string)}`
             : message;
-        toast.warning("Deja enregistre", { description: toastDescription });
+        toast.warning("Déjà enregistré", { description: toastDescription });
       } else if (code === "QR_EXPIRED" || error.status === 410) {
         // Badge signed validity window is in the past. Surface as its own
         // state so staff can distinguish fraud attempts from scanner errors.

@@ -157,6 +157,7 @@ export class BadgeService extends BaseService {
         badgeId: created.id,
         registrationId,
         eventId: registration.eventId,
+        organizationId: event.organizationId,
         userId: registration.userId,
         actorId: user.uid,
         requestId: getRequestId(),
@@ -270,6 +271,22 @@ export class BadgeService extends BaseService {
       }
     }
 
+    // Aggregate audit event — the number of badges created in this call
+    // (zero counts if the caller was re-running and every user already
+    // had one). Per-badge emission would flood the trail without adding
+    // signal; `badge.bulk_generated` mirrors `checkin.bulk_synced`.
+    if (queued > 0) {
+      eventBus.emit("badge.bulk_generated", {
+        eventId,
+        organizationId: event.organizationId,
+        templateId: templateId || null,
+        created: queued,
+        actorId: user.uid,
+        requestId: getRequestId(),
+        timestamp: new Date().toISOString(),
+      });
+    }
+
     return { queued };
   }
 
@@ -334,10 +351,17 @@ export class BadgeService extends BaseService {
     // `generatedAt` is the cheapest way to detect "we lost the race and the
     // other writer won" without a second read.
     if (created.generatedAt === now) {
+      // One extra event read on the winning path to stamp
+      // `auditLogs.organizationId`. Cross-org queries on
+      // `badge.generated` were blind before; accept the lookup cost on
+      // the first-time-ever fetch (subsequent calls short-circuit at
+      // line 298 without emitting).
+      const eventDoc = await eventRepository.findById(eventId).catch(() => null);
       eventBus.emit("badge.generated", {
         badgeId: created.id,
         registrationId: created.registrationId,
         eventId: created.eventId,
+        organizationId: eventDoc?.organizationId ?? "",
         userId: created.userId,
         actorId: user.uid,
         requestId: getRequestId(),
