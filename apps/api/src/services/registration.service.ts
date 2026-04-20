@@ -12,6 +12,7 @@ import { organizationRepository } from "@/repositories/organization.repository";
 import { userRepository } from "@/repositories/user.repository";
 import { type PaginationParams, type PaginatedResult } from "@/repositories/base.repository";
 import { runTransaction, FieldValue } from "@/repositories/transaction.helper";
+import { db, COLLECTIONS } from "@/config/firebase";
 import { type AuthUser } from "@/middlewares/auth.middleware";
 import {
   ValidationError,
@@ -480,6 +481,30 @@ export class RegistrationService extends BaseService {
       throw new QrExpiredError(new Date(window.notAfter).toISOString());
     }
 
+    // Pre-build a random id + createdAt for the shadow `checkins` doc.
+    // The same fields participate in the tx for every outcome (success
+    // → status "success", "already" → "duplicate", anything else is
+    // already handled above / cannot reach here).
+    const checkinRef = db.collection(COLLECTIONS.CHECKINS).doc();
+    const checkinBase = {
+      id: checkinRef.id,
+      eventId: registration.eventId,
+      registrationId: registration.id,
+      organizationId: event.organizationId,
+      userId: registration.userId,
+      scannedBy: user.uid,
+      scannerDeviceId: scannerDeviceId ?? null,
+      scannerNonce: scannerNonce ?? null,
+      accessZoneId: accessZoneId ?? null,
+      source: "live" as const,
+      clientScannedAt: null,
+      qrPayloadVersion: parsed.version,
+      qrKid: parsed.kid ?? null,
+      requestId: getRequestId() ?? null,
+      idempotencyKey: null,
+      createdAt: new Date().toISOString(),
+    };
+
     // Transaction returns a tagged envelope — the "already checked in"
     // branch needs enrichment (staff display name) that can't happen inside
     // the tx, so we surface the raw identifiers and resolve them below.
@@ -508,6 +533,17 @@ export class RegistrationService extends BaseService {
       const current = { id: regSnap.id, ...regSnap.data() } as Registration;
 
       if (current.status === "checked_in") {
+        // Shadow-write: duplicate scans now leave a forensic trail
+        // instead of vanishing as a bare 409. The registration cache is
+        // unchanged (still reflects the first successful scan).
+        const now = new Date().toISOString();
+        tx.set(checkinRef, {
+          ...checkinBase,
+          scannedAt: now,
+          status: "duplicate",
+          rejectCode: "invalid_status",
+          reason: `Déjà enregistré le ${current.checkedInAt ?? "—"}`,
+        });
         // Return — don't throw. The outer service enriches with the staff's
         // display name (needs a second read the tx can't make) before
         // surfacing a 409 to the client.
@@ -581,6 +617,17 @@ export class RegistrationService extends BaseService {
         eventUpdate[`zoneCheckedInCounts.${accessZoneId}`] = FieldValue.increment(1);
       }
       tx.update(eventRef, eventUpdate);
+
+      // Shadow-write the per-scan forensic row alongside the legacy
+      // registration flip. Readers migrate in a follow-up commit; for
+      // now the `registrations` collection remains the source of truth.
+      tx.set(checkinRef, {
+        ...checkinBase,
+        scannedAt: now,
+        status: "success",
+        rejectCode: null,
+        reason: null,
+      });
 
       return {
         kind: "success",

@@ -389,6 +389,28 @@ export class CheckinService extends BaseService {
         });
       }
 
+      // Shadow-write per-scan forensic row (badge-journey-review §3.3
+      // commit 1). Best-effort + fire-and-forget — the legacy
+      // registration flip happened inside the tx above and is the
+      // authoritative check-in signal; a failure to write the forensic
+      // row leaves the trail one scan short but does not affect the
+      // scan outcome. Once readers migrate (follow-up commit) this will
+      // move inside the tx proper.
+      void this.writeShadowCheckin({
+        eventId,
+        organizationId,
+        registration,
+        item,
+        parsed,
+        user,
+        outcomeStatus: txResult.status,
+        outcomeReason: txResult.reason,
+      }).catch((err: unknown) => {
+        process.stderr.write(
+          `[checkin-service] shadow checkins write failed for reg=${registration.id}: ${err}\n`,
+        );
+      });
+
       return {
         localId: item.localId,
         status: txResult.status,
@@ -564,6 +586,67 @@ export class CheckinService extends BaseService {
         totalPages: Math.ceil((query.q ? entries.length : total) / limit),
       },
     };
+  }
+
+  /**
+   * Shadow-write a per-scan forensic row into the `checkins` collection.
+   * Runs outside the main check-in transaction — shadow-write phase, the
+   * registration flip in the tx remains the authoritative check-in signal.
+   * Once `checkins` readers land (follow-up commit) this moves inside the
+   * tx proper and becomes part of the atomic state change.
+   */
+  private async writeShadowCheckin(ctx: {
+    eventId: string;
+    organizationId: string;
+    registration: Registration;
+    item: BulkCheckinItem;
+    parsed: { version: "v1" | "v2" | "v3" | "v4"; kid?: string | null };
+    user: AuthUser;
+    outcomeStatus: BulkCheckinResultStatus;
+    outcomeReason?: string | null;
+  }): Promise<void> {
+    // Map the bulk-sync outcome enum onto the persisted status tri-state.
+    const status: "success" | "duplicate" | "rejected" =
+      ctx.outcomeStatus === "success"
+        ? "success"
+        : ctx.outcomeStatus === "already_checked_in"
+          ? "duplicate"
+          : "rejected";
+    // Reuse the same reject-code alphabet as the wire enum where it maps
+    // cleanly. "already_checked_in" is surfaced as a duplicate status so
+    // it needs a separate reject-code value — reuse the neighbouring
+    // "invalid_status" which is the closest semantic match.
+    const rejectCode: string | null =
+      ctx.outcomeStatus === "success"
+        ? null
+        : ctx.outcomeStatus === "already_checked_in"
+          ? "invalid_status"
+          : ctx.outcomeStatus;
+
+    const ref = db.collection(COLLECTIONS.CHECKINS).doc();
+    const serverConfirmedAt = new Date().toISOString();
+    await ref.set({
+      id: ref.id,
+      registrationId: ctx.registration.id,
+      eventId: ctx.eventId,
+      organizationId: ctx.organizationId,
+      userId: ctx.registration.userId,
+      scannedAt: serverConfirmedAt,
+      clientScannedAt: ctx.item.scannedAt,
+      scannedBy: ctx.user.uid,
+      scannerDeviceId: ctx.item.scannerDeviceId ?? null,
+      scannerNonce: ctx.item.scannerNonce ?? null,
+      accessZoneId: ctx.item.accessZoneId ?? null,
+      status,
+      source: "offline_sync" as const,
+      rejectCode,
+      reason: ctx.outcomeReason ?? null,
+      qrPayloadVersion: ctx.parsed.version,
+      qrKid: ctx.parsed.kid ?? null,
+      requestId: getRequestId() ?? null,
+      idempotencyKey: ctx.item.localId,
+      createdAt: serverConfirmedAt,
+    });
   }
 }
 

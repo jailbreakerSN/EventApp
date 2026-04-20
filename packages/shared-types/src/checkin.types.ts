@@ -101,6 +101,82 @@ export const CheckInRequestSchema = z.object({
 
 export type CheckInRequest = z.infer<typeof CheckInRequestSchema>;
 
+// ─── Per-scan forensic record (checkins collection) ────────────────────────
+// Every scan attempt — successful, duplicate, or rejected — writes a row
+// here. The existing `registration.status === "checked_in"` / `checkedInAt`
+// fields remain as the denormalised "first-ever successful entry" cache;
+// this collection adds the forensic trail (device id, nonce, client vs
+// server time split, reject reason) that Sprint C item 4.3's security
+// dashboard needs.
+//
+// Shadow-write phase: services write to both `registrations` (legacy
+// cache, unchanged semantics) and `checkins` (new forensic log). No
+// reader migrates in this commit — that ships in a follow-up.
+
+export const CheckinRecordStatusSchema = z.enum(["success", "duplicate", "rejected"]);
+export type CheckinRecordStatus = z.infer<typeof CheckinRecordStatusSchema>;
+
+export const CheckinSourceSchema = z.enum(["live", "offline_sync"]);
+export type CheckinSource = z.infer<typeof CheckinSourceSchema>;
+
+/**
+ * Maps the per-item bulk-sync outcome enum onto the reject classification
+ * we persist. Reused by `BulkCheckinResultStatusSchema` so the two stay
+ * in lockstep — any new reject reason added there must land here too.
+ */
+export const CheckinRejectCodeSchema = z.enum([
+  "invalid_qr",
+  "not_found",
+  "cancelled",
+  "invalid_status",
+  "zone_full",
+  "expired",
+  "not_yet_valid",
+]);
+export type CheckinRejectCode = z.infer<typeof CheckinRejectCodeSchema>;
+
+export const CheckinRecordSchema = z.object({
+  id: z.string(),
+  registrationId: z.string(),
+  eventId: z.string(),
+  organizationId: z.string(),
+  userId: z.string(),
+
+  // Authoritative server-confirmed timestamp.
+  scannedAt: z.string().datetime(),
+  // Device-reported scan time. Diverges from `scannedAt` on the
+  // `offline_sync` path — the gap is the reconcile lag, which 4.3's
+  // anomaly widget flags.
+  clientScannedAt: z.string().datetime().nullable(),
+  // Staff uid that accepted the scan.
+  scannedBy: z.string(),
+  scannerDeviceId: z.string().nullable(),
+  scannerNonce: z.string().nullable(),
+  accessZoneId: z.string().nullable(),
+
+  status: CheckinRecordStatusSchema,
+  source: CheckinSourceSchema,
+  // Populated for `duplicate` / `rejected` rows; null on `success`.
+  rejectCode: CheckinRejectCodeSchema.nullable(),
+  reason: z.string().nullable(),
+
+  // Pins which QR credential was scanned. `qrKid` is non-null only for
+  // v4 — lets the rotation forensics page show "scan accepted a QR
+  // signed by key X rotated Y days ago".
+  qrPayloadVersion: z.enum(["v1", "v2", "v3", "v4"]).nullable(),
+  qrKid: z.string().nullable(),
+
+  // Request-context breadcrumb so auditLogs + checkins can be joined.
+  requestId: z.string().nullable(),
+  // Client-supplied idempotency key for offline reconcile bursts;
+  // equals `bulkItem.localId` on that path, null on live scans.
+  idempotencyKey: z.string().nullable(),
+
+  createdAt: z.string().datetime(),
+});
+
+export type CheckinRecord = z.infer<typeof CheckinRecordSchema>;
+
 /**
  * Query-param DTO for `GET /v1/checkin/:eventId/sync`. Both fields are
  * optional — omitting them keeps the legacy plaintext response. Together

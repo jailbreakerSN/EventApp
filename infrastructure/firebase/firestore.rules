@@ -304,6 +304,20 @@ service cloud.firestore {
       allow create, update, delete: if false;  // Only Admin SDK (API + schedulers)
     }
 
+    // ─── Per-scan forensic log (checkins) ───────────────────────────────────
+    // One row per scan attempt — success, duplicate, or rejected. Written
+    // exclusively by the API via Admin SDK; no client writes at any role
+    // level. Read by organizers/staff of the event's org for the security
+    // dashboard (Sprint C item 4.3), and by super admins for platform
+    // oversight. `organizationId` is denormalised on the doc so the rule
+    // doesn't need a `get()` hop per evaluation.
+    match /checkins/{checkinId} {
+      allow read: if isSuperAdmin()
+                  || ((isOrganizer() || isStaff())
+                      && belongsToOrg(resource.data.organizationId));
+      allow create, update, delete: if false;  // Admin SDK only
+    }
+
     // ─── Offline Sync Data ──────────────────────────────────────────────────
     // Cached registration data for staff QR scanning when offline.
     // Written by Admin SDK, readable only by staff/organizers of the same org.

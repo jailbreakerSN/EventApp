@@ -50,6 +50,10 @@ export const COLLECTIONS = {
   OFFLINE_SYNC: "offlineSync",
   AUDIT_LOGS: "auditLogs",
   CHECKIN_FEED: "checkinFeed",
+  // Dedicated per-scan forensic collection. One doc per scan ATTEMPT
+  // (success / duplicate / rejected). See badge-journey-review §3.3
+  // for the design + migration strategy.
+  CHECKINS: "checkins",
   INVITES: "invites",
   PAYMENTS: "payments",
   RECEIPTS: "receipts",
