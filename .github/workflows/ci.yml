@@ -58,6 +58,13 @@ jobs:
           key: turbo-shared-types-${{ runner.os }}-${{ hashFiles('packages/shared-types/src/**', 'packages/shared-types/package.json') }}
           restore-keys: turbo-shared-types-${{ runner.os }}-
       - run: npx turbo build --filter=@teranga/shared-types
+      # Contract snapshots (Zod schema shape) + i18n key coverage
+      # (fr / en / wo parity per app) live in shared-types so they can
+      # catch cross-app regressions in a single place. Free-tier CI
+      # runs these in the same job that builds the package — no
+      # emulator, no additional infrastructure.
+      - name: Tests (contract snapshots, i18n coverage, permissions)
+        run: npm run test --workspace=@teranga/shared-types
       - uses: actions/upload-artifact@v4
         with:
           name: shared-types-dist
