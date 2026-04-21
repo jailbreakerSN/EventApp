@@ -56,7 +56,10 @@ export function NewsletterSignup() {
       className="rounded-2xl bg-gradient-to-r from-teranga-navy/5 to-teranga-gold/5 px-6 py-12 dark:from-teranga-navy/20 dark:to-teranga-gold/10"
     >
       <div className="mx-auto max-w-2xl text-center">
-        <h2 id="newsletter-heading" className="text-2xl font-bold text-foreground sm:text-3xl">
+        <h2
+          id="newsletter-heading"
+          className="font-serif-display text-[28px] font-semibold leading-[1.15] tracking-[-0.02em] text-foreground sm:text-[32px]"
+        >
           {t("heading")}
         </h2>
         <p className="mt-3 text-muted-foreground">{t("description")}</p>

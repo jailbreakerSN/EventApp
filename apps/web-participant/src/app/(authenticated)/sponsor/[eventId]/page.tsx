@@ -217,7 +217,9 @@ export default function SponsorPortalPage() {
           </div>
         )}
         <div>
-          <h1 className="text-2xl font-bold text-foreground">{sponsor.companyName}</h1>
+          <h1 className="font-serif-display text-[28px] font-semibold leading-[1.15] tracking-[-0.02em] text-foreground">
+            {sponsor.companyName}
+          </h1>
           <span className="inline-flex items-center rounded-full bg-teranga-gold/10 px-2.5 py-0.5 text-xs font-medium text-teranga-gold">
             {TIER_LABELS[sponsor.tier] ?? sponsor.tier}
           </span>
