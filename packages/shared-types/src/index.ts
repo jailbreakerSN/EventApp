@@ -2,6 +2,7 @@ export * from "./permissions.types";
 export * from "./user.types";
 export * from "./organization.types";
 export * from "./event.types";
+export * from "./event-availability";
 export * from "./badge.types";
 export * from "./checkin.types";
 export * from "./messaging.types";

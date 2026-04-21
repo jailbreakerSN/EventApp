@@ -12,6 +12,12 @@ import {
   MessageSquare,
   ArrowLeft,
   ArrowRight,
+  AlertTriangle,
+  CalendarX,
+  Clock,
+  Archive,
+  CheckCircle2,
+  Ban,
 } from "lucide-react";
 import { serverEventsApi, serverSpeakersApi, serverSessionsApi } from "@/lib/server-api";
 import {
@@ -29,7 +35,13 @@ import { AddToCalendar } from "@/components/add-to-calendar";
 import { mapEventToEditorialCardProps } from "@/lib/editorial-card-props";
 import { getCoverGradient } from "@/lib/cover-gradient";
 import { intlLocale } from "@/lib/intl-locale";
-import type { Event, SpeakerProfile, Session } from "@teranga/shared-types";
+import type {
+  Event,
+  SpeakerProfile,
+  Session,
+  RegistrationUnavailableReason,
+} from "@teranga/shared-types";
+import { computeRegistrationAvailability } from "@teranga/shared-types";
 import ReactMarkdown from "react-markdown";
 import { getLocale, getTranslations } from "next-intl/server";
 
@@ -204,6 +216,13 @@ export default async function EventDetailPage({ params }: PageProps) {
       ? Math.min(100, Math.round((event.registeredCount / event.maxAttendees) * 100))
       : null;
   const isFull = capacityPct !== null && capacityPct >= 100;
+  // Preflight availability — computed from the event we already have so the UI
+  // never asks users to submit an action the API will reject. The server is
+  // still the source of truth (registration.service.ts:67-74); this is just
+  // UX-layer prevention so we avoid the silent-failure loop reported in PR
+  // #WVDa3 (toast flashes, user stuck on the same screen).
+  const availability = computeRegistrationAvailability(event);
+  const canRegister = availability.state !== "unavailable";
   const venueShortName = event.location.name.split(",")[0];
   const startTime = formatDateTime(event.startDate, regional).split(" ").pop();
   const endTime = formatDateTime(event.endDate, regional).split(" ").pop();
@@ -588,6 +607,11 @@ export default async function EventDetailPage({ params }: PageProps) {
                     ? ticket.totalQuantity - ticket.soldCount
                     : null;
                   const soldOut = remaining !== null && remaining <= 0;
+                  // When registration is unavailable (draft, cancelled, ended,
+                  // archived, full) we disable every ticket row too — a
+                  // clickable ticket on a non-registerable event is the exact
+                  // trap that produced the reported 400.
+                  const rowDisabled = soldOut || !canRegister;
                   const ticketBody = (
                     <>
                       <div className="flex items-start justify-between gap-3">
@@ -623,7 +647,7 @@ export default async function EventDetailPage({ params }: PageProps) {
                   );
                   return (
                     <li key={ticket.id}>
-                      {soldOut ? (
+                      {rowDisabled ? (
                         <div
                           aria-disabled="true"
                           className="block rounded-card border p-4 opacity-50"
@@ -645,31 +669,35 @@ export default async function EventDetailPage({ params }: PageProps) {
             )}
 
             <div className="px-4 pb-5 pt-4">
-              <Link
-                href={`/register/${event.id}`}
-                className={`inline-flex h-12 w-full items-center justify-center gap-2 rounded-full px-6 text-sm font-semibold transition-colors ${
-                  isFull
-                    ? "pointer-events-none cursor-not-allowed bg-muted text-muted-foreground"
-                    : "bg-teranga-navy text-white hover:bg-teranga-navy/90 dark:bg-teranga-gold dark:text-teranga-navy dark:hover:bg-teranga-gold-light"
-                }`}
-                aria-disabled={isFull}
-              >
-                {isFull
-                  ? tDetail("full")
-                  : isFree
-                    ? tDetail("registerFree")
-                    : tDetail("ctaRegister")}
-                {!isFull && <ArrowRight className="h-4 w-4" aria-hidden="true" />}
-              </Link>
-              <p className="mt-2.5 text-center text-[11px] text-muted-foreground">
-                {isFree
-                  ? tDetail("pricing.freeNoPayment")
-                  : tDetail("pricing.paymentSecured")}
-              </p>
-              {event.requiresApproval && (
-                <p className="mt-1.5 text-center text-[11px] text-muted-foreground">
-                  {tDetail("approvalRequired")}
-                </p>
+              {canRegister ? (
+                <>
+                  <Link
+                    href={`/register/${event.id}`}
+                    className={`inline-flex h-12 w-full items-center justify-center gap-2 rounded-full px-6 text-sm font-semibold transition-colors ${
+                      isFull
+                        ? "pointer-events-none cursor-not-allowed bg-muted text-muted-foreground"
+                        : "bg-teranga-navy text-white hover:bg-teranga-navy/90 dark:bg-teranga-gold dark:text-teranga-navy dark:hover:bg-teranga-gold-light"
+                    }`}
+                    aria-disabled={isFull}
+                  >
+                    {isFull
+                      ? tDetail("full")
+                      : isFree
+                        ? tDetail("registerFree")
+                        : tDetail("ctaRegister")}
+                    {!isFull && <ArrowRight className="h-4 w-4" aria-hidden="true" />}
+                  </Link>
+                  <p className="mt-2.5 text-center text-[11px] text-muted-foreground">
+                    {isFree ? tDetail("pricing.freeNoPayment") : tDetail("pricing.paymentSecured")}
+                  </p>
+                  {event.requiresApproval && (
+                    <p className="mt-1.5 text-center text-[11px] text-muted-foreground">
+                      {tDetail("approvalRequired")}
+                    </p>
+                  )}
+                </>
+              ) : (
+                <RegistrationUnavailableCard reason={availability.reason} t={tDetail} />
               )}
             </div>
           </div>
@@ -758,6 +786,73 @@ function MetaCell({ label, children }: { label: string; children: React.ReactNod
     </div>
   );
 }
+
+// Persistent, actionable state that replaces the Register CTA when the
+// event cannot accept a registration. Replaces the previous pattern where
+// the user could click Register, hit the API, and see a 4s toast disappear
+// with no recourse (docs/design-system/error-handling.md).
+//
+// role="alert" announces the state to screen readers — covers the gap
+// flagged in docs/ux-ui-audit-2026-04-07.md:72.
+function RegistrationUnavailableCard({
+  reason,
+  t,
+}: {
+  reason: RegistrationUnavailableReason;
+  t: (key: string) => string;
+}) {
+  const Icon = REASON_ICON[reason];
+  return (
+    <div
+      role="alert"
+      aria-live="polite"
+      className="rounded-card border border-teranga-clay/30 bg-teranga-clay/5 p-4 dark:border-teranga-clay/40 dark:bg-teranga-clay/10"
+    >
+      <div className="flex items-start gap-3">
+        <span
+          aria-hidden="true"
+          className="mt-0.5 flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-teranga-clay/15 text-teranga-clay-dark"
+        >
+          <Icon className="h-4 w-4" strokeWidth={2.25} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="font-mono-kicker text-[10px] font-medium uppercase tracking-[0.14em] text-teranga-clay-dark">
+            {t("unavailable.kicker")}
+          </p>
+          <p className="mt-1 text-sm font-semibold text-foreground">
+            {t(`unavailable.${reason}.title`)}
+          </p>
+          <p className="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">
+            {t(`unavailable.${reason}.description`)}
+          </p>
+        </div>
+      </div>
+      <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+        <Link
+          href="/events"
+          className="inline-flex h-10 flex-1 items-center justify-center rounded-full bg-teranga-navy px-4 text-xs font-semibold text-white transition-colors hover:bg-teranga-navy/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teranga-gold dark:bg-teranga-gold dark:text-teranga-navy dark:hover:bg-teranga-gold-light"
+        >
+          {t("unavailable.browseSimilar")}
+        </Link>
+        <Link
+          href="/events"
+          className="inline-flex h-10 flex-1 items-center justify-center rounded-full border px-4 text-xs font-semibold text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teranga-gold"
+        >
+          {t("unavailable.backToEvents")}
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+const REASON_ICON: Record<RegistrationUnavailableReason, typeof AlertTriangle> = {
+  event_not_published: Clock,
+  event_cancelled: Ban,
+  event_completed: CheckCircle2,
+  event_archived: Archive,
+  event_ended: CalendarX,
+  event_full: AlertTriangle,
+};
 
 // Speaker avatar gradients — mirror the prototype's palette rotation
 // when no photoURL is available. Keeps the wall of faces visually

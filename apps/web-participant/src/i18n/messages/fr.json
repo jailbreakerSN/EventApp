@@ -376,6 +376,35 @@
       "approvalRequired": "Inscription soumise à approbation de l'organisateur.",
       "soldOut": "Complet",
       "full": "Complet",
+      "unavailable": {
+        "kicker": "— Inscriptions indisponibles",
+        "event_not_published": {
+          "title": "Les inscriptions ne sont pas encore ouvertes",
+          "description": "L'organisateur prépare encore cet événement. Revenez dans quelques jours ou parcourez les événements déjà ouverts."
+        },
+        "event_cancelled": {
+          "title": "Événement annulé",
+          "description": "Cet événement a été annulé par l'organisateur. Découvrez d'autres événements similaires à venir."
+        },
+        "event_completed": {
+          "title": "Événement terminé",
+          "description": "Cet événement est déjà passé. Consultez les événements à venir pour ne rien manquer."
+        },
+        "event_archived": {
+          "title": "Événement archivé",
+          "description": "Cet événement n'est plus accessible. Parcourez le calendrier pour trouver un équivalent."
+        },
+        "event_ended": {
+          "title": "Les inscriptions sont closes",
+          "description": "La période d'inscription s'est terminée. D'autres événements sont peut-être encore ouverts."
+        },
+        "event_full": {
+          "title": "Événement complet",
+          "description": "Toutes les places ont été attribuées. Parcourez d'autres événements ou consultez à nouveau plus tard."
+        },
+        "browseSimilar": "Voir des événements similaires",
+        "backToEvents": "Retour au calendrier"
+      },
       "seatsLeft": "{count, plural, one {# place restante} other {# places restantes}}",
       "lastSeats": "{count, plural, one {Plus qu'une place !} other {Plus que # places !}}",
       "popular": "Événement populaire",

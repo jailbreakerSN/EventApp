@@ -14,6 +14,12 @@ import {
   ChevronUp,
   X,
   Check,
+  CalendarX,
+  Clock,
+  Archive,
+  CheckCircle2,
+  Ban,
+  AlertTriangle,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { toast } from "sonner";
@@ -34,8 +40,14 @@ import {
   formatDate,
   getErrorMessage,
 } from "@teranga/shared-ui";
-import { AlertTriangle, CheckCircle2 } from "lucide-react";
-import type { Event, TicketType, Registration, PaymentMethod } from "@teranga/shared-types";
+import type {
+  Event,
+  TicketType,
+  Registration,
+  PaymentMethod,
+  RegistrationUnavailableReason,
+} from "@teranga/shared-types";
+import { computeRegistrationAvailability } from "@teranga/shared-types";
 import { intlLocale } from "@/lib/intl-locale";
 import { saveBadge } from "@/lib/badge-store";
 import { useAuth } from "@/hooks/use-auth";
@@ -315,6 +327,17 @@ export default function RegisterPage() {
         />
       </div>
     );
+  }
+
+  // Preflight availability — if the event isn't registerable (draft,
+  // cancelled, ended, archived, full), render a persistent blocking state
+  // instead of letting the user reach the ticket grid and hit a server 400.
+  // Mirrors the CTA guard on /events/[slug] and the API guards in
+  // apps/api/src/services/registration.service.ts:67-74. The server is still
+  // the source of truth — this just removes the silent toast-and-stuck loop.
+  const availability = computeRegistrationAvailability(event);
+  if (availability.state === "unavailable" && !existingRegistration) {
+    return <RegistrationUnavailableState eventId={eventId} reason={availability.reason} />;
   }
 
   if (existingRegistration) {
@@ -831,3 +854,67 @@ export default function RegisterPage() {
     </div>
   );
 }
+
+// Blocking state rendered by the register page when the event cannot accept
+// registrations (cancelled, ended, draft, archived, full). Keeps the
+// participant from hitting the API with a known-invalid request and replaces
+// the previous silent-toast loop with a persistent, actionable explanation.
+// See docs/design-system/error-handling.md.
+function RegistrationUnavailableState({
+  eventId,
+  reason,
+}: {
+  eventId: string;
+  reason: RegistrationUnavailableReason;
+}) {
+  const t = useTranslations("events.detail.unavailable");
+  const tRegister = useTranslations("registerFlow");
+  const Icon = REASON_ICON[reason];
+  return (
+    <div className="mx-auto max-w-xl px-6 py-16 lg:px-8">
+      <Link
+        href={`/events`}
+        className="mb-6 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+      >
+        <ArrowLeft className="h-3.5 w-3.5" />
+        {tRegister("backToEvents")}
+      </Link>
+      <div role="alert" aria-live="polite" className="rounded-tile border bg-card p-8 text-center">
+        <span
+          aria-hidden="true"
+          className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-teranga-clay/15 text-teranga-clay-dark"
+        >
+          <Icon className="h-6 w-6" strokeWidth={2.25} />
+        </span>
+        <p className="font-mono-kicker mt-5 text-[10px] font-medium uppercase tracking-[0.16em] text-teranga-clay-dark">
+          {t("kicker")}
+        </p>
+        <h1 className="font-serif-display mt-2 text-[24px] font-semibold tracking-[-0.015em]">
+          {t(`${reason}.title`)}
+        </h1>
+        <p className="mt-3 text-sm text-muted-foreground">{t(`${reason}.description`)}</p>
+        <div className="mt-7 flex flex-col justify-center gap-3 sm:flex-row">
+          <Link href="/events">
+            <Button className="rounded-full bg-teranga-navy px-6 text-white hover:bg-teranga-navy/90 dark:bg-teranga-gold dark:text-teranga-navy dark:hover:bg-teranga-gold-light">
+              {t("browseSimilar")}
+            </Button>
+          </Link>
+          <Link href={`/events/${eventId}`}>
+            <Button variant="outline" className="rounded-full px-6">
+              {tRegister("backToEvent")}
+            </Button>
+          </Link>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const REASON_ICON: Record<RegistrationUnavailableReason, typeof CalendarX> = {
+  event_not_published: Clock,
+  event_cancelled: Ban,
+  event_completed: CheckCircle2,
+  event_archived: Archive,
+  event_ended: CalendarX,
+  event_full: AlertTriangle,
+};

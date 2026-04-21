@@ -376,6 +376,35 @@
       "approvalRequired": "Bindu bi laa ñu nangu ci ki ko bokkal.",
       "soldOut": "Fees",
       "full": "Fees",
+      "unavailable": {
+        "kicker": "— Bindu bi amul",
+        "event_not_published": {
+          "title": "Bindu bi ubbiwul ba tay",
+          "description": "Ki yor xew-xew bi day waajal ba tay. Deluwaat ci ay fan, walla xool xew-xew yi nekk ci jamono."
+        },
+        "event_cancelled": {
+          "title": "Xew-xew bi ñu ko wacce",
+          "description": "Ki yor xew-xew bi da ko wacce. Xoolal yeneen xew-xew yi di ñëw."
+        },
+        "event_completed": {
+          "title": "Xew-xew bi jeex na",
+          "description": "Xew-xew bi weesu na. Xoolal yi di ñëw ngir bañ a yànj."
+        },
+        "event_archived": {
+          "title": "Xew-xew bi ñu ko denc",
+          "description": "Xew-xew bi nekkatul ci barab bi. Xoolal keyboard bi ngir gis benn bu mel ni moom."
+        },
+        "event_ended": {
+          "title": "Bindu bi tëj na",
+          "description": "Jamonoy bindu bi jeex na. Yeneen xew-xew man nañu ubbeeku."
+        },
+        "event_full": {
+          "title": "Xew-xew bi fees na",
+          "description": "Seat yépp jotoon nañu ko. Xoolal yeneen xew-xew walla dellu ci ay waxtu."
+        },
+        "browseSimilar": "Gis yeneen xew-xew yu mel ni moom",
+        "backToEvents": "Dellu ci calendrier bi"
+      },
       "seatsLeft": "{count, plural, one {# seat des} other {# seat des}}",
       "lastSeats": "{count, plural, one {Desul benn seat rekk !} other {Desul # seat rekk !}}",
       "popular": "Xew-xew bu bari ñëp",
