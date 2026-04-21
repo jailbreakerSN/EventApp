@@ -441,5 +441,25 @@ export const newsletterApi = {
     api.post<{ success: boolean; message: string }>("/v1/newsletter/subscribe", { email }, false),
 };
 
+// ─── Auth email endpoints ───────────────────────────────────────────────
+// Thin wrappers around POST /v1/auth/send-verification-email and POST
+// /v1/auth/send-password-reset-email. The API mints the Firebase OOB
+// link via admin.auth() and ships it through Resend with our branded
+// template — so the client stops calling Firebase Client SDK's
+// sendEmailVerification / sendPasswordResetEmail directly (which would
+// send via Firebase's SMTP, defeating DMARC + branding).
+export const authEmailsApi = {
+  sendVerification: () =>
+    api.post<{ success: boolean }>("/v1/auth/send-verification-email", {
+      audience: "participant",
+    }),
+  sendPasswordReset: (email: string) =>
+    api.post<{ success: boolean; message: string }>(
+      "/v1/auth/send-password-reset-email",
+      { email, audience: "participant" },
+      false,
+    ),
+};
+
 export { api, ApiError };
 export type { ApiResponse, PaginatedResponse };

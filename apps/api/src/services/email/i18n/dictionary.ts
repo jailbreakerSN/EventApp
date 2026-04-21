@@ -109,4 +109,41 @@ export interface Dictionary {
     /** Plain-text fallback line with the raw URL, in case the button is stripped. */
     fallbackLine: (url: string) => string;
   };
+  // ─── Auth: verify email ─────────────────────────────────────────────────
+  // Firebase-hosted verification email replacement. Sent via Resend by
+  // apps/api/src/services/auth-email.service.ts instead of Firebase's
+  // default template, so the From header, DMARC alignment, tracking, and
+  // landing page all stay on the Teranga brand. Link points at the
+  // participant / backoffice web app's /auth/action handler.
+  emailVerification: {
+    subject: string;
+    preview: string;
+    heading: (name: string) => string;
+    body: string;
+    ctaButton: string;
+    /** One-line expiry notice beneath the CTA. Firebase action codes live 1 hour. */
+    expiryNote: string;
+    /** Safety paragraph shown to non-initiators. */
+    didNotRequestNote: string;
+    /** Plain-text fallback line with the raw URL. */
+    fallbackLine: (url: string) => string;
+  };
+  // ─── Auth: password reset ───────────────────────────────────────────────
+  // Same pattern as emailVerification but for the "forgot my password"
+  // flow. Body copy is deliberately cautious — this email is the prime
+  // target of a phishing clone, so the safety note is first-class copy.
+  passwordReset: {
+    subject: string;
+    preview: string;
+    heading: string;
+    body: string;
+    ctaButton: string;
+    expiryNote: string;
+    /**
+     * Security-critical note shown in a warning box. Users who didn't
+     * request a reset need to see this before they'd click anything.
+     */
+    didNotRequestNote: string;
+    fallbackLine: (url: string) => string;
+  };
 }

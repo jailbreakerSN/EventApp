@@ -90,4 +90,28 @@ export const en: Dictionary = {
     fallbackLine: (url) =>
       `If the button doesn't work, copy and paste this link into your browser: ${url}`,
   },
+  emailVerification: {
+    subject: "Confirm your Teranga email address",
+    preview: "Click to verify your email address.",
+    heading: (name) => `Welcome ${name}!`,
+    body: "To finish creating your Teranga account, we need to confirm your email address. Click the button below to activate your account.",
+    ctaButton: "Confirm my address",
+    expiryNote: "This link expires in 1 hour.",
+    didNotRequestNote:
+      "If you didn't sign up, you can safely ignore this email — your address won't be linked to any account.",
+    fallbackLine: (url) =>
+      `If the button doesn't work, copy and paste this link into your browser: ${url}`,
+  },
+  passwordReset: {
+    subject: "Reset your Teranga password",
+    preview: "Click to choose a new password.",
+    heading: "Reset your password",
+    body: "We received a request to reset the password for the account linked to this email. Click the button below to choose a new one.",
+    ctaButton: "Choose a new password",
+    expiryNote: "This link expires in 1 hour.",
+    didNotRequestNote:
+      "If you didn't request a reset, ignore this email and review your account security. Your current password stays unchanged.",
+    fallbackLine: (url) =>
+      `If the button doesn't work, copy and paste this link into your browser: ${url}`,
+  },
 };

@@ -12,11 +12,10 @@ import {
   signOut,
   onAuthStateChanged,
   updateProfile,
-  sendPasswordResetEmail,
-  sendEmailVerification,
   type User,
 } from "firebase/auth";
 import { firebaseAuth } from "@/lib/firebase";
+import { authEmailsApi } from "@/lib/api-client";
 import type { UserRole } from "@teranga/shared-types";
 
 interface AuthUser {
@@ -90,7 +89,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const register = async (email: string, password: string, displayName: string) => {
     const credential = await createUserWithEmailAndPassword(firebaseAuth, email, password);
     await updateProfile(credential.user, { displayName });
-    await sendEmailVerification(credential.user);
+    // Fire-and-forget: verification email goes through our API (Resend
+    // + branded template), not Firebase's default mailer. A network
+    // hiccup here shouldn't block sign-up completion — the Verify Email
+    // page offers a "resend" button for that case.
+    try {
+      await authEmailsApi.sendVerification();
+    } catch (err) {
+      console.warn("Failed to send verification email after signup", err);
+    }
   };
 
   const loginWithGoogle = async () => {
@@ -123,13 +130,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   });
 
   const resendVerification = async () => {
-    if (firebaseAuth.currentUser) {
-      await sendEmailVerification(firebaseAuth.currentUser);
-    }
+    if (!firebaseAuth.currentUser) return;
+    // Authenticated call — the API identifies the target email from
+    // the caller's ID token. No email parameter on purpose: prevents
+    // an attacker with a stolen token from spamming verification
+    // emails at arbitrary addresses.
+    await authEmailsApi.sendVerification();
   };
 
   const resetPassword = async (email: string) => {
-    await sendPasswordResetEmail(firebaseAuth, email);
+    // Public / unauth'd call. The API does NOT surface whether the
+    // address is on file (anti-enumeration) — the caller always gets
+    // a generic 200 back, so the UI shows the same "check your inbox"
+    // screen either way.
+    await authEmailsApi.sendPasswordReset(email);
   };
 
   return (

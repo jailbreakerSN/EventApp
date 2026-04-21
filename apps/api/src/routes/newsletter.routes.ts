@@ -9,6 +9,7 @@ import {
   NewsletterSendSchema,
 } from "@/services/newsletter.service";
 import { ValidationError, NotFoundError } from "@/errors/app-error";
+import { renderLandingPage, backToParticipantCta } from "./_shared/landing-page";
 
 type SubscribeBody = z.infer<typeof NewsletterSubscribeSchema>;
 type SendBody = z.infer<typeof NewsletterSendSchema>;
@@ -97,10 +98,16 @@ export const newsletterRoutes: FastifyPluginAsync = async (fastify) => {
           .status(200)
           .type("text/html; charset=utf-8")
           .send(
-            renderResultPage(
-              "success",
-              "Votre inscription à la newsletter Teranga est confirmée. Merci !",
-            ),
+            renderLandingPage({
+              kind: "success",
+              headingText: "Inscription confirmée",
+              message: "Votre inscription à la newsletter Teranga est confirmée. Merci !",
+              // Primary CTA brings the user into the product — the whole
+              // point of confirming the newsletter is to engage with
+              // Teranga, so a dead-end confirmation page wastes the
+              // moment of maximum intent.
+              ctas: [backToParticipantCta("Découvrir les événements")],
+            }),
           );
       } catch (err) {
         const message =
@@ -110,7 +117,17 @@ export const newsletterRoutes: FastifyPluginAsync = async (fastify) => {
         return reply
           .status(err instanceof ValidationError ? 400 : 500)
           .type("text/html; charset=utf-8")
-          .send(renderResultPage("error", message));
+          .send(
+            renderLandingPage({
+              kind: "error",
+              headingText: "Confirmation échouée",
+              message,
+              // Offer the product even on failure — a user who arrived
+              // via an expired link still wants to browse events, and a
+              // bare error page with no way forward is a churn cliff.
+              ctas: [backToParticipantCta("Retour à l'accueil")],
+            }),
+          );
       }
     },
   );
@@ -145,60 +162,3 @@ export const newsletterRoutes: FastifyPluginAsync = async (fastify) => {
     },
   );
 };
-
-// ─── Confirmation landing page ──────────────────────────────────────────────
-// Minimal HTML served directly from the API. Kept inline (not a react-email
-// template) because:
-//   - It never sends via email — it's a browser-facing HTTP response.
-//   - No i18n yet (French only; users arrived from a French email).
-//   - Deliberately contains zero interactive JS so it's safe under strict
-//     CSP if we ever enable one on the API surface.
-function renderResultPage(kind: "success" | "error", message: string): string {
-  const safeMessage = escapeHtml(message);
-  const headingEmoji = kind === "success" ? "✓" : "⚠";
-  const headingText = kind === "success" ? "Inscription confirmée" : "Confirmation échouée";
-  const accentColor = kind === "success" ? "#16A34A" : "#DC2626";
-
-  return `<!DOCTYPE html>
-<html lang="fr">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="robots" content="noindex" />
-  <title>Teranga Events — ${escapeHtml(headingText)}</title>
-  <style>
-    body { margin: 0; padding: 0; background: #F5F5F0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #1A1A2E; }
-    .wrap { max-width: 480px; margin: 0 auto; padding: 40px 24px; }
-    .card { background: #fff; border: 1px solid #E5E7EB; border-radius: 12px; overflow: hidden; }
-    .header { background: #1A1A2E; color: #D4A843; padding: 24px; text-align: center; font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
-    .body { padding: 32px 24px; text-align: center; }
-    .emoji { font-size: 40px; color: ${accentColor}; margin-bottom: 12px; line-height: 1; }
-    .heading { font-size: 20px; font-weight: 600; margin: 0 0 12px 0; color: #1A1A2E; }
-    .message { margin: 0; color: #4B5563; line-height: 1.5; }
-    .footer { padding: 16px 24px 24px; color: #9CA3AF; font-size: 12px; text-align: center; }
-  </style>
-</head>
-<body>
-  <div class="wrap">
-    <div class="card">
-      <div class="header">Teranga</div>
-      <div class="body">
-        <div class="emoji" aria-hidden="true">${headingEmoji}</div>
-        <h1 class="heading">${escapeHtml(headingText)}</h1>
-        <p class="message">${safeMessage}</p>
-      </div>
-      <div class="footer">Teranga Events — La plateforme événementielle du Sénégal</div>
-    </div>
-  </div>
-</body>
-</html>`;
-}
-
-function escapeHtml(str: string): string {
-  return str
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}

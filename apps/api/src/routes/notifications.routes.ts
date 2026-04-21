@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
+import { config } from "@/config";
 import { authenticate, requireEmailVerified } from "@/middlewares/auth.middleware";
 import { validate } from "@/middlewares/validate.middleware";
 import { requirePermission } from "@/middlewares/permission.middleware";
@@ -8,6 +9,7 @@ import { db, COLLECTIONS } from "@/config/firebase";
 import { UpdateNotificationPreferenceSchema } from "@teranga/shared-types";
 import { verifyUnsubscribeToken } from "@/services/notifications/unsubscribe-token";
 import { unsubscribeCategory } from "@/services/notifications/unsubscribe.service";
+import { renderLandingPage, backToParticipantCta } from "./_shared/landing-page";
 
 const ParamsWithNotificationId = z.object({ notificationId: z.string() });
 
@@ -235,7 +237,17 @@ export const notificationRoutes: FastifyPluginAsync = async (fastify) => {
         return reply
           .status(400)
           .type("text/html; charset=utf-8")
-          .send(renderUnsubPage("error", "Ce lien de désinscription est invalide."));
+          .send(
+            renderLandingPage({
+              kind: "error",
+              headingText: "Désinscription impossible",
+              message: "Ce lien de désinscription est invalide.",
+              // Invalid tokens usually come from forwarded emails or
+              // very old links — in both cases the user still wants
+              // to manage their preferences, so offer a way in.
+              ctas: [backToParticipantCta("Retour à l'accueil")],
+            }),
+          );
       }
 
       await unsubscribeCategory({
@@ -248,10 +260,31 @@ export const notificationRoutes: FastifyPluginAsync = async (fastify) => {
         .status(200)
         .type("text/html; charset=utf-8")
         .send(
-          renderUnsubPage(
-            "success",
-            `Vous ne recevrez plus d'e-mails dans la catégorie « ${describeCategoryFr(verification.category)} ». Vous pouvez réactiver cette préférence à tout moment depuis la page Paramètres.`,
-          ),
+          renderLandingPage({
+            kind: "success",
+            headingText: "Désinscription prise en compte",
+            message: `Vous ne recevrez plus d'e-mails dans la catégorie « ${describeCategoryFr(
+              verification.category,
+            )} ». Vous pouvez réactiver cette préférence à tout moment depuis la page Paramètres.`,
+            // Primary CTA points straight at the Settings page where the
+            // user can re-enable the category if they changed their mind,
+            // or tweak other notification preferences. Passes
+            // ?hint=notifications so the settings page can highlight the
+            // right section (no-op today, consumed once the hint is wired
+            // up web-side).
+            ctas: [
+              {
+                label: "Gérer mes préférences",
+                href: `${config.PARTICIPANT_WEB_URL}/settings?hint=notifications`,
+                variant: "primary",
+              },
+              {
+                label: "Retour à l'accueil",
+                href: config.PARTICIPANT_WEB_URL,
+                variant: "secondary",
+              },
+            ],
+          }),
         );
     },
   );
@@ -297,61 +330,11 @@ export const notificationRoutes: FastifyPluginAsync = async (fastify) => {
   );
 };
 
-// ─── Unsubscribe landing page ────────────────────────────────────────────
-// Shared with the newsletter confirmation landing in structure; kept
-// inline because it's a one-off HTTP response (not an email template).
-// Zero interactive JS → safe under strict CSP if we ever enable one.
-//
-// No i18n yet — users arrive here by clicking a link in an email we sent
-// in their own locale (the link is stamped per-send by email.service
-// with the recipient's signed token, and the surrounding email body
-// already rendered in fr / en / wo via pickDict). A future enhancement
-// could echo the original locale via a token-embedded claim or an extra
-// query param; until then, French copy is a safe default for the
-// Senegal market. Mirrors the same tradeoff documented on
-// renderResultPage in newsletter.routes.ts.
-
-function renderUnsubPage(kind: "success" | "error", message: string): string {
-  const safeMessage = escapeHtml(message);
-  const headingEmoji = kind === "success" ? "✓" : "⚠";
-  const headingText =
-    kind === "success" ? "Désinscription prise en compte" : "Désinscription impossible";
-  const accentColor = kind === "success" ? "#16A34A" : "#DC2626";
-
-  return `<!DOCTYPE html>
-<html lang="fr">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="robots" content="noindex" />
-  <title>Teranga Events — ${escapeHtml(headingText)}</title>
-  <style>
-    body { margin: 0; padding: 0; background: #F5F5F0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color: #1A1A2E; }
-    .wrap { max-width: 480px; margin: 0 auto; padding: 40px 24px; }
-    .card { background: #fff; border: 1px solid #E5E7EB; border-radius: 12px; overflow: hidden; }
-    .header { background: #1A1A2E; color: #D4A843; padding: 24px; text-align: center; font-size: 22px; font-weight: 700; letter-spacing: -0.02em; }
-    .body { padding: 32px 24px; text-align: center; }
-    .emoji { font-size: 40px; color: ${accentColor}; margin-bottom: 12px; line-height: 1; }
-    .heading { font-size: 20px; font-weight: 600; margin: 0 0 12px 0; color: #1A1A2E; }
-    .message { margin: 0; color: #4B5563; line-height: 1.5; }
-    .footer { padding: 16px 24px 24px; color: #9CA3AF; font-size: 12px; text-align: center; }
-  </style>
-</head>
-<body>
-  <div class="wrap">
-    <div class="card">
-      <div class="header">Teranga</div>
-      <div class="body">
-        <div class="emoji" aria-hidden="true">${headingEmoji}</div>
-        <h1 class="heading">${escapeHtml(headingText)}</h1>
-        <p class="message">${safeMessage}</p>
-      </div>
-      <div class="footer">Teranga Events — La plateforme événementielle du Sénégal</div>
-    </div>
-  </div>
-</body>
-</html>`;
-}
+// ─── Unsubscribe category label (French-only for now) ───────────────────
+// Kept inline rather than lifted into the email i18n dictionary because
+// the landing page itself is French-only (users arrived from a French
+// email; see landing-page.ts header for the full rationale). When the
+// landing page grows real i18n, these labels move into the Dictionary.
 
 function describeCategoryFr(category: "transactional" | "organizational" | "marketing"): string {
   switch (category) {
@@ -364,11 +347,8 @@ function describeCategoryFr(category: "transactional" | "organizational" | "mark
   }
 }
 
-function escapeHtml(str: string): string {
-  return str
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
+// Page rendering itself moved into renderLandingPage (apps/api/src/
+// routes/_shared/landing-page.ts). Locale story unchanged — users arrive
+// here from emails sent in their own locale but the landing page is
+// French-only for now; a future enhancement could echo the original
+// locale via a token-embedded claim or an extra query param.

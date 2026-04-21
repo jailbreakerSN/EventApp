@@ -27,4 +27,10 @@ export type { PaymentReceiptParams } from "./payment-receipt";
 export { buildNewsletterConfirmationEmail } from "./newsletter-confirmation";
 export type { NewsletterConfirmationParams } from "./newsletter-confirmation";
 
+export { buildEmailVerificationEmail } from "./email-verification";
+export type { EmailVerificationParams } from "./email-verification";
+
+export { buildPasswordResetEmail } from "./password-reset";
+export type { PasswordResetParams } from "./password-reset";
+
 export type { RenderedEmail } from "../render";

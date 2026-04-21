@@ -20,6 +20,8 @@ GET /v1/admin/stats auth perms=[platform:manage]
 GET /v1/admin/users auth perms=[platform:manage]
 PATCH /v1/admin/users/:userId/roles auth perms=[platform:manage]
 PATCH /v1/admin/users/:userId/status auth perms=[platform:manage]
+POST /v1/auth/send-password-reset-email none
+POST /v1/auth/send-verification-email auth
 GET /v1/badge-templates auth
 POST /v1/badge-templates auth emailVerified perms=[badge:generate]
 DELETE /v1/badge-templates/:templateId auth emailVerified perms=[badge:generate]

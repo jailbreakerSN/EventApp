@@ -55,6 +55,26 @@ export function paymentMockCheckoutUrl(providerTransactionId: string): string {
   return `${config.API_BASE_URL}/v1/payments/mock-checkout/${encodeURIComponent(providerTransactionId)}`;
 }
 
+// ─── Auth action landing URL (Firebase Auth OOB handler) ─────────────────
+//
+// Fed into actionCodeSettings.url when we call admin.auth().
+// generateEmailVerificationLink() / generatePasswordResetLink(). Firebase
+// appends `mode=verifyEmail|resetPassword&oobCode=...&apiKey=...` to this
+// URL; the landing page calls the Firebase Client SDK
+// (applyActionCode / confirmPasswordReset) with the code.
+//
+// Two apps, two audiences:
+//   - participant signups land on the participant web app.
+//   - backoffice signups land on the backoffice web app.
+// The caller picks via `audience`.
+
+export type AuthActionAudience = "participant" | "backoffice";
+
+export function authActionUrl(audience: AuthActionAudience): string {
+  const base = audience === "backoffice" ? config.WEB_BACKOFFICE_URL : config.PARTICIPANT_WEB_URL;
+  return `${base}/auth/action`;
+}
+
 /**
  * Hosts the platform itself owns — used by the payment returnUrl
  * allowlist to prevent open-redirect abuse on the back of a trusted

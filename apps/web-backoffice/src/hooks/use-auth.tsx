@@ -3,15 +3,9 @@
 import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from "react";
 import { toast } from "sonner";
 import { useIdleTimeout } from "./use-idle-timeout";
-import {
-  signInWithEmailAndPassword,
-  signOut,
-  onAuthStateChanged,
-  sendPasswordResetEmail,
-  sendEmailVerification,
-  type User,
-} from "firebase/auth";
+import { signInWithEmailAndPassword, signOut, onAuthStateChanged, type User } from "firebase/auth";
 import { firebaseAuth } from "@/lib/firebase";
+import { api } from "@/lib/api-client";
 import type { UserRole } from "@teranga/shared-types";
 
 interface AuthUser {
@@ -96,13 +90,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const hasRole = (...roles: UserRole[]) => roles.some((r) => user?.roles.includes(r)) ?? false;
 
   const resendVerification = async () => {
-    if (firebaseAuth.currentUser) {
-      await sendEmailVerification(firebaseAuth.currentUser);
-    }
+    if (!firebaseAuth.currentUser) return;
+    // Go through the API so the user gets our branded email (sent via
+    // Resend, DMARC-aligned) instead of Firebase's default noreply@
+    // firebase.com template. Audience=backoffice so the action link
+    // lands on admin.terangaevent.com/auth/action.
+    await api.post<{ success: boolean }>("/v1/auth/send-verification-email", {
+      audience: "backoffice",
+    });
   };
 
   const resetPassword = async (email: string) => {
-    await sendPasswordResetEmail(firebaseAuth, email);
+    // Public / unauth'd. The API is anti-enumeration: same 200 response
+    // whether the email is registered or not, so UI can always show
+    // "check your inbox" without leaking account existence.
+    await api.post<{ success: boolean; message: string }>(
+      "/v1/auth/send-password-reset-email",
+      { email, audience: "backoffice" },
+      false,
+    );
   };
 
   return (

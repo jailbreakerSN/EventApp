@@ -97,6 +97,30 @@
       "registerGeneric": "Sign-up error",
       "emailInUse": "An account already exists with this email.",
       "weakPassword": "Password is too weak."
+    },
+    "action": {
+      "loadingTitle": "Processing your request",
+      "loadingSubtitle": "Please wait a moment...",
+      "invalidLinkTitle": "Invalid link",
+      "invalidLinkMessage": "This link is invalid or has expired. Please request a new one.",
+      "unsupportedMode": "This link is not supported.",
+      "verifySuccessTitle": "Address confirmed",
+      "verifySuccessMessage": "Your email address is now verified. You can access all Teranga features.",
+      "verifyFailedTitle": "Verification failed",
+      "verifyFailedMessage": "The verification link is invalid or has expired. Please request a new email.",
+      "goToLogin": "Go to login",
+      "goToEvents": "Discover events",
+      "resetSuccessTitle": "Password updated",
+      "resetSuccessMessage": "Your password has been updated. Sign in with your new password.",
+      "resetFailedTitle": "Reset failed",
+      "resetFailedMessage": "The reset link is invalid or has expired. Please request a new one.",
+      "newPasswordTitle": "Choose a new password",
+      "newPasswordSubtitle": "For account {email}",
+      "newPasswordLabel": "New password",
+      "confirmPasswordLabel": "Confirm password",
+      "submitNewPassword": "Update password",
+      "submittingNewPassword": "Updating...",
+      "passwordsDoNotMatch": "Passwords don't match"
     }
   },
   "nav": {

@@ -98,4 +98,26 @@ export const wo: Dictionary = {
       "Soo dul kii defoon ndeme bii, dara bul ci def — amul inscription bu ñu defloo sa wéral.",
     fallbackLine: (url) => `Su bouton bi du liggéey, kopi lien bii ci sa navigateur : ${url}`,
   },
+  emailVerification: {
+    subject: "Wéral sa adresse e-mail Teranga",
+    preview: "Clique ngir wéral sa adresse e-mail.",
+    heading: (name) => `Dalal jàmm ${name} !`,
+    body: "Ngir mujj sa compte Teranga, nanu laaj nga wéral sa adresse e-mail. Clique bouton bi ci suuf ngir activate sa compte.",
+    ctaButton: "Wéral sama adresse",
+    expiryNote: "Lien bii dafay jog ci 1 waxtu.",
+    didNotRequestNote:
+      "Soo dul kii defoon ndeme bii, dara bul ci def — sa adresse du liggéey ci amul compte.",
+    fallbackLine: (url) => `Su bouton bi du liggéey, kopi lien bii ci sa navigateur : ${url}`,
+  },
+  passwordReset: {
+    subject: "Reset sa mot de passe Teranga",
+    preview: "Clique ngir tànn benn mot de passe bu bees.",
+    heading: "Reset sa mot de passe",
+    body: "Jot nanu demande bu reset mot de passe ci adresse e-mail bii. Clique bouton bi ci suuf ngir tànn benn mot de passe bu bees.",
+    ctaButton: "Tànn mot de passe bu bees",
+    expiryNote: "Lien bii dafay jog ci 1 waxtu.",
+    didNotRequestNote:
+      "Soo laajul reset, dara bul ci def te xool sa sécurité compte. Sa mot de passe bu jàngoro dafay wéy ni mu ne.",
+    fallbackLine: (url) => `Su bouton bi du liggéey, kopi lien bii ci sa navigateur : ${url}`,
+  },
 };

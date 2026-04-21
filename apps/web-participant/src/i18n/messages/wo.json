@@ -101,6 +101,30 @@
       "registerGeneric": "Njumte ci bind",
       "emailInUse": "Am na kont bu nekk ak imeyl bii.",
       "weakPassword": "Baatu-ruus bi dafa néew doole."
+    },
+    "action": {
+      "loadingTitle": "Liggéey sa demande",
+      "loadingSubtitle": "Xaar tuuti ndax mu jog...",
+      "invalidLinkTitle": "Lien bu juumte",
+      "invalidLinkMessage": "Lien bii mooy juum walla jóg na. Jëfandikoo benn lien bu bees.",
+      "unsupportedMode": "Lien bii dun nekk.",
+      "verifySuccessTitle": "Adresse wéral na",
+      "verifySuccessMessage": "Sa adresse e-mail wéral na. Mën nga jot ci yëpp yi Teranga di fexe.",
+      "verifyFailedTitle": "Wéral ci juum",
+      "verifyFailedMessage": "Lien bu wéral mooy juum walla jóg na. Jëfandikoo benn e-mail bu bees.",
+      "goToLogin": "Dem ci dugg",
+      "goToEvents": "Xool événement yi",
+      "resetSuccessTitle": "Baatu-ruus yeesu na",
+      "resetSuccessMessage": "Sa baatu-ruus yeesu na. Dugg ak sa baatu-ruus bu bees.",
+      "resetFailedTitle": "Reset ci juum",
+      "resetFailedMessage": "Lien bu reset mooy juum walla jóg na. Jëfandikoo benn lien bu bees.",
+      "newPasswordTitle": "Tànn benn baatu-ruus bu bees",
+      "newPasswordSubtitle": "Ngir kont {email}",
+      "newPasswordLabel": "Baatu-ruus bu bees",
+      "confirmPasswordLabel": "Wéral baatu-ruus",
+      "submitNewPassword": "Yeesu baatu-ruus",
+      "submittingNewPassword": "Yeesu...",
+      "passwordsDoNotMatch": "Baatu-ruus yi dañoo juum"
     }
   },
   "nav": {

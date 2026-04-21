@@ -207,6 +207,12 @@ describe("route inventory", () => {
       // token in the querystring IS the auth (see services/notifications/
       // unsubscribe-token.ts). Verified before any state change.
       "POST /v1/notifications/unsubscribe",
+      // Forgot-password flow — caller doesn't have a session because
+      // they can't log in. Anti-enumeration: the endpoint always
+      // returns the same generic 200 whether the email exists or not,
+      // and the rate limit (3 per 5 min) throttles probing. See
+      // apps/api/src/routes/auth-email.routes.ts for the design notes.
+      "POST /v1/auth/send-password-reset-email",
     ]);
 
     it("every mutating route authenticates (except the documented webhook list)", () => {
@@ -257,6 +263,12 @@ describe("route inventory", () => {
         "DELETE /v1/conversations/:id",
         "POST /v1/conversations/:id/messages",
         "PATCH /v1/conversations/:id/read",
+        // Auth-email: authenticated caller requesting a branded
+        // verification email for their OWN account. No named permission
+        // — ownership is implicit (service reads the caller's uid and
+        // looks up the Firebase user doc; body never carries an email
+        // or uid parameter). Rate-limited at 5/min to throttle abuse.
+        "POST /v1/auth/send-verification-email",
       ]);
       const violators: string[] = [];
       for (const r of captured) {
