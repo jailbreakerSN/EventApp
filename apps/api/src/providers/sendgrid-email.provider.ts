@@ -18,7 +18,7 @@ import {
  */
 
 const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY ?? "";
-const SENDGRID_FROM_EMAIL = process.env.SENDGRID_FROM_EMAIL ?? "no-reply@terangaevent.com";
+const SENDGRID_FROM_EMAIL = process.env.SENDGRID_FROM_EMAIL ?? "events@terangaevent.com";
 const SENDGRID_FROM_NAME = process.env.SENDGRID_FROM_NAME ?? "Teranga Events";
 const SENDGRID_API_URL = "https://api.sendgrid.com/v3/mail/send";
 

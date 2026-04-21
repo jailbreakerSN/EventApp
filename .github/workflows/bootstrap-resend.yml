@@ -100,12 +100,17 @@ jobs:
             exit 1
           fi
 
+          # Mask the API key in subsequent log output BEFORE writing it
+          # to the step output file. `::add-mask::` is a workflow command
+          # that must land on the runner stdout — it is silently invalid
+          # inside $GITHUB_OUTPUT and fails the step with "Invalid format".
+          echo "::add-mask::$API_KEY"
+
           {
             echo "project_id=$PROJECT_ID"
             echo "region=$REGION"
             echo "function_url=$FUNCTION_URL"
             echo "webhook_url=$WEBHOOK_URL"
-            echo "::add-mask::$API_KEY"
             echo "api_key=$API_KEY"
           } >> "$GITHUB_OUTPUT"
 

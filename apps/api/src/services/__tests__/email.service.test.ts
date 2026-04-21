@@ -5,8 +5,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 vi.mock("@/config", () => ({
   config: {
     RESEND_FROM_NAME: "Teranga Events",
-    RESEND_FROM_EMAIL: "no-reply@terangaevent.com",
-    RESEND_FROM_NOREPLY: "no-reply@terangaevent.com",
+    RESEND_FROM_EMAIL: "events@terangaevent.com",
+    RESEND_FROM_EVENTS: "events@terangaevent.com",
     RESEND_FROM_HELLO: "hello@terangaevent.com",
     RESEND_FROM_BILLING: "billing@terangaevent.com",
     RESEND_FROM_NEWS: "news@terangaevent.com",
@@ -188,7 +188,7 @@ describe("EmailService", () => {
           subject: "Subject en",
           html: "<p>HTML en</p>",
           text: "Text en",
-          from: "Teranga Events <no-reply@terangaevent.com>",
+          from: "Teranga Events <events@terangaevent.com>",
           replyTo: "support@terangaevent.com",
           tags: expect.arrayContaining([{ name: "category", value: "transactional" }]),
         }),
@@ -495,7 +495,7 @@ describe("EmailService", () => {
       const stamped = mockSendBulk.mock.calls[0][0];
       expect(stamped).toHaveLength(2);
       for (const e of stamped) {
-        expect(e.from).toBe("Teranga Events <no-reply@terangaevent.com>");
+        expect(e.from).toBe("Teranga Events <events@terangaevent.com>");
         expect(e.replyTo).toBe("support@terangaevent.com");
         expect(e.tags).toEqual(
           expect.arrayContaining([{ name: "category", value: "transactional" }]),
@@ -594,7 +594,7 @@ describe("EmailService", () => {
             { name: "type", value: "registration_confirmation" },
           ]),
           idempotencyKey: "reg-confirm/reg-1",
-          from: "Teranga Events <no-reply@terangaevent.com>",
+          from: "Teranga Events <events@terangaevent.com>",
         }),
       );
     });

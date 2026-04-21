@@ -47,7 +47,7 @@ describe("ResendEmailProvider", () => {
 
       const result = await provider.send({
         to: "a@test.com",
-        from: "Teranga <no-reply@terangaevent.com>",
+        from: "Teranga <events@terangaevent.com>",
         subject: "Hi",
         html: "<p>hi</p>",
         text: "hi",
@@ -60,7 +60,7 @@ describe("ResendEmailProvider", () => {
       expect(result).toEqual({ success: true, messageId: "msg_1" });
       expect(mockEmailsSend).toHaveBeenCalledWith(
         expect.objectContaining({
-          from: "Teranga <no-reply@terangaevent.com>",
+          from: "Teranga <events@terangaevent.com>",
           to: ["a@test.com"],
           subject: "Hi",
           html: "<p>hi</p>",

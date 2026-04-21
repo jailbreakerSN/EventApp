@@ -38,7 +38,7 @@ import {
  */
 
 const RESEND_API_KEY = process.env.RESEND_API_KEY ?? "";
-const RESEND_FROM_EMAIL = process.env.RESEND_FROM_EMAIL ?? "no-reply@terangaevent.com";
+const RESEND_FROM_EMAIL = process.env.RESEND_FROM_EMAIL ?? "events@terangaevent.com";
 const RESEND_FROM_NAME = process.env.RESEND_FROM_NAME ?? "Teranga Events";
 const DEFAULT_FROM = `${RESEND_FROM_NAME} <${RESEND_FROM_EMAIL}>`;
 

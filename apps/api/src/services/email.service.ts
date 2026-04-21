@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import { type EmailCategory } from "@teranga/shared-types";
 import { db, COLLECTIONS } from "@/config/firebase";
-import { config } from "@/config";
+import { unsubscribeUrl } from "@/config/public-urls";
 import { getEmailProvider } from "@/providers/index";
 import { type EmailParams, type BulkEmailResult } from "@/providers/email-provider.interface";
 import { userRepository } from "@/repositories/user.repository";
@@ -359,7 +359,7 @@ export class EmailService {
     const headers: Record<string, string> = { ...(sender.headers ?? {}) };
     if (userId && isUnsubscribableCategory(category)) {
       const token = signUnsubscribeToken(userId, category);
-      const url = `${config.API_BASE_URL}/v1/notifications/unsubscribe?token=${encodeURIComponent(token)}`;
+      const url = unsubscribeUrl(token);
       // Merge with any mailto: from the sender registry. Gmail prefers
       // https when both are present (one-click compatible).
       headers["List-Unsubscribe"] = [

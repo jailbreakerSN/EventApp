@@ -26,12 +26,22 @@ const envSchema = z.object({
 
   // Legacy single-sender fallback — kept so existing environments stay green.
   // New code should resolve senders via the EmailCategory registry; this value
-  // is only used when a category-specific var is unset.
-  RESEND_FROM_EMAIL: z.string().default("no-reply@terangaevent.com"),
+  // is only used when a category-specific var is unset. Default updated
+  // from no-reply@ to events@ in lockstep with the sender registry
+  // change — see the RESEND_FROM_EVENTS docstring below.
+  RESEND_FROM_EMAIL: z.string().default("events@terangaevent.com"),
 
   // Per-category From addresses. Each maps to an EmailCategory in
   // packages/shared-types/src/communication.types.ts via the sender registry.
-  RESEND_FROM_NOREPLY: z.string().default("no-reply@terangaevent.com"),
+  //
+  // Why not `no-reply@`: Resend's deliverability analyzer and the
+  // Gmail/Yahoo/Microsoft bulk-sender guidelines all flag no-reply
+  // addresses. Users who hit reply hit a wall (bad UX), and mailbox
+  // providers treat domains that only ever send from no-reply as
+  // lower trust. We route `auth` + `transactional` through `events@`
+  // — a real, addressable mailbox — with Reply-To to `support@` so
+  // replies land somewhere useful.
+  RESEND_FROM_EVENTS: z.string().default("events@terangaevent.com"),
   RESEND_FROM_HELLO: z.string().default("hello@terangaevent.com"),
   RESEND_FROM_BILLING: z.string().default("billing@terangaevent.com"),
   RESEND_FROM_NEWS: z.string().default("news@terangaevent.com"),
@@ -55,11 +65,27 @@ const envSchema = z.object({
   AT_USERNAME: z.string().default("sandbox"),
   AT_SENDER_ID: z.string().default("Teranga"),
 
+  // ─── Public URLs (used to build absolute links in emails, payment ───────
+  // callbacks, etc.). Every URL the API emits into an email or hands to a
+  // payment provider is built from one of these three — see
+  // apps/api/src/config/public-urls.ts. When the domain changes, updating
+  // the corresponding Cloud Run env var (no code change) is sufficient.
+  //
+  // Defaults match the local dev emulator ports so `npm run api:dev` +
+  // `npm run web:dev` work without any extra .env setup. Prod MUST
+  // override all three.
+
   // Public base URL the API serves under. Used to build absolute links in
-  // transactional emails (e.g. the newsletter confirmation link). Defaults
-  // to localhost so dev emails are clickable without extra setup; prod
-  // must override to the real API host.
+  // transactional emails (newsletter confirm, unsubscribe), payment
+  // webhook callbacks, and the mock checkout redirect.
   API_BASE_URL: z.string().url().default("http://localhost:3000"),
+  // Public base URL for the participant web app (Next.js). Used to build
+  // the default paymentReturnUrl and any "view in app" links in emails.
+  PARTICIPANT_WEB_URL: z.string().url().default("http://localhost:3002"),
+  // Public base URL for the organizer back-office web app (Next.js).
+  // Used by the return-URL allowlist so a back-office-initiated checkout
+  // can redirect back to the admin surface after payment.
+  WEB_BACKOFFICE_URL: z.string().url().default("http://localhost:3001"),
 
   // HMAC secret for stateless newsletter confirmation tokens. Separate from
   // QR_SECRET on purpose — a compromise of one cryptographic domain must
