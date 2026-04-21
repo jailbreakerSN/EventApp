@@ -80,6 +80,21 @@ export const AuditActionSchema = z.enum([
   "subscription.period_rolled_over",
   // ── Subscription override (Phase 5 — admin per-org assign) ────────────────
   "subscription.overridden",
+  // ── Newsletter ────────────────────────────────────────────────────────────
+  "newsletter.subscriber_created",
+  "newsletter.subscriber_confirmed",
+  "newsletter.sent",
+  // ── Notification preferences ──────────────────────────────────────────────
+  "notification.unsubscribed",
+  // ── Resend webhook-sourced events (written from apps/functions) ───────────
+  // Cloud Functions can't emit on the API's in-process eventBus, so the
+  // resendWebhook handler writes these audit rows directly. Values kept in
+  // lockstep with the action strings in apps/functions/src/triggers/resend/
+  // resend-webhook.https.ts #writeAuditLog.
+  "email.bounced",
+  "email.complained",
+  "email.resend_unsubscribed",
+  "email.resend_contact_deleted",
 ]);
 
 export type AuditAction = z.infer<typeof AuditActionSchema>;

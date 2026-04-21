@@ -22,6 +22,7 @@ const mockSendRegistrationConfirmation = vi.fn().mockResolvedValue(undefined);
 const mockSendRegistrationApproved = vi.fn().mockResolvedValue(undefined);
 const mockSendBadgeReady = vi.fn().mockResolvedValue(undefined);
 const mockSendEventCancelled = vi.fn().mockResolvedValue(undefined);
+const mockSendPaymentReceipt = vi.fn().mockResolvedValue(undefined);
 
 vi.mock("@/services/email.service", () => ({
   emailService: {
@@ -29,6 +30,7 @@ vi.mock("@/services/email.service", () => ({
     sendRegistrationApproved: (...args: unknown[]) => mockSendRegistrationApproved(...args),
     sendBadgeReady: (...args: unknown[]) => mockSendBadgeReady(...args),
     sendEventCancelled: (...args: unknown[]) => mockSendEventCancelled(...args),
+    sendPaymentReceipt: (...args: unknown[]) => mockSendPaymentReceipt(...args),
   },
 }));
 
@@ -36,19 +38,11 @@ const mockSmsSend = vi.fn().mockResolvedValue({ success: true });
 
 vi.mock("@/providers/index", () => ({
   getSmsProvider: () => ({ send: mockSmsSend }),
-  getEmailProvider: () => ({
-    send: vi.fn().mockResolvedValue({ success: true }),
-  }),
   SMS_TEMPLATES: {
     registrationConfirmed: (title: string) => `Confirmed: ${title}`,
     registrationApproved: (title: string) => `Approved: ${title}`,
     paymentConfirmed: (title: string, amount: string) => `Payment ${amount}: ${title}`,
   },
-  buildRegistrationEmail: vi.fn().mockReturnValue({
-    subject: "Test",
-    html: "<p>Test</p>",
-    text: "Test",
-  }),
 }));
 
 const mockUserFindById = vi.fn();

@@ -140,6 +140,9 @@ function introspect(
 
 const captured: RouteRow[] = [];
 
+// Bumped from the default 10s because this hook registers every Fastify
+// route module in the project — isolated cold start is ~10s and the
+// default margin gets tight under full-suite parallel load.
 beforeAll(async () => {
   // Dynamic import so the `vi.mock` calls above are in effect before
   // route modules pull in `@/config/firebase` at import time.
@@ -165,7 +168,7 @@ beforeAll(async () => {
   captured.sort((a, b) => a.path.localeCompare(b.path) || a.method.localeCompare(b.method));
 
   await app.close();
-});
+}, 30_000);
 
 // ─── Tests ──────────────────────────────────────────────────────────────────
 
@@ -199,7 +202,11 @@ describe("route inventory", () => {
       "POST /v1/payments/mock-checkout/:txId/complete", // dev-only mock provider flow
       "POST /v1/events/:eventId/promo-codes/validate", // documented public validator
       "POST /v1/newsletter/subscribe",
-      "POST /v1/newsletter/unsubscribe",
+      // RFC 8058 one-click unsubscribe — mailbox providers fire this
+      // from their own servers, so Bearer auth can't apply. The signed
+      // token in the querystring IS the auth (see services/notifications/
+      // unsubscribe-token.ts). Verified before any state change.
+      "POST /v1/notifications/unsubscribe",
     ]);
 
     it("every mutating route authenticates (except the documented webhook list)", () => {

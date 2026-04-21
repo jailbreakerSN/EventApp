@@ -18,9 +18,19 @@ import {
  */
 
 const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY ?? "";
-const SENDGRID_FROM_EMAIL = process.env.SENDGRID_FROM_EMAIL ?? "noreply@teranga.sn";
+const SENDGRID_FROM_EMAIL = process.env.SENDGRID_FROM_EMAIL ?? "no-reply@terangaevent.com";
 const SENDGRID_FROM_NAME = process.env.SENDGRID_FROM_NAME ?? "Teranga Events";
 const SENDGRID_API_URL = "https://api.sendgrid.com/v3/mail/send";
+
+// "Display Name <address>" → { email, name } for SendGrid's structured shape.
+// If parsing fails we keep the raw string as the email (SendGrid will reject
+// it loudly, which is preferable to silently using the wrong sender).
+function parseFrom(from: string | undefined): { email: string; name: string } {
+  if (!from) return { email: SENDGRID_FROM_EMAIL, name: SENDGRID_FROM_NAME };
+  const match = from.match(/^\s*(.+?)\s*<([^>]+)>\s*$/);
+  if (match) return { name: match[1], email: match[2] };
+  return { email: from, name: SENDGRID_FROM_NAME };
+}
 
 export class SendGridEmailProvider implements EmailProvider {
   readonly name = "sendgrid";
@@ -32,10 +42,7 @@ export class SendGridEmailProvider implements EmailProvider {
           to: [{ email: params.to }],
         },
       ],
-      from: {
-        email: SENDGRID_FROM_EMAIL,
-        name: SENDGRID_FROM_NAME,
-      },
+      from: parseFrom(params.from),
       subject: params.subject,
       content: [
         ...(params.text ? [{ type: "text/plain", value: params.text }] : []),
@@ -79,7 +86,10 @@ export class SendGridEmailProvider implements EmailProvider {
     };
   }
 
-  async sendBulk(params: EmailParams[]): Promise<BulkEmailResult> {
+  async sendBulk(
+    params: EmailParams[],
+    _options?: { idempotencyKey?: string },
+  ): Promise<BulkEmailResult> {
     const results: EmailResult[] = [];
     let sent = 0;
     let failed = 0;

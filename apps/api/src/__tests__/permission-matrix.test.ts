@@ -121,7 +121,7 @@ beforeAll(async () => {
   await registerRoutes(app);
   await app.ready();
   await app.close();
-});
+}, 30_000);
 
 // ─── Pre-computed role permission sets ─────────────────────────────────────
 // `resolvePermissions` takes role assignments rather than bare roles — the

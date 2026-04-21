@@ -529,12 +529,36 @@ service cloud.firestore {
     }
 
     // ─── Newsletter Subscribers ─────────────────────────────────────────────
-    // Email subscribers managed exclusively by API.
-    // Only super_admin can read from client.
+    // Email subscribers managed exclusively by the API + Cloud Functions
+    // (double-opt-in subscribe/confirm, retention pruning, Resend webhook
+    // deactivations). Only super_admin can read from the client.
+    //
+    // Immutability caveat: consent-critical fields (`status`,
+    // `subscribedAt`, `confirmedAt`) are enforced by the API service
+    // layer, NOT by rules. Rules deny every client write and Admin SDK
+    // bypasses rules entirely, so a buggy migration script could in
+    // theory overwrite `confirmedAt` or flip `status: "confirmed"` back
+    // to `"pending"`. Accepted tradeoff: all writers are in-repo code
+    // (api + functions), reviewed against this invariant, and covered
+    // by domain-event audit trail. A future hardening pass could
+    // introduce client-side `immutableOnUpdate` guards if we ever
+    // expose writes from outside Admin SDK.
     match /newsletterSubscribers/{subId} {
       allow read: if isSuperAdmin();
 
       // API only
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    // ─── Email Suppressions ─────────────────────────────────────────────────
+    // Hard-bounce + complaint list written by the resendWebhook Cloud
+    // Function (doc id = lowercased email). Readable by super_admin for
+    // the "why didn't this recipient get my email?" diagnostic view;
+    // writes are Admin SDK only — never from the client.
+    match /emailSuppressions/{email} {
+      allow read: if isSuperAdmin();
       allow create: if false;
       allow update: if false;
       allow delete: if false;

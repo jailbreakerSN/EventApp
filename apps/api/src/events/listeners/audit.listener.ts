@@ -606,6 +606,75 @@ export function registerAuditListeners(): void {
     });
   });
 
+  // ── Newsletter Events ─────────────────────────────────────────────────
+  // Platform-wide (no event / org scope); both eventId and organizationId
+  // are null because the newsletter isn't tied to any one tenant.
+
+  eventBus.on("newsletter.subscriber_created", async (payload) => {
+    await auditService.log({
+      action: "newsletter.subscriber_created",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "newsletter_subscriber",
+      resourceId: payload.subscriberId,
+      eventId: null,
+      organizationId: null,
+      details: { email: payload.email, source: payload.source },
+    });
+  });
+
+  eventBus.on("newsletter.subscriber_confirmed", async (payload) => {
+    await auditService.log({
+      action: "newsletter.subscriber_confirmed",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "newsletter_subscriber",
+      resourceId: payload.subscriberId,
+      eventId: null,
+      organizationId: null,
+      // GDPR/CASL: the confirmation timestamp is the legally relevant
+      // "when did they consent" record. Email retained alongside so the
+      // audit log alone is a valid consent trail.
+      details: { email: payload.email, confirmedAt: payload.confirmedAt },
+    });
+  });
+
+  eventBus.on("newsletter.sent", async (payload) => {
+    await auditService.log({
+      action: "newsletter.sent",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "newsletter_broadcast",
+      resourceId: payload.broadcastId,
+      eventId: null,
+      organizationId: null,
+      details: { subject: payload.subject, segmentId: payload.segmentId },
+    });
+  });
+
+  // ── Notification-preference unsubscribe (Phase 3c.4) ──────────────────
+  // Triggered by a subscriber clicking the List-Unsubscribe link or Gmail
+  // firing the RFC 8058 one-click POST. Recorded against the user's own
+  // userId as both `actorId` and `resourceId` — this is a self-service
+  // action, no admin involvement.
+
+  eventBus.on("notification.unsubscribed", async (payload) => {
+    await auditService.log({
+      action: "notification.unsubscribed",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "notification_preference",
+      resourceId: payload.userId,
+      eventId: null,
+      organizationId: null,
+      details: { category: payload.category, source: payload.source },
+    });
+  });
+
   // ── Sponsor Removed ───────────────────────────────────────────────────
 
   eventBus.on("sponsor.removed", async (payload) => {

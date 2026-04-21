@@ -34,3 +34,18 @@ export { sendEventReminders, sendSessionReminders } from "./triggers/reminder.tr
 
 // ─── Subscription Rollover (Phase 4c: honor prepaid periods) ────────────────
 export { applySubscriptionRollovers } from "./triggers/subscription-rollover.triggers";
+
+// ─── Retention Policy (Phase 3c.5) ──────────────────────────────────────────
+// Daily 03:00 Africa/Dakar cleanup: pending newsletter subscribers >30d,
+// email logs >90d. Suppression list + audit trail kept indefinitely.
+export { runRetentionPolicies } from "./triggers/retention.triggers";
+
+// ─── Resend Sync Layer (Phase 3b) ───────────────────────────────────────────
+// Firestore ⇄ Resend: mirror newsletter subscribers into the Resend Segment,
+// receive bounce/complaint/unsubscribe events, reconcile drift. Bootstrap is
+// API-driven (callable), not dashboard-based — per resend-skills guidance.
+export { bootstrapResendInfra } from "./triggers/resend/bootstrap-resend-infra.callable";
+export { onNewsletterSubscriberCreated } from "./triggers/resend/on-subscriber-created.trigger";
+export { onNewsletterSubscriberUpdated } from "./triggers/resend/on-subscriber-updated.trigger";
+export { resendWebhook } from "./triggers/resend/resend-webhook.https";
+export { reconcileResendSegment } from "./triggers/resend/reconcile-resend-segment.scheduled";

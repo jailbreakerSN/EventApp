@@ -87,6 +87,11 @@ export const COLLECTIONS = {
   PROMO_CODES: "promoCodes",
   VENUES: "venues",
   NEWSLETTER_SUBSCRIBERS: "newsletterSubscribers",
+  // Written by the resendWebhook Cloud Function on email.bounced /
+  // email.complained events. Doc id = lowercased email. Presence alone
+  // means the address is suppressed — the document body carries the
+  // reason + source event for auditing.
+  EMAIL_SUPPRESSIONS: "emailSuppressions",
   SUBSCRIPTIONS: "subscriptions",
   PLANS: "plans",
   SESSION_BOOKMARKS: "sessionBookmarks",

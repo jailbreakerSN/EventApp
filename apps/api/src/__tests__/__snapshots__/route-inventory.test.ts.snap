@@ -107,6 +107,7 @@ GET /v1/events/sponsors/:sponsorId/leads/export auth perms=[sponsor:view_leads]
 POST /v1/events/sponsors/:sponsorId/upload-url auth emailVerified perms=[sponsor:manage_booth]
 POST /v1/invites/accept auth emailVerified
 POST /v1/invites/decline auth emailVerified
+GET /v1/newsletter/confirm none
 POST /v1/newsletter/send auth perms=[platform:manage]
 POST /v1/newsletter/subscribe none
 GET /v1/notifications auth perms=[notification:read_own]
@@ -115,6 +116,8 @@ GET /v1/notifications/preferences auth perms=[notification:read_own]
 PUT /v1/notifications/preferences auth emailVerified perms=[notification:read_own]
 PATCH /v1/notifications/read-all auth perms=[notification:read_own]
 GET /v1/notifications/unread-count auth perms=[notification:read_own]
+GET /v1/notifications/unsubscribe none
+POST /v1/notifications/unsubscribe none
 POST /v1/organizations auth emailVerified perms=[organization:create]
 GET /v1/organizations/:orgId auth perms=[organization:read]
 PATCH /v1/organizations/:orgId auth emailVerified perms=[organization:update]

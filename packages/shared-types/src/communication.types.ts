@@ -6,6 +6,28 @@ export const CommunicationChannelSchema = z.enum(["sms", "email", "push", "in_ap
 
 export type CommunicationChannel = z.infer<typeof CommunicationChannelSchema>;
 
+// ─── Email Category ─────────────────────────────────────────────────────────
+// Categorizes outbound email by purpose so the API can route each send to
+// the correct From/Reply-To pair (see apps/api/src/services/email/sender.registry.ts).
+// Keeping categories narrow protects domain reputation: fewer, purposeful
+// senders are easier to monitor in Resend and easier for users to trust.
+//
+// - auth           Account & security (verification, password reset, login alert)
+// - transactional  User-triggered event lifecycle (registration, badge, reminder, cancellation)
+// - organizational Org/member lifecycle (invite, role change, plan limit warning)
+// - billing        Money (invoice, payment receipt, subscription change)
+// - marketing      Opt-in bulk (newsletter, product announcements)
+
+export const EmailCategorySchema = z.enum([
+  "auth",
+  "transactional",
+  "organizational",
+  "billing",
+  "marketing",
+]);
+
+export type EmailCategory = z.infer<typeof EmailCategorySchema>;
+
 // ─── Broadcast ──────────────────────────────────────────────────────────────
 
 export const BroadcastStatusSchema = z.enum(["draft", "scheduled", "sending", "sent", "failed"]);
@@ -60,9 +82,29 @@ export type BroadcastQuery = z.infer<typeof BroadcastQuerySchema>;
 export const NotificationPreferenceSchema = z.object({
   id: z.string(),
   userId: z.string(),
+
+  // Channel-level toggles (unchanged). `email` is a legacy aggregate — kept
+  // for back-compat with docs created before 3c.3 and as a user-facing
+  // kill-switch ("turn off ALL non-mandatory email at once"). The per-
+  // category fields below take precedence: if both are set, `email` is
+  // ignored. auth + billing are mandatory and ignore every flag here.
   email: z.boolean().default(true),
   sms: z.boolean().default(true),
   push: z.boolean().default(true),
+
+  // Per-category email toggles (Phase 3c.3). Each maps to an EmailCategory
+  // in the sender registry. Missing = default true; legacy docs without
+  // these fields fall back to the `email` aggregate above.
+  // `marketing` here is a secondary gate for future marketing sends that
+  // don't go through the Resend Segment — the newsletter subscribe flow
+  // is the primary opt-in/out mechanism for the Segment itself.
+  emailTransactional: z.boolean().default(true),
+  emailOrganizational: z.boolean().default(true),
+  emailMarketing: z.boolean().default(true),
+
+  // Cross-channel "send reminders at all" flag. Applies on top of the
+  // channel + category gates — a user who wants email but no reminders
+  // sets this false.
   eventReminders: z.boolean().default(true),
   quietHoursStart: z.string().nullable(), // "22:00"
   quietHoursEnd: z.string().nullable(), // "08:00"
@@ -75,6 +117,9 @@ export const UpdateNotificationPreferenceSchema = z.object({
   email: z.boolean().optional(),
   sms: z.boolean().optional(),
   push: z.boolean().optional(),
+  emailTransactional: z.boolean().optional(),
+  emailOrganizational: z.boolean().optional(),
+  emailMarketing: z.boolean().optional(),
   eventReminders: z.boolean().optional(),
   quietHoursStart: z.string().nullable().optional(),
   quietHoursEnd: z.string().nullable().optional(),

@@ -235,6 +235,26 @@ export class QrNotYetValidError extends AppError {
   }
 }
 
+/**
+ * 500-class error with a safe user-facing message. Use when an upstream
+ * dependency (Resend, Firebase, payment provider) fails and we don't want
+ * its raw error text — which may carry internal identifiers, endpoint
+ * names, or config details — to reach the client body in non-production
+ * environments. Preserves the underlying error via `cause` so it still
+ * lands in the Fastify request logger + Sentry breadcrumb.
+ */
+export class InternalError extends AppError {
+  constructor(message = "Une erreur interne est survenue. Veuillez réessayer.", cause?: Error) {
+    super({
+      message,
+      code: ERROR_CODES.INTERNAL_ERROR,
+      statusCode: 500,
+      cause,
+      isOperational: false,
+    });
+  }
+}
+
 export class PlanLimitError extends AppError {
   constructor(
     limit: string,

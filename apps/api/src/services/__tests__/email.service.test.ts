@@ -1,5 +1,22 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { EmailService } from "../email.service";
+
+// Provide a stable config mock before importing the service so the sender
+// registry resolves deterministic addresses in every assertion.
+vi.mock("@/config", () => ({
+  config: {
+    RESEND_FROM_NAME: "Teranga Events",
+    RESEND_FROM_EMAIL: "no-reply@terangaevent.com",
+    RESEND_FROM_NOREPLY: "no-reply@terangaevent.com",
+    RESEND_FROM_HELLO: "hello@terangaevent.com",
+    RESEND_FROM_BILLING: "billing@terangaevent.com",
+    RESEND_FROM_NEWS: "news@terangaevent.com",
+    RESEND_REPLY_TO_SUPPORT: "support@terangaevent.com",
+    RESEND_REPLY_TO_BILLING: "billing@terangaevent.com",
+    RESEND_REPLY_TO_CONTACT: "contact@terangaevent.com",
+    API_BASE_URL: "https://api.test.local",
+    UNSUBSCRIBE_SECRET: "test-unsub-secret-must-be-at-least-32-chars-xyz",
+  },
+}));
 
 // ─── Mocks ──────────────────────────────────────────────────────────────────
 
@@ -12,50 +29,75 @@ vi.mock("@/providers/index", () => ({
     send: mockSend,
     sendBulk: mockSendBulk,
   }),
-  buildRegistrationEmail: vi.fn().mockReturnValue({
-    subject: "Inscription confirmée",
-    html: "<p>Confirmed</p>",
-    text: "Confirmed",
-  }),
-  buildRegistrationApprovedEmail: vi.fn().mockReturnValue({
-    subject: "Inscription approuvée",
-    html: "<p>Approved</p>",
-    text: "Approved",
-  }),
-  buildBadgeReadyEmail: vi.fn().mockReturnValue({
-    subject: "Badge prêt",
-    html: "<p>Badge</p>",
-    text: "Badge",
-  }),
-  buildEventCancelledEmail: vi.fn().mockReturnValue({
-    subject: "Événement annulé",
-    html: "<p>Cancelled</p>",
-    text: "Cancelled",
-  }),
-  buildEventReminderEmail: vi.fn().mockReturnValue({
-    subject: "Rappel",
-    html: "<p>Reminder</p>",
-    text: "Reminder",
-  }),
-  buildWelcomeEmail: vi.fn().mockReturnValue({
-    subject: "Bienvenue",
-    html: "<p>Welcome</p>",
-    text: "Welcome",
-  }),
+}));
+
+// Template builders are mocked to record the locale they were called with.
+// This proves the service forwards user.preferredLanguage correctly without
+// needing to actually render JSX in a unit test.
+const mockBuildRegistration = vi.fn(async (p: { eventTitle: string; locale?: string }) => ({
+  subject: `reg-conf:${p.eventTitle}`,
+  html: `<p>reg-conf ${p.locale ?? "fr"}</p>`,
+  text: `reg-conf ${p.locale ?? "fr"}`,
+}));
+const mockBuildApproved = vi.fn(async (p: { eventTitle: string; locale?: string }) => ({
+  subject: `approved:${p.eventTitle}`,
+  html: `<p>approved</p>`,
+  text: "approved",
+}));
+const mockBuildBadgeReady = vi.fn(async (p: { eventTitle: string; locale?: string }) => ({
+  subject: `badge:${p.eventTitle}`,
+  html: `<p>badge</p>`,
+  text: "badge",
+}));
+const mockBuildCancelled = vi.fn(async (p: { eventTitle: string; locale?: string }) => ({
+  subject: `cancel:${p.eventTitle}`,
+  html: `<p>cancel</p>`,
+  text: "cancel",
+}));
+const mockBuildReminder = vi.fn(async (p: { eventTitle: string; locale?: string }) => ({
+  subject: `reminder:${p.eventTitle}`,
+  html: `<p>reminder</p>`,
+  text: "reminder",
+}));
+const mockBuildWelcome = vi.fn(async (p: { locale?: string } = {}) => ({
+  subject: "welcome",
+  html: `<p>welcome ${p.locale ?? "fr"}</p>`,
+  text: `welcome ${p.locale ?? "fr"}`,
+}));
+const mockBuildReceipt = vi.fn(async (p: { amount: string; locale?: string }) => ({
+  subject: `receipt:${p.amount}`,
+  html: `<p>receipt</p>`,
+  text: "receipt",
+}));
+
+vi.mock("@/services/email/templates", () => ({
+  buildRegistrationEmail: (...args: unknown[]) => mockBuildRegistration(args[0] as never),
+  buildRegistrationApprovedEmail: (...args: unknown[]) => mockBuildApproved(args[0] as never),
+  buildBadgeReadyEmail: (...args: unknown[]) => mockBuildBadgeReady(args[0] as never),
+  buildEventCancelledEmail: (...args: unknown[]) => mockBuildCancelled(args[0] as never),
+  buildEventReminderEmail: (...args: unknown[]) => mockBuildReminder(args[0] as never),
+  buildWelcomeEmail: (...args: unknown[]) => mockBuildWelcome(args[0] as never),
+  buildPaymentReceiptEmail: (...args: unknown[]) => mockBuildReceipt(args[0] as never),
 }));
 
 const mockPrefsGet = vi.fn();
+// Suppression lookup — defaults to "not suppressed" for every doc id.
+// Tests that want to target a specific email flip `suppressedEmails`
+// (a Set of lowercased addresses) instead of mutating the fn itself.
+const mockSuppressionGet = vi.fn();
+const suppressedEmails = new Set<string>();
 
 vi.mock("@/config/firebase", () => ({
   db: {
-    collection: () => ({
-      doc: () => ({
-        get: mockPrefsGet,
+    collection: (name: string) => ({
+      doc: (id?: string) => ({
+        get: name === "emailSuppressions" ? () => mockSuppressionGet(id) : mockPrefsGet,
       }),
     }),
   },
   COLLECTIONS: {
     NOTIFICATION_PREFERENCES: "notificationPreferences",
+    EMAIL_SUPPRESSIONS: "emailSuppressions",
   },
 }));
 
@@ -73,6 +115,16 @@ vi.mock("@/repositories/user.repository", () => ({
   ),
 }));
 
+import { EmailService } from "../email.service";
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+const stubTemplate = async (locale: "fr" | "en" | "wo") => ({
+  subject: `Subject ${locale}`,
+  html: `<p>HTML ${locale}</p>`,
+  text: `Text ${locale}`,
+});
+
 // ─── Tests ──────────────────────────────────────────────────────────────────
 
 describe("EmailService", () => {
@@ -80,15 +132,23 @@ describe("EmailService", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    suppressedEmails.clear();
+    // Per-doc-id suppression check: returns { exists: true } only for
+    // addresses that tests explicitly added to `suppressedEmails`.
+    mockSuppressionGet.mockImplementation(async (id?: string) => ({
+      exists: id !== undefined && suppressedEmails.has(id),
+    }));
     service = new EmailService();
   });
 
   describe("getPreferences", () => {
     it("returns defaults when no preference document exists", async () => {
       mockPrefsGet.mockResolvedValue({ exists: false });
-
-      const prefs = await service.getPreferences("user-1");
-      expect(prefs).toEqual({ email: true, sms: true, push: true });
+      expect(await service.getPreferences("user-1")).toEqual({
+        email: true,
+        sms: true,
+        push: true,
+      });
     });
 
     it("returns stored preferences when document exists", async () => {
@@ -96,81 +156,248 @@ describe("EmailService", () => {
         exists: true,
         data: () => ({ email: false, sms: true, push: false }),
       });
-
-      const prefs = await service.getPreferences("user-1");
-      expect(prefs).toEqual({ email: false, sms: true, push: false });
+      expect(await service.getPreferences("user-1")).toEqual({
+        email: false,
+        sms: true,
+        push: false,
+      });
     });
 
     it("returns defaults on error", async () => {
       mockPrefsGet.mockRejectedValue(new Error("Firestore down"));
-
-      const prefs = await service.getPreferences("user-1");
-      expect(prefs).toEqual({ email: true, sms: true, push: true });
+      expect(await service.getPreferences("user-1")).toEqual({
+        email: true,
+        sms: true,
+        push: true,
+      });
     });
   });
 
   describe("sendToUser", () => {
-    const emailContent = { subject: "Test", html: "<p>Test</p>", text: "Test" };
+    it("renders the template with the user's preferredLanguage and sends", async () => {
+      mockPrefsGet.mockResolvedValue({ exists: false });
+      mockUserFindById.mockResolvedValue({ email: "test@example.com", preferredLanguage: "en" });
 
-    it("sends email when user has email enabled (default prefs)", async () => {
-      mockPrefsGet.mockResolvedValue({ exists: false }); // defaults: email=true
-      mockUserFindById.mockResolvedValue({ email: "test@example.com", displayName: "Test" });
+      const factory = vi.fn(stubTemplate);
+      await service.sendToUser("user-1", factory, "transactional");
 
-      await service.sendToUser("user-1", emailContent);
-
-      expect(mockSend).toHaveBeenCalledOnce();
+      expect(factory).toHaveBeenCalledWith("en");
       expect(mockSend).toHaveBeenCalledWith(
         expect.objectContaining({
           to: "test@example.com",
-          subject: "Test",
-          html: "<p>Test</p>",
-          text: "Test",
+          subject: "Subject en",
+          html: "<p>HTML en</p>",
+          text: "Text en",
+          from: "Teranga Events <no-reply@terangaevent.com>",
+          replyTo: "support@terangaevent.com",
+          tags: expect.arrayContaining([{ name: "category", value: "transactional" }]),
         }),
       );
     });
 
-    it("does NOT send email when user has email disabled", async () => {
+    it("falls back to French when preferredLanguage is missing", async () => {
+      mockPrefsGet.mockResolvedValue({ exists: false });
+      mockUserFindById.mockResolvedValue({ email: "test@example.com" });
+
+      const factory = vi.fn(stubTemplate);
+      await service.sendToUser("user-1", factory, "transactional");
+
+      expect(factory).toHaveBeenCalledWith("fr");
+    });
+
+    it("falls back to French when preferredLanguage is an unknown value", async () => {
+      mockPrefsGet.mockResolvedValue({ exists: false });
+      mockUserFindById.mockResolvedValue({ email: "test@example.com", preferredLanguage: "es" });
+
+      const factory = vi.fn(stubTemplate);
+      await service.sendToUser("user-1", factory, "transactional");
+
+      expect(factory).toHaveBeenCalledWith("fr");
+    });
+
+    it("routes billing category to billing@ sender and reply-to", async () => {
+      mockUserFindById.mockResolvedValue({ email: "test@example.com" });
+
+      await service.sendToUser("user-1", stubTemplate, "billing");
+
+      expect(mockSend).toHaveBeenCalledWith(
+        expect.objectContaining({
+          from: "Teranga Events <billing@terangaevent.com>",
+          replyTo: "billing@terangaevent.com",
+        }),
+      );
+    });
+
+    it("routes marketing category to news@ sender with a signed List-Unsubscribe header", async () => {
+      // Phase 3c.4: every non-mandatory sendToUser stamps a per-recipient
+      // List-Unsubscribe header pointing at GET /v1/notifications/unsubscribe
+      // with a signed token. Gmail + Apple Mail render that as a native
+      // "Unsubscribe" button; Gmail's bulk-sender rules also fire the
+      // paired POST (RFC 8058 one-click) when the user confirms.
+      // This REPLACES the 3b mailto: stub that pointed at a no-op inbox.
+      mockPrefsGet.mockResolvedValue({ exists: false });
+      mockUserFindById.mockResolvedValue({ email: "test@example.com" });
+
+      await service.sendToUser("user-1", stubTemplate, "marketing");
+
+      const call = mockSend.mock.calls[0][0];
+      expect(call).toEqual(
+        expect.objectContaining({ from: "Teranga Events <news@terangaevent.com>" }),
+      );
+      expect(call.headers["List-Unsubscribe"]).toMatch(
+        /^<https:\/\/api\.test\.local\/v1\/notifications\/unsubscribe\?token=[^>]+>$/,
+      );
+      expect(call.headers["List-Unsubscribe-Post"]).toBe("List-Unsubscribe=One-Click");
+      // Token embeds the category so a token for marketing can't be
+      // replayed to unsubscribe from transactional.
+      expect(call.headers["List-Unsubscribe"]).toContain(".marketing.");
+    });
+
+    it("does NOT send email when user has email disabled (transactional) — legacy kill-switch", async () => {
       mockPrefsGet.mockResolvedValue({
         exists: true,
         data: () => ({ email: false, sms: true, push: true }),
       });
       mockUserFindById.mockResolvedValue({ email: "test@example.com" });
 
-      await service.sendToUser("user-1", emailContent);
+      await service.sendToUser("user-1", stubTemplate, "transactional");
 
       expect(mockSend).not.toHaveBeenCalled();
     });
 
+    // ── Phase 3c.3: per-category email gating ──────────────────────────
+
+    it("does NOT send transactional when emailTransactional=false (even if email=true)", async () => {
+      mockPrefsGet.mockResolvedValue({
+        exists: true,
+        data: () => ({ email: true, emailTransactional: false }),
+      });
+      mockUserFindById.mockResolvedValue({ email: "test@example.com" });
+
+      await service.sendToUser("user-1", stubTemplate, "transactional");
+
+      expect(mockSend).not.toHaveBeenCalled();
+    });
+
+    it("does NOT send organizational when emailOrganizational=false (other categories still flow)", async () => {
+      mockPrefsGet.mockResolvedValue({
+        exists: true,
+        data: () => ({ email: true, emailOrganizational: false }),
+      });
+      mockUserFindById.mockResolvedValue({ email: "test@example.com" });
+
+      await service.sendToUser("user-1", stubTemplate, "organizational");
+      expect(mockSend).not.toHaveBeenCalled();
+
+      // Same user, transactional send — still delivered because that
+      // category's flag isn't set (falls back to email=true).
+      vi.clearAllMocks();
+      suppressedEmails.clear();
+      mockPrefsGet.mockResolvedValue({
+        exists: true,
+        data: () => ({ email: true, emailOrganizational: false }),
+      });
+      mockUserFindById.mockResolvedValue({ email: "test@example.com" });
+      await service.sendToUser("user-1", stubTemplate, "transactional");
+      expect(mockSend).toHaveBeenCalledOnce();
+    });
+
+    it("per-category true OVERRIDES legacy email=false", async () => {
+      // User toggled the transactional category back on after having
+      // hit the legacy kill-switch. Honor the deliberate choice.
+      mockPrefsGet.mockResolvedValue({
+        exists: true,
+        data: () => ({ email: false, emailTransactional: true }),
+      });
+      mockUserFindById.mockResolvedValue({ email: "test@example.com" });
+
+      await service.sendToUser("user-1", stubTemplate, "transactional");
+
+      expect(mockSend).toHaveBeenCalledOnce();
+    });
+
+    it("per-category undefined falls back to legacy email flag (back-compat)", async () => {
+      // Pre-3c.3 doc: only the `email` aggregate exists. Every category
+      // inherits its value.
+      mockPrefsGet.mockResolvedValue({
+        exists: true,
+        data: () => ({ email: true }),
+      });
+      mockUserFindById.mockResolvedValue({ email: "test@example.com" });
+
+      await service.sendToUser("user-1", stubTemplate, "organizational");
+      expect(mockSend).toHaveBeenCalledOnce();
+    });
+
+    it("mandatory categories (billing) ignore every per-category toggle", async () => {
+      mockPrefsGet.mockResolvedValue({
+        exists: true,
+        data: () => ({ email: false, emailTransactional: false, emailOrganizational: false }),
+      });
+      mockUserFindById.mockResolvedValue({ email: "test@example.com" });
+
+      await service.sendToUser("user-1", stubTemplate, "billing");
+
+      expect(mockSend).toHaveBeenCalledOnce();
+      // Preferences read is deliberately skipped for mandatory categories.
+      expect(mockPrefsGet).not.toHaveBeenCalled();
+    });
+
+    it("STILL sends billing email when user has email disabled (mandatory)", async () => {
+      mockPrefsGet.mockResolvedValue({
+        exists: true,
+        data: () => ({ email: false, sms: true, push: true }),
+      });
+      mockUserFindById.mockResolvedValue({ email: "test@example.com" });
+
+      await service.sendToUser("user-1", stubTemplate, "billing");
+
+      expect(mockSend).toHaveBeenCalledOnce();
+      expect(mockPrefsGet).not.toHaveBeenCalled();
+    });
+
+    it("STILL sends auth email when user has email disabled (mandatory)", async () => {
+      mockPrefsGet.mockResolvedValue({
+        exists: true,
+        data: () => ({ email: false, sms: true, push: true }),
+      });
+      mockUserFindById.mockResolvedValue({ email: "test@example.com" });
+
+      await service.sendToUser("user-1", stubTemplate, "auth");
+
+      expect(mockSend).toHaveBeenCalledOnce();
+      expect(mockPrefsGet).not.toHaveBeenCalled();
+    });
+
     it("does NOT send email when user has no email address", async () => {
       mockPrefsGet.mockResolvedValue({ exists: false });
-      mockUserFindById.mockResolvedValue({ email: null, displayName: "No Email" });
-
-      await service.sendToUser("user-1", emailContent);
-
+      mockUserFindById.mockResolvedValue({ email: null });
+      await service.sendToUser("user-1", stubTemplate, "transactional");
       expect(mockSend).not.toHaveBeenCalled();
     });
 
     it("does NOT send email when user not found", async () => {
       mockPrefsGet.mockResolvedValue({ exists: false });
       mockUserFindById.mockResolvedValue(null);
-
-      await service.sendToUser("user-1", emailContent);
-
+      await service.sendToUser("user-1", stubTemplate, "transactional");
       expect(mockSend).not.toHaveBeenCalled();
     });
 
-    it("passes tags and idempotencyKey through to provider", async () => {
+    it("merges extra tags with the category tag and forwards idempotencyKey", async () => {
       mockPrefsGet.mockResolvedValue({ exists: false });
       mockUserFindById.mockResolvedValue({ email: "test@example.com" });
 
-      await service.sendToUser("user-1", emailContent, {
+      await service.sendToUser("user-1", stubTemplate, "transactional", {
         tags: [{ name: "type", value: "test" }],
         idempotencyKey: "test-key",
       });
 
       expect(mockSend).toHaveBeenCalledWith(
         expect.objectContaining({
-          tags: [{ name: "type", value: "test" }],
+          tags: expect.arrayContaining([
+            { name: "category", value: "transactional" },
+            { name: "type", value: "test" },
+          ]),
           idempotencyKey: "test-key",
         }),
       );
@@ -178,86 +405,176 @@ describe("EmailService", () => {
 
     it("swallows errors without throwing", async () => {
       mockPrefsGet.mockRejectedValue(new Error("DB error"));
+      await expect(
+        service.sendToUser("user-1", stubTemplate, "transactional"),
+      ).resolves.toBeUndefined();
+    });
 
-      // Should not throw
-      await expect(service.sendToUser("user-1", emailContent)).resolves.toBeUndefined();
+    it("skips the send when the address is on the suppression list (transactional)", async () => {
+      mockPrefsGet.mockResolvedValue({ exists: false });
+      mockUserFindById.mockResolvedValue({ email: "bounced@test.com" });
+      suppressedEmails.add("bounced@test.com");
+
+      await service.sendToUser("user-1", stubTemplate, "transactional");
+
+      expect(mockSend).not.toHaveBeenCalled();
+    });
+
+    it("skips the send even for mandatory categories when suppressed", async () => {
+      // Billing is mandatory (bypasses preferences) but NOT mandatory over
+      // suppression — a hard-bounced address cannot receive anything, so
+      // retrying burns reputation for zero benefit.
+      mockUserFindById.mockResolvedValue({ email: "bounced@test.com" });
+      suppressedEmails.add("bounced@test.com");
+
+      await service.sendToUser("user-1", stubTemplate, "billing");
+
+      expect(mockSend).not.toHaveBeenCalled();
+    });
+
+    it("fails open when the suppression lookup itself errors", async () => {
+      mockPrefsGet.mockResolvedValue({ exists: false });
+      mockUserFindById.mockResolvedValue({ email: "ok@test.com" });
+      mockSuppressionGet.mockRejectedValueOnce(new Error("Firestore down"));
+
+      await service.sendToUser("user-1", stubTemplate, "transactional");
+
+      // Send proceeds — a transient suppression read failure must not
+      // block legitimate emails.
+      expect(mockSend).toHaveBeenCalledOnce();
     });
   });
 
   describe("sendDirect", () => {
-    it("sends email directly without preference check", async () => {
-      await service.sendDirect("subscriber@example.com", {
-        subject: "Newsletter",
-        html: "<p>News</p>",
-        text: "News",
-      });
+    const marketingEmail = { subject: "Newsletter", html: "<p>News</p>", text: "News" };
 
-      expect(mockSend).toHaveBeenCalledOnce();
-      expect(mockSend).toHaveBeenCalledWith(
+    it("stamps marketing sender and skips preference check (no manual unsubscribe header)", async () => {
+      await service.sendDirect("subscriber@example.com", marketingEmail, "marketing");
+
+      const call = mockSend.mock.calls[0][0];
+      expect(call).toEqual(
         expect.objectContaining({
           to: "subscriber@example.com",
           subject: "Newsletter",
+          from: "Teranga Events <news@terangaevent.com>",
+          replyTo: "contact@terangaevent.com",
         }),
       );
-      // No preference check
+      // Marketing bulk runs through Broadcasts (which injects List-Unsubscribe);
+      // single welcome-style sends don't carry it manually.
+      expect(call.headers).toBeUndefined();
       expect(mockPrefsGet).not.toHaveBeenCalled();
       expect(mockUserFindById).not.toHaveBeenCalled();
     });
 
     it("swallows errors without throwing", async () => {
       mockSend.mockRejectedValue(new Error("Network error"));
-
       await expect(
-        service.sendDirect("test@example.com", {
-          subject: "Test",
-          html: "<p>Test</p>",
-          text: "Test",
-        }),
+        service.sendDirect("test@example.com", marketingEmail, "transactional"),
       ).resolves.toBeUndefined();
+    });
+
+    it("skips suppressed addresses", async () => {
+      suppressedEmails.add("suppressed@test.com");
+
+      await service.sendDirect("suppressed@test.com", marketingEmail, "marketing");
+
+      expect(mockSend).not.toHaveBeenCalled();
     });
   });
 
   describe("sendBulk", () => {
-    it("delegates to provider sendBulk", async () => {
+    it("stamps every email with the category sender before delegating", async () => {
       const emails = [
         { to: "a@test.com", subject: "Test", html: "<p>A</p>" },
         { to: "b@test.com", subject: "Test", html: "<p>B</p>" },
       ];
 
-      const result = await service.sendBulk(emails);
+      const result = await service.sendBulk(emails, "transactional");
 
-      expect(mockSendBulk).toHaveBeenCalledWith(emails);
-      expect(result.total).toBe(2);
+      const stamped = mockSendBulk.mock.calls[0][0];
+      expect(stamped).toHaveLength(2);
+      for (const e of stamped) {
+        expect(e.from).toBe("Teranga Events <no-reply@terangaevent.com>");
+        expect(e.replyTo).toBe("support@terangaevent.com");
+        expect(e.tags).toEqual(
+          expect.arrayContaining([{ name: "category", value: "transactional" }]),
+        );
+        // No manual List-Unsubscribe — sendBulk is for transactional fan-out.
+        // Marketing bulk MUST go through Broadcasts instead.
+        expect(e.headers).toBeUndefined();
+      }
       expect(result.sent).toBe(2);
     });
 
     it("returns zero results for empty array", async () => {
-      const result = await service.sendBulk([]);
-
+      const result = await service.sendBulk([], "marketing");
       expect(mockSendBulk).not.toHaveBeenCalled();
       expect(result).toEqual({ total: 0, sent: 0, failed: 0, results: [] });
     });
 
     it("returns failure result on error", async () => {
       mockSendBulk.mockRejectedValue(new Error("Batch error"));
-
-      const result = await service.sendBulk([
-        { to: "a@test.com", subject: "Test", html: "<p>A</p>" },
-      ]);
-
-      expect(result.total).toBe(1);
+      const result = await service.sendBulk(
+        [{ to: "a@test.com", subject: "Test", html: "<p>A</p>" }],
+        "transactional",
+      );
       expect(result.failed).toBe(1);
+    });
+
+    it("filters out suppressed recipients before hitting the batch endpoint", async () => {
+      suppressedEmails.add("bounced@test.com");
+      mockSendBulk.mockResolvedValue({ total: 1, sent: 1, failed: 0, results: [] });
+
+      const result = await service.sendBulk(
+        [
+          { to: "good@test.com", subject: "s", html: "<p>h</p>" },
+          { to: "bounced@test.com", subject: "s", html: "<p>h</p>" },
+        ],
+        "transactional",
+      );
+
+      // Only the non-suppressed email reaches the provider.
+      const stamped = mockSendBulk.mock.calls[0][0];
+      expect(stamped).toHaveLength(1);
+      expect(stamped[0].to).toBe("good@test.com");
+
+      // total preserves the original input size so callers can see how
+      // many entered the function (sent + failed + suppressed = total).
+      expect(result.total).toBe(2);
+      expect(result.sent).toBe(1);
+    });
+
+    it("returns early without calling the provider when every recipient is suppressed", async () => {
+      suppressedEmails.add("a@test.com");
+      suppressedEmails.add("b@test.com");
+
+      const result = await service.sendBulk(
+        [
+          { to: "a@test.com", subject: "s", html: "<p>h</p>" },
+          { to: "b@test.com", subject: "s", html: "<p>h</p>" },
+        ],
+        "transactional",
+      );
+
+      expect(mockSendBulk).not.toHaveBeenCalled();
+      expect(result.total).toBe(2);
       expect(result.sent).toBe(0);
+      expect(result.results.every((r) => r.error === "suppressed")).toBe(true);
     });
   });
 
   describe("template helpers", () => {
     beforeEach(() => {
       mockPrefsGet.mockResolvedValue({ exists: false });
-      mockUserFindById.mockResolvedValue({ email: "user@test.com", displayName: "Test" });
+      mockUserFindById.mockResolvedValue({
+        email: "user@test.com",
+        displayName: "Test",
+        preferredLanguage: "en",
+      });
     });
 
-    it("sendRegistrationConfirmation sends with correct tags", async () => {
+    it("sendRegistrationConfirmation forwards locale + tags + idempotencyKey", async () => {
       await service.sendRegistrationConfirmation("user-1", {
         participantName: "Test",
         eventTitle: "Event",
@@ -267,48 +584,59 @@ describe("EmailService", () => {
         registrationId: "reg-1",
       });
 
+      expect(mockBuildRegistration).toHaveBeenCalledWith(
+        expect.objectContaining({ eventTitle: "Event", locale: "en" }),
+      );
       expect(mockSend).toHaveBeenCalledWith(
         expect.objectContaining({
-          tags: [{ name: "type", value: "registration_confirmation" }],
-          idempotencyKey: "reg-confirm:reg-1",
+          tags: expect.arrayContaining([
+            { name: "category", value: "transactional" },
+            { name: "type", value: "registration_confirmation" },
+          ]),
+          idempotencyKey: "reg-confirm/reg-1",
+          from: "Teranga Events <no-reply@terangaevent.com>",
         }),
       );
     });
 
-    it("sendRegistrationApproved sends email", async () => {
-      await service.sendRegistrationApproved("user-1", {
-        participantName: "Test",
-        eventTitle: "Event",
-        eventDate: "2026-04-15",
-        eventLocation: "Dakar",
+    it("sendPaymentReceipt uses the billing sender and is mandatory (ignores prefs)", async () => {
+      mockPrefsGet.mockResolvedValue({
+        exists: true,
+        data: () => ({ email: false, sms: true, push: true }),
       });
 
-      expect(mockSend).toHaveBeenCalledOnce();
-    });
-
-    it("sendBadgeReady sends email", async () => {
-      await service.sendBadgeReady("user-1", {
+      await service.sendPaymentReceipt("user-1", {
         participantName: "Test",
+        amount: "10 000 XOF",
         eventTitle: "Event",
+        receiptId: "pay-1",
+        paymentDate: "2026-04-15",
       });
 
-      expect(mockSend).toHaveBeenCalledOnce();
+      expect(mockBuildReceipt).toHaveBeenCalledWith(
+        expect.objectContaining({ amount: "10 000 XOF", locale: "en" }),
+      );
+      expect(mockSend).toHaveBeenCalledWith(
+        expect.objectContaining({
+          from: "Teranga Events <billing@terangaevent.com>",
+          idempotencyKey: "payment-receipt/pay-1",
+        }),
+      );
+      expect(mockPrefsGet).not.toHaveBeenCalled();
     });
 
-    it("sendEventCancelled sends email", async () => {
-      await service.sendEventCancelled("user-1", {
-        participantName: "Test",
-        eventTitle: "Event",
-        eventDate: "2026-04-15",
-      });
-
-      expect(mockSend).toHaveBeenCalledOnce();
-    });
-
-    it("sendWelcomeNewsletter sends direct (no preference check)", async () => {
+    it("sendWelcomeNewsletter sends direct with marketing sender (no pref check)", async () => {
       await service.sendWelcomeNewsletter("subscriber@test.com");
 
-      expect(mockSend).toHaveBeenCalledOnce();
+      expect(mockBuildWelcome).toHaveBeenCalled();
+      const call = mockSend.mock.calls[0][0];
+      expect(call).toEqual(
+        expect.objectContaining({
+          to: "subscriber@test.com",
+          from: "Teranga Events <news@terangaevent.com>",
+        }),
+      );
+      expect(call.headers).toBeUndefined();
       expect(mockPrefsGet).not.toHaveBeenCalled();
     });
   });

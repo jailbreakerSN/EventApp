@@ -65,12 +65,24 @@ export default function SettingsPage() {
         push?: boolean;
         sms?: boolean;
         email?: boolean;
+        // Phase 3c.3 per-category fields. Missing = fall back to the
+        // legacy `email` aggregate (which defaults to true).
+        emailTransactional?: boolean;
+        emailOrganizational?: boolean;
         eventReminders?: boolean;
         quietHoursStart?: string | null;
         quietHoursEnd?: string | null;
       };
     }
   )?.data;
+
+  // Helper: compute the effective per-category toggle state. Mirrors the
+  // API's `isEmailCategoryEnabled` so the UI shows what the server will
+  // actually honor. Returns the legacy `email` aggregate when the
+  // per-category field is undefined — keeps existing users seeing their
+  // previous choice without a migration.
+  const emailTransactional = prefs?.emailTransactional ?? prefs?.email ?? true;
+  const emailOrganizational = prefs?.emailOrganizational ?? prefs?.email ?? true;
 
   const [profileVisible, setProfileVisible] = useState(true);
   const [allowDirectMessages, setAllowDirectMessages] = useState(true);
@@ -108,7 +120,7 @@ export default function SettingsPage() {
 
   return (
     <div className="mx-auto max-w-lg px-4 py-8 space-y-6">
-      <SectionHeader kicker="— RÉGLAGES" title={t("title")} size="hero" as="h1" />
+      <SectionHeader kicker={t("kicker")} title={t("title")} size="hero" as="h1" />
 
       {/* Notification Preferences */}
       <Card>
@@ -136,10 +148,17 @@ export default function SettingsPage() {
             />
             <Toggle
               icon={Mail}
-              label={tNotifications("email")}
-              description={tNotifications("emailDescription")}
-              checked={prefs?.email ?? true}
-              onChange={(v) => update.mutate({ email: v })}
+              label={tNotifications("emailTransactional")}
+              description={tNotifications("emailTransactionalDescription")}
+              checked={emailTransactional}
+              onChange={(v) => update.mutate({ emailTransactional: v })}
+            />
+            <Toggle
+              icon={Mail}
+              label={tNotifications("emailOrganizational")}
+              description={tNotifications("emailOrganizationalDescription")}
+              checked={emailOrganizational}
+              onChange={(v) => update.mutate({ emailOrganizational: v })}
             />
             <Toggle
               icon={Clock}
@@ -148,6 +167,9 @@ export default function SettingsPage() {
               checked={prefs?.eventReminders ?? true}
               onChange={(v) => update.mutate({ eventReminders: v })}
             />
+            <p className="text-xs text-muted-foreground mt-2">
+              {tNotifications("mandatoryEmailNote")}
+            </p>
           </div>
         </CardContent>
       </Card>

@@ -22,12 +22,69 @@ const envSchema = z.object({
   RATE_LIMIT_WINDOW_MS: z.coerce.number().default(60_000),
 
   RESEND_API_KEY: z.string().optional(),
-  RESEND_FROM_EMAIL: z.string().default("noreply@teranga.events"),
   RESEND_FROM_NAME: z.string().default("Teranga Events"),
+
+  // Legacy single-sender fallback — kept so existing environments stay green.
+  // New code should resolve senders via the EmailCategory registry; this value
+  // is only used when a category-specific var is unset.
+  RESEND_FROM_EMAIL: z.string().default("no-reply@terangaevent.com"),
+
+  // Per-category From addresses. Each maps to an EmailCategory in
+  // packages/shared-types/src/communication.types.ts via the sender registry.
+  RESEND_FROM_NOREPLY: z.string().default("no-reply@terangaevent.com"),
+  RESEND_FROM_HELLO: z.string().default("hello@terangaevent.com"),
+  RESEND_FROM_BILLING: z.string().default("billing@terangaevent.com"),
+  RESEND_FROM_NEWS: z.string().default("news@terangaevent.com"),
+
+  // Reply-To addresses. These should be real inboxes (Google Workspace, etc.)
+  // — Resend is outbound-only, so replies bounce unless the MX points elsewhere.
+  RESEND_REPLY_TO_SUPPORT: z.string().default("support@terangaevent.com"),
+  RESEND_REPLY_TO_BILLING: z.string().default("billing@terangaevent.com"),
+  RESEND_REPLY_TO_CONTACT: z.string().default("contact@terangaevent.com"),
+
+  // Resend Segment backing the newsletter (Resend renamed "Audiences" to
+  // "Segments"). Newsletter subscribers are mirrored into this segment so
+  // `POST /broadcasts` has recipients and Resend can manage the unsubscribe
+  // flow automatically (List-Unsubscribe + one-click RFC 8058). Create the
+  // segment once in the Resend dashboard and paste the id here. Leaving it
+  // unset keeps the newsletter path dormant — subscribe still writes to
+  // Firestore; sendNewsletter no-ops rather than erroring.
+  RESEND_NEWSLETTER_SEGMENT_ID: z.string().optional(),
 
   AT_API_KEY: z.string().optional(),
   AT_USERNAME: z.string().default("sandbox"),
   AT_SENDER_ID: z.string().default("Teranga"),
+
+  // Public base URL the API serves under. Used to build absolute links in
+  // transactional emails (e.g. the newsletter confirmation link). Defaults
+  // to localhost so dev emails are clickable without extra setup; prod
+  // must override to the real API host.
+  API_BASE_URL: z.string().url().default("http://localhost:3000"),
+
+  // HMAC secret for stateless newsletter confirmation tokens. Separate from
+  // QR_SECRET on purpose — a compromise of one cryptographic domain must
+  // not compromise the other. 32+ chars; see services/newsletter/
+  // confirmation-token.ts for the format.
+  NEWSLETTER_CONFIRM_SECRET: z
+    .string()
+    .min(32, "NEWSLETTER_CONFIRM_SECRET must be at least 32 characters")
+    .default("dev-newsletter-confirm-secret-change-me-in-prod-3cd2"),
+
+  // HMAC secret for the subscriber-facing unsubscribe link shipped in
+  // non-mandatory transactional emails (List-Unsubscribe header + one-
+  // click POST per RFC 8058). Separate from the newsletter confirm
+  // secret — compromising one must not compromise the other. Tokens do
+  // not expire: users click old emails months later and it still works.
+  //
+  // Rotation: see the "ROTATION RUNBOOK" block in .env.example. Short
+  // version — rotating this secret in prod invalidates every
+  // outstanding unsubscribe link at once, which is a compliance +
+  // deliverability event. Coordinate via the operations channel before
+  // rotating.
+  UNSUBSCRIBE_SECRET: z
+    .string()
+    .min(32, "UNSUBSCRIBE_SECRET must be at least 32 characters")
+    .default("dev-unsubscribe-secret-change-me-in-prod-3c-4-1234"),
 
   QR_SECRET: z.string().min(32, "QR_SECRET must be at least 32 characters"),
   // v4 QR signing derives per-event HMAC keys via HKDF-SHA256(QR_MASTER,

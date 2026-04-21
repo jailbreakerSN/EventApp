@@ -308,6 +308,42 @@ export interface BroadcastSentEvent extends BaseEventPayload {
   recipientCount: number;
 }
 
+// ── Newsletter ─────────────────────────────────────────────────────────────
+// Platform-wide (no event or organization scope). Kept separate from
+// BroadcastSentEvent, which is organizer→participants and carries eventId /
+// organizationId required fields.
+
+export interface NewsletterSubscriberCreatedEvent extends BaseEventPayload {
+  subscriberId: string;
+  email: string;
+  source: string;
+}
+
+export interface NewsletterSubscriberConfirmedEvent extends BaseEventPayload {
+  subscriberId: string;
+  email: string;
+  /** ISO 8601 — when the user completed the double-opt-in click. */
+  confirmedAt: string;
+}
+
+export interface NewsletterSentEvent extends BaseEventPayload {
+  /** Resend broadcast id. */
+  broadcastId: string;
+  subject: string;
+  segmentId: string;
+}
+
+// ── Notification preferences (Phase 3c.4) ─────────────────────────────────
+
+export interface NotificationUnsubscribedEvent extends BaseEventPayload {
+  /** User whose preference was flipped (== actorId for self-service unsubs). */
+  userId: string;
+  /** Category unsubscribed from. Never "auth" or "billing" — those are mandatory. */
+  category: "transactional" | "organizational" | "marketing";
+  /** "list_unsubscribe_click" (GET) or "list_unsubscribe_post" (RFC 8058). */
+  source: "list_unsubscribe_click" | "list_unsubscribe_post";
+}
+
 // ── Speaker ───────────────────────────────────────────────────────────────
 
 export interface SpeakerAddedEvent extends BaseEventPayload {
@@ -668,6 +704,12 @@ export interface DomainEventMap {
   "user.status_changed": UserStatusChangedEvent;
   "organization.verified": OrgVerifiedEvent;
   "organization.status_changed": OrgStatusChangedEvent;
+  // Newsletter
+  "newsletter.subscriber_created": NewsletterSubscriberCreatedEvent;
+  "newsletter.subscriber_confirmed": NewsletterSubscriberConfirmedEvent;
+  "newsletter.sent": NewsletterSentEvent;
+  // Notification preferences
+  "notification.unsubscribed": NotificationUnsubscribedEvent;
 }
 
 export type DomainEventName = keyof DomainEventMap;

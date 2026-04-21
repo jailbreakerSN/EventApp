@@ -616,6 +616,7 @@
   },
   "settings": {
     "title": "Settings",
+    "kicker": "— SETTINGS",
     "notifications": {
       "heading": "Notifications",
       "description": "Choose how you receive notifications",
@@ -625,6 +626,11 @@
       "smsDescription": "Receive notifications by SMS",
       "email": "Email",
       "emailDescription": "Receive summaries and confirmations by email",
+      "emailTransactional": "Transactional emails",
+      "emailTransactionalDescription": "Registration confirmations, event reminders, badge ready notices",
+      "emailOrganizational": "Organizational emails",
+      "emailOrganizationalDescription": "Team invitations, role changes, and organization updates",
+      "mandatoryEmailNote": "Security emails (sign-in, password reset) and payment receipts are always sent and cannot be disabled.",
       "reminders": "Event reminders",
       "remindersDescription": "Get a reminder before your events start"
     },
