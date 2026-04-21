@@ -30,6 +30,7 @@ import { useInitiatePayment, useValidatePromoCode } from "@/hooks/use-payments";
 import {
   Button,
   EmptyStateEditorial,
+  InlineErrorBanner,
   Input,
   Spinner,
   Stepper,
@@ -38,7 +39,6 @@ import {
   PaymentMethodCard,
   formatCurrency,
   formatDate,
-  getErrorMessage,
 } from "@teranga/shared-ui";
 import type {
   Event,
@@ -51,6 +51,7 @@ import { computeRegistrationAvailability } from "@teranga/shared-types";
 import { intlLocale } from "@/lib/intl-locale";
 import { saveBadge } from "@/lib/badge-store";
 import { useAuth } from "@/hooks/use-auth";
+import { useErrorHandler, type ResolvedError } from "@/hooks/use-error-handler";
 
 type Step = "select" | "confirm" | "success";
 type StepNum = 1 | 2 | 3;
@@ -93,6 +94,10 @@ export default function RegisterPage() {
   const [selectedTicket, setSelectedTicket] = useState<TicketType | null>(null);
   const [registration, setRegistration] = useState<Registration | null>(null);
   const [emailNotVerified, setEmailNotVerified] = useState(false);
+  const [submitError, setSubmitError] = useState<ResolvedError | null>(null);
+  const { resolve: resolveError } = useErrorHandler();
+  const tErrors = useTranslations("errors");
+  const tErrorActions = useTranslations("errors.actions");
 
   const [selectedMethod, setSelectedMethod] = useState<PaymentMethod>("wave");
 
@@ -244,8 +249,24 @@ export default function RegisterPage() {
     setPromoError(null);
   };
 
+  // Turn a caught submit error into either the persistent InlineErrorBanner
+  // (blocking mutation failures) or the email-verification inline panel
+  // (handled separately because it has a bespoke "resend link" action).
+  // Replaces three duplicated `toast.error(getErrorMessage(...))` sites that
+  // caused the silent-failure loop reported in PR #WVDa3.
+  const showSubmitError = (err: unknown) => {
+    const resolved = resolveError(err);
+    if (resolved.descriptor.code === "EMAIL_NOT_VERIFIED") {
+      setEmailNotVerified(true);
+      setSubmitError(null);
+      return;
+    }
+    setSubmitError(resolved);
+  };
+
   const handleConfirm = async () => {
     if (!selectedTicket) return;
+    setSubmitError(null);
 
     if (isPaidTicket) {
       if (discountedPrice === 0) {
@@ -259,10 +280,7 @@ export default function RegisterPage() {
           toast.success(t("successSubmit"));
           return;
         } catch (err: unknown) {
-          const code = (err as { code?: string })?.code;
-          const message = (err as { message?: string })?.message;
-          if (code === "EMAIL_NOT_VERIFIED") setEmailNotVerified(true);
-          toast.error(getErrorMessage(code, message));
+          showSubmitError(err);
           return;
         }
       }
@@ -278,10 +296,7 @@ export default function RegisterPage() {
           window.location.href = data.redirectUrl;
         }
       } catch (err: unknown) {
-        const code = (err as { code?: string })?.code;
-        const message = (err as { message?: string })?.message;
-        if (code === "EMAIL_NOT_VERIFIED") setEmailNotVerified(true);
-        toast.error(getErrorMessage(code, message));
+        showSubmitError(err);
       }
     } else {
       try {
@@ -293,10 +308,7 @@ export default function RegisterPage() {
         setStep("success");
         toast.success(t("successSubmit"));
       } catch (err: unknown) {
-        const code = (err as { code?: string })?.code;
-        const message = (err as { message?: string })?.message;
-        if (code === "EMAIL_NOT_VERIFIED") setEmailNotVerified(true);
-        toast.error(getErrorMessage(code, message));
+        showSubmitError(err);
       }
     }
   };
@@ -403,6 +415,33 @@ export default function RegisterPage() {
   return (
     <div className="bg-muted/20">
       <div className="mx-auto max-w-4xl px-6 pt-10 pb-20 lg:px-8">
+        {/* Submission error banner — persistent, accessible replacement for
+            the four-second toast that caused the silent-failure loop
+            (docs/design-system/error-handling.md). Reason-aware copy comes
+            from useErrorHandler → errors.* i18n catalog; actions offer a
+            next step so users never land on a dead-end toast again. */}
+        {submitError && (
+          <InlineErrorBanner
+            className="mb-6"
+            severity={submitError.severity}
+            kicker={tErrors("kicker")}
+            title={submitError.title}
+            description={submitError.description}
+            actions={[
+              {
+                label: tErrorActions("browseEvents"),
+                href: "/events",
+              },
+              {
+                label: tErrorActions("dismiss"),
+                onClick: () => setSubmitError(null),
+              },
+            ]}
+            onDismiss={() => setSubmitError(null)}
+            dismissLabel={tErrorActions("dismiss")}
+          />
+        )}
+
         {/* Email-not-verified panel — fires when the API rejects a paid
             registration because the user hasn't clicked the verification
             link yet. Inline + actionable beats a toast-only failure. */}
