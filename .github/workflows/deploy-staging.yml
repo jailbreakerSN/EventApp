@@ -37,11 +37,24 @@ env:
   NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT: "120000"
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# Only 4 secrets required:
+# Only 4 GitHub secrets required:
 #   GCP_SA_KEY      — Firebase Admin SDK JSON key (derives everything else)
-#   RESEND_API_KEY  — Resend email service API key
-#   QR_SECRET       — HMAC-SHA256 key for QR badge signing
-#   WEBHOOK_SECRET  — Webhook signature verification key
+#   RESEND_API_KEY  — Resend email service API key. Consumed TWICE:
+#                       - API (Cloud Run) reads it as a plain env var.
+#                       - Functions (Cloud Functions v2) read it via
+#                         Secret Manager. The "Provision Functions
+#                         secrets" step below uploads the value into
+#                         the RESEND_API_KEY Secret Manager entry on
+#                         every deploy so rotation = update the GH secret.
+#   QR_SECRET       — HMAC-SHA256 key for QR badge signing (API only)
+#   WEBHOOK_SECRET  — Webhook signature verification key (API only)
+#
+# Secret Manager entries provisioned by the deploy (no GH secret needed):
+#   RESEND_WEBHOOK_SECRET — Svix signing secret for the resendWebhook
+#                           function. Seeded with the sentinel
+#                           "pending-bootstrap"; the real value is
+#                           written by invoking `bootstrapResendInfra`
+#                           once after the first successful deploy.
 #
 # Optional variables (non-secret, set via `gh variable set`):
 #   API_URL_STAGING — Cloud Run URL (auto-detected if service exists)
@@ -94,6 +107,7 @@ jobs:
             cloudscheduler.googleapis.com \
             eventarc.googleapis.com \
             pubsub.googleapis.com \
+            secretmanager.googleapis.com \
             --quiet
 
       - name: Grant IAM roles to GCP service agents (for Firebase Functions)
@@ -538,6 +552,132 @@ jobs:
             --only storage \
             --project ${{ needs.setup.outputs.project_id }} \
             --force --non-interactive
+
+      - name: Provision Functions secrets in Secret Manager
+        # Cloud Functions v2 `defineSecret(...)` bindings fail the deploy if
+        # the referenced secret doesn't exist in Secret Manager. Create the
+        # two secrets the resend triggers declare, populate them, and grant
+        # the Cloud Functions runtime SA read access. All steps are
+        # idempotent — re-running is a no-op when the desired state already
+        # matches.
+        #
+        #   RESEND_API_KEY          — real key from the GitHub Actions
+        #                             secret of the same name. Re-seeded
+        #                             on every deploy so rotation just
+        #                             means updating the GitHub secret.
+        #                             We only add a new Secret Manager
+        #                             version when the payload differs,
+        #                             to avoid version churn.
+        #   RESEND_WEBHOOK_SECRET   — seeded with the sentinel value
+        #                             "pending-bootstrap" if no version
+        #                             exists. The real signing secret is
+        #                             written by the bootstrapResendInfra
+        #                             callable once Resend returns it
+        #                             (requires secretVersionAdder below).
+        #                             We never overwrite an existing real
+        #                             value — only add the placeholder
+        #                             when the secret is fresh.
+        env:
+          PROJECT_ID: ${{ needs.setup.outputs.project_id }}
+          PROJECT_NUMBER: ${{ needs.setup.outputs.project_number }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${RESEND_API_KEY:-}" ]; then
+            echo "::error::RESEND_API_KEY GitHub secret is empty — add it under Settings → Secrets → Actions"
+            exit 1
+          fi
+
+          # Cloud Functions v2 runs as the default Compute Engine SA unless
+          # overridden. That's the SA we must grant read access to.
+          RUNTIME_SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
+
+          ensure_secret() {
+            local name="$1"
+            if ! gcloud secrets describe "$name" --project="$PROJECT_ID" >/dev/null 2>&1; then
+              echo "::notice::Creating secret $name"
+              gcloud secrets create "$name" \
+                --project="$PROJECT_ID" \
+                --replication-policy=automatic \
+                --quiet
+            else
+              echo "::notice::Secret $name already exists"
+            fi
+          }
+
+          # Add a new version only when the latest stored value differs from
+          # the desired payload. gcloud exits 1 on access() when the secret
+          # has no versions yet — treat that as "needs a version".
+          add_version_if_changed() {
+            local name="$1" desired="$2"
+            local current
+            if current=$(gcloud secrets versions access latest \
+                --secret="$name" --project="$PROJECT_ID" 2>/dev/null); then
+              if [ "$current" = "$desired" ]; then
+                echo "::notice::Secret $name latest version matches GitHub value — skipping"
+                return 0
+              fi
+              echo "::notice::Secret $name latest version differs — adding new version"
+            else
+              echo "::notice::Secret $name has no accessible version yet — seeding first one"
+            fi
+            printf '%s' "$desired" | gcloud secrets versions add "$name" \
+              --project="$PROJECT_ID" \
+              --data-file=- \
+              --quiet >/dev/null
+          }
+
+          # Add the placeholder only when no version exists, so the real
+          # signing secret written by bootstrapResendInfra isn't clobbered.
+          seed_placeholder_if_empty() {
+            local name="$1" placeholder="$2"
+            if gcloud secrets versions access latest \
+                --secret="$name" --project="$PROJECT_ID" >/dev/null 2>&1; then
+              echo "::notice::Secret $name already has a version — leaving real value intact"
+              return 0
+            fi
+            echo "::notice::Secret $name has no versions — seeding with placeholder"
+            printf '%s' "$placeholder" | gcloud secrets versions add "$name" \
+              --project="$PROJECT_ID" \
+              --data-file=- \
+              --quiet >/dev/null
+          }
+
+          grant_accessor() {
+            local name="$1"
+            gcloud secrets add-iam-policy-binding "$name" \
+              --project="$PROJECT_ID" \
+              --member="serviceAccount:${RUNTIME_SA}" \
+              --role="roles/secretmanager.secretAccessor" \
+              --condition=None \
+              --quiet >/dev/null || \
+              echo "::warning::Failed to grant secretAccessor on $name to $RUNTIME_SA"
+          }
+
+          grant_version_adder() {
+            local name="$1"
+            gcloud secrets add-iam-policy-binding "$name" \
+              --project="$PROJECT_ID" \
+              --member="serviceAccount:${RUNTIME_SA}" \
+              --role="roles/secretmanager.secretVersionAdder" \
+              --condition=None \
+              --quiet >/dev/null || \
+              echo "::warning::Failed to grant secretVersionAdder on $name to $RUNTIME_SA"
+          }
+
+          # RESEND_API_KEY — real key, read by every trigger that calls Resend.
+          ensure_secret RESEND_API_KEY
+          add_version_if_changed RESEND_API_KEY "$RESEND_API_KEY"
+          grant_accessor RESEND_API_KEY
+
+          # RESEND_WEBHOOK_SECRET — starts as a sentinel; the bootstrap
+          # callable writes the real Svix signing secret later, which is
+          # why the runtime SA also needs secretVersionAdder here.
+          ensure_secret RESEND_WEBHOOK_SECRET
+          seed_placeholder_if_empty RESEND_WEBHOOK_SECRET pending-bootstrap
+          grant_accessor RESEND_WEBHOOK_SECRET
+          grant_version_adder RESEND_WEBHOOK_SECRET
 
       - name: Deploy Cloud Functions
         run: |
