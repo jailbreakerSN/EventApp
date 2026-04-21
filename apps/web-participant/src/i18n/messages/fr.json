@@ -885,5 +885,110 @@
       "payments": "Paiements et remboursements",
       "confirmationEmail": "Que faire si je ne reçois pas mon email de confirmation ?"
     }
+  },
+  "errors": {
+    "kicker": "— Erreur",
+    "unknown": {
+      "title": "Une erreur inattendue est survenue",
+      "description": "Réessayez dans quelques instants. Si le problème persiste, contactez le support."
+    },
+    "TIMEOUT": {
+      "title": "Connexion trop lente",
+      "description": "La requête a expiré. Vérifiez votre connexion et réessayez."
+    },
+    "INTERNAL_ERROR": {
+      "title": "Erreur interne",
+      "description": "Une erreur est survenue de notre côté. L'équipe a été notifiée — réessayez dans quelques instants."
+    },
+    "UNAUTHORIZED": {
+      "title": "Connexion requise",
+      "description": "Vous devez être connecté(e) pour effectuer cette action."
+    },
+    "FORBIDDEN": {
+      "title": "Action non autorisée",
+      "description": "Vous n'avez pas les permissions nécessaires pour cette action."
+    },
+    "NOT_FOUND": {
+      "title": "Ressource introuvable",
+      "description": "Ce que vous cherchez n'existe pas ou plus."
+    },
+    "VALIDATION_ERROR": {
+      "title": "Données invalides",
+      "description": "Vérifiez les informations saisies dans le formulaire."
+    },
+    "CONFLICT": {
+      "title": "Action déjà effectuée",
+      "description": "Cette action est en conflit avec l'état actuel. Rafraîchissez la page et réessayez."
+    },
+    "RATE_LIMIT_EXCEEDED": {
+      "title": "Trop de tentatives",
+      "description": "Vous avez effectué trop de requêtes. Patientez quelques instants avant de réessayer."
+    },
+    "REGISTRATION_CLOSED": {
+      "title": "Inscriptions indisponibles",
+      "description": "Les inscriptions ne sont pas ouvertes pour cet événement.",
+      "reasons": {
+        "event_not_published": {
+          "title": "Les inscriptions ne sont pas encore ouvertes",
+          "description": "L'organisateur prépare encore cet événement. Revenez dans quelques jours."
+        },
+        "event_cancelled": {
+          "title": "Événement annulé",
+          "description": "Cet événement a été annulé par l'organisateur."
+        },
+        "event_completed": {
+          "title": "Événement terminé",
+          "description": "Cet événement est déjà passé."
+        },
+        "event_archived": {
+          "title": "Événement archivé",
+          "description": "Cet événement n'est plus accessible."
+        },
+        "event_ended": {
+          "title": "Les inscriptions sont closes",
+          "description": "La période d'inscription s'est terminée."
+        },
+        "event_full": {
+          "title": "Événement complet",
+          "description": "Toutes les places ont été attribuées."
+        }
+      }
+    },
+    "EVENT_FULL": {
+      "title": "Événement complet",
+      "description": "Toutes les places ont été attribuées. Parcourez d'autres événements ou consultez à nouveau plus tard."
+    },
+    "EMAIL_NOT_VERIFIED": {
+      "title": "Vérifiez votre adresse e-mail",
+      "description": "Cliquez sur le lien que nous vous avons envoyé pour débloquer les inscriptions payantes."
+    },
+    "ORGANIZATION_PLAN_LIMIT": {
+      "title": "Limite du plan atteinte",
+      "description": "Cette action dépasse les limites de votre abonnement actuel. Passez à un plan supérieur pour continuer."
+    },
+    "QR_INVALID": {
+      "title": "QR invalide",
+      "description": "Ce code QR n'est pas reconnu. Vérifiez que vous scannez le bon badge."
+    },
+    "QR_ALREADY_USED": {
+      "title": "Badge déjà utilisé",
+      "description": "Ce badge a déjà été scanné pour cet événement."
+    },
+    "QR_EXPIRED": {
+      "title": "Badge expiré",
+      "description": "Ce badge n'est plus valide."
+    },
+    "QR_NOT_YET_VALID": {
+      "title": "Badge pas encore valide",
+      "description": "Réessayez à partir de l'heure d'ouverture de l'événement."
+    },
+    "actions": {
+      "retry": "Réessayer",
+      "contactSupport": "Contacter le support",
+      "browseEvents": "Voir les événements",
+      "upgradePlan": "Gérer mon plan",
+      "verifyEmail": "Renvoyer le lien de vérification",
+      "dismiss": "Fermer"
+    }
   }
 }
