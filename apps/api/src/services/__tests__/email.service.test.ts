@@ -243,7 +243,7 @@ describe("EmailService", () => {
       expect(call.headers).toBeUndefined();
     });
 
-    it("does NOT send email when user has email disabled (transactional)", async () => {
+    it("does NOT send email when user has email disabled (transactional) — legacy kill-switch", async () => {
       mockPrefsGet.mockResolvedValue({
         exists: true,
         data: () => ({ email: false, sms: true, push: true }),
@@ -253,6 +253,84 @@ describe("EmailService", () => {
       await service.sendToUser("user-1", stubTemplate, "transactional");
 
       expect(mockSend).not.toHaveBeenCalled();
+    });
+
+    // ── Phase 3c.3: per-category email gating ──────────────────────────
+
+    it("does NOT send transactional when emailTransactional=false (even if email=true)", async () => {
+      mockPrefsGet.mockResolvedValue({
+        exists: true,
+        data: () => ({ email: true, emailTransactional: false }),
+      });
+      mockUserFindById.mockResolvedValue({ email: "test@example.com" });
+
+      await service.sendToUser("user-1", stubTemplate, "transactional");
+
+      expect(mockSend).not.toHaveBeenCalled();
+    });
+
+    it("does NOT send organizational when emailOrganizational=false (other categories still flow)", async () => {
+      mockPrefsGet.mockResolvedValue({
+        exists: true,
+        data: () => ({ email: true, emailOrganizational: false }),
+      });
+      mockUserFindById.mockResolvedValue({ email: "test@example.com" });
+
+      await service.sendToUser("user-1", stubTemplate, "organizational");
+      expect(mockSend).not.toHaveBeenCalled();
+
+      // Same user, transactional send — still delivered because that
+      // category's flag isn't set (falls back to email=true).
+      vi.clearAllMocks();
+      suppressedEmails.clear();
+      mockPrefsGet.mockResolvedValue({
+        exists: true,
+        data: () => ({ email: true, emailOrganizational: false }),
+      });
+      mockUserFindById.mockResolvedValue({ email: "test@example.com" });
+      await service.sendToUser("user-1", stubTemplate, "transactional");
+      expect(mockSend).toHaveBeenCalledOnce();
+    });
+
+    it("per-category true OVERRIDES legacy email=false", async () => {
+      // User toggled the transactional category back on after having
+      // hit the legacy kill-switch. Honor the deliberate choice.
+      mockPrefsGet.mockResolvedValue({
+        exists: true,
+        data: () => ({ email: false, emailTransactional: true }),
+      });
+      mockUserFindById.mockResolvedValue({ email: "test@example.com" });
+
+      await service.sendToUser("user-1", stubTemplate, "transactional");
+
+      expect(mockSend).toHaveBeenCalledOnce();
+    });
+
+    it("per-category undefined falls back to legacy email flag (back-compat)", async () => {
+      // Pre-3c.3 doc: only the `email` aggregate exists. Every category
+      // inherits its value.
+      mockPrefsGet.mockResolvedValue({
+        exists: true,
+        data: () => ({ email: true }),
+      });
+      mockUserFindById.mockResolvedValue({ email: "test@example.com" });
+
+      await service.sendToUser("user-1", stubTemplate, "organizational");
+      expect(mockSend).toHaveBeenCalledOnce();
+    });
+
+    it("mandatory categories (billing) ignore every per-category toggle", async () => {
+      mockPrefsGet.mockResolvedValue({
+        exists: true,
+        data: () => ({ email: false, emailTransactional: false, emailOrganizational: false }),
+      });
+      mockUserFindById.mockResolvedValue({ email: "test@example.com" });
+
+      await service.sendToUser("user-1", stubTemplate, "billing");
+
+      expect(mockSend).toHaveBeenCalledOnce();
+      // Preferences read is deliberately skipped for mandatory categories.
+      expect(mockPrefsGet).not.toHaveBeenCalled();
     });
 
     it("STILL sends billing email when user has email disabled (mandatory)", async () => {

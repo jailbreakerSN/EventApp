@@ -628,6 +628,11 @@
       "smsDescription": "Recevez des notifications par SMS",
       "email": "Email",
       "emailDescription": "Recevez des résumés et confirmations par email",
+      "emailTransactional": "E-mails transactionnels",
+      "emailTransactionalDescription": "Confirmations d'inscription, rappels d'événements, badges prêts",
+      "emailOrganizational": "E-mails organisationnels",
+      "emailOrganizationalDescription": "Invitations d'équipe, changements de rôle et mises à jour d'organisation",
+      "mandatoryEmailNote": "Les e-mails de sécurité (connexion, réinitialisation de mot de passe) et les reçus de paiement sont toujours envoyés et ne peuvent pas être désactivés.",
       "reminders": "Rappels d'événements",
       "remindersDescription": "Recevez un rappel avant le début de vos événements"
     },

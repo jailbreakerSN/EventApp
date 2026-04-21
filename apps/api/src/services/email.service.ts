@@ -26,13 +26,32 @@ import {
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 interface NotificationPrefs {
+  // Channel toggles. `email` is the legacy kill-switch — per-category
+  // fields (below) take precedence when set. Kept so pre-3c.3 docs still
+  // work and so the UI can offer a single "turn off all email" action.
   email: boolean;
   sms: boolean;
   push: boolean;
+  // Per-category (Phase 3c.3). `undefined` means "fall back to `email`".
+  emailTransactional?: boolean;
+  emailOrganizational?: boolean;
+  emailMarketing?: boolean;
 }
 
 const DEFAULT_PREFS: NotificationPrefs = { email: true, sms: true, push: true };
 const DEFAULT_LOCALE: Locale = "fr";
+
+// Map each non-mandatory EmailCategory to the preference field that gates
+// it. auth + billing are mandatory (MANDATORY_CATEGORIES below) so they
+// never consult prefs.
+const CATEGORY_PREF_FIELD: Record<
+  Exclude<EmailCategory, "auth" | "billing">,
+  "emailTransactional" | "emailOrganizational" | "emailMarketing"
+> = {
+  transactional: "emailTransactional",
+  organizational: "emailOrganizational",
+  marketing: "emailMarketing",
+};
 
 interface SendOptions {
   /** Additional tags merged with the category's default tags for Resend analytics. */
@@ -100,6 +119,11 @@ export class EmailService {
 
   /**
    * Get a user's notification preferences. Returns defaults if no doc exists.
+   *
+   * Per-category fields (emailTransactional / emailOrganizational /
+   * emailMarketing) are returned verbatim so `isEmailCategoryEnabled`
+   * can distinguish "not set" (fall back to legacy `email`) from
+   * "explicitly set to false" (honor the user's choice).
    */
   async getPreferences(userId: string): Promise<NotificationPrefs> {
     try {
@@ -110,6 +134,9 @@ export class EmailService {
         email: data.email ?? true,
         sms: data.sms ?? true,
         push: data.push ?? true,
+        emailTransactional: data.emailTransactional,
+        emailOrganizational: data.emailOrganizational,
+        emailMarketing: data.emailMarketing,
       };
     } catch {
       return DEFAULT_PREFS;
@@ -117,12 +144,38 @@ export class EmailService {
   }
 
   /**
+   * Resolve the effective "is this email category enabled" flag.
+   *
+   * Precedence:
+   *   1. Mandatory categories (auth, billing) are always enabled —
+   *      short-circuited in `sendToUser` before this helper runs.
+   *   2. Explicit per-category field (`emailTransactional` etc.) wins
+   *      when set — user toggled it deliberately in Settings.
+   *   3. Legacy `email` aggregate kicks in when per-category is
+   *      undefined — pre-3c.3 docs and "kill-switch" behavior.
+   *
+   * Exported as a class method (rather than free function) so tests
+   * can exercise it in isolation without mocking Firestore.
+   */
+  isEmailCategoryEnabled(prefs: NotificationPrefs, category: EmailCategory): boolean {
+    if (MANDATORY_CATEGORIES.has(category)) return true;
+    const field = CATEGORY_PREF_FIELD[category as Exclude<EmailCategory, "auth" | "billing">];
+    const explicit = prefs[field];
+    if (explicit !== undefined) return explicit;
+    // Back-compat: legacy docs + kill-switch semantics — `email: false`
+    // means "no email at all (for non-mandatory categories)".
+    return prefs.email;
+  }
+
+  /**
    * Send an email to a user, routed by category and localized to the user's
    * `preferredLanguage` (fallback: French).
    *
    * Preference check: skipped for MANDATORY_CATEGORIES (auth, billing) —
-   * users cannot opt out of security and financial records. For every other
-   * category, `prefs.email === false` short-circuits the send.
+   * users cannot opt out of security and financial records. For every
+   * other category, the per-category toggle (Phase 3c.3) gates the
+   * send, with a fallback to the legacy `email` aggregate for pre-3c.3
+   * preference docs. See `isEmailCategoryEnabled` for precedence.
    *
    * Always returns silently if the user has no email address.
    */
@@ -140,7 +193,7 @@ export class EmailService {
         userRepository.findById(userId),
       ]);
 
-      if (!isMandatory && prefs && !prefs.email) return;
+      if (!isMandatory && prefs && !this.isEmailCategoryEnabled(prefs, category)) return;
       if (!user?.email) return;
 
       // Platform-wide suppression gate — hard bounces + spam complaints
