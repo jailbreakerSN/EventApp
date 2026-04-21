@@ -68,14 +68,13 @@ export function resolveSender(category: EmailCategory): SenderConfig {
         from: formatFrom(name, config.RESEND_FROM_NEWS),
         replyTo: config.RESEND_REPLY_TO_CONTACT,
         tags: [{ name: "category", value: "marketing" }],
-        // Bulk senders (>5k/day to Gmail, per 2024 rules) MUST expose a
-        // one-click unsubscribe. We ship the mailto variant now and upgrade
-        // to an RFC 8058 HTTPS endpoint in Phase 3, once signed tokens land.
-        // Keeping a backup mailto is still valid under RFC 2369 and is
-        // treated as "functional but not one-click" — fine at current volume.
-        headers: {
-          "List-Unsubscribe": `<mailto:unsubscribe@terangaevent.com>`,
-        },
+        // No manual List-Unsubscribe header here on purpose. Marketing sends
+        // go through POST /broadcasts (see newsletter.service); Resend
+        // injects the one-click RFC 8058 List-Unsubscribe header + hosts the
+        // unsubscribe endpoint against the Audience automatically. Adding a
+        // mailto: backup would point at a no-op inbox and actively confuse
+        // mailbox providers. If a future marketing path ever needs raw
+        // /emails — which would be unusual — we'd revisit.
       };
   }
 }

@@ -214,20 +214,21 @@ describe("EmailService", () => {
       );
     });
 
-    it("stamps List-Unsubscribe header on marketing category", async () => {
+    it("routes marketing category to news@ sender (no manual unsubscribe header)", async () => {
+      // Marketing single-sends go from news@ but do NOT carry a manual
+      // List-Unsubscribe header — bulk marketing goes through Broadcasts,
+      // and Resend injects the one-click RFC 8058 header per-recipient there.
+      // A manual mailto: here would confuse mailbox providers.
       mockPrefsGet.mockResolvedValue({ exists: false });
       mockUserFindById.mockResolvedValue({ email: "test@example.com" });
 
       await service.sendToUser("user-1", stubTemplate, "marketing");
 
-      expect(mockSend).toHaveBeenCalledWith(
-        expect.objectContaining({
-          from: "Teranga Events <news@terangaevent.com>",
-          headers: expect.objectContaining({
-            "List-Unsubscribe": expect.stringContaining("mailto:unsubscribe@terangaevent.com"),
-          }),
-        }),
+      const call = mockSend.mock.calls[0][0];
+      expect(call).toEqual(
+        expect.objectContaining({ from: "Teranga Events <news@terangaevent.com>" }),
       );
+      expect(call.headers).toBeUndefined();
     });
 
     it("does NOT send email when user has email disabled (transactional)", async () => {
@@ -313,20 +314,21 @@ describe("EmailService", () => {
   describe("sendDirect", () => {
     const marketingEmail = { subject: "Newsletter", html: "<p>News</p>", text: "News" };
 
-    it("stamps marketing sender + List-Unsubscribe and skips preference check", async () => {
+    it("stamps marketing sender and skips preference check (no manual unsubscribe header)", async () => {
       await service.sendDirect("subscriber@example.com", marketingEmail, "marketing");
 
-      expect(mockSend).toHaveBeenCalledWith(
+      const call = mockSend.mock.calls[0][0];
+      expect(call).toEqual(
         expect.objectContaining({
           to: "subscriber@example.com",
           subject: "Newsletter",
           from: "Teranga Events <news@terangaevent.com>",
           replyTo: "contact@terangaevent.com",
-          headers: expect.objectContaining({
-            "List-Unsubscribe": expect.stringContaining("mailto:"),
-          }),
         }),
       );
+      // Marketing bulk runs through Broadcasts (which injects List-Unsubscribe);
+      // single welcome-style sends don't carry it manually.
+      expect(call.headers).toBeUndefined();
       expect(mockPrefsGet).not.toHaveBeenCalled();
       expect(mockUserFindById).not.toHaveBeenCalled();
     });
@@ -340,22 +342,25 @@ describe("EmailService", () => {
   });
 
   describe("sendBulk", () => {
-    it("stamps every email with the category sender + headers before delegating", async () => {
+    it("stamps every email with the category sender before delegating", async () => {
       const emails = [
         { to: "a@test.com", subject: "Test", html: "<p>A</p>" },
         { to: "b@test.com", subject: "Test", html: "<p>B</p>" },
       ];
 
-      const result = await service.sendBulk(emails, "marketing");
+      const result = await service.sendBulk(emails, "transactional");
 
       const stamped = mockSendBulk.mock.calls[0][0];
       expect(stamped).toHaveLength(2);
       for (const e of stamped) {
-        expect(e.from).toBe("Teranga Events <news@terangaevent.com>");
-        expect(e.replyTo).toBe("contact@terangaevent.com");
-        expect(e.headers).toMatchObject({
-          "List-Unsubscribe": expect.stringContaining("mailto:"),
-        });
+        expect(e.from).toBe("Teranga Events <no-reply@terangaevent.com>");
+        expect(e.replyTo).toBe("support@terangaevent.com");
+        expect(e.tags).toEqual(
+          expect.arrayContaining([{ name: "category", value: "transactional" }]),
+        );
+        // No manual List-Unsubscribe — sendBulk is for transactional fan-out.
+        // Marketing bulk MUST go through Broadcasts instead.
+        expect(e.headers).toBeUndefined();
       }
       expect(result.sent).toBe(2);
     });
@@ -405,7 +410,7 @@ describe("EmailService", () => {
             { name: "category", value: "transactional" },
             { name: "type", value: "registration_confirmation" },
           ]),
-          idempotencyKey: "reg-confirm:reg-1",
+          idempotencyKey: "reg-confirm/reg-1",
           from: "Teranga Events <no-reply@terangaevent.com>",
         }),
       );
@@ -431,7 +436,7 @@ describe("EmailService", () => {
       expect(mockSend).toHaveBeenCalledWith(
         expect.objectContaining({
           from: "Teranga Events <billing@terangaevent.com>",
-          idempotencyKey: "receipt:pay-1",
+          idempotencyKey: "payment-receipt/pay-1",
         }),
       );
       expect(mockPrefsGet).not.toHaveBeenCalled();
@@ -441,15 +446,14 @@ describe("EmailService", () => {
       await service.sendWelcomeNewsletter("subscriber@test.com");
 
       expect(mockBuildWelcome).toHaveBeenCalled();
-      expect(mockSend).toHaveBeenCalledWith(
+      const call = mockSend.mock.calls[0][0];
+      expect(call).toEqual(
         expect.objectContaining({
           to: "subscriber@test.com",
           from: "Teranga Events <news@terangaevent.com>",
-          headers: expect.objectContaining({
-            "List-Unsubscribe": expect.stringContaining("mailto:"),
-          }),
         }),
       );
+      expect(call.headers).toBeUndefined();
       expect(mockPrefsGet).not.toHaveBeenCalled();
     });
   });

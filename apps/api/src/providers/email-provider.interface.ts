@@ -40,8 +40,17 @@ export interface BulkEmailResult {
   results: EmailResult[];
 }
 
+export interface BulkSendOptions {
+  /**
+   * Optional batch-level idempotency key. Resend dedupes repeated batches
+   * against this key for 24h. Providers that don't support idempotency
+   * ignore it silently — it's advisory, not load-bearing.
+   */
+  idempotencyKey?: string;
+}
+
 export interface EmailProvider {
   readonly name: string;
   send(params: EmailParams): Promise<EmailResult>;
-  sendBulk(params: EmailParams[]): Promise<BulkEmailResult>;
+  sendBulk(params: EmailParams[], options?: BulkSendOptions): Promise<BulkEmailResult>;
 }

@@ -213,7 +213,7 @@ export class EmailService {
       "transactional",
       {
         tags: [{ name: "type", value: "registration_confirmation" }],
-        idempotencyKey: `reg-confirm:${params.registrationId}`,
+        idempotencyKey: `reg-confirm/${params.registrationId}`,
       },
     );
   }
@@ -264,7 +264,7 @@ export class EmailService {
       "billing",
       {
         tags: [{ name: "type", value: "payment_receipt" }],
-        idempotencyKey: `receipt:${params.receiptId}`,
+        idempotencyKey: `payment-receipt/${params.receiptId}`,
       },
     );
   }

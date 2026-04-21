@@ -42,6 +42,15 @@ const envSchema = z.object({
   RESEND_REPLY_TO_BILLING: z.string().default("billing@terangaevent.com"),
   RESEND_REPLY_TO_CONTACT: z.string().default("contact@terangaevent.com"),
 
+  // Resend Segment backing the newsletter (Resend renamed "Audiences" to
+  // "Segments"). Newsletter subscribers are mirrored into this segment so
+  // `POST /broadcasts` has recipients and Resend can manage the unsubscribe
+  // flow automatically (List-Unsubscribe + one-click RFC 8058). Create the
+  // segment once in the Resend dashboard and paste the id here. Leaving it
+  // unset keeps the newsletter path dormant — subscribe still writes to
+  // Firestore; sendNewsletter no-ops rather than erroring.
+  RESEND_NEWSLETTER_SEGMENT_ID: z.string().optional(),
+
   AT_API_KEY: z.string().optional(),
   AT_USERNAME: z.string().default("sandbox"),
   AT_SENDER_ID: z.string().default("Teranga"),

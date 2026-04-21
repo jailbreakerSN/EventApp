@@ -86,7 +86,10 @@ export class SendGridEmailProvider implements EmailProvider {
     };
   }
 
-  async sendBulk(params: EmailParams[]): Promise<BulkEmailResult> {
+  async sendBulk(
+    params: EmailParams[],
+    _options?: { idempotencyKey?: string },
+  ): Promise<BulkEmailResult> {
     const results: EmailResult[] = [];
     let sent = 0;
     let failed = 0;

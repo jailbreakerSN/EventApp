@@ -38,7 +38,10 @@ export class MockEmailProvider implements EmailProvider {
     return { success: true, messageId };
   }
 
-  async sendBulk(params: EmailParams[]): Promise<BulkEmailResult> {
+  async sendBulk(
+    params: EmailParams[],
+    _options?: { idempotencyKey?: string },
+  ): Promise<BulkEmailResult> {
     const results: EmailResult[] = [];
     const BATCH_SIZE = 490;
 
