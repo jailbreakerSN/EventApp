@@ -70,6 +70,18 @@ const envSchema = z.object({
     .min(32, "NEWSLETTER_CONFIRM_SECRET must be at least 32 characters")
     .default("dev-newsletter-confirm-secret-change-me-in-prod-3cd2"),
 
+  // HMAC secret for the subscriber-facing unsubscribe link shipped in
+  // non-mandatory transactional emails (List-Unsubscribe header + one-
+  // click POST per RFC 8058). Separate from the newsletter confirm
+  // secret — compromising one must not compromise the other. Tokens do
+  // not expire: users click old emails months later and it still works.
+  // Rotating the secret invalidates every outstanding link; recipients
+  // fall back to the Settings page.
+  UNSUBSCRIBE_SECRET: z
+    .string()
+    .min(32, "UNSUBSCRIBE_SECRET must be at least 32 characters")
+    .default("dev-unsubscribe-secret-change-me-in-prod-3c-4-1234"),
+
   QR_SECRET: z.string().min(32, "QR_SECRET must be at least 32 characters"),
   // v4 QR signing derives per-event HMAC keys via HKDF-SHA256(QR_MASTER,
   // salt=eventId, info=`teranga/qr/v4/${kid}`). Keeping it separate from

@@ -13,6 +13,8 @@ vi.mock("@/config", () => ({
     RESEND_REPLY_TO_SUPPORT: "support@terangaevent.com",
     RESEND_REPLY_TO_BILLING: "billing@terangaevent.com",
     RESEND_REPLY_TO_CONTACT: "contact@terangaevent.com",
+    API_BASE_URL: "https://api.test.local",
+    UNSUBSCRIBE_SECRET: "test-unsub-secret-must-be-at-least-32-chars-xyz",
   },
 }));
 
@@ -226,11 +228,13 @@ describe("EmailService", () => {
       );
     });
 
-    it("routes marketing category to news@ sender (no manual unsubscribe header)", async () => {
-      // Marketing single-sends go from news@ but do NOT carry a manual
-      // List-Unsubscribe header — bulk marketing goes through Broadcasts,
-      // and Resend injects the one-click RFC 8058 header per-recipient there.
-      // A manual mailto: here would confuse mailbox providers.
+    it("routes marketing category to news@ sender with a signed List-Unsubscribe header", async () => {
+      // Phase 3c.4: every non-mandatory sendToUser stamps a per-recipient
+      // List-Unsubscribe header pointing at GET /v1/notifications/unsubscribe
+      // with a signed token. Gmail + Apple Mail render that as a native
+      // "Unsubscribe" button; Gmail's bulk-sender rules also fire the
+      // paired POST (RFC 8058 one-click) when the user confirms.
+      // This REPLACES the 3b mailto: stub that pointed at a no-op inbox.
       mockPrefsGet.mockResolvedValue({ exists: false });
       mockUserFindById.mockResolvedValue({ email: "test@example.com" });
 
@@ -240,7 +244,13 @@ describe("EmailService", () => {
       expect(call).toEqual(
         expect.objectContaining({ from: "Teranga Events <news@terangaevent.com>" }),
       );
-      expect(call.headers).toBeUndefined();
+      expect(call.headers["List-Unsubscribe"]).toMatch(
+        /^<https:\/\/api\.test\.local\/v1\/notifications\/unsubscribe\?token=[^>]+>$/,
+      );
+      expect(call.headers["List-Unsubscribe-Post"]).toBe("List-Unsubscribe=One-Click");
+      // Token embeds the category so a token for marketing can't be
+      // replayed to unsubscribe from transactional.
+      expect(call.headers["List-Unsubscribe"]).toContain(".marketing.");
     });
 
     it("does NOT send email when user has email disabled (transactional) — legacy kill-switch", async () => {

@@ -333,6 +333,17 @@ export interface NewsletterSentEvent extends BaseEventPayload {
   segmentId: string;
 }
 
+// ── Notification preferences (Phase 3c.4) ─────────────────────────────────
+
+export interface NotificationUnsubscribedEvent extends BaseEventPayload {
+  /** User whose preference was flipped (== actorId for self-service unsubs). */
+  userId: string;
+  /** Category unsubscribed from. Never "auth" or "billing" — those are mandatory. */
+  category: "transactional" | "organizational" | "marketing";
+  /** "list_unsubscribe_click" (GET) or "list_unsubscribe_post" (RFC 8058). */
+  source: "list_unsubscribe_click" | "list_unsubscribe_post";
+}
+
 // ── Speaker ───────────────────────────────────────────────────────────────
 
 export interface SpeakerAddedEvent extends BaseEventPayload {
@@ -697,6 +708,8 @@ export interface DomainEventMap {
   "newsletter.subscriber_created": NewsletterSubscriberCreatedEvent;
   "newsletter.subscriber_confirmed": NewsletterSubscriberConfirmedEvent;
   "newsletter.sent": NewsletterSentEvent;
+  // Notification preferences
+  "notification.unsubscribed": NotificationUnsubscribedEvent;
 }
 
 export type DomainEventName = keyof DomainEventMap;

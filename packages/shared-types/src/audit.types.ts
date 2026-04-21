@@ -84,6 +84,8 @@ export const AuditActionSchema = z.enum([
   "newsletter.subscriber_created",
   "newsletter.subscriber_confirmed",
   "newsletter.sent",
+  // ── Notification preferences ──────────────────────────────────────────────
+  "notification.unsubscribed",
 ]);
 
 export type AuditAction = z.infer<typeof AuditActionSchema>;

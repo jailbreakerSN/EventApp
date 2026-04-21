@@ -655,6 +655,26 @@ export function registerAuditListeners(): void {
     });
   });
 
+  // ── Notification-preference unsubscribe (Phase 3c.4) ──────────────────
+  // Triggered by a subscriber clicking the List-Unsubscribe link or Gmail
+  // firing the RFC 8058 one-click POST. Recorded against the user's own
+  // userId as both `actorId` and `resourceId` — this is a self-service
+  // action, no admin involvement.
+
+  eventBus.on("notification.unsubscribed", async (payload) => {
+    await auditService.log({
+      action: "notification.unsubscribed",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "notification_preference",
+      resourceId: payload.userId,
+      eventId: null,
+      organizationId: null,
+      details: { category: payload.category, source: payload.source },
+    });
+  });
+
   // ── Sponsor Removed ───────────────────────────────────────────────────
 
   eventBus.on("sponsor.removed", async (payload) => {

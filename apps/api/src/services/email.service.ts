@@ -1,11 +1,16 @@
 import { type EmailCategory } from "@teranga/shared-types";
 import { db, COLLECTIONS } from "@/config/firebase";
+import { config } from "@/config";
 import { getEmailProvider } from "@/providers/index";
 import { type EmailParams, type BulkEmailResult } from "@/providers/email-provider.interface";
 import { userRepository } from "@/repositories/user.repository";
 import { resolveSender } from "./email/sender.registry";
 import { asLocale, type Locale } from "./email/i18n";
 import { type RenderedEmail } from "./email/render";
+import {
+  signUnsubscribeToken,
+  type UnsubscribableCategory,
+} from "./notifications/unsubscribe-token";
 import {
   buildRegistrationEmail,
   buildRegistrationApprovedEmail,
@@ -65,6 +70,16 @@ interface SendOptions {
 // model lands in Phase 3, these stay locked-on and the UI simply hides the
 // toggle for them.
 const MANDATORY_CATEGORIES: ReadonlySet<EmailCategory> = new Set(["auth", "billing"]);
+
+const UNSUBSCRIBABLE_CATEGORIES: ReadonlySet<EmailCategory> = new Set([
+  "transactional",
+  "organizational",
+  "marketing",
+]);
+
+function isUnsubscribableCategory(category: EmailCategory): category is UnsubscribableCategory {
+  return UNSUBSCRIBABLE_CATEGORIES.has(category);
+}
 
 /**
  * Lazily renders an email for a given locale. Accepting a factory (rather
@@ -209,7 +224,7 @@ export class EmailService {
       const email = await template(locale);
 
       const provider = getEmailProvider();
-      await provider.send(this.buildParams(user.email, email, category, options));
+      await provider.send(this.buildParams(user.email, email, category, options, userId));
     } catch {
       // Fire-and-forget: email failure must not block
     }
@@ -309,9 +324,30 @@ export class EmailService {
     email: RenderedEmail,
     category: EmailCategory,
     options?: SendOptions,
+    userId?: string,
   ): EmailParams & { idempotencyKey?: string } {
     const sender = resolveSender(category);
     const tags = options?.tags?.length ? [...sender.tags, ...options.tags] : sender.tags;
+
+    // Start with the sender registry's static headers (e.g. News&Marketing
+    // List-Unsubscribe), then layer on a per-recipient signed token for
+    // non-mandatory categories when we know the userId. Gmail / Apple
+    // Mail render this as a native "Unsubscribe" button; RFC 8058 one-
+    // click POST fires the paired POST endpoint with the same token.
+    const headers: Record<string, string> = { ...(sender.headers ?? {}) };
+    if (userId && isUnsubscribableCategory(category)) {
+      const token = signUnsubscribeToken(userId, category);
+      const url = `${config.API_BASE_URL}/v1/notifications/unsubscribe?token=${encodeURIComponent(token)}`;
+      // Merge with any mailto: from the sender registry. Gmail prefers
+      // https when both are present (one-click compatible).
+      headers["List-Unsubscribe"] = [
+        `<${url}>`,
+        headers["List-Unsubscribe"] ? headers["List-Unsubscribe"].replace(/^,?\s*/, "") : null,
+      ]
+        .filter(Boolean)
+        .join(", ");
+      headers["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click";
+    }
 
     const params: EmailParams & { idempotencyKey?: string } = {
       to,
@@ -323,8 +359,8 @@ export class EmailService {
       tags,
     };
 
-    if (sender.headers && Object.keys(sender.headers).length > 0) {
-      params.headers = sender.headers;
+    if (Object.keys(headers).length > 0) {
+      params.headers = headers;
     }
 
     if (options?.idempotencyKey) {

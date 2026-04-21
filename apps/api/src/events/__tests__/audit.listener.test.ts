@@ -377,6 +377,30 @@ describe("Audit Listener", () => {
     });
   });
 
+  it("logs notification.unsubscribed when a subscriber clicks List-Unsubscribe", async () => {
+    eventBus.emit("notification.unsubscribed", {
+      userId: "user-42",
+      category: "transactional",
+      source: "list_unsubscribe_click",
+      actorId: "user-42", // self-service
+      requestId: "req-unsub-1",
+      timestamp: "2026-04-21T13:00:00.000Z",
+    });
+    await flush();
+
+    expect(auditService.log).toHaveBeenCalledWith({
+      action: "notification.unsubscribed",
+      actorId: "user-42",
+      requestId: "req-unsub-1",
+      timestamp: "2026-04-21T13:00:00.000Z",
+      resourceType: "notification_preference",
+      resourceId: "user-42",
+      eventId: null,
+      organizationId: null,
+      details: { category: "transactional", source: "list_unsubscribe_click" },
+    });
+  });
+
   it("logs waitlist.promotion_failed with cancelledRegistrationId + reason", async () => {
     // Regression guard for the Sprint 1 silent-error fix: when the
     // cancel-triggered waitlist promotion fails after the cancel has
@@ -456,7 +480,7 @@ describe("Audit Listener", () => {
       // mapping writes the right `action` / `resourceType` to the
       // audit log. If you removed a handler, also drop the matching
       // emission test so stale expectations don't silently pass.
-      const EXPECTED_HANDLER_COUNT = 70;
+      const EXPECTED_HANDLER_COUNT = 71;
 
       expect(registered).toHaveLength(EXPECTED_HANDLER_COUNT);
       // Each registered event name should be unique — a double
