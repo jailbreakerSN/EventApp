@@ -410,12 +410,12 @@ function FeaturedTile({
   const city = event.location?.city ?? event.location?.name ?? "";
 
   return (
-    <article className="grid overflow-hidden rounded-[20px] border bg-card md:grid-cols-[1.1fr_1fr]">
+    <article className="grid overflow-hidden rounded-[20px] border bg-card md:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
       {/* Cover */}
       <Link
         href={`/events/${event.slug}`}
         aria-label={event.title}
-        className="teranga-cover relative block min-h-[280px] md:min-h-[380px]"
+        className="teranga-cover relative block min-h-[220px] md:min-h-[300px]"
         style={{
           background: event.coverImageURL ? undefined : getCoverGradient(event.id).bg,
         }}
@@ -426,10 +426,10 @@ function FeaturedTile({
             alt=""
             fill
             className="z-0 object-cover"
-            sizes="(max-width: 768px) 100vw, 50vw"
+            sizes="(max-width: 768px) 100vw, 45vw"
           />
         )}
-        <div className="relative z-10 flex h-full flex-col justify-between p-7 text-white">
+        <div className="relative z-10 flex h-full flex-col justify-between p-6 text-white">
           <div className="flex items-center justify-between">
             <span className="font-mono-kicker text-[11px] font-medium uppercase tracking-[0.08em] text-white/90">
               {categoryLabel}
@@ -442,34 +442,34 @@ function FeaturedTile({
             aria-hidden
             className="pointer-events-none absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/45"
           />
-          <h3 className="font-serif-display relative max-w-[460px] text-[28px] font-semibold leading-[1.05] tracking-[-0.02em] text-white sm:text-[32px] lg:text-[40px]">
+          <h3 className="font-serif-display relative max-w-[420px] text-[24px] font-semibold leading-[1.05] tracking-[-0.02em] text-white sm:text-[28px] lg:text-[32px]">
             {event.title}
           </h3>
         </div>
       </Link>
 
       {/* Content */}
-      <div className="flex flex-col justify-between gap-6 p-7 lg:p-9">
+      <div className="flex flex-col justify-between gap-5 p-6 lg:p-7">
         <div>
           {event.tags && event.tags.length > 0 && (
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-1.5">
               {event.tags.slice(0, 3).map((t) => (
                 <span
                   key={t}
-                  className="inline-flex items-center rounded-full border bg-muted/50 px-2.5 py-1 text-xs font-medium text-muted-foreground"
+                  className="inline-flex items-center rounded-full border bg-muted/50 px-2 py-0.5 text-[11px] font-medium text-muted-foreground"
                 >
                   {t}
                 </span>
               ))}
             </div>
           )}
-          <p className="mt-5 text-base leading-relaxed text-foreground/80">
-            {event.description?.slice(0, 200) ?? event.title}
-            {event.description && event.description.length > 200 ? "…" : ""}
+          <p className="mt-4 text-[15px] leading-relaxed text-foreground/80 line-clamp-3">
+            {event.description?.slice(0, 160) ?? event.title}
+            {event.description && event.description.length > 160 ? "…" : ""}
           </p>
 
           {/* Meta grid */}
-          <dl className="mt-6 grid grid-cols-2 gap-y-4 border-y py-5">
+          <dl className="mt-5 grid grid-cols-2 gap-y-3 border-y py-4">
             <FeaturedMeta label={dateLabel} value={formatDate(event.startDate, locale)} />
             <FeaturedMeta label={locationLabel} value={city || "—"} />
             <FeaturedMeta label={priceLabel} value={priceText} />
