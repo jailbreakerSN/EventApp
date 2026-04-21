@@ -97,6 +97,30 @@
       "registerGeneric": "Erreur lors de l'inscription",
       "emailInUse": "Un compte existe déjà avec cet email.",
       "weakPassword": "Le mot de passe est trop faible."
+    },
+    "action": {
+      "loadingTitle": "Traitement de votre demande",
+      "loadingSubtitle": "Merci de patienter quelques instants...",
+      "invalidLinkTitle": "Lien invalide",
+      "invalidLinkMessage": "Ce lien est invalide ou a expiré. Veuillez demander un nouveau lien.",
+      "unsupportedMode": "Ce lien n'est pas pris en charge.",
+      "verifySuccessTitle": "Adresse confirmée",
+      "verifySuccessMessage": "Votre adresse e-mail est maintenant vérifiée. Vous pouvez accéder à toutes les fonctionnalités de Teranga.",
+      "verifyFailedTitle": "Vérification échouée",
+      "verifyFailedMessage": "Le lien de vérification est invalide ou a expiré. Veuillez demander un nouvel e-mail.",
+      "goToLogin": "Aller à la connexion",
+      "goToEvents": "Découvrir les événements",
+      "resetSuccessTitle": "Mot de passe mis à jour",
+      "resetSuccessMessage": "Votre mot de passe a bien été mis à jour. Connectez-vous avec votre nouveau mot de passe.",
+      "resetFailedTitle": "Réinitialisation échouée",
+      "resetFailedMessage": "Le lien de réinitialisation est invalide ou a expiré. Veuillez en demander un nouveau.",
+      "newPasswordTitle": "Choisissez un nouveau mot de passe",
+      "newPasswordSubtitle": "Pour le compte {email}",
+      "newPasswordLabel": "Nouveau mot de passe",
+      "confirmPasswordLabel": "Confirmer le mot de passe",
+      "submitNewPassword": "Mettre à jour le mot de passe",
+      "submittingNewPassword": "Mise à jour...",
+      "passwordsDoNotMatch": "Les mots de passe ne correspondent pas"
     }
   },
   "nav": {

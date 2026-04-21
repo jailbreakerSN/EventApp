@@ -94,4 +94,28 @@ export const fr: Dictionary = {
     fallbackLine: (url) =>
       `Si le bouton ne fonctionne pas, copiez-collez ce lien dans votre navigateur : ${url}`,
   },
+  emailVerification: {
+    subject: "Confirmez votre adresse e-mail Teranga",
+    preview: "Cliquez pour vérifier votre adresse e-mail.",
+    heading: (name) => `Bienvenue ${name} !`,
+    body: "Pour finaliser la création de votre compte Teranga, nous avons besoin de confirmer votre adresse e-mail. Cliquez sur le bouton ci-dessous pour activer votre compte.",
+    ctaButton: "Confirmer mon adresse",
+    expiryNote: "Ce lien expire dans 1 heure.",
+    didNotRequestNote:
+      "Si vous n'êtes pas à l'origine de cette inscription, ignorez simplement cet e-mail — votre adresse ne sera liée à aucun compte.",
+    fallbackLine: (url) =>
+      `Si le bouton ne fonctionne pas, copiez-collez ce lien dans votre navigateur : ${url}`,
+  },
+  passwordReset: {
+    subject: "Réinitialisation de votre mot de passe Teranga",
+    preview: "Cliquez pour choisir un nouveau mot de passe.",
+    heading: "Réinitialisez votre mot de passe",
+    body: "Nous avons reçu une demande de réinitialisation du mot de passe associé à cette adresse e-mail. Cliquez sur le bouton ci-dessous pour choisir un nouveau mot de passe.",
+    ctaButton: "Choisir un nouveau mot de passe",
+    expiryNote: "Ce lien expire dans 1 heure.",
+    didNotRequestNote:
+      "Si vous n'avez pas demandé cette réinitialisation, ignorez cet e-mail et vérifiez la sécurité de votre compte. Votre mot de passe actuel reste inchangé.",
+    fallbackLine: (url) =>
+      `Si le bouton ne fonctionne pas, copiez-collez ce lien dans votre navigateur : ${url}`,
+  },
 };

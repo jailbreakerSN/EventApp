@@ -21,6 +21,8 @@ import {
   buildWelcomeEmail,
   buildPaymentReceiptEmail,
   buildNewsletterConfirmationEmail,
+  buildEmailVerificationEmail,
+  buildPasswordResetEmail,
   type RegistrationConfirmationParams,
   type RegistrationApprovedParams,
   type BadgeReadyParams,
@@ -467,6 +469,40 @@ export class EmailService {
     const template = await buildWelcomeEmail({ email, locale });
     await this.sendDirect(email, template, "marketing", {
       tags: [{ name: "type", value: "newsletter_welcome" }],
+    });
+  }
+
+  /**
+   * Send the branded email-verification email. The caller (auth-email
+   * service) has already minted the Firebase OOB link via
+   * admin.auth().generateEmailVerificationLink; this just wraps our
+   * template + provider. Category is `auth` so the sender registry
+   * routes through events@ with Reply-To: support@.
+   */
+  async sendEmailVerification(
+    email: string,
+    params: { name: string; verificationUrl: string; locale?: Locale },
+  ): Promise<void> {
+    const template = await buildEmailVerificationEmail(params);
+    await this.sendDirect(email, template, "auth", {
+      tags: [{ name: "type", value: "email_verification" }],
+    });
+  }
+
+  /**
+   * Send the branded password-reset email. Same rationale as
+   * sendEmailVerification — we ship the Firebase OOB link through our
+   * template and provider instead of letting Firebase's default mailer
+   * handle it, so From header, DMARC alignment, and tracking stay on
+   * the Teranga brand.
+   */
+  async sendPasswordReset(
+    email: string,
+    params: { resetUrl: string; locale?: Locale },
+  ): Promise<void> {
+    const template = await buildPasswordResetEmail(params);
+    await this.sendDirect(email, template, "auth", {
+      tags: [{ name: "type", value: "password_reset" }],
     });
   }
 
