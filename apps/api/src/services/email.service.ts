@@ -14,6 +14,7 @@ import {
   buildEventReminderEmail,
   buildWelcomeEmail,
   buildPaymentReceiptEmail,
+  buildNewsletterConfirmationEmail,
   type RegistrationConfirmationParams,
   type RegistrationApprovedParams,
   type BadgeReadyParams,
@@ -355,6 +356,24 @@ export class EmailService {
     const template = await buildWelcomeEmail({ email, locale });
     await this.sendDirect(email, template, "marketing", {
       tags: [{ name: "type", value: "newsletter_welcome" }],
+    });
+  }
+
+  /**
+   * Send the double-opt-in confirmation email. Category is `transactional`
+   * (not `marketing`) because the recipient hasn't confirmed consent yet —
+   * this is a one-off triggered by their subscribe submission, not a
+   * marketing broadcast, and Resend's List-Unsubscribe machinery doesn't
+   * apply.
+   */
+  async sendNewsletterConfirmation(
+    email: string,
+    confirmationUrl: string,
+    locale?: Locale,
+  ): Promise<void> {
+    const template = await buildNewsletterConfirmationEmail({ confirmationUrl, locale });
+    await this.sendDirect(email, template, "transactional", {
+      tags: [{ name: "type", value: "newsletter_confirmation" }],
     });
   }
 }

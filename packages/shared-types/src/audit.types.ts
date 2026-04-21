@@ -82,6 +82,7 @@ export const AuditActionSchema = z.enum([
   "subscription.overridden",
   // ── Newsletter ────────────────────────────────────────────────────────────
   "newsletter.subscriber_created",
+  "newsletter.subscriber_confirmed",
   "newsletter.sent",
 ]);
 

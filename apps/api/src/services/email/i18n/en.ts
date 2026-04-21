@@ -76,4 +76,16 @@ export const en: Dictionary = {
     unsubscribeNote:
       "You're receiving this email because you subscribed to the Teranga Events newsletter. You can unsubscribe at any time.",
   },
+  newsletterConfirmation: {
+    subject: "Confirm your Teranga newsletter subscription",
+    preview: "One more click to start receiving our event updates.",
+    heading: "Confirm your subscription",
+    body: "Thanks for your interest in Teranga Events! To complete your newsletter signup, please confirm your email address by clicking the button below.",
+    ctaButton: "Confirm my subscription",
+    expiryNote: "This link expires in 7 days.",
+    didNotSubscribeNote:
+      "If you didn't sign up, you can safely ignore this email — no subscription will be created without confirmation.",
+    fallbackLine: (url) =>
+      `If the button doesn't work, copy and paste this link into your browser: ${url}`,
+  },
 };

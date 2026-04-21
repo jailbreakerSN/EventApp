@@ -51,10 +51,10 @@ beforeEach(() => {
 });
 
 describe("onNewsletterSubscriberCreated", () => {
-  it("creates a Resend contact with the correct segment when a subscriber lands", async () => {
+  it("creates a Resend contact for a confirmed subscriber", async () => {
     mockContactsCreate.mockResolvedValue({ data: { id: "cont_1" }, error: null });
 
-    await handler(fakeEvent("sub-1", { email: "new@test.com" }));
+    await handler(fakeEvent("sub-1", { email: "new@test.com", status: "confirmed" }));
 
     expect(mockContactsCreate).toHaveBeenCalledWith({
       email: "new@test.com",
@@ -62,8 +62,30 @@ describe("onNewsletterSubscriberCreated", () => {
     });
   });
 
+  it("skips PENDING subscribers — double opt-in must complete first", async () => {
+    await handler(fakeEvent("sub-1", { email: "pending@test.com", status: "pending" }));
+    expect(mockContactsCreate).not.toHaveBeenCalled();
+  });
+
+  it("skips unsubscribed subscribers", async () => {
+    await handler(fakeEvent("sub-1", { email: "unsub@test.com", status: "unsubscribed" }));
+    expect(mockContactsCreate).not.toHaveBeenCalled();
+  });
+
+  it("grandfathers legacy rows with no status field as confirmed", async () => {
+    mockContactsCreate.mockResolvedValue({ data: { id: "cont_2" }, error: null });
+    // Pre-3c.2 subscribers were created without a status field — treat
+    // them as already confirmed so we don't strand them pre-migration.
+    await handler(fakeEvent("sub-1", { email: "legacy@test.com" }));
+
+    expect(mockContactsCreate).toHaveBeenCalledWith({
+      email: "legacy@test.com",
+      segments: [{ id: "seg_test" }],
+    });
+  });
+
   it("is a no-op when the subscriber doc has no email", async () => {
-    await handler(fakeEvent("sub-1", { isActive: true }));
+    await handler(fakeEvent("sub-1", { isActive: true, status: "confirmed" }));
     expect(mockContactsCreate).not.toHaveBeenCalled();
   });
 

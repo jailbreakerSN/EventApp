@@ -1,28 +1,32 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // ─── Firestore mock ─────────────────────────────────────────────────────────
-// `subscribe` now runs inside db.runTransaction(). The mock models that:
-// `runTransaction(fn)` just invokes the callback with a tx object that
-// forwards reads to mockTxGet and records writes on mockTxSet.
+// subscribe() does tx.get(query) + tx.set(ref, data).
+// confirm() does tx.get(docRef) + tx.update(ref, patch).
+// Both go through a single runTransaction that invokes the callback with
+// a tx object whose get/set/update we intercept. Tests set mockTxGet's
+// resolved value per case.
 
-const { mockTxGet, mockTxSet, mockDocFactory } = vi.hoisted(() => ({
+const { mockTxGet, mockTxSet, mockTxUpdate, mockDocFactory } = vi.hoisted(() => ({
   mockTxGet: vi.fn(),
   mockTxSet: vi.fn(),
-  mockDocFactory: vi.fn(() => ({ id: "sub-1" })),
+  mockTxUpdate: vi.fn(),
+  // Default behaviour: `collection().doc()` with no id returns {id:"sub-1"},
+  // `collection().doc("some-id")` returns { id: "some-id" }. subscribe()
+  // uses the first form; confirm() uses the second.
+  mockDocFactory: vi.fn((id?: string) => ({ id: id ?? "sub-1" })),
 }));
-
-const makeQuery = () => ({ where: vi.fn().mockReturnThis(), limit: vi.fn().mockReturnThis() });
 
 vi.mock("@/config/firebase", () => ({
   db: {
     collection: vi.fn(() => ({
-      doc: () => mockDocFactory(),
+      doc: (id?: string) => mockDocFactory(id),
       where: vi.fn(() => ({
-        limit: vi.fn(() => makeQuery()),
+        limit: vi.fn(() => ({ where: vi.fn().mockReturnThis(), limit: vi.fn().mockReturnThis() })),
       })),
     })),
     runTransaction: vi.fn(async (fn: (tx: unknown) => unknown) => {
-      const tx = { get: mockTxGet, set: mockTxSet };
+      const tx = { get: mockTxGet, set: mockTxSet, update: mockTxUpdate };
       return fn(tx);
     }),
   },
@@ -31,10 +35,14 @@ vi.mock("@/config/firebase", () => ({
   },
 }));
 
-// ─── Config mock — controls segment id for each test ─────────────────────
+// ─── Config mock ─────────────────────────────────────────────────────────
 
 const { configRef } = vi.hoisted(() => ({
-  configRef: { RESEND_NEWSLETTER_SEGMENT_ID: "seg_test" as string | undefined },
+  configRef: {
+    RESEND_NEWSLETTER_SEGMENT_ID: "seg_test" as string | undefined,
+    NEWSLETTER_CONFIRM_SECRET: "test-secret-must-be-at-least-32-characters-long-xyz",
+    API_BASE_URL: "https://api.test.local",
+  },
 }));
 vi.mock("@/config", () => ({ config: configRef }));
 
@@ -48,14 +56,16 @@ vi.mock("@/services/email/sender.registry", () => ({
   }),
 }));
 
-// ─── Stub emailService so we don't pull react-email into this unit ──────
+// ─── Stub emailService ──────────────────────────────────────────────────
 
-const { mockSendWelcome } = vi.hoisted(() => ({
+const { mockSendWelcome, mockSendConfirmation } = vi.hoisted(() => ({
   mockSendWelcome: vi.fn().mockResolvedValue(undefined),
+  mockSendConfirmation: vi.fn().mockResolvedValue(undefined),
 }));
 vi.mock("@/services/email.service", () => ({
   emailService: {
     sendWelcomeNewsletter: mockSendWelcome,
+    sendNewsletterConfirmation: mockSendConfirmation,
   },
 }));
 
@@ -72,32 +82,31 @@ vi.mock("@/providers/resend-email.provider", () => ({
   },
 }));
 
-// ─── Event bus spy ──────────────────────────────────────────────────────
+// ─── Event bus + context ────────────────────────────────────────────────
 
 const { mockEmit } = vi.hoisted(() => ({ mockEmit: vi.fn() }));
 vi.mock("@/events/event-bus", () => ({ eventBus: { emit: mockEmit } }));
-
-// ─── Context — stable request id ────────────────────────────────────────
 
 vi.mock("@/context/request-context", () => ({
   getRequestId: () => "req-test",
 }));
 
-import { InternalError, ValidationError } from "@/errors/app-error";
+import { InternalError, NotFoundError, ValidationError } from "@/errors/app-error";
 import { NewsletterService, sanitizeNewsletterHtml } from "../newsletter.service";
-
-const flushPromises = () => new Promise((r) => setImmediate(r));
+import { signConfirmationToken } from "../newsletter/confirmation-token";
 
 const service = new NewsletterService();
 
 beforeEach(() => {
   vi.clearAllMocks();
   configRef.RESEND_NEWSLETTER_SEGMENT_ID = "seg_test";
-  mockDocFactory.mockReturnValue({ id: "sub-1" });
+  mockDocFactory.mockImplementation((id?: string) => ({ id: id ?? "sub-1" }));
 });
 
+// ─── subscribe() ────────────────────────────────────────────────────────
+
 describe("NewsletterService.subscribe", () => {
-  it("creates a new subscriber in a transaction when email is not yet subscribed", async () => {
+  it("creates a PENDING row (status=pending, isActive=false) on first subscribe", async () => {
     mockTxGet.mockResolvedValue({ empty: true });
 
     await service.subscribe("new@example.com");
@@ -107,8 +116,28 @@ describe("NewsletterService.subscribe", () => {
       expect.objectContaining({
         id: "sub-1",
         email: "new@example.com",
-        isActive: true,
+        status: "pending",
+        isActive: false, // Back-compat field; flips to true on confirm()
         source: "website",
+        ipAddress: null,
+        userAgent: null,
+      }),
+    );
+  });
+
+  it("records the IP + User-Agent on the subscriber doc for the consent trail", async () => {
+    mockTxGet.mockResolvedValue({ empty: true });
+
+    await service.subscribe("gdpr@example.com", {
+      ipAddress: "203.0.113.7",
+      userAgent: "Mozilla/5.0 (Test)",
+    });
+
+    expect(mockTxSet).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        ipAddress: "203.0.113.7",
+        userAgent: "Mozilla/5.0 (Test)",
       }),
     );
   });
@@ -122,49 +151,174 @@ describe("NewsletterService.subscribe", () => {
     );
   });
 
-  it("returns silently for duplicate subscriptions (idempotent)", async () => {
-    mockTxGet.mockResolvedValue({ empty: false, docs: [{ id: "existing" }] });
-    await service.subscribe("existing@example.com");
-    expect(mockTxSet).not.toHaveBeenCalled();
-    expect(mockEmit).not.toHaveBeenCalled();
-    expect(mockCreateContact).not.toHaveBeenCalled();
-  });
-
   it("rejects invalid email format", async () => {
     await expect(service.subscribe("not-an-email")).rejects.toThrow("Adresse e-mail invalide");
     expect(mockTxSet).not.toHaveBeenCalled();
   });
 
-  it("emits newsletter.subscriber_created after a successful create", async () => {
+  it("emits newsletter.subscriber_created + sends the confirmation email on first subscribe", async () => {
     mockTxGet.mockResolvedValue({ empty: true });
-    await service.subscribe("newsub@example.com");
+
+    await service.subscribe("firsttime@example.com");
 
     expect(mockEmit).toHaveBeenCalledWith(
       "newsletter.subscriber_created",
       expect.objectContaining({
         subscriberId: "sub-1",
-        email: "newsub@example.com",
+        email: "firsttime@example.com",
         source: "website",
         actorId: "anonymous",
-        requestId: "req-test",
       }),
     );
+    // CONFIRMATION email, not welcome — welcome fires on confirm().
+    expect(mockSendConfirmation).toHaveBeenCalledTimes(1);
+    expect(mockSendConfirmation).toHaveBeenCalledWith(
+      "firsttime@example.com",
+      expect.stringMatching(/^https:\/\/api\.test\.local\/v1\/newsletter\/confirm\?token=/),
+    );
+    // Welcome is DEFERRED to the confirm() step.
+    expect(mockSendWelcome).not.toHaveBeenCalled();
   });
 
-  it("does NOT call resendEmailProvider.createContact from the API — the Firestore trigger owns the mirror", async () => {
-    // Regression guard for Phase 3b: the API must never mirror subscribers
-    // inline. The onNewsletterSubscriberCreated Cloud Function handles it,
-    // which gives us Firebase's 7-day retry budget on Resend outages.
+  it("never mirrors to Resend from the API path — the Firestore trigger owns it", async () => {
     mockTxGet.mockResolvedValue({ empty: true });
     await service.subscribe("trigger-owned@example.com");
-    await flushPromises();
 
     expect(mockCreateContact).not.toHaveBeenCalled();
-    // Welcome email still goes out from the API (single transactional send,
-    // not a broadcast).
-    expect(mockSendWelcome).toHaveBeenCalledWith("trigger-owned@example.com");
+  });
+
+  describe("idempotent duplicate-email branches", () => {
+    const existingDoc = (status: string) => ({
+      empty: false,
+      docs: [{ id: "existing-1", data: () => ({ status, email: "dup@example.com" }) }],
+    });
+
+    it("pending existing → re-sends the confirmation email (user lost the first)", async () => {
+      mockTxGet.mockResolvedValue(existingDoc("pending"));
+
+      await service.subscribe("dup@example.com");
+
+      expect(mockTxSet).not.toHaveBeenCalled();
+      expect(mockEmit).not.toHaveBeenCalled();
+      // Confirmation re-dispatched so the user can still complete opt-in.
+      expect(mockSendConfirmation).toHaveBeenCalledTimes(1);
+    });
+
+    it("confirmed existing → silent no-op (no event, no email)", async () => {
+      mockTxGet.mockResolvedValue(existingDoc("confirmed"));
+
+      await service.subscribe("dup@example.com");
+
+      expect(mockTxSet).not.toHaveBeenCalled();
+      expect(mockSendConfirmation).not.toHaveBeenCalled();
+      expect(mockSendWelcome).not.toHaveBeenCalled();
+    });
+
+    it("unsubscribed existing → silent no-op (respects earlier choice)", async () => {
+      mockTxGet.mockResolvedValue(existingDoc("unsubscribed"));
+
+      await service.subscribe("dup@example.com");
+
+      expect(mockTxSet).not.toHaveBeenCalled();
+      expect(mockSendConfirmation).not.toHaveBeenCalled();
+    });
+
+    it("legacy existing (no status field) → silent no-op, grandfathered as confirmed", async () => {
+      mockTxGet.mockResolvedValue({
+        empty: false,
+        docs: [{ id: "legacy-1", data: () => ({ email: "legacy@example.com" }) }],
+      });
+
+      await service.subscribe("legacy@example.com");
+
+      expect(mockTxSet).not.toHaveBeenCalled();
+      expect(mockSendConfirmation).not.toHaveBeenCalled();
+    });
   });
 });
+
+// ─── confirm() ──────────────────────────────────────────────────────────
+
+describe("NewsletterService.confirm", () => {
+  const validToken = () => signConfirmationToken("sub-42");
+
+  it("flips a pending subscriber to confirmed, emits event, sends welcome", async () => {
+    mockTxGet.mockResolvedValue({
+      exists: true,
+      data: () => ({ email: "pending@example.com", status: "pending" }),
+    });
+
+    const result = await service.confirm(validToken());
+
+    expect(result.alreadyConfirmed).toBe(false);
+    expect(result.email).toBe("pending@example.com");
+    expect(mockTxUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "sub-42" }),
+      expect.objectContaining({
+        status: "confirmed",
+        isActive: true,
+        confirmedAt: expect.any(String),
+      }),
+    );
+    expect(mockEmit).toHaveBeenCalledWith(
+      "newsletter.subscriber_confirmed",
+      expect.objectContaining({
+        subscriberId: "sub-42",
+        email: "pending@example.com",
+        actorId: "anonymous",
+      }),
+    );
+    expect(mockSendWelcome).toHaveBeenCalledWith("pending@example.com");
+  });
+
+  it("returning already-confirmed is idempotent (no update, no event, no re-welcome)", async () => {
+    mockTxGet.mockResolvedValue({
+      exists: true,
+      data: () => ({ email: "already@example.com", status: "confirmed" }),
+    });
+
+    const result = await service.confirm(validToken());
+
+    expect(result.alreadyConfirmed).toBe(true);
+    expect(mockTxUpdate).not.toHaveBeenCalled();
+    expect(mockEmit).not.toHaveBeenCalled();
+    expect(mockSendWelcome).not.toHaveBeenCalled();
+  });
+
+  it("rejects a tampered token as invalid (ValidationError)", async () => {
+    const token = validToken();
+    const parts = token.split(".");
+    const tampered = `EVIL.${parts[1]}.${parts[2]}`;
+
+    await expect(service.confirm(tampered)).rejects.toBeInstanceOf(ValidationError);
+    await expect(service.confirm(tampered)).rejects.toThrow(/invalide/i);
+  });
+
+  it("rejects an expired token with a re-subscribe hint", async () => {
+    const token = signConfirmationToken("sub-42", { now: Date.now() - 30 * 86400_000, ttlMs: 1 });
+
+    await expect(service.confirm(token)).rejects.toBeInstanceOf(ValidationError);
+    await expect(service.confirm(token)).rejects.toThrow(/expiré/i);
+  });
+
+  it("throws NotFoundError when the subscriber doc was deleted between send and click", async () => {
+    mockTxGet.mockResolvedValue({ exists: false });
+
+    await expect(service.confirm(validToken())).rejects.toBeInstanceOf(NotFoundError);
+  });
+
+  it("refuses to resurrect an unsubscribed subscriber (ValidationError)", async () => {
+    mockTxGet.mockResolvedValue({
+      exists: true,
+      data: () => ({ email: "unsub@example.com", status: "unsubscribed" }),
+    });
+
+    await expect(service.confirm(validToken())).rejects.toBeInstanceOf(ValidationError);
+    await expect(service.confirm(validToken())).rejects.toThrow(/désinscrite/i);
+  });
+});
+
+// ─── sendNewsletter() — unchanged from 3a ───────────────────────────────
 
 describe("NewsletterService.sendNewsletter", () => {
   it("creates and sends a broadcast with sanitized HTML + unsubscribe placeholder", async () => {
@@ -261,8 +415,6 @@ describe("NewsletterService.sendNewsletter", () => {
     });
 
     await expect(promise).rejects.toBeInstanceOf(InternalError);
-    // User-facing message must be generic — Resend internal detail stays
-    // in stderr (operator log) only.
     await expect(promise).rejects.toThrow(/newsletter/i);
     await expect(promise).rejects.not.toThrow(/segmentId/);
   });

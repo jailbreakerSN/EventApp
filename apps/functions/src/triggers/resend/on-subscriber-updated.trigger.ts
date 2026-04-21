@@ -2,16 +2,23 @@ import { onDocumentUpdated } from "firebase-functions/v2/firestore";
 import { logger } from "firebase-functions/v2";
 import { getResend, RESEND_API_KEY } from "../../utils/resend-client";
 import { minimalOptions } from "../../utils/function-options";
+import { getResendSystemConfig } from "./config-store";
 
-// Mirrors Firestore → Resend when a subscriber's `isActive` flag flips.
-// Covers the flow where an admin (or a future user-facing unsubscribe
-// endpoint) marks a subscriber inactive: we keep the Firestore row for
-// history but flip the Resend contact to `unsubscribed: true` so future
-// broadcasts skip them.
+// Mirrors Firestore → Resend on subscriber doc updates. Handles two
+// distinct transitions:
 //
-// The reverse direction (Resend-side unsubscribe → Firestore) is handled
-// by resendWebhook, not here — webhook is the only source of truth for
-// Gmail/Yahoo one-click unsubscribes.
+//   1. Double-opt-in completion: status "pending" → "confirmed".
+//      The onCreated trigger skipped this row because it was pending;
+//      now we create the Resend contact in the Segment. This is how a
+//      real subscriber lands in the marketing list.
+//
+//   2. Activation flip: isActive true ↔ false.
+//      Admin deactivated (or a Phase 3c.5 retention job did), OR the
+//      user clicked the in-body unsubscribe link. Either way we mirror
+//      the flag to the Resend contact so broadcasts skip them.
+//
+// The reverse direction (Resend-side one-click unsubscribe → Firestore)
+// is handled by resendWebhook, not here.
 
 export const onNewsletterSubscriberUpdated = onDocumentUpdated(
   {
@@ -24,31 +31,76 @@ export const onNewsletterSubscriberUpdated = onDocumentUpdated(
     const after = event.data?.after.data();
     if (!before || !after) return;
 
-    // Only run when the active flag actually changed. Every other doc
-    // edit (e.g. updatedAt touch) is ignored — no point hammering Resend.
-    if (before.isActive === after.isActive) return;
-
     const email = after.email as string | undefined;
     if (!email) return;
 
-    const { error } = await getResend().contacts.update({
-      email,
-      unsubscribed: !after.isActive,
-    });
+    const beforeStatus = before.status as string | undefined;
+    const afterStatus = after.status as string | undefined;
+    const statusChanged = beforeStatus !== afterStatus;
+    const activeChanged = before.isActive !== after.isActive;
 
-    if (error) {
-      logger.error("Failed to update Resend contact unsubscribed flag", {
-        subscriberId: event.params.subscriberId,
+    // Transition 1 — pending → confirmed. This is the "user clicked the
+    // double-opt-in link" moment. Mirror them into the Segment now.
+    if (statusChanged && afterStatus === "confirmed") {
+      const { newsletterSegmentId } = await getResendSystemConfig();
+      if (!newsletterSegmentId) {
+        logger.info("Confirmed subscriber but segment not configured — skipping mirror", {
+          subscriberId: event.params.subscriberId,
+        });
+        return;
+      }
+
+      const { data, error } = await getResend().contacts.create({
         email,
-        isActive: after.isActive,
-        error: { name: error.name, message: error.message },
+        segments: [{ id: newsletterSegmentId }],
       });
-      throw new Error(`Resend contacts.update failed: ${error.name}: ${error.message}`);
+
+      if (error) {
+        const isDuplicate =
+          error.name === "invalid_idempotent_request" ||
+          /already exists|duplicate/i.test(error.message);
+        if (isDuplicate) {
+          logger.info("Contact already exists in Resend — no-op on confirmation", { email });
+          return;
+        }
+        logger.error("Failed to mirror confirmed subscriber to Resend", {
+          subscriberId: event.params.subscriberId,
+          error: { name: error.name, message: error.message },
+        });
+        throw new Error(`Resend contacts.create failed: ${error.name}: ${error.message}`);
+      }
+
+      logger.info("Mirrored confirmed subscriber to Resend segment", {
+        subscriberId: event.params.subscriberId,
+        contactId: data?.id,
+      });
+      return;
     }
 
-    logger.info("Updated Resend contact unsubscribed flag", {
-      subscriberId: event.params.subscriberId,
-      unsubscribed: !after.isActive,
-    });
+    // Transition 2 — isActive flipped (and status didn't change). This is
+    // the admin-deactivate path. Nothing to do if status also changed —
+    // a pending row being deactivated doesn't need a Resend update because
+    // the contact was never created in the first place.
+    if (activeChanged && !statusChanged) {
+      const { error } = await getResend().contacts.update({
+        email,
+        unsubscribed: !after.isActive,
+      });
+
+      if (error) {
+        logger.error("Failed to update Resend contact unsubscribed flag", {
+          subscriberId: event.params.subscriberId,
+          email,
+          isActive: after.isActive,
+          error: { name: error.name, message: error.message },
+        });
+        throw new Error(`Resend contacts.update failed: ${error.name}: ${error.message}`);
+      }
+
+      logger.info("Updated Resend contact unsubscribed flag", {
+        subscriberId: event.params.subscriberId,
+        unsubscribed: !after.isActive,
+      });
+    }
   },
 );

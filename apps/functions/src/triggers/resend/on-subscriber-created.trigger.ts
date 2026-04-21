@@ -30,9 +30,24 @@ export const onNewsletterSubscriberCreated = onDocumentCreated(
 
     const data = snap.data();
     const email = data.email as string | undefined;
+    const status = data.status as string | undefined;
+
     if (!email) {
       logger.warn("Subscriber doc missing email — skipping mirror", {
         subscriberId: event.params.subscriberId,
+      });
+      return;
+    }
+
+    // Double opt-in gate (Phase 3c.2): never mirror a pending subscriber
+    // into the Resend Segment. Once the user clicks the confirmation
+    // link, status flips to "confirmed" and the onUpdated trigger fires
+    // the mirror. Rows without a `status` field are treated as
+    // already-confirmed (back-compat with pre-3c.2 subscribers).
+    if (status !== undefined && status !== "confirmed") {
+      logger.info("Subscriber not yet confirmed — skipping Resend mirror", {
+        subscriberId: event.params.subscriberId,
+        status,
       });
       return;
     }

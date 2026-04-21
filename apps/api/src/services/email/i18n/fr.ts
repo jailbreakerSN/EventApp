@@ -80,4 +80,16 @@ export const fr: Dictionary = {
     unsubscribeNote:
       "Vous recevez cet e-mail parce que vous vous êtes inscrit à la newsletter Teranga Events. Vous pouvez vous désinscrire à tout moment.",
   },
+  newsletterConfirmation: {
+    subject: "Confirmez votre inscription à la newsletter Teranga",
+    preview: "Un dernier clic pour recevoir nos actualités événementielles.",
+    heading: "Confirmez votre inscription",
+    body: "Merci de votre intérêt pour Teranga Events ! Pour finaliser votre inscription à notre newsletter, confirmez votre adresse e-mail en cliquant sur le bouton ci-dessous.",
+    ctaButton: "Confirmer mon inscription",
+    expiryNote: "Ce lien expire dans 7 jours.",
+    didNotSubscribeNote:
+      "Si vous n'êtes pas à l'origine de cette demande, ignorez simplement cet e-mail — aucune inscription ne sera créée sans confirmation.",
+    fallbackLine: (url) =>
+      `Si le bouton ne fonctionne pas, copiez-collez ce lien dans votre navigateur : ${url}`,
+  },
 };

@@ -324,6 +324,35 @@ describe("Audit Listener", () => {
     });
   });
 
+  it("logs newsletter.subscriber_confirmed with email + confirmedAt (consent trail)", async () => {
+    // GDPR/CASL: the audit log entry for this event is the legally
+    // defensible "when did the user consent" record.
+    eventBus.emit("newsletter.subscriber_confirmed", {
+      subscriberId: "sub-99",
+      email: "confirmed@test.com",
+      confirmedAt: "2026-04-21T12:30:00.000Z",
+      actorId: "anonymous",
+      requestId: "req-nl-3",
+      timestamp: "2026-04-21T12:30:00.000Z",
+    });
+    await flush();
+
+    expect(auditService.log).toHaveBeenCalledWith({
+      action: "newsletter.subscriber_confirmed",
+      actorId: "anonymous",
+      requestId: "req-nl-3",
+      timestamp: "2026-04-21T12:30:00.000Z",
+      resourceType: "newsletter_subscriber",
+      resourceId: "sub-99",
+      eventId: null,
+      organizationId: null,
+      details: {
+        email: "confirmed@test.com",
+        confirmedAt: "2026-04-21T12:30:00.000Z",
+      },
+    });
+  });
+
   it("logs newsletter.sent with actor + broadcast id + subject", async () => {
     eventBus.emit("newsletter.sent", {
       broadcastId: "bc-7",
@@ -427,7 +456,7 @@ describe("Audit Listener", () => {
       // mapping writes the right `action` / `resourceType` to the
       // audit log. If you removed a handler, also drop the matching
       // emission test so stale expectations don't silently pass.
-      const EXPECTED_HANDLER_COUNT = 69;
+      const EXPECTED_HANDLER_COUNT = 70;
 
       expect(registered).toHaveLength(EXPECTED_HANDLER_COUNT);
       // Each registered event name should be unique — a double

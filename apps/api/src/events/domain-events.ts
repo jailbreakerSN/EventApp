@@ -319,6 +319,13 @@ export interface NewsletterSubscriberCreatedEvent extends BaseEventPayload {
   source: string;
 }
 
+export interface NewsletterSubscriberConfirmedEvent extends BaseEventPayload {
+  subscriberId: string;
+  email: string;
+  /** ISO 8601 — when the user completed the double-opt-in click. */
+  confirmedAt: string;
+}
+
 export interface NewsletterSentEvent extends BaseEventPayload {
   /** Resend broadcast id. */
   broadcastId: string;
@@ -688,6 +695,7 @@ export interface DomainEventMap {
   "organization.status_changed": OrgStatusChangedEvent;
   // Newsletter
   "newsletter.subscriber_created": NewsletterSubscriberCreatedEvent;
+  "newsletter.subscriber_confirmed": NewsletterSubscriberConfirmedEvent;
   "newsletter.sent": NewsletterSentEvent;
 }
 

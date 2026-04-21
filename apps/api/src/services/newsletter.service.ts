@@ -2,19 +2,28 @@ import { z } from "zod";
 import sanitizeHtml from "sanitize-html";
 import { db, COLLECTIONS } from "@/config/firebase";
 import { config } from "@/config";
-import { InternalError, ValidationError } from "@/errors/app-error";
+import { InternalError, NotFoundError, ValidationError } from "@/errors/app-error";
 import { emailService } from "@/services/email.service";
 import { resendEmailProvider } from "@/providers/resend-email.provider";
 import { resolveSender } from "@/services/email/sender.registry";
 import { eventBus } from "@/events/event-bus";
 import { getRequestId } from "@/context/request-context";
+import { signConfirmationToken, verifyConfirmationToken } from "./newsletter/confirmation-token";
 
-// Note: the API used to mirror new subscribers into the Resend Segment
-// inline (see git history). That responsibility moved to a Firestore-
-// triggered Cloud Function in Phase 3b (apps/functions/src/triggers/resend/
-// on-subscriber-created.trigger.ts). The API now just writes Firestore —
-// the trigger retries automatically on Resend outages for up to 7 days,
-// which the inline call couldn't do.
+// Double opt-in flow (Phase 3c.2):
+//   subscribe() -> writes { status: "pending" } -> sends confirmation email
+//   confirm()   -> verifies signed token -> flips status="confirmed"
+//                  -> Firestore trigger mirrors to Resend + welcome email fires
+//
+// Legacy note: 3a-3b wrote { isActive: true } immediately and sent the
+// welcome email on the subscribe POST. That path is gone — GDPR / CASL
+// require explicit opt-in that we can prove with a timestamped consent
+// record, and an immediate mirror to a marketing list doesn't satisfy that.
+//
+// The Resend segment mirror is still owned by the Firestore trigger
+// (apps/functions/src/triggers/resend/on-subscriber-created.trigger.ts).
+// That trigger now checks status === "confirmed" before mirroring so
+// pending rows never land in the marketing list.
 
 // ─── Validation Schemas ─────────────────────────────────────────────────────
 
@@ -110,8 +119,28 @@ export function sanitizeNewsletterHtml(raw: string): string {
 // break a user-facing subscribe form). The provider treats "contact already
 // exists" as success, so the mirror is safe to re-run.
 
+export type SubscriberStatus = "pending" | "confirmed" | "unsubscribed";
+
+export interface SubscribeContext {
+  /** Captured by the route from req.ip — part of the consent record per GDPR/CASL. */
+  ipAddress?: string;
+  /** Captured from the User-Agent header — non-PII forensic breadcrumb. */
+  userAgent?: string;
+}
+
 export class NewsletterService {
-  async subscribe(email: string): Promise<void> {
+  /**
+   * Start the double-opt-in flow. Creates a `status: "pending"` row (or
+   * no-ops if one already exists for this email) and sends a confirmation
+   * email with a signed token. The subscriber is NOT added to the Resend
+   * Segment yet — that happens on confirm().
+   *
+   * The HTTP response stays 200 in both the new-subscribe and
+   * already-pending cases so the form gives no hint whether an email is
+   * already on file (prevents enumeration attacks against the subscriber
+   * list). See tests for the "idempotent subscribe" path.
+   */
+  async subscribe(email: string, ctx: SubscribeContext = {}): Promise<void> {
     const parsed = NewsletterSubscribeSchema.safeParse({ email });
     if (!parsed.success) {
       throw new ValidationError("Adresse e-mail invalide");
@@ -124,8 +153,6 @@ export class NewsletterService {
     // Atomic "does this email already exist? if not, insert" — without the
     // transaction, two concurrent subscribe POSTs for the same address both
     // see `existing.empty === true` and both write, creating duplicate rows.
-    // Per CLAUDE.md Security Hardening: any read-then-write MUST use
-    // db.runTransaction().
     const result = await db.runTransaction(async (tx) => {
       const existingSnap = await tx.get(
         db
@@ -135,30 +162,55 @@ export class NewsletterService {
       );
 
       if (!existingSnap.empty) {
-        return { created: false as const };
+        const existing = existingSnap.docs[0];
+        const data = existing.data() as { status?: SubscriberStatus };
+        return {
+          created: false as const,
+          existingStatus: data.status ?? "confirmed",
+          existingId: existing.id,
+        };
       }
 
       const docRef = db.collection(COLLECTIONS.NEWSLETTER_SUBSCRIBERS).doc();
       tx.set(docRef, {
         id: docRef.id,
         email: normalizedEmail,
-        subscribedAt: now,
-        isActive: true,
+        status: "pending" satisfies SubscriberStatus,
+        // isActive kept for back-compat with any admin dashboard still
+        // reading it; drops off once the UI moves to `status`.
+        isActive: false,
         source,
+        // Consent record fields. GDPR/CASL want who, when, how, and
+        // where. Email = who, subscribedAt = when, source + userAgent
+        // + ipAddress = how/where. confirmedAt is filled on confirm().
+        subscribedAt: now,
+        ipAddress: ctx.ipAddress ?? null,
+        userAgent: ctx.userAgent ?? null,
         createdAt: now,
         updatedAt: now,
       });
       return { created: true as const, subscriberId: docRef.id };
     });
 
+    // Idempotency branches:
+    //  - Existing + confirmed  → no-op. Don't re-send the welcome email.
+    //  - Existing + pending    → re-send the confirmation email (user may
+    //                            have lost the first one). New signed
+    //                            token with fresh 7-day TTL.
+    //  - Existing + unsubscribed → no-op. Respect their earlier choice;
+    //                            a resurrecting subscribe must be an
+    //                            explicit admin action.
     if (!result.created) {
-      // Idempotent — already subscribed, no event, no welcome re-send.
+      if (result.existingStatus === "pending") {
+        await this.dispatchConfirmation(result.existingId, normalizedEmail);
+      }
       return;
     }
 
-    // Domain event — audit trail + hook point for Phase 3b's Firestore
-    // trigger that mirrors into the Resend Segment. Actor is "anonymous"
-    // because subscribe is a public, unauthenticated endpoint.
+    // Domain event — records the subscription intent even though the
+    // user hasn't confirmed yet. Useful for "how many signups" metrics
+    // vs. "how many confirmed". The downstream Firestore trigger gates
+    // on status === "confirmed" so a pending row doesn't hit Resend.
     eventBus.emit("newsletter.subscriber_created", {
       subscriberId: result.subscriberId,
       email: normalizedEmail,
@@ -168,13 +220,92 @@ export class NewsletterService {
       timestamp: now,
     });
 
-    // Resend segment mirror is handled by the
-    // onNewsletterSubscriberCreated Firestore trigger (apps/functions) —
-    // Firebase retries on Resend outages for up to 7 days, so we don't
-    // need a fire-and-forget call here anymore.
+    await this.dispatchConfirmation(result.subscriberId, normalizedEmail);
+  }
 
-    // Welcome email (single transactional, not a broadcast).
-    await emailService.sendWelcomeNewsletter(normalizedEmail);
+  /**
+   * Confirm the double-opt-in token. Idempotent — repeat confirms are
+   * silent no-ops (prevents replay-attack noise in logs and keeps the
+   * user-facing page happy when Gmail pre-fetches the link).
+   *
+   * Throws ValidationError on bad / expired tokens so the route can
+   * render the right HTML status page. NotFoundError if the subscriber
+   * was deleted between send and click (should never happen; defensive).
+   */
+  async confirm(token: string): Promise<{ alreadyConfirmed: boolean; email: string }> {
+    const verification = verifyConfirmationToken(token);
+    if (!verification.ok) {
+      throw new ValidationError(
+        verification.reason === "expired"
+          ? "Ce lien de confirmation a expiré. Veuillez vous réinscrire."
+          : "Ce lien de confirmation est invalide.",
+      );
+    }
+
+    const { subscriberId } = verification;
+    const now = new Date().toISOString();
+
+    const result = await db.runTransaction(async (tx) => {
+      const ref = db.collection(COLLECTIONS.NEWSLETTER_SUBSCRIBERS).doc(subscriberId);
+      const snap = await tx.get(ref);
+      if (!snap.exists) {
+        return { found: false as const };
+      }
+      const data = snap.data() as {
+        email: string;
+        status?: SubscriberStatus;
+      };
+      const currentStatus = data.status ?? "confirmed";
+
+      if (currentStatus === "confirmed") {
+        return { found: true as const, alreadyConfirmed: true, email: data.email };
+      }
+      if (currentStatus === "unsubscribed") {
+        // Re-subscribing after explicit unsubscribe requires a fresh
+        // subscribe flow. Rejecting here respects the earlier choice.
+        return { found: true as const, alreadyConfirmed: false, refused: true, email: data.email };
+      }
+
+      tx.update(ref, {
+        status: "confirmed" satisfies SubscriberStatus,
+        isActive: true, // back-compat mirror
+        confirmedAt: now,
+        updatedAt: now,
+      });
+      return { found: true as const, alreadyConfirmed: false, email: data.email };
+    });
+
+    if (!result.found) {
+      throw new NotFoundError("Abonné");
+    }
+    if ("refused" in result && result.refused) {
+      throw new ValidationError("Cette adresse s'est désinscrite. Veuillez vous réinscrire.");
+    }
+
+    if (!result.alreadyConfirmed) {
+      eventBus.emit("newsletter.subscriber_confirmed", {
+        subscriberId,
+        email: result.email,
+        confirmedAt: now,
+        actorId: "anonymous",
+        requestId: getRequestId(),
+        timestamp: now,
+      });
+
+      // Welcome email now, not on subscribe — the welcome is the reward
+      // for completing double opt-in. Also fires the Resend mirror via
+      // the onNewsletterSubscriberUpdated trigger (status: pending →
+      // confirmed).
+      await emailService.sendWelcomeNewsletter(result.email);
+    }
+
+    return { alreadyConfirmed: result.alreadyConfirmed, email: result.email };
+  }
+
+  private async dispatchConfirmation(subscriberId: string, email: string): Promise<void> {
+    const token = signConfirmationToken(subscriberId);
+    const url = `${config.API_BASE_URL}/v1/newsletter/confirm?token=${encodeURIComponent(token)}`;
+    await emailService.sendNewsletterConfirmation(email, url);
   }
 
   /**

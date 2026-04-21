@@ -81,4 +81,17 @@ export interface Dictionary {
     closing: string;
     unsubscribeNote: string;
   };
+  newsletterConfirmation: {
+    subject: string;
+    preview: string;
+    heading: string;
+    body: string;
+    ctaButton: string;
+    /** Shown below the CTA — e.g. "This link expires in 7 days." */
+    expiryNote: string;
+    /** Shown for recipients who didn't initiate the signup. */
+    didNotSubscribeNote: string;
+    /** Plain-text fallback line with the raw URL, in case the button is stripped. */
+    fallbackLine: (url: string) => string;
+  };
 }

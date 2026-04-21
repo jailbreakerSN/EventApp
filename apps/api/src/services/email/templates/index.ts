@@ -24,4 +24,7 @@ export type { WelcomeNewsletterParams } from "./welcome-newsletter";
 export { buildPaymentReceiptEmail } from "./payment-receipt";
 export type { PaymentReceiptParams } from "./payment-receipt";
 
+export { buildNewsletterConfirmationEmail } from "./newsletter-confirmation";
+export type { NewsletterConfirmationParams } from "./newsletter-confirmation";
+
 export type { RenderedEmail } from "../render";

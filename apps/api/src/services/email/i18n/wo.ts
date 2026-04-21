@@ -82,4 +82,15 @@ export const wo: Dictionary = {
     unsubscribeNote:
       "Jot nga e-mail bi ndax inscrire nga ci newsletter Teranga Events. Mën nga a désinscrire sa bopp ci saa bu nekk.",
   },
+  newsletterConfirmation: {
+    subject: "Wéral sa inscription ci newsletter Teranga",
+    preview: "Benn clic ci mujj ngir jot sunu xibaar yi.",
+    heading: "Wéral sa inscription",
+    body: "Jërëjëf ci sa intérêt ci Teranga Events ! Ngir mujj sa inscription ci newsletter bi, wéral sa adresse e-mail ci bouton bi ci suuf.",
+    ctaButton: "Wéral sa inscription",
+    expiryNote: "Lien bii dafay jog ci 7 fan.",
+    didNotSubscribeNote:
+      "Soo dul kii defoon ndeme bii, dara bul ci def — amul inscription bu ñu defloo sa wéral.",
+    fallbackLine: (url) => `Su bouton bi du liggéey, kopi lien bii ci sa navigateur : ${url}`,
+  },
 };

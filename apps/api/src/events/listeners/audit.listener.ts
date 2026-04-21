@@ -624,6 +624,23 @@ export function registerAuditListeners(): void {
     });
   });
 
+  eventBus.on("newsletter.subscriber_confirmed", async (payload) => {
+    await auditService.log({
+      action: "newsletter.subscriber_confirmed",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "newsletter_subscriber",
+      resourceId: payload.subscriberId,
+      eventId: null,
+      organizationId: null,
+      // GDPR/CASL: the confirmation timestamp is the legally relevant
+      // "when did they consent" record. Email retained alongside so the
+      // audit log alone is a valid consent trail.
+      details: { email: payload.email, confirmedAt: payload.confirmedAt },
+    });
+  });
+
   eventBus.on("newsletter.sent", async (payload) => {
     await auditService.log({
       action: "newsletter.sent",
