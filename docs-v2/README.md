@@ -1,6 +1,6 @@
 # Teranga — Documentation v2
 
-> **Canonical reference as of April 2026.** Legacy sprint artefacts and design-system audits live in [`docs/archive/`](../docs/archive/README.md). If a legacy file contradicts this documentation, this documentation is correct.
+> **Canonical reference as of April 2026.** Legacy sprint artefacts and design-system audits live in [`docs/`](../docs/ARCHIVE.md). If a legacy file contradicts this documentation, this documentation is correct.
 
 ---
 
@@ -83,7 +83,7 @@ Complete HTTP API reference for `/v1/…` endpoints.
 ### [40 · Clients](./40-clients/) — Reference
 Per-surface feature inventories and development notes.
 
-- [Shared packages](./40-clients/shared/) — `@teranga/shared-types`, `@teranga/shared-ui`, `@teranga/shared-config`
+- [Shared packages](./40-clients/shared/) — [`@teranga/shared-types`](./40-clients/shared/shared-types.md), [`@teranga/shared-ui`](./40-clients/shared/shared-ui.md)
 - [Web back-office](./40-clients/web-backoffice.md) — Organizer/admin PWA
 - [Web participant app](./40-clients/web-participant.md) — Public + authenticated participant surface
 - [Mobile app](./40-clients/mobile-flutter.md) — Flutter iOS/Android
@@ -95,7 +95,7 @@ Running, deploying, and operating the platform.
 - [Firebase emulators](./50-operations/firebase-emulators.md) — Emulator setup, ports, gotchas
 - [Seeding](./50-operations/seeding.md) — Seed scripts, test data personas, idempotency
 - [CI / CD](./50-operations/ci-cd.md) — GitHub Actions pipeline, jobs, caching
-- [Deploy to staging](./50-operations/deploy-staging.md) — Cloud Run, Firebase deploy, smoke tests
+- [Deploy to staging](./00-getting-started/04-deploy-to-staging.md) — Cloud Run, Firebase deploy, smoke tests
 - [Secrets & env vars](./50-operations/secrets-and-env.md) — All env vars, where to get them, Secret Manager
 - [Monitoring](./50-operations/monitoring.md) — Sentry, structured logs, Cloud Logging, health probes
 
