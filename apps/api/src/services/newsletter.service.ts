@@ -1,9 +1,8 @@
 import { z } from "zod";
 import { db, COLLECTIONS } from "@/config/firebase";
 import { ValidationError } from "@/errors/app-error";
-import { getEmailProvider } from "@/providers/index";
 import { buildWelcomeEmail } from "@/providers/index";
-import { type EmailParams } from "@/providers/email-provider.interface";
+import { emailService } from "@/services/email.service";
 
 // ─── Validation Schemas ─────────────────────────────────────────────────────
 
@@ -57,14 +56,12 @@ export class NewsletterService {
       updatedAt: new Date().toISOString(),
     });
 
-    // Send welcome email (fire-and-forget)
-    try {
-      const provider = getEmailProvider();
-      const { subject, html, text } = buildWelcomeEmail({ email: normalizedEmail });
-      await provider.send({ to: normalizedEmail, subject, html, text });
-    } catch {
-      // Welcome email failure must not block subscription
-    }
+    // Send welcome email (fire-and-forget). Routed through emailService so it
+    // picks up the marketing sender (news@) + standard tags.
+    const template = buildWelcomeEmail({ email: normalizedEmail });
+    await emailService.sendDirect(normalizedEmail, template, "marketing", {
+      tags: [{ name: "type", value: "newsletter_welcome" }],
+    });
   }
 
   /**
@@ -100,7 +97,7 @@ export class NewsletterService {
       lastDoc = snapshot.docs[snapshot.docs.length - 1];
       hasMore = snapshot.docs.length === BATCH_SIZE;
 
-      const emails: EmailParams[] = snapshot.docs.map((doc) => {
+      const emails = snapshot.docs.map((doc) => {
         const data = doc.data();
         return {
           to: data.email as string,
@@ -112,8 +109,8 @@ export class NewsletterService {
 
       total += emails.length;
 
-      const provider = getEmailProvider();
-      const result = await provider.sendBulk(emails);
+      // Newsletter blasts always use the marketing sender (news@).
+      const result = await emailService.sendBulk(emails, "marketing");
       sent += result.sent;
       failed += result.failed;
     }

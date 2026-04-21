@@ -13,7 +13,8 @@ import { type AuthUser } from "@/middlewares/auth.middleware";
 import { BaseService } from "./base.service";
 import { eventBus } from "@/events/event-bus";
 import { getRequestId } from "@/context/request-context";
-import { getSmsProvider, getEmailProvider } from "@/providers/index";
+import { getSmsProvider } from "@/providers/index";
+import { emailService } from "@/services/email.service";
 
 export class BroadcastService extends BaseService {
   /**
@@ -134,7 +135,8 @@ export class BroadcastService extends BaseService {
             }));
 
           if (emailMessages.length > 0) {
-            const result = await getEmailProvider().sendBulk(emailMessages);
+            // Organizer broadcasts are event-related comms → transactional sender.
+            const result = await emailService.sendBulk(emailMessages, "transactional");
             totalSent += result.sent;
             totalFailed += result.failed;
           }

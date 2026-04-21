@@ -1,5 +1,10 @@
 import crypto from "node:crypto";
-import { type EmailProvider, type EmailParams, type EmailResult, type BulkEmailResult } from "./email-provider.interface";
+import {
+  type EmailProvider,
+  type EmailParams,
+  type EmailResult,
+  type BulkEmailResult,
+} from "./email-provider.interface";
 import { db, COLLECTIONS } from "@/config/firebase";
 
 /**
@@ -13,17 +18,22 @@ export class MockEmailProvider implements EmailProvider {
     const messageId = `email_${crypto.randomBytes(8).toString("hex")}`;
     const now = new Date().toISOString();
 
-    await db.collection(COLLECTIONS.EMAIL_LOG).doc(messageId).set({
-      id: messageId,
-      to: params.to,
-      subject: params.subject,
-      html: params.html,
-      text: params.text ?? null,
-      replyTo: params.replyTo ?? null,
-      status: "delivered",
-      provider: "mock",
-      createdAt: now,
-    });
+    await db
+      .collection(COLLECTIONS.EMAIL_LOG)
+      .doc(messageId)
+      .set({
+        id: messageId,
+        to: params.to,
+        from: params.from ?? null,
+        subject: params.subject,
+        html: params.html,
+        text: params.text ?? null,
+        replyTo: params.replyTo ?? null,
+        tags: params.tags ?? null,
+        status: "delivered",
+        provider: "mock",
+        createdAt: now,
+      });
 
     return { success: true, messageId };
   }
@@ -43,10 +53,12 @@ export class MockEmailProvider implements EmailProvider {
         batch.set(ref, {
           id: messageId,
           to: email.to,
+          from: email.from ?? null,
           subject: email.subject,
           html: email.html,
           text: email.text ?? null,
           replyTo: email.replyTo ?? null,
+          tags: email.tags ?? null,
           status: "delivered",
           provider: "mock",
           createdAt: now,

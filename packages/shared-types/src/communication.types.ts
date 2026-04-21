@@ -6,6 +6,28 @@ export const CommunicationChannelSchema = z.enum(["sms", "email", "push", "in_ap
 
 export type CommunicationChannel = z.infer<typeof CommunicationChannelSchema>;
 
+// ─── Email Category ─────────────────────────────────────────────────────────
+// Categorizes outbound email by purpose so the API can route each send to
+// the correct From/Reply-To pair (see apps/api/src/services/email/sender.registry.ts).
+// Keeping categories narrow protects domain reputation: fewer, purposeful
+// senders are easier to monitor in Resend and easier for users to trust.
+//
+// - auth           Account & security (verification, password reset, login alert)
+// - transactional  User-triggered event lifecycle (registration, badge, reminder, cancellation)
+// - organizational Org/member lifecycle (invite, role change, plan limit warning)
+// - billing        Money (invoice, payment receipt, subscription change)
+// - marketing      Opt-in bulk (newsletter, product announcements)
+
+export const EmailCategorySchema = z.enum([
+  "auth",
+  "transactional",
+  "organizational",
+  "billing",
+  "marketing",
+]);
+
+export type EmailCategory = z.infer<typeof EmailCategorySchema>;
+
 // ─── Broadcast ──────────────────────────────────────────────────────────────
 
 export const BroadcastStatusSchema = z.enum(["draft", "scheduled", "sending", "sent", "failed"]);

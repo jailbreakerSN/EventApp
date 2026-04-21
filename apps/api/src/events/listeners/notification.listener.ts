@@ -1,12 +1,7 @@
 import { eventBus } from "../event-bus";
 import { notificationService } from "@/services/notification.service";
 import { emailService } from "@/services/email.service";
-import {
-  getSmsProvider,
-  getEmailProvider,
-  SMS_TEMPLATES,
-  buildRegistrationEmail,
-} from "@/providers/index";
+import { getSmsProvider, SMS_TEMPLATES, buildRegistrationEmail } from "@/providers/index";
 import { userRepository } from "@/repositories/user.repository";
 import { eventRepository } from "@/repositories/event.repository";
 import { registrationRepository } from "@/repositories/registration.repository";
@@ -142,10 +137,10 @@ export function registerNotificationListeners(): void {
           await sms.send(user.phone, SMS_TEMPLATES.paymentConfirmed("votre événement", amountStr));
         }
 
-        // Email
+        // Email — payment receipts belong to the billing category so users
+        // see them come from billing@ and can reply to the same address.
         if (user.email) {
-          const email = getEmailProvider();
-          const { subject, html, text } = buildRegistrationEmail({
+          const template = buildRegistrationEmail({
             participantName: user.displayName ?? user.email,
             eventTitle: "votre événement",
             eventDate: "Voir l'application",
@@ -153,7 +148,10 @@ export function registerNotificationListeners(): void {
             ticketName: "Billet payé",
             registrationId: payload.registrationId,
           });
-          await email.send({ to: user.email, subject, html, text });
+          await emailService.sendDirect(user.email, template, "billing", {
+            tags: [{ name: "type", value: "payment_succeeded" }],
+            idempotencyKey: `payment:${payload.paymentId}`,
+          });
         }
       }
     } catch {

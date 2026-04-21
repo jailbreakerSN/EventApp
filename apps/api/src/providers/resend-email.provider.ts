@@ -27,16 +27,19 @@ import {
  */
 
 const RESEND_API_KEY = process.env.RESEND_API_KEY ?? "";
-const RESEND_FROM_EMAIL = process.env.RESEND_FROM_EMAIL ?? "noreply@teranga.events";
+const RESEND_FROM_EMAIL = process.env.RESEND_FROM_EMAIL ?? "no-reply@terangaevent.com";
 const RESEND_FROM_NAME = process.env.RESEND_FROM_NAME ?? "Teranga Events";
+const DEFAULT_FROM = `${RESEND_FROM_NAME} <${RESEND_FROM_EMAIL}>`;
 const RESEND_API_URL = "https://api.resend.com";
 
 export class ResendEmailProvider implements EmailProvider {
   readonly name = "resend";
 
-  async send(params: EmailParams & { tags?: { name: string; value: string }[]; scheduledAt?: string; idempotencyKey?: string }): Promise<EmailResult> {
+  async send(
+    params: EmailParams & { scheduledAt?: string; idempotencyKey?: string },
+  ): Promise<EmailResult> {
     const payload: Record<string, unknown> = {
-      from: `${RESEND_FROM_NAME} <${RESEND_FROM_EMAIL}>`,
+      from: params.from ?? DEFAULT_FROM,
       to: [params.to],
       subject: params.subject,
       html: params.html,
@@ -113,12 +116,13 @@ export class ResendEmailProvider implements EmailProvider {
       const chunk = params.slice(i, i + BATCH_SIZE);
 
       const batchPayload = chunk.map((p) => ({
-        from: `${RESEND_FROM_NAME} <${RESEND_FROM_EMAIL}>`,
+        from: p.from ?? DEFAULT_FROM,
         to: [p.to],
         subject: p.subject,
         html: p.html,
         ...(p.text ? { text: p.text } : {}),
         ...(p.replyTo ? { reply_to: p.replyTo } : {}),
+        ...(p.tags?.length ? { tags: p.tags } : {}),
         ...(p.attachments?.length
           ? {
               attachments: p.attachments.map((a) => ({
@@ -151,13 +155,19 @@ export class ResendEmailProvider implements EmailProvider {
           const errorBody = await response.text();
           // All emails in this batch failed
           for (const _p of chunk) {
-            results.push({ success: false, error: `Resend batch error (${response.status}): ${errorBody}` });
+            results.push({
+              success: false,
+              error: `Resend batch error (${response.status}): ${errorBody}`,
+            });
             failed++;
           }
         }
       } catch (err) {
         for (const _p of chunk) {
-          results.push({ success: false, error: err instanceof Error ? err.message : "Unknown error" });
+          results.push({
+            success: false,
+            error: err instanceof Error ? err.message : "Unknown error",
+          });
           failed++;
         }
       }

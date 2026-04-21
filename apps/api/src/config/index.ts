@@ -22,8 +22,25 @@ const envSchema = z.object({
   RATE_LIMIT_WINDOW_MS: z.coerce.number().default(60_000),
 
   RESEND_API_KEY: z.string().optional(),
-  RESEND_FROM_EMAIL: z.string().default("noreply@teranga.events"),
   RESEND_FROM_NAME: z.string().default("Teranga Events"),
+
+  // Legacy single-sender fallback — kept so existing environments stay green.
+  // New code should resolve senders via the EmailCategory registry; this value
+  // is only used when a category-specific var is unset.
+  RESEND_FROM_EMAIL: z.string().default("no-reply@terangaevent.com"),
+
+  // Per-category From addresses. Each maps to an EmailCategory in
+  // packages/shared-types/src/communication.types.ts via the sender registry.
+  RESEND_FROM_NOREPLY: z.string().default("no-reply@terangaevent.com"),
+  RESEND_FROM_HELLO: z.string().default("hello@terangaevent.com"),
+  RESEND_FROM_BILLING: z.string().default("billing@terangaevent.com"),
+  RESEND_FROM_NEWS: z.string().default("news@terangaevent.com"),
+
+  // Reply-To addresses. These should be real inboxes (Google Workspace, etc.)
+  // — Resend is outbound-only, so replies bounce unless the MX points elsewhere.
+  RESEND_REPLY_TO_SUPPORT: z.string().default("support@terangaevent.com"),
+  RESEND_REPLY_TO_BILLING: z.string().default("billing@terangaevent.com"),
+  RESEND_REPLY_TO_CONTACT: z.string().default("contact@terangaevent.com"),
 
   AT_API_KEY: z.string().optional(),
   AT_USERNAME: z.string().default("sandbox"),
