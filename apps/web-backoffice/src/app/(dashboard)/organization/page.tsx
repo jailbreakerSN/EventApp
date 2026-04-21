@@ -29,7 +29,8 @@ import {
   Eye,
   Trash2,
 } from "lucide-react";
-import { Badge, getStatusVariant } from "@teranga/shared-ui";
+import { Badge, getStatusVariant, InlineErrorBanner } from "@teranga/shared-ui";
+import { useErrorHandler, type ResolvedError } from "@/hooks/use-error-handler";
 import type { OrgMemberRole } from "@teranga/shared-types";
 import { usePlansCatalogMap, getPlanDisplay } from "@/hooks/use-plans-catalog";
 import { usePlanGating } from "@/hooks/use-plan-gating";
@@ -80,6 +81,14 @@ export default function OrganizationPage() {
   const org = orgData?.data;
   const invites = invitesData?.data ?? [];
 
+  // Persistent banner for blocking mutation failures (org update, invite,
+  // remove member, change role). One banner for the whole page — a failed
+  // action from any of the four mutations lands here with targeted copy.
+  const [mutationError, setMutationError] = useState<ResolvedError | null>(null);
+  const { resolve: resolveError } = useErrorHandler();
+  const tErrors = useTranslations("errors");
+  const tErrorActions = useTranslations("errors.actions");
+
   const [showInviteForm, setShowInviteForm] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<OrgMemberRole>("member");
@@ -107,6 +116,7 @@ export default function OrganizationPage() {
 
   const handleSaveSettings = async () => {
     if (!org) return;
+    setMutationError(null);
     try {
       await updateOrg.mutateAsync({
         name: name || undefined,
@@ -117,13 +127,14 @@ export default function OrganizationPage() {
         city: city || undefined,
       });
       toast.success("Organisation mise à jour");
-    } catch {
-      toast.error("Erreur lors de la mise à jour");
+    } catch (err) {
+      setMutationError(resolveError(err));
     }
   };
 
   const handleSendInvite = async () => {
     if (!inviteEmail.trim()) return;
+    setMutationError(null);
     try {
       await createInvite.mutateAsync({
         email: inviteEmail.trim(),
@@ -132,27 +143,29 @@ export default function OrganizationPage() {
       setInviteEmail("");
       setShowInviteForm(false);
       toast.success("Invitation envoyée");
-    } catch {
-      toast.error("Erreur lors de l'envoi de l'invitation");
+    } catch (err) {
+      setMutationError(resolveError(err));
     }
   };
 
   const handleRemoveMember = async (userId: string) => {
+    setMutationError(null);
     try {
       await removeMember.mutateAsync(userId);
       toast.success("Membre retiré");
       setConfirmRemoveMemberId(null);
-    } catch {
-      toast.error("Erreur lors du retrait du membre");
+    } catch (err) {
+      setMutationError(resolveError(err));
     }
   };
 
   const handleRoleChange = async (userId: string, newRole: string) => {
+    setMutationError(null);
     try {
       await updateMemberRole.mutateAsync({ userId, role: newRole });
       toast.success("Rôle mis à jour");
-    } catch {
-      toast.error("Erreur lors de la mise à jour du rôle");
+    } catch (err) {
+      setMutationError(resolveError(err));
     }
   };
 
@@ -177,6 +190,18 @@ export default function OrganizationPage() {
   return (
     <div className="max-w-4xl">
       <h1 className="text-2xl font-bold text-foreground mb-6">{t("organization")}</h1>
+
+      {mutationError && (
+        <InlineErrorBanner
+          className="mb-6"
+          severity={mutationError.severity}
+          kicker={tErrors("kicker")}
+          title={mutationError.title}
+          description={mutationError.description}
+          onDismiss={() => setMutationError(null)}
+          dismissLabel={tErrorActions("dismiss")}
+        />
+      )}
 
       {/* Plan card */}
       <PlanCard plan={org.plan} memberCount={org.memberIds?.length ?? 0} />

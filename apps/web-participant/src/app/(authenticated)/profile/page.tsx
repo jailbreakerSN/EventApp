@@ -19,9 +19,10 @@ import {
   CardContent,
   Spinner,
   SectionHeader,
-  getErrorMessage,
+  InlineErrorBanner,
 } from "@teranga/shared-ui";
 import { Camera, Loader2 } from "lucide-react";
+import { useErrorHandler, type ResolvedError } from "@/hooks/use-error-handler";
 
 const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
 const MAX_PHOTO_SIZE = 5 * 1024 * 1024; // 5 MB
@@ -45,6 +46,10 @@ export default function ProfilePage() {
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
+  const [submitError, setSubmitError] = useState<ResolvedError | null>(null);
+  const { resolve: resolveError } = useErrorHandler();
+  const tErrors = useTranslations("errors");
+  const tErrorActions = useTranslations("errors.actions");
 
   useEffect(() => {
     if (profile) {
@@ -104,6 +109,7 @@ export default function ProfilePage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setSubmitError(null);
     try {
       await updateMutation.mutateAsync({ displayName, phone, bio, preferredLanguage: language });
       // Sync the UI locale to the new preference. next-intl drives its
@@ -118,9 +124,7 @@ export default function ProfilePage() {
       }
       toast.success(t("profileUpdated"));
     } catch (err: unknown) {
-      const code = (err as { code?: string })?.code;
-      const message = (err as { message?: string })?.message;
-      toast.error(getErrorMessage(code, message));
+      setSubmitError(resolveError(err));
     }
   };
 
@@ -135,6 +139,18 @@ export default function ProfilePage() {
   return (
     <div className="mx-auto max-w-lg px-4 py-8 space-y-6">
       <SectionHeader kicker="— PROFIL" title={t("title")} size="hero" as="h1" />
+
+      {submitError && (
+        <InlineErrorBanner
+          severity={submitError.severity}
+          kicker={tErrors("kicker")}
+          title={submitError.title}
+          description={submitError.description}
+          actions={[{ label: tErrorActions("dismiss"), onClick: () => setSubmitError(null) }]}
+          onDismiss={() => setSubmitError(null)}
+          dismissLabel={tErrorActions("dismiss")}
+        />
+      )}
 
       <Card>
         <CardHeader>
