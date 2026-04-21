@@ -67,7 +67,7 @@ How the system is built and why key decisions were made.
 - **Reference** (look-up tables)
   - [Data model](./20-architecture/reference/data-model.md) — All Firestore collections + field schemas
   - [Permissions](./20-architecture/reference/permissions.md) — 30+ `resource:action` strings per role
-  - [Audit actions](./20-architecture/reference/audit-actions.md) — All 83 `AuditAction` enum values
+  - [Audit actions](./20-architecture/reference/audit-actions.md) — All 69 `AuditAction` enum values
 - **Architecture Decision Records**
   - [ADR index](./20-architecture/decisions/README.md)
 
