@@ -679,6 +679,55 @@ jobs:
           grant_accessor RESEND_WEBHOOK_SECRET
           grant_version_adder RESEND_WEBHOOK_SECRET
 
+      - name: Heal Resend functions stuck from prior failed deploy
+        # One-shot migration. The 2026-04-21 staging deploy failed half-
+        # way because `minimalOptions` was 128MiB — the healthcheck timed
+        # out and Firebase registered `onNewsletterSubscriberUpdated` with
+        # a partial / HTTPS-typed config. Subsequent deploys (even after
+        # fixing the memory floor in #138) then refuse to redeploy it:
+        #
+        #   Error: [teranga-functions:onNewsletterSubscriberUpdated(
+        #   europe-west1)] Changing from an HTTPS function to a background
+        #   triggered function is not allowed. Please delete your function
+        #   and create a new one instead.
+        #
+        # The deploy-staging.yml header already calls out this exact class
+        # of problem ("If a trigger type changes again, handle it
+        # manually with a one-shot `gcloud functions delete`"). We do it
+        # here as a *scoped, time-bounded* step instead of the
+        # file-wide force-delete the workflow previously used (which was
+        # removed because it churned cold starts on every deploy).
+        #
+        # Scope: only the Resend sync-layer functions introduced in #136
+        # (the ones `minimalOptions` actually touches). `gcloud functions
+        # delete` exits 0 when the function doesn't exist with
+        # --quiet + || true, so this step is idempotent — after the next
+        # successful deploy, every call becomes a no-op.
+        #
+        # TODO(DEVOPS): Remove this step once staging AND prod have
+        # shipped a clean deploy of all four functions. File a follow-up
+        # ticket when deleting. Keep the comment + runbook note in
+        # deploy-staging.yml's header so the next incident can copy the
+        # pattern rather than rediscover it.
+        run: |
+          set -euo pipefail
+          PROJECT_ID="${{ needs.setup.outputs.project_id }}"
+          REGION=europe-west1
+
+          for fn in \
+            onNewsletterSubscriberCreated \
+            onNewsletterSubscriberUpdated \
+            resendWebhook \
+            reconcileResendSegment; do
+            echo "::notice::Checking for stuck deploy of $fn"
+            gcloud functions delete "$fn" \
+              --region="$REGION" \
+              --project="$PROJECT_ID" \
+              --gen2 \
+              --quiet 2>&1 | sed 's/^/  /' || \
+              echo "  (no existing function to delete — continuing)"
+          done
+
       - name: Deploy Cloud Functions
         run: |
           npx firebase-tools deploy \
