@@ -308,6 +308,24 @@ export interface BroadcastSentEvent extends BaseEventPayload {
   recipientCount: number;
 }
 
+// ── Newsletter ─────────────────────────────────────────────────────────────
+// Platform-wide (no event or organization scope). Kept separate from
+// BroadcastSentEvent, which is organizer→participants and carries eventId /
+// organizationId required fields.
+
+export interface NewsletterSubscriberCreatedEvent extends BaseEventPayload {
+  subscriberId: string;
+  email: string;
+  source: string;
+}
+
+export interface NewsletterSentEvent extends BaseEventPayload {
+  /** Resend broadcast id. */
+  broadcastId: string;
+  subject: string;
+  segmentId: string;
+}
+
 // ── Speaker ───────────────────────────────────────────────────────────────
 
 export interface SpeakerAddedEvent extends BaseEventPayload {
@@ -668,6 +686,9 @@ export interface DomainEventMap {
   "user.status_changed": UserStatusChangedEvent;
   "organization.verified": OrgVerifiedEvent;
   "organization.status_changed": OrgStatusChangedEvent;
+  // Newsletter
+  "newsletter.subscriber_created": NewsletterSubscriberCreatedEvent;
+  "newsletter.sent": NewsletterSentEvent;
 }
 
 export type DomainEventName = keyof DomainEventMap;

@@ -606,6 +606,38 @@ export function registerAuditListeners(): void {
     });
   });
 
+  // ── Newsletter Events ─────────────────────────────────────────────────
+  // Platform-wide (no event / org scope); both eventId and organizationId
+  // are null because the newsletter isn't tied to any one tenant.
+
+  eventBus.on("newsletter.subscriber_created", async (payload) => {
+    await auditService.log({
+      action: "newsletter.subscriber_created",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "newsletter_subscriber",
+      resourceId: payload.subscriberId,
+      eventId: null,
+      organizationId: null,
+      details: { email: payload.email, source: payload.source },
+    });
+  });
+
+  eventBus.on("newsletter.sent", async (payload) => {
+    await auditService.log({
+      action: "newsletter.sent",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "newsletter_broadcast",
+      resourceId: payload.broadcastId,
+      eventId: null,
+      organizationId: null,
+      details: { subject: payload.subject, segmentId: payload.segmentId },
+    });
+  });
+
   // ── Sponsor Removed ───────────────────────────────────────────────────
 
   eventBus.on("sponsor.removed", async (payload) => {

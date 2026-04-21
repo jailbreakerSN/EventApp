@@ -300,6 +300,54 @@ describe("Audit Listener", () => {
     expect(auditService.log).toHaveBeenCalledTimes(18);
   });
 
+  it("logs newsletter.subscriber_created with subscriber id + email", async () => {
+    eventBus.emit("newsletter.subscriber_created", {
+      subscriberId: "sub-42",
+      email: "sub@test.com",
+      source: "website",
+      actorId: "anonymous",
+      requestId: "req-nl",
+      timestamp: "2026-04-21T10:00:00.000Z",
+    });
+    await flush();
+
+    expect(auditService.log).toHaveBeenCalledWith({
+      action: "newsletter.subscriber_created",
+      actorId: "anonymous",
+      requestId: "req-nl",
+      timestamp: "2026-04-21T10:00:00.000Z",
+      resourceType: "newsletter_subscriber",
+      resourceId: "sub-42",
+      eventId: null,
+      organizationId: null,
+      details: { email: "sub@test.com", source: "website" },
+    });
+  });
+
+  it("logs newsletter.sent with actor + broadcast id + subject", async () => {
+    eventBus.emit("newsletter.sent", {
+      broadcastId: "bc-7",
+      subject: "April digest",
+      segmentId: "seg_abc",
+      actorId: "admin-1",
+      requestId: "req-nl-2",
+      timestamp: "2026-04-21T11:00:00.000Z",
+    });
+    await flush();
+
+    expect(auditService.log).toHaveBeenCalledWith({
+      action: "newsletter.sent",
+      actorId: "admin-1",
+      requestId: "req-nl-2",
+      timestamp: "2026-04-21T11:00:00.000Z",
+      resourceType: "newsletter_broadcast",
+      resourceId: "bc-7",
+      eventId: null,
+      organizationId: null,
+      details: { subject: "April digest", segmentId: "seg_abc" },
+    });
+  });
+
   it("logs waitlist.promotion_failed with cancelledRegistrationId + reason", async () => {
     // Regression guard for the Sprint 1 silent-error fix: when the
     // cancel-triggered waitlist promotion fails after the cancel has
@@ -379,7 +427,7 @@ describe("Audit Listener", () => {
       // mapping writes the right `action` / `resourceType` to the
       // audit log. If you removed a handler, also drop the matching
       // emission test so stale expectations don't silently pass.
-      const EXPECTED_HANDLER_COUNT = 67;
+      const EXPECTED_HANDLER_COUNT = 69;
 
       expect(registered).toHaveLength(EXPECTED_HANDLER_COUNT);
       // Each registered event name should be unique — a double

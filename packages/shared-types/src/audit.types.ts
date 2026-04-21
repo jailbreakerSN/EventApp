@@ -80,6 +80,9 @@ export const AuditActionSchema = z.enum([
   "subscription.period_rolled_over",
   // ── Subscription override (Phase 5 — admin per-org assign) ────────────────
   "subscription.overridden",
+  // ── Newsletter ────────────────────────────────────────────────────────────
+  "newsletter.subscriber_created",
+  "newsletter.sent",
 ]);
 
 export type AuditAction = z.infer<typeof AuditActionSchema>;

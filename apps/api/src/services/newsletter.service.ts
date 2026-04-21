@@ -1,10 +1,13 @@
 import { z } from "zod";
+import sanitizeHtml from "sanitize-html";
 import { db, COLLECTIONS } from "@/config/firebase";
 import { config } from "@/config";
-import { ValidationError } from "@/errors/app-error";
+import { InternalError, ValidationError } from "@/errors/app-error";
 import { emailService } from "@/services/email.service";
 import { resendEmailProvider } from "@/providers/resend-email.provider";
 import { resolveSender } from "@/services/email/sender.registry";
+import { eventBus } from "@/events/event-bus";
+import { getRequestId } from "@/context/request-context";
 
 // ─── Validation Schemas ─────────────────────────────────────────────────────
 
@@ -16,11 +19,73 @@ export const NewsletterSubscribeSchema = z.object({
     .transform((v) => v.trim().toLowerCase()),
 });
 
+// 50 kB is well above a realistic newsletter (typical rich-text body ~5 kB)
+// and well below anything that would stress Firestore or Resend's payload
+// limits. A bound makes the XSS attack surface finite and catches the
+// obvious "paste a whole PDF as HTML" footgun.
+const HTML_BODY_MAX_BYTES = 50_000;
+
 export const NewsletterSendSchema = z.object({
   subject: z.string().min(1, "Le sujet est requis").max(200),
-  htmlBody: z.string().min(1, "Le contenu HTML est requis"),
-  textBody: z.string().optional(),
+  htmlBody: z.string().min(1, "Le contenu HTML est requis").max(HTML_BODY_MAX_BYTES),
+  textBody: z.string().max(HTML_BODY_MAX_BYTES).optional(),
 });
+
+// ─── HTML sanitization (admin-supplied content) ─────────────────────────────
+//
+// Strict allowlist — richer than "strip all tags" so newsletters can carry
+// formatting, but narrow enough that `<script>`, inline event handlers,
+// `javascript:` / `data:` URIs, and `<iframe>` cannot land in subscriber
+// inboxes even if a super-admin account is compromised or CSRF'd.
+//
+// Kept out of the service class so we can unit-test it independently.
+export function sanitizeNewsletterHtml(raw: string): string {
+  return sanitizeHtml(raw, {
+    allowedTags: [
+      "p",
+      "br",
+      "hr",
+      "h1",
+      "h2",
+      "h3",
+      "h4",
+      "strong",
+      "em",
+      "u",
+      "s",
+      "a",
+      "img",
+      "ul",
+      "ol",
+      "li",
+      "blockquote",
+      "pre",
+      "code",
+      "span",
+      "div",
+      "table",
+      "thead",
+      "tbody",
+      "tr",
+      "th",
+      "td",
+    ],
+    allowedAttributes: {
+      a: ["href", "target", "rel"],
+      img: ["src", "alt", "width", "height"],
+      "*": ["style"],
+    },
+    allowedSchemes: ["http", "https", "mailto"],
+    // Preserve the Resend unsubscribe placeholder — sanitize-html strips
+    // unknown mustache-like content by default; wrapping it in <a> keeps
+    // it intact end-to-end.
+    transformTags: {},
+    // Block every disallowed tag INCLUDING its text content — prevents
+    // a `<script>alert(1)</script>` body from leaking the alert payload
+    // as plain text.
+    disallowedTagsMode: "discard",
+  });
+}
 
 // ─── Service ────────────────────────────────────────────────────────────────
 //
@@ -46,37 +111,66 @@ export class NewsletterService {
     }
 
     const normalizedEmail = parsed.data.email;
+    const now = new Date().toISOString();
+    const source = "website";
 
-    // Check for existing subscriber (idempotent — don't error on duplicate)
-    const existing = await db
-      .collection(COLLECTIONS.NEWSLETTER_SUBSCRIBERS)
-      .where("email", "==", normalizedEmail)
-      .limit(1)
-      .get();
+    // Atomic "does this email already exist? if not, insert" — without the
+    // transaction, two concurrent subscribe POSTs for the same address both
+    // see `existing.empty === true` and both write, creating duplicate rows.
+    // Per CLAUDE.md Security Hardening: any read-then-write MUST use
+    // db.runTransaction().
+    const result = await db.runTransaction(async (tx) => {
+      const existingSnap = await tx.get(
+        db
+          .collection(COLLECTIONS.NEWSLETTER_SUBSCRIBERS)
+          .where("email", "==", normalizedEmail)
+          .limit(1),
+      );
 
-    if (!existing.empty) {
+      if (!existingSnap.empty) {
+        return { created: false as const };
+      }
+
+      const docRef = db.collection(COLLECTIONS.NEWSLETTER_SUBSCRIBERS).doc();
+      tx.set(docRef, {
+        id: docRef.id,
+        email: normalizedEmail,
+        subscribedAt: now,
+        isActive: true,
+        source,
+        createdAt: now,
+        updatedAt: now,
+      });
+      return { created: true as const, subscriberId: docRef.id };
+    });
+
+    if (!result.created) {
+      // Idempotent — already subscribed, no event, no welcome re-send.
       return;
     }
 
-    const docRef = db.collection(COLLECTIONS.NEWSLETTER_SUBSCRIBERS).doc();
-    await docRef.set({
-      id: docRef.id,
+    // Domain event — audit trail + hook point for Phase 3b's Firestore
+    // trigger that mirrors into the Resend Segment. Actor is "anonymous"
+    // because subscribe is a public, unauthenticated endpoint.
+    eventBus.emit("newsletter.subscriber_created", {
+      subscriberId: result.subscriberId,
       email: normalizedEmail,
-      subscribedAt: new Date().toISOString(),
-      isActive: true,
-      source: "website",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      source,
+      actorId: "anonymous",
+      requestId: getRequestId(),
+      timestamp: now,
     });
 
     // Mirror into the Resend Segment so future broadcasts reach them.
+    // Fire-and-forget — a Resend outage must not break subscribe. Phase 3b
+    // will move this into a Firestore-triggered Cloud Function so the mirror
+    // survives process restarts and retries for free.
     const segmentId = config.RESEND_NEWSLETTER_SEGMENT_ID;
     if (segmentId) {
       void this.mirrorToSegment(segmentId, normalizedEmail);
     }
 
-    // Welcome email (single transactional, not a broadcast — a broadcast
-    // per subscriber would be wasteful and would race the mirror).
+    // Welcome email (single transactional, not a broadcast).
     await emailService.sendWelcomeNewsletter(normalizedEmail);
   }
 
@@ -92,60 +186,89 @@ export class NewsletterService {
    * Send a newsletter to every contact in the Resend segment.
    * Super admin only — permission check enforced at the route level.
    *
-   * This uses Resend Broadcasts (POST /broadcasts with send=true) rather
-   * than /emails/batch. Two reasons:
+   * Flow:
+   *   1. Sanitize admin-supplied htmlBody through a strict allowlist.
+   *   2. POST /broadcasts with `send: true` against the Segment. Resend
+   *      injects the one-click List-Unsubscribe header per-recipient and
+   *      skips contacts with `unsubscribed: true` on its own.
+   *   3. Emit `newsletter.sent` for audit trail.
    *
-   *   1. Broadcasts inject the one-click RFC 8058 List-Unsubscribe header
-   *      per-recipient automatically and host the unsubscribe endpoint for
-   *      us. Batch does not — we'd have to build that ourselves.
-   *   2. Contacts with `unsubscribed: true` are skipped automatically;
-   *      batch would happily send to them.
-   *
-   * The HTML body MUST contain `{{{RESEND_UNSUBSCRIBE_URL}}}` so Resend
-   * can substitute the per-recipient unsubscribe link. `wrapNewsletterHtml`
-   * enforces this by templating the token into the footer.
+   * Errors from Resend are wrapped in `InternalError` with a generic user
+   * message; the raw detail is logged via the Fastify request logger so
+   * operators can see it, but it never reaches the HTTP response body —
+   * Resend error strings can carry internal identifiers (segment ids,
+   * domain names) that we don't want to leak in staging/dev responses.
    */
-  async sendNewsletter(
-    subject: string,
-    htmlBody: string,
-    textBody?: string,
-  ): Promise<{ broadcastId?: string; skipped?: boolean; reason?: string }> {
+  async sendNewsletter(params: {
+    subject: string;
+    htmlBody: string;
+    textBody?: string;
+    actorUserId: string;
+  }): Promise<{ broadcastId?: string; skipped?: boolean; reason?: string }> {
     const segmentId = config.RESEND_NEWSLETTER_SEGMENT_ID;
     if (!segmentId) {
-      // Graceful no-op when the segment hasn't been provisioned yet — keeps
-      // a half-configured staging env from surfacing as a 500 to the caller.
+      // Graceful no-op when the segment hasn't been provisioned yet.
       return { skipped: true, reason: "RESEND_NEWSLETTER_SEGMENT_ID not configured" };
     }
 
     const sender = resolveSender("marketing");
+    const sanitizedHtml = sanitizeNewsletterHtml(params.htmlBody);
+
+    // Defensive: sanitization should never empty the body since the schema
+    // requires min(1), but if an admin manages to pass a string of only
+    // disallowed tags we'd otherwise ship a broadcast with an empty body.
+    if (sanitizedHtml.trim().length === 0) {
+      throw new ValidationError("Le contenu HTML ne contient aucun élément autorisé");
+    }
 
     const result = await resendEmailProvider.createAndSendBroadcast({
       segmentId,
       from: sender.from,
       replyTo: sender.replyTo,
-      subject,
-      html: wrapNewsletterHtml(subject, htmlBody),
-      ...(textBody ? { text: textBody } : {}),
-      // Label for the Resend dashboard broadcast list.
-      name: subject.slice(0, 100),
+      subject: params.subject,
+      html: wrapNewsletterHtml(params.subject, sanitizedHtml),
+      ...(params.textBody ? { text: params.textBody } : {}),
+      name: params.subject.slice(0, 100),
     });
 
-    if (!result.success) {
-      throw new Error(result.error ?? "Resend broadcast failed");
+    if (!result.success || !result.broadcastId) {
+      // Operator-only log — stays in stderr/Cloud Run logs, never touches
+      // the HTTP response body. Per CLAUDE.md this is the sanctioned
+      // pattern for fire-and-forget error logging in services.
+      process.stderr.write(
+        JSON.stringify({
+          level: "error",
+          event: "newsletter.send_failed",
+          requestId: getRequestId(),
+          actorUserId: params.actorUserId,
+          resendError: result.error,
+        }) + "\n",
+      );
+      throw new InternalError("L'envoi de la newsletter a échoué. Veuillez réessayer.");
     }
+
+    const now = new Date().toISOString();
+    eventBus.emit("newsletter.sent", {
+      broadcastId: result.broadcastId,
+      subject: params.subject,
+      segmentId,
+      actorId: params.actorUserId,
+      requestId: getRequestId(),
+      timestamp: now,
+    });
 
     return { broadcastId: result.broadcastId };
   }
 }
 
 /**
- * Wrap newsletter content in the Teranga brand shell.
+ * Wrap (already-sanitized) newsletter content in the Teranga brand shell.
  *
  * Must include `{{{RESEND_UNSUBSCRIBE_URL}}}` for Broadcasts — Resend
  * substitutes the per-recipient unsubscribe link at send time. Without
- * this placeholder, CAN-SPAM/CASL-compliant unsubscribe is effectively
- * broken (the RFC 8058 header works, but the in-body link is the one
- * most recipients actually click).
+ * this placeholder, the visible in-body unsubscribe link (which most
+ * recipients actually click) would be broken, even though the RFC 8058
+ * header works.
  */
 function wrapNewsletterHtml(subject: string, htmlContent: string): string {
   return `
