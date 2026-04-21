@@ -55,6 +55,10 @@ vi.mock("firebase-admin/firestore", () => ({
 }));
 
 vi.mock("../../../utils/admin", () => ({
+  COLLECTIONS: {
+    EMAIL_SUPPRESSIONS: "emailSuppressions",
+    NEWSLETTER_SUBSCRIBERS: "newsletterSubscribers",
+  },
   db: {
     collection: (name: string) => ({
       doc: (id: string) => ({

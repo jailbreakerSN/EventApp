@@ -66,6 +66,38 @@ export type EmailTemplateFactory = (locale: Locale) => Promise<RenderedEmail>;
 
 export class EmailService {
   /**
+   * Check whether an email is on the platform-wide suppression list.
+   *
+   * Written by the resendWebhook Cloud Function on `email.bounced` and
+   * `email.complained` — see apps/functions/src/triggers/resend/
+   * resend-webhook.https.ts. Doc id is the lowercased address, presence
+   * alone means suppressed.
+   *
+   * Suppression applies to EVERY category, including mandatory (auth +
+   * billing): a hard-bounced address will never accept mail, so Resend
+   * would refuse anyway, and retrying hurts sender reputation. For
+   * complaints, legal jurisdictions vary but industry practice is to
+   * honor the complaint across the board.
+   *
+   * Fails open — if Firestore is unavailable we proceed with the send
+   * rather than blocking legitimate emails. The Cloud Run SLA covers
+   * this; a transient suppression read failure is a worse outcome than
+   * a transient Resend read failure (which would swallow the send
+   * anyway via the provider's retry budget).
+   */
+  async isSuppressed(email: string): Promise<boolean> {
+    try {
+      const snap = await db
+        .collection(COLLECTIONS.EMAIL_SUPPRESSIONS)
+        .doc(email.toLowerCase())
+        .get();
+      return snap.exists;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
    * Get a user's notification preferences. Returns defaults if no doc exists.
    */
   async getPreferences(userId: string): Promise<NotificationPrefs> {
@@ -110,6 +142,15 @@ export class EmailService {
       if (!isMandatory && prefs && !prefs.email) return;
       if (!user?.email) return;
 
+      // Platform-wide suppression gate — hard bounces + spam complaints
+      // (written by the resendWebhook Cloud Function) apply to every
+      // category including mandatory ones. Sending to a known-bouncing
+      // address won't deliver anyway and degrades domain reputation.
+      if (await this.isSuppressed(user.email)) {
+        logSuppressedSkip(user.email, category, "sendToUser", userId);
+        return;
+      }
+
       const locale = asLocale(user.preferredLanguage) ?? DEFAULT_LOCALE;
       const email = await template(locale);
 
@@ -132,6 +173,14 @@ export class EmailService {
     options?: SendOptions,
   ): Promise<void> {
     try {
+      // Suppression gate applies here too — `sendDirect` is used for
+      // newsletter welcome + any future non-user flows, and we don't
+      // want to re-send to an address that bounced or complained.
+      if (await this.isSuppressed(to)) {
+        logSuppressedSkip(to, category, "sendDirect");
+        return;
+      }
+
       const provider = getEmailProvider();
       await provider.send(this.buildParams(to, email, category, options));
     } catch {
@@ -150,9 +199,38 @@ export class EmailService {
   ): Promise<BulkEmailResult> {
     if (emails.length === 0) return { total: 0, sent: 0, failed: 0, results: [] };
     try {
+      // Filter out suppressed recipients before hitting Resend's batch
+      // endpoint. The suppression lookups run in parallel — at the 100
+      // batch cap that's 100 doc reads, fast at the volumes we project.
+      // Preserves `total` = original count so the caller can see how
+      // many were skipped via `sent + failed < total`.
+      const suppressionFlags = await Promise.all(emails.map((e) => this.isSuppressed(e.to)));
+      const deliverable = emails.filter((_, i) => !suppressionFlags[i]);
+      const skipped = emails.length - deliverable.length;
+
+      if (skipped > 0) {
+        logSuppressedSkip(
+          emails
+            .filter((_, i) => suppressionFlags[i])
+            .map((e) => e.to)
+            .join(","),
+          category,
+          "sendBulk",
+        );
+      }
+
+      if (deliverable.length === 0) {
+        return {
+          total: emails.length,
+          sent: 0,
+          failed: 0,
+          results: emails.map(() => ({ success: false, error: "suppressed" })),
+        };
+      }
+
       const sender = resolveSender(category);
       const provider = getEmailProvider();
-      const stamped: EmailParams[] = emails.map((e) => ({
+      const stamped: EmailParams[] = deliverable.map((e) => ({
         to: e.to,
         subject: e.subject,
         html: e.html,
@@ -162,7 +240,11 @@ export class EmailService {
         tags: sender.tags,
         ...(sender.headers ? { headers: sender.headers } : {}),
       }));
-      return await provider.sendBulk(stamped);
+      const result = await provider.sendBulk(stamped);
+      // Rebase `total` to the original count so callers always see how
+      // many emails entered the function; `sent + failed + suppressed`
+      // accounts for all of them.
+      return { ...result, total: emails.length };
     } catch {
       return { total: emails.length, sent: 0, failed: emails.length, results: [] };
     }
@@ -278,3 +360,30 @@ export class EmailService {
 }
 
 export const emailService = new EmailService();
+
+// Operator-only structured log for suppression skips. Kept out of the
+// class so it doesn't pull the request logger in (this is fire-and-
+// forget observability — goes to stderr, scraped by Cloud Logging).
+// Per CLAUDE.md this is the sanctioned pattern for service-level
+// logging: no console.log, use process.stderr.write.
+function logSuppressedSkip(
+  email: string,
+  category: EmailCategory,
+  method: "sendToUser" | "sendDirect" | "sendBulk",
+  userId?: string,
+): void {
+  try {
+    process.stderr.write(
+      JSON.stringify({
+        level: "info",
+        event: "email.suppressed_skip",
+        method,
+        category,
+        email,
+        ...(userId ? { userId } : {}),
+      }) + "\n",
+    );
+  } catch {
+    // Logging must never throw in a fire-and-forget path.
+  }
+}

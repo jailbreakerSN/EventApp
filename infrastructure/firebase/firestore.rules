@@ -540,6 +540,18 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // ─── Email Suppressions ─────────────────────────────────────────────────
+    // Hard-bounce + complaint list written by the resendWebhook Cloud
+    // Function (doc id = lowercased email). Readable by super_admin for
+    // the "why didn't this recipient get my email?" diagnostic view;
+    // writes are Admin SDK only — never from the client.
+    match /emailSuppressions/{email} {
+      allow read: if isSuperAdmin();
+      allow create: if false;
+      allow update: if false;
+      allow delete: if false;
+    }
+
     // ─── Plan Catalog ──────────────────────────────────────────────────────
     // Superadmin-managed catalog of subscription plans. Any authenticated
     // user can read published (public, non-archived) plans so the billing

@@ -47,6 +47,7 @@ export const COLLECTIONS = {
   PROMO_CODES: "promoCodes",
   VENUES: "venues",
   NEWSLETTER_SUBSCRIBERS: "newsletterSubscribers",
+  EMAIL_SUPPRESSIONS: "emailSuppressions",
   SUBSCRIPTIONS: "subscriptions",
   PLANS: "plans",
   SESSION_BOOKMARKS: "sessionBookmarks",

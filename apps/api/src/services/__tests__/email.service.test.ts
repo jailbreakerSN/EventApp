@@ -79,17 +79,23 @@ vi.mock("@/services/email/templates", () => ({
 }));
 
 const mockPrefsGet = vi.fn();
+// Suppression lookup — defaults to "not suppressed" for every doc id.
+// Tests that want to target a specific email flip `suppressedEmails`
+// (a Set of lowercased addresses) instead of mutating the fn itself.
+const mockSuppressionGet = vi.fn();
+const suppressedEmails = new Set<string>();
 
 vi.mock("@/config/firebase", () => ({
   db: {
-    collection: () => ({
-      doc: () => ({
-        get: mockPrefsGet,
+    collection: (name: string) => ({
+      doc: (id?: string) => ({
+        get: name === "emailSuppressions" ? () => mockSuppressionGet(id) : mockPrefsGet,
       }),
     }),
   },
   COLLECTIONS: {
     NOTIFICATION_PREFERENCES: "notificationPreferences",
+    EMAIL_SUPPRESSIONS: "emailSuppressions",
   },
 }));
 
@@ -124,6 +130,12 @@ describe("EmailService", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    suppressedEmails.clear();
+    // Per-doc-id suppression check: returns { exists: true } only for
+    // addresses that tests explicitly added to `suppressedEmails`.
+    mockSuppressionGet.mockImplementation(async (id?: string) => ({
+      exists: id !== undefined && suppressedEmails.has(id),
+    }));
     service = new EmailService();
   });
 
@@ -309,6 +321,40 @@ describe("EmailService", () => {
         service.sendToUser("user-1", stubTemplate, "transactional"),
       ).resolves.toBeUndefined();
     });
+
+    it("skips the send when the address is on the suppression list (transactional)", async () => {
+      mockPrefsGet.mockResolvedValue({ exists: false });
+      mockUserFindById.mockResolvedValue({ email: "bounced@test.com" });
+      suppressedEmails.add("bounced@test.com");
+
+      await service.sendToUser("user-1", stubTemplate, "transactional");
+
+      expect(mockSend).not.toHaveBeenCalled();
+    });
+
+    it("skips the send even for mandatory categories when suppressed", async () => {
+      // Billing is mandatory (bypasses preferences) but NOT mandatory over
+      // suppression — a hard-bounced address cannot receive anything, so
+      // retrying burns reputation for zero benefit.
+      mockUserFindById.mockResolvedValue({ email: "bounced@test.com" });
+      suppressedEmails.add("bounced@test.com");
+
+      await service.sendToUser("user-1", stubTemplate, "billing");
+
+      expect(mockSend).not.toHaveBeenCalled();
+    });
+
+    it("fails open when the suppression lookup itself errors", async () => {
+      mockPrefsGet.mockResolvedValue({ exists: false });
+      mockUserFindById.mockResolvedValue({ email: "ok@test.com" });
+      mockSuppressionGet.mockRejectedValueOnce(new Error("Firestore down"));
+
+      await service.sendToUser("user-1", stubTemplate, "transactional");
+
+      // Send proceeds — a transient suppression read failure must not
+      // block legitimate emails.
+      expect(mockSend).toHaveBeenCalledOnce();
+    });
   });
 
   describe("sendDirect", () => {
@@ -338,6 +384,14 @@ describe("EmailService", () => {
       await expect(
         service.sendDirect("test@example.com", marketingEmail, "transactional"),
       ).resolves.toBeUndefined();
+    });
+
+    it("skips suppressed addresses", async () => {
+      suppressedEmails.add("suppressed@test.com");
+
+      await service.sendDirect("suppressed@test.com", marketingEmail, "marketing");
+
+      expect(mockSend).not.toHaveBeenCalled();
     });
   });
 
@@ -378,6 +432,47 @@ describe("EmailService", () => {
         "transactional",
       );
       expect(result.failed).toBe(1);
+    });
+
+    it("filters out suppressed recipients before hitting the batch endpoint", async () => {
+      suppressedEmails.add("bounced@test.com");
+      mockSendBulk.mockResolvedValue({ total: 1, sent: 1, failed: 0, results: [] });
+
+      const result = await service.sendBulk(
+        [
+          { to: "good@test.com", subject: "s", html: "<p>h</p>" },
+          { to: "bounced@test.com", subject: "s", html: "<p>h</p>" },
+        ],
+        "transactional",
+      );
+
+      // Only the non-suppressed email reaches the provider.
+      const stamped = mockSendBulk.mock.calls[0][0];
+      expect(stamped).toHaveLength(1);
+      expect(stamped[0].to).toBe("good@test.com");
+
+      // total preserves the original input size so callers can see how
+      // many entered the function (sent + failed + suppressed = total).
+      expect(result.total).toBe(2);
+      expect(result.sent).toBe(1);
+    });
+
+    it("returns early without calling the provider when every recipient is suppressed", async () => {
+      suppressedEmails.add("a@test.com");
+      suppressedEmails.add("b@test.com");
+
+      const result = await service.sendBulk(
+        [
+          { to: "a@test.com", subject: "s", html: "<p>h</p>" },
+          { to: "b@test.com", subject: "s", html: "<p>h</p>" },
+        ],
+        "transactional",
+      );
+
+      expect(mockSendBulk).not.toHaveBeenCalled();
+      expect(result.total).toBe(2);
+      expect(result.sent).toBe(0);
+      expect(result.results.every((r) => r.error === "suppressed")).toBe(true);
     });
   });
 

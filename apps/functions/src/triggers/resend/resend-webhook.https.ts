@@ -2,7 +2,7 @@ import { onRequest } from "firebase-functions/v2/https";
 import { logger } from "firebase-functions/v2";
 import { Webhook } from "svix";
 import { FieldValue } from "firebase-admin/firestore";
-import { db } from "../../utils/admin";
+import { db, COLLECTIONS } from "../../utils/admin";
 import { minimalOptions } from "../../utils/function-options";
 import { RESEND_WEBHOOK_SECRET } from "../../utils/resend-client";
 
@@ -24,8 +24,6 @@ import { RESEND_WEBHOOK_SECRET } from "../../utils/resend-client";
 // We return 400 only on signature verification failure.
 
 const PLACEHOLDER_SECRET = "pending-bootstrap";
-const SUPPRESSIONS = "emailSuppressions";
-const SUBSCRIBERS = "newsletterSubscribers";
 
 interface ResendWebhookEvent {
   type: string;
@@ -165,7 +163,7 @@ async function suppressEmail(
 ): Promise<void> {
   const normalized = email.toLowerCase();
   await db
-    .collection(SUPPRESSIONS)
+    .collection(COLLECTIONS.EMAIL_SUPPRESSIONS)
     .doc(normalized)
     .set(
       {
@@ -180,7 +178,11 @@ async function suppressEmail(
 
 async function deactivateSubscriber(email: string, reason: SuppressionReason): Promise<void> {
   const normalized = email.toLowerCase();
-  const snap = await db.collection(SUBSCRIBERS).where("email", "==", normalized).limit(1).get();
+  const snap = await db
+    .collection(COLLECTIONS.NEWSLETTER_SUBSCRIBERS)
+    .where("email", "==", normalized)
+    .limit(1)
+    .get();
   if (snap.empty) return;
   const doc = snap.docs[0];
   await doc.ref.update({
