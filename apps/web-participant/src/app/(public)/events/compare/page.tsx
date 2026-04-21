@@ -27,6 +27,7 @@ function Skeleton({ className = "" }: { className?: string }) {
   return <div className={`bg-muted animate-pulse rounded-md ${className}`} />;
 }
 import { eventsApi, speakersApi, sessionsApi } from "@/lib/api-client";
+import { getCoverGradient } from "@/lib/cover-gradient";
 import type { Event } from "@teranga/shared-types";
 
 interface ComparisonRow {
@@ -309,21 +310,22 @@ function CompareContent() {
               {events.map((event) => (
                 <th key={event.id} className="p-3 text-left align-bottom">
                   <div className="space-y-3">
-                    <div className="relative aspect-[16/9] overflow-hidden rounded-lg bg-muted">
-                      {event.coverImageURL ? (
+                    <div
+                      className="teranga-cover relative aspect-[16/10] overflow-hidden rounded-card"
+                      style={{
+                        background: event.coverImageURL
+                          ? undefined
+                          : getCoverGradient(event.id).bg,
+                      }}
+                    >
+                      {event.coverImageURL && (
                         <Image
                           src={event.coverImageURL}
                           alt={event.title}
                           fill
-                          className="object-cover"
+                          className="z-0 object-cover"
                           sizes="(max-width: 1024px) 50vw, 33vw"
                         />
-                      ) : (
-                        <div className="flex h-full items-center justify-center bg-gradient-to-br from-teranga-navy to-teranga-navy/80">
-                          <span className="text-3xl font-bold text-teranga-gold">
-                            {event.title.charAt(0)}
-                          </span>
-                        </div>
                       )}
                     </div>
                     <h2 className="text-lg font-semibold line-clamp-2">{event.title}</h2>
@@ -366,23 +368,24 @@ function CompareContent() {
       {/* Mobile: stacked cards */}
       <div className="md:hidden space-y-6">
         {events.map((event) => (
-          <div key={event.id} className="overflow-hidden rounded-lg border bg-card shadow-sm">
+          <div key={event.id} className="overflow-hidden rounded-card border bg-card shadow-sm">
             {/* Card header image */}
-            <div className="relative aspect-[16/9] overflow-hidden bg-muted">
-              {event.coverImageURL ? (
+            <div
+              className="teranga-cover relative aspect-[16/10] overflow-hidden"
+              style={{
+                background: event.coverImageURL
+                  ? undefined
+                  : getCoverGradient(event.id).bg,
+              }}
+            >
+              {event.coverImageURL && (
                 <Image
                   src={event.coverImageURL}
                   alt={event.title}
                   fill
-                  className="object-cover"
+                  className="z-0 object-cover"
                   sizes="100vw"
                 />
-              ) : (
-                <div className="flex h-full items-center justify-center bg-gradient-to-br from-teranga-navy to-teranga-navy/80">
-                  <span className="text-3xl font-bold text-teranga-gold">
-                    {event.title.charAt(0)}
-                  </span>
-                </div>
               )}
             </div>
 

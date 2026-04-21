@@ -410,7 +410,7 @@ function FeaturedTile({
   const city = event.location?.city ?? event.location?.name ?? "";
 
   return (
-    <article className="grid overflow-hidden rounded-[20px] border bg-card md:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
+    <article className="grid overflow-hidden rounded-tile border bg-card md:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
       {/* Cover */}
       <Link
         href={`/events/${event.slug}`}
