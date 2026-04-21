@@ -1,13 +1,15 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import Image from "next/image";
 import { ArrowRight, Scale, Search } from "lucide-react";
-import { getTranslations } from "next-intl/server";
-import { EmptyStateEditorial, SectionHeader } from "@teranga/shared-ui";
+import { getLocale, getTranslations } from "next-intl/server";
+import { EditorialEventCard, EmptyStateEditorial, SectionHeader } from "@teranga/shared-ui";
 import { serverEventsApi } from "@/lib/server-api";
-import { EventCard } from "@/components/event-card";
+import { mapEventToEditorialCardProps } from "@/lib/editorial-card-props";
 import { EventFilters } from "@/components/event-filters";
 import { NewsletterSignup } from "@/components/newsletter-signup";
 import { getDateRange } from "@/lib/date-utils";
+import { intlLocale } from "@/lib/intl-locale";
 import { Pagination } from "@/components/pagination";
 
 export const dynamic = "force-dynamic";
@@ -35,7 +37,15 @@ interface EventsPageProps {
 }
 
 export default async function EventsPage({ searchParams }: EventsPageProps) {
-  const [params, tEvents] = await Promise.all([searchParams, getTranslations("events")]);
+  const [params, tEvents, tCommon, tCategories, tEventsCard, locale] = await Promise.all([
+    searchParams,
+    getTranslations("events"),
+    getTranslations("common"),
+    getTranslations("categories"),
+    getTranslations("events.card"),
+    getLocale(),
+  ]);
+  const regional = intlLocale(locale);
   const page = Number(params.page) || 1;
 
   // Resolve date range from shortcut or explicit params
@@ -98,9 +108,25 @@ export default async function EventsPage({ searchParams }: EventsPageProps) {
 
       {events.length > 0 ? (
         <>
-          <div className="mt-6 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="mt-6 grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {events.map((event) => (
-              <EventCard key={event.id} event={event} />
+              <EditorialEventCard
+                key={event.id}
+                {...mapEventToEditorialCardProps({
+                  event,
+                  locale: regional,
+                  t: {
+                    common: (k) => tCommon(k),
+                    categories: (k) => tCategories(k as "conference"),
+                    remainingSeats: (count) => tEventsCard("remainingSeats", { count }),
+                    registeredWithFill: (count, pct) =>
+                      tEventsCard("registeredWithFill", { count, pct }),
+                    registeredCount: (count) => tEventsCard("registeredCount", { count }),
+                  },
+                })}
+                linkComponent={Link}
+                imageComponent={Image}
+              />
             ))}
           </div>
           {meta.totalPages > 1 && (
