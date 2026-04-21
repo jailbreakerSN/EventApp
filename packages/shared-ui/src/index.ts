@@ -42,6 +42,11 @@ export {
 } from "./components/alert";
 export { cn, formatDate, formatDateTime, formatCurrency } from "./lib/utils";
 export { getErrorMessage } from "./lib/error-messages";
+export {
+  InlineErrorBanner,
+  type InlineErrorBannerProps,
+  type InlineErrorBannerAction,
+} from "./components/inline-error-banner";
 export { getStatusVariant } from "./lib/status-variants";
 export { ThemeToggle } from "./components/theme-toggle";
 export { LogoLoader } from "./components/logo-loader";
@@ -67,21 +72,10 @@ export {
   type OrderSummaryProps,
   type OrderSummaryLabels,
 } from "./components/order-summary";
-export {
-  TicketPass,
-  type TicketPassProps,
-  type TicketPassField,
-} from "./components/ticket-pass";
-export {
-  PaymentMethodCard,
-  type PaymentMethodCardProps,
-} from "./components/payment-method-card";
+export { TicketPass, type TicketPassProps, type TicketPassField } from "./components/ticket-pass";
+export { PaymentMethodCard, type PaymentMethodCardProps } from "./components/payment-method-card";
 export { CapacityBar, type CapacityBarProps } from "./components/capacity-bar";
-export {
-  StatusPill,
-  type StatusPillProps,
-  type StatusPillTone,
-} from "./components/status-pill";
+export { StatusPill, type StatusPillProps, type StatusPillTone } from "./components/status-pill";
 export {
   EditorialHero,
   type EditorialHeroProps,
@@ -111,4 +105,9 @@ export {
   type QueryErrorLabels,
   type ConfirmDialogLabels,
 } from "./lib/i18n";
-export { LanguageSwitcher, DEFAULT_LOCALES, type LanguageSwitcherProps, type LanguageOption } from "./components/language-switcher";
+export {
+  LanguageSwitcher,
+  DEFAULT_LOCALES,
+  type LanguageSwitcherProps,
+  type LanguageOption,
+} from "./components/language-switcher";

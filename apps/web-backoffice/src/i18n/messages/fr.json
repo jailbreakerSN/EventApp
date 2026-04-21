@@ -170,5 +170,112 @@
     "enterprise": "Entreprise",
     "upgrade": "Mettre à niveau",
     "currentPlan": "Plan actuel"
+  },
+  "errors": {
+    "kicker": "— Erreur",
+    "unknown": {
+      "title": "Une erreur inattendue est survenue",
+      "description": "Réessayez dans quelques instants. Si le problème persiste, contactez le support."
+    },
+    "TIMEOUT": {
+      "title": "Connexion trop lente",
+      "description": "La requête a expiré. Vérifiez votre connexion et réessayez."
+    },
+    "INTERNAL_ERROR": {
+      "title": "Erreur interne",
+      "description": "Une erreur est survenue de notre côté. L'équipe a été notifiée — réessayez dans quelques instants."
+    },
+    "UNAUTHORIZED": {
+      "title": "Session expirée",
+      "description": "Reconnectez-vous pour continuer."
+    },
+    "FORBIDDEN": {
+      "title": "Action non autorisée",
+      "description": "Vous n'avez pas les permissions nécessaires pour cette action."
+    },
+    "NOT_FOUND": {
+      "title": "Ressource introuvable",
+      "description": "Cet élément n'existe pas ou plus."
+    },
+    "VALIDATION_ERROR": {
+      "title": "Données invalides",
+      "description": "Vérifiez les informations saisies dans le formulaire."
+    },
+    "CONFLICT": {
+      "title": "Action déjà effectuée",
+      "description": "Cette action est en conflit avec l'état actuel. Rafraîchissez la page et réessayez."
+    },
+    "RATE_LIMIT_EXCEEDED": {
+      "title": "Trop de tentatives",
+      "description": "Patientez quelques instants avant de réessayer."
+    },
+    "REGISTRATION_CLOSED": {
+      "title": "Inscriptions indisponibles",
+      "description": "Les inscriptions ne sont pas ouvertes pour cet événement.",
+      "reasons": {
+        "event_not_published": {
+          "title": "Événement en brouillon",
+          "description": "Publiez l'événement pour ouvrir les inscriptions."
+        },
+        "event_cancelled": {
+          "title": "Événement annulé",
+          "description": "Cet événement a été annulé."
+        },
+        "event_completed": {
+          "title": "Événement terminé",
+          "description": "Cet événement est déjà passé."
+        },
+        "event_archived": {
+          "title": "Événement archivé",
+          "description": "Restaurez l'événement pour rouvrir les inscriptions."
+        },
+        "event_ended": {
+          "title": "Période d'inscription terminée",
+          "description": "Les dates de l'événement sont passées."
+        },
+        "event_full": {
+          "title": "Événement complet",
+          "description": "Toutes les places ont été attribuées."
+        }
+      }
+    },
+    "EVENT_FULL": {
+      "title": "Événement complet",
+      "description": "Toutes les places ont été attribuées."
+    },
+    "ZONE_FULL": {
+      "title": "Zone d'accès complète",
+      "description": "Cette zone a atteint sa capacité maximale. Orientez le participant vers une autre zone ou attendez la sortie d'un autre porteur."
+    },
+    "EMAIL_NOT_VERIFIED": {
+      "title": "Adresse e-mail non vérifiée",
+      "description": "Le participant doit vérifier son adresse e-mail avant cette action."
+    },
+    "ORGANIZATION_PLAN_LIMIT": {
+      "title": "Limite du plan atteinte",
+      "description": "Cette action dépasse les limites de votre abonnement actuel. Passez à un plan supérieur pour continuer."
+    },
+    "QR_INVALID": {
+      "title": "QR invalide",
+      "description": "Ce code QR n'est pas reconnu."
+    },
+    "QR_ALREADY_USED": {
+      "title": "Badge déjà utilisé",
+      "description": "Ce badge a déjà été scanné pour cet événement."
+    },
+    "QR_EXPIRED": {
+      "title": "Badge expiré",
+      "description": "Ce badge n'est plus valide."
+    },
+    "QR_NOT_YET_VALID": {
+      "title": "Badge pas encore valide",
+      "description": "Réessayez à partir de l'heure d'ouverture de l'événement."
+    },
+    "actions": {
+      "retry": "Réessayer",
+      "contactSupport": "Contacter le support",
+      "upgradePlan": "Gérer mon plan",
+      "dismiss": "Fermer"
+    }
   }
 }

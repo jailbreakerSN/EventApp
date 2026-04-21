@@ -170,5 +170,112 @@
     "enterprise": "Enterprise",
     "upgrade": "Upgrade",
     "currentPlan": "Current plan"
+  },
+  "errors": {
+    "kicker": "— Error",
+    "unknown": {
+      "title": "An unexpected error occurred",
+      "description": "Please try again in a moment. If the problem persists, contact support."
+    },
+    "TIMEOUT": {
+      "title": "Connection too slow",
+      "description": "The request timed out. Check your connection and try again."
+    },
+    "INTERNAL_ERROR": {
+      "title": "Internal error",
+      "description": "Something went wrong on our side. Our team has been notified — please try again shortly."
+    },
+    "UNAUTHORIZED": {
+      "title": "Session expired",
+      "description": "Sign in again to continue."
+    },
+    "FORBIDDEN": {
+      "title": "Action not allowed",
+      "description": "You don't have permission to perform this action."
+    },
+    "NOT_FOUND": {
+      "title": "Resource not found",
+      "description": "This item no longer exists."
+    },
+    "VALIDATION_ERROR": {
+      "title": "Invalid data",
+      "description": "Please check the information in the form."
+    },
+    "CONFLICT": {
+      "title": "Action already performed",
+      "description": "This action conflicts with the current state. Refresh and try again."
+    },
+    "RATE_LIMIT_EXCEEDED": {
+      "title": "Too many attempts",
+      "description": "Please wait a moment before trying again."
+    },
+    "REGISTRATION_CLOSED": {
+      "title": "Registration unavailable",
+      "description": "Registration isn't open for this event.",
+      "reasons": {
+        "event_not_published": {
+          "title": "Event in draft",
+          "description": "Publish the event to open registrations."
+        },
+        "event_cancelled": {
+          "title": "Event cancelled",
+          "description": "This event has been cancelled."
+        },
+        "event_completed": {
+          "title": "Event ended",
+          "description": "This event has already happened."
+        },
+        "event_archived": {
+          "title": "Event archived",
+          "description": "Restore the event to reopen registrations."
+        },
+        "event_ended": {
+          "title": "Registration window ended",
+          "description": "The event dates have passed."
+        },
+        "event_full": {
+          "title": "Event is full",
+          "description": "All seats have been taken."
+        }
+      }
+    },
+    "EVENT_FULL": {
+      "title": "Event is full",
+      "description": "All seats have been taken."
+    },
+    "ZONE_FULL": {
+      "title": "Access zone is full",
+      "description": "This zone has reached its maximum capacity. Redirect the participant to another zone or wait until another badge exits."
+    },
+    "EMAIL_NOT_VERIFIED": {
+      "title": "Email not verified",
+      "description": "The participant must verify their email before this action."
+    },
+    "ORGANIZATION_PLAN_LIMIT": {
+      "title": "Plan limit reached",
+      "description": "This action exceeds your current subscription limits. Upgrade your plan to continue."
+    },
+    "QR_INVALID": {
+      "title": "Invalid QR",
+      "description": "This QR code isn't recognized."
+    },
+    "QR_ALREADY_USED": {
+      "title": "Badge already used",
+      "description": "This badge has already been scanned for this event."
+    },
+    "QR_EXPIRED": {
+      "title": "Badge expired",
+      "description": "This badge is no longer valid."
+    },
+    "QR_NOT_YET_VALID": {
+      "title": "Badge not yet valid",
+      "description": "Try again once the event opens."
+    },
+    "actions": {
+      "retry": "Try again",
+      "contactSupport": "Contact support",
+      "upgradePlan": "Manage plan",
+      "dismiss": "Dismiss"
+    }
   }
 }

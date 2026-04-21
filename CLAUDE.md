@@ -634,6 +634,7 @@ Before writing any code, Claude MUST evaluate the task against these dimensions.
 - **Francophone-first**: Default language is French. All user-facing strings must have French translations. Use `Africa/Dakar` timezone, `XOF` currency.
 - **Progressive disclosure**: Forms should use multi-step wizards for complex inputs (e.g., event creation: Details → Tickets → Settings → Review).
 - **Error states**: Every data-fetching UI must handle loading, empty, and error states. Never show a blank page.
+- **Error UX contract** (see `docs/design-system/error-handling.md`): Mutation failures MUST use `useErrorHandler()` + `<InlineErrorBanner>` — **never** a bare `toast.error(...)` for a blocking submit error. Preflight invalid actions client-side when preconditions are knowable (status, dates, capacity, plan limits). Disambiguated errors carry `details.reason` for targeted UI copy.
 - **Accessibility**: All interactive elements need ARIA labels. Toggle switches, buttons, form inputs must be keyboard-navigable.
 - **Mobile-responsive**: Web backoffice must work on tablets (organizers use them at events).
 

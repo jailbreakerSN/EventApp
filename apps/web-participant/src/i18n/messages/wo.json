@@ -376,6 +376,35 @@
       "approvalRequired": "Bindu bi laa ñu nangu ci ki ko bokkal.",
       "soldOut": "Fees",
       "full": "Fees",
+      "unavailable": {
+        "kicker": "— Bindu bi amul",
+        "event_not_published": {
+          "title": "Bindu bi ubbiwul ba tay",
+          "description": "Ki yor xew-xew bi day waajal ba tay. Deluwaat ci ay fan, walla xool xew-xew yi nekk ci jamono."
+        },
+        "event_cancelled": {
+          "title": "Xew-xew bi ñu ko wacce",
+          "description": "Ki yor xew-xew bi da ko wacce. Xoolal yeneen xew-xew yi di ñëw."
+        },
+        "event_completed": {
+          "title": "Xew-xew bi jeex na",
+          "description": "Xew-xew bi weesu na. Xoolal yi di ñëw ngir bañ a yànj."
+        },
+        "event_archived": {
+          "title": "Xew-xew bi ñu ko denc",
+          "description": "Xew-xew bi nekkatul ci barab bi. Xoolal keyboard bi ngir gis benn bu mel ni moom."
+        },
+        "event_ended": {
+          "title": "Bindu bi tëj na",
+          "description": "Jamonoy bindu bi jeex na. Yeneen xew-xew man nañu ubbeeku."
+        },
+        "event_full": {
+          "title": "Xew-xew bi fees na",
+          "description": "Seat yépp jotoon nañu ko. Xoolal yeneen xew-xew walla dellu ci ay waxtu."
+        },
+        "browseSimilar": "Gis yeneen xew-xew yu mel ni moom",
+        "backToEvents": "Dellu ci calendrier bi"
+      },
       "seatsLeft": "{count, plural, one {# seat des} other {# seat des}}",
       "lastSeats": "{count, plural, one {Desul benn seat rekk !} other {Desul # seat rekk !}}",
       "popular": "Xew-xew bu bari ñëp",
@@ -438,6 +467,7 @@
   "registerFlow": {
     "subtitle": "Bind",
     "notFound": "Xew-xew gisu ko.",
+    "notFoundKicker": "— Gisu ko",
     "backToEvents": "Dellu ci xew-xew yi",
     "backToEvent": "Dellu ci xew-xew bi",
     "back": "Dellu",
@@ -696,6 +726,115 @@
       "contact": "Naka laa war a jokkoo ak organisateur bi ?",
       "payments": "Paye ak delloo",
       "confirmationEmail": "Lu ma war a def bu ma jotul sama imeyl confirmation ?"
+    }
+  },
+  "errors": {
+    "kicker": "— Njuumte",
+    "unknown": {
+      "title": "Njuumte bu ñu xamul la jot",
+      "description": "Jéémaatal léegi. Bu am solo ba mu fa nekk, jokkoo ak ndimbal."
+    },
+    "TIMEOUT": {
+      "title": "Koñeksoŋ bi néew",
+      "description": "Ñaan bi jeex na. Xoolal sa koñeksoŋ te jéémaat."
+    },
+    "INTERNAL_ERROR": {
+      "title": "Njuumte ci suñu wàll",
+      "description": "Dafa am njuumte ci suñu wàll. Équipe bi xam na. Jéémaatal léegi."
+    },
+    "UNAUTHORIZED": {
+      "title": "Koneksoŋ laa war",
+      "description": "Dangay war a dugg ngir man a def jëf ji."
+    },
+    "FORBIDDEN": {
+      "title": "Jëf ji nanguwuñu ko",
+      "description": "Amoo sañ-sañ bi ngir def jëf ji."
+    },
+    "NOT_FOUND": {
+      "title": "Resource amul",
+      "description": "Li ngay wut nekkatul."
+    },
+    "VALIDATION_ERROR": {
+      "title": "Data yi baaxul",
+      "description": "Xoolaatal li ngay bind ci formulaire bi."
+    },
+    "CONFLICT": {
+      "title": "Jëf ji defeesoon na",
+      "description": "Jëf bi jàppoo ak li fi nekk. Rafraîchis pàccu bi te jéémaat."
+    },
+    "RATE_LIMIT_EXCEEDED": {
+      "title": "Li ñu jéemaat bare na",
+      "description": "Yendoo nga ci jéemaat. Xaar tuuti te jéémaat."
+    },
+    "REGISTRATION_CLOSED": {
+      "title": "Bindu bi amul",
+      "description": "Bindu ubbiwul ba tay ci xew-xew bi.",
+      "reasons": {
+        "event_not_published": {
+          "title": "Bindu bi ubbiwul ba tay",
+          "description": "Ki yor xew-xew bi day waajal ba tay."
+        },
+        "event_cancelled": {
+          "title": "Xew-xew bi ñu ko wacce",
+          "description": "Ki yor xew-xew bi da ko wacce."
+        },
+        "event_completed": {
+          "title": "Xew-xew bi jeex na",
+          "description": "Xew-xew bi weesu na."
+        },
+        "event_archived": {
+          "title": "Xew-xew bi ñu ko denc",
+          "description": "Xew-xew bi nekkatul."
+        },
+        "event_ended": {
+          "title": "Bindu bi tëj na",
+          "description": "Jamonoy bindu bi jeex na."
+        },
+        "event_full": {
+          "title": "Xew-xew bi fees na",
+          "description": "Seat yépp jotoon nañu ko."
+        }
+      }
+    },
+    "EVENT_FULL": {
+      "title": "Xew-xew bi fees na",
+      "description": "Seat yépp jotoon nañu ko. Xoolal yeneen xew-xew walla dellu ci ay waxtu."
+    },
+    "ZONE_FULL": {
+      "title": "Zoon bi fees na",
+      "description": "Zoon bi fees na. Jëm ci beneen zoon bi nekk ci sa badge."
+    },
+    "EMAIL_NOT_VERIFIED": {
+      "title": "Dagal sa imeyl",
+      "description": "Bësal lien bi nu la yónne ngir ubbi bindu yu am fay."
+    },
+    "ORGANIZATION_PLAN_LIMIT": {
+      "title": "Xayma bu plan bi jotoon na",
+      "description": "Jëf bi jële na ci xayma yi sa plan di am. Takkal sa plan ngir man a jal."
+    },
+    "QR_INVALID": {
+      "title": "QR bi baaxul",
+      "description": "QR code bi xamuñu ko. Xoolal lu ñu nga scan."
+    },
+    "QR_ALREADY_USED": {
+      "title": "Badge bi scan-eesoon na",
+      "description": "Badge bi scan nañu ko ba noppi ci xew-xew bi."
+    },
+    "QR_EXPIRED": {
+      "title": "Badge bi jeex na",
+      "description": "Badge bi baaxatul."
+    },
+    "QR_NOT_YET_VALID": {
+      "title": "Badge bi baaxul ba tay",
+      "description": "Jéémaatal su waxtu xew-xew bi agsee."
+    },
+    "actions": {
+      "retry": "Jéémaat",
+      "contactSupport": "Jokkoo ak ndimbal",
+      "browseEvents": "Xool xew-xew yi",
+      "upgradePlan": "Yore sama plan",
+      "verifyEmail": "Yónneeti lien bi",
+      "dismiss": "Tëj"
     }
   }
 }

@@ -34,5 +34,54 @@
     "email": "Imeyl",
     "password": "Baatu-ruus",
     "forgotPassword": "Fàtte naa sama baatu-ruus ?"
+  },
+  "errors": {
+    "kicker": "— Njuumte",
+    "unknown": {
+      "title": "Njuumte bu ñu xamul la jot",
+      "description": "Jéémaatal léegi. Bu am solo ba mu fa nekk, jokkoo ak ndimbal."
+    },
+    "UNAUTHORIZED": {
+      "title": "Sesioŋ bi jeex na",
+      "description": "Duggal waat ngir man a jal."
+    },
+    "FORBIDDEN": {
+      "title": "Jëf ji nanguwuñu ko",
+      "description": "Amoo sañ-sañ bi ngir def jëf ji."
+    },
+    "NOT_FOUND": {
+      "title": "Resource amul",
+      "description": "Li ngay wut nekkatul."
+    },
+    "VALIDATION_ERROR": {
+      "title": "Data yi baaxul",
+      "description": "Xoolaatal li ngay bind ci formulaire bi."
+    },
+    "CONFLICT": {
+      "title": "Jëf ji defeesoon na",
+      "description": "Rafraîchis pàccu bi te jéémaat."
+    },
+    "INTERNAL_ERROR": {
+      "title": "Njuumte ci suñu wàll",
+      "description": "Dafa am njuumte ci suñu wàll. Jéémaatal léegi."
+    },
+    "REGISTRATION_CLOSED": {
+      "title": "Bindu bi amul",
+      "description": "Bindu ubbiwul ba tay ci xew-xew bi."
+    },
+    "EVENT_FULL": {
+      "title": "Xew-xew bi fees na",
+      "description": "Seat yépp jotoon nañu ko."
+    },
+    "ORGANIZATION_PLAN_LIMIT": {
+      "title": "Xayma bu plan bi jotoon na",
+      "description": "Takkal sa plan ngir jal."
+    },
+    "actions": {
+      "retry": "Jéémaat",
+      "contactSupport": "Jokkoo ak ndimbal",
+      "upgradePlan": "Yore sama plan",
+      "dismiss": "Tëj"
+    }
   }
 }

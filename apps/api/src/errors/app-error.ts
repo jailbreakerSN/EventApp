@@ -1,4 +1,8 @@
-import { type ErrorCode, ERROR_CODES } from "@teranga/shared-types";
+import {
+  type ErrorCode,
+  ERROR_CODES,
+  type RegistrationUnavailableReason,
+} from "@teranga/shared-types";
 
 /**
  * Base application error. All domain/business errors extend this.
@@ -118,12 +122,17 @@ export class EventFullError extends AppError {
  * exceed an access zone's `capacity`. Mirrors the `zone_full` bulk-sync
  * result so staff see the same gating semantics regardless of whether
  * the scan is reconciled live or from the offline queue.
+ *
+ * Carries its own `ZONE_FULL` code (not the event-wide `EVENT_FULL`) so
+ * the staff-app UI can distinguish "the whole event is at capacity" from
+ * "this specific zone (e.g. the lunch tent) is full" without having to
+ * poke at `details.zoneId`. Same 409 status as EventFullError.
  */
 export class ZoneFullError extends AppError {
   constructor(zone: { id: string; name: string; capacity: number | null | undefined }) {
     super({
       message: `La zone « ${zone.name} » a atteint sa capacité (${zone.capacity ?? "—"}).`,
-      code: ERROR_CODES.EVENT_FULL,
+      code: ERROR_CODES.ZONE_FULL,
       statusCode: 409,
       details: {
         zoneId: zone.id,
@@ -134,16 +143,37 @@ export class ZoneFullError extends AppError {
   }
 }
 
+/**
+ * Registration is not accepted for this event. The `reason` field
+ * disambiguates the six user-meaningful causes so the UI can render a
+ * targeted blocking state instead of a single opaque "closed" message.
+ *
+ * The reasons mirror `RegistrationUnavailableReason` in
+ * `@teranga/shared-types/event-availability` — the same contract the
+ * web-participant preflight uses. Keep the two in sync.
+ */
 export class RegistrationClosedError extends AppError {
-  constructor(eventId: string) {
+  constructor(eventId: string, reason: RegistrationUnavailableReason = "event_not_published") {
     super({
-      message: "Les inscriptions ne sont pas ouvertes pour cet événement",
+      message: REGISTRATION_CLOSED_MESSAGES[reason],
       code: ERROR_CODES.REGISTRATION_CLOSED,
       statusCode: 400,
-      details: { eventId },
+      details: { eventId, reason },
     });
   }
 }
+
+// Default French messages — used by logs, SMS, mobile clients that haven't
+// wired the i18n catalog yet. Web clients key off `details.reason` and render
+// their own localized copy (see apps/web-participant i18n messages).
+const REGISTRATION_CLOSED_MESSAGES: Record<RegistrationUnavailableReason, string> = {
+  event_not_published: "Les inscriptions ne sont pas encore ouvertes pour cet événement",
+  event_cancelled: "Cet événement a été annulé",
+  event_completed: "Cet événement est terminé",
+  event_archived: "Cet événement a été archivé",
+  event_ended: "La période d'inscription pour cet événement est terminée",
+  event_full: "Cet événement a atteint sa capacité maximale",
+};
 
 export class EmailNotVerifiedError extends AppError {
   constructor() {

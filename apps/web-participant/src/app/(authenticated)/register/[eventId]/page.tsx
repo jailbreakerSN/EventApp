@@ -14,6 +14,12 @@ import {
   ChevronUp,
   X,
   Check,
+  CalendarX,
+  Clock,
+  Archive,
+  CheckCircle2,
+  Ban,
+  AlertTriangle,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { toast } from "sonner";
@@ -24,6 +30,7 @@ import { useInitiatePayment, useValidatePromoCode } from "@/hooks/use-payments";
 import {
   Button,
   EmptyStateEditorial,
+  InlineErrorBanner,
   Input,
   Spinner,
   Stepper,
@@ -32,13 +39,19 @@ import {
   PaymentMethodCard,
   formatCurrency,
   formatDate,
-  getErrorMessage,
 } from "@teranga/shared-ui";
-import { AlertTriangle, CheckCircle2 } from "lucide-react";
-import type { Event, TicketType, Registration, PaymentMethod } from "@teranga/shared-types";
+import type {
+  Event,
+  TicketType,
+  Registration,
+  PaymentMethod,
+  RegistrationUnavailableReason,
+} from "@teranga/shared-types";
+import { computeRegistrationAvailability } from "@teranga/shared-types";
 import { intlLocale } from "@/lib/intl-locale";
 import { saveBadge } from "@/lib/badge-store";
 import { useAuth } from "@/hooks/use-auth";
+import { useErrorHandler, type ResolvedError } from "@/hooks/use-error-handler";
 
 type Step = "select" | "confirm" | "success";
 type StepNum = 1 | 2 | 3;
@@ -81,6 +94,10 @@ export default function RegisterPage() {
   const [selectedTicket, setSelectedTicket] = useState<TicketType | null>(null);
   const [registration, setRegistration] = useState<Registration | null>(null);
   const [emailNotVerified, setEmailNotVerified] = useState(false);
+  const [submitError, setSubmitError] = useState<ResolvedError | null>(null);
+  const { resolve: resolveError } = useErrorHandler();
+  const tErrors = useTranslations("errors");
+  const tErrorActions = useTranslations("errors.actions");
 
   const [selectedMethod, setSelectedMethod] = useState<PaymentMethod>("wave");
 
@@ -232,8 +249,24 @@ export default function RegisterPage() {
     setPromoError(null);
   };
 
+  // Turn a caught submit error into either the persistent InlineErrorBanner
+  // (blocking mutation failures) or the email-verification inline panel
+  // (handled separately because it has a bespoke "resend link" action).
+  // Replaces three duplicated `toast.error(getErrorMessage(...))` sites that
+  // caused the silent-failure loop reported in PR #WVDa3.
+  const showSubmitError = (err: unknown) => {
+    const resolved = resolveError(err);
+    if (resolved.descriptor.code === "EMAIL_NOT_VERIFIED") {
+      setEmailNotVerified(true);
+      setSubmitError(null);
+      return;
+    }
+    setSubmitError(resolved);
+  };
+
   const handleConfirm = async () => {
     if (!selectedTicket) return;
+    setSubmitError(null);
 
     if (isPaidTicket) {
       if (discountedPrice === 0) {
@@ -247,10 +280,7 @@ export default function RegisterPage() {
           toast.success(t("successSubmit"));
           return;
         } catch (err: unknown) {
-          const code = (err as { code?: string })?.code;
-          const message = (err as { message?: string })?.message;
-          if (code === "EMAIL_NOT_VERIFIED") setEmailNotVerified(true);
-          toast.error(getErrorMessage(code, message));
+          showSubmitError(err);
           return;
         }
       }
@@ -266,10 +296,7 @@ export default function RegisterPage() {
           window.location.href = data.redirectUrl;
         }
       } catch (err: unknown) {
-        const code = (err as { code?: string })?.code;
-        const message = (err as { message?: string })?.message;
-        if (code === "EMAIL_NOT_VERIFIED") setEmailNotVerified(true);
-        toast.error(getErrorMessage(code, message));
+        showSubmitError(err);
       }
     } else {
       try {
@@ -281,10 +308,7 @@ export default function RegisterPage() {
         setStep("success");
         toast.success(t("successSubmit"));
       } catch (err: unknown) {
-        const code = (err as { code?: string })?.code;
-        const message = (err as { message?: string })?.message;
-        if (code === "EMAIL_NOT_VERIFIED") setEmailNotVerified(true);
-        toast.error(getErrorMessage(code, message));
+        showSubmitError(err);
       }
     }
   };
@@ -302,7 +326,7 @@ export default function RegisterPage() {
       <div className="mx-auto max-w-lg px-4 py-16">
         <EmptyStateEditorial
           icon={AlertTriangle}
-          kicker="— INTROUVABLE"
+          kicker={t("notFoundKicker")}
           title={t("notFound")}
           action={
             <Link
@@ -315,6 +339,17 @@ export default function RegisterPage() {
         />
       </div>
     );
+  }
+
+  // Preflight availability — if the event isn't registerable (draft,
+  // cancelled, ended, archived, full), render a persistent blocking state
+  // instead of letting the user reach the ticket grid and hit a server 400.
+  // Mirrors the CTA guard on /events/[slug] and the API guards in
+  // apps/api/src/services/registration.service.ts:67-74. The server is still
+  // the source of truth — this just removes the silent toast-and-stuck loop.
+  const availability = computeRegistrationAvailability(event);
+  if (availability.state === "unavailable" && !existingRegistration) {
+    return <RegistrationUnavailableState eventId={eventId} reason={availability.reason} />;
   }
 
   if (existingRegistration) {
@@ -380,6 +415,33 @@ export default function RegisterPage() {
   return (
     <div className="bg-muted/20">
       <div className="mx-auto max-w-4xl px-6 pt-10 pb-20 lg:px-8">
+        {/* Submission error banner — persistent, accessible replacement for
+            the four-second toast that caused the silent-failure loop
+            (docs/design-system/error-handling.md). Reason-aware copy comes
+            from useErrorHandler → errors.* i18n catalog; actions offer a
+            next step so users never land on a dead-end toast again. */}
+        {submitError && (
+          <InlineErrorBanner
+            className="mb-6"
+            severity={submitError.severity}
+            kicker={tErrors("kicker")}
+            title={submitError.title}
+            description={submitError.description}
+            actions={[
+              {
+                label: tErrorActions("browseEvents"),
+                href: "/events",
+              },
+              {
+                label: tErrorActions("dismiss"),
+                onClick: () => setSubmitError(null),
+              },
+            ]}
+            onDismiss={() => setSubmitError(null)}
+            dismissLabel={tErrorActions("dismiss")}
+          />
+        )}
+
         {/* Email-not-verified panel — fires when the API rejects a paid
             registration because the user hasn't clicked the verification
             link yet. Inline + actionable beats a toast-only failure. */}
@@ -831,3 +893,67 @@ export default function RegisterPage() {
     </div>
   );
 }
+
+// Blocking state rendered by the register page when the event cannot accept
+// registrations (cancelled, ended, draft, archived, full). Keeps the
+// participant from hitting the API with a known-invalid request and replaces
+// the previous silent-toast loop with a persistent, actionable explanation.
+// See docs/design-system/error-handling.md.
+function RegistrationUnavailableState({
+  eventId,
+  reason,
+}: {
+  eventId: string;
+  reason: RegistrationUnavailableReason;
+}) {
+  const t = useTranslations("events.detail.unavailable");
+  const tRegister = useTranslations("registerFlow");
+  const Icon = REASON_ICON[reason];
+  return (
+    <div className="mx-auto max-w-xl px-6 py-16 lg:px-8">
+      <Link
+        href={`/events`}
+        className="mb-6 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+      >
+        <ArrowLeft className="h-3.5 w-3.5" />
+        {tRegister("backToEvents")}
+      </Link>
+      <div role="alert" aria-live="polite" className="rounded-tile border bg-card p-8 text-center">
+        <span
+          aria-hidden="true"
+          className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-teranga-clay/15 text-teranga-clay-dark"
+        >
+          <Icon className="h-6 w-6" strokeWidth={2.25} />
+        </span>
+        <p className="font-mono-kicker mt-5 text-[10px] font-medium uppercase tracking-[0.16em] text-teranga-clay-dark">
+          {t("kicker")}
+        </p>
+        <h1 className="font-serif-display mt-2 text-[24px] font-semibold tracking-[-0.015em]">
+          {t(`${reason}.title`)}
+        </h1>
+        <p className="mt-3 text-sm text-muted-foreground">{t(`${reason}.description`)}</p>
+        <div className="mt-7 flex flex-col justify-center gap-3 sm:flex-row">
+          <Link href="/events">
+            <Button className="rounded-full bg-teranga-navy px-6 text-white hover:bg-teranga-navy/90 dark:bg-teranga-gold dark:text-teranga-navy dark:hover:bg-teranga-gold-light">
+              {t("browseSimilar")}
+            </Button>
+          </Link>
+          <Link href={`/events/${eventId}`}>
+            <Button variant="outline" className="rounded-full px-6">
+              {tRegister("backToEvent")}
+            </Button>
+          </Link>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const REASON_ICON: Record<RegistrationUnavailableReason, typeof CalendarX> = {
+  event_not_published: Clock,
+  event_cancelled: Ban,
+  event_completed: CheckCircle2,
+  event_archived: Archive,
+  event_ended: CalendarX,
+  event_full: AlertTriangle,
+};

@@ -63,14 +63,23 @@ export class RegistrationService extends BaseService {
       }
       const event = { id: eventSnap.id, ...eventSnap.data() } as Event;
 
-      // Event must be published
+      // Event must be published — reason is disambiguated so the UI can
+      // render a targeted blocking state (see error-handling.md).
       if (event.status !== "published") {
-        throw new RegistrationClosedError(eventId);
+        const reason =
+          event.status === "cancelled"
+            ? "event_cancelled"
+            : event.status === "completed"
+              ? "event_completed"
+              : event.status === "archived"
+                ? "event_archived"
+                : "event_not_published";
+        throw new RegistrationClosedError(eventId, reason);
       }
 
       // Check registration deadline
       if (new Date() > new Date(event.endDate)) {
-        throw new RegistrationClosedError(eventId);
+        throw new RegistrationClosedError(eventId, "event_ended");
       }
 
       // ── Check plan participant-per-event limit ──
