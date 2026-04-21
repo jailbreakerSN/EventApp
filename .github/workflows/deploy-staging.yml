@@ -329,7 +329,7 @@ jobs:
             --max-instances 2 \
             --concurrency 80 \
             --no-cpu-boost \
-            --set-env-vars "^@^NODE_ENV=staging@FIREBASE_PROJECT_ID=${{ needs.setup.outputs.project_id }}@FIREBASE_STORAGE_BUCKET=${{ needs.setup.outputs.firebase_storage_bucket }}@QR_SECRET=${{ secrets.QR_SECRET }}@WEBHOOK_SECRET=${{ secrets.WEBHOOK_SECRET }}@RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}@SENTRY_DSN=${{ secrets.SENTRY_DSN }}@CORS_ORIGINS=${{ needs.setup.outputs.cors_origins }}@RATE_LIMIT_MAX=100@RATE_LIMIT_WINDOW_MS=60000@LOG_LEVEL=info"
+            --set-env-vars "^@^NODE_ENV=staging@FIREBASE_PROJECT_ID=${{ needs.setup.outputs.project_id }}@FIREBASE_STORAGE_BUCKET=${{ needs.setup.outputs.firebase_storage_bucket }}@QR_SECRET=${{ secrets.QR_SECRET }}@WEBHOOK_SECRET=${{ secrets.WEBHOOK_SECRET }}@RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}@SENTRY_DSN=${{ secrets.SENTRY_DSN }}@CORS_ORIGINS=${{ needs.setup.outputs.cors_origins }}@API_BASE_URL=${{ needs.setup.outputs.api_url }}@PARTICIPANT_WEB_URL=${{ needs.setup.outputs.participant_url }}@WEB_BACKOFFICE_URL=${{ needs.setup.outputs.backoffice_url }}@RATE_LIMIT_MAX=100@RATE_LIMIT_WINDOW_MS=60000@LOG_LEVEL=info"
 
   # ─── Deploy Web Backoffice to Cloud Run ───────────────────────────────────
   deploy-web-backoffice:

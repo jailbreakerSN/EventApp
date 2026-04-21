@@ -28,6 +28,7 @@ import { mockPaymentProvider } from "@/providers/mock-payment.provider";
 import { wavePaymentProvider } from "@/providers/wave-payment.provider";
 import { orangeMoneyPaymentProvider } from "@/providers/orange-money-payment.provider";
 import { computePlatformFee, computeAvailableOn } from "@/config/finance";
+import { getOwnedWebHosts, paymentReturnUrl, paymentWebhookUrl } from "@/config/public-urls";
 import { appendLedgerEntry } from "./balance-ledger";
 
 // ─── Provider Registry ──────────────────────────────────────────────────────
@@ -107,34 +108,18 @@ export function verifyWebhookSignature(body: string, signature: string): boolean
 // After the user completes payment, the provider redirects their browser
 // to `returnUrl`. Accepting any http(s) URL would turn us into an open
 // redirect chained off a trust-worthy Wave/OM checkout — a classic
-// phishing amplifier. Allow only hosts the platform itself owns:
-// PARTICIPANT_WEB_URL, WEB_BACKOFFICE_URL, plus anything explicitly
-// allow-listed via ALLOWED_RETURN_HOSTS (comma-separated).
+// phishing amplifier. Allow only hosts the platform itself owns (from
+// config/public-urls.getOwnedWebHosts), plus anything explicitly
+// allow-listed via ALLOWED_RETURN_HOSTS (comma-separated) for one-off
+// exceptions (e.g. a partner domain during a campaign).
 
 function getAllowedReturnHosts(): Set<string> {
-  const hosts = new Set<string>();
-  const add = (value: string | undefined): void => {
-    if (!value) return;
-    try {
-      hosts.add(new URL(value).host.toLowerCase());
-    } catch {
-      /* ignore malformed env values */
-    }
-  };
-  add(process.env.PARTICIPANT_WEB_URL);
-  add(process.env.WEB_BACKOFFICE_URL);
+  const hosts = new Set<string>(getOwnedWebHosts());
   (process.env.ALLOWED_RETURN_HOSTS ?? "")
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean)
     .forEach((h) => hosts.add(h.toLowerCase()));
-  // In dev the env vars may not be set; accept localhost so the
-  // emulator flow doesn't break.
-  if (process.env.NODE_ENV !== "production") {
-    hosts.add("localhost:3000");
-    hosts.add("localhost:3001");
-    hosts.add("localhost:3002");
-  }
   return hosts;
 }
 
@@ -223,8 +208,8 @@ export class PaymentService extends BaseService {
 
     // Webhook path encodes the provider so the endpoint can route to
     // the correct signature verifier without a query-string sniff.
-    const callbackUrl = `${process.env.API_BASE_URL ?? "http://localhost:3000"}/v1/payments/webhook/${method}`;
-    const defaultReturnUrl = `${process.env.PARTICIPANT_WEB_URL ?? "http://localhost:3002"}/register/${eventId}/payment-status?paymentId=${payId}`;
+    const callbackUrl = paymentWebhookUrl(method);
+    const defaultReturnUrl = paymentReturnUrl(eventId, payId);
     const finalReturnUrl = returnUrl ? assertAllowedReturnUrl(returnUrl) : defaultReturnUrl;
 
     // Get provider and initiate (outside transaction — provider call is idempotent)

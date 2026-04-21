@@ -2,6 +2,7 @@ import { z } from "zod";
 import sanitizeHtml from "sanitize-html";
 import { db, COLLECTIONS } from "@/config/firebase";
 import { config } from "@/config";
+import { newsletterConfirmUrl } from "@/config/public-urls";
 import { InternalError, NotFoundError, ValidationError } from "@/errors/app-error";
 import { emailService } from "@/services/email.service";
 import { resendEmailProvider } from "@/providers/resend-email.provider";
@@ -352,7 +353,7 @@ export class NewsletterService {
 
   private async dispatchConfirmation(subscriberId: string, email: string): Promise<void> {
     const token = signConfirmationToken(subscriberId);
-    const url = `${config.API_BASE_URL}/v1/newsletter/confirm?token=${encodeURIComponent(token)}`;
+    const url = newsletterConfirmUrl(token);
     await emailService.sendNewsletterConfirmation(email, url);
   }
 

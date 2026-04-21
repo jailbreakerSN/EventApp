@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { paymentMockCheckoutUrl } from "@/config/public-urls";
 import {
   type PaymentProvider,
   type InitiateParams,
@@ -57,8 +58,7 @@ export class MockPaymentProvider implements PaymentProvider {
     });
 
     // The mock checkout page is served by the API at /v1/payments/mock-checkout/:txId
-    const baseUrl = process.env.API_BASE_URL ?? "http://localhost:3000";
-    const redirectUrl = `${baseUrl}/v1/payments/mock-checkout/${providerTransactionId}`;
+    const redirectUrl = paymentMockCheckoutUrl(providerTransactionId);
 
     return { providerTransactionId, redirectUrl };
   }

@@ -55,11 +55,27 @@ const envSchema = z.object({
   AT_USERNAME: z.string().default("sandbox"),
   AT_SENDER_ID: z.string().default("Teranga"),
 
+  // ─── Public URLs (used to build absolute links in emails, payment ───────
+  // callbacks, etc.). Every URL the API emits into an email or hands to a
+  // payment provider is built from one of these three — see
+  // apps/api/src/config/public-urls.ts. When the domain changes, updating
+  // the corresponding Cloud Run env var (no code change) is sufficient.
+  //
+  // Defaults match the local dev emulator ports so `npm run api:dev` +
+  // `npm run web:dev` work without any extra .env setup. Prod MUST
+  // override all three.
+
   // Public base URL the API serves under. Used to build absolute links in
-  // transactional emails (e.g. the newsletter confirmation link). Defaults
-  // to localhost so dev emails are clickable without extra setup; prod
-  // must override to the real API host.
+  // transactional emails (newsletter confirm, unsubscribe), payment
+  // webhook callbacks, and the mock checkout redirect.
   API_BASE_URL: z.string().url().default("http://localhost:3000"),
+  // Public base URL for the participant web app (Next.js). Used to build
+  // the default paymentReturnUrl and any "view in app" links in emails.
+  PARTICIPANT_WEB_URL: z.string().url().default("http://localhost:3002"),
+  // Public base URL for the organizer back-office web app (Next.js).
+  // Used by the return-URL allowlist so a back-office-initiated checkout
+  // can redirect back to the admin surface after payment.
+  WEB_BACKOFFICE_URL: z.string().url().default("http://localhost:3001"),
 
   // HMAC secret for stateless newsletter confirmation tokens. Separate from
   // QR_SECRET on purpose — a compromise of one cryptographic domain must
