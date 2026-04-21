@@ -80,6 +80,7 @@ export type ErrorSeverity = "destructive" | "warning" | "info";
 const WARNING_CODES = new Set([
   "REGISTRATION_CLOSED",
   "EVENT_FULL",
+  "ZONE_FULL",
   "EMAIL_NOT_VERIFIED",
   "ORGANIZATION_PLAN_LIMIT",
   "QR_NOT_YET_VALID",

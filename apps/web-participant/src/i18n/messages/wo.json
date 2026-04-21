@@ -800,6 +800,10 @@
       "title": "Xew-xew bi fees na",
       "description": "Seat yépp jotoon nañu ko. Xoolal yeneen xew-xew walla dellu ci ay waxtu."
     },
+    "ZONE_FULL": {
+      "title": "Zoon bi fees na",
+      "description": "Zoon bi fees na. Jëm ci beneen zoon bi nekk ci sa badge."
+    },
     "EMAIL_NOT_VERIFIED": {
       "title": "Dagal sa imeyl",
       "description": "Bësal lien bi nu la yónne ngir ubbi bindu yu am fay."

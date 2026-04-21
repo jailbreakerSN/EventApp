@@ -122,12 +122,17 @@ export class EventFullError extends AppError {
  * exceed an access zone's `capacity`. Mirrors the `zone_full` bulk-sync
  * result so staff see the same gating semantics regardless of whether
  * the scan is reconciled live or from the offline queue.
+ *
+ * Carries its own `ZONE_FULL` code (not the event-wide `EVENT_FULL`) so
+ * the staff-app UI can distinguish "the whole event is at capacity" from
+ * "this specific zone (e.g. the lunch tent) is full" without having to
+ * poke at `details.zoneId`. Same 409 status as EventFullError.
  */
 export class ZoneFullError extends AppError {
   constructor(zone: { id: string; name: string; capacity: number | null | undefined }) {
     super({
       message: `La zone « ${zone.name} » a atteint sa capacité (${zone.capacity ?? "—"}).`,
-      code: ERROR_CODES.EVENT_FULL,
+      code: ERROR_CODES.ZONE_FULL,
       statusCode: 409,
       details: {
         zoneId: zone.id,

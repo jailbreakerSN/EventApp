@@ -243,6 +243,10 @@
       "title": "Événement complet",
       "description": "Toutes les places ont été attribuées."
     },
+    "ZONE_FULL": {
+      "title": "Zone d'accès complète",
+      "description": "Cette zone a atteint sa capacité maximale. Orientez le participant vers une autre zone ou attendez la sortie d'un autre porteur."
+    },
     "EMAIL_NOT_VERIFIED": {
       "title": "Adresse e-mail non vérifiée",
       "description": "Le participant doit vérifier son adresse e-mail avant cette action."

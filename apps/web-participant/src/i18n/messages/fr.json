@@ -959,6 +959,10 @@
       "title": "Événement complet",
       "description": "Toutes les places ont été attribuées. Parcourez d'autres événements ou consultez à nouveau plus tard."
     },
+    "ZONE_FULL": {
+      "title": "Zone d'accès complète",
+      "description": "Cette zone a atteint sa capacité maximale. Présentez-vous à une autre zone indiquée sur votre badge."
+    },
     "EMAIL_NOT_VERIFIED": {
       "title": "Vérifiez votre adresse e-mail",
       "description": "Cliquez sur le lien que nous vous avons envoyé pour débloquer les inscriptions payantes."

@@ -243,6 +243,10 @@
       "title": "Event is full",
       "description": "All seats have been taken."
     },
+    "ZONE_FULL": {
+      "title": "Access zone is full",
+      "description": "This zone has reached its maximum capacity. Redirect the participant to another zone or wait until another badge exits."
+    },
     "EMAIL_NOT_VERIFIED": {
       "title": "Email not verified",
       "description": "The participant must verify their email before this action."

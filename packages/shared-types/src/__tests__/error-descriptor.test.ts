@@ -56,6 +56,7 @@ describe("severityFor", () => {
   it("maps recoverable 4xx codes to warning", () => {
     expect(severityFor({ code: "REGISTRATION_CLOSED", hasCode: true })).toBe("warning");
     expect(severityFor({ code: "EVENT_FULL", hasCode: true })).toBe("warning");
+    expect(severityFor({ code: "ZONE_FULL", hasCode: true })).toBe("warning");
     expect(severityFor({ code: "EMAIL_NOT_VERIFIED", hasCode: true })).toBe("warning");
     expect(severityFor({ code: "ORGANIZATION_PLAN_LIMIT", hasCode: true })).toBe("warning");
     expect(severityFor({ code: "RATE_LIMIT_EXCEEDED", hasCode: true })).toBe("warning");

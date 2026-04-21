@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { RegistrationClosedError } from "@/errors/app-error";
+import { RegistrationClosedError, ZoneFullError } from "@/errors/app-error";
 
 // Pins the disambiguated registration-closed contract so UI clients can
 // safely switch on `details.reason` (see docs/design-system/error-handling.md
@@ -40,5 +40,31 @@ describe("RegistrationClosedError", () => {
       message: "La période d'inscription pour cet événement est terminée",
       details: { eventId: "evt_42", reason: "event_ended" },
     });
+  });
+});
+
+// Pin the ZONE_FULL disambiguation so the staff-app UI can safely branch on
+// `code === "ZONE_FULL"` instead of having to poke at details.zoneId.
+
+describe("ZoneFullError", () => {
+  it("uses the distinct ZONE_FULL code and 409 status", () => {
+    const err = new ZoneFullError({ id: "zn_1", name: "Tente déjeuner", capacity: 120 });
+    expect(err.code).toBe("ZONE_FULL");
+    expect(err.statusCode).toBe(409);
+  });
+
+  it("serialises zone context in details", () => {
+    const err = new ZoneFullError({ id: "zn_1", name: "Tente déjeuner", capacity: 120 });
+    expect(err.details).toEqual({
+      zoneId: "zn_1",
+      zoneName: "Tente déjeuner",
+      capacity: 120,
+    });
+  });
+
+  it("tolerates a null/undefined capacity", () => {
+    const err = new ZoneFullError({ id: "zn_2", name: "Salon VIP", capacity: null });
+    expect(err.details).toEqual({ zoneId: "zn_2", zoneName: "Salon VIP", capacity: null });
+    expect(err.message).toContain("—");
   });
 });

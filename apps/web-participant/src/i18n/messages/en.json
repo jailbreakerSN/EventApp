@@ -956,6 +956,10 @@
       "title": "Event is full",
       "description": "All seats have been taken. Browse other events or check back later."
     },
+    "ZONE_FULL": {
+      "title": "Access zone is full",
+      "description": "This zone has reached its maximum capacity. Please head to another zone listed on your badge."
+    },
     "EMAIL_NOT_VERIFIED": {
       "title": "Verify your email address",
       "description": "Click the link we sent you to unlock paid registrations."
