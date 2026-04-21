@@ -553,7 +553,7 @@ function TicketStub({
 }) {
   return (
     <div className="relative mx-auto w-full max-w-[360px] -rotate-[4deg]">
-      <div className="relative rounded-[18px] bg-teranga-gold-whisper px-7 pt-7 pb-6 text-teranga-navy shadow-[0_40px_80px_-30px_rgba(0,0,0,0.5)]">
+      <div className="relative rounded-tile bg-teranga-gold-whisper px-7 pt-7 pb-6 text-teranga-navy shadow-[0_40px_80px_-30px_rgba(0,0,0,0.5)]">
         <p className="font-mono-kicker text-[10px] font-medium uppercase tracking-[0.18em] text-teranga-gold-dark">
           {kicker}
         </p>
@@ -573,7 +573,7 @@ function TicketStub({
         </div>
 
         <div className="flex items-center gap-3.5">
-          <div className="rounded-[10px] border bg-white p-1.5">
+          <div className="rounded-lg border bg-white p-1.5">
             <DecorativeQR size={82} seed={code} />
           </div>
           <div className="flex-1">

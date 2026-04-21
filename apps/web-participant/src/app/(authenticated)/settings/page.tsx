@@ -113,7 +113,7 @@ export default function SettingsPage() {
       {/* Notification Preferences */}
       <Card>
         <CardContent className="space-y-4 py-6">
-          <h2 className="text-lg font-semibold flex items-center gap-2">
+          <h2 className="font-serif-display flex items-center gap-2 text-[20px] font-semibold tracking-[-0.015em]">
             <Bell className="h-5 w-5 text-teranga-gold" />
             {tNotifications("heading")}
           </h2>
@@ -155,7 +155,7 @@ export default function SettingsPage() {
       {/* Privacy */}
       <Card>
         <CardContent className="space-y-4 py-6">
-          <h2 className="text-lg font-semibold flex items-center gap-2">
+          <h2 className="font-serif-display flex items-center gap-2 text-[20px] font-semibold tracking-[-0.015em]">
             <Shield className="h-5 w-5 text-teranga-gold" />
             {tPrivacy("heading")}
           </h2>
@@ -205,7 +205,7 @@ export default function SettingsPage() {
       {/* Account / Danger Zone */}
       <Card className="border-destructive/30">
         <CardContent className="space-y-4 py-6">
-          <h2 className="text-lg font-semibold flex items-center gap-2 text-destructive">
+          <h2 className="font-serif-display flex items-center gap-2 text-[20px] font-semibold tracking-[-0.015em] text-destructive">
             <Trash2 className="h-5 w-5" />
             {tAccount("heading")}
           </h2>

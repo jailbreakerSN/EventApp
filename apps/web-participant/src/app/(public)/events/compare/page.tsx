@@ -21,11 +21,9 @@ import {
   formatDate,
   EmptyStateEditorial,
   SectionHeader,
+  Skeleton,
 } from "@teranga/shared-ui";
 
-function Skeleton({ className = "" }: { className?: string }) {
-  return <div className={`bg-muted animate-pulse rounded-md ${className}`} />;
-}
 import { eventsApi, speakersApi, sessionsApi } from "@/lib/api-client";
 import type { Event } from "@teranga/shared-types";
 
@@ -260,18 +258,18 @@ function CompareContent() {
     return (
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
         <div className="mb-8">
-          <Skeleton className="h-8 w-64" />
-          <Skeleton className="mt-2 h-5 w-48" />
+          <Skeleton variant="text" className="h-8 w-64" />
+          <Skeleton variant="text" className="mt-2 h-5 w-48" />
         </div>
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {ids.map((id) => (
             <div key={id} className="space-y-4">
-              <Skeleton className="aspect-[16/9] w-full rounded-lg" />
-              <Skeleton className="h-6 w-3/4" />
-              <Skeleton className="h-4 w-1/2" />
-              <Skeleton className="h-4 w-2/3" />
-              <Skeleton className="h-4 w-1/2" />
-              <Skeleton className="h-4 w-1/3" />
+              <Skeleton variant="rectangle" className="aspect-[16/10] h-auto w-full rounded-card" />
+              <Skeleton variant="text" className="h-6 w-3/4" />
+              <Skeleton variant="text" className="h-4 w-1/2" />
+              <Skeleton variant="text" className="h-4 w-2/3" />
+              <Skeleton variant="text" className="h-4 w-1/2" />
+              <Skeleton variant="text" className="h-4 w-1/3" />
             </div>
           ))}
         </div>
@@ -326,7 +324,9 @@ function CompareContent() {
                         </div>
                       )}
                     </div>
-                    <h2 className="text-lg font-semibold line-clamp-2">{event.title}</h2>
+                    <h2 className="font-serif-display text-[20px] font-semibold leading-[1.15] tracking-[-0.015em] line-clamp-2">
+                      {event.title}
+                    </h2>
                   </div>
                 </th>
               ))}
@@ -387,7 +387,9 @@ function CompareContent() {
             </div>
 
             <div className="p-4">
-              <h2 className="text-lg font-semibold">{event.title}</h2>
+              <h2 className="font-serif-display text-[20px] font-semibold leading-[1.15] tracking-[-0.015em]">
+                {event.title}
+              </h2>
 
               <div className="mt-4 space-y-3">
                 {rows.map((row) => (
@@ -417,8 +419,8 @@ export default function CompareEventsPage() {
     <Suspense
       fallback={
         <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-          <Skeleton className="h-8 w-64" />
-          <Skeleton className="mt-2 h-5 w-48" />
+          <Skeleton variant="text" className="h-8 w-64" />
+          <Skeleton variant="text" className="mt-2 h-5 w-48" />
         </div>
       }
     >

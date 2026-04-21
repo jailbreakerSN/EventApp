@@ -157,7 +157,7 @@ export default function PaymentStatusPage() {
               <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-amber-50 dark:bg-amber-950/50">
                 <Loader2 className="h-10 w-10 animate-spin text-amber-500 dark:text-amber-400" />
               </div>
-              <h2 className="mt-4 text-xl font-bold">{t("processingHeading")}</h2>
+              <h2 className="font-serif-display mt-4 text-[24px] font-semibold leading-[1.15] tracking-[-0.02em]">{t("processingHeading")}</h2>
               <p className="mt-2 text-center text-muted-foreground">{t("processingHint")}</p>
               {payment && (
                 <p className="mt-3 text-lg font-semibold text-teranga-gold">
@@ -172,7 +172,7 @@ export default function PaymentStatusPage() {
               <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-teranga-green/10">
                 <CheckCircle className="h-10 w-10 text-teranga-green" />
               </div>
-              <h2 className="mt-4 text-xl font-bold">{t("successHeading")}</h2>
+              <h2 className="font-serif-display mt-4 text-[24px] font-semibold leading-[1.15] tracking-[-0.02em]">{t("successHeading")}</h2>
               <p className="mt-2 text-center text-muted-foreground">{t("successHint")}</p>
               <p className="mt-3 text-lg font-semibold text-teranga-green">
                 {formatCurrency(payment.amount, payment.currency, regional)}
@@ -241,7 +241,7 @@ export default function PaymentStatusPage() {
               <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-red-50 dark:bg-red-950/50">
                 <XCircle className="h-10 w-10 text-red-500 dark:text-red-400" />
               </div>
-              <h2 className="mt-4 text-xl font-bold">{t("failedHeading")}</h2>
+              <h2 className="font-serif-display mt-4 text-[24px] font-semibold leading-[1.15] tracking-[-0.02em]">{t("failedHeading")}</h2>
               <p className="mt-2 text-center text-muted-foreground">
                 {payment.failureReason ?? t("failedFallback")}
               </p>
@@ -265,7 +265,7 @@ export default function PaymentStatusPage() {
               <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-red-50 dark:bg-red-950/50">
                 <XCircle className="h-10 w-10 text-red-500 dark:text-red-400" />
               </div>
-              <h2 className="mt-4 text-xl font-bold">{t("errorHeading")}</h2>
+              <h2 className="font-serif-display mt-4 text-[24px] font-semibold leading-[1.15] tracking-[-0.02em]">{t("errorHeading")}</h2>
               <p className="mt-2 text-center text-muted-foreground">{t("errorHint")}</p>
               <Link href="/events" className="mt-4">
                 <Button variant="outline">{t("backToEvents")}</Button>

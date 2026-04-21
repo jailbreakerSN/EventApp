@@ -30,7 +30,7 @@ export default function PricingPage() {
 
       <div className="space-y-8 text-foreground leading-relaxed">
         <section className="rounded-lg border border-dashed border-muted-foreground/30 bg-muted/30 p-6">
-          <h2 className="text-xl font-semibold mb-3">Bientôt disponible</h2>
+          <h2 className="font-serif-display mb-3 text-[22px] font-semibold tracking-[-0.015em]">Bientôt disponible</h2>
           <p className="text-muted-foreground">
             Nous finalisons notre grille tarifaire publique. Teranga Events propose quatre plans
             pour les organisateurs, du plan gratuit (jusqu&apos;à 3 événements) au plan Enterprise
@@ -45,7 +45,7 @@ export default function PricingPage() {
         </section>
 
         <section>
-          <h2 className="text-xl font-semibold mb-3">Aperçu des plans</h2>
+          <h2 className="font-serif-display mb-3 text-[22px] font-semibold tracking-[-0.015em]">Aperçu des plans</h2>
           <ul className="list-disc pl-6 space-y-2 text-muted-foreground">
             <li>
               <strong className="text-foreground">Free</strong> — Jusqu&apos;à 3&nbsp;événements,

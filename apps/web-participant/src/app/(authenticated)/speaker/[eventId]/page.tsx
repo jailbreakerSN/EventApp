@@ -261,7 +261,9 @@ export default function SpeakerPortalPage() {
       {/* Profile Section */}
       <section className="rounded-lg border bg-card p-6 shadow-sm">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold">Mon profil</h2>
+          <h2 className="font-serif-display text-[20px] font-semibold tracking-[-0.015em]">
+            Mon profil
+          </h2>
           {!editing ? (
             <button
               onClick={() => setEditing(true)}
@@ -439,7 +441,7 @@ export default function SpeakerPortalPage() {
 
       {/* Sessions Section */}
       <section className="rounded-lg border bg-card p-6 shadow-sm">
-        <h2 className="text-lg font-semibold mb-4">
+        <h2 className="font-serif-display mb-4 text-[20px] font-semibold tracking-[-0.015em]">
           <Calendar className="inline h-5 w-5 mr-1.5 text-teranga-gold" aria-hidden="true" />
           Mon programme ({sessions.length})
         </h2>
@@ -486,7 +488,7 @@ export default function SpeakerPortalPage() {
 
       {/* Slides Upload Section */}
       <section className="rounded-lg border bg-card p-6 shadow-sm">
-        <h2 className="text-lg font-semibold mb-4">
+        <h2 className="font-serif-display mb-4 text-[20px] font-semibold tracking-[-0.015em]">
           <FileText className="inline h-5 w-5 mr-1.5 text-teranga-gold" aria-hidden="true" />
           Mes présentations
         </h2>
