@@ -1,17 +1,26 @@
 import { type EmailCategory } from "@teranga/shared-types";
 import { db, COLLECTIONS } from "@/config/firebase";
+import { getEmailProvider } from "@/providers/index";
+import { type EmailParams, type BulkEmailResult } from "@/providers/email-provider.interface";
+import { userRepository } from "@/repositories/user.repository";
+import { resolveSender } from "./email/sender.registry";
+import { asLocale, type Locale } from "./email/i18n";
+import { type RenderedEmail } from "./email/render";
 import {
-  getEmailProvider,
   buildRegistrationEmail,
   buildRegistrationApprovedEmail,
   buildBadgeReadyEmail,
   buildEventCancelledEmail,
   buildEventReminderEmail,
   buildWelcomeEmail,
-} from "@/providers/index";
-import { type EmailParams, type BulkEmailResult } from "@/providers/email-provider.interface";
-import { userRepository } from "@/repositories/user.repository";
-import { resolveSender } from "./email/sender.registry";
+  buildPaymentReceiptEmail,
+  type RegistrationConfirmationParams,
+  type RegistrationApprovedParams,
+  type BadgeReadyParams,
+  type EventCancelledParams,
+  type EventReminderParams,
+  type PaymentReceiptParams,
+} from "./email/templates";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -22,6 +31,7 @@ interface NotificationPrefs {
 }
 
 const DEFAULT_PREFS: NotificationPrefs = { email: true, sms: true, push: true };
+const DEFAULT_LOCALE: Locale = "fr";
 
 interface SendOptions {
   /** Additional tags merged with the category's default tags for Resend analytics. */
@@ -36,12 +46,19 @@ interface SendOptions {
 // toggle for them.
 const MANDATORY_CATEGORIES: ReadonlySet<EmailCategory> = new Set(["auth", "billing"]);
 
+/**
+ * Lazily renders an email for a given locale. Accepting a factory (rather
+ * than a pre-rendered `RenderedEmail`) lets `sendToUser` use the user's
+ * `preferredLanguage` without the caller having to fetch the user first.
+ */
+export type EmailTemplateFactory = (locale: Locale) => Promise<RenderedEmail>;
+
 // ─── Email Service ──────────────────────────────────────────────────────────
 // Centralized service for all email sending. Handles:
-// - User notification preference checking
-// - Template rendering
+// - User notification preference checking + mandatory-category bypass
+// - Locale resolution (user.preferredLanguage) + template rendering
 // - Provider delegation (Resend / SendGrid / Mock)
-// - Category → From/Reply-To routing via the sender registry
+// - Category → From/Reply-To/headers routing via the sender registry
 // All methods are fire-and-forget safe — errors are logged, never thrown.
 //
 // Every public send method requires an EmailCategory. This is type-enforced
@@ -67,7 +84,8 @@ export class EmailService {
   }
 
   /**
-   * Send an email to a user, routed by category.
+   * Send an email to a user, routed by category and localized to the user's
+   * `preferredLanguage` (fallback: French).
    *
    * Preference check: skipped for MANDATORY_CATEGORIES (auth, billing) —
    * users cannot opt out of security and financial records. For every other
@@ -77,7 +95,7 @@ export class EmailService {
    */
   async sendToUser(
     userId: string,
-    email: { subject: string; html: string; text: string },
+    template: EmailTemplateFactory,
     category: EmailCategory,
     options?: SendOptions,
   ): Promise<void> {
@@ -92,6 +110,9 @@ export class EmailService {
       if (!isMandatory && prefs && !prefs.email) return;
       if (!user?.email) return;
 
+      const locale = asLocale(user.preferredLanguage) ?? DEFAULT_LOCALE;
+      const email = await template(locale);
+
       const provider = getEmailProvider();
       await provider.send(this.buildParams(user.email, email, category, options));
     } catch {
@@ -100,12 +121,13 @@ export class EmailService {
   }
 
   /**
-   * Send an email directly to an address (no user lookup or preference check).
-   * Used for newsletter subscribers, invites, and other non-user recipients.
+   * Send a pre-rendered email directly to an address (no user lookup or
+   * preference check). Used for newsletter subscribers, invites, and other
+   * non-user recipients. Callers supply the locale at render time.
    */
   async sendDirect(
     to: string,
-    email: { subject: string; html: string; text: string },
+    email: RenderedEmail,
     category: EmailCategory,
     options?: SendOptions,
   ): Promise<void> {
@@ -119,7 +141,8 @@ export class EmailService {
 
   /**
    * Send bulk emails. Used for broadcasts and newsletters.
-   * The category is applied to every email in the batch.
+   * The category is applied to every email in the batch (from / replyTo /
+   * tags / headers all stamped from the registry).
    */
   async sendBulk(
     emails: Array<{ to: string; subject: string; html: string; text?: string }>,
@@ -137,6 +160,7 @@ export class EmailService {
         from: sender.from,
         replyTo: sender.replyTo,
         tags: sender.tags,
+        ...(sender.headers ? { headers: sender.headers } : {}),
       }));
       return await provider.sendBulk(stamped);
     } catch {
@@ -146,7 +170,7 @@ export class EmailService {
 
   private buildParams(
     to: string,
-    email: { subject: string; html: string; text: string },
+    email: RenderedEmail,
     category: EmailCategory,
     options?: SendOptions,
   ): EmailParams & { idempotencyKey?: string } {
@@ -163,6 +187,10 @@ export class EmailService {
       tags,
     };
 
+    if (sender.headers && Object.keys(sender.headers).length > 0) {
+      params.headers = sender.headers;
+    }
+
     if (options?.idempotencyKey) {
       params.idempotencyKey = options.idempotencyKey;
     }
@@ -172,88 +200,77 @@ export class EmailService {
 
   // ─── Template Helpers ──────────────────────────────────────────────────────
   // Convenience methods that combine template rendering with sending.
+  // Each helper hands sendToUser a factory, so the user's preferredLanguage
+  // drives the render — no double-fetch of the user doc.
 
   async sendRegistrationConfirmation(
     userId: string,
-    params: {
-      participantName: string;
-      eventTitle: string;
-      eventDate: string;
-      eventLocation: string;
-      ticketName: string;
-      registrationId: string;
-      badgeUrl?: string;
-    },
+    params: RegistrationConfirmationParams,
   ): Promise<void> {
-    const email = buildRegistrationEmail(params);
-    await this.sendToUser(userId, email, "transactional", {
-      tags: [{ name: "type", value: "registration_confirmation" }],
-      idempotencyKey: `reg-confirm:${params.registrationId}`,
-    });
+    await this.sendToUser(
+      userId,
+      (locale) => buildRegistrationEmail({ ...params, locale }),
+      "transactional",
+      {
+        tags: [{ name: "type", value: "registration_confirmation" }],
+        idempotencyKey: `reg-confirm:${params.registrationId}`,
+      },
+    );
   }
 
   async sendRegistrationApproved(
     userId: string,
-    params: {
-      participantName: string;
-      eventTitle: string;
-      eventDate: string;
-      eventLocation: string;
-      badgeUrl?: string;
-    },
+    params: RegistrationApprovedParams,
   ): Promise<void> {
-    const email = buildRegistrationApprovedEmail(params);
-    await this.sendToUser(userId, email, "transactional", {
-      tags: [{ name: "type", value: "registration_approved" }],
-    });
+    await this.sendToUser(
+      userId,
+      (locale) => buildRegistrationApprovedEmail({ ...params, locale }),
+      "transactional",
+      { tags: [{ name: "type", value: "registration_approved" }] },
+    );
   }
 
-  async sendBadgeReady(
-    userId: string,
-    params: {
-      participantName: string;
-      eventTitle: string;
-      badgeUrl?: string;
-    },
-  ): Promise<void> {
-    const email = buildBadgeReadyEmail(params);
-    await this.sendToUser(userId, email, "transactional", {
-      tags: [{ name: "type", value: "badge_ready" }],
-    });
+  async sendBadgeReady(userId: string, params: BadgeReadyParams): Promise<void> {
+    await this.sendToUser(
+      userId,
+      (locale) => buildBadgeReadyEmail({ ...params, locale }),
+      "transactional",
+      { tags: [{ name: "type", value: "badge_ready" }] },
+    );
   }
 
-  async sendEventCancelled(
-    userId: string,
-    params: {
-      participantName: string;
-      eventTitle: string;
-      eventDate: string;
-    },
-  ): Promise<void> {
-    const email = buildEventCancelledEmail(params);
-    await this.sendToUser(userId, email, "transactional", {
-      tags: [{ name: "type", value: "event_cancelled" }],
-    });
+  async sendEventCancelled(userId: string, params: EventCancelledParams): Promise<void> {
+    await this.sendToUser(
+      userId,
+      (locale) => buildEventCancelledEmail({ ...params, locale }),
+      "transactional",
+      { tags: [{ name: "type", value: "event_cancelled" }] },
+    );
   }
 
-  async sendEventReminder(
-    userId: string,
-    params: {
-      participantName: string;
-      eventTitle: string;
-      eventDate: string;
-      eventLocation: string;
-      timeUntil: string;
-    },
-  ): Promise<void> {
-    const email = buildEventReminderEmail(params);
-    await this.sendToUser(userId, email, "transactional", {
-      tags: [{ name: "type", value: "event_reminder" }],
-    });
+  async sendEventReminder(userId: string, params: EventReminderParams): Promise<void> {
+    await this.sendToUser(
+      userId,
+      (locale) => buildEventReminderEmail({ ...params, locale }),
+      "transactional",
+      { tags: [{ name: "type", value: "event_reminder" }] },
+    );
   }
 
-  async sendWelcomeNewsletter(email: string): Promise<void> {
-    const template = buildWelcomeEmail({ email });
+  async sendPaymentReceipt(userId: string, params: PaymentReceiptParams): Promise<void> {
+    await this.sendToUser(
+      userId,
+      (locale) => buildPaymentReceiptEmail({ ...params, locale }),
+      "billing",
+      {
+        tags: [{ name: "type", value: "payment_receipt" }],
+        idempotencyKey: `receipt:${params.receiptId}`,
+      },
+    );
+  }
+
+  async sendWelcomeNewsletter(email: string, locale?: Locale): Promise<void> {
+    const template = await buildWelcomeEmail({ email, locale });
     await this.sendDirect(email, template, "marketing", {
       tags: [{ name: "type", value: "newsletter_welcome" }],
     });

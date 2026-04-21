@@ -22,6 +22,13 @@ export interface SenderConfig {
   replyTo: string;
   /** Default Resend tags. Providers that support tags will forward these. */
   tags: { name: string; value: string }[];
+  /**
+   * Additional RFC 5322 headers stamped on every send in this category.
+   * Today we emit List-Unsubscribe for `marketing` so Gmail/Yahoo's
+   * bulk-sender rules are satisfied. Phase 3 will swap the mailto for a
+   * signed HTTPS URL + RFC 8058 one-click POST.
+   */
+  headers?: Record<string, string>;
 }
 
 export function resolveSender(category: EmailCategory): SenderConfig {
@@ -61,6 +68,14 @@ export function resolveSender(category: EmailCategory): SenderConfig {
         from: formatFrom(name, config.RESEND_FROM_NEWS),
         replyTo: config.RESEND_REPLY_TO_CONTACT,
         tags: [{ name: "category", value: "marketing" }],
+        // Bulk senders (>5k/day to Gmail, per 2024 rules) MUST expose a
+        // one-click unsubscribe. We ship the mailto variant now and upgrade
+        // to an RFC 8058 HTTPS endpoint in Phase 3, once signed tokens land.
+        // Keeping a backup mailto is still valid under RFC 2369 and is
+        // treated as "functional but not one-click" — fine at current volume.
+        headers: {
+          "List-Unsubscribe": `<mailto:unsubscribe@terangaevent.com>`,
+        },
       };
   }
 }

@@ -1,5 +1,4 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { NewsletterService } from "../newsletter.service";
 
 // ─── Mocks ─────────────────────────────────────────────────────────────────
 
@@ -20,6 +19,20 @@ vi.mock("@/config/firebase", () => ({
     NEWSLETTER_SUBSCRIBERS: "newsletterSubscribers",
   },
 }));
+
+// Stub emailService so we don't drag react-email rendering into this unit test.
+// vi.hoisted lets us reference the mock fn from both the factory and the
+// assertions without tripping vitest's hoisting of vi.mock above imports.
+const { mockSendWelcome } = vi.hoisted(() => ({
+  mockSendWelcome: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock("@/services/email.service", () => ({
+  emailService: {
+    sendWelcomeNewsletter: mockSendWelcome,
+  },
+}));
+
+import { NewsletterService } from "../newsletter.service";
 
 // ─── Tests ─────────────────────────────────────────────────────────────────
 

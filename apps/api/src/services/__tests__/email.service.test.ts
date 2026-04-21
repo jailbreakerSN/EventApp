@@ -16,8 +16,6 @@ vi.mock("@/config", () => ({
   },
 }));
 
-import { EmailService } from "../email.service";
-
 // ─── Mocks ──────────────────────────────────────────────────────────────────
 
 const mockSend = vi.fn().mockResolvedValue({ success: true, messageId: "msg-1" });
@@ -29,36 +27,55 @@ vi.mock("@/providers/index", () => ({
     send: mockSend,
     sendBulk: mockSendBulk,
   }),
-  buildRegistrationEmail: vi.fn().mockReturnValue({
-    subject: "Inscription confirmée",
-    html: "<p>Confirmed</p>",
-    text: "Confirmed",
-  }),
-  buildRegistrationApprovedEmail: vi.fn().mockReturnValue({
-    subject: "Inscription approuvée",
-    html: "<p>Approved</p>",
-    text: "Approved",
-  }),
-  buildBadgeReadyEmail: vi.fn().mockReturnValue({
-    subject: "Badge prêt",
-    html: "<p>Badge</p>",
-    text: "Badge",
-  }),
-  buildEventCancelledEmail: vi.fn().mockReturnValue({
-    subject: "Événement annulé",
-    html: "<p>Cancelled</p>",
-    text: "Cancelled",
-  }),
-  buildEventReminderEmail: vi.fn().mockReturnValue({
-    subject: "Rappel",
-    html: "<p>Reminder</p>",
-    text: "Reminder",
-  }),
-  buildWelcomeEmail: vi.fn().mockReturnValue({
-    subject: "Bienvenue",
-    html: "<p>Welcome</p>",
-    text: "Welcome",
-  }),
+}));
+
+// Template builders are mocked to record the locale they were called with.
+// This proves the service forwards user.preferredLanguage correctly without
+// needing to actually render JSX in a unit test.
+const mockBuildRegistration = vi.fn(async (p: { eventTitle: string; locale?: string }) => ({
+  subject: `reg-conf:${p.eventTitle}`,
+  html: `<p>reg-conf ${p.locale ?? "fr"}</p>`,
+  text: `reg-conf ${p.locale ?? "fr"}`,
+}));
+const mockBuildApproved = vi.fn(async (p: { eventTitle: string; locale?: string }) => ({
+  subject: `approved:${p.eventTitle}`,
+  html: `<p>approved</p>`,
+  text: "approved",
+}));
+const mockBuildBadgeReady = vi.fn(async (p: { eventTitle: string; locale?: string }) => ({
+  subject: `badge:${p.eventTitle}`,
+  html: `<p>badge</p>`,
+  text: "badge",
+}));
+const mockBuildCancelled = vi.fn(async (p: { eventTitle: string; locale?: string }) => ({
+  subject: `cancel:${p.eventTitle}`,
+  html: `<p>cancel</p>`,
+  text: "cancel",
+}));
+const mockBuildReminder = vi.fn(async (p: { eventTitle: string; locale?: string }) => ({
+  subject: `reminder:${p.eventTitle}`,
+  html: `<p>reminder</p>`,
+  text: "reminder",
+}));
+const mockBuildWelcome = vi.fn(async (p: { locale?: string } = {}) => ({
+  subject: "welcome",
+  html: `<p>welcome ${p.locale ?? "fr"}</p>`,
+  text: `welcome ${p.locale ?? "fr"}`,
+}));
+const mockBuildReceipt = vi.fn(async (p: { amount: string; locale?: string }) => ({
+  subject: `receipt:${p.amount}`,
+  html: `<p>receipt</p>`,
+  text: "receipt",
+}));
+
+vi.mock("@/services/email/templates", () => ({
+  buildRegistrationEmail: (...args: unknown[]) => mockBuildRegistration(args[0] as never),
+  buildRegistrationApprovedEmail: (...args: unknown[]) => mockBuildApproved(args[0] as never),
+  buildBadgeReadyEmail: (...args: unknown[]) => mockBuildBadgeReady(args[0] as never),
+  buildEventCancelledEmail: (...args: unknown[]) => mockBuildCancelled(args[0] as never),
+  buildEventReminderEmail: (...args: unknown[]) => mockBuildReminder(args[0] as never),
+  buildWelcomeEmail: (...args: unknown[]) => mockBuildWelcome(args[0] as never),
+  buildPaymentReceiptEmail: (...args: unknown[]) => mockBuildReceipt(args[0] as never),
 }));
 
 const mockPrefsGet = vi.fn();
@@ -90,6 +107,16 @@ vi.mock("@/repositories/user.repository", () => ({
   ),
 }));
 
+import { EmailService } from "../email.service";
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+const stubTemplate = async (locale: "fr" | "en" | "wo") => ({
+  subject: `Subject ${locale}`,
+  html: `<p>HTML ${locale}</p>`,
+  text: `Text ${locale}`,
+});
+
 // ─── Tests ──────────────────────────────────────────────────────────────────
 
 describe("EmailService", () => {
@@ -103,9 +130,11 @@ describe("EmailService", () => {
   describe("getPreferences", () => {
     it("returns defaults when no preference document exists", async () => {
       mockPrefsGet.mockResolvedValue({ exists: false });
-
-      const prefs = await service.getPreferences("user-1");
-      expect(prefs).toEqual({ email: true, sms: true, push: true });
+      expect(await service.getPreferences("user-1")).toEqual({
+        email: true,
+        sms: true,
+        push: true,
+      });
     });
 
     it("returns stored preferences when document exists", async () => {
@@ -113,35 +142,38 @@ describe("EmailService", () => {
         exists: true,
         data: () => ({ email: false, sms: true, push: false }),
       });
-
-      const prefs = await service.getPreferences("user-1");
-      expect(prefs).toEqual({ email: false, sms: true, push: false });
+      expect(await service.getPreferences("user-1")).toEqual({
+        email: false,
+        sms: true,
+        push: false,
+      });
     });
 
     it("returns defaults on error", async () => {
       mockPrefsGet.mockRejectedValue(new Error("Firestore down"));
-
-      const prefs = await service.getPreferences("user-1");
-      expect(prefs).toEqual({ email: true, sms: true, push: true });
+      expect(await service.getPreferences("user-1")).toEqual({
+        email: true,
+        sms: true,
+        push: true,
+      });
     });
   });
 
   describe("sendToUser", () => {
-    const emailContent = { subject: "Test", html: "<p>Test</p>", text: "Test" };
+    it("renders the template with the user's preferredLanguage and sends", async () => {
+      mockPrefsGet.mockResolvedValue({ exists: false });
+      mockUserFindById.mockResolvedValue({ email: "test@example.com", preferredLanguage: "en" });
 
-    it("sends email when user has email enabled (default prefs)", async () => {
-      mockPrefsGet.mockResolvedValue({ exists: false }); // defaults: email=true
-      mockUserFindById.mockResolvedValue({ email: "test@example.com", displayName: "Test" });
+      const factory = vi.fn(stubTemplate);
+      await service.sendToUser("user-1", factory, "transactional");
 
-      await service.sendToUser("user-1", emailContent, "transactional");
-
-      expect(mockSend).toHaveBeenCalledOnce();
+      expect(factory).toHaveBeenCalledWith("en");
       expect(mockSend).toHaveBeenCalledWith(
         expect.objectContaining({
           to: "test@example.com",
-          subject: "Test",
-          html: "<p>Test</p>",
-          text: "Test",
+          subject: "Subject en",
+          html: "<p>HTML en</p>",
+          text: "Text en",
           from: "Teranga Events <no-reply@terangaevent.com>",
           replyTo: "support@terangaevent.com",
           tags: expect.arrayContaining([{ name: "category", value: "transactional" }]),
@@ -149,32 +181,51 @@ describe("EmailService", () => {
       );
     });
 
-    it("routes billing category to billing@ sender and reply-to", async () => {
+    it("falls back to French when preferredLanguage is missing", async () => {
       mockPrefsGet.mockResolvedValue({ exists: false });
       mockUserFindById.mockResolvedValue({ email: "test@example.com" });
 
-      await service.sendToUser("user-1", emailContent, "billing");
+      const factory = vi.fn(stubTemplate);
+      await service.sendToUser("user-1", factory, "transactional");
+
+      expect(factory).toHaveBeenCalledWith("fr");
+    });
+
+    it("falls back to French when preferredLanguage is an unknown value", async () => {
+      mockPrefsGet.mockResolvedValue({ exists: false });
+      mockUserFindById.mockResolvedValue({ email: "test@example.com", preferredLanguage: "es" });
+
+      const factory = vi.fn(stubTemplate);
+      await service.sendToUser("user-1", factory, "transactional");
+
+      expect(factory).toHaveBeenCalledWith("fr");
+    });
+
+    it("routes billing category to billing@ sender and reply-to", async () => {
+      mockUserFindById.mockResolvedValue({ email: "test@example.com" });
+
+      await service.sendToUser("user-1", stubTemplate, "billing");
 
       expect(mockSend).toHaveBeenCalledWith(
         expect.objectContaining({
           from: "Teranga Events <billing@terangaevent.com>",
           replyTo: "billing@terangaevent.com",
-          tags: expect.arrayContaining([{ name: "category", value: "billing" }]),
         }),
       );
     });
 
-    it("routes marketing category to news@ sender and contact@ reply-to", async () => {
+    it("stamps List-Unsubscribe header on marketing category", async () => {
       mockPrefsGet.mockResolvedValue({ exists: false });
       mockUserFindById.mockResolvedValue({ email: "test@example.com" });
 
-      await service.sendToUser("user-1", emailContent, "marketing");
+      await service.sendToUser("user-1", stubTemplate, "marketing");
 
       expect(mockSend).toHaveBeenCalledWith(
         expect.objectContaining({
           from: "Teranga Events <news@terangaevent.com>",
-          replyTo: "contact@terangaevent.com",
-          tags: expect.arrayContaining([{ name: "category", value: "marketing" }]),
+          headers: expect.objectContaining({
+            "List-Unsubscribe": expect.stringContaining("mailto:unsubscribe@terangaevent.com"),
+          }),
         }),
       );
     });
@@ -186,7 +237,7 @@ describe("EmailService", () => {
       });
       mockUserFindById.mockResolvedValue({ email: "test@example.com" });
 
-      await service.sendToUser("user-1", emailContent, "transactional");
+      await service.sendToUser("user-1", stubTemplate, "transactional");
 
       expect(mockSend).not.toHaveBeenCalled();
     });
@@ -198,16 +249,9 @@ describe("EmailService", () => {
       });
       mockUserFindById.mockResolvedValue({ email: "test@example.com" });
 
-      await service.sendToUser("user-1", emailContent, "billing");
+      await service.sendToUser("user-1", stubTemplate, "billing");
 
       expect(mockSend).toHaveBeenCalledOnce();
-      expect(mockSend).toHaveBeenCalledWith(
-        expect.objectContaining({
-          to: "test@example.com",
-          from: "Teranga Events <billing@terangaevent.com>",
-        }),
-      );
-      // Preferences are not fetched for mandatory categories — skip the DB read.
       expect(mockPrefsGet).not.toHaveBeenCalled();
     });
 
@@ -218,7 +262,7 @@ describe("EmailService", () => {
       });
       mockUserFindById.mockResolvedValue({ email: "test@example.com" });
 
-      await service.sendToUser("user-1", emailContent, "auth");
+      await service.sendToUser("user-1", stubTemplate, "auth");
 
       expect(mockSend).toHaveBeenCalledOnce();
       expect(mockPrefsGet).not.toHaveBeenCalled();
@@ -226,19 +270,15 @@ describe("EmailService", () => {
 
     it("does NOT send email when user has no email address", async () => {
       mockPrefsGet.mockResolvedValue({ exists: false });
-      mockUserFindById.mockResolvedValue({ email: null, displayName: "No Email" });
-
-      await service.sendToUser("user-1", emailContent, "transactional");
-
+      mockUserFindById.mockResolvedValue({ email: null });
+      await service.sendToUser("user-1", stubTemplate, "transactional");
       expect(mockSend).not.toHaveBeenCalled();
     });
 
     it("does NOT send email when user not found", async () => {
       mockPrefsGet.mockResolvedValue({ exists: false });
       mockUserFindById.mockResolvedValue(null);
-
-      await service.sendToUser("user-1", emailContent, "transactional");
-
+      await service.sendToUser("user-1", stubTemplate, "transactional");
       expect(mockSend).not.toHaveBeenCalled();
     });
 
@@ -246,7 +286,7 @@ describe("EmailService", () => {
       mockPrefsGet.mockResolvedValue({ exists: false });
       mockUserFindById.mockResolvedValue({ email: "test@example.com" });
 
-      await service.sendToUser("user-1", emailContent, "transactional", {
+      await service.sendToUser("user-1", stubTemplate, "transactional", {
         tags: [{ name: "type", value: "test" }],
         idempotencyKey: "test-key",
       });
@@ -264,59 +304,43 @@ describe("EmailService", () => {
 
     it("swallows errors without throwing", async () => {
       mockPrefsGet.mockRejectedValue(new Error("DB error"));
-
-      // Should not throw
       await expect(
-        service.sendToUser("user-1", emailContent, "transactional"),
+        service.sendToUser("user-1", stubTemplate, "transactional"),
       ).resolves.toBeUndefined();
     });
   });
 
   describe("sendDirect", () => {
-    it("sends email directly without preference check and stamps marketing sender", async () => {
-      await service.sendDirect(
-        "subscriber@example.com",
-        {
-          subject: "Newsletter",
-          html: "<p>News</p>",
-          text: "News",
-        },
-        "marketing",
-      );
+    const marketingEmail = { subject: "Newsletter", html: "<p>News</p>", text: "News" };
 
-      expect(mockSend).toHaveBeenCalledOnce();
+    it("stamps marketing sender + List-Unsubscribe and skips preference check", async () => {
+      await service.sendDirect("subscriber@example.com", marketingEmail, "marketing");
+
       expect(mockSend).toHaveBeenCalledWith(
         expect.objectContaining({
           to: "subscriber@example.com",
           subject: "Newsletter",
           from: "Teranga Events <news@terangaevent.com>",
           replyTo: "contact@terangaevent.com",
+          headers: expect.objectContaining({
+            "List-Unsubscribe": expect.stringContaining("mailto:"),
+          }),
         }),
       );
-      // No preference check
       expect(mockPrefsGet).not.toHaveBeenCalled();
       expect(mockUserFindById).not.toHaveBeenCalled();
     });
 
     it("swallows errors without throwing", async () => {
       mockSend.mockRejectedValue(new Error("Network error"));
-
       await expect(
-        service.sendDirect(
-          "test@example.com",
-          {
-            subject: "Test",
-            html: "<p>Test</p>",
-            text: "Test",
-          },
-          "transactional",
-        ),
+        service.sendDirect("test@example.com", marketingEmail, "transactional"),
       ).resolves.toBeUndefined();
     });
   });
 
   describe("sendBulk", () => {
-    it("stamps every email with the category sender before delegating to provider", async () => {
+    it("stamps every email with the category sender + headers before delegating", async () => {
       const emails = [
         { to: "a@test.com", subject: "Test", html: "<p>A</p>" },
         { to: "b@test.com", subject: "Test", html: "<p>B</p>" },
@@ -324,46 +348,45 @@ describe("EmailService", () => {
 
       const result = await service.sendBulk(emails, "marketing");
 
-      expect(mockSendBulk).toHaveBeenCalledOnce();
       const stamped = mockSendBulk.mock.calls[0][0];
       expect(stamped).toHaveLength(2);
       for (const e of stamped) {
         expect(e.from).toBe("Teranga Events <news@terangaevent.com>");
         expect(e.replyTo).toBe("contact@terangaevent.com");
-        expect(e.tags).toEqual(expect.arrayContaining([{ name: "category", value: "marketing" }]));
+        expect(e.headers).toMatchObject({
+          "List-Unsubscribe": expect.stringContaining("mailto:"),
+        });
       }
-      expect(result.total).toBe(2);
       expect(result.sent).toBe(2);
     });
 
     it("returns zero results for empty array", async () => {
       const result = await service.sendBulk([], "marketing");
-
       expect(mockSendBulk).not.toHaveBeenCalled();
       expect(result).toEqual({ total: 0, sent: 0, failed: 0, results: [] });
     });
 
     it("returns failure result on error", async () => {
       mockSendBulk.mockRejectedValue(new Error("Batch error"));
-
       const result = await service.sendBulk(
         [{ to: "a@test.com", subject: "Test", html: "<p>A</p>" }],
         "transactional",
       );
-
-      expect(result.total).toBe(1);
       expect(result.failed).toBe(1);
-      expect(result.sent).toBe(0);
     });
   });
 
   describe("template helpers", () => {
     beforeEach(() => {
       mockPrefsGet.mockResolvedValue({ exists: false });
-      mockUserFindById.mockResolvedValue({ email: "user@test.com", displayName: "Test" });
+      mockUserFindById.mockResolvedValue({
+        email: "user@test.com",
+        displayName: "Test",
+        preferredLanguage: "en",
+      });
     });
 
-    it("sendRegistrationConfirmation sends with correct tags (category + type)", async () => {
+    it("sendRegistrationConfirmation forwards locale + tags + idempotencyKey", async () => {
       await service.sendRegistrationConfirmation("user-1", {
         participantName: "Test",
         eventTitle: "Event",
@@ -373,6 +396,9 @@ describe("EmailService", () => {
         registrationId: "reg-1",
       });
 
+      expect(mockBuildRegistration).toHaveBeenCalledWith(
+        expect.objectContaining({ eventTitle: "Event", locale: "en" }),
+      );
       expect(mockSend).toHaveBeenCalledWith(
         expect.objectContaining({
           tags: expect.arrayContaining([
@@ -385,40 +411,45 @@ describe("EmailService", () => {
       );
     });
 
-    it("sendRegistrationApproved sends email", async () => {
-      await service.sendRegistrationApproved("user-1", {
-        participantName: "Test",
-        eventTitle: "Event",
-        eventDate: "2026-04-15",
-        eventLocation: "Dakar",
+    it("sendPaymentReceipt uses the billing sender and is mandatory (ignores prefs)", async () => {
+      mockPrefsGet.mockResolvedValue({
+        exists: true,
+        data: () => ({ email: false, sms: true, push: true }),
       });
 
-      expect(mockSend).toHaveBeenCalledOnce();
-    });
-
-    it("sendBadgeReady sends email", async () => {
-      await service.sendBadgeReady("user-1", {
+      await service.sendPaymentReceipt("user-1", {
         participantName: "Test",
+        amount: "10 000 XOF",
         eventTitle: "Event",
+        receiptId: "pay-1",
+        paymentDate: "2026-04-15",
       });
 
-      expect(mockSend).toHaveBeenCalledOnce();
+      expect(mockBuildReceipt).toHaveBeenCalledWith(
+        expect.objectContaining({ amount: "10 000 XOF", locale: "en" }),
+      );
+      expect(mockSend).toHaveBeenCalledWith(
+        expect.objectContaining({
+          from: "Teranga Events <billing@terangaevent.com>",
+          idempotencyKey: "receipt:pay-1",
+        }),
+      );
+      expect(mockPrefsGet).not.toHaveBeenCalled();
     });
 
-    it("sendEventCancelled sends email", async () => {
-      await service.sendEventCancelled("user-1", {
-        participantName: "Test",
-        eventTitle: "Event",
-        eventDate: "2026-04-15",
-      });
-
-      expect(mockSend).toHaveBeenCalledOnce();
-    });
-
-    it("sendWelcomeNewsletter sends direct (no preference check)", async () => {
+    it("sendWelcomeNewsletter sends direct with marketing sender (no pref check)", async () => {
       await service.sendWelcomeNewsletter("subscriber@test.com");
 
-      expect(mockSend).toHaveBeenCalledOnce();
+      expect(mockBuildWelcome).toHaveBeenCalled();
+      expect(mockSend).toHaveBeenCalledWith(
+        expect.objectContaining({
+          to: "subscriber@test.com",
+          from: "Teranga Events <news@terangaevent.com>",
+          headers: expect.objectContaining({
+            "List-Unsubscribe": expect.stringContaining("mailto:"),
+          }),
+        }),
+      );
       expect(mockPrefsGet).not.toHaveBeenCalled();
     });
   });

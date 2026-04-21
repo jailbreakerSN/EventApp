@@ -1,7 +1,7 @@
 import { eventBus } from "../event-bus";
 import { notificationService } from "@/services/notification.service";
 import { emailService } from "@/services/email.service";
-import { getSmsProvider, SMS_TEMPLATES, buildRegistrationEmail } from "@/providers/index";
+import { getSmsProvider, SMS_TEMPLATES } from "@/providers/index";
 import { userRepository } from "@/repositories/user.repository";
 import { eventRepository } from "@/repositories/event.repository";
 import { registrationRepository } from "@/repositories/registration.repository";
@@ -137,23 +137,17 @@ export function registerNotificationListeners(): void {
           await sms.send(user.phone, SMS_TEMPLATES.paymentConfirmed("votre événement", amountStr));
         }
 
-        // Email — payment receipts belong to the billing category: routed
-        // from billing@ with Reply-To billing@ so users can reach a real
-        // finance inbox. sendToUser bypasses the email preference for
-        // mandatory categories (auth + billing) — receipts are legally
-        // required and cannot be opted out of.
+        // Email — dedicated payment-receipt template (billing category).
+        // Routed from billing@ with Reply-To billing@ so users can reach a
+        // real finance inbox; sendPaymentReceipt bypasses the email
+        // preference because receipts are legally mandatory.
         if (user.email) {
-          const template = buildRegistrationEmail({
+          await emailService.sendPaymentReceipt(payload.actorId, {
             participantName: user.displayName ?? user.email,
+            amount: amountStr,
             eventTitle: "votre événement",
-            eventDate: "Voir l'application",
-            eventLocation: "Voir l'application",
-            ticketName: "Billet payé",
-            registrationId: payload.registrationId,
-          });
-          await emailService.sendToUser(payload.actorId, template, "billing", {
-            tags: [{ name: "type", value: "payment_succeeded" }],
-            idempotencyKey: `payment:${payload.paymentId}`,
+            receiptId: payload.paymentId,
+            paymentDate: formatDate(new Date().toISOString()),
           });
         }
       }

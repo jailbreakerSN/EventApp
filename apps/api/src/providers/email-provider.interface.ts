@@ -18,6 +18,12 @@ export interface EmailParams {
   from?: string;
   replyTo?: string;
   tags?: { name: string; value: string }[];
+  /**
+   * Arbitrary RFC 5322 headers. Used today for List-Unsubscribe (RFC 8058)
+   * on marketing sends, and reserved for any future provider-agnostic
+   * header requirements (e.g., Feedback-ID for large-volume senders).
+   */
+  headers?: Record<string, string>;
   attachments?: { filename: string; content: string; contentType: string }[];
 }
 

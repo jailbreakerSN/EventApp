@@ -1,7 +1,6 @@
 import { z } from "zod";
 import { db, COLLECTIONS } from "@/config/firebase";
 import { ValidationError } from "@/errors/app-error";
-import { buildWelcomeEmail } from "@/providers/index";
 import { emailService } from "@/services/email.service";
 
 // ─── Validation Schemas ─────────────────────────────────────────────────────
@@ -56,12 +55,10 @@ export class NewsletterService {
       updatedAt: new Date().toISOString(),
     });
 
-    // Send welcome email (fire-and-forget). Routed through emailService so it
-    // picks up the marketing sender (news@) + standard tags.
-    const template = buildWelcomeEmail({ email: normalizedEmail });
-    await emailService.sendDirect(normalizedEmail, template, "marketing", {
-      tags: [{ name: "type", value: "newsletter_welcome" }],
-    });
+    // Send welcome email (fire-and-forget). sendWelcomeNewsletter renders
+    // the template, stamps the marketing sender (news@) and attaches the
+    // List-Unsubscribe header from the registry.
+    await emailService.sendWelcomeNewsletter(normalizedEmail);
   }
 
   /**

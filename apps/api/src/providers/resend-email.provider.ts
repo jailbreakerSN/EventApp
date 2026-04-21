@@ -66,6 +66,12 @@ export class ResendEmailProvider implements EmailProvider {
       payload.tags = params.tags;
     }
 
+    // Arbitrary RFC 5322 headers (List-Unsubscribe etc.) — Resend forwards
+    // these verbatim under the top-level `headers` field of the payload.
+    if (params.headers && Object.keys(params.headers).length > 0) {
+      payload.headers = params.headers;
+    }
+
     // Resend-specific: scheduled sending (ISO 8601 datetime)
     if (params.scheduledAt) {
       payload.scheduled_at = params.scheduledAt;
@@ -123,6 +129,7 @@ export class ResendEmailProvider implements EmailProvider {
         ...(p.text ? { text: p.text } : {}),
         ...(p.replyTo ? { reply_to: p.replyTo } : {}),
         ...(p.tags?.length ? { tags: p.tags } : {}),
+        ...(p.headers && Object.keys(p.headers).length > 0 ? { headers: p.headers } : {}),
         ...(p.attachments?.length
           ? {
               attachments: p.attachments.map((a) => ({
