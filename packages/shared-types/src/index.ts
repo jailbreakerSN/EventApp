@@ -4,6 +4,7 @@ export * from "./organization.types";
 export * from "./event.types";
 export * from "./event-availability";
 export * from "./error-descriptor";
+export * from "./error-reporter";
 export * from "./badge.types";
 export * from "./checkin.types";
 export * from "./messaging.types";

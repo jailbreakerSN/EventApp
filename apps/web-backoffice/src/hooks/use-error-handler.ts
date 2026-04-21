@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import {
   extractErrorDescriptor,
   severityFor,
+  reportError,
   type ErrorDescriptor,
   type ErrorSeverity,
 } from "@teranga/shared-types";
@@ -29,6 +30,19 @@ export function useErrorHandler() {
     (error: unknown): ResolvedError & { toast: () => void } => {
       const descriptor = extractErrorDescriptor(error);
       const severity = severityFor(descriptor);
+
+      // Observability hook — same contract as the participant twin. See
+      // packages/shared-types/src/error-reporter.ts.
+      if (severity !== "info") {
+        reportError(error, descriptor);
+        if (process.env.NODE_ENV === "development") {
+           
+          console.error(
+            `[teranga:error] code=${descriptor.code}${descriptor.reason ? ` reason=${descriptor.reason}` : ""}`,
+            error,
+          );
+        }
+      }
 
       const reasonPath =
         descriptor.code === "REGISTRATION_CLOSED" && descriptor.reason

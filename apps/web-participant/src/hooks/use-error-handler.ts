@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import {
   extractErrorDescriptor,
   severityFor,
+  reportError,
   type ErrorDescriptor,
   type ErrorSeverity,
 } from "@teranga/shared-types";
@@ -52,6 +53,23 @@ export function useErrorHandler() {
     (error: unknown): ResolvedError & { toast: () => void } => {
       const descriptor = extractErrorDescriptor(error);
       const severity = severityFor(descriptor);
+
+      // Observability hook — route to whatever reporter the app has
+      // registered (Sentry/Glitchtip/Datadog RUM/nothing). Skipping
+      // `info` severity avoids noise from "already registered" conflicts
+      // that are expected user feedback, not bugs. In development we
+      // also mirror to the console so dev sessions get visibility
+      // without needing a vendor wired up.
+      if (severity !== "info") {
+        reportError(error, descriptor);
+        if (process.env.NODE_ENV === "development") {
+           
+          console.error(
+            `[teranga:error] code=${descriptor.code}${descriptor.reason ? ` reason=${descriptor.reason}` : ""}`,
+            error,
+          );
+        }
+      }
 
       // REGISTRATION_CLOSED carries a typed `reason` — prefer the
       // reason-specific copy when available.
