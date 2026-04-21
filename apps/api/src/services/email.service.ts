@@ -29,6 +29,13 @@ interface SendOptions {
   idempotencyKey?: string;
 }
 
+// Categories that MUST send regardless of the user's email preference —
+// they are legally or contractually mandatory (security records, financial
+// receipts). Marketing prefs don't apply. When the per-category preference
+// model lands in Phase 3, these stay locked-on and the UI simply hides the
+// toggle for them.
+const MANDATORY_CATEGORIES: ReadonlySet<EmailCategory> = new Set(["auth", "billing"]);
+
 // ─── Email Service ──────────────────────────────────────────────────────────
 // Centralized service for all email sending. Handles:
 // - User notification preference checking
@@ -60,8 +67,13 @@ export class EmailService {
   }
 
   /**
-   * Send a transactional email to a user, respecting their notification preferences.
-   * Returns silently if the user has email disabled or has no email address.
+   * Send an email to a user, routed by category.
+   *
+   * Preference check: skipped for MANDATORY_CATEGORIES (auth, billing) —
+   * users cannot opt out of security and financial records. For every other
+   * category, `prefs.email === false` short-circuits the send.
+   *
+   * Always returns silently if the user has no email address.
    */
   async sendToUser(
     userId: string,
@@ -70,12 +82,14 @@ export class EmailService {
     options?: SendOptions,
   ): Promise<void> {
     try {
+      const isMandatory = MANDATORY_CATEGORIES.has(category);
+
       const [prefs, user] = await Promise.all([
-        this.getPreferences(userId),
+        isMandatory ? Promise.resolve(null) : this.getPreferences(userId),
         userRepository.findById(userId),
       ]);
 
-      if (!prefs.email) return;
+      if (!isMandatory && prefs && !prefs.email) return;
       if (!user?.email) return;
 
       const provider = getEmailProvider();

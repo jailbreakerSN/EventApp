@@ -179,7 +179,7 @@ describe("EmailService", () => {
       );
     });
 
-    it("does NOT send email when user has email disabled", async () => {
+    it("does NOT send email when user has email disabled (transactional)", async () => {
       mockPrefsGet.mockResolvedValue({
         exists: true,
         data: () => ({ email: false, sms: true, push: true }),
@@ -189,6 +189,39 @@ describe("EmailService", () => {
       await service.sendToUser("user-1", emailContent, "transactional");
 
       expect(mockSend).not.toHaveBeenCalled();
+    });
+
+    it("STILL sends billing email when user has email disabled (mandatory)", async () => {
+      mockPrefsGet.mockResolvedValue({
+        exists: true,
+        data: () => ({ email: false, sms: true, push: true }),
+      });
+      mockUserFindById.mockResolvedValue({ email: "test@example.com" });
+
+      await service.sendToUser("user-1", emailContent, "billing");
+
+      expect(mockSend).toHaveBeenCalledOnce();
+      expect(mockSend).toHaveBeenCalledWith(
+        expect.objectContaining({
+          to: "test@example.com",
+          from: "Teranga Events <billing@terangaevent.com>",
+        }),
+      );
+      // Preferences are not fetched for mandatory categories — skip the DB read.
+      expect(mockPrefsGet).not.toHaveBeenCalled();
+    });
+
+    it("STILL sends auth email when user has email disabled (mandatory)", async () => {
+      mockPrefsGet.mockResolvedValue({
+        exists: true,
+        data: () => ({ email: false, sms: true, push: true }),
+      });
+      mockUserFindById.mockResolvedValue({ email: "test@example.com" });
+
+      await service.sendToUser("user-1", emailContent, "auth");
+
+      expect(mockSend).toHaveBeenCalledOnce();
+      expect(mockPrefsGet).not.toHaveBeenCalled();
     });
 
     it("does NOT send email when user has no email address", async () => {

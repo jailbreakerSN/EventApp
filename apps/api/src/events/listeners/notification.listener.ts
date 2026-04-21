@@ -137,8 +137,11 @@ export function registerNotificationListeners(): void {
           await sms.send(user.phone, SMS_TEMPLATES.paymentConfirmed("votre événement", amountStr));
         }
 
-        // Email — payment receipts belong to the billing category so users
-        // see them come from billing@ and can reply to the same address.
+        // Email — payment receipts belong to the billing category: routed
+        // from billing@ with Reply-To billing@ so users can reach a real
+        // finance inbox. sendToUser bypasses the email preference for
+        // mandatory categories (auth + billing) — receipts are legally
+        // required and cannot be opted out of.
         if (user.email) {
           const template = buildRegistrationEmail({
             participantName: user.displayName ?? user.email,
@@ -148,7 +151,7 @@ export function registerNotificationListeners(): void {
             ticketName: "Billet payé",
             registrationId: payload.registrationId,
           });
-          await emailService.sendDirect(user.email, template, "billing", {
+          await emailService.sendToUser(payload.actorId, template, "billing", {
             tags: [{ name: "type", value: "payment_succeeded" }],
             idempotencyKey: `payment:${payload.paymentId}`,
           });
