@@ -162,6 +162,11 @@ jobs:
         id: discover
         env:
           SA_KEY: ${{ secrets.GCP_SA_KEY }}
+          # Optional custom-domain overrides (empty string if the var is
+          # unset → falls back to the computed *.run.app URL).
+          API_PUBLIC_URL_OVERRIDE: ${{ vars.API_PUBLIC_URL }}
+          PARTICIPANT_PUBLIC_URL_OVERRIDE: ${{ vars.PARTICIPANT_PUBLIC_URL }}
+          BACKOFFICE_PUBLIC_URL_OVERRIDE: ${{ vars.BACKOFFICE_PUBLIC_URL }}
         run: |
           set -euo pipefail
 
@@ -209,9 +214,24 @@ jobs:
           PROJECT_NUMBER=$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')
           REGION=europe-west1
 
-          API_URL="https://teranga-api-staging-${PROJECT_NUMBER}.${REGION}.run.app"
-          BACKOFFICE_URL="https://teranga-backoffice-staging-${PROJECT_NUMBER}.${REGION}.run.app"
-          PARTICIPANT_URL="https://teranga-participant-staging-${PROJECT_NUMBER}.${REGION}.run.app"
+          # Custom-domain overrides — when operators map api.terangaevent.com
+          # → the API Cloud Run service (and friends), they set these as
+          # GitHub **Variables** (not Secrets — they're public URLs).
+          # Overrides kick the app up to the sender-domain-matching state
+          # Resend's deliverability analyzer asks for (link URLs on the
+          # same apex as the From header). Fallback is always the
+          # predictable run.app URL, so a fresh project still deploys
+          # without any GitHub Variable configuration.
+          #
+          # Set one per environment via:
+          #   gh variable set API_PUBLIC_URL --body https://api.terangaevent.com --env staging
+          #   gh variable set PARTICIPANT_PUBLIC_URL --body https://app.terangaevent.com --env staging
+          #   gh variable set BACKOFFICE_PUBLIC_URL --body https://admin.terangaevent.com --env staging
+          # See docs/email-deliverability.md for the Cloud Run domain
+          # mapping + DNS steps that must happen first.
+          API_URL="${API_PUBLIC_URL_OVERRIDE:-https://teranga-api-staging-${PROJECT_NUMBER}.${REGION}.run.app}"
+          BACKOFFICE_URL="${BACKOFFICE_PUBLIC_URL_OVERRIDE:-https://teranga-backoffice-staging-${PROJECT_NUMBER}.${REGION}.run.app}"
+          PARTICIPANT_URL="${PARTICIPANT_PUBLIC_URL_OVERRIDE:-https://teranga-participant-staging-${PROJECT_NUMBER}.${REGION}.run.app}"
           # CORS origins are the browser-facing apps only. The API does not
           # call itself from a browser context, so its own URL must never be
           # an allowed origin — including it would let the API accept cross-

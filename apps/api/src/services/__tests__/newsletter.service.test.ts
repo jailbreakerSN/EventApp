@@ -50,7 +50,7 @@ vi.mock("@/config", () => ({ config: configRef }));
 
 vi.mock("@/services/email/sender.registry", () => ({
   resolveSender: (category: string) => ({
-    from: `Teranga Events <${category === "marketing" ? "news" : "no-reply"}@terangaevent.com>`,
+    from: `Teranga Events <${category === "marketing" ? "news" : "events"}@terangaevent.com>`,
     replyTo: category === "marketing" ? "contact@terangaevent.com" : "support@terangaevent.com",
     tags: [{ name: "category", value: category }],
   }),

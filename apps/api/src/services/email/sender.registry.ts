@@ -9,11 +9,17 @@ import { config } from "@/config";
 // Design: one sender per category, not one per template. Fewer, well-named
 // senders are easier to monitor (Resend dashboard filters by tag), protect
 // domain reputation, and build user trust — they learn `billing@` means
-// invoices, `no-reply@` means transactional, etc.
+// invoices, `events@` means transactional, `news@` means marketing, etc.
 //
 // Reply-To is always a real inbox so users who hit reply don't hit a wall.
 // Resend is outbound-only; MX for those addresses must point at an
 // actual mailbox provider (Google Workspace, Fastmail, etc.).
+//
+// No no-reply: Resend's deliverability analyzer and the Gmail/Yahoo/
+// Microsoft bulk-sender rules both flag no-reply senders. We route
+// `auth` + `transactional` through `events@` (a real mailbox) with
+// Reply-To → `support@`. See apps/api/src/config/index.ts for the
+// rationale and the env-override knobs.
 
 export interface SenderConfig {
   /** Pre-formatted "Name <address>" string ready for the provider. */
@@ -37,14 +43,14 @@ export function resolveSender(category: EmailCategory): SenderConfig {
   switch (category) {
     case "auth":
       return {
-        from: formatFrom(name, config.RESEND_FROM_NOREPLY),
+        from: formatFrom(name, config.RESEND_FROM_EVENTS),
         replyTo: config.RESEND_REPLY_TO_SUPPORT,
         tags: [{ name: "category", value: "auth" }],
       };
 
     case "transactional":
       return {
-        from: formatFrom(name, config.RESEND_FROM_NOREPLY),
+        from: formatFrom(name, config.RESEND_FROM_EVENTS),
         replyTo: config.RESEND_REPLY_TO_SUPPORT,
         tags: [{ name: "category", value: "transactional" }],
       };

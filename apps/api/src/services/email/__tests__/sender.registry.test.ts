@@ -3,8 +3,8 @@ import { describe, it, expect, vi } from "vitest";
 vi.mock("@/config", () => ({
   config: {
     RESEND_FROM_NAME: "Teranga Events",
-    RESEND_FROM_EMAIL: "no-reply@terangaevent.com",
-    RESEND_FROM_NOREPLY: "no-reply@terangaevent.com",
+    RESEND_FROM_EMAIL: "events@terangaevent.com",
+    RESEND_FROM_EVENTS: "events@terangaevent.com",
     RESEND_FROM_HELLO: "hello@terangaevent.com",
     RESEND_FROM_BILLING: "billing@terangaevent.com",
     RESEND_FROM_NEWS: "news@terangaevent.com",
@@ -17,10 +17,16 @@ vi.mock("@/config", () => ({
 import { resolveSender } from "../sender.registry";
 
 describe("resolveSender", () => {
-  it("maps auth and transactional to the no-reply sender with support reply-to", () => {
+  it("maps auth and transactional to the events@ sender with support reply-to", () => {
+    // Regression guard: Resend's deliverability analyzer flags no-reply@
+    // senders (Gmail/Yahoo/Microsoft bulk-sender rules, 2024). If a
+    // future refactor points these categories back at a no-reply
+    // address, this test fails loudly. Reply-To still targets support@
+    // so replies reach a human even though the sender mailbox exists.
     for (const category of ["auth", "transactional"] as const) {
       const s = resolveSender(category);
-      expect(s.from).toBe("Teranga Events <no-reply@terangaevent.com>");
+      expect(s.from).toBe("Teranga Events <events@terangaevent.com>");
+      expect(s.from).not.toMatch(/no[-_]?reply/i);
       expect(s.replyTo).toBe("support@terangaevent.com");
       expect(s.tags).toEqual([{ name: "category", value: category }]);
     }

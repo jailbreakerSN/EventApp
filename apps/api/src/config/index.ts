@@ -26,12 +26,22 @@ const envSchema = z.object({
 
   // Legacy single-sender fallback — kept so existing environments stay green.
   // New code should resolve senders via the EmailCategory registry; this value
-  // is only used when a category-specific var is unset.
-  RESEND_FROM_EMAIL: z.string().default("no-reply@terangaevent.com"),
+  // is only used when a category-specific var is unset. Default updated
+  // from no-reply@ to events@ in lockstep with the sender registry
+  // change — see the RESEND_FROM_EVENTS docstring below.
+  RESEND_FROM_EMAIL: z.string().default("events@terangaevent.com"),
 
   // Per-category From addresses. Each maps to an EmailCategory in
   // packages/shared-types/src/communication.types.ts via the sender registry.
-  RESEND_FROM_NOREPLY: z.string().default("no-reply@terangaevent.com"),
+  //
+  // Why not `no-reply@`: Resend's deliverability analyzer and the
+  // Gmail/Yahoo/Microsoft bulk-sender guidelines all flag no-reply
+  // addresses. Users who hit reply hit a wall (bad UX), and mailbox
+  // providers treat domains that only ever send from no-reply as
+  // lower trust. We route `auth` + `transactional` through `events@`
+  // — a real, addressable mailbox — with Reply-To to `support@` so
+  // replies land somewhere useful.
+  RESEND_FROM_EVENTS: z.string().default("events@terangaevent.com"),
   RESEND_FROM_HELLO: z.string().default("hello@terangaevent.com"),
   RESEND_FROM_BILLING: z.string().default("billing@terangaevent.com"),
   RESEND_FROM_NEWS: z.string().default("news@terangaevent.com"),
