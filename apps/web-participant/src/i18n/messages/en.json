@@ -463,6 +463,7 @@
   "registerFlow": {
     "subtitle": "Registration",
     "notFound": "Event not found.",
+    "notFoundKicker": "— Not found",
     "backToEvents": "Back to events",
     "backToEvent": "Back to the event",
     "back": "Back",

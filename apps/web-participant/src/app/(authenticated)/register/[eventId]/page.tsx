@@ -326,7 +326,7 @@ export default function RegisterPage() {
       <div className="mx-auto max-w-lg px-4 py-16">
         <EmptyStateEditorial
           icon={AlertTriangle}
-          kicker="— INTROUVABLE"
+          kicker={t("notFoundKicker")}
           title={t("notFound")}
           action={
             <Link

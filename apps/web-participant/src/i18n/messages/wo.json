@@ -467,6 +467,7 @@
   "registerFlow": {
     "subtitle": "Bind",
     "notFound": "Xew-xew gisu ko.",
+    "notFoundKicker": "— Gisu ko",
     "backToEvents": "Dellu ci xew-xew yi",
     "backToEvent": "Dellu ci xew-xew bi",
     "back": "Dellu",

@@ -11,7 +11,17 @@ export interface InlineErrorBannerAction {
   primary?: boolean;
 }
 
-export interface InlineErrorBannerProps {
+/**
+ * When the banner is dismissible, callers MUST provide a localised
+ * `dismissLabel` — shared-ui stays language-agnostic, the caller owns the
+ * i18n lookup. The `never` branch enforces this at the type level: you
+ * cannot pass `dismissLabel` without `onDismiss`, or vice-versa.
+ */
+type DismissProps =
+  | { onDismiss?: undefined; dismissLabel?: undefined }
+  | { onDismiss: () => void; dismissLabel: string };
+
+export type InlineErrorBannerProps = {
   title: string;
   description?: string;
   /** Kicker text above the title (e.g. "— Impossible de s'inscrire"). Optional. */
@@ -24,11 +34,8 @@ export interface InlineErrorBannerProps {
    * is set explicitly.
    */
   actions?: InlineErrorBannerAction[];
-  /** Accessible label for the dismiss button. Dismissible when provided. */
-  onDismiss?: () => void;
-  dismissLabel?: string;
   className?: string;
-}
+} & DismissProps;
 
 const TONE_STYLES: Record<ErrorSeverity, string> = {
   destructive:
@@ -119,7 +126,7 @@ export function InlineErrorBanner({
           <button
             type="button"
             onClick={onDismiss}
-            aria-label={dismissLabel ?? "Fermer"}
+            aria-label={dismissLabel}
             className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teranga-gold"
           >
             <X className="h-4 w-4" aria-hidden="true" />

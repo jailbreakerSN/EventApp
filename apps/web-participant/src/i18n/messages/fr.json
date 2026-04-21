@@ -466,6 +466,7 @@
   "registerFlow": {
     "subtitle": "Inscription",
     "notFound": "Événement introuvable.",
+    "notFoundKicker": "— Introuvable",
     "backToEvents": "Retour aux événements",
     "backToEvent": "Retour à l'événement",
     "back": "Retour",
