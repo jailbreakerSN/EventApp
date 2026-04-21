@@ -41,9 +41,13 @@ export const newsletterRoutes: FastifyPluginAsync = async (fastify) => {
         ipAddress: request.ip,
         userAgent: request.headers["user-agent"],
       });
-      // Message is deliberately vague about whether the email was new
-      // or already pending — prevents subscriber-list enumeration via
-      // the subscribe endpoint.
+      // Message is deliberately vague about whether the email was new,
+      // already pending, or already confirmed — prevents subscriber-list
+      // enumeration via the subscribe endpoint. Hardcoded French because
+      // the newsletter signup widget (NewsletterSignup) owns its own
+      // localized success copy; consumers SHOULD display their own text
+      // and ignore this message. Kept in the payload as a fallback for
+      // any direct-API caller that bypasses the widget.
       return reply.send({
         success: true,
         message: "Vérifiez votre boîte mail pour confirmer votre inscription.",

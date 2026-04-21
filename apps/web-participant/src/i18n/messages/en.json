@@ -616,6 +616,7 @@
   },
   "settings": {
     "title": "Settings",
+    "kicker": "— SETTINGS",
     "notifications": {
       "heading": "Notifications",
       "description": "Choose how you receive notifications",

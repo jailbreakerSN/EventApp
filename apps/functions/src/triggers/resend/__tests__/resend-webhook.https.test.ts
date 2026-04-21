@@ -44,47 +44,74 @@ vi.mock("svix", () => ({
 
 // Firestore admin — in-memory fakes just rich enough for the webhook path.
 // Captures writes so tests can assert what landed in each collection.
-const { suppressionWrites, subscriberUpdates, subscriberLookup } = vi.hoisted(() => ({
+const { suppressionWrites, subscriberUpdates, subscriberLookup, auditWrites } = vi.hoisted(() => ({
   suppressionWrites: [] as Array<{ id: string; data: Record<string, unknown> }>,
   subscriberUpdates: [] as Array<{ id: string; patch: Record<string, unknown> }>,
   subscriberLookup: new Map<string, string>(), // email → subscriberId
+  auditWrites: [] as Array<Record<string, unknown>>,
 }));
 
 vi.mock("firebase-admin/firestore", () => ({
   FieldValue: { serverTimestamp: () => "__SERVER_TS__" },
 }));
 
-vi.mock("../../../utils/admin", () => ({
-  COLLECTIONS: {
-    EMAIL_SUPPRESSIONS: "emailSuppressions",
-    NEWSLETTER_SUBSCRIBERS: "newsletterSubscribers",
-  },
-  db: {
-    collection: (name: string) => ({
-      doc: (id: string) => ({
-        set: (data: Record<string, unknown>) => {
-          if (name === "emailSuppressions") suppressionWrites.push({ id, data });
-          return Promise.resolve();
-        },
-      }),
-      where: (_field: string, _op: string, value: string) => ({
-        limit: () => ({
-          get: () => {
-            const subId = subscriberLookup.get(value);
-            if (!subId) return Promise.resolve({ empty: true, docs: [] });
-            const ref = {
-              update: (patch: Record<string, unknown>) => {
-                subscriberUpdates.push({ id: subId, patch });
-                return Promise.resolve();
-              },
-            };
-            return Promise.resolve({ empty: false, docs: [{ ref, id: subId }] });
+vi.mock("../../../utils/admin", () => {
+  type SubRef = { id: string };
+
+  // Build a query object whose shape mirrors Firestore: chainable
+  // `where().limit()` returning itself, terminated by `get()` (for the
+  // non-tx suppression write) OR handed to tx.get(...) inside a
+  // transaction (for the subscriber deactivate path).
+  function makeSubscriberQuery(emailValue: string) {
+    return {
+      __emailFilter: emailValue,
+      limit: () => makeSubscriberQuery(emailValue),
+    };
+  }
+
+  function resolveSubscriberQuery(emailFilter: string) {
+    const subId = subscriberLookup.get(emailFilter);
+    if (!subId) return { empty: true, docs: [] };
+    const ref: SubRef = { id: subId };
+    return { empty: false, docs: [{ ref, id: subId }] };
+  }
+
+  return {
+    COLLECTIONS: {
+      EMAIL_SUPPRESSIONS: "emailSuppressions",
+      NEWSLETTER_SUBSCRIBERS: "newsletterSubscribers",
+    },
+    db: {
+      collection: (name: string) => ({
+        doc: (id: string) => ({
+          set: (data: Record<string, unknown>) => {
+            if (name === "emailSuppressions") suppressionWrites.push({ id, data });
+            return Promise.resolve();
           },
         }),
+        where: (_field: string, _op: string, value: string) => makeSubscriberQuery(value),
+        add: (data: Record<string, unknown>) => {
+          if (name === "auditLogs") auditWrites.push(data);
+          return Promise.resolve({ id: "audit-1" });
+        },
       }),
-    }),
-  },
-}));
+      runTransaction: async (fn: (tx: unknown) => unknown) => {
+        const tx = {
+          get: async (query: { __emailFilter?: string }) => {
+            if (query.__emailFilter !== undefined) {
+              return resolveSubscriberQuery(query.__emailFilter);
+            }
+            return { empty: true, docs: [] };
+          },
+          update: (ref: SubRef, patch: Record<string, unknown>) => {
+            subscriberUpdates.push({ id: ref.id, patch });
+          },
+        };
+        return fn(tx);
+      },
+    },
+  };
+});
 
 // Function-options is pure config; the real module works fine in tests.
 
@@ -145,6 +172,7 @@ beforeEach(() => {
   suppressionWrites.length = 0;
   subscriberUpdates.length = 0;
   subscriberLookup.clear();
+  auditWrites.length = 0;
   secretValueOverride = "whsec_valid";
 });
 
@@ -211,7 +239,27 @@ describe("resendWebhook", () => {
     expect(subscriberUpdates).toHaveLength(1);
     expect(subscriberUpdates[0].patch).toMatchObject({
       isActive: false,
+      // status flipped in lockstep with isActive — both the retention
+      // pruner and the reconciler key on status, so leaving status as
+      // "confirmed" on a bounced subscriber creates a false consent
+      // record. (3c.6 fix.)
+      status: "unsubscribed",
       deactivatedReason: "hard_bounce",
+    });
+
+    // Audit log row written directly (no eventBus available in Functions).
+    // Makes the suppression decision queryable from the admin audit UI
+    // rather than just Cloud Logging. (3c.6 fix.)
+    expect(auditWrites).toHaveLength(1);
+    expect(auditWrites[0]).toMatchObject({
+      action: "email.bounced",
+      actorId: "resend_webhook",
+      resourceType: "email_address",
+      resourceId: "bouncer@test.com",
+      details: expect.objectContaining({
+        email: "bouncer@test.com",
+        sourceEmailId: "ev-abc",
+      }),
     });
   });
 

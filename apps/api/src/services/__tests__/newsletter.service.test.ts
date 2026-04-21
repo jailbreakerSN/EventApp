@@ -58,14 +58,16 @@ vi.mock("@/services/email/sender.registry", () => ({
 
 // ─── Stub emailService ──────────────────────────────────────────────────
 
-const { mockSendWelcome, mockSendConfirmation } = vi.hoisted(() => ({
+const { mockSendWelcome, mockSendConfirmation, mockIsSuppressed } = vi.hoisted(() => ({
   mockSendWelcome: vi.fn().mockResolvedValue(undefined),
   mockSendConfirmation: vi.fn().mockResolvedValue(undefined),
+  mockIsSuppressed: vi.fn().mockResolvedValue(false),
 }));
 vi.mock("@/services/email.service", () => ({
   emailService: {
     sendWelcomeNewsletter: mockSendWelcome,
     sendNewsletterConfirmation: mockSendConfirmation,
+    isSuppressed: mockIsSuppressed,
   },
 }));
 
@@ -101,6 +103,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   configRef.RESEND_NEWSLETTER_SEGMENT_ID = "seg_test";
   mockDocFactory.mockImplementation((id?: string) => ({ id: id ?? "sub-1" }));
+  mockIsSuppressed.mockResolvedValue(false);
 });
 
 // ─── subscribe() ────────────────────────────────────────────────────────
@@ -185,6 +188,23 @@ describe("NewsletterService.subscribe", () => {
     await service.subscribe("trigger-owned@example.com");
 
     expect(mockCreateContact).not.toHaveBeenCalled();
+  });
+
+  it("short-circuits cleanly when the address is on the suppression list (Phase 3c.6 L1)", async () => {
+    // A previously hard-bounced address re-subscribes. Without this
+    // guard we'd write a pending row + try to send a confirmation email
+    // that emailService would silently drop — leaving the user staring
+    // at an inbox that never gets the link. Bail out before any
+    // Firestore write, returning the same response shape so we don't
+    // leak suppression state.
+    mockIsSuppressed.mockResolvedValueOnce(true);
+
+    await service.subscribe("previously-bounced@example.com");
+
+    expect(mockTxGet).not.toHaveBeenCalled();
+    expect(mockTxSet).not.toHaveBeenCalled();
+    expect(mockSendConfirmation).not.toHaveBeenCalled();
+    expect(mockEmit).not.toHaveBeenCalled();
   });
 
   describe("idempotent duplicate-email branches", () => {
@@ -442,6 +462,49 @@ describe("sanitizeNewsletterHtml (standalone)", () => {
 
   it("preserves inline styles for email-client compatibility", () => {
     const out = sanitizeNewsletterHtml('<p style="color:red">x</p>');
-    expect(out).toContain('style="color:red"');
+    expect(out).toContain("color:red");
+  });
+
+  // ─── CSS-injection regression guards (Phase 3c.6) ──────────────────────
+  // Before 3c.6 the sanitizer allowed the `style` attribute through
+  // without filtering property values — verified by live execution that
+  // the payloads below reached subscriber inboxes unchanged. The new
+  // `allowedStyles` whitelist blocks them at parse time.
+
+  it("strips url() payloads that try to smuggle javascript: URIs through background-image", () => {
+    const out = sanitizeNewsletterHtml(
+      '<p style="background-image: url(javascript:alert(1))">x</p>',
+    );
+    expect(out).not.toContain("javascript:");
+    expect(out).not.toContain("url(");
+    // background-image isn't on the allowlist at all — the entire
+    // declaration is dropped.
+    expect(out).not.toContain("background-image");
+  });
+
+  it("strips IE-era `expression(...)` payloads on color", () => {
+    const out = sanitizeNewsletterHtml('<p style="color: expression(alert(1))">x</p>');
+    expect(out).not.toContain("expression");
+    expect(out).not.toContain("alert");
+  });
+
+  it("strips `behavior:` HTC imports", () => {
+    const out = sanitizeNewsletterHtml('<p style="behavior: url(evil.htc)">x</p>');
+    expect(out).not.toContain("behavior");
+    expect(out).not.toContain("url(");
+  });
+
+  it("strips `@import` inside style attributes", () => {
+    const out = sanitizeNewsletterHtml('<p style="@import url(evil.css)">x</p>');
+    expect(out).not.toContain("@import");
+  });
+
+  it("allows safe hex / rgb / named colors", () => {
+    const hex = sanitizeNewsletterHtml('<p style="color: #D4A843">x</p>');
+    expect(hex).toContain("#D4A843");
+    const rgb = sanitizeNewsletterHtml('<p style="color: rgb(212, 168, 67)">x</p>');
+    expect(rgb).toContain("rgb(212, 168, 67)");
+    const named = sanitizeNewsletterHtml('<p style="color: transparent">x</p>');
+    expect(named).toContain("transparent");
   });
 });

@@ -100,6 +100,12 @@ async function handleEvent(event: ResendWebhookEvent): Promise<void> {
       }
       await suppressEmail(email, "hard_bounce", event.data.email_id);
       await deactivateSubscriber(email, "hard_bounce");
+      await writeAuditLog({
+        action: "email.bounced",
+        email,
+        sourceEmailId: event.data.email_id,
+        createdAt: event.created_at,
+      });
       logger.info("Suppressed hard-bounced address", { email });
       return;
     }
@@ -112,6 +118,12 @@ async function handleEvent(event: ResendWebhookEvent): Promise<void> {
       }
       await suppressEmail(email, "complaint", event.data.email_id);
       await deactivateSubscriber(email, "complaint");
+      await writeAuditLog({
+        action: "email.complained",
+        email,
+        sourceEmailId: event.data.email_id,
+        createdAt: event.created_at,
+      });
       logger.info("Suppressed complained address", { email });
       return;
     }
@@ -122,6 +134,11 @@ async function handleEvent(event: ResendWebhookEvent): Promise<void> {
       // the newsletterSubscribers doc no longer shows them as active.
       if (event.data.unsubscribed === true && event.data.email) {
         await deactivateSubscriber(event.data.email, "resend_unsubscribe");
+        await writeAuditLog({
+          action: "email.resend_unsubscribed",
+          email: event.data.email,
+          createdAt: event.created_at,
+        });
         logger.info("Deactivated subscriber via Resend one-click unsubscribe", {
           email: event.data.email,
         });
@@ -132,6 +149,11 @@ async function handleEvent(event: ResendWebhookEvent): Promise<void> {
     case "contact.deleted": {
       if (event.data.email) {
         await deactivateSubscriber(event.data.email, "resend_contact_deleted");
+        await writeAuditLog({
+          action: "email.resend_contact_deleted",
+          email: event.data.email,
+          createdAt: event.created_at,
+        });
         logger.info("Deactivated subscriber (contact deleted in Resend)", {
           email: event.data.email,
         });
@@ -141,6 +163,43 @@ async function handleEvent(event: ResendWebhookEvent): Promise<void> {
 
     default:
       logger.debug("Ignored Resend webhook event", { type: event.type });
+  }
+}
+
+// Cloud Functions don't share the API's in-process eventBus, so we can't
+// emit a domain event and rely on audit.listener to write the row.
+// Write the audit entry directly. Keeps hard-bounce / complaint /
+// unsubscribe decisions queryable from the admin audit surface — not
+// just Cloud Logging (which is shorter-retained + PII-risky).
+async function writeAuditLog(params: {
+  action: string;
+  email: string;
+  sourceEmailId?: string;
+  createdAt: string;
+}): Promise<void> {
+  try {
+    await db.collection("auditLogs").add({
+      action: params.action,
+      actorId: "resend_webhook",
+      requestId: `resend-webhook-${params.sourceEmailId ?? "unknown"}`,
+      timestamp: params.createdAt,
+      resourceType: "email_address",
+      resourceId: params.email.toLowerCase(),
+      eventId: null,
+      organizationId: null,
+      details: {
+        email: params.email.toLowerCase(),
+        sourceEmailId: params.sourceEmailId ?? null,
+      },
+    });
+  } catch (err) {
+    // Fire-and-forget: the state mutation already committed; failing
+    // to audit should not retry the whole webhook. Surface to Cloud
+    // Logging so operators can reconcile if needed.
+    logger.error("Failed to write audit log for webhook event", {
+      action: params.action,
+      err,
+    });
   }
 }
 
@@ -178,17 +237,30 @@ async function suppressEmail(
 
 async function deactivateSubscriber(email: string, reason: SuppressionReason): Promise<void> {
   const normalized = email.toLowerCase();
-  const snap = await db
-    .collection(COLLECTIONS.NEWSLETTER_SUBSCRIBERS)
-    .where("email", "==", normalized)
-    .limit(1)
-    .get();
-  if (snap.empty) return;
-  const doc = snap.docs[0];
-  await doc.ref.update({
-    isActive: false,
-    deactivatedReason: reason,
-    deactivatedAt: FieldValue.serverTimestamp(),
-    updatedAt: FieldValue.serverTimestamp(),
+
+  // Wrapped in runTransaction() for policy compliance (CLAUDE.md
+  // Security Hardening forbids read-then-write outside a transaction)
+  // and to serialise the two concurrent writes that Resend's at-least-
+  // once webhook retry schedule can produce for the same bounce event.
+  // The actual state transition is idempotent (isActive already false
+  // → no change) but the tx guarantees a single clean audit trail.
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(
+      db.collection(COLLECTIONS.NEWSLETTER_SUBSCRIBERS).where("email", "==", normalized).limit(1),
+    );
+    if (snap.empty) return;
+    const ref = snap.docs[0].ref;
+    tx.update(ref, {
+      // Both fields flipped together — the retention job + reconciler
+      // key off `status`, not `isActive`, so leaving status="confirmed"
+      // here creates a false consent record and makes pruned/deactivated
+      // subscribers invisible to the retention pass. Keep the two in
+      // lockstep. (Phase 3c.6 final-review fix.)
+      status: "unsubscribed",
+      isActive: false,
+      deactivatedReason: reason,
+      deactivatedAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
   });
 }

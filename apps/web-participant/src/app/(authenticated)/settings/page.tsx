@@ -120,7 +120,7 @@ export default function SettingsPage() {
 
   return (
     <div className="mx-auto max-w-lg px-4 py-8 space-y-6">
-      <SectionHeader kicker="— RÉGLAGES" title={t("title")} size="hero" as="h1" />
+      <SectionHeader kicker={t("kicker")} title={t("title")} size="hero" as="h1" />
 
       {/* Notification Preferences */}
       <Card>

@@ -128,6 +128,27 @@ describe("reconcileResendSegment", () => {
     await expect(handler()).rejects.toThrow(/contacts.list/);
   });
 
+  it("redacts sample emails in the log (PII out of Cloud Logging)", async () => {
+    // Regression guard for the Phase 3c.6 PII finding: reconciler used
+    // to log plaintext addresses, which violates GDPR Art. 5(1)(f). The
+    // fix hashes the local-part and keeps only the domain — enough
+    // signal for operators to spot drift patterns, no plaintext PII.
+    firestoreDocs.push({ email: "pii-leak@example.com" });
+    mockContactsList.mockResolvedValue({ data: { data: [] }, error: null });
+
+    await handler();
+
+    const reconCall = (logger.info as ReturnType<typeof vi.fn>).mock.calls.find(
+      (c) => c[0] === "Resend segment reconciliation",
+    );
+    const samples = reconCall![1].samples as Record<string, string[]>;
+    const payload = JSON.stringify(samples);
+
+    expect(payload).not.toContain("pii-leak@example.com");
+    expect(payload).not.toContain("pii-leak");
+    expect(samples.missingMirror[0]).toMatch(/^[0-9a-f]{8}@example\.com$/);
+  });
+
   it("is case-insensitive when comparing emails across stores", async () => {
     firestoreDocs.push({ email: "Mixed@Case.Com" });
     mockContactsList.mockResolvedValue({

@@ -562,6 +562,7 @@
   },
   "settings": {
     "title": "Paramet yi",
+    "kicker": "— PARAMET",
     "notifications": { "heading": "Xibaar yi" },
     "privacy": { "heading": "Kàddu gi" },
     "account": { "heading": "Kont", "delete": "Fomm sama kont" }

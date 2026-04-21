@@ -202,7 +202,6 @@ describe("route inventory", () => {
       "POST /v1/payments/mock-checkout/:txId/complete", // dev-only mock provider flow
       "POST /v1/events/:eventId/promo-codes/validate", // documented public validator
       "POST /v1/newsletter/subscribe",
-      "POST /v1/newsletter/unsubscribe",
       // RFC 8058 one-click unsubscribe — mailbox providers fire this
       // from their own servers, so Bearer auth can't apply. The signed
       // token in the querystring IS the auth (see services/notifications/

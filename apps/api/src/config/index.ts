@@ -75,8 +75,12 @@ const envSchema = z.object({
   // click POST per RFC 8058). Separate from the newsletter confirm
   // secret — compromising one must not compromise the other. Tokens do
   // not expire: users click old emails months later and it still works.
-  // Rotating the secret invalidates every outstanding link; recipients
-  // fall back to the Settings page.
+  //
+  // Rotation: see the "ROTATION RUNBOOK" block in .env.example. Short
+  // version — rotating this secret in prod invalidates every
+  // outstanding unsubscribe link at once, which is a compliance +
+  // deliverability event. Coordinate via the operations channel before
+  // rotating.
   UNSUBSCRIBE_SECRET: z
     .string()
     .min(32, "UNSUBSCRIBE_SECRET must be at least 32 characters")

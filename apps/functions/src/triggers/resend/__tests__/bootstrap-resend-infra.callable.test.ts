@@ -64,7 +64,7 @@ vi.mock("../config-store", () => ({
 import { bootstrapResendInfra } from "../bootstrap-resend-infra.callable";
 
 type FakeCallableRequest = {
-  auth?: { token: { super_admin?: boolean } } | null;
+  auth?: { token: { roles?: string[] } } | null;
 };
 
 const handler = bootstrapResendInfra as unknown as (request: FakeCallableRequest) => Promise<{
@@ -75,8 +75,11 @@ const handler = bootstrapResendInfra as unknown as (request: FakeCallableRequest
   webhookSecretWritten: boolean;
 }>;
 
-const superAdmin: FakeCallableRequest = { auth: { token: { super_admin: true } } };
-const regularUser: FakeCallableRequest = { auth: { token: {} } };
+// Mirrors the claim shape minted by apps/api/src/services/admin.service.ts
+// — `roles` is the array check, NOT a top-level `super_admin: true`.
+const superAdmin: FakeCallableRequest = { auth: { token: { roles: ["super_admin"] } } };
+const regularUser: FakeCallableRequest = { auth: { token: { roles: ["participant"] } } };
+const userWithNoRoles: FakeCallableRequest = { auth: { token: {} } };
 const anonymous: FakeCallableRequest = { auth: null };
 
 beforeEach(() => {
@@ -89,8 +92,27 @@ beforeEach(() => {
 describe("bootstrapResendInfra", () => {
   it("refuses non-super_admin callers with permission-denied", async () => {
     await expect(handler(regularUser)).rejects.toMatchObject({ code: "permission-denied" });
+    await expect(handler(userWithNoRoles)).rejects.toMatchObject({ code: "permission-denied" });
     await expect(handler(anonymous)).rejects.toMatchObject({ code: "permission-denied" });
     expect(mockSegmentsCreate).not.toHaveBeenCalled();
+  });
+
+  it("accepts super_admin (guard reads token.roles array, not a boolean claim)", async () => {
+    // Regression guard for the "unreachable callable" bug caught in the
+    // final security review: the original guard checked
+    // `token.super_admin === true`, which is always `undefined` on this
+    // platform since claims use a `roles: string[]` array.
+    mockSegmentsCreate.mockResolvedValue({ data: { id: "seg_x" }, error: null });
+    mockWebhooksList.mockResolvedValue({ data: { data: [] }, error: null });
+    mockWebhooksCreate.mockResolvedValue({
+      data: { id: "wh_x", signing_secret: "whsec_y" },
+      error: null,
+    });
+
+    await expect(handler(superAdmin)).resolves.toMatchObject({
+      segmentId: "seg_x",
+      webhookId: "wh_x",
+    });
   });
 
   it("refuses to run when RESEND_WEBHOOK_URL is unset (failed-precondition)", async () => {

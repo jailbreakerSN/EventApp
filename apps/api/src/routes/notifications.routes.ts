@@ -301,6 +301,15 @@ export const notificationRoutes: FastifyPluginAsync = async (fastify) => {
 // Shared with the newsletter confirmation landing in structure; kept
 // inline because it's a one-off HTTP response (not an email template).
 // Zero interactive JS → safe under strict CSP if we ever enable one.
+//
+// No i18n yet — users arrive here by clicking a link in an email we sent
+// in their own locale (the link is stamped per-send by email.service
+// with the recipient's signed token, and the surrounding email body
+// already rendered in fr / en / wo via pickDict). A future enhancement
+// could echo the original locale via a token-embedded claim or an extra
+// query param; until then, French copy is a safe default for the
+// Senegal market. Mirrors the same tradeoff documented on
+// renderResultPage in newsletter.routes.ts.
 
 function renderUnsubPage(kind: "success" | "error", message: string): string {
   const safeMessage = escapeHtml(message);

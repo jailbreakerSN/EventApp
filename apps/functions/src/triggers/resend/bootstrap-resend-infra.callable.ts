@@ -41,8 +41,16 @@ export const bootstrapResendInfra = onCall(
     secrets: [RESEND_API_KEY],
   },
   async (request) => {
-    // Super-admin only — role claim set via the API's admin service.
-    if (!request.auth || request.auth.token.super_admin !== true) {
+    // Super-admin only. Custom claims on this platform store roles as an
+    // array — see apps/api/src/middlewares/auth.middleware.ts:47 and
+    // apps/api/src/services/admin.service.ts:186 where the claims are
+    // minted as `{ roles: [...], organizationId }`. There is NO
+    // top-level `super_admin: true` boolean on the token. Reading it
+    // directly would always be `undefined` and the guard would throw
+    // permission-denied for every caller — making the callable dead
+    // code. Instead we parse the roles array + check membership.
+    const roles = (request.auth?.token.roles as string[] | undefined) ?? [];
+    if (!request.auth || !roles.includes("super_admin")) {
       throw new HttpsError("permission-denied", "super_admin role required");
     }
 

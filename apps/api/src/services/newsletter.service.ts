@@ -6,6 +6,7 @@ import { InternalError, NotFoundError, ValidationError } from "@/errors/app-erro
 import { emailService } from "@/services/email.service";
 import { resendEmailProvider } from "@/providers/resend-email.provider";
 import { resolveSender } from "@/services/email/sender.registry";
+import { pickDict, type Locale } from "@/services/email/i18n";
 import { eventBus } from "@/events/event-bus";
 import { getRequestId } from "@/context/request-context";
 import { signConfirmationToken, verifyConfirmationToken } from "./newsletter/confirmation-token";
@@ -92,6 +93,42 @@ export function sanitizeNewsletterHtml(raw: string): string {
       "*": ["style"],
     },
     allowedSchemes: ["http", "https", "mailto"],
+    // Property-value whitelist for inline styles. Without this,
+    // `sanitize-html` allows the `style` attribute through but does NOT
+    // validate property values — which means `style="background: url(javascript:
+    // alert(1))"` and IE-era `expression(...)`/`behavior:` payloads pass
+    // through unchanged. Values are matched against regex per-property;
+    // only email-client-safe typography + layout CSS passes. Any URL-
+    // bearing property (background-image, list-style-image, cursor, etc.)
+    // is deliberately omitted from the whitelist — email clients strip
+    // most of those anyway, and including them re-opens the url()
+    // injection vector.
+    allowedStyles: {
+      "*": {
+        // Hex / rgb / named color. `[a-zA-Z]+` covers "red", "blue",
+        // "transparent", etc. without allowing `expression(...)` or
+        // `url(...)` because those contain parens.
+        color: [
+          /^#(?:[0-9a-fA-F]{3}){1,2}$/,
+          /^rgb\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*\)$/,
+          /^[a-zA-Z]{3,20}$/,
+        ],
+        "background-color": [
+          /^#(?:[0-9a-fA-F]{3}){1,2}$/,
+          /^rgb\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*\)$/,
+          /^[a-zA-Z]{3,20}$/,
+        ],
+        "text-align": [/^(?:left|right|center|justify)$/],
+        "font-weight": [/^(?:normal|bold|\d{3})$/],
+        "font-style": [/^(?:normal|italic)$/],
+        "font-size": [/^\d+(?:\.\d+)?(?:px|em|rem|%|pt)$/],
+        "line-height": [/^\d+(?:\.\d+)?(?:px|em|rem|%|)$/],
+        "text-decoration": [/^(?:none|underline|line-through)$/],
+        margin: [/^-?\d+(?:\.\d+)?(?:px|em|rem|%|0)(?:\s+-?\d+(?:\.\d+)?(?:px|em|rem|%|0)){0,3}$/],
+        padding: [/^\d+(?:\.\d+)?(?:px|em|rem|%|0)(?:\s+\d+(?:\.\d+)?(?:px|em|rem|%|0)){0,3}$/],
+        "border-radius": [/^\d+(?:\.\d+)?(?:px|em|rem|%)$/],
+      },
+    },
     // Preserve the Resend unsubscribe placeholder — sanitize-html strips
     // unknown mustache-like content by default; wrapping it in <a> keeps
     // it intact end-to-end.
@@ -149,6 +186,17 @@ export class NewsletterService {
     const normalizedEmail = parsed.data.email;
     const now = new Date().toISOString();
     const source = "website";
+
+    // Suppression short-circuit (Phase 3c.6 L1 fix). If this email
+    // already hard-bounced or complained, the confirmation email we're
+    // about to send will itself be suppressed by emailService.sendDirect
+    // and silently dropped — the user would see the generic "check your
+    // inbox" response and wait forever. Fail closed here with the same
+    // generic response shape so we don't leak suppression state, but
+    // skip the Firestore + confirmation work entirely.
+    if (await emailService.isSuppressed(normalizedEmail)) {
+      return;
+    }
 
     // Atomic "does this email already exist? if not, insert" — without the
     // transaction, two concurrent subscribe POSTs for the same address both
@@ -330,6 +378,15 @@ export class NewsletterService {
     htmlBody: string;
     textBody?: string;
     actorUserId: string;
+    /**
+     * Locale for the brand shell around the admin-authored body
+     * (footer tagline + unsubscribe copy). Defaults to `fr` — our
+     * primary market. Individual subscribers still receive the same
+     * broadcast, so a multilingual audience means the admin picks one
+     * language per broadcast. For future per-recipient variants we'd
+     * split into multiple broadcasts segmented by locale.
+     */
+    locale?: Locale;
   }): Promise<{ broadcastId?: string; skipped?: boolean; reason?: string }> {
     const segmentId = config.RESEND_NEWSLETTER_SEGMENT_ID;
     if (!segmentId) {
@@ -352,7 +409,7 @@ export class NewsletterService {
       from: sender.from,
       replyTo: sender.replyTo,
       subject: params.subject,
-      html: wrapNewsletterHtml(params.subject, sanitizedHtml),
+      html: wrapNewsletterHtml(params.subject, sanitizedHtml, params.locale),
       ...(params.textBody ? { text: params.textBody } : {}),
       name: params.subject.slice(0, 100),
     });
@@ -390,16 +447,27 @@ export class NewsletterService {
 /**
  * Wrap (already-sanitized) newsletter content in the Teranga brand shell.
  *
+ * Pulls footer copy from the shared email i18n dictionary (fr / en / wo)
+ * so a broadcast targeting a specific segment's primary language shows
+ * the right tagline + unsubscribe wording. Default `fr` matches the
+ * platform's primary market.
+ *
  * Must include `{{{RESEND_UNSUBSCRIBE_URL}}}` for Broadcasts — Resend
  * substitutes the per-recipient unsubscribe link at send time. Without
  * this placeholder, the visible in-body unsubscribe link (which most
  * recipients actually click) would be broken, even though the RFC 8058
  * header works.
  */
-function wrapNewsletterHtml(subject: string, htmlContent: string): string {
+function wrapNewsletterHtml(subject: string, htmlContent: string, locale?: Locale): string {
+  const dict = pickDict(locale);
+  const footer = dict.brand.footer;
+  const unsubscribeNote = dict.welcomeNewsletter.unsubscribeNote;
+  const unsubscribeLinkLabel =
+    locale === "en" ? "Unsubscribe" : locale === "wo" ? "Désinscrire" : "Se désinscrire";
+  const htmlLang = locale ?? "fr";
   return `
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="${htmlLang}">
 <head><meta charset="UTF-8"></head>
 <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #333;">
   <div style="text-align: center; padding: 20px 0; background: #1A1A2E; border-radius: 12px 12px 0 0;">
@@ -409,10 +477,10 @@ function wrapNewsletterHtml(subject: string, htmlContent: string): string {
     ${htmlContent}
   </div>
   <div style="text-align: center; padding: 16px; color: #999; font-size: 12px;">
-    <p>Teranga Events — La plateforme événementielle du Sénégal</p>
+    <p>${footer}</p>
     <p style="margin-top: 8px;">
-      Vous recevez cet e-mail parce que vous êtes inscrit à notre newsletter.
-      <a href="{{{RESEND_UNSUBSCRIBE_URL}}}" style="color: #999; text-decoration: underline;">Se désinscrire</a>
+      ${unsubscribeNote}
+      <a href="{{{RESEND_UNSUBSCRIBE_URL}}}" style="color: #999; text-decoration: underline;">${unsubscribeLinkLabel}</a>
     </p>
   </div>
 </body>

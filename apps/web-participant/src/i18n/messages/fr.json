@@ -619,6 +619,7 @@
   },
   "settings": {
     "title": "Paramètres",
+    "kicker": "— RÉGLAGES",
     "notifications": {
       "heading": "Notifications",
       "description": "Choisissez comment recevoir vos notifications",

@@ -1,9 +1,27 @@
+import crypto from "node:crypto";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { logger } from "firebase-functions/v2";
 import { getResend, RESEND_API_KEY } from "../../utils/resend-client";
 import { db, COLLECTIONS } from "../../utils/admin";
 import { reconcilerOptions } from "../../utils/function-options";
 import { getResendSystemConfig } from "./config-store";
+
+/**
+ * Redact an email for observability logs.
+ *
+ * Returns `<8-char-sha256-prefix>@<domain>` — enough to identify drift
+ * patterns ("all bounces are from gmail") without shipping plaintext PII
+ * to Cloud Logging. Cloud Logging is queryable by any principal with
+ * `logging.logEntries.list` and retained for 30 days by default, so
+ * logging raw addresses violates GDPR Art. 5(1)(f) data minimisation.
+ * The hash prefix is not reversible to the original address.
+ */
+function redactEmail(email: string): string {
+  const lower = email.toLowerCase();
+  const [, domain = "?"] = lower.split("@");
+  const hash = crypto.createHash("sha256").update(lower).digest("hex").slice(0, 8);
+  return `${hash}@${domain}`;
+}
 
 // Observability-only reconciler. Runs every 6h, compares the set of active
 // newsletterSubscribers in Firestore vs contacts in the Resend segment,
@@ -73,11 +91,15 @@ export const reconcileResendSegment = onSchedule(
         inResendNotFirestore: inResendNotFirestore.length,
         resendUnsubYetFirestoreActive: resendUnsubYetFirestoreActive.length,
       },
-      // Sample up to 10 emails per category so log output stays bounded.
+      // Sample up to 10 redacted emails per category so log output stays
+      // bounded AND we don't ship plaintext PII to Cloud Logging. Each
+      // sample is `<sha256-prefix>@<domain>` — enough to see drift
+      // patterns (e.g. "all bounces are from one domain") without
+      // revealing which users specifically are affected.
       samples: {
-        missingMirror: inFirestoreNotResend.slice(0, 10),
-        orphansInResend: inResendNotFirestore.slice(0, 10),
-        missedWebhook: resendUnsubYetFirestoreActive.slice(0, 10),
+        missingMirror: inFirestoreNotResend.slice(0, 10).map(redactEmail),
+        orphansInResend: inResendNotFirestore.slice(0, 10).map(redactEmail),
+        missedWebhook: resendUnsubYetFirestoreActive.slice(0, 10).map(redactEmail),
       },
     });
   },
