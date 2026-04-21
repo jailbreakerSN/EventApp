@@ -151,32 +151,18 @@ describe("NewsletterService.subscribe", () => {
     );
   });
 
-  it("mirrors the subscriber into the Resend segment when SEGMENT_ID is configured", async () => {
+  it("does NOT call resendEmailProvider.createContact from the API — the Firestore trigger owns the mirror", async () => {
+    // Regression guard for Phase 3b: the API must never mirror subscribers
+    // inline. The onNewsletterSubscriberCreated Cloud Function handles it,
+    // which gives us Firebase's 7-day retry budget on Resend outages.
     mockTxGet.mockResolvedValue({ empty: true });
-    await service.subscribe("mirror@example.com");
+    await service.subscribe("trigger-owned@example.com");
     await flushPromises();
 
-    expect(mockCreateContact).toHaveBeenCalledWith("seg_test", { email: "mirror@example.com" });
-  });
-
-  it("skips the Resend mirror when SEGMENT_ID is not configured", async () => {
-    configRef.RESEND_NEWSLETTER_SEGMENT_ID = undefined;
-    mockTxGet.mockResolvedValue({ empty: true });
-
-    await service.subscribe("no-segment@example.com");
-    await flushPromises();
-
-    expect(mockTxSet).toHaveBeenCalledOnce();
     expect(mockCreateContact).not.toHaveBeenCalled();
-  });
-
-  it("completes the subscribe flow even if the Resend mirror fails", async () => {
-    mockTxGet.mockResolvedValue({ empty: true });
-    mockCreateContact.mockRejectedValueOnce(new Error("Resend 500"));
-
-    await expect(service.subscribe("resilient@example.com")).resolves.toBeUndefined();
-    expect(mockTxSet).toHaveBeenCalled();
-    expect(mockSendWelcome).toHaveBeenCalledWith("resilient@example.com");
+    // Welcome email still goes out from the API (single transactional send,
+    // not a broadcast).
+    expect(mockSendWelcome).toHaveBeenCalledWith("trigger-owned@example.com");
   });
 });
 

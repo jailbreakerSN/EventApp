@@ -9,6 +9,13 @@ import { resolveSender } from "@/services/email/sender.registry";
 import { eventBus } from "@/events/event-bus";
 import { getRequestId } from "@/context/request-context";
 
+// Note: the API used to mirror new subscribers into the Resend Segment
+// inline (see git history). That responsibility moved to a Firestore-
+// triggered Cloud Function in Phase 3b (apps/functions/src/triggers/resend/
+// on-subscriber-created.trigger.ts). The API now just writes Firestore —
+// the trigger retries automatically on Resend outages for up to 7 days,
+// which the inline call couldn't do.
+
 // ─── Validation Schemas ─────────────────────────────────────────────────────
 
 export const NewsletterSubscribeSchema = z.object({
@@ -161,25 +168,13 @@ export class NewsletterService {
       timestamp: now,
     });
 
-    // Mirror into the Resend Segment so future broadcasts reach them.
-    // Fire-and-forget — a Resend outage must not break subscribe. Phase 3b
-    // will move this into a Firestore-triggered Cloud Function so the mirror
-    // survives process restarts and retries for free.
-    const segmentId = config.RESEND_NEWSLETTER_SEGMENT_ID;
-    if (segmentId) {
-      void this.mirrorToSegment(segmentId, normalizedEmail);
-    }
+    // Resend segment mirror is handled by the
+    // onNewsletterSubscriberCreated Firestore trigger (apps/functions) —
+    // Firebase retries on Resend outages for up to 7 days, so we don't
+    // need a fire-and-forget call here anymore.
 
     // Welcome email (single transactional, not a broadcast).
     await emailService.sendWelcomeNewsletter(normalizedEmail);
-  }
-
-  private async mirrorToSegment(segmentId: string, email: string): Promise<void> {
-    try {
-      await resendEmailProvider.createContact(segmentId, { email });
-    } catch {
-      // Fire-and-forget — SDK-level failures are already logged by withRetry.
-    }
   }
 
   /**
