@@ -1,0 +1,162 @@
+name: Bootstrap Resend Infra
+
+# One-shot workflow that replaces the manual runbook step:
+#
+#   firebase functions:call bootstrapResendInfra --project teranga-app-990a8
+#
+# Run it after the *first* successful Functions deploy on a fresh project
+# (staging or prod). It:
+#   1. Sets the RESEND_WEBHOOK_URL env var on the bootstrapResendInfra
+#      Cloud Run service. The callable refuses to run without it.
+#   2. Mints a Firebase Auth ID token carrying `roles: ["super_admin"]`
+#      (via a dedicated, passwordless CI user) and posts it to the
+#      callable endpoint. The callable then creates the Resend Segment
+#      + Webhook and writes the real Svix signing secret into the
+#      RESEND_WEBHOOK_SECRET Secret Manager entry.
+#
+# Idempotent:
+#   - Re-running reuses the existing Segment + Webhook; it only adds a
+#     new Secret Manager version if Resend returned a new signing_secret
+#     (today, that only happens on a first webhook create).
+#   - The CI user is upserted on each run and the super_admin claim is
+#     re-applied, so operator drift can't leave it in a surprising state.
+
+on:
+  workflow_dispatch:
+    inputs:
+      project:
+        description: "Target project"
+        type: choice
+        required: true
+        default: staging
+        options:
+          - staging
+          - production
+
+concurrency:
+  # Only one bootstrap at a time per project — the callable is idempotent
+  # but Resend's API isn't (parallel segment.create can race).
+  group: bootstrap-resend-${{ inputs.project }}
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: "22"
+
+jobs:
+  bootstrap:
+    name: Bootstrap Resend (${{ inputs.project }})
+    runs-on: ubuntu-latest
+    # Inherit the right secrets scope via GitHub Environments. Staging and
+    # production each have their own GCP_SA_KEY; the environment selects
+    # the right one.
+    environment: ${{ inputs.project }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+
+      - name: Discover project identifiers + Firebase Web API key
+        id: discover
+        env:
+          SA_KEY: ${{ secrets.GCP_SA_KEY }}
+        run: |
+          set -euo pipefail
+          PROJECT_ID=$(echo "$SA_KEY" | jq -r '.project_id')
+          REGION=europe-west1
+
+          # Same URL format the deploy-staging workflow uses for Cloud
+          # Run services. For Firebase Functions v2 (callable + HTTPS),
+          # the gen2 alias exposed to clients is
+          #   https://<region>-<project>.cloudfunctions.net/<name>
+          FUNCTION_URL="https://${REGION}-${PROJECT_ID}.cloudfunctions.net/bootstrapResendInfra"
+          WEBHOOK_URL="https://${REGION}-${PROJECT_ID}.cloudfunctions.net/resendWebhook"
+
+          # Firebase Web API key — required to exchange a custom token
+          # for an ID token via Identity Toolkit. Read from the single
+          # registered Web App on the project; same discovery the
+          # deploy workflow already uses.
+          ACCESS_TOKEN=$(gcloud auth print-access-token)
+          APP_ID=$(curl -sf -H "Authorization: Bearer $ACCESS_TOKEN" \
+            "https://firebase.googleapis.com/v1beta1/projects/$PROJECT_ID/webApps" |
+            jq -r '.apps[0].appId // empty')
+          if [ -z "$APP_ID" ]; then
+            echo "::error::No Firebase Web App found on $PROJECT_ID — create one in the Firebase console first"
+            exit 1
+          fi
+          API_KEY=$(curl -sf -H "Authorization: Bearer $ACCESS_TOKEN" \
+            "https://firebase.googleapis.com/v1beta1/projects/$PROJECT_ID/webApps/$APP_ID/config" |
+            jq -r '.apiKey // empty')
+          if [ -z "$API_KEY" ]; then
+            echo "::error::Failed to read Firebase Web API key"
+            exit 1
+          fi
+
+          {
+            echo "project_id=$PROJECT_ID"
+            echo "region=$REGION"
+            echo "function_url=$FUNCTION_URL"
+            echo "webhook_url=$WEBHOOK_URL"
+            echo "::add-mask::$API_KEY"
+            echo "api_key=$API_KEY"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "::notice::Target project: $PROJECT_ID"
+          echo "::notice::Function URL:   $FUNCTION_URL"
+          echo "::notice::Webhook URL:    $WEBHOOK_URL"
+
+      - name: Ensure RESEND_WEBHOOK_URL env var on bootstrapResendInfra
+        # The callable reads `process.env.RESEND_WEBHOOK_URL` and fails
+        # with "failed-precondition" if it's missing. We set it on the
+        # underlying Cloud Run revision right before invoking so a fresh
+        # project just works without a separate deploy.
+        #
+        # `--update-env-vars` preserves existing env vars on the service;
+        # only RESEND_WEBHOOK_URL is added/updated. Returns non-zero if
+        # the service doesn't exist yet — in that case we print a hint
+        # to deploy Functions first and bail.
+        env:
+          PROJECT_ID: ${{ steps.discover.outputs.project_id }}
+          REGION: ${{ steps.discover.outputs.region }}
+          WEBHOOK_URL: ${{ steps.discover.outputs.webhook_url }}
+        run: |
+          set -euo pipefail
+          if ! gcloud run services describe bootstrapresendinfra \
+               --region="$REGION" --project="$PROJECT_ID" >/dev/null 2>&1; then
+            echo "::error::Cloud Run service bootstrapresendinfra not found — deploy Functions first"
+            exit 1
+          fi
+          gcloud run services update bootstrapresendinfra \
+            --region="$REGION" \
+            --project="$PROJECT_ID" \
+            --update-env-vars="RESEND_WEBHOOK_URL=$WEBHOOK_URL" \
+            --quiet >/dev/null
+          echo "::notice::RESEND_WEBHOOK_URL set to $WEBHOOK_URL"
+
+      - name: Invoke bootstrapResendInfra
+        env:
+          # google-github-actions/auth exports GOOGLE_APPLICATION_CREDENTIALS
+          # for us; firebase-admin picks it up via applicationDefault().
+          FIREBASE_PROJECT_ID: ${{ steps.discover.outputs.project_id }}
+          FIREBASE_API_KEY: ${{ steps.discover.outputs.api_key }}
+          FUNCTION_URL: ${{ steps.discover.outputs.function_url }}
+        run: node scripts/invoke-resend-bootstrap.mjs
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "### Bootstrap Resend Infra — ${{ inputs.project }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Project**: \`${{ steps.discover.outputs.project_id }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Function**: ${{ steps.discover.outputs.function_url }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Webhook URL configured**: ${{ steps.discover.outputs.webhook_url }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Check the _Invoke bootstrapResendInfra_ step above for the response payload (segment id, webhook id, whether a new Secret Manager version was written)." >> "$GITHUB_STEP_SUMMARY"
