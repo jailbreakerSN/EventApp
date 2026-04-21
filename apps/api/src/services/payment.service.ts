@@ -164,7 +164,15 @@ export class PaymentService extends BaseService {
     const event = await eventRepository.findByIdOrThrow(eventId);
 
     if (event.status !== "published") {
-      throw new RegistrationClosedError(eventId);
+      const reason =
+        event.status === "cancelled"
+          ? "event_cancelled"
+          : event.status === "completed"
+            ? "event_completed"
+            : event.status === "archived"
+              ? "event_archived"
+              : "event_not_published";
+      throw new RegistrationClosedError(eventId, reason);
     }
 
     // ── Validate ticket type ──
