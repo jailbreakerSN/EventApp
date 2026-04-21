@@ -126,10 +126,26 @@ export class BroadcastService extends BaseService {
 
         if (channel === "email") {
           const users = await Promise.all(userIds.map((uid) => userRepository.findById(uid)));
+          // Respect per-user email preferences before fan-out. `sendBulk`
+          // only consults the platform-wide suppression list (hard
+          // bounces + complaints), NOT per-user notification prefs —
+          // that contract belongs here at the call site, where we have
+          // the userId context. Without this filter, any recipient who
+          // toggled off "E-mails transactionnels" in Settings would
+          // still receive organizer broadcasts. Fetch preferences in
+          // parallel and drop anyone opted out before we hit Resend.
+          const prefsList = await Promise.all(
+            users.map((u) => (u ? emailService.getPreferences(u.id) : Promise.resolve(null))),
+          );
           const emailMessages = users
-            .filter((u) => u?.email)
-            .map((u) => ({
-              to: u!.email!,
+            .map((u, i) => ({ user: u, prefs: prefsList[i] }))
+            .filter(({ user, prefs }) => {
+              if (!user?.email) return false;
+              if (!prefs) return false;
+              return emailService.isEmailCategoryEnabled(prefs, "transactional");
+            })
+            .map(({ user }) => ({
+              to: user!.email!,
               subject: dto.title,
               html: `<h2>${dto.title}</h2><p>${dto.body}</p><hr><p><small>${event.title} — Teranga</small></p>`,
             }));

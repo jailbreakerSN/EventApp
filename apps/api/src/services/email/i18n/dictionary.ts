@@ -8,6 +8,14 @@
 export type Locale = "fr" | "en" | "wo";
 
 export interface Dictionary {
+  /**
+   * BCP-47 locale code for this dictionary — rendered into `<Html lang>`
+   * by EmailLayout so screen readers + mail clients tag the body with
+   * the right language. Must match the Locale key used in
+   * `i18n/index.ts#pickDict` so en / wo emails don't render as French
+   * to assistive tech.
+   */
+  lang: Locale;
   brand: {
     tagline: string;
     footer: string;
@@ -80,6 +88,13 @@ export interface Dictionary {
     body: string;
     closing: string;
     unsubscribeNote: string;
+    /**
+     * Visible anchor text for the in-body unsubscribe link on broadcasts.
+     * Paired with `{{{RESEND_UNSUBSCRIBE_URL}}}` at render time — Resend
+     * substitutes a per-recipient URL. Kept separate from `unsubscribeNote`
+     * so the sentence can change independently of the link text.
+     */
+    unsubscribeLinkLabel: string;
   };
   newsletterConfirmation: {
     subject: string;

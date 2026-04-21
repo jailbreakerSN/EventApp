@@ -1,6 +1,7 @@
 import { type Dictionary } from "./dictionary";
 
 export const en: Dictionary = {
+  lang: "en",
   brand: {
     tagline: "Senegal's event management platform",
     footer: "Teranga Events — Senegal's event management platform",
@@ -75,6 +76,7 @@ export const en: Dictionary = {
     closing: "You'll receive updates about upcoming events in Senegal and West Africa.",
     unsubscribeNote:
       "You're receiving this email because you subscribed to the Teranga Events newsletter. You can unsubscribe at any time.",
+    unsubscribeLinkLabel: "Unsubscribe",
   },
   newsletterConfirmation: {
     subject: "Confirm your Teranga newsletter subscription",

@@ -86,7 +86,9 @@ const unsubscribeText = {
 
 export function EmailLayout({ preview, dict, children, unsubscribeNote }: EmailLayoutProps) {
   return (
-    <Html lang="fr">
+    // lang sourced from the dictionary so en / wo emails aren't
+    // announced as French by screen readers + mail clients.
+    <Html lang={dict.lang}>
       <Head />
       <Preview>{preview}</Preview>
       <Body style={main}>

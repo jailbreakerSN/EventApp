@@ -1,5 +1,5 @@
 import type { FastifyPluginAsync } from "fastify";
-import type { z } from "zod";
+import { z } from "zod";
 import { validate } from "@/middlewares/validate.middleware";
 import { authenticate } from "@/middlewares/auth.middleware";
 import { requirePermission } from "@/middlewares/permission.middleware";
@@ -12,7 +12,15 @@ import { ValidationError, NotFoundError } from "@/errors/app-error";
 
 type SubscribeBody = z.infer<typeof NewsletterSubscribeSchema>;
 type SendBody = z.infer<typeof NewsletterSendSchema>;
-type ConfirmQuery = { token: string };
+
+// Signed HMAC tokens are ~180 chars in the current scheme (base64(userId)
+// or subscriberId + "." + ttl + "." + 64-char sig). Cap at 512 to absorb
+// future format changes while blocking arbitrarily long payloads. Without
+// this cap, unauthenticated callers could ship multi-MB query strings
+// (Fastify's 1MB body limit does not apply to querystrings) and force
+// the server to run HMAC over the full length before rejecting — a cheap
+// DoS amplification vector.
+const TokenQuery = z.object({ token: z.string().min(1).max(512) });
 
 export const newsletterRoutes: FastifyPluginAsync = async (fastify) => {
   // ─── Subscribe to Newsletter (public, no auth) ─────────────────────────────
@@ -60,7 +68,7 @@ export const newsletterRoutes: FastifyPluginAsync = async (fastify) => {
   // email — so we need a landing page, not a JSON payload. Tight rate
   // limit because each token is effectively single-use and anyone spamming
   // this endpoint is probing for valid tokens.
-  fastify.get<{ Querystring: ConfirmQuery }>(
+  fastify.get<{ Querystring: z.infer<typeof TokenQuery> }>(
     "/confirm",
     {
       config: {
@@ -69,6 +77,7 @@ export const newsletterRoutes: FastifyPluginAsync = async (fastify) => {
           timeWindow: "1 minute",
         },
       },
+      preHandler: [validate({ query: TokenQuery })],
       schema: {
         tags: ["Newsletter"],
         summary: "Confirm a newsletter subscription via signed token",
@@ -81,12 +90,6 @@ export const newsletterRoutes: FastifyPluginAsync = async (fastify) => {
     },
     async (request, reply) => {
       const token = request.query.token;
-      if (!token || typeof token !== "string") {
-        return reply
-          .status(400)
-          .type("text/html; charset=utf-8")
-          .send(renderResultPage("error", "Lien de confirmation manquant ou invalide."));
-      }
 
       try {
         await newsletterService.confirm(token);

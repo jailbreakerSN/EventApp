@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import { type EmailCategory } from "@teranga/shared-types";
 import { db, COLLECTIONS } from "@/config/firebase";
 import { config } from "@/config";
@@ -216,7 +217,7 @@ export class EmailService {
       // category including mandatory ones. Sending to a known-bouncing
       // address won't deliver anyway and degrades domain reputation.
       if (await this.isSuppressed(user.email)) {
-        logSuppressedSkip(user.email, category, "sendToUser", userId);
+        logSuppressedSkip(redactEmail(user.email), category, "sendToUser", userId);
         return;
       }
 
@@ -246,7 +247,7 @@ export class EmailService {
       // newsletter welcome + any future non-user flows, and we don't
       // want to re-send to an address that bounced or complained.
       if (await this.isSuppressed(to)) {
-        logSuppressedSkip(to, category, "sendDirect");
+        logSuppressedSkip(redactEmail(to), category, "sendDirect");
         return;
       }
 
@@ -258,9 +259,23 @@ export class EmailService {
   }
 
   /**
-   * Send bulk emails. Used for broadcasts and newsletters.
+   * Send bulk emails. Used for organizer broadcasts and newsletter fan-outs.
    * The category is applied to every email in the batch (from / replyTo /
    * tags / headers all stamped from the registry).
+   *
+   * ⚠ Contract: the **caller** is responsible for filtering recipients by
+   * per-user email preferences before calling. `sendBulk` knows nothing
+   * about users — it receives bare `{ to, subject, html }` records. It
+   * consults ONLY the platform-wide suppression list (hard bounces +
+   * complaints) and the RFC 8058 headers added by the sender registry.
+   * If you pass a recipient who has toggled off their per-category
+   * preference in Settings, they WILL still receive the email.
+   *
+   * See `broadcast.service.ts#sendBroadcast` for the canonical pattern:
+   * fetch `getPreferences(userId)` per recipient, gate on
+   * `isEmailCategoryEnabled(prefs, category)`, then pass only the
+   * survivors here. `sendToUser` does all of that internally because it
+   * has the `userId` to work with.
    */
   async sendBulk(
     emails: Array<{ to: string; subject: string; html: string; text?: string }>,
@@ -278,10 +293,17 @@ export class EmailService {
       const skipped = emails.length - deliverable.length;
 
       if (skipped > 0) {
+        // Redact each address before stringifying — raw emails in a
+        // comma-joined stderr log would land in Cloud Logging (30-day
+        // retention, readable by any principal with
+        // `logging.logEntries.list`). `redactEmail` hashes the local
+        // part while keeping the domain for drift analytics. Mirrors
+        // the pattern used by reconcileResendSegment on the Functions
+        // side.
         logSuppressedSkip(
           emails
             .filter((_, i) => suppressionFlags[i])
-            .map((e) => e.to)
+            .map((e) => redactEmail(e.to))
             .join(","),
           category,
           "sendBulk",
@@ -474,8 +496,12 @@ export const emailService = new EmailService();
 // forget observability — goes to stderr, scraped by Cloud Logging).
 // Per CLAUDE.md this is the sanctioned pattern for service-level
 // logging: no console.log, use process.stderr.write.
+//
+// `emailRedacted` carries `<8-char-hash>@<domain>` values only — callers
+// must pre-redact with `redactEmail()`. Raw addresses would leak PII into
+// Cloud Logging (30-day retention, readable by `logging.logEntries.list`).
 function logSuppressedSkip(
-  email: string,
+  emailRedacted: string,
   category: EmailCategory,
   method: "sendToUser" | "sendDirect" | "sendBulk",
   userId?: string,
@@ -487,11 +513,25 @@ function logSuppressedSkip(
         event: "email.suppressed_skip",
         method,
         category,
-        email,
+        emailRedacted,
         ...(userId ? { userId } : {}),
       }) + "\n",
     );
   } catch {
     // Logging must never throw in a fire-and-forget path.
   }
+}
+
+/**
+ * Hash the local part of an email while keeping the domain for drift
+ * analytics. Returns `<8-char-sha256-prefix>@<domain>`. Not reversible
+ * to the original address. Mirrors `redactEmail` in
+ * apps/functions/src/triggers/resend/reconcile-resend-segment.scheduled.ts
+ * so log consumers can join on the hash across API + Functions logs.
+ */
+function redactEmail(email: string): string {
+  const lower = email.toLowerCase();
+  const [, domain = "?"] = lower.split("@");
+  const hash = crypto.createHash("sha256").update(lower).digest("hex").slice(0, 8);
+  return `${hash}@${domain}`;
 }

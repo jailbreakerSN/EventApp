@@ -17,6 +17,12 @@ const NotificationQuery = z.object({
   unreadOnly: z.coerce.boolean().optional(),
 });
 
+// Signed unsubscribe tokens are ~200 chars in the current scheme
+// (base64(userId) + "." + category + "." + 64-char sig). Cap at 512 so
+// callers can't amplify DoS by forcing HMAC over multi-MB query strings
+// (Fastify's 1MB body limit does not apply to querystrings).
+const UnsubscribeQuery = z.object({ token: z.string().min(1).max(512) });
+
 export const notificationRoutes: FastifyPluginAsync = async (fastify) => {
   // ─── Get My Notifications ─────────────────────────────────────────────
   fastify.get(
@@ -202,7 +208,7 @@ export const notificationRoutes: FastifyPluginAsync = async (fastify) => {
   // limits kick in because both endpoints are unauthenticated and a
   // bot probing for valid tokens should be throttled quickly.
 
-  fastify.get<{ Querystring: { token: string } }>(
+  fastify.get<{ Querystring: z.infer<typeof UnsubscribeQuery> }>(
     "/unsubscribe",
     {
       config: {
@@ -211,6 +217,7 @@ export const notificationRoutes: FastifyPluginAsync = async (fastify) => {
           timeWindow: "1 minute",
         },
       },
+      preHandler: [validate({ query: UnsubscribeQuery })],
       schema: {
         tags: ["Notifications"],
         summary: "Unsubscribe from a non-mandatory email category (browser click)",
@@ -223,13 +230,6 @@ export const notificationRoutes: FastifyPluginAsync = async (fastify) => {
     },
     async (request, reply) => {
       const token = request.query.token;
-      if (!token) {
-        return reply
-          .status(400)
-          .type("text/html; charset=utf-8")
-          .send(renderUnsubPage("error", "Lien de désinscription manquant."));
-      }
-
       const verification = verifyUnsubscribeToken(token);
       if (!verification.ok) {
         return reply
@@ -256,7 +256,7 @@ export const notificationRoutes: FastifyPluginAsync = async (fastify) => {
     },
   );
 
-  fastify.post<{ Querystring: { token: string } }>(
+  fastify.post<{ Querystring: z.infer<typeof UnsubscribeQuery> }>(
     "/unsubscribe",
     {
       config: {
@@ -265,6 +265,7 @@ export const notificationRoutes: FastifyPluginAsync = async (fastify) => {
           timeWindow: "1 minute",
         },
       },
+      preHandler: [validate({ query: UnsubscribeQuery })],
       schema: {
         tags: ["Notifications"],
         summary: "Unsubscribe via RFC 8058 List-Unsubscribe-Post one-click",
@@ -280,8 +281,7 @@ export const notificationRoutes: FastifyPluginAsync = async (fastify) => {
       // the body. Respond with a blank 200 or 202 regardless of success
       // — the spec forbids meaningful error responses from leaking to
       // the end user.
-      const token = request.query.token;
-      const verification = token ? verifyUnsubscribeToken(token) : { ok: false as const };
+      const verification = verifyUnsubscribeToken(request.query.token);
       if (verification.ok) {
         await unsubscribeCategory({
           userId: verification.userId,

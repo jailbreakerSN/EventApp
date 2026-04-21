@@ -2,6 +2,7 @@ import { type Dictionary } from "./dictionary";
 
 // French — source of truth. Every other locale falls back here on missing keys.
 export const fr: Dictionary = {
+  lang: "fr",
   brand: {
     tagline: "La plateforme événementielle du Sénégal",
     footer: "Teranga Events — La plateforme événementielle du Sénégal",
@@ -79,6 +80,7 @@ export const fr: Dictionary = {
       "Vous recevrez des informations sur les prochains événements au Sénégal et en Afrique de l'Ouest.",
     unsubscribeNote:
       "Vous recevez cet e-mail parce que vous vous êtes inscrit à la newsletter Teranga Events. Vous pouvez vous désinscrire à tout moment.",
+    unsubscribeLinkLabel: "Se désinscrire",
   },
   newsletterConfirmation: {
     subject: "Confirmez votre inscription à la newsletter Teranga",

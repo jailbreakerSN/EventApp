@@ -7,6 +7,7 @@ import { type Dictionary } from "./dictionary";
 // (via pickDict), so the worst case is a mixed-language email rather than
 // a broken one.
 export const wo: Dictionary = {
+  lang: "wo",
   brand: {
     tagline: "Plateforme u événement ci Senegaal",
     footer: "Teranga Events — Plateforme u événement ci Senegaal",
@@ -81,6 +82,10 @@ export const wo: Dictionary = {
     closing: "Dinga jot xibaar ci événement yi di ñëw ci Senegaal ak ci sowwu Afrik.",
     unsubscribeNote:
       "Jot nga e-mail bi ndax inscrire nga ci newsletter Teranga Events. Mën nga a désinscrire sa bopp ci saa bu nekk.",
+    // Wolof code-switches with French on technical vocabulary — "désinscrire"
+    // is how speakers actually say "unsubscribe" in conversation. Native
+    // reviewer can swap for a more indigenous phrasing if preferred.
+    unsubscribeLinkLabel: "Désinscrire",
   },
   newsletterConfirmation: {
     subject: "Wéral sa inscription ci newsletter Teranga",

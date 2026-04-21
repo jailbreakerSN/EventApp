@@ -409,7 +409,7 @@ export class NewsletterService {
       from: sender.from,
       replyTo: sender.replyTo,
       subject: params.subject,
-      html: wrapNewsletterHtml(params.subject, sanitizedHtml, params.locale),
+      html: wrapNewsletterHtml(sanitizedHtml, params.locale),
       ...(params.textBody ? { text: params.textBody } : {}),
       name: params.subject.slice(0, 100),
     });
@@ -458,16 +458,14 @@ export class NewsletterService {
  * recipients actually click) would be broken, even though the RFC 8058
  * header works.
  */
-function wrapNewsletterHtml(subject: string, htmlContent: string, locale?: Locale): string {
+function wrapNewsletterHtml(htmlContent: string, locale?: Locale): string {
   const dict = pickDict(locale);
   const footer = dict.brand.footer;
   const unsubscribeNote = dict.welcomeNewsletter.unsubscribeNote;
-  const unsubscribeLinkLabel =
-    locale === "en" ? "Unsubscribe" : locale === "wo" ? "Désinscrire" : "Se désinscrire";
-  const htmlLang = locale ?? "fr";
+  const unsubscribeLinkLabel = dict.welcomeNewsletter.unsubscribeLinkLabel;
   return `
 <!DOCTYPE html>
-<html lang="${htmlLang}">
+<html lang="${dict.lang}">
 <head><meta charset="UTF-8"></head>
 <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #333;">
   <div style="text-align: center; padding: 20px 0; background: #1A1A2E; border-radius: 12px 12px 0 0;">
