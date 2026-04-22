@@ -115,6 +115,15 @@ export const internalRoutes: FastifyPluginAsync = async (fastify) => {
       const providedSecret = request.headers["x-internal-dispatch-secret"];
       const expected = config.INTERNAL_DISPATCH_SECRET;
 
+      // Fail closed (404) when the deployment hasn't provisioned a real
+      // secret yet — typical of a Cloud Run service that booted before the
+      // ops-prerequisites workflow ran. Without this guard the route
+      // would reject every call, including the scheduled job's, but with a
+      // confusing 404 rooted in a misconfiguration rather than a probe.
+      if (typeof expected !== "string" || expected.length < 32) {
+        return reply.status(404).send({ success: false, error: { code: "NOT_FOUND" } });
+      }
+
       if (
         typeof providedSecret !== "string" ||
         providedSecret.length === 0 ||

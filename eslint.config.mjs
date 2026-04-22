@@ -89,6 +89,33 @@ export default tseslint.config(
             // By definition it calls into emailService.sendToUser /
             // sendDirect — that's the whole point of the adapter.
             "apps/api/src/services/email/dispatcher-adapter.ts",
+            // ── Phase 2.3 rollout allow-list (temporary) ───────────────
+            // These services predate the dispatcher contract and still
+            // call the emailService shims directly. They'll be migrated
+            // once the dispatcher flag is on in prod and the staging
+            // soak proves no regressions. Rule severity stays `warn` +
+            // CI runs with --max-warnings 0, so adding new call sites
+            // here must be deliberate. When migrating, remove the entry
+            // AND the direct call in the same PR.
+            //
+            //   notification.listener.ts — 5 direct sends (registration,
+            //     payment, badge, event.cancelled). These fire on Phase 0
+            //     domain events and will be retired when Phase 1 is the
+            //     authoritative path.
+            //   auth-email.service.ts — 2 direct sends. Auth flows are
+            //     synchronous-by-design (verify + reset), will migrate
+            //     last once the dispatcher supports fire-and-await.
+            //   broadcast.service.ts — bulk organizer broadcasts; the
+            //     dispatcher currently fans out one-by-one, bulk path
+            //     is Phase 3.
+            //   newsletter.service.ts — confirm + welcome; both ship
+            //     via the dispatcher already behind the flag, this
+            //     file still routes through emailService for the
+            //     flag=false path.
+            "apps/api/src/events/listeners/notification.listener.ts",
+            "apps/api/src/services/auth-email.service.ts",
+            "apps/api/src/services/broadcast.service.ts",
+            "apps/api/src/services/newsletter.service.ts",
           ],
         },
       ],

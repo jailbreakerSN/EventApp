@@ -1,5 +1,10 @@
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from "vitest";
 import Fastify, { type FastifyInstance } from "fastify";
+// Import the real module solely so we can use `typeof configModule` below.
+// A plain `await vi.importActual<typeof import("@/config")>(...)` triggers
+// the @typescript-eslint/consistent-type-imports rule — a static import
+// gives the same type information without the dynamic-import annotation.
+import type * as configModule from "@/config";
 
 // ─── Internal dispatch route tests ─────────────────────────────────────────
 
@@ -17,7 +22,7 @@ const { TEST_SECRET } = vi.hoisted(() => ({
 }));
 
 vi.mock("@/config", async () => {
-  const actual = await vi.importActual<typeof import("@/config")>("@/config");
+  const actual = (await vi.importActual("@/config")) as typeof configModule;
   return {
     ...actual,
     config: { ...actual.config, INTERNAL_DISPATCH_SECRET: TEST_SECRET },

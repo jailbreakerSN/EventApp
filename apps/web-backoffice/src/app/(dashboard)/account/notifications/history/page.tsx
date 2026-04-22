@@ -226,10 +226,13 @@ export default function NotificationHistoryPage() {
 
       {isError ? (
         <QueryError
-          error={error}
           onRetry={() => refetch()}
           title="Historique indisponible"
-          description="Nous n'arrivons pas à charger votre historique. Réessayez dans un instant."
+          message={
+            error instanceof Error
+              ? error.message
+              : "Nous n'arrivons pas à charger votre historique. Réessayez dans un instant."
+          }
         />
       ) : null}
 

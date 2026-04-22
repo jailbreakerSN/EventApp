@@ -69,7 +69,6 @@ const SAMPLE_BUILDERS: Record<string, Builder> = {
       eventTitle: "Dakar Tech Summit",
       eventDate: "15 mai 2026, 10h00",
       eventLocation: "CICAD",
-      registrationId: "reg-42",
     }),
   RegistrationCancelled: (locale) =>
     buildRegistrationCancelledEmail({
@@ -123,7 +122,7 @@ const SAMPLE_BUILDERS: Record<string, Builder> = {
   NewsletterConfirmation: (locale) =>
     buildNewsletterConfirmationEmail({
       locale,
-      confirmUrl: "https://example.test/newsletter/confirm?token=abc",
+      confirmationUrl: "https://example.test/newsletter/confirm?token=abc",
     }),
   NewsletterWelcome: (locale) => buildWelcomeEmail({ locale, email: "hello@example.test" }),
   InviteSent: (locale) =>

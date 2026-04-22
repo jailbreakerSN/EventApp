@@ -321,6 +321,7 @@ describe("NotificationDispatcherService", () => {
       status: "sent" as const,
       idempotencyKey: "registration.created:u1:reg-confirm/r1",
       attemptedAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(), // 1h ago
+      expiresAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
       requestId: "req-prior",
       actorId: "system",
     };
@@ -366,6 +367,7 @@ describe("NotificationDispatcherService", () => {
       status: "sent" as const,
       idempotencyKey: "registration.created:u1:reg-confirm/r2",
       attemptedAt: new Date(Date.now() - 23 * 60 * 60 * 1000).toISOString(),
+      expiresAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
       requestId: "req-prior-2",
       actorId: "system",
     };
@@ -500,6 +502,7 @@ describe("NotificationDispatcherService", () => {
       status: "sent" as const,
       idempotencyKey: "registration.created:qa@teranga.dev:test",
       attemptedAt: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
+      expiresAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString(),
       requestId: "req-prior",
       actorId: "system",
     };
