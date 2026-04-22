@@ -276,6 +276,11 @@
       "contactSupport": "Contacter le support",
       "upgradePlan": "Gérer mon plan",
       "dismiss": "Fermer"
+    },
+    "validation": {
+      "passwordMismatch": "Les mots de passe ne correspondent pas",
+      "passwordTooShort": "Le mot de passe doit contenir au moins 8 caractères",
+      "invalidForm": "Formulaire invalide"
     }
   }
 }

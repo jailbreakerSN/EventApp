@@ -18,6 +18,7 @@ import {
   CardContent,
   Button,
   Input,
+  InlineErrorBanner,
   Select,
   Breadcrumb,
   BreadcrumbList,
@@ -26,6 +27,7 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@teranga/shared-ui";
+import { useErrorHandler, type ResolvedError } from "@/hooks/use-error-handler";
 
 // ─── Password strength helper ────────────────────────────────────────────────
 
@@ -152,6 +154,19 @@ export default function SettingsPage() {
   // Notification prefs
   const [prefs, setPrefs] = useState<NotificationPrefs>(DEFAULT_PREFS);
 
+  // Separate banners for profile vs password — the two panels live in
+  // different cards and a failure in one shouldn't blank out the other's
+  // form error. Firebase auth errors (auth/wrong-password etc.) keep
+  // their page-specific French copy since it's more actionable than the
+  // generic errors.* catalog fallback; useErrorHandler still reports to
+  // observability so the failure doesn't go untraced.
+  const [profileError, setProfileError] = useState<ResolvedError | null>(null);
+  const [passwordError, setPasswordError] = useState<ResolvedError | null>(null);
+  const { resolve: resolveError } = useErrorHandler();
+  const tErrors = useTranslations("errors");
+  const tErrorActions = useTranslations("errors.actions");
+  const tErrorValidation = useTranslations("errors.validation");
+
   // Load data
   useEffect(() => {
     if (user) {
@@ -170,14 +185,15 @@ export default function SettingsPage() {
   const handleSaveProfile = async () => {
     if (!firebaseUser) return;
     setSavingProfile(true);
+    setProfileError(null);
     try {
       await updateProfile(firebaseUser, { displayName: displayName.trim() });
       // Save phone and language locally until API supports it
       localStorage.setItem("teranga_phone", phoneNumber);
       localStorage.setItem("teranga_language", language);
       toast.success("Profil mis à jour");
-    } catch {
-      toast.error("Erreur lors de la mise à jour du profil");
+    } catch (err) {
+      setProfileError(resolveError(err));
     } finally {
       setSavingProfile(false);
     }
@@ -187,13 +203,27 @@ export default function SettingsPage() {
 
   const handleChangePassword = async () => {
     if (!firebaseUser || !firebaseUser.email) return;
+    setPasswordError(null);
 
+    // Client-side validation errors are surfaced via the banner as
+    // VALIDATION_ERROR so they share the same channel as the submit
+    // failure below — no "toast now, banner later" split.
     if (newPassword !== confirmPassword) {
-      toast.error("Les mots de passe ne correspondent pas");
+      setPasswordError(
+        resolveError({
+          code: "VALIDATION_ERROR",
+          message: tErrorValidation("passwordMismatch"),
+        }),
+      );
       return;
     }
     if (newPassword.length < 8) {
-      toast.error("Le mot de passe doit contenir au moins 8 caractères");
+      setPasswordError(
+        resolveError({
+          code: "VALIDATION_ERROR",
+          message: tErrorValidation("passwordTooShort"),
+        }),
+      );
       return;
     }
 
@@ -211,12 +241,25 @@ export default function SettingsPage() {
     } catch (err: unknown) {
       const errorCode =
         err && typeof err === "object" && "code" in err ? (err as { code: string }).code : "";
+      // Firebase auth codes stay with their specific French copy (more
+      // actionable than the generic errors.* catalog fallback), but we
+      // still resolve through useErrorHandler so observability gets
+      // notified with the firebase code as a tag.
+      const resolved = resolveError(err);
       if (errorCode === "auth/wrong-password") {
-        toast.error("Mot de passe actuel incorrect");
+        setPasswordError({
+          ...resolved,
+          title: "Mot de passe actuel incorrect",
+          description: "Vérifiez votre mot de passe actuel et réessayez.",
+        });
       } else if (errorCode === "auth/weak-password") {
-        toast.error("Le nouveau mot de passe est trop faible");
+        setPasswordError({
+          ...resolved,
+          title: "Mot de passe trop faible",
+          description: "Utilisez au moins 8 caractères avec un mélange de lettres et de chiffres.",
+        });
       } else {
-        toast.error("Erreur lors du changement de mot de passe");
+        setPasswordError(resolved);
       }
     } finally {
       setSavingPassword(false);
@@ -315,6 +358,19 @@ export default function SettingsPage() {
               </Select>
             </div>
           </div>
+
+          {profileError && (
+            <div className="mt-5">
+              <InlineErrorBanner
+                severity={profileError.severity}
+                kicker={tErrors("kicker")}
+                title={profileError.title}
+                description={profileError.description}
+                onDismiss={() => setProfileError(null)}
+                dismissLabel={tErrorActions("dismiss")}
+              />
+            </div>
+          )}
 
           <div className="mt-5 flex justify-end">
             <Button onClick={handleSaveProfile} disabled={savingProfile}>
@@ -433,10 +489,21 @@ export default function SettingsPage() {
                 />
                 {confirmPassword.length > 0 && newPassword !== confirmPassword && (
                   <p className="text-xs text-red-500 mt-1">
-                    Les mots de passe ne correspondent pas
+                    {tErrorValidation("passwordMismatch")}
                   </p>
                 )}
               </div>
+
+              {passwordError && (
+                <InlineErrorBanner
+                  severity={passwordError.severity}
+                  kicker={tErrors("kicker")}
+                  title={passwordError.title}
+                  description={passwordError.description}
+                  onDismiss={() => setPasswordError(null)}
+                  dismissLabel={tErrorActions("dismiss")}
+                />
+              )}
 
               <div className="flex justify-end">
                 <Button

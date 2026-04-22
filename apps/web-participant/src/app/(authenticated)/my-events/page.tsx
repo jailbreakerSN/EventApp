@@ -35,10 +35,11 @@ import {
   EmptyState,
   EmptyStateEditorial,
   formatDate,
-  getErrorMessage,
+  InlineErrorBanner,
   StatusPill,
   type StatusPillTone,
 } from "@teranga/shared-ui";
+import { useErrorHandler, type ResolvedError } from "@/hooks/use-error-handler";
 import type { Registration } from "@teranga/shared-types";
 import { getCoverGradient } from "@/lib/cover-gradient";
 import { intlLocale } from "@/lib/intl-locale";
@@ -83,6 +84,14 @@ export default function MyEventsPage() {
     registrationId: string;
     paymentId: string;
   } | null>(null);
+  // Persistent surface for blocking-mutation failures (cancel / refund). A
+  // failed cancellation stays visible until the user dismisses it or retries,
+  // replacing the transient toast.error pattern per
+  // docs/design-system/error-handling.md.
+  const [mutationError, setMutationError] = useState<ResolvedError | null>(null);
+  const { resolve: resolveError } = useErrorHandler();
+  const tErrors = useTranslations("errors");
+  const tErrorActions = useTranslations("errors.actions");
 
   const registrations = data?.data;
   const meta = data?.meta;
@@ -131,12 +140,11 @@ export default function MyEventsPage() {
     mutationFn: (paymentId: string) => paymentsApi.refund(paymentId, t("refundReason")),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["my-registrations"] });
+      setMutationError(null);
       toast.success(t("refundRequested"));
     },
     onError: (err: unknown) => {
-      const code = (err as { code?: string })?.code;
-      const message = (err as { message?: string })?.message;
-      toast.error(getErrorMessage(code, message));
+      setMutationError(resolveError(err));
     },
   });
 
@@ -144,11 +152,10 @@ export default function MyEventsPage() {
     if (!cancelTarget) return;
     try {
       await cancelMutation.mutateAsync(cancelTarget);
+      setMutationError(null);
       toast.success(t("cancelledSuccess"));
     } catch (err: unknown) {
-      const code = (err as { code?: string })?.code;
-      const message = (err as { message?: string })?.message;
-      toast.error(getErrorMessage(code, message));
+      setMutationError(resolveError(err));
     } finally {
       setCancelTarget(null);
     }
@@ -340,6 +347,23 @@ export default function MyEventsPage() {
           </div>
         }
       />
+
+      {/* Persistent mutation-error banner — renders when a cancel or refund
+          attempt fails. Replaces the 4-second toast that vanished before
+          the participant had time to read why it failed. See
+          docs/design-system/error-handling.md. */}
+      {mutationError && (
+        <InlineErrorBanner
+          className="mb-7"
+          severity={mutationError.severity}
+          kicker={tErrors("kicker")}
+          title={mutationError.title}
+          description={mutationError.description}
+          actions={[{ label: tErrorActions("dismiss"), onClick: () => setMutationError(null) }]}
+          onDismiss={() => setMutationError(null)}
+          dismissLabel={tErrorActions("dismiss")}
+        />
+      )}
 
       {/* Tab bar + view toggle */}
       <div className="mb-8 flex items-end justify-between border-b">
@@ -680,10 +704,7 @@ function UpcomingRow({
               {reg.ticketTypeName ?? reg.ticketTypeId}
             </span>
             <span aria-hidden="true">·</span>
-            <span
-              className="font-mono-kicker uppercase tracking-[0.08em]"
-              title={reg.id}
-            >
+            <span className="font-mono-kicker uppercase tracking-[0.08em]" title={reg.id}>
               {t("refShort", { ref: reg.id.slice(-8).toUpperCase() })}
             </span>
             <span aria-hidden="true">·</span>

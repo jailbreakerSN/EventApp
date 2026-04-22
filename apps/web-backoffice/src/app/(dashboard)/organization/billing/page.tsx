@@ -19,6 +19,8 @@ import { PlanComparisonTable } from "@/components/plan/PlanComparisonTable";
 import { UpgradePreview } from "@/components/plan/UpgradeDialog";
 import type { OrganizationPlan } from "@teranga/shared-types";
 import { useTranslations } from "next-intl";
+import { InlineErrorBanner } from "@teranga/shared-ui";
+import { useErrorHandler, type ResolvedError } from "@/hooks/use-error-handler";
 
 function formatPrice(priceXof: number): string {
   return new Intl.NumberFormat("fr-SN", {
@@ -65,6 +67,14 @@ export default function BillingPage() {
   // publish an `annualPriceXof` (server-side guard).
   const [selectedCycle, setSelectedCycle] = useState<"monthly" | "annual">("monthly");
 
+  // Billing is where revenue lives — a failed upgrade/downgrade/cancel
+  // MUST persist on screen instead of flashing a 4 s toast. One banner
+  // drives all three mutation handlers below.
+  const [mutationError, setMutationError] = useState<ResolvedError | null>(null);
+  const { resolve: resolveError } = useErrorHandler();
+  const tErrors = useTranslations("errors");
+  const tErrorActions = useTranslations("errors.actions");
+
   const org = orgData?.data;
   const subscription = subData?.data;
   const currentPlanKey = org?.effectivePlanKey ?? plan;
@@ -88,6 +98,7 @@ export default function BillingPage() {
   const handleConfirmChange = async () => {
     if (!selectedPlan) return;
     const isUpgrade = PLAN_ORDER.indexOf(selectedPlan) > PLAN_ORDER.indexOf(plan);
+    setMutationError(null);
     try {
       if (isUpgrade) {
         await upgradePlan.mutateAsync({ plan: selectedPlan, cycle: selectedCycle });
@@ -115,11 +126,12 @@ export default function BillingPage() {
       }
       setSelectedPlan(null);
     } catch (err) {
-      toast.error((err as Error).message || "Erreur lors du changement de plan");
+      setMutationError(resolveError(err));
     }
   };
 
   const handleCancel = async () => {
+    setMutationError(null);
     try {
       const result = await cancelSubscription.mutateAsync({});
       if (result?.data?.scheduled && result.data.effectiveAt) {
@@ -135,16 +147,17 @@ export default function BillingPage() {
         toast.success("Abonnement annulé. Vous êtes maintenant sur le plan gratuit.");
       }
     } catch (err) {
-      toast.error((err as Error).message || "Erreur lors de l'annulation");
+      setMutationError(resolveError(err));
     }
   };
 
   const handleRevertScheduled = async () => {
+    setMutationError(null);
     try {
       await revertScheduled.mutateAsync();
       toast.success("Changement de plan annulé. Votre abonnement reste actif.");
     } catch (err) {
-      toast.error((err as Error).message || "Erreur lors de l'annulation du changement");
+      setMutationError(resolveError(err));
     }
   };
 
@@ -167,6 +180,17 @@ export default function BillingPage() {
 
   return (
     <div className="max-w-5xl space-y-8">
+      {mutationError && (
+        <InlineErrorBanner
+          severity={mutationError.severity}
+          kicker={tErrors("kicker")}
+          title={mutationError.title}
+          description={mutationError.description}
+          onDismiss={() => setMutationError(null)}
+          dismissLabel={tErrorActions("dismiss")}
+        />
+      )}
+
       {/* Header */}
       <div>
         <nav className="text-sm text-muted-foreground mb-4">

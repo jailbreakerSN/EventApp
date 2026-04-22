@@ -276,6 +276,11 @@
       "contactSupport": "Contact support",
       "upgradePlan": "Manage plan",
       "dismiss": "Dismiss"
+    },
+    "validation": {
+      "passwordMismatch": "Passwords don't match",
+      "passwordTooShort": "Password must be at least 8 characters",
+      "invalidForm": "Invalid form"
     }
   }
 }

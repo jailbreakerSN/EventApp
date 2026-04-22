@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useForm, Controller } from "react-hook-form";
 import {
   Button,
@@ -9,6 +9,7 @@ import {
   DialogHeader,
   DialogFooter,
   FormField,
+  InlineErrorBanner,
   Input,
   Select,
   Switch,
@@ -16,6 +17,8 @@ import {
 } from "@teranga/shared-ui";
 import { Lock, Sparkles } from "lucide-react";
 import { toast } from "sonner";
+import { useTranslations } from "next-intl";
+import { useErrorHandler, type ResolvedError } from "@/hooks/use-error-handler";
 import {
   AssignPlanSchema,
   PLAN_LIMIT_UNLIMITED,
@@ -85,6 +88,11 @@ interface FormValues {
 export function AssignPlanDialog({ open, org, onClose }: AssignPlanDialogProps) {
   const plansQuery = useAdminPlans({ includeArchived: false });
   const assignPlan = useAssignPlan();
+  const [submitError, setSubmitError] = useState<ResolvedError | null>(null);
+  const { resolve: resolveError } = useErrorHandler();
+  const tErrors = useTranslations("errors");
+  const tErrorActions = useTranslations("errors.actions");
+  const tErrorValidation = useTranslations("errors.validation");
 
   const plans = useMemo<Plan[]>(() => plansQuery.data?.data ?? [], [plansQuery.data]);
 
@@ -175,13 +183,20 @@ export function AssignPlanDialog({ open, org, onClose }: AssignPlanDialogProps) 
       : { planId: values.planId };
 
     // Shape-validate locally before sending — the server refines too but the
-    // UI catches schema errors earlier.
+    // UI catches schema errors earlier. Zod issues land as a banner so the
+    // admin sees the exact field even after scrolling the long form.
     const parsed = AssignPlanSchema.safeParse(dto);
     if (!parsed.success) {
-      toast.error(parsed.error.issues[0]?.message ?? "Formulaire invalide");
+      setSubmitError(
+        resolveError({
+          code: "VALIDATION_ERROR",
+          message: parsed.error.issues[0]?.message ?? tErrorValidation("invalidForm"),
+        }),
+      );
       return;
     }
 
+    setSubmitError(null);
     try {
       await assignPlan.mutateAsync({ orgId: org.id, dto: parsed.data });
       toast.success(
@@ -191,7 +206,7 @@ export function AssignPlanDialog({ open, org, onClose }: AssignPlanDialogProps) 
       );
       onClose();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erreur lors de l'assignation");
+      setSubmitError(resolveError(err));
     }
   };
 
@@ -211,6 +226,16 @@ export function AssignPlanDialog({ open, org, onClose }: AssignPlanDialogProps) 
         </DialogHeader>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
+          {submitError && (
+            <InlineErrorBanner
+              severity={submitError.severity}
+              kicker={tErrors("kicker")}
+              title={submitError.title}
+              description={submitError.description}
+              onDismiss={() => setSubmitError(null)}
+              dismissLabel={tErrorActions("dismiss")}
+            />
+          )}
           {/* Plan picker */}
           <FormField
             label="Plan du catalogue"
