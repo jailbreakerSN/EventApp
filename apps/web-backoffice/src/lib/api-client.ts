@@ -47,6 +47,8 @@ import type {
   BroadcastQuery,
   Notification,
   NotificationCategory,
+  NotificationChannel,
+  NotificationSuppressionReason,
   I18nString,
   UpdateNotificationPreferenceDto,
   NotificationPreference,
