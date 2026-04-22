@@ -561,9 +561,11 @@ jobs:
   #   1. Mirrors it into Secret Manager (for audit + rotation tracking).
   #   2. Grants the compute SA accessor (Cloud Run runtime + Cloud
   #      Functions runtime both share this SA by default).
-  #   3. Binds the secret onto both Cloud Run services via
+  #   3. Binds the secret onto the API Cloud Run service via
   #      `--update-secrets` so a revision restart picks up a rotated
-  #      value without a code deploy.
+  #      value without a code deploy. Web app Cloud Run services are
+  #      NOT rebound here — they consume the key via build-time bake
+  #      (`NEXT_PUBLIC_FIREBASE_VAPID_KEY` in deploy-staging.yml).
   #
   # The build-time NEXT_PUBLIC_FIREBASE_VAPID_KEY bake (which actually
   # embeds the key in the client bundle) happens in deploy-staging.yml's
