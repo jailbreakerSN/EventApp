@@ -172,11 +172,29 @@ function registerEventListeners(): void {
       // a bulk query otherwise (delegated to the future listener Phase
       // 2c hardening — for now we no-op if the helper is missing).
       const { registrationRepository } = await import("@/repositories/registration.repository");
-      // Find-by-event returns a paginated envelope — unwrap `.data`.
+      // Hard cap to protect against a runaway fanout on a mega-event.
+      // Phase 2 security review P1-3: findByEvent defaults to 1000 rows;
+      // a single dispatch of 1000 sequential `recipientFromUserId` reads
+      // would stall the loop. Phase 5 observability will chunk via
+      // findByEventCursor once the scheduler supports batched sends.
+      const MAX_RESCHEDULE_FANOUT = 500;
       const page = await registrationRepository
-        .findByEvent(payload.eventId, ["confirmed"])
+        .findByEvent(payload.eventId, ["confirmed"], {
+          page: 1,
+          limit: MAX_RESCHEDULE_FANOUT,
+        })
         .catch(() => ({ data: [] as { userId: string }[] }));
       const confirmed = Array.isArray(page) ? page : page.data;
+      if (confirmed.length >= MAX_RESCHEDULE_FANOUT) {
+        process.stderr.write(
+          JSON.stringify({
+            level: "warn",
+            event: "notification.reschedule_fanout_capped",
+            eventId: payload.eventId,
+            cap: MAX_RESCHEDULE_FANOUT,
+          }) + "\n",
+        );
+      }
       const recipients: NotificationRecipient[] = [];
       for (const reg of confirmed) {
         const r = await recipientFromUserId(reg.userId);
@@ -238,22 +256,31 @@ function registerEventListeners(): void {
 function registerPaymentListeners(): void {
   eventBus.on("payment.failed", async (payload) => {
     try {
-      const userId = (payload as unknown as { userId?: string }).userId;
-      if (!userId) return;
-      const recipient = await recipientFromUserId(userId);
+      // PaymentFailedEvent carries registrationId + paymentId (no
+      // userId, no amount). Fetch registration → user, payment → amount.
+      // Fixes Phase 2 security review P2-7 (the earlier draft read a
+      // non-existent payload.userId and was dead code).
+      const [{ registrationRepository }, { paymentRepository }] = await Promise.all([
+        import("@/repositories/registration.repository"),
+        import("@/repositories/payment.repository"),
+      ]);
+      const [registration, payment] = await Promise.all([
+        registrationRepository.findById(payload.registrationId).catch(() => null),
+        paymentRepository.findById(payload.paymentId).catch(() => null),
+      ]);
+      if (!registration) return;
+      const recipient = await recipientFromUserId(registration.userId);
       if (!recipient) return;
-      const event = payload.eventId ? await eventRepository.findById(payload.eventId) : null;
-      const amount = (payload as unknown as { amount?: number }).amount ?? 0;
+      const event = await eventRepository.findById(payload.eventId);
       await notificationDispatcher.dispatch({
         key: "payment.failed",
         recipients: [recipient],
         params: {
-          amount: formatXof(amount),
+          amount: formatXof(payment?.amount ?? 0),
           eventTitle: event?.title ?? "",
-          failureReason: (payload as unknown as { reason?: string }).reason,
           retryUrl: event ? `/events/${event.slug ?? event.id}/register` : "/my-events",
         },
-        idempotencyKey: `payment-failed/${(payload as unknown as { paymentId?: string }).paymentId ?? userId}`,
+        idempotencyKey: `payment-failed/${payload.paymentId}`,
       });
     } catch (err) {
       logHandlerError("payment.failed", err instanceof Error ? err.message : String(err));
@@ -262,16 +289,15 @@ function registerPaymentListeners(): void {
 
   eventBus.on("payment.refunded", async (payload) => {
     try {
-      const userId = (payload as unknown as { userId?: string }).userId;
-      if (!userId) return;
-      const recipient = await recipientFromUserId(userId);
+      // Same fix as payment.failed: resolve userId from the registration.
+      const { registrationRepository } = await import("@/repositories/registration.repository");
+      const registration = await registrationRepository
+        .findById(payload.registrationId)
+        .catch(() => null);
+      if (!registration) return;
+      const recipient = await recipientFromUserId(registration.userId);
       if (!recipient) return;
-      const event = payload.eventId ? await eventRepository.findById(payload.eventId) : null;
-      const amount = (payload as unknown as { amount?: number }).amount ?? 0;
-      const refundId =
-        (payload as unknown as { refundId?: string; paymentId?: string }).refundId ??
-        (payload as unknown as { paymentId?: string }).paymentId ??
-        "";
+      const event = await eventRepository.findById(payload.eventId);
       // Phase 2 MVP treats every refund as "issued" — the future refund
       // service will emit refund.failed explicitly and wire this handler
       // to branch on it. For now we ship the success template only.
@@ -279,13 +305,13 @@ function registerPaymentListeners(): void {
         key: "refund.issued",
         recipients: [recipient],
         params: {
-          amount: formatXof(amount),
+          amount: formatXof(payload.amount),
           eventTitle: event?.title ?? "",
-          refundId,
+          refundId: payload.paymentId,
           provider: "Wave / Orange Money",
           expectedSettlementDays: 5,
         },
-        idempotencyKey: `refund-issued/${refundId}`,
+        idempotencyKey: `refund-issued/${payload.paymentId}`,
       });
     } catch (err) {
       logHandlerError("refund.issued", err instanceof Error ? err.message : String(err));
@@ -298,39 +324,50 @@ function registerPaymentListeners(): void {
 function registerInviteListeners(): void {
   eventBus.on("invite.created", async (payload) => {
     try {
-      const p = payload as unknown as {
-        inviteeEmail?: string;
-        role?: string;
-        organizationId?: string;
-        eventId?: string;
-        inviterName?: string;
-        token?: string;
-        expiresAt?: string;
-      };
-      if (!p.inviteeEmail) return;
-      const org = p.organizationId ? await organizationRepository.findById(p.organizationId) : null;
-      const event = p.eventId ? await eventRepository.findById(p.eventId) : null;
+      // InviteCreatedEvent exposes { inviteId, organizationId, email, role }.
+      // Earlier Phase 2 draft cast to a made-up `inviteeEmail` field which
+      // meant the listener was dead code. Fixes security review P1-5.
+      if (!payload.email) return;
+
+      // Fetch the invite doc for the token + expiry + optional eventId;
+      // the domain event only carries the minimum needed to audit.
+      const { inviteRepository } = await import("@/repositories/invite.repository");
+      const invite = await inviteRepository.findById(payload.inviteId).catch(() => null);
+      const token = (invite as unknown as { token?: string })?.token;
+      const expiresAt = (invite as unknown as { expiresAt?: string })?.expiresAt;
+      const eventIdOnInvite = (invite as unknown as { eventId?: string })?.eventId;
+
+      const org = await organizationRepository.findById(payload.organizationId);
+      const event = eventIdOnInvite ? await eventRepository.findById(eventIdOnInvite) : null;
+
+      // Inviter name: prefer the actor's displayName (from the audit
+      // actorId on the event). Falls back to a generic phrase.
+      const inviter = await userRepository.findById(payload.actorId).catch(() => null);
+      const inviterName = inviter?.displayName ?? inviter?.email ?? "Un organisateur";
 
       const role: "co_organizer" | "speaker" | "sponsor" | "staff" =
-        p.role === "co_organizer" ||
-        p.role === "speaker" ||
-        p.role === "sponsor" ||
-        p.role === "staff"
-          ? (p.role as "co_organizer" | "speaker" | "sponsor" | "staff")
+        payload.role === "co_organizer" ||
+        payload.role === "speaker" ||
+        payload.role === "sponsor" ||
+        payload.role === "staff"
+          ? (payload.role as "co_organizer" | "speaker" | "sponsor" | "staff")
           : "staff";
 
       await notificationDispatcher.dispatch({
         key: "invite.sent",
-        recipients: [{ email: p.inviteeEmail, preferredLocale: "fr" }],
+        recipients: [{ email: payload.email, preferredLocale: "fr" }],
         params: {
-          inviterName: p.inviterName ?? "Un organisateur",
+          inviterName,
           organizationName: org?.name ?? "",
           role,
           eventTitle: event?.title,
-          acceptUrl: p.token ? `/invites/${p.token}` : "/login",
-          expiresAt: p.expiresAt ? formatDateTime(p.expiresAt) : "7 jours",
+          acceptUrl: token ? `/invites/${token}` : "/login",
+          expiresAt: expiresAt ? formatDateTime(expiresAt) : "7 jours",
         },
-        idempotencyKey: `invite-sent/${p.token ?? p.inviteeEmail}`,
+        // inviteId is the primary-key for dedup; org id gives an extra
+        // disambiguator in case two orgs ever share an inviteId prefix.
+        // Fixes Phase 2 security review P1-4.
+        idempotencyKey: `invite-sent/${payload.inviteId}/${payload.organizationId}`,
       });
     } catch (err) {
       logHandlerError("invite.sent", err instanceof Error ? err.message : String(err));
@@ -379,27 +416,28 @@ function registerTeamListeners(): void {
 
   eventBus.on("speaker.added", async (payload) => {
     try {
-      const p = payload as unknown as {
-        speakerId?: string;
-        speakerUserId?: string;
-        eventId?: string;
-      };
-      const userId = p.speakerUserId ?? p.speakerId;
-      if (!userId || !p.eventId) return;
-      const recipient = await recipientFromUserId(userId);
+      // SpeakerAddedEvent carries { speakerId, eventId, organizationId, name }.
+      // Need to resolve the speaker's platform userId / email via the
+      // speaker repository (the doc may have neither — speakers can be
+      // off-platform; in that case we skip the notification).
+      const { speakerRepository } = await import("@/repositories/speaker.repository");
+      const speaker = await speakerRepository.findById(payload.speakerId).catch(() => null);
+      if (!speaker) return;
+      const recipient = speaker.userId ? await recipientFromUserId(speaker.userId) : null;
       if (!recipient) return;
-      const event = await eventRepository.findById(p.eventId);
+      const event = await eventRepository.findById(payload.eventId);
       if (!event) return;
       await notificationDispatcher.dispatch({
         key: "speaker.added",
         recipients: [recipient],
         params: {
+          speakerName: payload.name,
           eventTitle: event.title,
           eventDate: formatDate(event.startDate),
           eventLocation: event.location ?? "",
           portalUrl: `/speaker/${event.id}`,
         },
-        idempotencyKey: `speaker-added/${event.id}/${userId}`,
+        idempotencyKey: `speaker-added/${event.id}/${payload.speakerId}`,
       });
     } catch (err) {
       logHandlerError("speaker.added", err instanceof Error ? err.message : String(err));
@@ -408,32 +446,31 @@ function registerTeamListeners(): void {
 
   eventBus.on("sponsor.added", async (payload) => {
     try {
-      const p = payload as unknown as {
-        sponsorId?: string;
-        contactUserId?: string;
-        contactEmail?: string;
-        organizationName?: string;
-        eventId?: string;
-      };
-      if (!p.eventId) return;
-      const event = await eventRepository.findById(p.eventId);
-      if (!event) return;
-      const recipient = p.contactUserId
-        ? await recipientFromUserId(p.contactUserId)
-        : p.contactEmail
-          ? ({ email: p.contactEmail, preferredLocale: "fr" } satisfies NotificationRecipient)
+      // SponsorAddedEvent carries { sponsorId, eventId, organizationId,
+      // companyName, tier }. Resolve contact via the sponsor repository:
+      // prefer `userId` (platform account), fall back to `contactEmail`.
+      const { sponsorRepository } = await import("@/repositories/sponsor.repository");
+      const sponsor = await sponsorRepository.findById(payload.sponsorId).catch(() => null);
+      if (!sponsor) return;
+      const recipient: NotificationRecipient | null = sponsor.userId
+        ? await recipientFromUserId(sponsor.userId)
+        : sponsor.contactEmail
+          ? { email: sponsor.contactEmail, preferredLocale: "fr" }
           : null;
       if (!recipient) return;
+      const event = await eventRepository.findById(payload.eventId);
+      if (!event) return;
       await notificationDispatcher.dispatch({
         key: "sponsor.added",
         recipients: [recipient],
         params: {
-          organizationName: p.organizationName ?? "",
+          sponsorContactName: sponsor.contactName ?? undefined,
+          organizationName: payload.companyName,
           eventTitle: event.title,
           eventDate: formatDate(event.startDate),
           portalUrl: `/sponsor/${event.id}`,
         },
-        idempotencyKey: `sponsor-added/${event.id}/${p.sponsorId ?? p.contactEmail}`,
+        idempotencyKey: `sponsor-added/${event.id}/${payload.sponsorId}`,
       });
     } catch (err) {
       logHandlerError("sponsor.added", err instanceof Error ? err.message : String(err));
@@ -451,12 +488,34 @@ function registerBillingListeners(): void {
   ]) {
     eventBus.on(event, async (payload) => {
       try {
-        const orgId = (payload as unknown as { organizationId?: string }).organizationId;
-        if (!orgId) return;
-        const recipients = await recipientsForOrgBillingContacts(orgId);
+        // All 3 subscription lifecycle events carry organizationId +
+        // previousPlan + newPlan per domain-events.ts. Only cancelled
+        // adds effectiveAt + cancelledBy. Read the typed payload
+        // directly instead of the earlier unsafe `unknown` casts —
+        // fixes Phase 2 security review P2-7.
+        const p = payload as unknown as {
+          organizationId?: string;
+          previousPlan?: string;
+          newPlan?: string;
+          effectiveAt?: string;
+        };
+        if (!p.organizationId) return;
+        // Avoid double-notification: subscription.service.cancel()
+        // delegates to downgrade(), which emits subscription.downgraded
+        // AND then emits subscription.cancelled. The cancel handler
+        // sends the CANCEL template; the downgrade handler skips the
+        // degenerate "downgrade to free" case so only one email fires.
+        if (event === "subscription.downgraded" && p.newPlan === "free") {
+          return;
+        }
+        const recipients = await recipientsForOrgBillingContacts(p.organizationId);
         if (recipients.length === 0) return;
-        const org = await organizationRepository.findById(orgId);
+        const org = await organizationRepository.findById(p.organizationId);
         if (!org) return;
+        // Append the effective date (or a day-stamp fallback) to the
+        // idempotency key so a cancel → resubscribe → cancel cycle doesn't
+        // silently dedup the second email. Fixes P2-6.
+        const effectiveIso = p.effectiveAt ?? new Date().toISOString();
         await notificationDispatcher.dispatch({
           key:
             event === "subscription.upgraded"
@@ -468,15 +527,12 @@ function registerBillingListeners(): void {
           params: {
             organizationName: org.name,
             kind,
-            fromPlan: (payload as unknown as { fromPlan?: string }).fromPlan ?? "",
-            toPlan: (payload as unknown as { toPlan?: string }).toPlan ?? "",
-            effectiveAt: formatDate(
-              (payload as unknown as { effectiveAt?: string }).effectiveAt ??
-                new Date().toISOString(),
-            ),
+            fromPlan: p.previousPlan ?? "",
+            toPlan: p.newPlan ?? "",
+            effectiveAt: formatDate(effectiveIso),
             billingUrl: "/organization/billing",
           },
-          idempotencyKey: `${event}/${orgId}`,
+          idempotencyKey: `${event}/${p.organizationId}/${effectiveIso.slice(0, 10)}`,
         });
       } catch (err) {
         logHandlerError(event, err instanceof Error ? err.message : String(err));
@@ -510,29 +566,30 @@ function registerBillingListeners(): void {
 
   eventBus.on("payout.created", async (payload) => {
     try {
+      // PayoutCreatedEvent carries { payoutId, eventId, organizationId,
+      // netAmount }. Typed access — no `unknown` casts.
       const recipients = await recipientsForOrgBillingContacts(payload.organizationId);
       if (recipients.length === 0) return;
       const org = await organizationRepository.findById(payload.organizationId);
       if (!org) return;
-      const amount = (payload as unknown as { amount?: number }).amount ?? 0;
-      const payoutId = (payload as unknown as { payoutId?: string }).payoutId ?? "";
-      const eventId = (payload as unknown as { eventId?: string }).eventId;
-      const event = eventId ? await eventRepository.findById(eventId) : null;
-      const expectedSettlement =
-        (payload as unknown as { expectedSettlementDate?: string }).expectedSettlementDate ??
-        new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
+      const event = payload.eventId ? await eventRepository.findById(payload.eventId) : null;
+      // Phase 2 MVP: settlement date is a hard-coded "+3 days" hint since
+      // the domain event doesn't carry it yet. Phase 5 observability will
+      // plumb the real settlement date through once the payout service
+      // queries the provider.
+      const expectedSettlement = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
       await notificationDispatcher.dispatch({
         key: "payout.created",
         recipients,
         params: {
           organizationName: org.name,
-          amount: formatXof(amount),
+          amount: formatXof(payload.netAmount),
           eventTitle: event?.title,
           expectedSettlementDate: formatDate(expectedSettlement),
-          payoutId,
+          payoutId: payload.payoutId,
           billingUrl: "/organization/billing",
         },
-        idempotencyKey: `payout/${payoutId}`,
+        idempotencyKey: `payout/${payload.payoutId}`,
       });
     } catch (err) {
       logHandlerError("payout.created", err instanceof Error ? err.message : String(err));

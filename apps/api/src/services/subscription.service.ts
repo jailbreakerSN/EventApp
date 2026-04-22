@@ -494,11 +494,32 @@ export class SubscriptionService extends BaseService {
     user: AuthUser,
     options: { immediate?: boolean; reason?: string } = {},
   ): Promise<{ scheduled: boolean; effectiveAt?: string }> {
-    return this.downgrade(orgId, "free", user, {
+    const result = await this.downgrade(orgId, "free", user, {
       immediate: options.immediate,
       reason: "cancel",
       note: options.reason,
     });
+    // Emit the cancel-specific domain event so the notification listener
+    // routes to the CANCEL template (not the generic downgrade template).
+    // downgrade() already emitted `subscription.downgraded` for audit /
+    // admin dashboards — the cancel email supersedes it at the UX layer.
+    // See docs/notification-system-roadmap.md Phase 2 §P1-9.
+    try {
+      const current = await subscriptionRepository.findByOrganization(orgId);
+      eventBus.emit("subscription.cancelled", {
+        actorId: user.uid,
+        requestId: getRequestId(),
+        timestamp: new Date().toISOString(),
+        organizationId: orgId,
+        planKey: current?.plan ?? "free",
+        effectiveAt: result.effectiveAt ?? new Date().toISOString(),
+        cancelledBy: "self",
+      });
+    } catch {
+      // never throw from the fire-and-forget path — downgrade already
+      // succeeded, the cancel notification is best-effort
+    }
+    return result;
   }
 
   /**
