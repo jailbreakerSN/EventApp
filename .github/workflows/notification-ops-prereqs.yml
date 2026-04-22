@@ -135,11 +135,127 @@ jobs:
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
+  # ─── IAM bootstrap ───────────────────────────────────────────────────────
+  # Grants the deploy service account every role the downstream jobs need.
+  # Idempotent via `add-iam-policy-binding --condition=None`; re-runs are
+  # a no-op when the binding already exists.
+  #
+  # Bootstrap prerequisite: the service account referenced by GCP_SA_KEY
+  # must already carry `roles/resourcemanager.projectIamAdmin` (or
+  # `roles/owner`) before this workflow can self-grant the rest. Ask a
+  # project owner to run:
+  #
+  #   gcloud projects add-iam-policy-binding $PROJECT_ID \
+  #     --member="serviceAccount:$SA_EMAIL" \
+  #     --role="roles/resourcemanager.projectIamAdmin" \
+  #     --condition=None
+  #
+  # Per-role rationale (all grants are project-scoped):
+  #   monitoring.editor           — create/update alert policies +
+  #                                 notification channels (alpha API).
+  #   datastore.owner             — gcloud firestore fields ttls update
+  #                                 requires owner scope on the database.
+  #   secretmanager.admin         — create/add-version/add-iam on the
+  #                                 INTERNAL_DISPATCH_SECRET entry.
+  #   run.admin                   — Cloud Run services update
+  #                                 --update-secrets for the API service.
+  #   serviceusage.serviceUsageAdmin — gcloud services enable for the
+  #                                    three APIs the jobs turn on
+  #                                    (monitoring, firestore, run,
+  #                                    secretmanager). Also needed to
+  #                                    verify current enablement.
+  #   logging.configWriter        — future: when we convert the ops
+  #                                 workflow to also create the
+  #                                 log-based metrics the alert policy
+  #                                 references.
+  ensure-iam:
+    name: Ensure deploy SA has required IAM roles
+    runs-on: ubuntu-latest
+    needs: plan
+    environment: ${{ inputs.environment }}
+    steps:
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Grant project-scoped roles to the deploy SA
+        env:
+          SA_KEY: ${{ secrets.GCP_SA_KEY }}
+          PROJECT_ID: ${{ needs.plan.outputs.project_id }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          SA_EMAIL=$(echo "$SA_KEY" | jq -r '.client_email')
+          if [ -z "$SA_EMAIL" ] || [ "$SA_EMAIL" = "null" ]; then
+            echo "::error::GCP_SA_KEY does not contain a client_email field."
+            exit 1
+          fi
+          echo "::notice::Granting IAM roles to serviceAccount:${SA_EMAIL} on project ${PROJECT_ID}"
+
+          REQUIRED_ROLES=(
+            "roles/monitoring.editor"
+            "roles/datastore.owner"
+            "roles/secretmanager.admin"
+            "roles/run.admin"
+            "roles/serviceusage.serviceUsageAdmin"
+            "roles/logging.configWriter"
+          )
+
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "::notice::DRY-RUN — would grant: ${REQUIRED_ROLES[*]}"
+            for role in "${REQUIRED_ROLES[@]}"; do
+              echo "  - $role"
+            done
+            {
+              echo "### IAM bootstrap (dry-run)"
+              echo
+              for role in "${REQUIRED_ROLES[@]}"; do
+                echo "- would grant \`$role\`"
+              done
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          FAILED=()
+          for role in "${REQUIRED_ROLES[@]}"; do
+            if gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+                --member="serviceAccount:${SA_EMAIL}" \
+                --role="$role" \
+                --condition=None \
+                --quiet >/dev/null 2>&1; then
+              echo "::notice::Granted $role"
+            else
+              echo "::warning::Failed to grant $role — the SA may lack projectIamAdmin, or the role is already bound via a group. Downstream job may still succeed if the SA inherits the permission."
+              FAILED+=("$role")
+            fi
+          done
+
+          {
+            echo "### IAM bootstrap"
+            echo
+            echo "Service account: \`${SA_EMAIL}\`"
+            echo
+            echo "| Role | Result |"
+            echo "| --- | --- |"
+            for role in "${REQUIRED_ROLES[@]}"; do
+              status="granted"
+              for f in "${FAILED[@]+"${FAILED[@]}"}"; do
+                if [ "$f" = "$role" ]; then status="warn — see log"; fi
+              done
+              echo "| \`$role\` | $status |"
+            done
+            echo
+            if [ "${#FAILED[@]}" -gt 0 ]; then
+              echo "> Some grants failed. If downstream jobs fail with PERMISSION_DENIED, ensure the service account has \`roles/resourcemanager.projectIamAdmin\` (or \`roles/owner\`) so this step can self-grant the remaining roles. See the workflow header comment for the one-liner."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
   # ─── Firestore TTL activation ────────────────────────────────────────────
   firestore-ttl:
     name: Enable Firestore TTL on notificationDispatchLog.expiresAt
     runs-on: ubuntu-latest
-    needs: plan
+    needs: [plan, ensure-iam]
     if: ${{ inputs.skip_ttl == 'false' }}
     environment: ${{ inputs.environment }}
     steps:
@@ -205,7 +321,7 @@ jobs:
   alert-policies:
     name: Upsert Cloud Monitoring alert policies
     runs-on: ubuntu-latest
-    needs: plan
+    needs: [plan, ensure-iam]
     if: ${{ inputs.skip_alert_policies == 'false' }}
     environment: ${{ inputs.environment }}
     steps:
@@ -299,7 +415,7 @@ jobs:
   secret-provisioning:
     name: Provision INTERNAL_DISPATCH_SECRET and bind to Cloud Run
     runs-on: ubuntu-latest
-    needs: plan
+    needs: [plan, ensure-iam]
     if: ${{ inputs.skip_secret_provisioning == 'false' }}
     environment: ${{ inputs.environment }}
     steps:
@@ -437,7 +553,7 @@ jobs:
   summary:
     name: Summary
     runs-on: ubuntu-latest
-    needs: [plan, firestore-ttl, alert-policies, secret-provisioning]
+    needs: [plan, ensure-iam, firestore-ttl, alert-policies, secret-provisioning]
     if: always()
     steps:
       - name: Emit run outcome
@@ -448,6 +564,7 @@ jobs:
             echo "| Step | Result |"
             echo "| --- | --- |"
             echo "| plan | ${{ needs.plan.result }} |"
+            echo "| ensure-iam | ${{ needs.ensure-iam.result }} |"
             echo "| firestore-ttl | ${{ needs.firestore-ttl.result }} |"
             echo "| alert-policies | ${{ needs.alert-policies.result }} |"
             echo "| secret-provisioning | ${{ needs.secret-provisioning.result }} |"
