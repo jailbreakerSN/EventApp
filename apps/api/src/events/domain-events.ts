@@ -344,6 +344,36 @@ export interface NotificationUnsubscribedEvent extends BaseEventPayload {
   source: "list_unsubscribe_click" | "list_unsubscribe_post";
 }
 
+// ── Notification dispatcher (Phase 1) ────────────────────────────────────
+// Emitted by NotificationService.dispatch on every channel delivery,
+// every suppression decision, and every super-admin write to
+// notificationSettings. Fire-and-forget audit trail — see audit.listener
+// for the auditLogs mapping.
+
+export interface NotificationSentEvent extends BaseEventPayload {
+  /** Catalog key from packages/shared-types/src/notification-catalog.ts. */
+  key: string;
+  channel: "email" | "sms" | "push" | "in_app";
+  /** Opaque recipient id for logs — userId when authenticated, else "email:<redacted>". */
+  recipientRef: string;
+  /** Provider-returned message id when available (e.g. Resend's id). */
+  messageId?: string;
+}
+
+export interface NotificationSuppressedEvent extends BaseEventPayload {
+  key: string;
+  recipientRef: string;
+  reason: "admin_disabled" | "user_opted_out" | "on_suppression_list" | "bounced" | "no_recipient";
+  channel?: "email" | "sms" | "push" | "in_app";
+}
+
+export interface NotificationSettingUpdatedEvent extends BaseEventPayload {
+  key: string;
+  enabled: boolean;
+  channels: ("email" | "sms" | "push" | "in_app")[];
+  hasSubjectOverride: boolean;
+}
+
 // ── Speaker ───────────────────────────────────────────────────────────────
 
 export interface SpeakerAddedEvent extends BaseEventPayload {
@@ -710,6 +740,10 @@ export interface DomainEventMap {
   "newsletter.sent": NewsletterSentEvent;
   // Notification preferences
   "notification.unsubscribed": NotificationUnsubscribedEvent;
+  // Notification dispatcher (Phase 1)
+  "notification.sent": NotificationSentEvent;
+  "notification.suppressed": NotificationSuppressedEvent;
+  "notification.setting_updated": NotificationSettingUpdatedEvent;
 }
 
 export type DomainEventName = keyof DomainEventMap;

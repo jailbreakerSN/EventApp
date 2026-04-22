@@ -131,6 +131,18 @@ const envSchema = z.object({
     (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
     z.string().url().optional(),
   ),
+
+  // ─── Notification system rollout flag (Phase 1) ──────────────────────────
+  // When enabled the 10 existing emailService.sendXxx helpers route through
+  // the NotificationService dispatcher (catalog lookup, admin kill-switch,
+  // per-key user opt-out, audit trail). When disabled the legacy code path
+  // runs unchanged. Default OFF in production; dev + staging bake it ON via
+  // the platform config so we get observability from day one. See
+  // docs/notification-system-roadmap.md Phase 1.
+  NOTIFICATIONS_DISPATCHER_ENABLED: z.preprocess(
+    (v) => (typeof v === "string" ? v.toLowerCase() === "true" || v === "1" : v),
+    z.boolean().default(false),
+  ),
 });
 
 const parsed = envSchema.safeParse(process.env);

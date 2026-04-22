@@ -20,3 +20,4 @@ export * from "./phone.types";
 export * from "./venue.types";
 export * from "./subscription.types";
 export * from "./plan.types";
+export * from "./notification-catalog";

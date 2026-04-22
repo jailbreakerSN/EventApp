@@ -96,4 +96,15 @@ export const COLLECTIONS = {
   PLANS: "plans",
   SESSION_BOOKMARKS: "sessionBookmarks",
   COUNTERS: "counters",
+  // ─── Notification system (Phase 1) ─────────────────────────────────────
+  // Per-notification-key admin overrides. Doc id = notification key
+  // (e.g. "registration.created"). Body = NotificationSetting. Server-only
+  // rules — super-admin writes flow through the admin notifications API
+  // (Phase 4), never from the client. Absent doc = fall back to the
+  // catalog's default channels + enabled=true.
+  NOTIFICATION_SETTINGS: "notificationSettings",
+  // Append-only dispatch log (Phase 5). Present as a COLLECTIONS constant
+  // now so the Firestore rules and audit listener know about it even
+  // though the writer (dispatcher's log-to-firestore option) lands in v2.
+  NOTIFICATION_DISPATCH_LOG: "notificationDispatchLog",
 } as const;
