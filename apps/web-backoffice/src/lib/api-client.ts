@@ -46,6 +46,10 @@ import type {
   CreateBroadcastDto,
   BroadcastQuery,
   Notification,
+  NotificationCategory,
+  I18nString,
+  UpdateNotificationPreferenceDto,
+  NotificationPreference,
   SpeakerProfile,
   CreateSpeakerDto,
   UpdateSpeakerDto,
@@ -505,6 +509,23 @@ export const broadcastsApi = {
     api.get<PaginatedResponse<Broadcast>>(`/v1/events/${eventId}/broadcasts${buildQuery(query)}`),
 };
 
+/**
+ * Phase 3 user-preferences payload. Mirrors the route in
+ * apps/api/src/routes/notifications.routes.ts — a flat projection of the
+ * catalog plus the user's current enabled state. Kept here (not in
+ * shared-types) because it's purely a transport shape; the underlying
+ * `NotificationDefinition` is already exported for components that need
+ * the full catalog record.
+ */
+export interface NotificationCatalogEntry {
+  key: string;
+  category: NotificationCategory;
+  displayName: I18nString;
+  description: I18nString;
+  userOptOutAllowed: boolean;
+  enabled: boolean;
+}
+
 export const notificationsApi = {
   list: (params: { page?: number; limit?: number; unreadOnly?: boolean } = {}) =>
     api.get<{ success: boolean; data: Notification[]; meta: { total: number } }>(`/v1/notifications${buildQuery(params)}`),
@@ -517,6 +538,19 @@ export const notificationsApi = {
 
   markAllAsRead: () =>
     api.patch<{ success: boolean }>("/v1/notifications/read-all", {}),
+
+  // Phase 3 — catalog + per-key opt-out. The PUT endpoint takes the full
+  // UpdateNotificationPreferenceDto shape; consumers in this app only pass
+  // `byKey` but the signature stays wide so future call sites can touch
+  // channels / quiet hours without a new method.
+  catalog: () =>
+    api.get<ApiResponse<NotificationCatalogEntry[]>>("/v1/notifications/catalog"),
+
+  updatePreferences: (dto: UpdateNotificationPreferenceDto) =>
+    request<ApiResponse<NotificationPreference>>("/v1/notifications/preferences", {
+      method: "PUT",
+      body: JSON.stringify(dto),
+    }),
 };
 
 export const speakersApi = {

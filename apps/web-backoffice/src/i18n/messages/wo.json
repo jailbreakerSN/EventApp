@@ -87,5 +87,43 @@
       "upgradePlan": "Yore sama plan",
       "dismiss": "Tëj"
     }
+  },
+  "notifications": {
+    "preferences": {
+      "breadcrumbHome": "Tableau de bord",
+      "breadcrumbSettings": "Paramètres",
+      "breadcrumbCurrent": "Yëglekaay",
+      "title": "Yëglekaay",
+      "subtitle": "Tànnal yëglekaay yi ngay bëgg jot. Yëglekaay yu aju ci kaaraange walla fayoo, manuñu leen tëj.",
+      "loadingAria": "Di yëngu yëglekaay yi",
+      "empty": "Amul yëglekaay",
+      "emptyDescription": "Dellul ci kanam, catalog bi dina dox.",
+      "retry": "Jéémaat",
+      "errorLoadingTitle": "Manuñu jàng sa tànnéef yi",
+      "errorLoadingDescription": "Xoolaatal sa konsa te jéémaatal.",
+      "mandatoryTooltip": "Yeboo bi, dafa fàww.",
+      "mandatorySrHint": "Yëglekaay bi fàww, manuñu ko tëj",
+      "save": "Denc",
+      "saving": "Di denc...",
+      "cancel": "Bayyi",
+      "unsavedAnnounce": "Soppi yu ñu dencagul",
+      "unsavedCount": "{count, plural, one {# soppi bu ñu dencagul} other {# soppi yu ñu dencagul}}",
+      "saveSuccess": "Tànnéef yi denc nañu",
+      "pauseAllMarketing": "Taxawal yépp yëglekaay marketing yi",
+      "pauseAllMarketingDescription": "Tëj na yépp yëglekaay marketing yi ci benn click. Man nga leen ubbi ko ci kenn-kenn ci suuf.",
+      "quickNav": "Dem ci catégorie",
+      "categories": {
+        "auth": "Kaaraange ak kont",
+        "authDescription": "Dugg, vérifications imeyl ak soppi baatu-ruus.",
+        "transactional": "Transaction",
+        "transactionalDescription": "Bindu, badge ak dëggal ci sa xew-xew yi.",
+        "billing": "Fay",
+        "billingDescription": "Fay, reçu ak abonnement. Yëglekaay yii fàww nañu.",
+        "organizational": "Organisation",
+        "organizationalDescription": "Invitation équipe, soppi ci rôle ak jëf yu organisation.",
+        "marketing": "Marketing",
+        "marketingDescription": "Yu bees, conseil ak promo. Man nga génn bu ne."
+      }
+    }
   }
 }

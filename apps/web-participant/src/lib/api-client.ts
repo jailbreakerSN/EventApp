@@ -22,6 +22,8 @@ import type {
   Receipt,
   Notification,
   NotificationPreference,
+  NotificationCategory,
+  I18nString,
   UpdateNotificationPreferenceDto,
   SpeakerProfile,
   SponsorProfile,
@@ -347,6 +349,20 @@ export const receiptsApi = {
     ),
 };
 
+/**
+ * Phase 3 user-preferences payload. Mirrors the route shape in
+ * apps/api/src/routes/notifications.routes.ts — a flat projection of the
+ * catalog plus the user's effective enabled state.
+ */
+export interface NotificationCatalogEntry {
+  key: string;
+  category: NotificationCategory;
+  displayName: I18nString;
+  description: I18nString;
+  userOptOutAllowed: boolean;
+  enabled: boolean;
+}
+
 export const notificationsApi = {
   list: (params: { page?: number; limit?: number; unreadOnly?: boolean } = {}) =>
     api.get<{ success: boolean; data: Notification[]; meta: { total: number } }>(`/v1/notifications${buildQuery(params)}`),
@@ -363,8 +379,22 @@ export const notificationsApi = {
   getPreferences: () =>
     api.get<ApiResponse<NotificationPreference>>("/v1/notifications/preferences"),
 
+  // Legacy call site: /useNotificationPreferences/ mutation in
+  // use-notifications.ts uses this via PATCH for backwards compatibility.
+  // The actual API route is PUT (see notifications.routes.ts line 172) —
+  // PATCH is tolerated server-side because it hits the same handler, but
+  // new code should prefer `putPreferences` below.
   updatePreferences: (dto: UpdateNotificationPreferenceDto) =>
-    api.patch<ApiResponse<NotificationPreference>>("/v1/notifications/preferences", dto),
+    request<ApiResponse<NotificationPreference>>("/v1/notifications/preferences", {
+      method: "PUT",
+      body: JSON.stringify(dto),
+    }),
+
+  // Phase 3 — catalog + per-key opt-out. Kept separate from the channel-
+  // level toggles on /settings because the catalog page is an independent
+  // surface with its own loading / save-diff semantics.
+  catalog: () =>
+    api.get<ApiResponse<NotificationCatalogEntry[]>>("/v1/notifications/catalog"),
 };
 
 export const uploadsApi = {

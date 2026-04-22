@@ -108,6 +108,14 @@ export const NotificationPreferenceSchema = z.object({
   eventReminders: z.boolean().default(true),
   quietHoursStart: z.string().nullable(), // "22:00"
   quietHoursEnd: z.string().nullable(), // "08:00"
+  // Per-notification-key opt-out (Phase 3). Map of catalog key → enabled
+  // flag. Explicit false = opted out; absent / true = follow defaults.
+  // The dispatcher reads this before every send to honour granular
+  // preferences without needing the user to flip category-level toggles.
+  // Security + transactional notifications (userOptOutAllowed=false in
+  // the catalog) bypass this map entirely — see
+  // docs/notification-system-architecture.md §8.
+  byKey: z.record(z.string(), z.boolean()).optional(),
   updatedAt: z.string().datetime(),
 });
 
@@ -123,6 +131,7 @@ export const UpdateNotificationPreferenceSchema = z.object({
   eventReminders: z.boolean().optional(),
   quietHoursStart: z.string().nullable().optional(),
   quietHoursEnd: z.string().nullable().optional(),
+  byKey: z.record(z.string(), z.boolean()).optional(),
 });
 
 export type UpdateNotificationPreferenceDto = z.infer<typeof UpdateNotificationPreferenceSchema>;

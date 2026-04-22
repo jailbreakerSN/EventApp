@@ -87,6 +87,7 @@ POST /v1/events/sponsors/:sponsorId/upload-url perm=sponsor:manage_booth allow=[
 POST /v1/newsletter/send perm=platform:manage allow=[super_admin]
 GET /v1/notifications perm=notification:read_own allow=[co_organizer,organizer,participant,speaker,sponsor,staff,super_admin,venue_manager]
 PATCH /v1/notifications/:notificationId/read perm=notification:read_own allow=[co_organizer,organizer,participant,speaker,sponsor,staff,super_admin,venue_manager]
+GET /v1/notifications/catalog perm=notification:read_own allow=[co_organizer,organizer,participant,speaker,sponsor,staff,super_admin,venue_manager]
 GET /v1/notifications/preferences perm=notification:read_own allow=[co_organizer,organizer,participant,speaker,sponsor,staff,super_admin,venue_manager]
 PUT /v1/notifications/preferences perm=notification:read_own allow=[co_organizer,organizer,participant,speaker,sponsor,staff,super_admin,venue_manager]
 PATCH /v1/notifications/read-all perm=notification:read_own allow=[co_organizer,organizer,participant,speaker,sponsor,staff,super_admin,venue_manager]
