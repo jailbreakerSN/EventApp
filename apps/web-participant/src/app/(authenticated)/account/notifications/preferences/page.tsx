@@ -1,38 +1,44 @@
 "use client";
 
 /**
- * Phase B.2 — Per-user notification preferences (backoffice).
+ * Phase B.2 — Participant notification preferences.
  *
- * Rebuilt from the legacy boolean-only shape to consume the Phase B.1
- * per-channel catalog contract:
- *   GET  /v1/notifications/catalog       → each entry now carries
- *                                          supportedChannels, defaultChannels,
- *                                          effectiveChannels, userPreference.
- *   GET  /v1/notifications/preferences   → user's flat prefs doc (quiet
- *                                          hours, email category toggles,
- *                                          byKey map — mixed legacy boolean
- *                                          + per-channel object).
- *   PUT  /v1/notifications/preferences   → same shape as GET; byKey values
- *                                          accept boolean OR per-channel
- *                                          object (server resolves both).
- *   POST /v1/notifications/test-send     → user-triggered preview for any
- *                                          opt-outable key. 5/h rate limit.
+ * Route: /account/notifications/preferences
  *
- * Save-as-you-go: every toggle fires a PUT with only the changed field
- * merged over the current prefs doc. Optimistic cache updates roll back
- * on error. No "Save" button — the previous session's unsaved-queue
- * pattern confused users on mobile where the sticky footer was easy to
- * miss on long catalogs.
+ * Mirrors the backoffice prefs page but with next-intl strings across
+ * fr / en / wo and the participant's editorial chrome (SectionHeader,
+ * back-link). Consumes the Phase B.1 per-channel catalog:
+ *   GET  /v1/notifications/catalog       → per-entry supportedChannels,
+ *                                          defaultChannels, effectiveChannels,
+ *                                          userPreference
+ *   GET  /v1/notifications/preferences   → flat prefs doc (quiet hours,
+ *                                          email category toggles, byKey)
+ *   PUT  /v1/notifications/preferences   → same shape. byKey values accept
+ *                                          boolean OR per-channel object.
+ *   POST /v1/notifications/test-send     → self-targeted preview. Rate
+ *                                          limited 5/h; rejects mandatory
+ *                                          keys with 400 NOT_OPTABLE.
  *
- * Mandatory categories (auth + billing) render locked Switches with the
- * "Obligatoire" badge. The server also rejects mandatory-key writes to
- * byKey so even a tampered client can't opt out.
+ * Save-as-you-go: every switch fires a PUT with only the delta. Optimistic
+ * cache updates via React Query's `invalidateQueries` on success and
+ * rollback on error. Designed for low-bandwidth — one round-trip per
+ * flip is fine because each payload is <100 bytes and the UI stays
+ * responsive.
+ *
+ * Legacy byKey coercion: when the stored value for a key is a bare
+ * boolean (pre-Phase-2.6 docs), we expand it into a per-channel object
+ * on the first edit so the UI and the server share the same mental
+ * model for that key going forward.
+ *
+ * Mandatory keys (auth + billing categories) render locked Switches +
+ * "Obligatoire" badge + disabled Test button. The server rejects any
+ * byKey write for those keys, so the UI is just a guardrail.
  */
 
+import { useCallback, useMemo, useState } from "react";
 import Link from "next/link";
-import { useCallback, useMemo } from "react";
 import { useTranslations, useLocale } from "next-intl";
-import { Bell, Clock, Lock, Send, Loader2, Info } from "lucide-react";
+import { ArrowLeft, Bell, Clock, Info, Loader2, Lock, Send } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -42,12 +48,7 @@ import {
   Tooltip,
   InlineErrorBanner,
   Badge,
-  Breadcrumb,
-  BreadcrumbList,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
+  SectionHeader,
 } from "@teranga/shared-ui";
 import {
   useNotificationCatalog,
@@ -58,9 +59,7 @@ import {
 import { useWebPushRegistration } from "@/hooks/use-web-push-registration";
 import { PushPermissionBanner } from "@/components/push-permission-banner";
 import { useErrorHandler } from "@/hooks/use-error-handler";
-import {
-  type NotificationCatalogEntry,
-} from "@/lib/api-client";
+import { type NotificationCatalogEntry } from "@/lib/api-client";
 import type {
   NotificationCategory,
   NotificationChannel,
@@ -70,9 +69,6 @@ import type {
 } from "@teranga/shared-types";
 
 // ─── Constants ────────────────────────────────────────────────────────────
-// Category display order. Mirrors docs/notification-system-architecture.md
-// §7 — auth & billing first so the "these are locked, here's why" context
-// reads naturally before the toggleable blocks.
 const CATEGORY_ORDER: readonly NotificationCategory[] = [
   "auth",
   "transactional",
@@ -87,8 +83,6 @@ type CatalogLocale = "fr" | "en" | "wo";
 const pickLocale = (locale: string): CatalogLocale =>
   locale === "en" || locale === "wo" ? locale : "fr";
 
-// Resolve the catalog's I18n display value without falling off an unknown
-// locale (some catalog entries might add locales incrementally).
 function pickDisplay(entry: NotificationCatalogEntry, locale: CatalogLocale): string {
   return entry.displayName[locale] ?? entry.displayName.fr ?? entry.key;
 }
@@ -96,14 +90,11 @@ function pickDescription(entry: NotificationCatalogEntry, locale: CatalogLocale)
   return entry.description[locale] ?? entry.description.fr ?? "";
 }
 
-// ─── Per-channel preference coercion ───────────────────────────────────────
-// The stored byKey map is a union of (bare boolean | per-channel object).
-// The UI renders one toggle per supported channel, so we always work with
-// an object. When the user first flips a channel for a legacy boolean key,
-// we expand the boolean to an object preserving the old intent:
-//   - legacy `true`  → every supported channel defaults to true
-//   - legacy `false` → every supported channel defaults to false
-// Callers then flip just the targeted channel.
+// ─── Per-channel preference coercion ──────────────────────────────────────
+// See the backoffice counterpart for the rationale. Kept duplicated here
+// because the participant app doesn't share a components folder with
+// backoffice — pulling it into shared-ui for two call sites isn't worth
+// the cross-package coupling yet.
 function expandLegacyValue(
   value: NotificationPreferenceValue | null | undefined,
   supportedChannels: readonly NotificationChannel[],
@@ -117,12 +108,12 @@ function expandLegacyValue(
   return next;
 }
 
-// ─── Page ──────────────────────────────────────────────────────────────────
-export default function NotificationPreferencesPage() {
-  const t = useTranslations("notifications.preferences");
-  const tCategories = useTranslations("notifications.preferences.categories");
-  const tEmailCategories = useTranslations("notifications.preferences.emailCategories");
-  const tChannel = useTranslations("notifications.preferences.channel");
+// ─── Page ─────────────────────────────────────────────────────────────────
+export default function ParticipantPreferencesPage() {
+  const t = useTranslations("notifications.prefs");
+  const tCategories = useTranslations("notifications.prefs.categories");
+  const tEmailCategories = useTranslations("notifications.prefs.emailCategories");
+  const tChannel = useTranslations("notifications.prefs.channel");
   const tErrors = useTranslations("errors");
   const tErrorActions = useTranslations("errors.actions");
   const locale = pickLocale(useLocale());
@@ -132,10 +123,11 @@ export default function NotificationPreferencesPage() {
   const prefsQuery = useNotificationPreferences();
   const updatePrefs = useUpdateNotificationPreferences();
   const testSend = useTestSendSelf();
-  // Phase C integration — the push Switch per row is disabled until the
-  // browser permission + FCM token registration succeeded. When that's
-  // true the Switch still renders (so users see the channel exists) but
-  // is uninteractive and carries a tooltip pointing at the banner.
+  // Phase C integration — same rationale as the backoffice preferences
+  // page: the per-row push Switch stays visible but goes uninteractive
+  // until the user grants browser permission + successfully registers
+  // an FCM token. A tooltip on the disabled Switch points users at the
+  // PushPermissionBanner mounted a few DOM nodes up.
   const push = useWebPushRegistration();
   const pushDisabled = push.permission !== "granted" || !push.registeredFingerprint;
 
@@ -144,39 +136,40 @@ export default function NotificationPreferencesPage() {
 
   const loading = catalogQuery.isLoading || prefsQuery.isLoading;
   const loadError = catalogQuery.error ?? prefsQuery.error;
+  const saveError = updatePrefs.error ? resolveError(updatePrefs.error) : null;
 
-  // Browser-local tz rendering. Matches the server's quiet-hours
-  // interpretation (the API stores "HH:MM" strings without tz and
-  // assumes the user's locale tz when dispatching).
+  // Ephemeral banners for successful save + test-send. Kept as page-level
+  // state (not toast) so screen readers get a single predictable
+  // announcement surface — the `aria-live` region on InlineErrorBanner
+  // with severity="info" is already wired for this pattern.
+  const [saveInfo, setSaveInfo] = useState<string | null>(null);
+  const [testSendInfo, setTestSendInfo] = useState<string | null>(null);
+  const [testSendError, setTestSendError] = useState<string | null>(null);
+  const [lastTestedKey, setLastTestedKey] = useState<string | null>(null);
+
   const timezone = useMemo(() => {
     try {
-      return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+      return Intl.DateTimeFormat().resolvedOptions().timeZone || "Africa/Dakar";
     } catch {
-      return "UTC";
+      return "Africa/Dakar";
     }
   }, []);
 
-  // ─── Mutation helpers (save-as-you-go) ─────────────────────────────────
-  // All toggles funnel through this helper. The PUT body contains ONLY
-  // the delta — the server merges it with the stored doc. When the user
-  // flips a per-channel value, we expand any legacy boolean first.
+  // ─── Save-as-you-go helper ─────────────────────────────────────────────
   const applyPatch = useCallback(
     (patch: UpdateNotificationPreferenceDto) => {
+      setSaveInfo(null);
       updatePrefs.mutate(patch, {
-        onError: () => {
-          // Error banner is driven by the mutation's `isError` flag and
-          // shown at the top of the page; no per-toggle error UI because
-          // the cascade would be noisy with multiple channels per row.
+        onSuccess: () => {
+          setSaveInfo(t("saveSuccess"));
         },
       });
     },
-    [updatePrefs],
+    [updatePrefs, t],
   );
 
   const handleQuietHoursChange = useCallback(
     (field: "quietHoursStart" | "quietHoursEnd", value: string) => {
-      // Empty input = unset (null). The server schema accepts `null`
-      // explicitly for "no quiet hours".
       applyPatch({ [field]: value || null });
     },
     [applyPatch],
@@ -191,7 +184,7 @@ export default function NotificationPreferencesPage() {
 
   const handleChannelToggle = useCallback(
     (entry: NotificationCatalogEntry, channel: NotificationChannel, next: boolean) => {
-      if (!entry.userOptOutAllowed) return; // defense-in-depth; UI disables the switch
+      if (!entry.userOptOutAllowed) return;
       const currentValue: NotificationPreferenceValue | null =
         prefs?.byKey?.[entry.key] ?? entry.userPreference ?? null;
       const expanded = expandLegacyValue(currentValue, entry.supportedChannels);
@@ -203,13 +196,34 @@ export default function NotificationPreferencesPage() {
 
   const handleTestSend = useCallback(
     (entry: NotificationCatalogEntry) => {
-      if (!entry.userOptOutAllowed) return; // UI hides the button
-      testSend.mutate(entry.key);
+      if (!entry.userOptOutAllowed) return;
+      setTestSendInfo(null);
+      setTestSendError(null);
+      setLastTestedKey(entry.key);
+      testSend.mutate(entry.key, {
+        onSuccess: () => {
+          setTestSendInfo(t("testSendSuccess"));
+        },
+        onError: (err: unknown) => {
+          // Inspect the ApiError shape. `code` comes from the server's
+          // error envelope; `status` is the HTTP code. Either reliably
+          // differentiates the three meaningful outcomes: rate-limit,
+          // mandatory-key rejection, and the generic failure bucket.
+          const e = err as { status?: number; code?: string } | null;
+          if (e?.status === 429 || e?.code === "RATE_LIMITED") {
+            setTestSendError(t("testSendRateLimited"));
+          } else if (e?.code === "NOT_OPTABLE") {
+            setTestSendError(t("testSendNotOptable"));
+          } else {
+            setTestSendError(t("testSendError"));
+          }
+        },
+      });
     },
-    [testSend],
+    [testSend, t],
   );
 
-  // ─── Grouping ──────────────────────────────────────────────────────────
+  // ─── Grouping by category ──────────────────────────────────────────────
   const grouped = useMemo(() => {
     const groups: Record<NotificationCategory, NotificationCatalogEntry[]> = {
       auth: [],
@@ -222,55 +236,38 @@ export default function NotificationPreferencesPage() {
     return groups;
   }, [catalog]);
 
-  const saveError = updatePrefs.error ? resolveError(updatePrefs.error) : null;
-
   return (
-    <div className="max-w-3xl space-y-6">
-      <Breadcrumb className="mb-2">
-        <BreadcrumbList>
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <Link href="/">{t("breadcrumbHome")}</Link>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <Link href="/settings">{t("breadcrumbSettings")}</Link>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbPage>{t("breadcrumbCurrent")}</BreadcrumbPage>
-          </BreadcrumbItem>
-        </BreadcrumbList>
-      </Breadcrumb>
+    <div className="mx-auto max-w-2xl space-y-6 px-4 py-8">
+      <Link
+        href="/settings"
+        className="inline-flex items-center gap-1.5 rounded text-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teranga-gold focus-visible:ring-offset-2"
+      >
+        <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+        {t("backToSettings")}
+      </Link>
 
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-wider text-teranga-gold">
-          {t("pageHeaderKicker")}
-        </p>
-        <h1 className="mt-1 text-2xl font-bold text-foreground">{t("title")}</h1>
-        <p className="mt-2 text-sm text-muted-foreground">{t("pageHeaderDescription")}</p>
-      </div>
+      <SectionHeader
+        kicker={t("kicker")}
+        title={t("title")}
+        subtitle={t("subtitle")}
+        size="hero"
+        as="h1"
+      />
 
       {/* ─── Push permission banner ────────────────────────────────────── */}
-      {/* Phase B/C integration: on the settings page this is a valid
-          "meaningful moment" per docs/notifications/alerting.md — the user
-          came here explicitly to configure their channels. The banner
-          self-hides when permission is already granted/denied or when
-          the user has dismissed it 3x. */}
+      {/* Phase B/C integration: self-hides when permission is granted,
+          denied with no recovery path, or the user has dismissed ≥ 3×. */}
       <PushPermissionBanner trigger="settings-page" />
 
-      {/* ─── Loading skeletons ─────────────────────────────────────────── */}
+      {/* ─── Loading state ───────────────────────────────────────────────── */}
       {loading && (
         <div aria-label={t("loadingAria")} aria-busy="true" className="space-y-4">
           {[0, 1, 2].map((i) => (
             <Card key={i}>
-              <CardContent className="p-6 space-y-3">
+              <CardContent className="space-y-3 py-6">
                 <Skeleton className="h-5 w-40" />
                 <Skeleton className="h-3 w-64" />
-                <div className="mt-4 space-y-3">
+                <div className="space-y-3 pt-2">
                   <Skeleton className="h-12 w-full" />
                   <Skeleton className="h-12 w-full" />
                 </div>
@@ -280,7 +277,6 @@ export default function NotificationPreferencesPage() {
         </div>
       )}
 
-      {/* ─── Load error ────────────────────────────────────────────────── */}
       {!loading && loadError && (
         <InlineErrorBanner
           severity="destructive"
@@ -299,7 +295,7 @@ export default function NotificationPreferencesPage() {
         />
       )}
 
-      {/* ─── Save error (dismissable) ──────────────────────────────────── */}
+      {/* ─── Ephemeral info + error banners (save / test-send) ──────────── */}
       {!loading && !loadError && saveError && (
         <InlineErrorBanner
           severity={saveError.severity}
@@ -310,15 +306,39 @@ export default function NotificationPreferencesPage() {
           dismissLabel={tErrorActions("dismiss")}
         />
       )}
+      {!loading && !loadError && saveInfo && (
+        <InlineErrorBanner
+          severity="info"
+          title={saveInfo}
+          onDismiss={() => setSaveInfo(null)}
+          dismissLabel={tErrorActions("dismiss")}
+        />
+      )}
+      {!loading && !loadError && testSendInfo && (
+        <InlineErrorBanner
+          severity="info"
+          title={testSendInfo}
+          onDismiss={() => setTestSendInfo(null)}
+          dismissLabel={tErrorActions("dismiss")}
+        />
+      )}
+      {!loading && !loadError && testSendError && (
+        <InlineErrorBanner
+          severity="warning"
+          title={testSendError}
+          onDismiss={() => setTestSendError(null)}
+          dismissLabel={tErrorActions("dismiss")}
+        />
+      )}
 
       {!loading && !loadError && catalog && prefs && (
         <>
-          {/* ─── Section 1: Quiet hours ──────────────────────────────── */}
+          {/* ─── Section 1: Quiet hours ─────────────────────────────── */}
           <Card>
-            <CardContent className="p-6 space-y-4">
+            <CardContent className="space-y-4 py-6">
               <div>
-                <h2 className="text-base font-semibold text-foreground flex items-center gap-2">
-                  <Clock className="h-4 w-4 text-teranga-gold" aria-hidden="true" />
+                <h2 className="font-serif-display flex items-center gap-2 text-[20px] font-semibold tracking-[-0.015em]">
+                  <Clock className="h-5 w-5 text-teranga-gold" aria-hidden="true" />
                   {t("quietHoursHeading")}
                   <Tooltip content={t("quietHoursTooltip")} position="top">
                     <Info
@@ -327,7 +347,7 @@ export default function NotificationPreferencesPage() {
                     />
                   </Tooltip>
                 </h2>
-                <p className="mt-1 text-xs text-muted-foreground">
+                <p className="mt-1 text-sm text-muted-foreground">
                   {t("quietHoursDescription")}
                 </p>
               </div>
@@ -361,15 +381,15 @@ export default function NotificationPreferencesPage() {
             </CardContent>
           </Card>
 
-          {/* ─── Section 2: Email categories (coarse toggles) ──────────── */}
+          {/* ─── Section 2: Email-category coarse toggles ──────────── */}
           <Card>
-            <CardContent className="p-6">
-              <h2 className="text-base font-semibold text-foreground flex items-center gap-2">
-                <Bell className="h-4 w-4 text-teranga-gold" aria-hidden="true" />
+            <CardContent className="space-y-3 py-6">
+              <h2 className="font-serif-display flex items-center gap-2 text-[20px] font-semibold tracking-[-0.015em]">
+                <Bell className="h-5 w-5 text-teranga-gold" aria-hidden="true" />
                 {t("categoriesHeading")}
               </h2>
-              <p className="mt-1 text-xs text-muted-foreground">{t("categoriesDescription")}</p>
-              <div className="mt-4 divide-y divide-border">
+              <p className="text-sm text-muted-foreground">{t("categoriesDescription")}</p>
+              <div className="divide-y divide-border">
                 <EmailCategoryRow
                   label={tEmailCategories("transactional")}
                   description={tEmailCategories("transactionalDescription")}
@@ -392,14 +412,14 @@ export default function NotificationPreferencesPage() {
             </CardContent>
           </Card>
 
-          {/* ─── Section 3: Per-key, per-channel grid ────────────────── */}
+          {/* ─── Section 3: Per-key, per-channel grid ──────────────── */}
           <Card>
-            <CardContent className="p-6">
-              <h2 className="text-base font-semibold text-foreground flex items-center gap-2">
-                <Bell className="h-4 w-4 text-teranga-gold" aria-hidden="true" />
+            <CardContent className="space-y-3 py-6">
+              <h2 className="font-serif-display flex items-center gap-2 text-[20px] font-semibold tracking-[-0.015em]">
+                <Bell className="h-5 w-5 text-teranga-gold" aria-hidden="true" />
                 {t("perKeyHeading")}
               </h2>
-              <p className="mt-1 text-xs text-muted-foreground">{t("perKeyDescription")}</p>
+              <p className="text-sm text-muted-foreground">{t("perKeyDescription")}</p>
             </CardContent>
           </Card>
 
@@ -408,14 +428,14 @@ export default function NotificationPreferencesPage() {
             if (entries.length === 0) return null;
             return (
               <Card key={category}>
-                <CardContent className="p-6">
-                  <h3 className="text-sm font-semibold text-foreground">
+                <CardContent className="space-y-3 py-6">
+                  <h3 className="text-base font-semibold text-foreground">
                     {tCategories(category)}
                   </h3>
-                  <p className="mt-0.5 text-xs text-muted-foreground">
+                  <p className="text-xs text-muted-foreground">
                     {tCategories(`${category}Description` as `${typeof category}Description`)}
                   </p>
-                  <div className="mt-4 divide-y divide-border">
+                  <div className="divide-y divide-border">
                     {entries.map((entry) => (
                       <PerKeyRow
                         key={entry.key}
@@ -425,13 +445,14 @@ export default function NotificationPreferencesPage() {
                         onChannelToggle={handleChannelToggle}
                         onTestSend={handleTestSend}
                         isTestSending={
-                          testSend.isPending && testSend.variables === entry.key
+                          testSend.isPending && lastTestedKey === entry.key
                         }
                         labels={{
                           mandatoryBadge: t("mandatoryBadge"),
                           mandatoryTooltip: t("mandatoryTooltip"),
                           mandatorySrHint: t("mandatorySrHint"),
                           testSend: t("testSend"),
+                          testSendSending: t("testSendSending"),
                           testSendAria: (name: string) => t("testSendAria", { name }),
                           testSendMandatoryTooltip: t("testSendMandatoryTooltip"),
                           channelLabel: (ch: NotificationChannel) => tChannel(ch),
@@ -452,7 +473,7 @@ export default function NotificationPreferencesPage() {
 
       {!loading && !loadError && catalog && catalog.length === 0 && (
         <Card>
-          <CardContent className="p-6 text-center">
+          <CardContent className="py-6 text-center">
             <p className="text-sm font-medium text-foreground">{t("empty")}</p>
             <p className="mt-1 text-xs text-muted-foreground">{t("emptyDescription")}</p>
           </CardContent>
@@ -463,8 +484,6 @@ export default function NotificationPreferencesPage() {
 }
 
 // ─── EmailCategoryRow ─────────────────────────────────────────────────────
-// The coarse email-family toggles in Section 2. Same visual template as
-// the per-key rows but simpler (single switch, no test button).
 function EmailCategoryRow({
   label,
   description,
@@ -490,11 +509,6 @@ function EmailCategoryRow({
 }
 
 // ─── PerKeyRow ────────────────────────────────────────────────────────────
-// One row per catalog entry. Left side: display name + description.
-// Right side: one Switch per supported channel, plus a Test button when
-// the key is opt-outable. On narrow viewports the channel group wraps
-// beneath the text block so the row stays readable on phones (organizers
-// open this from tablets at events).
 function PerKeyRow({
   entry,
   prefs,
@@ -521,15 +535,12 @@ function PerKeyRow({
     mandatoryTooltip: string;
     mandatorySrHint: string;
     testSend: string;
+    testSendSending: string;
     testSendAria: (name: string) => string;
     testSendMandatoryTooltip: string;
     channelLabel: (ch: NotificationChannel) => string;
     channelAriaLabel: (ch: NotificationChannel, name: string) => string;
   };
-  // Phase C integration: when Web Push permission hasn't been granted yet,
-  // the push toggle per row is disabled with a tooltip pointing the user
-  // at the permission banner. Keeps the toggle visible (not hidden) so
-  // users who've blocked notifications can still see the channel exists.
   pushDisabled: boolean;
   pushDisabledTooltip: string;
 }) {
@@ -537,18 +548,13 @@ function PerKeyRow({
   const description = pickDescription(entry, locale);
   const locked = !entry.userOptOutAllowed;
 
-  // Current per-channel state for this key — preferring the live prefs
-  // doc over the catalog snapshot so an in-flight mutation renders
-  // immediately. Fall back to effectiveChannels so defaults show when
-  // the user hasn't touched this key yet.
   const rawValue: NotificationPreferenceValue | null | undefined =
     prefs.byKey?.[entry.key] ?? entry.userPreference;
+
   const effective = useMemo(() => {
     const map: Partial<Record<NotificationChannel, boolean>> = {};
     for (const ch of entry.supportedChannels) {
       if (locked) {
-        // Mandatory keys always reflect the admin + catalog resolution;
-        // user opt-out doesn't apply.
         map[ch] = entry.effectiveChannels[ch] ?? true;
         continue;
       }
@@ -641,11 +647,16 @@ function PerKeyRow({
               aria-label={labels.testSendAria(name)}
             >
               {isTestSending ? (
-                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                <>
+                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                  {labels.testSendSending}
+                </>
               ) : (
-                <Send className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
+                <>
+                  <Send className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
+                  {labels.testSend}
+                </>
               )}
-              {labels.testSend}
             </Button>
           )}
         </div>

@@ -23,6 +23,7 @@ import type {
   Notification,
   NotificationPreference,
   NotificationCategory,
+  NotificationChannel,
   I18nString,
   UpdateNotificationPreferenceDto,
   SpeakerProfile,
@@ -361,6 +362,23 @@ export interface NotificationCatalogEntry {
   description: I18nString;
   userOptOutAllowed: boolean;
   enabled: boolean;
+  // Phase B.1 per-channel grid — same shape as the backoffice client. The
+  // preferences page reads these to render a toggle per supported channel
+  // instead of the legacy single switch.
+  supportedChannels: NotificationChannel[];
+  defaultChannels: NotificationChannel[];
+  effectiveChannels: Record<NotificationChannel, boolean>;
+  userPreference: boolean | Partial<Record<NotificationChannel, boolean>> | null;
+}
+
+/**
+ * Response from POST /v1/notifications/test-send — self-targeted preview
+ * dispatched via the notification dispatcher with `testMode=true`.
+ */
+export interface TestSendSelfResponse {
+  dispatched: boolean;
+  key: string;
+  locale: "fr" | "en" | "wo";
 }
 
 export const notificationsApi = {
@@ -395,6 +413,18 @@ export const notificationsApi = {
   // surface with its own loading / save-diff semantics.
   catalog: () =>
     api.get<ApiResponse<NotificationCatalogEntry[]>>("/v1/notifications/catalog"),
+
+  // Alias for `catalog` — new naming used by the Phase B.2 preferences
+  // page to match the GET/mutation convention elsewhere in this client.
+  // Old callers (`catalog()`) still work.
+  getCatalog: () =>
+    api.get<ApiResponse<NotificationCatalogEntry[]>>("/v1/notifications/catalog"),
+
+  // Phase B.1 — user triggers a preview of an opt-outable notification
+  // against their own inbox. Rate-limited 5/hour; rejects mandatory keys
+  // with 400 NOT_OPTABLE so the UI can show a targeted error.
+  testSendSelf: (key: string) =>
+    api.post<ApiResponse<TestSendSelfResponse>>("/v1/notifications/test-send", { key }),
 };
 
 export const uploadsApi = {
@@ -489,6 +519,26 @@ export const authEmailsApi = {
       { email, audience: "participant" },
       false,
     ),
+};
+
+// ─── Me / FCM Tokens (Phase C.1 — Web Push) ─────────────────────────────────
+// Thin wrappers over /v1/me/fcm-tokens. The hook `useWebPushRegistration`
+// owns the browser-side lifecycle (permission, token fetch, localStorage);
+// this just ships the token to the API and drops it by fingerprint.
+//
+// POST is rate-limited 20/hour/user server-side — callers MUST surface
+// 429 as "try later" rather than retrying, or a permission-flip loop will
+// DoS the write path (see apps/api/src/routes/me.routes.ts rateLimit config).
+
+export const meApi = {
+  registerFcmToken: (body: { token: string; platform: "web"; userAgent?: string }) =>
+    api.post<ApiResponse<{ tokenFingerprint: string; status: "registered" | "refreshed"; tokenCount: number }>>(
+      "/v1/me/fcm-tokens",
+      body,
+    ),
+  revokeFcmToken: (tokenFingerprint: string) =>
+    api.delete<void>(`/v1/me/fcm-tokens/${encodeURIComponent(tokenFingerprint)}`),
+  revokeAllFcmTokens: () => api.delete<void>("/v1/me/fcm-tokens"),
 };
 
 export { api, ApiError };
