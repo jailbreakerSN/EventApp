@@ -638,7 +638,7 @@ export const NOTIFICATION_CATALOG: readonly NotificationDefinition[] = [
     defaultChannels: ["email"],
     userOptOutAllowed: true,
     templates: { email: "MemberUpdate" },
-    triggerDomainEvent: "member.role_updated",
+    triggerDomainEvent: "member.role_changed",
     recipientResolver: "custom",
     scope: "organization",
   },

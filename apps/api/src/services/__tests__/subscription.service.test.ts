@@ -552,6 +552,83 @@ describe("SubscriptionService.cancel", () => {
   });
 });
 
+// ── markPastDue ──────────────────────────────────────────────────────────
+
+describe("SubscriptionService.markPastDue", () => {
+  it("flips status to past_due inside a transaction and emits subscription.past_due", async () => {
+    const user = buildOrganizerUser("org-1");
+    const existingSub = {
+      id: "sub-1",
+      organizationId: "org-1",
+      plan: "pro",
+      status: "active",
+    };
+    mockSubRepo.findByOrganization.mockResolvedValue(existingSub);
+    // Fresh tx.get on the subscription doc.
+    mockTxGet.mockResolvedValueOnce({
+      exists: true,
+      data: () => existingSub,
+    });
+
+    await service.markPastDue(
+      "org-1",
+      "card_declined",
+      "2026-05-01T00:00:00.000Z",
+      user,
+    );
+
+    // Transaction update flips status to past_due.
+    expect(mockTxUpdate).toHaveBeenCalledWith(
+      mockDocRef,
+      expect.objectContaining({ status: "past_due" }),
+    );
+    // Domain event fired with the expected payload.
+    expect(eventBus.emit).toHaveBeenCalledWith(
+      "subscription.past_due",
+      expect.objectContaining({
+        organizationId: "org-1",
+        planKey: "pro",
+        failureReason: "card_declined",
+        gracePeriodEndsAt: "2026-05-01T00:00:00.000Z",
+        actorId: user.uid,
+      }),
+    );
+  });
+
+  it("rejects for a caller without organization:manage_billing", async () => {
+    const participant = buildAuthUser({ roles: ["participant"] });
+    await expect(
+      service.markPastDue("org-1", "reason", "2026-05-01T00:00:00.000Z", participant),
+    ).rejects.toThrow("Permission manquante : organization:manage_billing");
+  });
+
+  it("rejects when the caller belongs to a different org", async () => {
+    const user = buildOrganizerUser("org-other");
+    await expect(
+      service.markPastDue("org-1", "reason", "2026-05-01T00:00:00.000Z", user),
+    ).rejects.toThrow("Accès refusé aux ressources de cette organisation");
+  });
+
+  it("is a no-op when the org has no subscription doc (free plan)", async () => {
+    const user = buildOrganizerUser("org-1");
+    mockSubRepo.findByOrganization.mockResolvedValue(null);
+
+    await service.markPastDue(
+      "org-1",
+      "card_declined",
+      "2026-05-01T00:00:00.000Z",
+      user,
+    );
+
+    expect(mockTxUpdate).not.toHaveBeenCalled();
+    // No past_due emit when there's nothing to flag.
+    const pastDueEmits = vi
+      .mocked(eventBus.emit)
+      .mock.calls.filter((c) => c[0] === "subscription.past_due");
+    expect(pastDueEmits).toHaveLength(0);
+  });
+});
+
 // ── Super admin bypass ───────────────────────────────────────────────────
 
 describe("SubscriptionService — super_admin bypass", () => {

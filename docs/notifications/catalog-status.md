@@ -6,17 +6,17 @@
   Source:          packages/shared-types/src/notification-catalog.ts
 -->
 
-- **Generated at:** 2026-04-22T04:49:51.372Z
+- **Generated at:** 2026-04-22T04:55:43.882Z
 - **Branch:**       `claude/email-audit-gaps-DLJuE`
-- **Commit:**       `429dfa8399a9481bfe0c423865858030afa2ae87`
+- **Commit:**       `b10de5aff29250633d51c810afd57b169a3ab1f8`
 
 ## Summary
 
 - Total catalog entries: **30**
-- With at least one emitter in `apps/api/src/services`: **26**
-- With at least one listener in `apps/api/src/events/listeners`: **26**
+- With at least one emitter in `apps/api/src/services`: **27**
+- With at least one listener in `apps/api/src/events/listeners`: **27**
 - With a resolved email template: **30**
-- Entries with at least one gap: **4**
+- Entries with at least one gap: **3**
 - CI integrity violations: **0**
 
 ## Truth table
@@ -43,7 +43,7 @@
 | `refund.failed` | billing | `payment.refunded` | `apps/api/src/services/payment.service.ts:759` | `apps/api/src/events/listeners/audit.listener.ts:1119` | `RefundFailed` | email | email | no |
 | `member.added` | organizational | `member.added` | `apps/api/src/services/organization.service.ts:172` | `apps/api/src/events/listeners/audit.listener.ts:282`<br>`apps/api/src/events/listeners/notification-dispatcher.listener.ts:404` | `MemberUpdate` | email | email | yes |
 | `member.removed` | organizational | `member.removed` | `apps/api/src/services/organization.service.ts:251` | `apps/api/src/events/listeners/audit.listener.ts:298`<br>`apps/api/src/events/listeners/notification-dispatcher.listener.ts:405` | `MemberUpdate` | email | email | yes |
-| `member.role_changed` | organizational | `member.role_updated` | **missing** | **missing** | `MemberUpdate` | email | email | yes |
+| `member.role_changed` | organizational | `member.role_changed` | `apps/api/src/services/organization.service.ts:370` | `apps/api/src/events/listeners/audit.listener.ts:1141`<br>`apps/api/src/events/listeners/notification-dispatcher.listener.ts:406` | `MemberUpdate` | email | email | yes |
 | `speaker.added` | organizational | `speaker.added` | `apps/api/src/services/speaker.service.ts:66` | `apps/api/src/events/listeners/audit.listener.ts:463`<br>`apps/api/src/events/listeners/notification-dispatcher.listener.ts:439` | `SpeakerAdded` | email | email | yes |
 | `sponsor.added` | organizational | `sponsor.added` | `apps/api/src/services/sponsor.service.ts:62` | `apps/api/src/events/listeners/audit.listener.ts:493`<br>`apps/api/src/events/listeners/notification-dispatcher.listener.ts:469` | `SponsorAdded` | email | email | yes |
 | `subscription.upgraded` | billing | `subscription.upgraded` | `apps/api/src/services/subscription.service.ts:263` | `apps/api/src/events/listeners/audit.listener.ts:1030`<br>`apps/api/src/events/listeners/effective-plan.listener.ts:32`<br>…+1 more | `SubscriptionChange` | email | email | no |
@@ -63,5 +63,4 @@ The following catalog entries are missing at least one of emitter, listener, or 
 - `auth.email_verification` → triggerDomainEvent `auth.email_verification_requested` — missing: emitter, listener _(CI-waived — see `NO_EMITTER_OR_LISTENER_WAIVER` in `scripts/lib/notification-catalog-scan.ts`)_
 - `auth.password_reset` → triggerDomainEvent `auth.password_reset_requested` — missing: emitter, listener _(CI-waived — see `NO_EMITTER_OR_LISTENER_WAIVER` in `scripts/lib/notification-catalog-scan.ts`)_
 - `event.reminder` → triggerDomainEvent `event.reminder_due` — missing: emitter, listener _(CI-waived — see `NO_EMITTER_OR_LISTENER_WAIVER` in `scripts/lib/notification-catalog-scan.ts`)_
-- `member.role_changed` → triggerDomainEvent `member.role_updated` — missing: emitter, listener _(CI-waived — see `NO_EMITTER_OR_LISTENER_WAIVER` in `scripts/lib/notification-catalog-scan.ts`)_
 

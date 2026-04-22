@@ -1138,9 +1138,9 @@ export function registerAuditListeners(): void {
   // Distinct from user.role_changed (admin → global roles): this is the
   // org-scoped membership role update (owner/admin/member → organizer etc).
 
-  eventBus.on("member.role_updated", async (payload) => {
+  eventBus.on("member.role_changed", async (payload) => {
     await auditService.log({
-      action: "member.role_updated",
+      action: "member.role_changed",
       actorId: payload.actorId,
       requestId: payload.requestId,
       timestamp: payload.timestamp,

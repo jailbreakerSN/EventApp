@@ -486,6 +486,65 @@ export class SubscriptionService extends BaseService {
   }
 
   /**
+   * Flag a subscription as `past_due`. Invoked by the future billing cron
+   * (or an admin) when an auto-renewal payment fails. Wraps the status
+   * flip in a transaction so a concurrent cancel/downgrade can't clobber
+   * the state, and emits `subscription.past_due` so the dispatcher fires
+   * the billing-contact email.
+   *
+   * No-op (returns without throwing, no emit) when the org has no
+   * subscription doc (free plan) — past_due is meaningless there.
+   */
+  async markPastDue(
+    orgId: string,
+    reason: string,
+    gracePeriodUntil: string,
+    user: AuthUser,
+  ): Promise<void> {
+    this.requirePermission(user, "organization:manage_billing");
+    this.requireOrganizationAccess(user, orgId);
+
+    const now = new Date().toISOString();
+
+    // Transactional: read-then-write on the subscription doc so
+    // concurrent cancel / downgrade calls can't race with the status
+    // flip. Firestore rules deny client writes on subscriptions; only
+    // Admin-SDK transactions land here.
+    const planKey = await db.runTransaction(async (tx) => {
+      const existing = await subscriptionRepository.findByOrganization(orgId);
+      if (!existing) return null;
+      const subRef = db.collection(COLLECTIONS.SUBSCRIPTIONS).doc(existing.id);
+      const snap = await tx.get(subRef);
+      if (!snap.exists) return null;
+      const sub = snap.data() as Subscription;
+
+      tx.update(subRef, {
+        status: "past_due" as Subscription["status"],
+        updatedAt: now,
+      });
+      return sub.plan;
+    });
+
+    if (!planKey) return;
+
+    eventBus.emit("subscription.past_due", {
+      organizationId: orgId,
+      planKey,
+      // The catalog template expects a pre-formatted XOF amount string.
+      // The billing cron supplies this directly via `reason` today; when
+      // the provider integration lands we'll enrich with the actual
+      // amount. For now we pass an empty string so the template renders
+      // the "contact support" fallback copy.
+      amount: "",
+      failureReason: reason,
+      gracePeriodEndsAt: gracePeriodUntil,
+      actorId: user.uid,
+      requestId: getRequestId(),
+      timestamp: now,
+    });
+  }
+
+  /**
    * Cancel subscription — schedules a downgrade to free at the end of the
    * current paid period (default) or flips immediately with `immediate: true`.
    */

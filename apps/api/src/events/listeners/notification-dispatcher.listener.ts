@@ -158,25 +158,19 @@ function registerRegistrationListeners(): void {
 // ─── Event lifecycle ──────────────────────────────────────────────────────
 
 function registerEventListeners(): void {
-  eventBus.on("event.updated", async (payload) => {
-    // Detect reschedule: startDate or endDate in the changes payload.
-    const changes = payload.changes ?? {};
-    const rescheduled = "startDate" in changes || "endDate" in changes || "newStartDate" in changes;
-    if (!rescheduled) return;
-
+  // Subscribes to the dedicated `event.rescheduled` event (distinct from
+  // `event.updated`). The service now computes the diff once and emits
+  // both events — the generic one for audit/denorm fan-out, and this
+  // one for notification routing. No more inline diff-sniffing here.
+  eventBus.on("event.rescheduled", async (payload) => {
     try {
       const event = await eventRepository.findById(payload.eventId);
       if (!event) return;
-      // Fan out to every confirmed registrant. Uses the registration
-      // repository's listConfirmed helper when available; falls back to
-      // a bulk query otherwise (delegated to the future listener Phase
-      // 2c hardening — for now we no-op if the helper is missing).
+      // Fan out to every confirmed registrant. Hard cap protects against
+      // a runaway fanout on a mega-event — Phase 5 observability will
+      // chunk via findByEventCursor once the scheduler supports batched
+      // sends. Until then we stop at 500 recipients per reschedule.
       const { registrationRepository } = await import("@/repositories/registration.repository");
-      // Hard cap to protect against a runaway fanout on a mega-event.
-      // Phase 2 security review P1-3: findByEvent defaults to 1000 rows;
-      // a single dispatch of 1000 sequential `recipientFromUserId` reads
-      // would stall the loop. Phase 5 observability will chunk via
-      // findByEventCursor once the scheduler supports batched sends.
       const MAX_RESCHEDULE_FANOUT = 500;
       const page = await registrationRepository
         .findByEvent(payload.eventId, ["confirmed"], {
@@ -202,23 +196,20 @@ function registerEventListeners(): void {
       }
       if (recipients.length === 0) return;
 
-      const oldDate =
-        typeof (changes as Record<string, unknown>).oldStartDate === "string"
-          ? formatDate((changes as Record<string, string>).oldStartDate)
-          : formatDate(event.startDate);
-      const newDate = formatDate(event.startDate);
-
       await notificationDispatcher.dispatch({
         key: "event.rescheduled",
         recipients,
         params: {
           eventTitle: event.title,
-          oldDate,
-          newDate,
-          newLocation: event.location ?? undefined,
+          oldDate: formatDate(payload.previousStartDate),
+          newDate: formatDate(payload.newStartDate),
+          newLocation: payload.newLocation ?? undefined,
           eventUrl: `/events/${event.slug ?? event.id}`,
         },
-        idempotencyKey: `event-rescheduled/${event.id}/${event.startDate}`,
+        // Include the newStartDate on the idempotency key so a
+        // second reschedule (e.g. postponed again) fires a fresh email
+        // instead of silently deduping against the first.
+        idempotencyKey: `event-rescheduled/${event.id}/${payload.newStartDate}`,
       });
     } catch (err) {
       logHandlerError("event.rescheduled", err instanceof Error ? err.message : String(err));
@@ -287,9 +278,13 @@ function registerPaymentListeners(): void {
     }
   });
 
-  eventBus.on("payment.refunded", async (payload) => {
+  // Subscribes to `refund.issued` (the notification-facing event), NOT
+  // `payment.refunded` (the generic audit event). Both fire on every
+  // successful refund — we route the customer-facing email off the
+  // dedicated refund event so the failure counterpart (`refund.failed`)
+  // can drive its own template without branching here.
+  eventBus.on("refund.issued", async (payload) => {
     try {
-      // Same fix as payment.failed: resolve userId from the registration.
       const { registrationRepository } = await import("@/repositories/registration.repository");
       const registration = await registrationRepository
         .findById(payload.registrationId)
@@ -298,9 +293,6 @@ function registerPaymentListeners(): void {
       const recipient = await recipientFromUserId(registration.userId);
       if (!recipient) return;
       const event = await eventRepository.findById(payload.eventId);
-      // Phase 2 MVP treats every refund as "issued" — the future refund
-      // service will emit refund.failed explicitly and wire this handler
-      // to branch on it. For now we ship the success template only.
       await notificationDispatcher.dispatch({
         key: "refund.issued",
         recipients: [recipient],
@@ -315,6 +307,36 @@ function registerPaymentListeners(): void {
       });
     } catch (err) {
       logHandlerError("refund.issued", err instanceof Error ? err.message : String(err));
+    }
+  });
+
+  eventBus.on("refund.failed", async (payload) => {
+    try {
+      const { registrationRepository } = await import("@/repositories/registration.repository");
+      const registration = await registrationRepository
+        .findById(payload.registrationId)
+        .catch(() => null);
+      if (!registration) return;
+      const recipient = await recipientFromUserId(registration.userId);
+      if (!recipient) return;
+      const event = await eventRepository.findById(payload.eventId);
+      await notificationDispatcher.dispatch({
+        key: "refund.failed",
+        recipients: [recipient],
+        params: {
+          amount: formatXof(payload.amount),
+          eventTitle: event?.title ?? "",
+          refundId: payload.paymentId,
+          failureReason: payload.failureReason,
+          supportUrl: "mailto:support@terangaevent.com",
+        },
+        // Idempotency keyed on paymentId — if the same refund fails
+        // twice (e.g. a retry), we want the customer to get a fresh
+        // email each attempt, so include the timestamp slice as a salt.
+        idempotencyKey: `refund-failed/${payload.paymentId}/${payload.timestamp.slice(0, 16)}`,
+      });
+    } catch (err) {
+      logHandlerError("refund.failed", err instanceof Error ? err.message : String(err));
     }
   });
 }
@@ -381,7 +403,7 @@ function registerTeamListeners(): void {
   for (const { event, kind } of [
     { event: "member.added" as const, kind: "added" as const },
     { event: "member.removed" as const, kind: "removed" as const },
-    { event: "member.role_updated" as const, kind: "role_changed" as const },
+    { event: "member.role_changed" as const, kind: "role_changed" as const },
   ]) {
     eventBus.on(event, async (payload) => {
       try {

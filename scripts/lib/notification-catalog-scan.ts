@@ -99,22 +99,12 @@ export interface CatalogViolation {
  *     directly via the Admin SDK. Lives in Cloud Functions (not the API)
  *     because only Functions get the managed Cloud Scheduler hook.
  *
- *   • `member.role_changed`
- *     FLAGGED AS A REAL CATALOG DRIFT BUG: the catalog's triggerDomainEvent
- *     is `member.role_updated`, but organization.service.ts (line 370) and
- *     every listener in notification-dispatcher.listener.ts + audit.listener.ts
- *     use `member.role_changed`. Phase 2.1 should fix the catalog entry's
- *     triggerDomainEvent to `member.role_changed` and then remove this
- *     waiver. Keeping the waiver here until that lands so the CI guard
- *     can ship in Phase 2.0 without also requiring a catalog edit.
- *
  * New entries may only be added with a clear owner + follow-up reference.
  */
 export const NO_EMITTER_OR_LISTENER_WAIVER: ReadonlySet<string> = new Set([
   "auth.email_verification",
   "auth.password_reset",
   "event.reminder",
-  "member.role_changed",
 ]);
 
 // ─── File walker ───────────────────────────────────────────────────────────

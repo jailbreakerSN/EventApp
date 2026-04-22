@@ -266,14 +266,66 @@ export class EventService extends BaseService {
     // push to every participant.
     const changes = diffChanges(event, dto);
     if (Object.keys(changes).length > 0) {
+      const nowIso = new Date().toISOString();
       eventBus.emit("event.updated", {
         eventId,
         organizationId: event.organizationId,
         changes,
         actorId: user.uid,
         requestId: getRequestId(),
-        timestamp: new Date().toISOString(),
+        timestamp: nowIso,
       });
+
+      // Rescheduled = startDate, endDate, or location changed. Fires as
+      // a distinct domain event so the notification dispatcher can
+      // route to the `event.rescheduled` template without inspecting
+      // the diff, and so the audit trail has a dedicated action code
+      // for the "organizer changed the time/place" query. `event.updated`
+      // still fires above for generic audit / denorm fan-out.
+      const startChanged = "startDate" in changes;
+      const endChanged = "endDate" in changes;
+      const locationChanged = "location" in changes;
+      if (startChanged || endChanged || locationChanged) {
+        const prevLocationStr = event.location
+          ? [event.location.name, event.location.city, event.location.country]
+              .filter(Boolean)
+              .join(", ")
+          : undefined;
+        const nextLocationRaw =
+          (changes as Record<string, unknown>).location ?? event.location;
+        const nextLocationObj =
+          nextLocationRaw && typeof nextLocationRaw === "object"
+            ? (nextLocationRaw as { name?: string; city?: string; country?: string })
+            : null;
+        const nextLocationStr = nextLocationObj
+          ? [nextLocationObj.name, nextLocationObj.city, nextLocationObj.country]
+              .filter(Boolean)
+              .join(", ")
+          : undefined;
+        eventBus.emit("event.rescheduled", {
+          eventId,
+          organizationId: event.organizationId,
+          previousStartDate: event.startDate,
+          newStartDate: startChanged
+            ? ((changes as Record<string, string>).startDate ?? event.startDate)
+            : event.startDate,
+          ...(endChanged
+            ? {
+                previousEndDate: event.endDate,
+                newEndDate: (changes as Record<string, string>).endDate,
+              }
+            : {}),
+          ...(locationChanged
+            ? {
+                previousLocation: prevLocationStr,
+                newLocation: nextLocationStr,
+              }
+            : {}),
+          actorId: user.uid,
+          requestId: getRequestId(),
+          timestamp: nowIso,
+        });
+      }
     }
   }
 

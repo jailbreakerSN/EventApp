@@ -125,6 +125,28 @@ export interface EventUpdatedEvent extends BaseEventPayload {
 }
 
 /**
+ * Fires when an organizer edits the date, time, or location of a
+ * published event. Distinct from the generic `event.updated` (which
+ * covers any PATCH) so the notification dispatcher can route to the
+ * `event.rescheduled` template without re-inspecting the diff, and so
+ * audit queries can ask "who rescheduled this event, when" without a
+ * join. Carries the before/after pair for each changed field — the
+ * template renders both in the email.
+ */
+export interface EventRescheduledEvent extends BaseEventPayload {
+  eventId: string;
+  organizationId: string;
+  previousStartDate: string;
+  newStartDate: string;
+  previousEndDate?: string;
+  newEndDate?: string;
+  previousLocation?: string;
+  newLocation?: string;
+  /** Optional free-text reason the organizer supplied. Never rendered verbatim. */
+  reason?: string;
+}
+
+/**
  * Fires when an organizer rotates the event's QR signing key id. Distinct
  * from `event.updated` so the audit trail can tell "rotated the HMAC key"
  * apart from "edited the event description" — both matter for different
@@ -210,7 +232,7 @@ export interface MemberRemovedEvent extends BaseEventPayload {
   memberId: string;
 }
 
-export interface MemberRoleUpdatedEvent extends BaseEventPayload {
+export interface MemberRoleChangedEvent extends BaseEventPayload {
   organizationId: string;
   memberId: string;
   newRole: string;
@@ -272,6 +294,40 @@ export interface PaymentRefundedEvent extends BaseEventPayload {
   organizationId: string;
   amount: number;
   reason?: string;
+}
+
+/**
+ * Fires when a refund has been successfully issued by the provider
+ * and committed to our ledger. Distinct from `payment.refunded` —
+ * which is the generic audit/state-transition event (fires on every
+ * refund regardless of outcome). `refund.issued` drives the
+ * customer-facing "refund issued" email template. Split so future
+ * refund flows can stamp a `refundId` / provider metadata without
+ * polluting the audit stream's contract.
+ */
+export interface RefundIssuedEvent extends BaseEventPayload {
+  paymentId: string;
+  registrationId: string;
+  eventId: string;
+  organizationId: string;
+  amount: number;
+  reason?: string;
+}
+
+/**
+ * Fires when the refund processor reports failure (e.g. provider
+ * refused, funds unreachable, stale transaction). Drives the
+ * customer-facing "refund failed — contact support" email.
+ * `failureReason` is a short string for internal use — never rendered
+ * directly into the template, the UI copy is pre-baked.
+ */
+export interface RefundFailedEvent extends BaseEventPayload {
+  paymentId: string;
+  registrationId: string;
+  eventId: string;
+  organizationId: string;
+  amount: number;
+  failureReason: string;
 }
 
 // ── Badge ────────────────────────────────────────────────────────────────────
@@ -725,6 +781,7 @@ export interface DomainEventMap {
   "access_zone.removed": AccessZoneRemovedEvent;
   "event.created": EventCreatedEvent;
   "event.updated": EventUpdatedEvent;
+  "event.rescheduled": EventRescheduledEvent;
   "event.qr_key_rotated": EventQrKeyRotatedEvent;
   "event.published": EventPublishedEvent;
   "event.unpublished": EventUnpublishedEvent;
@@ -740,13 +797,15 @@ export interface DomainEventMap {
   "organization.updated": OrganizationUpdatedEvent;
   "member.added": MemberAddedEvent;
   "member.removed": MemberRemovedEvent;
-  "member.role_updated": MemberRoleUpdatedEvent;
+  "member.role_changed": MemberRoleChangedEvent;
   "badge.generated": BadgeGeneratedEvent;
   "badge.bulk_generated": BadgeBulkGeneratedEvent;
   "payment.initiated": PaymentInitiatedEvent;
   "payment.succeeded": PaymentSucceededEvent;
   "payment.failed": PaymentFailedEvent;
   "payment.refunded": PaymentRefundedEvent;
+  "refund.issued": RefundIssuedEvent;
+  "refund.failed": RefundFailedEvent;
   "broadcast.sent": BroadcastSentEvent;
   "speaker.added": SpeakerAddedEvent;
   "speaker.removed": SpeakerRemovedEvent;
