@@ -33,16 +33,50 @@ import { BaseRepository } from "./base.repository";
 // apps/api/src/config/firebase.ts → COLLECTIONS.NOTIFICATION_DISPATCH_LOG
 // and gated in infrastructure/firebase/firestore.rules (deny-all).
 //
-// TTL: Firestore TTL policy on `attemptedAt` (90 days) will be wired in
-// a follow-up Terraform change. Until then the collection grows without
-// bound — admins should prune manually if volume gets large.
+// TTL (Phase 2.5): every row carries an `expiresAt` ISO timestamp
+// populated at append time. Firestore's native TTL policy on
+// `notificationDispatchLog.expiresAt` auto-deletes rows past their
+// horizon (90 days standard, 365 days for bounced/complained compliance
+// rows). The policy is one-time provisioning — see
+// `infrastructure/firebase/firestore.ttl.md` for the gcloud command.
 //
-// Required composite index (Phase 2.2):
-//   (idempotencyKey ASC, attemptedAt DESC) on notificationDispatchLog
-// Declared in infrastructure/firebase/firestore.indexes.json. The
-// dispatcher queries this index in `findRecentByIdempotencyKey` before
-// every adapter.send to catch duplicate emits from retried listeners /
-// pubsub redeliveries / buggy callers.
+// Required composite indexes:
+//   (idempotencyKey ASC, attemptedAt DESC) — Phase 2.2 dedup lookup.
+//   (messageId ASC, attemptedAt DESC)      — Phase 2.5 webhook back-
+//       annotation (`findByProviderMessageId`).
+// Declared in infrastructure/firebase/firestore.indexes.json.
+
+// Phase 2.5 — delivery lifecycle statuses back-annotated from Resend
+// webhooks. Ordered low→high; the webhook back-annotation enforces a
+// monotonic progression so out-of-order events can't demote a later
+// state. `sent` is the baseline (what the dispatcher stamps); the rest
+// come from Resend event types (email.delivered, email.opened,
+// email.clicked, email.bounced, email.complained).
+export type DispatchLogDeliveryStatus =
+  | "sent"
+  | "delivered"
+  | "opened"
+  | "clicked"
+  | "bounced"
+  | "complained";
+
+/**
+ * Numeric ranking used to compare two delivery statuses when the
+ * webhook handler has to decide whether an incoming event promotes or
+ * demotes the stored state. Higher = later in the journey.
+ */
+export const DELIVERY_STATUS_RANK: Record<DispatchLogDeliveryStatus, number> = {
+  sent: 0,
+  delivered: 1,
+  opened: 2,
+  clicked: 3,
+  // Bounced/complained are terminal failure states. We rank them above
+  // the happy path so they "win" against a stale `sent`/`delivered`
+  // event, but the webhook handler flips status="suppressed" at the
+  // same time so analytics still count them as failures.
+  bounced: 4,
+  complained: 5,
+};
 
 export interface DispatchLogEntry {
   id: string;
@@ -57,6 +91,21 @@ export interface DispatchLogEntry {
   attemptedAt: string;
   requestId: string;
   actorId: string;
+
+  // ─── Phase 2.5 — delivery observability ─────────────────────────────
+  // Back-annotated by the Resend webhook. Never written on the initial
+  // append — the dispatcher only knows the send was accepted by the
+  // provider, not that it was delivered.
+  deliveryStatus?: DispatchLogDeliveryStatus;
+  deliveredAt?: string;
+  openedAt?: string;
+  clickedAt?: string;
+  bouncedAt?: string;
+  complainedAt?: string;
+
+  // Firestore TTL target. 90 days for normal sends; 365 for bounced/
+  // complained compliance rows. See computeDispatchLogExpiry below.
+  expiresAt: string;
 }
 
 export class NotificationDispatchLogRepository extends BaseRepository<DispatchLogEntry> {
@@ -68,13 +117,21 @@ export class NotificationDispatchLogRepository extends BaseRepository<DispatchLo
    * Append a new dispatch-log entry. Fire-and-forget — errors are
    * swallowed so a logging failure cannot block the request path.
    * Returns the generated id so callers can correlate in other logs.
+   *
+   * Phase 2.5: `expiresAt` is auto-computed from `attemptedAt` when the
+   * caller omits it. 90 d for standard rows, 365 d for
+   * bounced/complained compliance rows.
    */
-  async append(entry: Omit<DispatchLogEntry, "id">): Promise<string> {
+  async append(
+    entry: Omit<DispatchLogEntry, "id" | "expiresAt"> & { expiresAt?: string },
+  ): Promise<string> {
     try {
       const docRef = this.collection.doc();
+      const expiresAt = entry.expiresAt ?? computeDispatchLogExpiry(entry);
       await docRef.set({
         id: docRef.id,
         ...entry,
+        expiresAt,
         // Use a server-side timestamp in addition to the ISO string
         // for indexing; Firestore's TTL policy will target this field.
         _serverTimestamp: FieldValue.serverTimestamp(),
@@ -248,6 +305,176 @@ export class NotificationDispatchLogRepository extends BaseRepository<DispatchLo
       return null;
     }
   }
+
+  /**
+   * Phase 2.5 — webhook back-annotation lookup.
+   *
+   * Finds dispatch-log rows carrying the Resend `email_id`. Used by the
+   * webhook handler to back-annotate deliveryStatus / per-event
+   * timestamps. Requires the composite index
+   * `(messageId ASC, attemptedAt DESC)` declared in
+   * infrastructure/firebase/firestore.indexes.json. The index is named
+   * by the conceptual alias `providerMessageId` but points at the
+   * existing `messageId` field for backward compat.
+   */
+  async findByProviderMessageId(
+    messageId: string,
+    limit = 10,
+  ): Promise<DispatchLogEntry[]> {
+    if (!messageId) return [];
+    try {
+      const snap = await this.collection
+        .where("messageId", "==", messageId)
+        .orderBy("attemptedAt", "desc")
+        .limit(limit)
+        .get();
+      return snap.docs.map((d) => d.data() as DispatchLogEntry);
+    } catch (err) {
+      process.stderr.write(
+        JSON.stringify({
+          level: "warn",
+          event: "notification.dispatch_log_lookup_failed",
+          messageId,
+          err: err instanceof Error ? err.message : String(err),
+        }) + "\n",
+      );
+      return [];
+    }
+  }
+
+  /**
+   * Phase 2.5 — user communication history.
+   *
+   * Returns the rows addressed to a specific user, most-recent first,
+   * capped at 90 days. Powers `GET /v1/me/notifications/history` + the
+   * backoffice UI. We surface suppressed / deduplicated / delivery-
+   * failed rows too so users can see why an email never landed.
+   */
+  async listRecentForUser(params: {
+    userId: string;
+    limit?: number;
+    cursorAttemptedAt?: string;
+  }): Promise<DispatchLogEntry[]> {
+    const { userId, limit = 50, cursorAttemptedAt } = params;
+    if (!userId) return [];
+    try {
+      const recipientRef = `user:${userId}`;
+      const cutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+      let q = this.collection
+        .where("recipientRef", "==", recipientRef)
+        .where("attemptedAt", ">=", cutoff)
+        .orderBy("attemptedAt", "desc");
+      if (cursorAttemptedAt) {
+        q = q.startAfter(cursorAttemptedAt);
+      }
+      const snap = await q.limit(Math.min(limit, 100)).get();
+      return snap.docs.map((d) => d.data() as DispatchLogEntry);
+    } catch (err) {
+      process.stderr.write(
+        JSON.stringify({
+          level: "warn",
+          event: "notification.dispatch_log_user_list_failed",
+          userId,
+          err: err instanceof Error ? err.message : String(err),
+        }) + "\n",
+      );
+      return [];
+    }
+  }
+
+  /**
+   * Phase 2.5 — per-window delivery outcome aggregation for the
+   * bounce-rate health monitor. Scopes to a key set (e.g. every key
+   * routed through the billing@ mailbox) so alerts are domain-specific.
+   */
+  async aggregateDeliveryOutcomes(params: {
+    windowStart: string;
+    windowEnd: string;
+    keys?: readonly string[];
+  }): Promise<{
+    sent: number;
+    delivered: number;
+    opened: number;
+    clicked: number;
+    bounced: number;
+    complained: number;
+    suppressed: number;
+    total: number;
+  }> {
+    const tallies = {
+      sent: 0,
+      delivered: 0,
+      opened: 0,
+      clicked: 0,
+      bounced: 0,
+      complained: 0,
+      suppressed: 0,
+      total: 0,
+    };
+    try {
+      let q = this.collection
+        .where("attemptedAt", ">=", params.windowStart)
+        .where("attemptedAt", "<=", params.windowEnd);
+      if (params.keys && params.keys.length > 0 && params.keys.length <= 10) {
+        q = q.where("key", "in", [...params.keys]);
+      }
+      const snap = await q.limit(10_000).get();
+      for (const doc of snap.docs) {
+        const data = doc.data() as DispatchLogEntry;
+        tallies.total++;
+        if (data.status === "suppressed") tallies.suppressed++;
+        switch (data.deliveryStatus) {
+          case "delivered":
+            tallies.delivered++;
+            break;
+          case "opened":
+            tallies.opened++;
+            break;
+          case "clicked":
+            tallies.clicked++;
+            break;
+          case "bounced":
+            tallies.bounced++;
+            break;
+          case "complained":
+            tallies.complained++;
+            break;
+          default:
+            if (data.status === "sent") tallies.sent++;
+        }
+      }
+    } catch (err) {
+      process.stderr.write(
+        JSON.stringify({
+          level: "warn",
+          event: "notification.dispatch_log_delivery_aggregation_failed",
+          err: err instanceof Error ? err.message : String(err),
+        }) + "\n",
+      );
+    }
+    return tallies;
+  }
 }
 
 export const notificationDispatchLogRepository = new NotificationDispatchLogRepository();
+
+// ─── TTL helper ─────────────────────────────────────────────────────────────
+// Compliance rows (bounced / complained) live for 365 days; everything
+// else lives for 90. Exported for tests + the webhook back-annotation.
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+const STANDARD_TTL_DAYS = 90;
+const COMPLIANCE_TTL_DAYS = 365;
+
+export function computeDispatchLogExpiry(
+  entry: Pick<DispatchLogEntry, "attemptedAt" | "status" | "reason" | "deliveryStatus">,
+): string {
+  const base = Date.parse(entry.attemptedAt);
+  const anchor = Number.isFinite(base) ? base : Date.now();
+  const isComplianceRow =
+    entry.deliveryStatus === "bounced" ||
+    entry.deliveryStatus === "complained" ||
+    entry.reason === "bounced" ||
+    entry.reason === "on_suppression_list";
+  const days = isComplianceRow ? COMPLIANCE_TTL_DAYS : STANDARD_TTL_DAYS;
+  return new Date(anchor + days * MS_PER_DAY).toISOString();
+}

@@ -26,6 +26,51 @@ vi.mock("@/config/firebase", () => ({
   auth: {
     verifyIdToken: (...args: unknown[]) => mockVerifyIdToken(...args),
   },
+  // Phase 2.4 — organizations routes now include per-org notification
+  // settings endpoints whose PUT path runs its upsert + history-append
+  // inside db.runTransaction. Hand back a transaction stub so the
+  // existing route tests can continue focusing on the HTTP layer.
+  db: {
+    collection: () => ({
+      doc: () => ({ set: async () => undefined, get: async () => ({ exists: false }) }),
+    }),
+    runTransaction: async (fn: (tx: unknown) => Promise<unknown>) =>
+      fn({ set: () => undefined, update: () => undefined, get: async () => ({ exists: false }) }),
+  },
+  COLLECTIONS: {
+    NOTIFICATION_SETTINGS: "notificationSettings",
+    NOTIFICATION_SETTINGS_HISTORY: "notificationSettingsHistory",
+  },
+}));
+
+// Phase 2.4 — notification repositories / services reached by the new
+// per-org notification endpoints. Not under test here; the admin routes
+// test has its own fixtures and we keep this file focused on org CRUD.
+vi.mock("@/repositories/notification-settings.repository", () => ({
+  notificationSettingsRepository: {
+    findByKey: vi.fn(async () => null),
+    findByKeyAndOrg: vi.fn(async () => null),
+    listAll: vi.fn(async () => []),
+    listAllPerOrg: vi.fn(async () => []),
+    findAllForOrg: vi.fn(async () => []),
+    upsert: vi.fn(async () => undefined),
+  },
+  notificationSettingDocId: (key: string, orgId: string | null) =>
+    orgId ? `${key}__${orgId}` : key,
+}));
+
+vi.mock("@/repositories/notification-settings-history.repository", () => ({
+  notificationSettingsHistoryRepository: {
+    append: vi.fn(async () => "history-id-1"),
+    listByKey: vi.fn(async () => []),
+  },
+  computeSettingDiff: () => ["enabled"],
+}));
+
+vi.mock("@/services/notifications/setting-resolution", () => ({
+  settingResolutionService: {
+    resolve: vi.fn(),
+  },
 }));
 
 const mockOrgService = {

@@ -1,6 +1,7 @@
-import { Body, Container, Head, Hr, Html, Preview, Section, Text } from "@react-email/components";
+import { Body, Container, Head, Hr, Html, Link, Preview, Section, Text } from "@react-email/components";
 import type React from "react";
 import { type Dictionary } from "../i18n";
+import { config } from "@/config";
 
 // ─── Brand tokens ─────────────────────────────────────────────────────────
 // Kept inline here rather than importing from a design-tokens package —
@@ -26,6 +27,12 @@ export interface EmailLayoutProps {
    * provider layer; this line is the visible backup for older clients.
    */
   unsubscribeNote?: string;
+  /**
+   * Phase 2.5 — opt-out of the always-on compliance footer (postal
+   * address + generic unsubscribe link). Auth + billing templates set
+   * this to skip the footer since those categories are mandatory.
+   */
+  suppressComplianceFooter?: boolean;
 }
 
 const main = { backgroundColor: BG_PAGE, margin: 0, padding: 0 };
@@ -83,8 +90,28 @@ const unsubscribeText = {
   fontSize: "11px",
   lineHeight: 1.45,
 };
+const complianceLinkStyle = { color: TEXT_MUTED, textDecoration: "underline" };
 
-export function EmailLayout({ preview, dict, children, unsubscribeNote }: EmailLayoutProps) {
+export function EmailLayout({
+  preview,
+  dict,
+  children,
+  unsubscribeNote,
+  suppressComplianceFooter,
+}: EmailLayoutProps) {
+  // Phase 2.5 — physical postal address + generic unsubscribe link. Gmail
+  // and Yahoo bulk-sender rules require both on every non-auth / non-
+  // billing send. `suppressComplianceFooter` lets the security-critical
+  // templates (password reset, payment receipt, etc.) opt out; every
+  // other template inherits the block automatically without a code
+  // change. The signed per-recipient RFC 8058 link is still injected at
+  // the provider layer for marketing sends — this is the always-visible
+  // backup for older clients and the legal-compliance evidence trail.
+  const postalAddress = config.RESEND_POSTAL_ADDRESS;
+  const unsubscribeUrl = `${config.API_BASE_URL}/v1/notifications/unsubscribe`;
+  const unsubscribeLabel =
+    dict.lang === "en" ? "Unsubscribe" : dict.lang === "wo" ? "Désinscrire" : "Se désinscrire";
+
   return (
     // lang sourced from the dictionary so en / wo emails aren't
     // announced as French by screen readers + mail clients.
@@ -102,6 +129,16 @@ export function EmailLayout({ preview, dict, children, unsubscribeNote }: EmailL
           <Section style={footer}>
             <Text style={footerText}>{dict.brand.footer}</Text>
             {unsubscribeNote ? <Text style={unsubscribeText}>{unsubscribeNote}</Text> : null}
+            {!suppressComplianceFooter ? (
+              <>
+                <Text style={unsubscribeText}>{postalAddress}</Text>
+                <Text style={unsubscribeText}>
+                  <Link href={unsubscribeUrl} style={complianceLinkStyle}>
+                    {unsubscribeLabel}
+                  </Link>
+                </Text>
+              </>
+            ) : null}
           </Section>
         </Container>
       </Body>
