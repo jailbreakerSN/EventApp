@@ -12,6 +12,7 @@ import {
   useMarkAsRead,
   useMarkAllAsRead,
 } from "@/hooks/use-notifications";
+import { useNotificationLiveStream } from "@/hooks/use-notification-live-stream";
 import { useSidebar } from "./sidebar-context";
 
 // Localised "il y a N min" formatter. `date-fns` isn't installed in this
@@ -66,6 +67,12 @@ export function TopBar({ onShowShortcuts }: TopBarProps) {
   const { data: unreadData } = useUnreadCount();
   const markAsRead = useMarkAsRead();
   const markAllAsRead = useMarkAllAsRead();
+
+  // Real-time subscriber: invalidates the react-query cache + fires a
+  // default toast when a new notification is persisted to Firestore for
+  // the current user. Kept side-effect-only (no return value) — the panel
+  // content + unread badge are still driven by the React Query hooks above.
+  useNotificationLiveStream();
 
   const notifications: NotificationBellRow[] = (notifData?.data ?? []).map((n) => ({
     id: n.id,

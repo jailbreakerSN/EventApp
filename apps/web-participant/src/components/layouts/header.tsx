@@ -21,7 +21,9 @@ import {
   useNotifications,
   useUnreadCount,
 } from "@/hooks/use-notifications";
+import { useNotificationLiveStream } from "@/hooks/use-notification-live-stream";
 import { intlLocale } from "@/lib/intl-locale";
+import { toast } from "sonner";
 
 /**
  * Notification bell + its data hooks, extracted so React-Query only fires
@@ -46,6 +48,20 @@ function HeaderNotificationBell({ className }: { className?: string }) {
   const { data: unreadData } = useUnreadCount();
   const markAsRead = useMarkAsRead();
   const markAllAsRead = useMarkAllAsRead();
+
+  // Real-time arrival listener — invalidates the react-query cache and
+  // fires a localised toast when a new notification lands in Firestore.
+  // Side-effect-only; the panel content + badge stay driven by the hooks
+  // above so the REST → Firestore → React-Query flow has a single source
+  // of truth.
+  useNotificationLiveStream({
+    onArrived: (n) => {
+      toast(n.title, {
+        description: n.body || undefined,
+        duration: 6000,
+      });
+    },
+  });
 
   const notifications: NotificationBellRow[] = (notifData?.data ?? []).map(
     (n) => ({
