@@ -27,6 +27,8 @@
     "seed": "tsx scripts/seed-emulators.ts",
     "seed:staging": "SEED_TARGET=staging tsx scripts/seed-emulators.ts",
     "seed:reset": "tsx scripts/seed-reset.ts",
+    "seed:check": "tsx scripts/check-seed-coverage.ts",
+    "seed:status": "tsx scripts/generate-seed-coverage-status.ts",
     "clean": "turbo clean && rm -rf node_modules/.cache",
     "prepare": "husky"
   },
