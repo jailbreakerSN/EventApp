@@ -105,6 +105,11 @@ export const AuditActionSchema = z.enum([
   // Never conflated with real delivery — admin previews must not skew
   // stats or the dispatch log.
   "notification.test_sent",
+  // Phase B.1 — distinct action string for self-triggered test sends
+  // (POST /v1/notifications/test-send). Separated from the admin-triggered
+  // `notification.test_sent` so audit queries can filter "who sent what to
+  // whom" without ambiguity.
+  "notification.test_sent_self",
   // ── FCM device-token registration (Phase C.1 — Web Push) ────────────────
   // Emitted by FcmTokensService on register / revoke / revoke-all so the
   // audit trail carries a record of which browser/device each user trusts

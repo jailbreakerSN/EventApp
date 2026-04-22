@@ -744,6 +744,7 @@ exports[`shared-types contract snapshots > AuditLogEntrySchema shape is stable 1
           "notification.setting_updated",
           "notification.suppressed",
           "notification.test_sent",
+          "notification.test_sent_self",
           "notification.unsubscribed",
           "organization.created",
           "organization.suspended",
