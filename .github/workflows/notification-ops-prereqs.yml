@@ -65,6 +65,14 @@ on:
         options:
           - "true"
           - "false"
+      skip_web_push_vapid:
+        description: "Skip Web Push VAPID key provisioning"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "true"
+          - "false"
 
 concurrency:
   # Don't run two ops workflows against the same env at once.
@@ -129,9 +137,116 @@ jobs:
             echo "| Firestore TTL on \`$TTL_COLLECTION_GROUP.$TTL_FIELD\` | ${{ inputs.skip_ttl }} |"
             echo "| Cloud Monitoring alert policies (warn + critical) | ${{ inputs.skip_alert_policies }} |"
             echo "| Secret Manager \`INTERNAL_DISPATCH_SECRET\` + Cloud Run binding | ${{ inputs.skip_secret_provisioning }} |"
+            echo "| Web Push VAPID key \`FIREBASE_VAPID_KEY\` (Secret Manager + Cloud Run binding) | ${{ inputs.skip_web_push_vapid }} |"
             echo
             if [ "${{ inputs.dry_run }}" = "true" ]; then
               echo "> **Dry-run mode** — no changes will be applied. Re-run with \`dry_run=false\` to execute."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ─── IAM bootstrap ───────────────────────────────────────────────────────
+  # Grants the deploy service account every role the downstream jobs need.
+  # Idempotent via `add-iam-policy-binding --condition=None`; re-runs are
+  # a no-op when the binding already exists.
+  #
+  # Bootstrap prerequisite: the SA behind GCP_SA_KEY must already carry
+  # `roles/resourcemanager.projectIamAdmin` (or `roles/owner`) before this
+  # workflow can self-grant the rest. Ask a project owner to run once:
+  #
+  #   gcloud projects add-iam-policy-binding $PROJECT_ID \
+  #     --member="serviceAccount:$SA_EMAIL" \
+  #     --role="roles/resourcemanager.projectIamAdmin" \
+  #     --condition=None
+  #
+  # Per-role rationale (all project-scoped):
+  #   monitoring.editor           — create/update alert policies +
+  #                                 notification channels (alpha API).
+  #   datastore.owner             — gcloud firestore fields ttls update
+  #                                 requires owner scope on the database.
+  #   secretmanager.admin         — create/add-version/add-iam on
+  #                                 INTERNAL_DISPATCH_SECRET +
+  #                                 FIREBASE_VAPID_KEY entries.
+  #   run.admin                   — Cloud Run services update
+  #                                 --update-secrets for the API service.
+  #   serviceusage.serviceUsageAdmin — gcloud services enable.
+  #   logging.configWriter        — future log-based-metric alerting.
+  ensure-iam:
+    name: Ensure deploy SA has required IAM roles
+    runs-on: ubuntu-latest
+    needs: plan
+    environment: ${{ inputs.environment }}
+    steps:
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Grant project-scoped roles to the deploy SA
+        env:
+          SA_KEY: ${{ secrets.GCP_SA_KEY }}
+          PROJECT_ID: ${{ needs.plan.outputs.project_id }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -euo pipefail
+          SA_EMAIL=$(echo "$SA_KEY" | jq -r '.client_email')
+          if [ -z "$SA_EMAIL" ] || [ "$SA_EMAIL" = "null" ]; then
+            echo "::error::GCP_SA_KEY does not contain a client_email field."
+            exit 1
+          fi
+          echo "::notice::Granting IAM roles to serviceAccount:${SA_EMAIL} on project ${PROJECT_ID}"
+
+          REQUIRED_ROLES=(
+            "roles/monitoring.editor"
+            "roles/datastore.owner"
+            "roles/secretmanager.admin"
+            "roles/run.admin"
+            "roles/serviceusage.serviceUsageAdmin"
+            "roles/logging.configWriter"
+          )
+
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "::notice::DRY-RUN — would grant: ${REQUIRED_ROLES[*]}"
+            {
+              echo "### IAM bootstrap (dry-run)"
+              echo
+              for role in "${REQUIRED_ROLES[@]}"; do
+                echo "- would grant \`$role\`"
+              done
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          FAILED=()
+          for role in "${REQUIRED_ROLES[@]}"; do
+            if gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+                --member="serviceAccount:${SA_EMAIL}" \
+                --role="$role" \
+                --condition=None \
+                --quiet >/dev/null 2>&1; then
+              echo "::notice::Granted $role"
+            else
+              echo "::warning::Failed to grant $role — the SA may lack projectIamAdmin, or the role is already bound via a group. Downstream job may still succeed if the SA inherits the permission."
+              FAILED+=("$role")
+            fi
+          done
+
+          {
+            echo "### IAM bootstrap"
+            echo
+            echo "Service account: \`${SA_EMAIL}\`"
+            echo
+            echo "| Role | Result |"
+            echo "| --- | --- |"
+            for role in "${REQUIRED_ROLES[@]}"; do
+              status="granted"
+              for f in "${FAILED[@]+"${FAILED[@]}"}"; do
+                if [ "$f" = "$role" ]; then status="warn — see log"; fi
+              done
+              echo "| \`$role\` | $status |"
+            done
+            echo
+            if [ "${#FAILED[@]}" -gt 0 ]; then
+              echo "> Some grants failed. If downstream jobs fail with PERMISSION_DENIED, ensure the service account has \`roles/resourcemanager.projectIamAdmin\` (or \`roles/owner\`) so this step can self-grant the remaining roles. See the workflow header comment for the one-liner."
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -139,7 +254,7 @@ jobs:
   firestore-ttl:
     name: Enable Firestore TTL on notificationDispatchLog.expiresAt
     runs-on: ubuntu-latest
-    needs: plan
+    needs: [plan, ensure-iam]
     if: ${{ inputs.skip_ttl == 'false' }}
     environment: ${{ inputs.environment }}
     steps:
@@ -205,7 +320,7 @@ jobs:
   alert-policies:
     name: Upsert Cloud Monitoring alert policies
     runs-on: ubuntu-latest
-    needs: plan
+    needs: [plan, ensure-iam]
     if: ${{ inputs.skip_alert_policies == 'false' }}
     environment: ${{ inputs.environment }}
     steps:
@@ -214,6 +329,30 @@ jobs:
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
       - uses: google-github-actions/setup-gcloud@v2
+        with:
+          # Force-install a fresh SDK instead of using the runner's
+          # pre-installed apt-managed gcloud. The apt-managed SDK refuses
+          # `gcloud components install`, which made `install_components`
+          # silently a no-op on prior attempts. With version: latest,
+          # setup-gcloud downloads an isolated SDK under runner.tool_cache
+          # where the component manager works — and install_components:
+          # alpha succeeds non-interactively. `gcloud monitoring policies`
+          # is alpha-only; without this the first call hangs on a Y/n
+          # prompt GHA can't answer.
+          version: "latest"
+          install_components: "alpha"
+
+      - name: Verify gcloud alpha is callable
+        # `gcloud alpha` is a command group, not a command — `--version`
+        # isn't valid on the group. A zero-exit `--help` invocation is the
+        # cheapest "alpha is installed" probe; it will fail non-zero if
+        # setup-gcloud didn't pull the bundle, so the workflow fails here
+        # on its own step rather than deep in the upsert script.
+        run: |
+          set -euo pipefail
+          gcloud alpha --help > /dev/null
+          gcloud --version | head -5
+          echo "CLOUDSDK_CORE_DISABLE_PROMPTS=1" >> "$GITHUB_ENV"
 
       - name: Ensure monitoring API is enabled
         run: |
@@ -273,7 +412,7 @@ jobs:
   secret-provisioning:
     name: Provision INTERNAL_DISPATCH_SECRET and bind to Cloud Run
     runs-on: ubuntu-latest
-    needs: plan
+    needs: [plan, ensure-iam]
     if: ${{ inputs.skip_secret_provisioning == 'false' }}
     environment: ${{ inputs.environment }}
     steps:
@@ -407,11 +546,199 @@ jobs:
           workflow provisioned.
           EOF
 
+  # ─── Web Push VAPID key provisioning ─────────────────────────────────────
+  # Provisions the public VAPID key for browser-side push registration.
+  #
+  # ⚠ Manual prerequisite (NOT automatable):
+  # The VAPID keypair itself must be generated once per GCP project via the
+  # Firebase Console — Project Settings → Cloud Messaging → Web Push
+  # certificates → Generate key pair. Firebase Admin SDK does NOT expose
+  # VAPID management (messaging() only sends; there's no certificate API
+  # at firebase.googleapis.com or fcmregistrations.googleapis.com that
+  # the deploy SA could call). Operators copy the resulting public key
+  # into the `FIREBASE_VAPID_KEY` environment secret, then this job:
+  #
+  #   1. Mirrors it into Secret Manager (for audit + rotation tracking).
+  #   2. Grants the compute SA accessor (Cloud Run runtime + Cloud
+  #      Functions runtime both share this SA by default).
+  #   3. Binds the secret onto both Cloud Run services via
+  #      `--update-secrets` so a revision restart picks up a rotated
+  #      value without a code deploy.
+  #
+  # The build-time NEXT_PUBLIC_FIREBASE_VAPID_KEY bake (which actually
+  # embeds the key in the client bundle) happens in deploy-staging.yml's
+  # docker build-args. That path reads the same GitHub secret directly —
+  # this workflow doesn't need to mutate the image pipeline.
+  #
+  # Rotation procedure: regenerate on Firebase Console → update
+  # `FIREBASE_VAPID_KEY` GitHub env secret → re-run this workflow (adds
+  # a new Secret Manager version + restarts the Cloud Run binding) →
+  # trigger a staging deploy to pick up the new build-time value.
+  web-push-vapid:
+    name: Provision Web Push VAPID key (FIREBASE_VAPID_KEY)
+    runs-on: ubuntu-latest
+    needs: [plan, ensure-iam]
+    if: ${{ inputs.skip_web_push_vapid == 'false' }}
+    environment: ${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Ensure required services are enabled
+        run: |
+          set -euo pipefail
+          gcloud services enable \
+            secretmanager.googleapis.com \
+            run.googleapis.com \
+            --project="${{ needs.plan.outputs.project_id }}" \
+            --quiet
+
+      - name: Assert FIREBASE_VAPID_KEY secret is present
+        env:
+          DESIRED_VALUE: ${{ secrets.FIREBASE_VAPID_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DESIRED_VALUE:-}" ]; then
+            {
+              echo "::error::FIREBASE_VAPID_KEY environment secret is missing on '${{ inputs.environment }}'."
+              echo "::error::Manual step required:"
+              echo "::error::  1. Go to Firebase Console → Project Settings → Cloud Messaging → Web Push certificates."
+              echo "::error::  2. Click 'Generate key pair'. Copy the resulting public key (88-char base64url, starts with 'B')."
+              echo "::error::  3. Add it as a GitHub environment secret named FIREBASE_VAPID_KEY under Settings → Environments → ${{ inputs.environment }}."
+              echo "::error::  4. Re-run this workflow."
+              echo "::error::Full runbook: docs/notifications/web-push-setup.md"
+            } >&2
+            exit 1
+          fi
+          # Loose shape check: VAPID public keys are 87–88 chars of
+          # base64url. We don't validate the leading 'B' byte or cipher
+          # suite here — a wrong key just means browsers reject the
+          # subscription at runtime with a visible error.
+          if [ "${#DESIRED_VALUE}" -lt 40 ]; then
+            echo "::warning::FIREBASE_VAPID_KEY is shorter than expected (${#DESIRED_VALUE} chars). Typical VAPID public keys are ~88 chars. Double-check you copied the PUBLIC key (not the private half)."
+          fi
+          echo "::notice::FIREBASE_VAPID_KEY present — proceeding (${#DESIRED_VALUE} chars)."
+
+      - name: Provision FIREBASE_VAPID_KEY in Secret Manager
+        if: ${{ inputs.dry_run == 'false' }}
+        env:
+          PROJECT_ID: ${{ needs.plan.outputs.project_id }}
+          DESIRED_VALUE: ${{ secrets.FIREBASE_VAPID_KEY }}
+        run: |
+          set -euo pipefail
+
+          PROJECT_NUMBER=$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')
+          FUNCTIONS_SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
+          CLOUD_RUN_SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
+
+          if ! gcloud secrets describe FIREBASE_VAPID_KEY \
+              --project="$PROJECT_ID" >/dev/null 2>&1; then
+            echo "::notice::Creating Secret Manager entry FIREBASE_VAPID_KEY"
+            gcloud secrets create FIREBASE_VAPID_KEY \
+              --project="$PROJECT_ID" \
+              --replication-policy=automatic \
+              --quiet
+          else
+            echo "::notice::Secret FIREBASE_VAPID_KEY already exists"
+          fi
+
+          # Add a new version only when the latest stored value differs
+          # from what's on GitHub. Prevents version churn on re-runs.
+          CURRENT=$(gcloud secrets versions access latest \
+            --secret=FIREBASE_VAPID_KEY \
+            --project="$PROJECT_ID" 2>/dev/null || echo "")
+
+          if [ "$CURRENT" = "$DESIRED_VALUE" ]; then
+            echo "::notice::Secret version unchanged — skipping add"
+          else
+            printf '%s' "$DESIRED_VALUE" | gcloud secrets versions add FIREBASE_VAPID_KEY \
+              --project="$PROJECT_ID" \
+              --data-file=- \
+              --quiet >/dev/null
+            echo "::notice::Added new version to FIREBASE_VAPID_KEY"
+          fi
+
+          # Grant both runtimes read access. Idempotent.
+          for sa in "$FUNCTIONS_SA" "$CLOUD_RUN_SA"; do
+            gcloud secrets add-iam-policy-binding FIREBASE_VAPID_KEY \
+              --project="$PROJECT_ID" \
+              --member="serviceAccount:$sa" \
+              --role=roles/secretmanager.secretAccessor \
+              --condition=None \
+              --quiet >/dev/null || \
+              echo "::warning::Could not grant accessor on FIREBASE_VAPID_KEY to $sa"
+          done
+
+      - name: Bind VAPID secret onto the API Cloud Run service
+        if: ${{ inputs.dry_run == 'false' }}
+        env:
+          PROJECT_ID: ${{ needs.plan.outputs.project_id }}
+        run: |
+          set -euo pipefail
+          # Cloud Run --update-secrets merges into the service config.
+          # Re-running is a no-op when the binding already points at
+          # :latest. We bind the VAPID key on the API service for
+          # parity with INTERNAL_DISPATCH_SECRET; the API doesn't
+          # actually read it today (web-push is browser-side), but
+          # binding here lets future server-side flows (e.g. admin
+          # sending test pushes via the admin SDK) pick up rotation
+          # without a deploy.
+          if ! gcloud run services describe "$API_SERVICE_NAME" \
+              --region="$REGION" \
+              --project="$PROJECT_ID" >/dev/null 2>&1; then
+            echo "::warning::Cloud Run service $API_SERVICE_NAME does not exist yet."
+            echo "::warning::Run the regular deploy workflow first, then re-run this one."
+            exit 0
+          fi
+
+          gcloud run services update "$API_SERVICE_NAME" \
+            --region="$REGION" \
+            --project="$PROJECT_ID" \
+            --update-secrets="FIREBASE_VAPID_KEY=FIREBASE_VAPID_KEY:latest" \
+            --quiet
+
+          echo "::notice::Bound FIREBASE_VAPID_KEY=latest onto $API_SERVICE_NAME"
+
+      - name: Log dry-run decision
+        if: ${{ inputs.dry_run == 'true' }}
+        run: |
+          echo "::notice::DRY-RUN — would (a) create/update Secret Manager entry FIREBASE_VAPID_KEY, (b) grant compute SA accessor, (c) bind secret to $API_SERVICE_NAME."
+
+      - name: Remind operators about the build-time bake + Cloud Functions path
+        run: |
+          cat <<EOF >> "$GITHUB_STEP_SUMMARY"
+
+          ### Web Push VAPID follow-ups
+
+          **Build-time bake (automatic):** the next \`deploy-staging.yml\`
+          run picks up \`secrets.FIREBASE_VAPID_KEY\` as a
+          \`NEXT_PUBLIC_FIREBASE_VAPID_KEY\` docker build-arg for both
+          web apps. The key lands inside the client bundle; browsers
+          use it to sign Web Push subscriptions.
+
+          **Cloud Functions (optional):** if you ever need to
+          server-side generate a \`web-push\` subscription (e.g. for a
+          fallback when FCM is unavailable), consume the Secret
+          Manager entry via \`defineSecret("FIREBASE_VAPID_KEY")\` in
+          \`apps/functions/\`. Not required for the current
+          Phase C flow — FCM handles the signing via the project's
+          private VAPID half, which Firebase never exposes.
+
+          **Rotation:** regenerate on Firebase Console → update the
+          \`FIREBASE_VAPID_KEY\` environment secret → re-run this
+          workflow → trigger a staging deploy.
+
+          Runbook: \`docs/notifications/web-push-setup.md\`.
+          EOF
+
   # ─── Summary ─────────────────────────────────────────────────────────────
   summary:
     name: Summary
     runs-on: ubuntu-latest
-    needs: [plan, firestore-ttl, alert-policies, secret-provisioning]
+    needs: [plan, ensure-iam, firestore-ttl, alert-policies, secret-provisioning, web-push-vapid]
     if: always()
     steps:
       - name: Emit run outcome
@@ -422,7 +749,9 @@ jobs:
             echo "| Step | Result |"
             echo "| --- | --- |"
             echo "| plan | ${{ needs.plan.result }} |"
+            echo "| ensure-iam | ${{ needs.ensure-iam.result }} |"
             echo "| firestore-ttl | ${{ needs.firestore-ttl.result }} |"
             echo "| alert-policies | ${{ needs.alert-policies.result }} |"
             echo "| secret-provisioning | ${{ needs.secret-provisioning.result }} |"
+            echo "| web-push-vapid | ${{ needs.web-push-vapid.result }} |"
           } >> "$GITHUB_STEP_SUMMARY"
