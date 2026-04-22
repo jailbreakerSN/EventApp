@@ -600,8 +600,10 @@ describe("Audit Listener", () => {
       // `notification.test_sent_self` (+1) for the user-triggered
       // self-test flow. Phase C.1 added the three `fcm.*` handlers
       // (token_registered, token_revoked, tokens_cleared) for the
-      // Web Push credential lifecycle (+3).
-      const EXPECTED_HANDLER_COUNT = 81;
+      // Web Push credential lifecycle (+3). Phase C.2 added the two
+      // `push.displayed` / `push.clicked` back-annotation handlers
+      // written by the service worker (+2).
+      const EXPECTED_HANDLER_COUNT = 83;
 
       expect(registered).toHaveLength(EXPECTED_HANDLER_COUNT);
       // Each registered event name should be unique — a double

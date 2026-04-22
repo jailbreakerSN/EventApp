@@ -213,6 +213,15 @@ describe("route inventory", () => {
       // and the rate limit (3 per 5 min) throttles probing. See
       // apps/api/src/routes/auth-email.routes.ts for the design notes.
       "POST /v1/auth/send-password-reset-email",
+      // Phase C.2 — Web Push back-annotations fired from the service
+      // worker, which can't readily attach a Bearer token (the push
+      // event lives outside the window scope). `optionalAuth` picks
+      // up a uid when the main tab forwards the ping; otherwise the
+      // row is `actorId = "anonymous"`. Rate-limited 20/min/IP to cap
+      // probe spam — forging events would require guessing a real
+      // 20-char Firestore notificationId, which is infeasible.
+      "POST /v1/notifications/:notificationId/push-displayed",
+      "POST /v1/notifications/:notificationId/push-clicked",
     ]);
 
     it("every mutating route authenticates (except the documented webhook list)", () => {
@@ -275,6 +284,13 @@ describe("route inventory", () => {
         // looks up the Firebase user doc; body never carries an email
         // or uid parameter). Rate-limited at 5/min to throttle abuse.
         "POST /v1/auth/send-verification-email",
+        // Phase C.2 — Web Push back-annotations from the service worker.
+        // Uses `optionalAuth` (inventory introspector detects this as
+        // `auth: true` because the middleware body shares `verifyIdToken`
+        // with `authenticate`). The endpoints accept anonymous callers
+        // by design and are rate-limited at the route level.
+        "POST /v1/notifications/:notificationId/push-displayed",
+        "POST /v1/notifications/:notificationId/push-clicked",
       ]);
       const violators: string[] = [];
       for (const r of captured) {

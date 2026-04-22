@@ -113,6 +113,14 @@ export const AuditActionSchema = z.enum([
   "fcm.token_registered",
   "fcm.token_revoked",
   "fcm.tokens_cleared",
+  // ── Web Push back-annotations (Phase C.2) ───────────────────────────────
+  // Emitted by the notifications routes when the service worker pings
+  // /v1/notifications/:id/push-displayed (on showNotification) or
+  // .../push-clicked (on notificationclick). Powers delivery-rate dashboards
+  // and a future "which channel got through" attribution widget. Never
+  // blocks the SW — the endpoints are best-effort, anonymous-probes welcome.
+  "push.displayed",
+  "push.clicked",
   // ── Resend webhook-sourced events (written from apps/functions) ───────────
   // Cloud Functions can't emit on the API's in-process eventBus, so the
   // resendWebhook handler writes these audit rows directly. Values kept in

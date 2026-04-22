@@ -52,6 +52,7 @@ import { intlLocale } from "@/lib/intl-locale";
 import { saveBadge } from "@/lib/badge-store";
 import { useAuth } from "@/hooks/use-auth";
 import { useErrorHandler, type ResolvedError } from "@/hooks/use-error-handler";
+import { PushPermissionBanner } from "@/components/push-permission-banner";
 
 type Step = "select" | "confirm" | "success";
 type StepNum = 1 | 2 | 3;
@@ -815,6 +816,15 @@ export default function RegisterPage() {
                 <span>⚡ {tBadge("savedOfflineChip")}</span>
               </div>
             )}
+
+            {/* Phase C.2 — Push-opt-in moment. Registration confirmed is our
+                primary "meaningful moment" for the prompt: the user just
+                said yes to the event, so asking about push now has the
+                highest signal-to-noise ratio. The banner self-hides for
+                users who already granted / denied / dismissed. */}
+            <div className="mx-auto mt-6 max-w-md">
+              <PushPermissionBanner trigger="registration-confirmed" />
+            </div>
 
             {/* Next-step cue — drives verified-email rate + offline-ready
                 rate + programme engagement by making the next three

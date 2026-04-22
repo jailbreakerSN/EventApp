@@ -567,6 +567,29 @@ export interface FcmTokensClearedEvent extends BaseEventPayload {
   removedCount: number;
 }
 
+// ── Web Push back-annotations (Phase C.2) ───────────────────────────────
+// Emitted when the SW pings /v1/notifications/:id/push-displayed (on
+// `showNotification`) or /v1/notifications/:id/push-clicked (on
+// `notificationclick`). Both carry the user id (from Bearer token when
+// present) + the notification id off the payload.data — that's enough
+// for a future "delivered vs clicked" dashboard to join against the
+// dispatchLog by notificationId without storing device-level PII.
+//
+// These are observability-only events — no user action the server needs
+// to react to. Listeners should be append-only writes (audit trail) and
+// an eventual back-annotation on the dispatch log row.
+
+export interface PushDisplayedEvent extends BaseEventPayload {
+  userId: string;
+  /** Notification doc id in Firestore. */
+  notificationId: string;
+}
+
+export interface PushClickedEvent extends BaseEventPayload {
+  userId: string;
+  notificationId: string;
+}
+
 // ── Subscription billing (Phase 2) ───────────────────────────────────────
 // `past_due` is emitted by the future billing cron when auto-renewal
 // fails; the doc gap is acknowledged in the roadmap. `cancelled` is
@@ -1048,6 +1071,9 @@ export interface DomainEventMap {
   "fcm.token_registered": FcmTokenRegisteredEvent;
   "fcm.token_revoked": FcmTokenRevokedEvent;
   "fcm.tokens_cleared": FcmTokensClearedEvent;
+  // Web Push back-annotations (Phase C.2)
+  "push.displayed": PushDisplayedEvent;
+  "push.clicked": PushClickedEvent;
   // Subscription billing (Phase 2)
   "subscription.past_due": SubscriptionPastDueEvent;
   "subscription.cancelled": SubscriptionCancelledEvent;

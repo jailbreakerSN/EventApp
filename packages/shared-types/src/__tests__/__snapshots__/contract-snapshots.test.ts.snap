@@ -757,6 +757,8 @@ exports[`shared-types contract snapshots > AuditLogEntrySchema shape is stable 1
           "plan.archived",
           "plan.created",
           "plan.updated",
+          "push.clicked",
+          "push.displayed",
           "receipt.generated",
           "registration.approved",
           "registration.cancelled",

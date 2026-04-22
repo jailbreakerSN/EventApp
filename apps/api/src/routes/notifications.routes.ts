@@ -1,7 +1,7 @@
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import { config } from "@/config";
-import { authenticate, requireEmailVerified } from "@/middlewares/auth.middleware";
+import { authenticate, optionalAuth, requireEmailVerified } from "@/middlewares/auth.middleware";
 import { validate } from "@/middlewares/validate.middleware";
 import { requirePermission } from "@/middlewares/permission.middleware";
 import { notificationService } from "@/services/notification.service";
@@ -730,6 +730,81 @@ export const notificationRoutes: FastifyPluginAsync = async (fastify) => {
       // expects. Logging an invalid-token probe happens inside the
       // service/event layer; no response hint is given.
       return reply.status(200).send();
+    },
+  );
+
+  // ─── Web Push back-annotations (Phase C.2) ────────────────────────────
+  // The service worker POSTs here after a background-delivered push is
+  // rendered (`push-displayed`) or clicked (`push-clicked`). Observability
+  // only — the handlers emit a domain event (→ audit log) and no-op
+  // otherwise. A future commit can back-annotate the dispatch log row
+  // using the existing pattern from Phase 2.5.
+  //
+  // Auth: uses `optionalAuth` because the SW can't readily attach a
+  // Bearer token (no access to the window-scoped Firebase user). When a
+  // caller happens to be authenticated (e.g. the main tab forwards the
+  // ping) we capture the uid; otherwise `actorId = "anonymous"`. The
+  // endpoint is rate-limited to cap probe spam — if an attacker wants
+  // to forge events they'd need to guess a real notificationId, which
+  // is a 20-char random Firestore doc id: infeasible at 20 r/min.
+
+  fastify.post(
+    "/:notificationId/push-displayed",
+    {
+      config: {
+        rateLimit: {
+          max: 20,
+          timeWindow: "1 minute",
+        },
+      },
+      preHandler: [optionalAuth, validate({ params: ParamsWithNotificationId })],
+      schema: {
+        tags: ["Notifications"],
+        summary: "Record that a push notification was displayed (SW back-annotation)",
+        security: [],
+      },
+    },
+    async (request, reply) => {
+      const { notificationId } = request.params as z.infer<typeof ParamsWithNotificationId>;
+      const actorId = request.user?.uid ?? "anonymous";
+      eventBus.emit("push.displayed", {
+        userId: actorId,
+        notificationId,
+        actorId,
+        requestId: getRequestId(),
+        timestamp: new Date().toISOString(),
+      });
+      return reply.status(204).send();
+    },
+  );
+
+  fastify.post(
+    "/:notificationId/push-clicked",
+    {
+      config: {
+        rateLimit: {
+          max: 20,
+          timeWindow: "1 minute",
+        },
+      },
+      preHandler: [optionalAuth, validate({ params: ParamsWithNotificationId })],
+      schema: {
+        tags: ["Notifications"],
+        summary: "Record that a push notification was clicked (SW back-annotation)",
+        security: [],
+      },
+    },
+    async (request, reply) => {
+      const { notificationId } = request.params as z.infer<typeof ParamsWithNotificationId>;
+      const actorId = request.user?.uid ?? "anonymous";
+      eventBus.emit("push.clicked", {
+        userId: actorId,
+        notificationId,
+        actorId,
+        requestId: getRequestId(),
+        timestamp: new Date().toISOString(),
+      });
+      return reply.status(204).send();
     },
   );
 };

@@ -123,6 +123,8 @@ GET /v1/newsletter/confirm none
 POST /v1/newsletter/send auth perms=[platform:manage]
 POST /v1/newsletter/subscribe none
 GET /v1/notifications auth perms=[notification:read_own]
+POST /v1/notifications/:notificationId/push-clicked auth
+POST /v1/notifications/:notificationId/push-displayed auth
 PATCH /v1/notifications/:notificationId/read auth emailVerified perms=[notification:read_own]
 GET /v1/notifications/catalog auth perms=[notification:read_own]
 GET /v1/notifications/history auth perms=[notification:read_own]

@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { useIdleTimeout } from "./use-idle-timeout";
 import { signInWithEmailAndPassword, signOut, onAuthStateChanged, type User } from "firebase/auth";
 import { firebaseAuth } from "@/lib/firebase";
-import { api } from "@/lib/api-client";
+import { api, meApi } from "@/lib/api-client";
 import type { UserRole } from "@teranga/shared-types";
 
 interface AuthUser {
@@ -66,6 +66,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = async () => {
+    // Phase C.2 — drop every FCM token tied to this account BEFORE the
+    // Firebase session ends. If the network blip drops this call we
+    // swallow it (signOut must still run); the server already caps at
+    // 10 tokens/user so a stale entry self-evicts on next register. We
+    // also clear the locally-cached fingerprint so the next sign-in on
+    // the same browser re-registers cleanly rather than trying to revoke
+    // a fingerprint that no longer exists server-side.
+    try {
+      await meApi.revokeAllFcmTokens();
+    } catch {
+      // Best-effort — don't block logout on push revoke.
+    }
+    if (typeof window !== "undefined") {
+      try {
+        window.localStorage.removeItem("teranga.push.fingerprint");
+      } catch {
+        // Private mode — ignore.
+      }
+    }
     await signOut(firebaseAuth);
   };
 

@@ -1379,6 +1379,46 @@ export function registerAuditListeners(): void {
     });
   });
 
+  // ── Web Push back-annotations (Phase C.2) ─────────────────────────────
+  // The service worker POSTs to /v1/notifications/:id/push-displayed and
+  // .../push-clicked after a background-delivered push is rendered /
+  // clicked. The audit row carries only the notification id + user id —
+  // no raw payload, no device / token info. Resource = notification so
+  // a future dashboard can pivot from "sent" → "displayed" → "clicked"
+  // on one id.
+
+  eventBus.on("push.displayed", async (payload) => {
+    await auditService.log({
+      action: "push.displayed",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "notification",
+      resourceId: payload.notificationId,
+      eventId: null,
+      organizationId: null,
+      details: {
+        userId: payload.userId,
+      },
+    });
+  });
+
+  eventBus.on("push.clicked", async (payload) => {
+    await auditService.log({
+      action: "push.clicked",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "notification",
+      resourceId: payload.notificationId,
+      eventId: null,
+      organizationId: null,
+      details: {
+        userId: payload.userId,
+      },
+    });
+  });
+
   // ── Subscription Override (Phase 5 — admin per-org assign) ─────────────
 
   eventBus.on("subscription.overridden", async (payload) => {
