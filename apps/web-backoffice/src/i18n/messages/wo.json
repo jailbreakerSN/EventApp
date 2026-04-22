@@ -125,5 +125,86 @@
         "marketingDescription": "Yu bees, conseil ak promo. Man nga génn bu ne."
       }
     }
+  },
+  "admin": {
+    "notifications": {
+      "breadcrumbAdmin": "Administration",
+      "breadcrumbCurrent": "Yëglekaay",
+      "kicker": "— KONTROL",
+      "title": "Yëglekaay yu plateforme",
+      "subtitle": "Ubbi, tëj, te soppi canal yi ci yëglekaay yu sistëm. Soppi yi, ñu ngi leen audité.",
+      "loading": "Di jàng catalogue bi...",
+      "empty": "Amul yëglekaay ci catalogue bi.",
+      "errorTitle": "Manuñu jàng yëglekaay yi",
+      "errorDescription": "Bënn mbir am na. Jéémaatal.",
+      "window": {
+        "label": "Waxtu yi ci statistik",
+        "days1": "24 waxtu yu jiitu",
+        "days7": "7 fan yu jiitu",
+        "days30": "30 fan yu jiitu"
+      },
+      "table": {
+        "key": "Kay",
+        "name": "Yëglekaay",
+        "category": "Kategori",
+        "channels": "Canal",
+        "enabled": "Ubbi",
+        "sent": "Yeboo",
+        "suppressed": "Tëjj",
+        "actions": "Jëf",
+        "edit": "Soppi",
+        "overridden": "Override aktiw",
+        "defaults": "Valër par défaut",
+        "mandatory": "Fàww"
+      },
+      "category": {
+        "auth": "Kaaraange",
+        "transactional": "Transaction",
+        "organizational": "Organisation",
+        "billing": "Fay",
+        "marketing": "Marketing"
+      },
+      "channel": {
+        "email": "Imeyl",
+        "sms": "SMS",
+        "push": "Push",
+        "in_app": "Ci app"
+      },
+      "suppression": {
+        "warningLabel": "Taux tëjj bu kawe : {percent}%",
+        "breakdownTitle": "Ndax tëjj",
+        "admin_disabled": "Admin tëj na",
+        "user_opted_out": "Jëfandikukat génn na",
+        "on_suppression_list": "Liste tëjj",
+        "bounced": "Bounced",
+        "no_recipient": "Amul destinataire"
+      },
+      "drawer": {
+        "title": "Soppi yëglekaay bi",
+        "subtitle": "Soppil canal yi ak sujet imeyl bi.",
+        "close": "Tëj",
+        "channelsLabel": "Canal aktiw yi",
+        "channelsHelp": "Tànn benn canal ci yu code bi tàmbali.",
+        "channelsEmptyError": "Tànn benn canal.",
+        "subjectLabel": "Sujet bu tàmbali (bu soxla)",
+        "subjectHelp": "Bàyyi feem ngir jëfandikoo sujet bu template bi.",
+        "subjectFr": "Sujet (français)",
+        "subjectEn": "Sujet (angle)",
+        "subjectWo": "Sujet (wolof)",
+        "save": "Denc",
+        "saving": "Di denc...",
+        "cancel": "Bayyi"
+      },
+      "toast": {
+        "enabled": "Yëglekaay ubbi na",
+        "disabled": "Yëglekaay tëjj na",
+        "saved": "Paramèter yi denc nañu"
+      },
+      "meta": {
+        "mandatoryHint": "Yëglekaay bu fàww — jëfandikukat yi manuñu génn.",
+        "lastUpdated": "Bu mujj yi soppi : {date}",
+        "noStats": "Amul statistique"
+      }
+    }
   }
 }

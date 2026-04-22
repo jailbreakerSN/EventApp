@@ -109,7 +109,27 @@ export class NotificationDispatchLogRepository extends BaseRepository<DispatchLo
   > {
     try {
       const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
-      const snap = await this.collection.where("attemptedAt", ">=", cutoff).get();
+      // Hard row cap to bound admin-panel reads. 50k rows ≈ 150MB and
+      // half-a-second of parse time — well under the 60s Cloud Run
+      // timeout. Once volume grows past this threshold, migrate to the
+      // pre-aggregated `notificationMetrics` collection planned for
+      // Phase 5c (Terraform-provisioned Firestore TTL + daily summary
+      // doc). Addresses Phase 5 security review P1-1.
+      const HARD_ROW_CAP = 50_000;
+      const snap = await this.collection
+        .where("attemptedAt", ">=", cutoff)
+        .limit(HARD_ROW_CAP)
+        .get();
+      if (snap.size >= HARD_ROW_CAP) {
+        process.stderr.write(
+          JSON.stringify({
+            level: "warn",
+            event: "notification.dispatch_log_aggregate_capped",
+            days,
+            cap: HARD_ROW_CAP,
+          }) + "\n",
+        );
+      }
 
       const stats: Record<
         string,

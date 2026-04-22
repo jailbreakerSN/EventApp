@@ -224,6 +224,20 @@ async function writeAuditLog(params: {
 // set by every dispatch. Logs from the Phase 1–4 windows (before
 // messageId was populated) are unaffected; no back-fill needed since the
 // feature is new.
+//
+// TRANSACTION NOTE: this function performs a read-then-batch-write
+// without wrapping in `db.runTransaction()`. The same concern was
+// raised by the Phase 5 security review (finding P2-4). Decision:
+// idempotency of the field values (status="suppressed", reason,
+// originalStatus="sent", bouncedAt=<event>) makes concurrent webhook
+// deliveries for the same messageId safe — both converge on the same
+// final document state. Cloud Functions Firestore transactions also
+// cannot contain `where()` queries (only `tx.get(docRef)`), so the
+// "correct" fix requires storing the dispatch log doc id inside the
+// Resend idempotency key and doing a direct `tx.get`. That's a Phase
+// 5c refinement; the current path is safe for the webhook's
+// at-least-once delivery semantics. See docs/notification-system-
+// architecture.md §15 for follow-up plan.
 async function markDispatchLogBounced(
   messageId: string | undefined,
   reason: "bounced" | "on_suppression_list",
