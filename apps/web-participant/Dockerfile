@@ -29,6 +29,16 @@ ARG NEXT_PUBLIC_FIREBASE_PROJECT_ID
 ARG NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
 ARG NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
 ARG NEXT_PUBLIC_FIREBASE_APP_ID
+# Public VAPID key for Web Push. Generated once per environment in the
+# Firebase Console (Project Settings → Cloud Messaging → Web Push
+# certificates → Generate key pair), then provisioned via the
+# `notification-ops-prereqs.yml` workflow and passed here at build time.
+# Safe to embed in the client bundle — the *private* VAPID key never
+# leaves Firebase's infrastructure; only the public half signs JS-side
+# push subscriptions. When this ARG is unset, the Web Push registration
+# hook degrades to `permission: "unsupported"` at runtime — the app
+# still works, just without background push.
+ARG NEXT_PUBLIC_FIREBASE_VAPID_KEY
 ARG NEXT_PUBLIC_API_URL
 ARG NEXT_PUBLIC_APP_URL
 ARG NEXT_PUBLIC_BACKOFFICE_URL
@@ -39,6 +49,7 @@ ENV NEXT_PUBLIC_FIREBASE_PROJECT_ID=$NEXT_PUBLIC_FIREBASE_PROJECT_ID
 ENV NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=$NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
 ENV NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=$NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
 ENV NEXT_PUBLIC_FIREBASE_APP_ID=$NEXT_PUBLIC_FIREBASE_APP_ID
+ENV NEXT_PUBLIC_FIREBASE_VAPID_KEY=$NEXT_PUBLIC_FIREBASE_VAPID_KEY
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ENV NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL
 ENV NEXT_PUBLIC_BACKOFFICE_URL=$NEXT_PUBLIC_BACKOFFICE_URL
