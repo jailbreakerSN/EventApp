@@ -595,6 +595,78 @@ const EXPANSION_NOTIFICATIONS: SeedNotification[] = [
     readAt: null,
     createdAt: yesterday,
   },
+  // ── Backoffice-targeted seeds (Phase A.5) ──────────────────────────────
+  // The bell in apps/web-backoffice needs visible data on a fresh staging
+  // boot. The legacy set above is participant-facing only, so we seed a
+  // handful of organizer / co-organizer / super-admin notifications with
+  // deepLink values so clicking a row in the bell actually routes to a
+  // real page in the dashboard.
+  {
+    id: "notif-bo-001",
+    userId: IDS.organizer,
+    type: "new_registration",
+    title: "Nouvelle inscription",
+    body: "Aminata Fall s'est inscrite au Dakar Tech Summit 2026.",
+    data: { eventId: IDS.conference, deepLink: `/events/${IDS.conference}/registrations` },
+    isRead: false,
+    readAt: null,
+    createdAt: oneHourAgo,
+  },
+  {
+    id: "notif-bo-002",
+    userId: IDS.organizer,
+    type: "payment_succeeded",
+    title: "Paiement reçu",
+    body: "Paiement de 25 000 XOF reçu pour la Masterclass IA.",
+    data: { eventId: IDS.paidEvent, deepLink: "/finance" },
+    isRead: false,
+    readAt: null,
+    createdAt: twoHoursAgo,
+  },
+  {
+    id: "notif-bo-003",
+    userId: IDS.organizer,
+    type: "plan_limit_warning",
+    title: "Limite de votre plan approchée",
+    body: "Vous avez utilisé 80% de votre quota de participants pour ce mois.",
+    data: { organizationId: IDS.orgId, deepLink: "/organization/billing" },
+    isRead: false,
+    readAt: null,
+    createdAt: yesterday,
+  },
+  {
+    id: "notif-bo-004",
+    userId: IDS.coOrganizer,
+    type: "event_published",
+    title: "Événement publié",
+    body: "Le Dakar Tech Summit 2026 a été publié avec succès.",
+    data: { eventId: IDS.conference, deepLink: `/events/${IDS.conference}` },
+    isRead: true,
+    readAt: twoDaysAgo,
+    createdAt: twoDaysAgo,
+  },
+  {
+    id: "notif-bo-005",
+    userId: IDS.starterOrganizer,
+    type: "member_added",
+    title: "Nouveau membre ajouté",
+    body: "Oumar Ba a ajouté Aïssatou Diallo comme co-organisatrice.",
+    data: { organizationId: IDS.starterOrgId, deepLink: "/organization/members" },
+    isRead: false,
+    readAt: null,
+    createdAt: yesterday,
+  },
+  {
+    id: "notif-bo-006",
+    userId: IDS.superAdmin,
+    type: "system",
+    title: "Bounce rate élevé détecté",
+    body: "Le domaine news@ dépasse 2% de bounces sur la dernière heure.",
+    data: { deepLink: "/admin/notifications" },
+    isRead: false,
+    readAt: null,
+    createdAt: oneHourAgo,
+  },
 ];
 
 async function writeNotifications(db: Firestore): Promise<number> {
