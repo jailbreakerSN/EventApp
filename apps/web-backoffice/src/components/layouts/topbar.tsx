@@ -2,10 +2,39 @@
 
 import { useAuth } from "@/hooks/use-auth";
 import { useTheme } from "next-themes";
-import { ThemeToggle } from "@teranga/shared-ui";
+import { useRouter } from "next/navigation";
+import { ThemeToggle, NotificationBell, type NotificationBellRow } from "@teranga/shared-ui";
 import { LanguageSwitcher } from "@/components/language-switcher";
-import { Bell, Keyboard, LogOut, Menu, Search } from "lucide-react";
+import { Keyboard, LogOut, Menu, Search } from "lucide-react";
+import {
+  useNotifications,
+  useUnreadCount,
+  useMarkAsRead,
+  useMarkAllAsRead,
+} from "@/hooks/use-notifications";
 import { useSidebar } from "./sidebar-context";
+
+// Localised "il y a N min" formatter. `date-fns` isn't installed in this
+// workspace (see apps/web-backoffice/package.json — only zod + react-query
+// are in the dep tree), so we roll a tiny Intl-native helper mirroring the
+// one in src/app/(dashboard)/notifications/page.tsx. Kept inline on the
+// topbar so the bell has no cross-file coupling — if we need it in >1
+// place, lift to a shared util.
+function formatRelative(iso: string): string {
+  const now = new Date();
+  const date = new Date(iso);
+  const diffMs = now.getTime() - date.getTime();
+  const diffMinutes = Math.floor(diffMs / 60_000);
+  const diffHours = Math.floor(diffMs / 3_600_000);
+  const diffDays = Math.floor(diffMs / 86_400_000);
+
+  if (diffMinutes < 1) return "À l'instant";
+  if (diffMinutes < 60) return `Il y a ${diffMinutes} min`;
+  if (diffHours < 24) return `Il y a ${diffHours} h`;
+  if (diffDays === 1) return "Hier";
+  if (diffDays < 7) return `Il y a ${diffDays} j`;
+  return date.toLocaleDateString("fr-SN", { day: "numeric", month: "short" });
+}
 
 const ROLE_LABELS: Record<string, { label: string; color: string }> = {
   super_admin: { label: "Super Admin", color: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300" },
@@ -23,9 +52,37 @@ export function TopBar({ onShowShortcuts }: TopBarProps) {
   const { user, logout } = useAuth();
   const { theme, setTheme } = useTheme();
   const { isOpen, toggle } = useSidebar();
+  const router = useRouter();
 
   const primaryRole = user?.roles?.[0] ?? "participant";
   const roleInfo = ROLE_LABELS[primaryRole] ?? ROLE_LABELS.participant;
+
+  // Bell data — first page only (10 rows); the full history lives at
+  // /account/notifications/history. We deliberately don't gate behind
+  // `user` because the topbar only renders inside the authenticated
+  // (dashboard) layout.
+  const { data: notifData, isLoading: notifLoading, error: notifError } =
+    useNotifications({ page: 1, limit: 10 });
+  const { data: unreadData } = useUnreadCount();
+  const markAsRead = useMarkAsRead();
+  const markAllAsRead = useMarkAllAsRead();
+
+  const notifications: NotificationBellRow[] = (notifData?.data ?? []).map((n) => ({
+    id: n.id,
+    title: n.title,
+    body: n.body,
+    createdAt: n.createdAt,
+    isRead: n.isRead,
+    type: n.type,
+    // `data` is `Record<string, string>` on the Notification schema, so
+    // we pluck the Phase 2.5 `deepLink` contract the API sets on emits
+    // (see apps/api/src/services/notification.service.ts — params.data
+    // carries deepLink for dashboard routes like /events/:id,
+    // /registrations, /organization/billing). Falls back to undefined
+    // so the bell renders a plain button, not an anchor, when absent.
+    href: n.data?.deepLink || undefined,
+  }));
+  const unreadCount = unreadData?.data?.count ?? 0;
 
   return (
     <header className="h-14 bg-card border-b border-border flex items-center justify-between px-4 sm:px-6 shrink-0">
@@ -76,9 +133,28 @@ export function TopBar({ onShowShortcuts }: TopBarProps) {
           <Keyboard size={17} className="text-muted-foreground" aria-hidden="true" />
         </button>
 
-        <button className="relative p-2 rounded-lg hover:bg-accent motion-safe:transition-colors" aria-label="Notifications">
-          <Bell size={18} className="text-muted-foreground" aria-hidden="true" />
-        </button>
+        <NotificationBell
+          notifications={notifications}
+          unreadCount={unreadCount}
+          isLoading={notifLoading}
+          errorMessage={
+            notifError
+              ? "Impossible de charger les notifications. Réessayez plus tard."
+              : undefined
+          }
+          formatRelative={formatRelative}
+          seeAllHref="/account/notifications/history"
+          onRowClick={(row) => {
+            if (!row.isRead) {
+              markAsRead.mutate(row.id);
+            }
+            // Prefer the notification's own deep-link; fall back to the
+            // history page so the user always lands somewhere useful even
+            // when the denorm listener didn't set one.
+            router.push(row.href ?? "/account/notifications/history");
+          }}
+          onMarkAllRead={() => markAllAsRead.mutate()}
+        />
 
         <div className="flex items-center gap-2">
           {user?.photoURL ? (
