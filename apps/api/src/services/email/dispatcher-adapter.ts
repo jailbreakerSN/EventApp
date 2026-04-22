@@ -17,6 +17,23 @@ import {
   buildNewsletterConfirmationEmail,
   buildEmailVerificationEmail,
   buildPasswordResetEmail,
+  // Phase 2 builders
+  buildPaymentFailedEmail,
+  buildInviteSentEmail,
+  buildRegistrationCancelledEmail,
+  buildEventRescheduledEmail,
+  buildWaitlistPromotedEmail,
+  buildRefundIssuedEmail,
+  buildRefundFailedEmail,
+  buildMemberUpdateEmail,
+  buildSpeakerAddedEmail,
+  buildSponsorAddedEmail,
+  buildSubscriptionChangeEmail,
+  buildPayoutCreatedEmail,
+  buildPlatformWelcomeEmail,
+  buildPasswordChangedEmail,
+  buildEmailChangedEmail,
+  buildSubscriptionPastDueEmail,
   type RenderedEmail,
 } from "./templates";
 
@@ -101,6 +118,87 @@ const TEMPLATE_BUILDERS: Record<string, TemplateEntry> = {
     build: buildPasswordResetEmail as unknown as TemplateBuilder,
     category: "auth",
     tagType: "password_reset",
+  },
+  // ─── Phase 2 templates ─────────────────────────────────────────────────
+  PaymentFailed: {
+    build: buildPaymentFailedEmail as unknown as TemplateBuilder,
+    category: "billing",
+    tagType: "payment_failed",
+  },
+  InviteSent: {
+    build: buildInviteSentEmail as unknown as TemplateBuilder,
+    category: "transactional",
+    tagType: "invite_sent",
+  },
+  RegistrationCancelled: {
+    build: buildRegistrationCancelledEmail as unknown as TemplateBuilder,
+    category: "transactional",
+    tagType: "registration_cancelled",
+  },
+  EventRescheduled: {
+    build: buildEventRescheduledEmail as unknown as TemplateBuilder,
+    category: "transactional",
+    tagType: "event_rescheduled",
+  },
+  WaitlistPromoted: {
+    build: buildWaitlistPromotedEmail as unknown as TemplateBuilder,
+    category: "transactional",
+    tagType: "waitlist_promoted",
+  },
+  RefundIssued: {
+    build: buildRefundIssuedEmail as unknown as TemplateBuilder,
+    category: "billing",
+    tagType: "refund_issued",
+  },
+  RefundFailed: {
+    build: buildRefundFailedEmail as unknown as TemplateBuilder,
+    category: "billing",
+    tagType: "refund_failed",
+  },
+  MemberUpdate: {
+    build: buildMemberUpdateEmail as unknown as TemplateBuilder,
+    category: "organizational",
+    tagType: "member_update",
+  },
+  SpeakerAdded: {
+    build: buildSpeakerAddedEmail as unknown as TemplateBuilder,
+    category: "organizational",
+    tagType: "speaker_added",
+  },
+  SponsorAdded: {
+    build: buildSponsorAddedEmail as unknown as TemplateBuilder,
+    category: "organizational",
+    tagType: "sponsor_added",
+  },
+  SubscriptionChange: {
+    build: buildSubscriptionChangeEmail as unknown as TemplateBuilder,
+    category: "billing",
+    tagType: "subscription_change",
+  },
+  PayoutCreated: {
+    build: buildPayoutCreatedEmail as unknown as TemplateBuilder,
+    category: "billing",
+    tagType: "payout_created",
+  },
+  Welcome: {
+    build: buildPlatformWelcomeEmail as unknown as TemplateBuilder,
+    category: "marketing",
+    tagType: "platform_welcome",
+  },
+  PasswordChanged: {
+    build: buildPasswordChangedEmail as unknown as TemplateBuilder,
+    category: "auth",
+    tagType: "password_changed",
+  },
+  EmailChanged: {
+    build: buildEmailChangedEmail as unknown as TemplateBuilder,
+    category: "auth",
+    tagType: "email_changed",
+  },
+  SubscriptionPastDue: {
+    build: buildSubscriptionPastDueEmail as unknown as TemplateBuilder,
+    category: "billing",
+    tagType: "subscription_past_due",
   },
 };
 
