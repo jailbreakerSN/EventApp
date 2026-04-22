@@ -55,6 +55,12 @@ export { QueryError, type QueryErrorProps } from "./components/query-error";
 export { OfflineBanner } from "./components/offline-banner";
 export { Avatar, avatarVariants, type AvatarProps } from "./components/avatar";
 export { Tooltip, type TooltipProps } from "./components/tooltip";
+export {
+  NotificationBell,
+  type NotificationBellProps,
+  type NotificationBellRow,
+  type NotificationBellLabels,
+} from "./components/notification-bell";
 export { Switch, type SwitchProps } from "./components/switch";
 export { Pagination, type PaginationProps } from "./components/pagination";
 export { SearchInput, type SearchInputProps } from "./components/search-input";
