@@ -26,6 +26,7 @@ import { authEmailRoutes } from "./auth-email.routes";
 import { subscriptionRoutes } from "./subscriptions.routes";
 import { planRoutes, adminPlanRoutes } from "./plans.routes";
 import { balanceRoutes } from "./balance.routes";
+import { meRoutes } from "./me.routes";
 
 export async function registerRoutes(app: FastifyInstance) {
   // ── Health & Readiness (no auth, no rate limit) ──────────────────────────
@@ -59,4 +60,5 @@ export async function registerRoutes(app: FastifyInstance) {
   await app.register(authEmailRoutes, { prefix: "/v1/auth" });
   await app.register(subscriptionRoutes); // paths include /v1/organizations prefix
   await app.register(balanceRoutes); // paths include /v1/organizations prefix
+  await app.register(meRoutes, { prefix: "/v1/me" });
 }

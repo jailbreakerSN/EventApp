@@ -24,7 +24,18 @@ export class UserRepository extends BaseRepository<UserDoc> {
 
   async getFcmTokens(userIds: string[]): Promise<string[]> {
     const users = await this.batchGet(userIds);
-    return users.flatMap((u) => u.fcmTokens ?? []);
+    // Handle both legacy and new shapes transparently. Phase C.1
+    // (see apps/api/src/services/fcm-tokens.service.ts) introduced
+    // an object-shaped FcmToken ({ token, platform, ... }); legacy
+    // users still have `string[]` until they re-register. The FCM
+    // admin SDK only needs the raw token string, so extract it
+    // either way. Without this guard, any user who has registered
+    // via POST /v1/me/fcm-tokens would have their pushes fail —
+    // sendEachForMulticast would receive objects and reject them.
+    return users.flatMap((u) => {
+      const raw = (u.fcmTokens ?? []) as unknown[];
+      return raw.map((t) => (typeof t === "string" ? t : (t as { token: string }).token));
+    });
   }
 
   /**

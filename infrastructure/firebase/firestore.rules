@@ -58,10 +58,15 @@ service cloud.firestore {
       allow read: if isOwnerOf(userId) || isSuperAdmin()
                   || (isOrganizer() && belongsToOrg(resource.data.organizationId));
 
-      // Owner can update own profile fields; cannot change roles/uid/isActive
+      // Owner can update own profile fields; cannot change roles/uid/isActive.
+      // `fcmTokens` is deliberately excluded from the owner-writable set:
+      // client SDKs must NOT write push destinations directly — they flow
+      // through POST /v1/me/fcm-tokens so the API can dedupe, cap at 10/user,
+      // and emit `fcm.token_registered` to the audit trail. A client write
+      // would bypass rate-limiting and the fingerprint audit (Phase C.1).
       allow update: if isOwnerOf(userId)
                     && onlyChanges(['displayName', 'photoURL', 'phone', 'bio',
-                                    'preferredLanguage', 'fcmTokens', 'updatedAt']);
+                                    'preferredLanguage', 'updatedAt']);
 
       // Super admin can update everything (including roles)
       allow update: if isSuperAdmin();
