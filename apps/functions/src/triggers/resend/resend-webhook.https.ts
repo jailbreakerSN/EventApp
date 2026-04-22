@@ -106,6 +106,10 @@ async function handleEvent(event: ResendWebhookEvent): Promise<void> {
         sourceEmailId: event.data.email_id,
         createdAt: event.created_at,
       });
+      // Phase 5b: back-annotate the dispatch log so per-key bounce rates
+      // appear in the admin observability dashboard. Fire-and-forget; if
+      // the log doesn't carry this messageId (legacy send) we no-op.
+      await markDispatchLogBounced(event.data.email_id, "bounced", event.created_at);
       logger.info("Suppressed hard-bounced address", { email });
       return;
     }
@@ -124,6 +128,11 @@ async function handleEvent(event: ResendWebhookEvent): Promise<void> {
         sourceEmailId: event.data.email_id,
         createdAt: event.created_at,
       });
+      // Phase 5b: same back-annotation path as bounces. Reason
+      // "on_suppression_list" because the recipient has now been added
+      // to the platform-wide suppression list; subsequent dispatches to
+      // this address will suppress on the list lookup inside the adapter.
+      await markDispatchLogBounced(event.data.email_id, "on_suppression_list", event.created_at);
       logger.info("Suppressed complained address", { email });
       return;
     }
@@ -200,6 +209,69 @@ async function writeAuditLog(params: {
       action: params.action,
       err,
     });
+  }
+}
+
+// ─── Phase 5b: dispatch log back-annotation ────────────────────────────────
+// When Resend reports a bounce / complaint on a messageId, flip the
+// matching `notificationDispatchLog` entry from status="sent" to
+// status="suppressed" so the admin stats endpoint surfaces the correct
+// bounce rate without re-aggregating from scratch. We deliberately keep
+// a record of the original "sent" intent (original_status in the doc)
+// so post-mortem analysis can see both the dispatch AND the later bounce.
+//
+// Matches by `messageId` — this field was introduced in Phase 5a and is
+// set by every dispatch. Logs from the Phase 1–4 windows (before
+// messageId was populated) are unaffected; no back-fill needed since the
+// feature is new.
+//
+// TRANSACTION NOTE: this function performs a read-then-batch-write
+// without wrapping in `db.runTransaction()`. The same concern was
+// raised by the Phase 5 security review (finding P2-4). Decision:
+// idempotency of the field values (status="suppressed", reason,
+// originalStatus="sent", bouncedAt=<event>) makes concurrent webhook
+// deliveries for the same messageId safe — both converge on the same
+// final document state. Cloud Functions Firestore transactions also
+// cannot contain `where()` queries (only `tx.get(docRef)`), so the
+// "correct" fix requires storing the dispatch log doc id inside the
+// Resend idempotency key and doing a direct `tx.get`. That's a Phase
+// 5c refinement; the current path is safe for the webhook's
+// at-least-once delivery semantics. See docs/notification-system-
+// architecture.md §15 for follow-up plan.
+async function markDispatchLogBounced(
+  messageId: string | undefined,
+  reason: "bounced" | "on_suppression_list",
+  occurredAt: string,
+): Promise<void> {
+  if (!messageId) return;
+  try {
+    const snap = await db
+      .collection(COLLECTIONS.NOTIFICATION_DISPATCH_LOG)
+      .where("messageId", "==", messageId)
+      .limit(10) // guard against pathological duplicates
+      .get();
+    if (snap.empty) return;
+
+    const batch = db.batch();
+    for (const doc of snap.docs) {
+      batch.update(doc.ref, {
+        status: "suppressed",
+        reason,
+        // Preserve the original decision for forensics.
+        originalStatus: "sent",
+        bouncedAt: occurredAt,
+      });
+    }
+    await batch.commit();
+    logger.info("Back-annotated dispatch log with bounce", {
+      messageId,
+      reason,
+      matched: snap.size,
+    });
+  } catch (err) {
+    // Fire-and-forget — the suppression list write already committed,
+    // bounce analytics are nice-to-have, not a blocker.
+    logger.error("Failed to back-annotate dispatch log", { messageId, err });
   }
 }
 

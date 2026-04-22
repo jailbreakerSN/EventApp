@@ -11,6 +11,7 @@ import { config } from "@/config/index";
 import { eventBus } from "@/events/event-bus";
 import { getRequestContext } from "@/context/request-context";
 import { notificationSettingsRepository } from "@/repositories/notification-settings.repository";
+import { notificationDispatchLogRepository } from "@/repositories/notification-dispatch-log.repository";
 
 // ─── Notification Dispatcher Service ───────────────────────────────────────
 // Single entry point for every branded notification the platform sends.
@@ -345,6 +346,19 @@ export class NotificationDispatcherService {
       recipientRef,
       ...(messageId ? { messageId } : {}),
     });
+    // Phase 5 observability — append to the dispatch log for the
+    // admin dashboard and bounce-rate alerts. Fire-and-forget so a
+    // Firestore hiccup can't block the request.
+    void notificationDispatchLogRepository.append({
+      key,
+      channel,
+      recipientRef,
+      status: "sent",
+      ...(messageId ? { messageId } : {}),
+      attemptedAt: baseEvent.timestamp,
+      requestId: baseEvent.requestId,
+      actorId: baseEvent.actorId,
+    });
   }
 
   private emitSuppressed(
@@ -360,6 +374,19 @@ export class NotificationDispatcherService {
       recipientRef,
       reason,
       ...(channel ? { channel } : {}),
+    });
+    // Phase 5 observability — same log pipeline as `sent`. `reason`
+    // lets the admin UI aggregate suppression by cause (admin_disabled
+    // / user_opted_out / on_suppression_list / bounced / no_recipient).
+    void notificationDispatchLogRepository.append({
+      key,
+      channel: channel ?? "email",
+      recipientRef,
+      status: "suppressed",
+      reason,
+      attemptedAt: baseEvent.timestamp,
+      requestId: baseEvent.requestId,
+      actorId: baseEvent.actorId,
     });
   }
 

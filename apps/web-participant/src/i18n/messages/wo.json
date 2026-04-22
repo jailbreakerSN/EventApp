@@ -617,7 +617,46 @@
   "settings": {
     "title": "Paramet yi",
     "kicker": "— PARAMET",
-    "notifications": { "heading": "Xibaar yi" },
+    "notifications": {
+      "heading": "Xibaar yi",
+      "detailedLink": "Gestionnaar sama yëglekaay yi",
+      "detailedLinkDescription": "Ubbi walla tëj yëglekaay yépp ci kenn-kenn",
+      "preferences": {
+        "kicker": "— YËGLEKAAY",
+        "title": "Yëglekaay yu detaayil",
+        "subtitle": "Ubbi walla tëj yëglekaay yépp ci kenn-kenn. Yëglekaay yu kaaraange ak fay duñu tëj.",
+        "loadingAria": "Di yëngu yëglekaay yi",
+        "empty": "Amul yëglekaay",
+        "emptyDescription": "Dellul ci kanam, catalog bi dina dox.",
+        "retry": "Jéémaat",
+        "errorLoadingTitle": "Manuñu jàng sa tànnéef yi",
+        "errorLoadingDescription": "Xoolaatal sa konsa te jéémaatal.",
+        "mandatoryTooltip": "Yeboo bi, dafa fàww.",
+        "mandatorySrHint": "Yëglekaay bi fàww, manuñu ko tëj",
+        "save": "Denc",
+        "saving": "Di denc...",
+        "cancel": "Bayyi",
+        "unsavedAnnounce": "Soppi yu ñu dencagul",
+        "unsavedCount": "{count, plural, one {# soppi bu ñu dencagul} other {# soppi yu ñu dencagul}}",
+        "saveSuccess": "Tànnéef yi denc nañu",
+        "pauseAllMarketing": "Taxawal yépp yëglekaay marketing yi",
+        "pauseAllMarketingDescription": "Tëj na yépp yëglekaay marketing yi ci benn click.",
+        "quickNav": "Dem ci catégorie",
+        "backToSettings": "Dellu ci paramet yi",
+        "categories": {
+          "auth": "Kaaraange ak kont",
+          "authDescription": "Dugg, vérifications imeyl ak soppi baatu-ruus.",
+          "transactional": "Transaction",
+          "transactionalDescription": "Bindu, badge ak dëggal.",
+          "billing": "Fay",
+          "billingDescription": "Fay, reçu ak abonnement. Fàww nañu.",
+          "organizational": "Organisation",
+          "organizationalDescription": "Invitation équipe, soppi ci rôle.",
+          "marketing": "Marketing",
+          "marketingDescription": "Yu bees, conseil ak promo."
+        }
+      }
+    },
     "privacy": { "heading": "Kàddu gi" },
     "account": { "heading": "Kont", "delete": "Fomm sama kont" }
   },

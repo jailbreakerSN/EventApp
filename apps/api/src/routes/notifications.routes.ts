@@ -6,7 +6,11 @@ import { validate } from "@/middlewares/validate.middleware";
 import { requirePermission } from "@/middlewares/permission.middleware";
 import { notificationService } from "@/services/notification.service";
 import { db, COLLECTIONS } from "@/config/firebase";
-import { UpdateNotificationPreferenceSchema } from "@teranga/shared-types";
+import {
+  UpdateNotificationPreferenceSchema,
+  NOTIFICATION_CATALOG,
+  type NotificationDefinition,
+} from "@teranga/shared-types";
 import { verifyUnsubscribeToken } from "@/services/notifications/unsubscribe-token";
 import { unsubscribeCategory } from "@/services/notifications/unsubscribe.service";
 import { renderLandingPage, backToParticipantCta } from "./_shared/landing-page";
@@ -197,6 +201,45 @@ export const notificationRoutes: FastifyPluginAsync = async (fastify) => {
 
       const doc = await ref.get();
       return reply.send({ success: true, data: doc.data() });
+    },
+  );
+
+  // ─── Notification catalog (Phase 3 — user preferences UI) ────────────
+  // Returns the full NOTIFICATION_CATALOG plus the current user's byKey
+  // overrides, shaped so the preferences page can render the list
+  // without a second round-trip. Only catalog entries with
+  // `userOptOutAllowed === true` are togglable — the UI greys out the
+  // rest with a hover tooltip ("this notification is required").
+  fastify.get(
+    "/catalog",
+    {
+      preHandler: [authenticate, requirePermission("notification:read_own")],
+      schema: {
+        tags: ["Notifications"],
+        summary: "List every notification + user's per-key opt-out state",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const prefDoc = await db
+        .collection(COLLECTIONS.NOTIFICATION_PREFERENCES)
+        .doc(request.user!.uid)
+        .get();
+      const byKey = (prefDoc.data()?.byKey as Record<string, boolean> | undefined) ?? {};
+
+      // Shape: flat list of { key, category, displayName, description,
+      // userOptOutAllowed, enabled }. `enabled` is the effective state
+      // (catalog default unless user explicitly opted out).
+      const entries = NOTIFICATION_CATALOG.map((def: NotificationDefinition) => ({
+        key: def.key,
+        category: def.category,
+        displayName: def.displayName,
+        description: def.description,
+        userOptOutAllowed: def.userOptOutAllowed,
+        enabled: byKey[def.key] ?? true,
+      }));
+
+      return reply.send({ success: true, data: entries });
     },
   );
 

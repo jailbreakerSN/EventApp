@@ -1,7 +1,18 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Bell, Mail, Smartphone, Clock, Eye, MessageSquare, Trash2, Shield } from "lucide-react";
+import Link from "next/link";
+import {
+  Bell,
+  Mail,
+  Smartphone,
+  Clock,
+  Eye,
+  MessageSquare,
+  Trash2,
+  Shield,
+  ChevronRight,
+} from "lucide-react";
 import { toast } from "sonner";
 import { useTranslations } from "next-intl";
 import {
@@ -171,6 +182,28 @@ export default function SettingsPage() {
               {tNotifications("mandatoryEmailNote")}
             </p>
           </div>
+
+          {/* Phase 3 — deep-link to the per-key preferences page. Kept
+              distinct from the channel-level toggles above so users who
+              just want to mute marketing can do it in one click, while
+              power users still get granular control. */}
+          <Link
+            href="/settings/notifications"
+            className="mt-4 flex items-center justify-between rounded-lg border border-teranga-gold/30 bg-teranga-gold/5 p-4 transition-colors hover:bg-teranga-gold/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teranga-gold focus-visible:ring-offset-2"
+          >
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-foreground">
+                {tNotifications("detailedLink")}
+              </p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {tNotifications("detailedLinkDescription")}
+              </p>
+            </div>
+            <ChevronRight
+              className="h-5 w-5 flex-shrink-0 text-muted-foreground"
+              aria-hidden="true"
+            />
+          </Link>
         </CardContent>
       </Card>
 

@@ -374,6 +374,70 @@ export interface NotificationSettingUpdatedEvent extends BaseEventPayload {
   hasSubjectOverride: boolean;
 }
 
+// ── User lifecycle (Phase 2 — security + onboarding notifications) ───────
+// Emitted by the auth trigger (user.created) and the API self-service
+// endpoints for password + email changes. The notification listener
+// routes each to its dispatcher key so the Welcome / PasswordChanged /
+// EmailChanged templates fire. Password + email changes are SECURITY
+// notifications — userOptOutAllowed=false in the catalog, dispatcher
+// ignores opt-out.
+
+export interface UserCreatedEvent extends BaseEventPayload {
+  /** Firebase UID of the newly-created user. */
+  userId: string;
+  /** Email captured at sign-up; may be null for anonymous Firebase users. */
+  email: string | null;
+  displayName: string | null;
+  /** "email" | "google" | "anonymous" — provider Firebase returned. */
+  provider: string;
+}
+
+export interface UserPasswordChangedEvent extends BaseEventPayload {
+  userId: string;
+  /** ISO timestamp when the password was rotated. */
+  changedAt: string;
+  /** Best-effort client IP (X-Forwarded-For). Absent = originated from a cron / admin action. */
+  ipAddress?: string;
+  /** Best-effort city from GeoIP. Absent = unknown. */
+  city?: string;
+}
+
+export interface UserEmailChangedEvent extends BaseEventPayload {
+  userId: string;
+  /** Previous email — the notification target (sent to the OLD address for security). */
+  oldEmail: string;
+  /** New email on the account. */
+  newEmail: string;
+  changedAt: string;
+}
+
+// ── Subscription billing (Phase 2) ───────────────────────────────────────
+// `past_due` is emitted by the future billing cron when auto-renewal
+// fails; the doc gap is acknowledged in the roadmap. `cancelled` is
+// emitted by the subscription-cancel path (distinct from downgrade —
+// downgrade emits subscription.downgraded with the target plan, cancel
+// reverts the org to the free plan explicitly).
+
+export interface SubscriptionPastDueEvent extends BaseEventPayload {
+  organizationId: string;
+  planKey: string;
+  /** Pre-formatted XOF amount for the template. */
+  amount: string;
+  /** Short provider-returned reason, never user-facing raw. */
+  failureReason?: string;
+  /** ISO timestamp when the org rolls back to the free plan if unpaid. */
+  gracePeriodEndsAt: string;
+}
+
+export interface SubscriptionCancelledEvent extends BaseEventPayload {
+  organizationId: string;
+  planKey: string;
+  /** ISO timestamp when the cancellation becomes effective. */
+  effectiveAt: string;
+  /** "self" (admin clicked cancel) | "system" (past_due grace expired). */
+  cancelledBy: "self" | "system";
+}
+
 // ── Speaker ───────────────────────────────────────────────────────────────
 
 export interface SpeakerAddedEvent extends BaseEventPayload {
@@ -744,6 +808,13 @@ export interface DomainEventMap {
   "notification.sent": NotificationSentEvent;
   "notification.suppressed": NotificationSuppressedEvent;
   "notification.setting_updated": NotificationSettingUpdatedEvent;
+  // User lifecycle (Phase 2)
+  "user.created": UserCreatedEvent;
+  "user.password_changed": UserPasswordChangedEvent;
+  "user.email_changed": UserEmailChangedEvent;
+  // Subscription billing (Phase 2)
+  "subscription.past_due": SubscriptionPastDueEvent;
+  "subscription.cancelled": SubscriptionCancelledEvent;
 }
 
 export type DomainEventName = keyof DomainEventMap;

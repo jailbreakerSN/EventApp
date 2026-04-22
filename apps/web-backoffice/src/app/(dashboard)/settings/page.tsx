@@ -590,7 +590,16 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          <div className="mt-5 flex justify-end">
+          <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            {/* Phase 3 — granular per-notification opt-out page. The card's
+                quick toggles above stay as a low-effort shortcut; users who
+                want fine control jump to the detailed catalog. */}
+            <Link
+              href="/settings/notifications"
+              className="text-sm font-medium text-teranga-gold hover:text-teranga-gold-dark underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teranga-gold focus-visible:ring-offset-2 rounded"
+            >
+              Gérer mes notifications détaillées →
+            </Link>
             <Button onClick={handleSavePrefs}>
               <Save className="h-4 w-4 mr-2" />
               Enregistrer les preferences

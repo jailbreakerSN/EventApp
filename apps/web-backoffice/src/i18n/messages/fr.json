@@ -161,7 +161,43 @@
     "title": "Notifications",
     "markAllRead": "Tout lire",
     "empty": "Aucune notification",
-    "loadError": "Erreur de chargement des notifications."
+    "loadError": "Erreur de chargement des notifications.",
+    "preferences": {
+      "breadcrumbHome": "Tableau de bord",
+      "breadcrumbSettings": "Paramètres",
+      "breadcrumbCurrent": "Notifications",
+      "title": "Notifications",
+      "subtitle": "Choisissez précisément les notifications que vous souhaitez recevoir. Certaines alertes liées à la sécurité ou à la facturation ne peuvent pas être désactivées.",
+      "loadingAria": "Chargement des préférences de notifications",
+      "empty": "Aucune notification disponible",
+      "emptyDescription": "Revenez plus tard, notre catalogue s'enrichit régulièrement.",
+      "retry": "Réessayer",
+      "errorLoadingTitle": "Impossible de charger vos préférences",
+      "errorLoadingDescription": "Vérifiez votre connexion et réessayez dans quelques instants.",
+      "mandatoryTooltip": "Cette notification est requise pour votre sécurité.",
+      "mandatorySrHint": "Notification obligatoire, ne peut pas être désactivée",
+      "save": "Enregistrer",
+      "saving": "Enregistrement...",
+      "cancel": "Annuler",
+      "unsavedAnnounce": "Modifications non enregistrées",
+      "unsavedCount": "{count, plural, one {# modification non enregistrée} other {# modifications non enregistrées}}",
+      "saveSuccess": "Préférences de notifications enregistrées",
+      "pauseAllMarketing": "Pauser toutes les communications marketing",
+      "pauseAllMarketingDescription": "Désactive toutes les notifications marketing en un clic. Vous pouvez les réactiver individuellement ci-dessous.",
+      "quickNav": "Aller à la catégorie",
+      "categories": {
+        "auth": "Sécurité et compte",
+        "authDescription": "Connexions, vérifications d'e-mail et changements de mot de passe.",
+        "transactional": "Transactionnel",
+        "transactionalDescription": "Inscriptions, badges et confirmations liés à vos événements.",
+        "billing": "Facturation",
+        "billingDescription": "Paiements, reçus et abonnements. Ces alertes restent obligatoires.",
+        "organizational": "Organisation",
+        "organizationalDescription": "Invitations d'équipe, changements de rôle et activité de l'organisation.",
+        "marketing": "Communications marketing",
+        "marketingDescription": "Nouveautés produit, conseils et offres. Désinscription possible à tout moment."
+      }
+    }
   },
   "plan": {
     "free": "Gratuit",
@@ -170,6 +206,87 @@
     "enterprise": "Entreprise",
     "upgrade": "Mettre à niveau",
     "currentPlan": "Plan actuel"
+  },
+  "admin": {
+    "notifications": {
+      "breadcrumbAdmin": "Administration",
+      "breadcrumbCurrent": "Notifications",
+      "kicker": "— PLAN DE CONTRÔLE",
+      "title": "Notifications de la plateforme",
+      "subtitle": "Activez, désactivez et ajustez les canaux de chaque notification système. Les modifications sont auditées.",
+      "loading": "Chargement du catalogue...",
+      "empty": "Aucune notification trouvée dans le catalogue.",
+      "errorTitle": "Impossible de charger les notifications",
+      "errorDescription": "Une erreur est survenue lors du chargement du catalogue. Réessayez.",
+      "window": {
+        "label": "Période des statistiques",
+        "days1": "Dernières 24 heures",
+        "days7": "7 derniers jours",
+        "days30": "30 derniers jours"
+      },
+      "table": {
+        "key": "Clé",
+        "name": "Notification",
+        "category": "Catégorie",
+        "channels": "Canaux",
+        "enabled": "Activée",
+        "sent": "Envoyées",
+        "suppressed": "Supprimées",
+        "actions": "Actions",
+        "edit": "Modifier",
+        "overridden": "Override actif",
+        "defaults": "Valeurs par défaut",
+        "mandatory": "Obligatoire"
+      },
+      "category": {
+        "auth": "Authentification",
+        "transactional": "Transactionnel",
+        "organizational": "Organisation",
+        "billing": "Facturation",
+        "marketing": "Marketing"
+      },
+      "channel": {
+        "email": "E-mail",
+        "sms": "SMS",
+        "push": "Push",
+        "in_app": "In-app"
+      },
+      "suppression": {
+        "warningLabel": "Taux de suppression élevé : {percent}%",
+        "breakdownTitle": "Raisons de suppression",
+        "admin_disabled": "Désactivée par l'admin",
+        "user_opted_out": "Utilisateur désinscrit",
+        "on_suppression_list": "Liste de suppression",
+        "bounced": "Rebond",
+        "no_recipient": "Pas de destinataire"
+      },
+      "drawer": {
+        "title": "Modifier la notification",
+        "subtitle": "Ajustez les canaux et le sujet des e-mails pour cette notification.",
+        "close": "Fermer",
+        "channelsLabel": "Canaux actifs",
+        "channelsHelp": "Sélectionnez au moins un canal parmi ceux supportés par le code.",
+        "channelsEmptyError": "Sélectionnez au moins un canal.",
+        "subjectLabel": "Sujet personnalisé (optionnel)",
+        "subjectHelp": "Laissez vide pour utiliser le sujet par défaut du template.",
+        "subjectFr": "Sujet (français)",
+        "subjectEn": "Sujet (anglais)",
+        "subjectWo": "Sujet (wolof)",
+        "save": "Enregistrer",
+        "saving": "Enregistrement...",
+        "cancel": "Annuler"
+      },
+      "toast": {
+        "enabled": "Notification activée",
+        "disabled": "Notification désactivée",
+        "saved": "Paramètres enregistrés"
+      },
+      "meta": {
+        "mandatoryHint": "Notification obligatoire — les utilisateurs ne peuvent pas s'en désinscrire.",
+        "lastUpdated": "Dernière mise à jour : {date}",
+        "noStats": "Aucune donnée"
+      }
+    }
   },
   "errors": {
     "kicker": "— Erreur",
