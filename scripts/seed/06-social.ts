@@ -626,9 +626,17 @@ const EXPANSION_PREF_USERS: string[] = [
 
 async function writeNotificationPreferences(db: Firestore): Promise<number> {
   const all = [...LEGACY_PREF_USERS, ...EXPANSION_PREF_USERS];
+  // Seed a mix of pref shapes so the backoffice "Communications"
+  // page + Phase 2.5 history page have visible data on day 1:
+  //   - Most users: aggregate on (legacy shape, still honoured).
+  //   - Every 3rd user: per-category overrides (Phase 3c.3) —
+  //     keeps organizational mail on but opts out of marketing.
+  //   - Every 5th user: per-key object shape (Phase 2.6) — opts
+  //     out of SMS for event.reminder while keeping email on.
+  // Mandatory categories (auth, billing) are unaffected regardless.
   await Promise.all(
-    all.map((uid) =>
-      db.collection("notificationPreferences").doc(uid).set({
+    all.map((uid, index) => {
+      const base: Record<string, unknown> = {
         id: uid,
         userId: uid,
         email: true,
@@ -637,8 +645,20 @@ async function writeNotificationPreferences(db: Firestore): Promise<number> {
         quietHoursStart: "22:00",
         quietHoursEnd: "08:00",
         updatedAt: now,
-      }),
-    ),
+      };
+      if (index % 3 === 0) {
+        base.emailTransactional = true;
+        base.emailOrganizational = true;
+        base.emailMarketing = false;
+      }
+      if (index % 5 === 0) {
+        base.byKey = {
+          "event.reminder": { email: true, sms: false, push: true },
+          "newsletter.welcome": false,
+        };
+      }
+      return db.collection("notificationPreferences").doc(uid).set(base);
+    }),
   );
   return all.length;
 }
@@ -974,6 +994,71 @@ async function writeSubscriptions(db: Firestore): Promise<number> {
   return subs.length;
 }
 
+// ─── Notification Settings (admin control plane) ─────────────────────────
+// Seeds a handful of admin overrides on top of the 34-entry catalog so
+// the super-admin notifications page (apps/web-backoffice/.../admin/
+// notifications/page.tsx) has something to show on first boot of
+// staging — a disabled key, a subject override, and an org-scoped
+// override demonstrate every code path in the resolution service.
+
+async function writeNotificationSettings(db: Firestore): Promise<number> {
+  const seedActor = "system-seed";
+  const overrides = [
+    // Platform-wide: turn off the weekly welcome newsletter in
+    // staging so QA can't accidentally spam seeded users during
+    // demo runs.
+    {
+      docId: "newsletter.welcome",
+      body: {
+        key: "newsletter.welcome",
+        enabled: false,
+        channels: ["email"],
+        updatedAt: now,
+        updatedBy: seedActor,
+      },
+    },
+    // Platform-wide: override the subject line for event.reminder
+    // in French so the admin UI's "sujet" column isn't empty for
+    // the most-fired notification.
+    {
+      docId: "event.reminder",
+      body: {
+        key: "event.reminder",
+        enabled: true,
+        channels: ["email", "push", "in_app"],
+        subjectOverride: {
+          fr: "Votre événement approche ✨",
+          en: "Your event is coming up ✨",
+          wo: "Sa xew bi am na ci yoon ✨",
+        },
+        updatedAt: now,
+        updatedBy: seedActor,
+      },
+    },
+    // Org-scoped: Dakar Digital Hub (starter plan) disables the
+    // approaching-limit nudge for its own usage. Doc id encodes
+    // the (key, orgId) tuple via the "__" separator the
+    // notification-settings repository uses.
+    {
+      docId: "subscription.approaching_limit__org_dakar_digital_hub",
+      body: {
+        key: "subscription.approaching_limit",
+        organizationId: "org_dakar_digital_hub",
+        enabled: false,
+        channels: [],
+        updatedAt: now,
+        updatedBy: seedActor,
+      },
+    },
+  ];
+  await Promise.all(
+    overrides.map((o) =>
+      db.collection("notificationSettings").doc(o.docId).set(o.body),
+    ),
+  );
+  return overrides.length;
+}
+
 // ─── Orchestrator ─────────────────────────────────────────────────────────
 
 export type SocialCounts = {
@@ -983,6 +1068,7 @@ export type SocialCounts = {
   messages: number;
   notifications: number;
   notificationPreferences: number;
+  notificationSettings: number;
   broadcasts: number;
   checkinFeed: number;
   auditLogs: number;
@@ -996,6 +1082,7 @@ export async function seedSocial(db: Firestore): Promise<SocialCounts> {
     convResult,
     notifications,
     notificationPreferences,
+    notificationSettings,
     broadcasts,
     checkinFeed,
     auditLogs,
@@ -1006,6 +1093,7 @@ export async function seedSocial(db: Firestore): Promise<SocialCounts> {
     writeConversationsAndMessages(db),
     writeNotifications(db),
     writeNotificationPreferences(db),
+    writeNotificationSettings(db),
     writeBroadcasts(db),
     writeCheckinFeed(db),
     writeAuditLogs(db),
@@ -1018,6 +1106,7 @@ export async function seedSocial(db: Firestore): Promise<SocialCounts> {
     messages: convResult.messages,
     notifications,
     notificationPreferences,
+    notificationSettings,
     broadcasts,
     checkinFeed,
     auditLogs,

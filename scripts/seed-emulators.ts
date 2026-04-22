@@ -227,6 +227,7 @@ async function seed() {
       `  ✓ social seeded — ${s.feedPosts} posts, ${s.feedComments} comments, ` +
         `${s.conversations} conversations, ${s.messages} messages, ` +
         `${s.notifications} notifications, ${s.notificationPreferences} prefs, ` +
+        `${s.notificationSettings} admin settings overrides, ` +
         `${s.broadcasts} broadcasts, ${s.checkinFeed} checkin feed, ` +
         `${s.auditLogs} audit logs, ${s.subscriptions} subscriptions`,
     );
