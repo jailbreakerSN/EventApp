@@ -229,9 +229,16 @@ jobs:
           install_components: "alpha"
 
       - name: Verify gcloud alpha is callable
+        # `gcloud alpha` is a command group, not a command — `--version`
+        # isn't valid on the group itself. A zero-exit `--help` invocation
+        # is the cheapest "alpha is installed" probe; it will fail non-zero
+        # if the bundle wasn't pulled down by setup-gcloud above, so the
+        # workflow fails here on its own step rather than deep in the
+        # upsert script.
         run: |
           set -euo pipefail
-          gcloud alpha --version | head -5
+          gcloud alpha --help > /dev/null
+          gcloud --version | head -5
           echo "CLOUDSDK_CORE_DISABLE_PROMPTS=1" >> "$GITHUB_ENV"
 
       - name: Ensure monitoring API is enabled
