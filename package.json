@@ -22,6 +22,8 @@
     "types:build": "turbo build --filter=@teranga/shared-types",
     "audit:firestore-indexes": "tsx scripts/audit-firestore-indexes.ts",
     "audit:firestore-indexes:strict": "AUDIT_SUBSETS=1 tsx scripts/audit-firestore-indexes.ts",
+    "notifications:status": "tsx scripts/generate-notification-catalog-status.ts",
+    "notifications:check": "tsx scripts/check-notification-catalog-integrity.ts",
     "seed": "tsx scripts/seed-emulators.ts",
     "seed:staging": "SEED_TARGET=staging tsx scripts/seed-emulators.ts",
     "seed:reset": "tsx scripts/seed-reset.ts",
