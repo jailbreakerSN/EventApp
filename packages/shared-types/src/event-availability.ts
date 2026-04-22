@@ -13,6 +13,13 @@ export type RegistrationUnavailableReason =
   | "event_ended"
   | "event_full";
 
+/**
+ * Why a registration mutation conflicts with the current state. Carried
+ * on `CONFLICT` 409 responses via `details.reason` so the UI can render
+ * a targeted state instead of the generic "Action déjà effectuée" copy.
+ */
+export type RegistrationConflictReason = "duplicate_registration";
+
 export type RegistrationAvailability =
   | { state: "open" }
   | { state: "requires_approval" }

@@ -969,7 +969,13 @@
     },
     "CONFLICT": {
       "title": "Action already performed",
-      "description": "This action conflicts with the current state. Refresh the page and try again."
+      "description": "This action conflicts with the current state. Refresh the page and try again.",
+      "reasons": {
+        "duplicate_registration": {
+          "title": "You're already registered",
+          "description": "You already have an active registration for this event. Find your badge in \"My registrations\"."
+        }
+      }
     },
     "RATE_LIMIT_EXCEEDED": {
       "title": "Too many attempts",
@@ -1041,6 +1047,7 @@
       "retry": "Try again",
       "contactSupport": "Contact support",
       "browseEvents": "Browse events",
+      "viewMyRegistrations": "View my registrations",
       "upgradePlan": "Manage plan",
       "verifyEmail": "Resend verification link",
       "dismiss": "Dismiss"

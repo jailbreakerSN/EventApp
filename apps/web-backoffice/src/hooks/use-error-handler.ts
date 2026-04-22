@@ -36,7 +36,6 @@ export function useErrorHandler() {
       if (severity !== "info") {
         reportError(error, descriptor);
         if (process.env.NODE_ENV === "development") {
-           
           console.error(
             `[teranga:error] code=${descriptor.code}${descriptor.reason ? ` reason=${descriptor.reason}` : ""}`,
             error,
@@ -44,10 +43,14 @@ export function useErrorHandler() {
         }
       }
 
-      const reasonPath =
-        descriptor.code === "REGISTRATION_CLOSED" && descriptor.reason
-          ? `${descriptor.code}.reasons.${descriptor.reason}`
-          : null;
+      // Any code may carry a typed `reason` (REGISTRATION_CLOSED,
+      // CONFLICT.duplicate_registration, ORGANIZATION_PLAN_LIMIT.*,
+      // VALIDATION_ERROR.*) — always try the reason-specific copy first
+      // and fall back to the generic code copy if the reason isn't in
+      // the catalog. See docs/design-system/error-handling.md § "i18n".
+      const reasonPath = descriptor.reason
+        ? `${descriptor.code}.reasons.${descriptor.reason}`
+        : null;
 
       const { title, description } = lookupCopy(tErrors, descriptor, reasonPath);
 

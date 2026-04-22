@@ -1,6 +1,7 @@
 import {
   type ErrorCode,
   ERROR_CODES,
+  type RegistrationConflictReason,
   type RegistrationUnavailableReason,
 } from "@teranga/shared-types";
 
@@ -74,13 +75,37 @@ export class ForbiddenError extends AppError {
   }
 }
 
+/**
+ * 409 conflict — the operation contradicts the current state. Carry a
+ * typed `reason` discriminator so the UI can render targeted copy
+ * instead of the generic "Action déjà effectuée" fallback. New reason
+ * unions live alongside `RegistrationConflictReason` in
+ * `@teranga/shared-types/event-availability` (or a domain-specific
+ * sibling) — keep client + server in sync.
+ */
 export class ConflictError extends AppError {
-  constructor(message: string, details?: unknown) {
+  constructor(message: string, details?: { reason?: string } & Record<string, unknown>) {
     super({
       message,
       code: ERROR_CODES.CONFLICT,
       statusCode: 409,
       details,
+    });
+  }
+}
+
+/**
+ * Convenience constructor for the "user already has an active
+ * registration for this event" case. Mirrors the
+ * `RegistrationConflictReason` union; new conflict shapes (e.g. invite
+ * already accepted, member already in org) should follow the same
+ * pattern: typed reason + dedicated factory.
+ */
+export class DuplicateRegistrationError extends ConflictError {
+  constructor(eventId: string) {
+    super("Vous êtes déjà inscrit(e) à cet événement", {
+      reason: "duplicate_registration" satisfies RegistrationConflictReason,
+      eventId,
     });
   }
 }

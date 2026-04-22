@@ -972,7 +972,13 @@
     },
     "CONFLICT": {
       "title": "Action déjà effectuée",
-      "description": "Cette action est en conflit avec l'état actuel. Rafraîchissez la page et réessayez."
+      "description": "Cette action est en conflit avec l'état actuel. Rafraîchissez la page et réessayez.",
+      "reasons": {
+        "duplicate_registration": {
+          "title": "Vous êtes déjà inscrit(e)",
+          "description": "Vous avez déjà une inscription active pour cet événement. Retrouvez votre badge dans « Mes inscriptions »."
+        }
+      }
     },
     "RATE_LIMIT_EXCEEDED": {
       "title": "Trop de tentatives",
@@ -1044,6 +1050,7 @@
       "retry": "Réessayer",
       "contactSupport": "Contacter le support",
       "browseEvents": "Voir les événements",
+      "viewMyRegistrations": "Voir mes inscriptions",
       "upgradePlan": "Gérer mon plan",
       "verifyEmail": "Renvoyer le lien de vérification",
       "dismiss": "Fermer"

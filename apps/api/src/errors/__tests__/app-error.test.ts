@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { RegistrationClosedError, ZoneFullError } from "@/errors/app-error";
+import {
+  DuplicateRegistrationError,
+  RegistrationClosedError,
+  ZoneFullError,
+} from "@/errors/app-error";
 
 // Pins the disambiguated registration-closed contract so UI clients can
 // safely switch on `details.reason` (see docs/design-system/error-handling.md
@@ -66,5 +70,31 @@ describe("ZoneFullError", () => {
     const err = new ZoneFullError({ id: "zn_2", name: "Salon VIP", capacity: null });
     expect(err.details).toEqual({ zoneId: "zn_2", zoneName: "Salon VIP", capacity: null });
     expect(err.message).toContain("—");
+  });
+});
+
+// Pin the duplicate-registration disambiguation so the participant UI
+// can safely branch on `code === "CONFLICT" && details.reason ===
+// "duplicate_registration"` to render the targeted "Vous êtes déjà
+// inscrit(e)" state with a "Voir mes inscriptions" CTA — instead of the
+// generic CONFLICT copy that triggered the silent-failure loop.
+describe("DuplicateRegistrationError", () => {
+  it("uses CONFLICT/409 with duplicate_registration reason", () => {
+    const err = new DuplicateRegistrationError("evt_1");
+    expect(err.code).toBe("CONFLICT");
+    expect(err.statusCode).toBe(409);
+    expect(err.details).toEqual({
+      reason: "duplicate_registration",
+      eventId: "evt_1",
+    });
+  });
+
+  it("toJSON exposes reason for client switch", () => {
+    const err = new DuplicateRegistrationError("evt_42");
+    expect(err.toJSON()).toEqual({
+      code: "CONFLICT",
+      message: "Vous êtes déjà inscrit(e) à cet événement",
+      details: { reason: "duplicate_registration", eventId: "evt_42" },
+    });
   });
 });
