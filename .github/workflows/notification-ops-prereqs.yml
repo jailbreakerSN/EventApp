@@ -214,6 +214,13 @@ jobs:
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
       - uses: google-github-actions/setup-gcloud@v2
+        with:
+          # `gcloud monitoring policies` is still alpha-only — the
+          # setup-gcloud runner image ships GA commands only, so we
+          # must opt in here. Without this, the first upsert call
+          # fails with "components: [alpha]. Do you want to continue
+          # (Y/n)?" because GHA runners are non-interactive.
+          install_components: "alpha"
 
       - name: Ensure monitoring API is enabled
         run: |
