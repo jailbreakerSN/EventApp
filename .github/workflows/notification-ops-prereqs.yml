@@ -579,8 +579,28 @@ jobs:
   web-push-vapid:
     name: Provision Web Push VAPID key (FIREBASE_VAPID_KEY)
     runs-on: ubuntu-latest
-    needs: [plan, ensure-iam]
-    if: ${{ inputs.skip_web_push_vapid == 'false' }}
+    # Serialised behind `secret-provisioning` on purpose. Both jobs end
+    # with `gcloud run services update teranga-api-${env} --update-secrets`
+    # on the SAME Cloud Run service. Cloud Run uses optimistic concurrency
+    # keyed on the service's resourceVersion — when the two updates run
+    # in parallel, whichever arrives second aborts with:
+    #
+    #   ERROR: (gcloud.run.services.update) ABORTED: Conflict for resource
+    #   'teranga-api-staging': version 'X' was specified but current
+    #   version is 'Y'.
+    #
+    # Hit in the 2026-04-22 staging run right after this job was added.
+    # Running them back-to-back removes the race entirely — the second
+    # update reads the already-bumped resourceVersion.
+    #
+    # `always()` is required so this job still runs when
+    # `secret-provisioning` is skipped (`skip_secret_provisioning=true`)
+    # or fails — the two jobs are logically independent, only the final
+    # Cloud Run write needs to be sequenced. `plan` + `ensure-iam` are
+    # still hard prerequisites: no point provisioning a Secret Manager
+    # entry if IAM hasn't been bootstrapped.
+    needs: [plan, ensure-iam, secret-provisioning]
+    if: ${{ always() && inputs.skip_web_push_vapid == 'false' && needs.plan.result == 'success' && needs.ensure-iam.result == 'success' }}
     environment: ${{ inputs.environment }}
     steps:
       - uses: actions/checkout@v4
