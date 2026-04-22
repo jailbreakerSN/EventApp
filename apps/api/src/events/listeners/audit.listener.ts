@@ -675,6 +675,24 @@ export function registerAuditListeners(): void {
     });
   });
 
+  // ── Notification Resubscribed (Phase 2.5) ─────────────────────────────
+  // Mirror of notification.unsubscribed: user flips a per-key opt-out
+  // back to enabled from the history page.
+
+  eventBus.on("notification.resubscribed", async (payload) => {
+    await auditService.log({
+      action: "notification.resubscribed",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "notification_preference",
+      resourceId: payload.userId,
+      eventId: null,
+      organizationId: null,
+      details: { key: payload.key },
+    });
+  });
+
   // ── Sponsor Removed ───────────────────────────────────────────────────
 
   eventBus.on("sponsor.removed", async (payload) => {
@@ -1138,9 +1156,9 @@ export function registerAuditListeners(): void {
   // Distinct from user.role_changed (admin → global roles): this is the
   // org-scoped membership role update (owner/admin/member → organizer etc).
 
-  eventBus.on("member.role_updated", async (payload) => {
+  eventBus.on("member.role_changed", async (payload) => {
     await auditService.log({
-      action: "member.role_updated",
+      action: "member.role_changed",
       actorId: payload.actorId,
       requestId: payload.requestId,
       timestamp: payload.timestamp,
@@ -1219,6 +1237,25 @@ export function registerAuditListeners(): void {
     });
   });
 
+  eventBus.on("notification.deduplicated", async (payload) => {
+    await auditService.log({
+      action: "notification.deduplicated",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "notification",
+      resourceId: payload.key,
+      eventId: null,
+      organizationId: null,
+      details: {
+        channel: payload.channel,
+        recipientRef: payload.recipientRef,
+        idempotencyKey: payload.idempotencyKey,
+        originalAttemptedAt: payload.originalAttemptedAt,
+      },
+    });
+  });
+
   eventBus.on("notification.setting_updated", async (payload) => {
     await auditService.log({
       action: "notification.setting_updated",
@@ -1228,11 +1265,37 @@ export function registerAuditListeners(): void {
       resourceType: "notification",
       resourceId: payload.key,
       eventId: null,
-      organizationId: null,
+      // Phase 2.4 — surface per-org overrides in the org's audit log
+      // alongside the platform-wide audit trail. Null = platform-wide.
+      organizationId: payload.organizationId ?? null,
       details: {
         enabled: payload.enabled,
         channels: payload.channels,
         hasSubjectOverride: payload.hasSubjectOverride,
+        scope: payload.organizationId ? "organization" : "platform",
+        ...(payload.historyId ? { historyId: payload.historyId } : {}),
+      },
+    });
+  });
+
+  eventBus.on("notification.test_sent", async (payload) => {
+    // Phase 2.4 — every admin "test send" lands in the audit trail.
+    // Kept separate from `notification.sent` so the dispatch log stays
+    // clean (test sends are out-of-band previews, not real delivery).
+    await auditService.log({
+      action: "notification.test_sent",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "notification",
+      resourceId: payload.key,
+      eventId: null,
+      organizationId: null,
+      details: {
+        channel: payload.channel,
+        recipientRef: payload.recipientRef,
+        locale: payload.locale,
+        ...(payload.messageId ? { messageId: payload.messageId } : {}),
       },
     });
   });

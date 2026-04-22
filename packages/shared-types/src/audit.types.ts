@@ -86,6 +86,9 @@ export const AuditActionSchema = z.enum([
   "newsletter.sent",
   // ── Notification preferences ──────────────────────────────────────────────
   "notification.unsubscribed",
+  // Phase 2.5 — user flipped a per-key opt-out back to enabled from the
+  // history page. Mirrors notification.unsubscribed for audit symmetry.
+  "notification.resubscribed",
   // ── Notification system (dispatcher, super-admin settings) ───────────────
   // Emitted by the NotificationService dispatcher on every channel delivery,
   // every suppression decision (admin_disabled / user_opted_out / on_suppression_list
@@ -94,6 +97,14 @@ export const AuditActionSchema = z.enum([
   "notification.sent",
   "notification.suppressed",
   "notification.setting_updated",
+  // Phase 2.2 — emitted when the dispatcher short-circuits a dup emit
+  // using the persistent idempotency log. Distinct from "sent" so
+  // dashboards don't conflate providers-delivered vs. caller-retried.
+  "notification.deduplicated",
+  // Phase 2.4 — admin "test send" from the notifications control plane.
+  // Never conflated with real delivery — admin previews must not skew
+  // stats or the dispatch log.
+  "notification.test_sent",
   // ── Resend webhook-sourced events (written from apps/functions) ───────────
   // Cloud Functions can't emit on the API's in-process eventBus, so the
   // resendWebhook handler writes these audit rows directly. Values kept in

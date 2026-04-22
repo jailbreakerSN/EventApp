@@ -83,4 +83,18 @@ export type { EmailChangedParams } from "./email-changed";
 export { buildSubscriptionPastDueEmail } from "./subscription-past-due";
 export type { SubscriptionPastDueParams } from "./subscription-past-due";
 
+// ─── Phase 2.3 notifications ──────────────────────────────────────────────
+
+export { buildEventFeedbackRequestedEmail } from "./event-feedback-requested";
+export type { EventFeedbackRequestedParams } from "./event-feedback-requested";
+
+export { buildCertificateReadyEmail } from "./certificate-ready";
+export type { CertificateReadyParams } from "./certificate-ready";
+
+export { buildSubscriptionExpiringSoonEmail } from "./subscription-expiring-soon";
+export type { SubscriptionExpiringSoonParams } from "./subscription-expiring-soon";
+
+export { buildSubscriptionApproachingLimitEmail } from "./subscription-approaching-limit";
+export type { SubscriptionApproachingLimitParams } from "./subscription-approaching-limit";
+
 export type { RenderedEmail } from "../render";

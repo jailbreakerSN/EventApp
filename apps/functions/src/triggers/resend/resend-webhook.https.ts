@@ -12,13 +12,20 @@ import { RESEND_WEBHOOK_SECRET } from "../../utils/resend-client";
 // svix-signature headers.
 //
 // Event types we act on:
-//   email.bounced      - hard bounce → suppress + deactivate subscriber
-//   email.complained   - spam complaint → suppress + deactivate subscriber
+//   email.bounced      - hard bounce → suppress + deactivate subscriber +
+//                          back-annotate dispatch log (delivered→bounced)
+//   email.complained   - spam complaint → suppress + deactivate subscriber +
+//                          back-annotate dispatch log (→complained)
+//   email.delivered    - Phase 2.5: mark dispatch log deliveryStatus=delivered
+//   email.opened       - Phase 2.5: mark dispatch log deliveryStatus=opened
+//   email.clicked      - Phase 2.5: mark dispatch log deliveryStatus=clicked
 //   contact.updated    - Resend-side unsubscribe (one-click) → deactivate
 //   contact.deleted    - subscriber removed from segment → deactivate
 //
-// Everything else (email.sent/delivered/opened/clicked etc.) is ignored
-// today — adding observability on those is Phase 3c.
+// Out-of-order delivery: Resend's fan-out can produce `opened` before
+// `delivered` when infra clocks skew. Back-annotation uses a monotonic
+// rank so the later-in-the-funnel status always wins; an older event
+// arriving after a newer one is ignored.
 //
 // We return 200 for unknown event types so Resend doesn't retry them.
 // We return 400 only on signature verification failure.
@@ -106,10 +113,16 @@ async function handleEvent(event: ResendWebhookEvent): Promise<void> {
         sourceEmailId: event.data.email_id,
         createdAt: event.created_at,
       });
-      // Phase 5b: back-annotate the dispatch log so per-key bounce rates
-      // appear in the admin observability dashboard. Fire-and-forget; if
-      // the log doesn't carry this messageId (legacy send) we no-op.
-      await markDispatchLogBounced(event.data.email_id, "bounced", event.created_at);
+      // Phase 2.5: update the dispatch log with deliveryStatus=bounced
+      // AND flip status=suppressed so the admin observability dashboard
+      // sees both the journey AND the terminal failure.
+      await backAnnotateDispatchLog({
+        messageId: event.data.email_id,
+        deliveryStatus: "bounced",
+        occurredAt: event.created_at,
+        flipStatusToSuppressed: true,
+        suppressionReason: "bounced",
+      });
       logger.info("Suppressed hard-bounced address", { email });
       return;
     }
@@ -128,12 +141,48 @@ async function handleEvent(event: ResendWebhookEvent): Promise<void> {
         sourceEmailId: event.data.email_id,
         createdAt: event.created_at,
       });
-      // Phase 5b: same back-annotation path as bounces. Reason
+      // Phase 2.5: deliveryStatus=complained + status=suppressed. Reason
       // "on_suppression_list" because the recipient has now been added
-      // to the platform-wide suppression list; subsequent dispatches to
-      // this address will suppress on the list lookup inside the adapter.
-      await markDispatchLogBounced(event.data.email_id, "on_suppression_list", event.created_at);
+      // to the platform-wide suppression list.
+      await backAnnotateDispatchLog({
+        messageId: event.data.email_id,
+        deliveryStatus: "complained",
+        occurredAt: event.created_at,
+        flipStatusToSuppressed: true,
+        suppressionReason: "on_suppression_list",
+      });
       logger.info("Suppressed complained address", { email });
+      return;
+    }
+
+    // ─── Phase 2.5 — delivery lifecycle back-annotation ──────────────
+    // Happy-path events without suppression-list side effects. If the
+    // matching dispatch-log row is missing (legacy send from before
+    // Phase 2.2 messageId tracking) we no-op.
+    case "email.delivered": {
+      await backAnnotateDispatchLog({
+        messageId: event.data.email_id,
+        deliveryStatus: "delivered",
+        occurredAt: event.created_at,
+      });
+      return;
+    }
+
+    case "email.opened": {
+      await backAnnotateDispatchLog({
+        messageId: event.data.email_id,
+        deliveryStatus: "opened",
+        occurredAt: event.created_at,
+      });
+      return;
+    }
+
+    case "email.clicked": {
+      await backAnnotateDispatchLog({
+        messageId: event.data.email_id,
+        deliveryStatus: "clicked",
+        occurredAt: event.created_at,
+      });
       return;
     }
 
@@ -212,66 +261,108 @@ async function writeAuditLog(params: {
   }
 }
 
-// ─── Phase 5b: dispatch log back-annotation ────────────────────────────────
-// When Resend reports a bounce / complaint on a messageId, flip the
-// matching `notificationDispatchLog` entry from status="sent" to
-// status="suppressed" so the admin stats endpoint surfaces the correct
-// bounce rate without re-aggregating from scratch. We deliberately keep
-// a record of the original "sent" intent (original_status in the doc)
-// so post-mortem analysis can see both the dispatch AND the later bounce.
+// ─── Phase 2.5: dispatch log back-annotation ──────────────────────────────
+// Writes `deliveryStatus` + per-event timestamp onto every dispatch-log
+// row matching the provider messageId. Enforces monotonic progression
+// via the DELIVERY_RANK table so out-of-order webhooks (opened arriving
+// before delivered) don't demote the stored state. Bounce / complaint
+// events additionally flip `status` to `suppressed` so the admin stats
+// aggregator treats them as failures without a second query.
 //
-// Matches by `messageId` — this field was introduced in Phase 5a and is
-// set by every dispatch. Logs from the Phase 1–4 windows (before
-// messageId was populated) are unaffected; no back-fill needed since the
-// feature is new.
-//
-// TRANSACTION NOTE: this function performs a read-then-batch-write
-// without wrapping in `db.runTransaction()`. The same concern was
-// raised by the Phase 5 security review (finding P2-4). Decision:
-// idempotency of the field values (status="suppressed", reason,
-// originalStatus="sent", bouncedAt=<event>) makes concurrent webhook
-// deliveries for the same messageId safe — both converge on the same
-// final document state. Cloud Functions Firestore transactions also
-// cannot contain `where()` queries (only `tx.get(docRef)`), so the
-// "correct" fix requires storing the dispatch log doc id inside the
-// Resend idempotency key and doing a direct `tx.get`. That's a Phase
-// 5c refinement; the current path is safe for the webhook's
-// at-least-once delivery semantics. See docs/notification-system-
-// architecture.md §15 for follow-up plan.
-async function markDispatchLogBounced(
-  messageId: string | undefined,
-  reason: "bounced" | "on_suppression_list",
-  occurredAt: string,
-): Promise<void> {
+// TRANSACTION NOTE: bare where().get() + batch.update(). Firestore
+// transactions cannot carry `.where()` queries, so the "correct" fix
+// is to embed the doc id in the Resend tag/idempotency key. Deferred.
+// The field values here are idempotent (monotonic rank + fixed
+// timestamp), so concurrent webhook retries for the same messageId
+// converge to the same final state.
+
+// Local mirror of DispatchLogDeliveryStatus rank from apps/api.
+// Functions can't import from the API barrel (bundled independently);
+// keep in lockstep by hand.
+const DELIVERY_RANK: Record<string, number> = {
+  sent: 0,
+  delivered: 1,
+  opened: 2,
+  clicked: 3,
+  bounced: 4,
+  complained: 5,
+};
+
+async function backAnnotateDispatchLog(params: {
+  messageId: string | undefined;
+  deliveryStatus: "delivered" | "opened" | "clicked" | "bounced" | "complained";
+  occurredAt: string;
+  flipStatusToSuppressed?: boolean;
+  suppressionReason?: "bounced" | "on_suppression_list";
+}): Promise<void> {
+  const { messageId, deliveryStatus, occurredAt } = params;
   if (!messageId) return;
   try {
     const snap = await db
       .collection(COLLECTIONS.NOTIFICATION_DISPATCH_LOG)
       .where("messageId", "==", messageId)
-      .limit(10) // guard against pathological duplicates
+      .limit(10)
       .get();
     if (snap.empty) return;
 
+    const incomingRank = DELIVERY_RANK[deliveryStatus] ?? -1;
+    const tsField = timestampFieldFor(deliveryStatus);
+
     const batch = db.batch();
+    let promotions = 0;
     for (const doc of snap.docs) {
-      batch.update(doc.ref, {
-        status: "suppressed",
-        reason,
-        // Preserve the original decision for forensics.
-        originalStatus: "sent",
-        bouncedAt: occurredAt,
-      });
+      const data = doc.data();
+      const currentStatus = typeof data.deliveryStatus === "string"
+        ? data.deliveryStatus
+        : "sent";
+      const currentRank = DELIVERY_RANK[currentStatus] ?? 0;
+
+      // Always stamp the per-event timestamp (useful even when the
+      // rank didn't advance, e.g. a second open after a click).
+      // Promote deliveryStatus only if incoming is at or above the
+      // current rank.
+      const update: Record<string, unknown> = {
+        [tsField]: occurredAt,
+      };
+      if (incomingRank >= currentRank) {
+        update.deliveryStatus = deliveryStatus;
+        promotions++;
+      }
+      if (params.flipStatusToSuppressed) {
+        update.status = "suppressed";
+        if (params.suppressionReason) {
+          update.reason = params.suppressionReason;
+        }
+        update.originalStatus = data.status ?? "sent";
+      }
+      batch.update(doc.ref, update);
     }
     await batch.commit();
-    logger.info("Back-annotated dispatch log with bounce", {
+    logger.info("Back-annotated dispatch log", {
       messageId,
-      reason,
+      deliveryStatus,
       matched: snap.size,
+      promoted: promotions,
     });
   } catch (err) {
-    // Fire-and-forget — the suppression list write already committed,
-    // bounce analytics are nice-to-have, not a blocker.
     logger.error("Failed to back-annotate dispatch log", { messageId, err });
+  }
+}
+
+function timestampFieldFor(
+  status: "delivered" | "opened" | "clicked" | "bounced" | "complained",
+): "deliveredAt" | "openedAt" | "clickedAt" | "bouncedAt" | "complainedAt" {
+  switch (status) {
+    case "delivered":
+      return "deliveredAt";
+    case "opened":
+      return "openedAt";
+    case "clicked":
+      return "clickedAt";
+    case "bounced":
+      return "bouncedAt";
+    case "complained":
+      return "complainedAt";
   }
 }
 

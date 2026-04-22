@@ -65,6 +65,23 @@ jobs:
       # emulator, no additional infrastructure.
       - name: Tests (contract snapshots, i18n coverage, permissions)
         run: npm run test --workspace=@teranga/shared-types
+      # Notification catalog integrity — cross-checks the catalog in
+      # shared-types against emitters in apps/api/src/services and
+      # listeners in apps/api/src/events/listeners. Runs here because
+      # this job is the first place the shared-types dist is built,
+      # and the check imports it via the @teranga/shared-types alias.
+      # See scripts/check-notification-catalog-integrity.ts and
+      # docs/notifications/catalog-status.md for the data model.
+      - name: Notification catalog integrity
+        run: npm run notifications:check
+      # Seed-data coverage — cross-checks COLLECTIONS
+      # (apps/api/src/config/firebase.ts) against RESETTABLE_COLLECTIONS
+      # (scripts/seed/config.ts) and the seed writers so new collections
+      # can't land without either a seed example or an explicit waiver.
+      # See scripts/check-seed-coverage.ts and
+      # docs/seed/coverage-status.md for the data model.
+      - name: Seed-data coverage
+        run: npm run seed:check
       - uses: actions/upload-artifact@v4
         with:
           name: shared-types-dist

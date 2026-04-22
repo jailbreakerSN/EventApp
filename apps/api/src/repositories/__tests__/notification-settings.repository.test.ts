@@ -68,7 +68,14 @@ describe("NotificationSettingsRepository", () => {
     await notificationSettingsRepository.upsert(setting);
     const result = await notificationSettingsRepository.findByKey("registration.created");
 
-    expect(result).toEqual(setting);
+    // Phase 2.4 — the repo now also surfaces `organizationId: null` for
+    // platform-wide settings. Assert the pre-existing fields plus the
+    // new one rather than structural equality.
+    expect(result?.key).toBe("registration.created");
+    expect(result?.enabled).toBe(false);
+    expect(result?.channels).toEqual(["email"]);
+    expect(result?.updatedBy).toBe("admin-u-1");
+    expect(result?.organizationId ?? null).toBeNull();
   });
 
   it("upsert preserves subjectOverride when provided", async () => {

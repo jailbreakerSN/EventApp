@@ -9,11 +9,16 @@ import { db, COLLECTIONS } from "@/config/firebase";
 import {
   UpdateNotificationPreferenceSchema,
   NOTIFICATION_CATALOG,
+  NOTIFICATION_CATALOG_BY_KEY,
   type NotificationDefinition,
 } from "@teranga/shared-types";
 import { verifyUnsubscribeToken } from "@/services/notifications/unsubscribe-token";
 import { unsubscribeCategory } from "@/services/notifications/unsubscribe.service";
 import { renderLandingPage, backToParticipantCta } from "./_shared/landing-page";
+import { notificationDispatchLogRepository } from "@/repositories/notification-dispatch-log.repository";
+import { notificationSettingsRepository } from "@/repositories/notification-settings.repository";
+import { eventBus } from "@/events/event-bus";
+import { getRequestId } from "@/context/request-context";
 
 const ParamsWithNotificationId = z.object({ notificationId: z.string() });
 
@@ -240,6 +245,161 @@ export const notificationRoutes: FastifyPluginAsync = async (fastify) => {
       }));
 
       return reply.send({ success: true, data: entries });
+    },
+  );
+
+  // ─── History (Phase 2.5 — user communication history) ────────────────
+  // Returns the dispatch-log rows addressed to the current user, most
+  // recent first, capped at 90 days. DO NOT surface `recipientRef` /
+  // `requestId` — those are operational trails, not user-facing.
+  const HistoryQuery = z.object({
+    limit: z.coerce.number().int().positive().max(100).default(50),
+    cursor: z.string().optional(),
+  });
+
+  fastify.get(
+    "/history",
+    {
+      preHandler: [
+        authenticate,
+        requirePermission("notification:read_own"),
+        validate({ query: HistoryQuery }),
+      ],
+      schema: {
+        tags: ["Notifications"],
+        summary: "My notification delivery history (last 90 days)",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const { limit, cursor } = request.query as z.infer<typeof HistoryQuery>;
+      const rows = await notificationDispatchLogRepository.listRecentForUser({
+        userId: request.user!.uid,
+        limit,
+        cursorAttemptedAt: cursor,
+      });
+
+      // Resolve subject per-row at read time: admin override > catalog
+      // displayName > raw key as last-resort fallback. Cache settings
+      // lookups by key so a page with many rows doesn't issue one
+      // Firestore read per row.
+      const settingsByKey = new Map<string, string | null>();
+      async function resolveSubject(key: string, locale: "fr" | "en" | "wo"): Promise<string> {
+        if (!settingsByKey.has(key)) {
+          const setting = await notificationSettingsRepository.findByKey(key);
+          settingsByKey.set(
+            key,
+            setting?.subjectOverride ? setting.subjectOverride[locale] : null,
+          );
+        }
+        const override = settingsByKey.get(key);
+        if (override) return override;
+        const def = NOTIFICATION_CATALOG_BY_KEY[key];
+        return def?.displayName[locale] ?? key;
+      }
+
+      const locale: "fr" | "en" | "wo" = "fr";
+
+      const data = await Promise.all(
+        rows.map(async (row) => ({
+          id: row.id,
+          key: row.key,
+          channel: row.channel,
+          subject: await resolveSubject(row.key, locale),
+          status: row.status,
+          deliveryStatus: row.deliveryStatus ?? null,
+          attemptedAt: row.attemptedAt,
+          deliveredAt: row.deliveredAt ?? null,
+          openedAt: row.openedAt ?? null,
+          clickedAt: row.clickedAt ?? null,
+          bouncedAt: row.bouncedAt ?? null,
+          complainedAt: row.complainedAt ?? null,
+          reason: row.reason ?? null,
+          userOptOutAllowed:
+            NOTIFICATION_CATALOG_BY_KEY[row.key]?.userOptOutAllowed ?? false,
+        })),
+      );
+
+      const nextCursor = rows.length === limit ? rows[rows.length - 1]?.attemptedAt : null;
+
+      return reply.send({
+        success: true,
+        data,
+        meta: { limit, nextCursor },
+      });
+    },
+  );
+
+  // ─── Resubscribe (Phase 2.5) ─────────────────────────────────────────
+  // Reverses a per-key opt-out. Users hit this when they see a suppressed
+  // row in their history and decide they want the notification after all.
+  // Only applies to catalog keys where `userOptOutAllowed === true`.
+  const ResubscribeBody = z.object({ key: z.string().min(1) });
+
+  fastify.post(
+    "/resubscribe",
+    {
+      preHandler: [
+        authenticate,
+        requireEmailVerified,
+        requirePermission("notification:read_own"),
+        validate({ body: ResubscribeBody }),
+      ],
+      schema: {
+        tags: ["Notifications"],
+        summary: "Reverse a per-key opt-out",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const { key } = request.body as z.infer<typeof ResubscribeBody>;
+      const def = NOTIFICATION_CATALOG_BY_KEY[key];
+      if (!def) {
+        return reply.status(404).send({
+          success: false,
+          error: { code: "NOT_FOUND", message: "Unknown notification key" },
+        });
+      }
+      if (!def.userOptOutAllowed) {
+        return reply.status(400).send({
+          success: false,
+          error: {
+            code: "NOT_OPTABLE",
+            message: "This notification cannot be opted in/out of.",
+          },
+        });
+      }
+
+      const ref = db.collection(COLLECTIONS.NOTIFICATION_PREFERENCES).doc(request.user!.uid);
+      const now = new Date().toISOString();
+      await db.runTransaction(async (tx) => {
+        const snap = await tx.get(ref);
+        const existing = snap.exists ? (snap.data() as Record<string, unknown>) : {};
+        const byKey = {
+          ...((existing.byKey as Record<string, boolean> | undefined) ?? {}),
+          [key]: true,
+        };
+        tx.set(
+          ref,
+          {
+            id: request.user!.uid,
+            userId: request.user!.uid,
+            byKey,
+            updatedAt: now,
+          },
+          { merge: true },
+        );
+      });
+
+      eventBus.emit("notification.resubscribed", {
+        userId: request.user!.uid,
+        key,
+        actorId: request.user!.uid,
+        requestId: getRequestId(),
+        timestamp: now,
+      });
+
+      return reply.send({ success: true, data: { key, enabled: true } });
     },
   );
 

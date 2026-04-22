@@ -469,6 +469,35 @@ describe("Audit Listener", () => {
     );
   });
 
+  it("logs notification.deduplicated with idempotencyKey + originalAttemptedAt", async () => {
+    eventBus.emit("notification.deduplicated", {
+      actorId: "system",
+      requestId: "req-notif-dedup-1",
+      timestamp: "2026-04-22T12:00:00.000Z",
+      key: "registration.created",
+      channel: "email",
+      recipientRef: "user:u-dup",
+      idempotencyKey: "registration.created:u-dup:reg-confirm/r-99",
+      originalAttemptedAt: "2026-04-22T11:00:00.000Z",
+    });
+    await flush();
+
+    expect(auditService.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "notification.deduplicated",
+        resourceType: "notification",
+        resourceId: "registration.created",
+        actorId: "system",
+        details: expect.objectContaining({
+          channel: "email",
+          recipientRef: "user:u-dup",
+          idempotencyKey: "registration.created:u-dup:reg-confirm/r-99",
+          originalAttemptedAt: "2026-04-22T11:00:00.000Z",
+        }),
+      }),
+    );
+  });
+
   it("logs notification.suppressed with reason (admin_disabled)", async () => {
     eventBus.emit("notification.suppressed", {
       actorId: "system",
@@ -500,6 +529,7 @@ describe("Audit Listener", () => {
       requestId: "req-notif-3",
       timestamp: "2026-04-21T10:00:00.000Z",
       key: "event.reminder",
+      organizationId: null,
       enabled: false,
       channels: ["email"],
       hasSubjectOverride: true,
@@ -565,7 +595,9 @@ describe("Audit Listener", () => {
       // mapping writes the right `action` / `resourceType` to the
       // audit log. If you removed a handler, also drop the matching
       // emission test so stale expectations don't silently pass.
-      const EXPECTED_HANDLER_COUNT = 74;
+      // Phase 2.4 added `notification.test_sent` (+1 handler over the
+      // 76 registered as of Phase 2.3).
+      const EXPECTED_HANDLER_COUNT = 77;
 
       expect(registered).toHaveLength(EXPECTED_HANDLER_COUNT);
       // Each registered event name should be unique — a double

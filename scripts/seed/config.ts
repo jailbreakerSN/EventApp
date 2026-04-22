@@ -231,6 +231,24 @@ export const RESETTABLE_COLLECTIONS = [
   "auditLogs",
   "notifications",
   "notificationPreferences",
+  // ── Notification system v2 (Phases 1–5) ──────────────────────────
+  // Append-only dispatch log + settings-history carry audit weight,
+  // but in a local/staging reset we want them gone so tests start
+  // with a clean slate. Production DO NOT reset — the seed-reset
+  // script refuses to run against prod.
+  "notificationDispatchLog",
+  "notificationSettingsHistory",
+  "notificationSettings",
+  // Resend webhook bounce/complaint suppression list. Per email
+  // doc id; resetting is safe in staging because the ops workflow
+  // re-provisions clean state.
+  "emailSuppressions",
+  // Cloud Monitoring alert docs mirrored into Firestore by the
+  // bounce-rate scheduled function (Phase 2.5). Top-level collection
+  // has a single doc with nested `events/` sub-collection.
+  "alerts",
+  // Newsletter pipeline
+  "newsletterSubscribers",
   "broadcasts",
   "messages",
   "conversations",
@@ -238,6 +256,11 @@ export const RESETTABLE_COLLECTIONS = [
   "feedPosts",
   "sessionBookmarks",
   "checkinFeed",
+  // Per-scan forensic records + uniqueness-enforcement locks.
+  "checkins",
+  "checkinLocks",
+  // Refund serialisation locks. Reset-only in staging.
+  "refundLocks",
   "offlineSync",
   "sponsorLeads",
   "smsLog",

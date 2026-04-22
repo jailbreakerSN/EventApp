@@ -128,6 +128,17 @@ export type NotificationDefinition = z.infer<typeof NotificationDefinitionSchema
 export const NotificationSettingSchema = z.object({
   /** Matches NotificationDefinition.key. Doc id in Firestore. */
   key: z.string().min(1),
+  /**
+   * Phase 2.4 — when present, this override applies only to the given
+   * organization. Null/omitted = platform-wide override. The dispatcher
+   * resolves per-org first, then falls back to platform, then the catalog
+   * default (see apps/api/src/services/notifications/setting-resolution.ts).
+   *
+   * Doc id layout:
+   *   - platform: `{key}` (back-compat with v1 docs written before this field)
+   *   - per-org:  `{key}__{organizationId}`
+   */
+  organizationId: z.string().min(1).nullable().optional(),
   enabled: z.boolean(),
   channels: z.array(NotificationChannelSchema),
   subjectOverride: I18nStringSchema.optional(),
@@ -136,6 +147,40 @@ export const NotificationSettingSchema = z.object({
 });
 
 export type NotificationSetting = z.infer<typeof NotificationSettingSchema>;
+
+/**
+ * Phase 2.4 — append-only edit history for NotificationSetting docs.
+ * One entry per PUT (admin or organizer), used by the admin UI's history
+ * panel. Retention target: 1 year TTL (Firestore TTL config tracked as a
+ * follow-up ticket — the collection is declared in COLLECTIONS so any
+ * future TTL tooling can reference it by name).
+ */
+export const NotificationSettingHistorySchema = z.object({
+  id: z.string().min(1),
+  key: z.string().min(1),
+  organizationId: z.string().min(1).nullable(),
+  /**
+   * Snapshot of the setting before this edit, or null for the very first
+   * write (no prior platform or org override existed).
+   */
+  previousValue: NotificationSettingSchema.nullable(),
+  /** Snapshot of the setting after this edit. */
+  newValue: NotificationSettingSchema,
+  /**
+   * Machine-readable diff — lists the top-level fields that changed
+   * between previousValue and newValue. Empty array = no-op write (kept
+   * for forensic completeness, should never happen in practice).
+   */
+  diff: z.array(z.string()),
+  actorId: z.string().min(1),
+  /** Role of the actor at the time of the write — "super_admin" or "organizer". */
+  actorRole: z.string().min(1),
+  /** Optional free-text reason for the change (admin UI form field). */
+  reason: z.string().optional(),
+  changedAt: z.string().datetime(),
+});
+
+export type NotificationSettingHistory = z.infer<typeof NotificationSettingHistorySchema>;
 
 // ─── Dispatcher Input ──────────────────────────────────────────────────────
 
@@ -168,6 +213,17 @@ export interface DispatchRequest<P extends Record<string, unknown> = Record<stri
   idempotencyKey?: string;
   /** Force a channel subset — used for admin "test send" flows. */
   channelOverride?: NotificationChannel[];
+  /**
+   * Phase 2.4 — admin "test send" flag. When true the dispatcher:
+   *   - Bypasses the admin-disabled short-circuit.
+   *   - Bypasses user opt-out (test sends target admin-entered addresses).
+   *   - Bypasses the suppression list (admin typed this address explicitly).
+   *   - Skips the persistent-dedup window (every test send is unique).
+   *   - Emits `notification.test_sent` instead of `notification.sent` so
+   *     the audit trail flags these as out-of-band previews and the
+   *     Phase 5 dispatch-log stats stay accurate.
+   */
+  testMode?: boolean;
 }
 
 // ─── Suppression reasons ───────────────────────────────────────────────────
@@ -638,7 +694,7 @@ export const NOTIFICATION_CATALOG: readonly NotificationDefinition[] = [
     defaultChannels: ["email"],
     userOptOutAllowed: true,
     templates: { email: "MemberUpdate" },
-    triggerDomainEvent: "member.role_updated",
+    triggerDomainEvent: "member.role_changed",
     recipientResolver: "custom",
     scope: "organization",
   },
@@ -831,6 +887,98 @@ export const NOTIFICATION_CATALOG: readonly NotificationDefinition[] = [
     recipientResolver: "custom",
     scope: "platform",
   },
+
+  // ─── Phase 2.3 — post-event + lifecycle nudges ─────────────────────────
+  // Scheduled / triggered lifecycle emails that close the feedback loop
+  // after an event ends, surface certificates, and nudge organizers when
+  // their subscription is about to expire or hitting its usage caps.
+  // Scheduled emitters live in apps/functions/src/triggers/ (post-event,
+  // certificate, subscription-reminder) and route through the API's
+  // internal dispatch endpoint.
+  {
+    key: "event.feedback_requested",
+    category: "transactional",
+    displayName: {
+      fr: "Demande de retour sur l'événement",
+      en: "Post-event feedback request",
+      wo: "Ñaan ñu joxe seen xalaat ci événement bi",
+    },
+    description: {
+      fr: "Envoyé 2 heures après la fin d'un événement aux participants présents.",
+      en: "Sent 2 hours after an event ends to every attendee who showed up.",
+      wo: "Yeboo 2 waxtu ginnaaw événement bi, ci ñépp ñu ko wone.",
+    },
+    supportedChannels: ["email", "in_app"],
+    defaultChannels: ["email", "in_app"],
+    userOptOutAllowed: true,
+    templates: { email: "EventFeedbackRequested", in_app: "EventFeedbackRequested" },
+    triggerDomainEvent: "event.feedback_requested",
+    recipientResolver: "custom",
+    scope: "event",
+  },
+  {
+    key: "certificate.ready",
+    category: "organizational",
+    displayName: {
+      fr: "Certificat de participation disponible",
+      en: "Certificate of attendance ready",
+      wo: "Certificat participation bi wóor na",
+    },
+    description: {
+      fr: "Informe le participant que son certificat de participation est prêt à télécharger.",
+      en: "Tells the participant their certificate of attendance is ready to download.",
+      wo: "Yeboo ci kiy bokk ne sa certificat wóor na ngir download.",
+    },
+    supportedChannels: ["email"],
+    defaultChannels: ["email"],
+    userOptOutAllowed: true,
+    templates: { email: "CertificateReady" },
+    triggerDomainEvent: "event.certificates_issued",
+    recipientResolver: "custom",
+    scope: "event",
+  },
+  {
+    key: "subscription.expiring_soon",
+    category: "billing",
+    displayName: {
+      fr: "Abonnement arrivant à expiration",
+      en: "Subscription expiring soon",
+      wo: "Abonnement bi, damay jeex",
+    },
+    description: {
+      fr: "Alerte le contact de facturation 7 jours avant le renouvellement d'un abonnement payant.",
+      en: "Alerts the billing contact 7 days before a paid subscription renews.",
+      wo: "Yeboo ci kiy faye yoon wi 7 fan laata renouvellement bi.",
+    },
+    supportedChannels: ["email"],
+    defaultChannels: ["email"],
+    userOptOutAllowed: false,
+    templates: { email: "SubscriptionExpiringSoon" },
+    triggerDomainEvent: "subscription.expiring_soon",
+    recipientResolver: "org-billing",
+    scope: "organization",
+  },
+  {
+    key: "subscription.approaching_limit",
+    category: "organizational",
+    displayName: {
+      fr: "Limite du plan bientôt atteinte",
+      en: "Plan limit approaching",
+      wo: "Limite plan bi jegesi na",
+    },
+    description: {
+      fr: "Prévient les propriétaires de l'organisation quand une limite du plan dépasse 80%.",
+      en: "Warns organization owners when any plan limit exceeds 80% usage.",
+      wo: "Yeboo ci ñi yor organisation bi bu benn limite ci plan bi weesu 80%.",
+    },
+    supportedChannels: ["email"],
+    defaultChannels: ["email"],
+    userOptOutAllowed: true,
+    templates: { email: "SubscriptionApproachingLimit" },
+    triggerDomainEvent: "subscription.approaching_limit",
+    recipientResolver: "org-owners",
+    scope: "organization",
+  },
 ] as const;
 
 /**
@@ -894,3 +1042,77 @@ export function assertCatalogIntegrity(
 // Fail-fast at import. The invariants are cheap and a misconfigured
 // catalog in prod would silently drop sends — better to never boot.
 assertCatalogIntegrity();
+
+// ─── Channel Adapter Contract (Phase 2.6) ──────────────────────────────────
+// Forward-looking, cross-channel adapter contract. Today only email is wired
+// through `EmailChannelAdapter` (see apps/api/src/services/
+// notification-dispatcher.service.ts). As SMS / push / in_app land in
+// Phase 6+, each provider ships a `ChannelAdapter` matching the shape below
+// and registers it with the channel registry
+// (apps/api/src/services/notifications/channel-registry.ts). The dispatcher
+// is not yet wired to the forward-looking registry — integration is Phase 3.
+
+/**
+ * Machine-readable capability profile each adapter advertises so the
+ * dispatcher / admin UI can reason about template fit without calling the
+ * provider. e.g. SMS adapters expose `maxBodyLength: 160`, email adapters
+ * expose `attachments: true`.
+ */
+export const ChannelCapabilitiesSchema = z.object({
+  /** True when the channel honours file attachments (today: email only). */
+  attachments: z.boolean(),
+  /** True when the channel renders HTML / rich markup (email + in_app). */
+  richText: z.boolean(),
+  /** Max body length in chars. 0 = unlimited. */
+  maxBodyLength: z.number().int().nonnegative(),
+  /** Locales the provider supports. Empty = every catalog locale. */
+  supportedLocales: z.array(NotificationLocaleSchema),
+});
+
+export type ChannelCapabilities = z.infer<typeof ChannelCapabilitiesSchema>;
+
+/**
+ * Cross-channel dispatch params — the dispatcher hands these to every
+ * channel adapter. Email today, SMS / push / in_app as adapters are
+ * wired in Phase 6+. The shape is intentionally generic: template
+ * resolution (react-email, SMS string builder, push payload builder)
+ * is the adapter's responsibility.
+ */
+export interface ChannelDispatchParams<
+  P extends Record<string, unknown> = Record<string, unknown>,
+> {
+  definition: NotificationDefinition;
+  recipient: NotificationRecipient;
+  templateParams: P;
+  idempotencyKey: string;
+  /** Populated when the admin issued a "test send" from the control plane. */
+  testMode?: boolean;
+}
+
+export interface ChannelDispatchResult {
+  ok: boolean;
+  /** Provider-returned id (Resend message id, Twilio sid, FCM message name). */
+  providerMessageId?: string;
+  /** Machine-readable suppression reason when ok=false. */
+  suppressed?: NotificationSuppressionReason;
+  /** Cost in XOF *1000 micro-units (integer). Optional — only SMS tracks this today. */
+  costXofMicro?: number;
+}
+
+/**
+ * Every channel implementation registers an adapter matching this contract.
+ * Contract rules (enforced in code review, not yet by types):
+ *   - send() never throws; failures bubble via ok=false + suppressed.
+ *   - supports() is a fast synchronous check (used by the dispatcher to
+ *     skip a channel without touching Firestore).
+ *   - capabilities describes what templating features the channel honours
+ *     (attachments: email only; richText: email+in_app; shortBody: sms).
+ */
+export interface ChannelAdapter<
+  P extends Record<string, unknown> = Record<string, unknown>,
+> {
+  readonly channel: NotificationChannel;
+  readonly capabilities: ChannelCapabilities;
+  supports(definition: NotificationDefinition): boolean;
+  send(params: ChannelDispatchParams<P>): Promise<ChannelDispatchResult>;
+}

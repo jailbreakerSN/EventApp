@@ -16,6 +16,8 @@
  * structural commit makes the diff for the data commit a pure addition.
  */
 
+import { createHash } from "node:crypto";
+
 import type { Firestore } from "firebase-admin/firestore";
 
 import { Dates } from "./config";
@@ -946,6 +948,289 @@ async function writeReceipts(db: Firestore): Promise<number> {
   return 1;
 }
 
+// ─── Balance transactions (finance ledger) ────────────────────────────────
+// Mirrors the derivation used by `scripts/backfill-balance-ledger.ts`:
+// deterministic doc id = `backfill_` + sha256(kind|sourceId).slice(0,20).
+// Seeding with the SAME id the backfill would produce makes the two writers
+// converge (re-running the backfill against seeded data is a no-op), so the
+// /finance page is populated as soon as the seed completes without needing
+// the operator to run a separate backfill step.
+//
+// Currency is XOF for every seeded entry — the schema uses z.literal("XOF")
+// so no other value is valid. `amount` is a signed integer: positive credits
+// the org's balance (`payment`), negative debits (`platform_fee`, `payout`).
+
+const PLATFORM_FEE_RATE = 0.05;
+const FUNDS_RELEASE_DAYS = 7;
+
+function ledgerDocId(kind: string, sourceId: string): string {
+  const hash = createHash("sha256").update(`${kind}|${sourceId}`).digest("hex");
+  return `backfill_${hash.slice(0, 20)}`;
+}
+
+function computeAvailableOn(paymentCompletedAt: string, eventEndDate: string): string {
+  return new Date(new Date(eventEndDate).getTime() + FUNDS_RELEASE_DAYS * 86_400_000).toISOString();
+}
+
+async function writeBalanceTransactions(db: Firestore): Promise<number> {
+  // The seed has exactly one succeeded payment (`payment-001`) — a 35 000
+  // XOF Premium ticket to the Masterclass IA (event-004). The event's
+  // endDate equals `inTwoWeeks` so the release window lands ~21 days out;
+  // the targetStatus rule mirrors the backfill: `available` if the release
+  // date is already in the past, else `pending`.
+  const paymentAmount = 35000;
+  const feeAmount = Math.round(paymentAmount * PLATFORM_FEE_RATE); // 1750 XOF
+  const eventEndDate = Dates.inTwoWeeks;
+  const completedAt = yesterday;
+  const availableOn = computeAvailableOn(completedAt, eventEndDate);
+  const targetStatus: "pending" | "available" =
+    new Date(availableOn).getTime() <= Date.now() ? "available" : "pending";
+
+  const paymentId = IDS.payment1;
+  const paymentDocId = ledgerDocId("payment", paymentId);
+  const feeDocId = ledgerDocId("platform_fee", paymentId);
+
+  const entries = [
+    {
+      id: paymentDocId,
+      organizationId: IDS.orgId,
+      eventId: IDS.paidEvent,
+      paymentId,
+      payoutId: null,
+      kind: "payment" as const,
+      amount: paymentAmount,
+      currency: "XOF" as const,
+      status: targetStatus,
+      availableOn,
+      description: "Billet (seed)",
+      createdBy: "system:seed",
+      createdAt: completedAt,
+    },
+    {
+      id: feeDocId,
+      organizationId: IDS.orgId,
+      eventId: IDS.paidEvent,
+      paymentId,
+      payoutId: null,
+      kind: "platform_fee" as const,
+      amount: -feeAmount,
+      currency: "XOF" as const,
+      status: targetStatus,
+      availableOn,
+      description: `Frais plateforme (seed, ${Math.round(PLATFORM_FEE_RATE * 100)}%)`,
+      createdBy: "system:seed",
+      createdAt: completedAt,
+    },
+  ];
+
+  await Promise.all(
+    entries.map((e) => db.collection("balanceTransactions").doc(e.id).set(e)),
+  );
+  return entries.length;
+}
+
+// ─── Payouts (with linked ledger entry) ───────────────────────────────────
+// One pending payout for the pro-plan org (org-001), covering the lifetime
+// succeeded payment (`payment-001`) on event-004. Amounts mirror the
+// `platformFeeRate` used by the ledger. A matching `payout` kind entry in
+// `balanceTransactions` is written so the /finance page shows the debit.
+
+async function writePayouts(db: Firestore): Promise<number> {
+  const totalAmount = 35000;
+  const platformFee = Math.round(totalAmount * PLATFORM_FEE_RATE); // 1750
+  const netAmount = totalAmount - platformFee; // 33 250
+
+  // Schedule the payout for 7 days after the paid event's end — matches
+  // the FUNDS_RELEASE_DAYS convention and keeps seed timelines coherent.
+  const scheduledFor = new Date(
+    new Date(Dates.inTwoWeeks).getTime() + FUNDS_RELEASE_DAYS * 86_400_000,
+  ).toISOString();
+
+  const payoutId = "payout-001";
+  await db
+    .collection("payouts")
+    .doc(payoutId)
+    .set({
+      id: payoutId,
+      organizationId: IDS.orgId,
+      eventId: IDS.paidEvent,
+      totalAmount,
+      platformFee,
+      platformFeeRate: PLATFORM_FEE_RATE,
+      netAmount,
+      status: "pending",
+      paymentIds: [IDS.payment1],
+      periodFrom: Dates.twoWeeksAgo,
+      periodTo: scheduledFor,
+      completedAt: null,
+      // Custom (non-schema) convenience fields used by the /finance UI for
+      // the "scheduled payout" card. Zod schema extra-key tolerance is the
+      // default behavior for PayoutSchema (no `.strict()`).
+      scheduledFor,
+      currency: "XOF",
+      amountMinor: netAmount, // XOF has no decimals — minor = major
+      createdAt: yesterday,
+      updatedAt: yesterday,
+    });
+
+  // Matching debit entry in the ledger so the /finance page's "paid_out"
+  // section isn't empty. Status stays `pending` while the payout is
+  // pending — the payout-creation service flips it to `paid_out` on
+  // completion.
+  const payoutLedgerDocId = ledgerDocId("payout", payoutId);
+  await db
+    .collection("balanceTransactions")
+    .doc(payoutLedgerDocId)
+    .set({
+      id: payoutLedgerDocId,
+      organizationId: IDS.orgId,
+      eventId: IDS.paidEvent,
+      paymentId: null,
+      payoutId,
+      kind: "payout",
+      amount: -netAmount,
+      currency: "XOF",
+      status: "pending",
+      availableOn: scheduledFor,
+      description: "Versement planifié (seed)",
+      createdBy: "system:seed",
+      createdAt: yesterday,
+    });
+
+  return 1;
+}
+
+// ─── Promo codes ──────────────────────────────────────────────────────────
+// Three promo codes exercise every branch of the promo-code UI: an active
+// percentage code, an expired fixed-XOF code, and a single-use 100% promo
+// scoped to the enterprise org's free event so e2e tests can exercise the
+// "free registration via promo" path.
+
+async function writePromoCodes(db: Firestore): Promise<number> {
+  const expiresInOneMonth = new Date(
+    Date.now() + 30 * 24 * 60 * 60 * 1000,
+  ).toISOString();
+  const expiredYesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+  const promos = [
+    {
+      id: "promo-001",
+      eventId: IDS.paidEvent,
+      organizationId: IDS.orgId,
+      code: "TERANGA10",
+      discountType: "percentage" as const,
+      discountValue: 10,
+      maxUses: null,
+      usedCount: 0,
+      expiresAt: expiresInOneMonth,
+      ticketTypeIds: [],
+      isActive: true,
+      createdBy: IDS.organizer,
+      createdAt: yesterday,
+      updatedAt: yesterday,
+    },
+    {
+      id: "promo-002",
+      eventId: IDS.paidEvent,
+      organizationId: IDS.orgId,
+      code: "EARLYBIRD",
+      discountType: "fixed" as const,
+      discountValue: 5000,
+      maxUses: 50,
+      usedCount: 12,
+      expiresAt: expiredYesterday,
+      ticketTypeIds: ["ticket-standard-004"],
+      isActive: true, // active flag stays true; expiresAt gates usage
+      createdBy: IDS.organizer,
+      createdAt: twoWeeksAgo,
+      updatedAt: twoWeeksAgo,
+    },
+    {
+      id: "promo-003",
+      eventId: "event-017", // AfricaTech Online (enterprise org)
+      organizationId: IDS.enterpriseOrgId,
+      code: "STAFF100",
+      discountType: "percentage" as const,
+      discountValue: 100,
+      maxUses: 1,
+      usedCount: 0,
+      expiresAt: expiresInOneMonth,
+      ticketTypeIds: [],
+      isActive: true,
+      createdBy: IDS.enterpriseOrganizer,
+      createdAt: yesterday,
+      updatedAt: yesterday,
+    },
+  ];
+
+  await Promise.all(
+    promos.map((p) => db.collection("promoCodes").doc(p.id).set(p)),
+  );
+  return promos.length;
+}
+
+// ─── Badge templates ──────────────────────────────────────────────────────
+// Two templates covering the canonical shapes operators pick between: a
+// minimal QR-only card (default for every event on the pro org) and a
+// branded photo card (starter org's venue org). `isDefault: true` on the
+// first so the Event → Badges page has a pre-picked option on first load.
+
+async function writeBadgeTemplates(db: Firestore): Promise<number> {
+  const templates = [
+    {
+      id: "badge-template-001",
+      organizationId: IDS.orgId,
+      name: "QR Only — standard",
+      width: 85.6,
+      height: 54.0,
+      backgroundColor: "#FFFFFF",
+      primaryColor: "#1A1A2E",
+      logoURL: null,
+      showQR: true,
+      showName: true,
+      showOrganization: true,
+      showRole: false,
+      showPhoto: false,
+      customFields: [],
+      isDefault: true,
+      createdAt: yesterday,
+      updatedAt: yesterday,
+    },
+    {
+      id: "badge-template-002",
+      organizationId: IDS.venueOrgId,
+      name: "Photo Badge — Dakar Venues",
+      width: 85.6,
+      height: 54.0,
+      backgroundColor: "#F5F3EF",
+      primaryColor: "#D4A017", // teranga-gold
+      logoURL: null,
+      showQR: true,
+      showName: true,
+      showOrganization: true,
+      showRole: true,
+      showPhoto: true,
+      customFields: [
+        {
+          key: "accessZone",
+          label: "Zone",
+          position: { x: 10, y: 45 },
+          fontSize: 10,
+          color: "#1A1A2E",
+        },
+      ],
+      isDefault: false,
+      createdAt: yesterday,
+      updatedAt: yesterday,
+    },
+  ];
+
+  await Promise.all(
+    templates.map((t) => db.collection("badgeTemplates").doc(t.id).set(t)),
+  );
+  return templates.length;
+}
+
 // ─── Orchestrator ─────────────────────────────────────────────────────────
 
 export type ActivityCounts = {
@@ -957,20 +1242,39 @@ export type ActivityCounts = {
   sponsorLeads: number;
   payments: number;
   receipts: number;
+  balanceTransactions: number;
+  payouts: number;
+  promoCodes: number;
+  badgeTemplates: number;
 };
 
 export async function seedActivity(db: Firestore): Promise<ActivityCounts> {
   // Registrations + badges must land before anything else that references
   // them. Everything else in this module can be fanned out in parallel.
   const [registrations, badges] = await Promise.all([writeRegistrations(db), writeBadges(db)]);
-  const [sessions, speakers, sponsors, sponsorLeads, payments, receipts] = await Promise.all([
+  const [
+    sessions,
+    speakers,
+    sponsors,
+    sponsorLeads,
+    payments,
+    receipts,
+    promoCodes,
+    badgeTemplates,
+  ] = await Promise.all([
     writeSessions(db),
     writeSpeakers(db),
     writeSponsors(db),
     writeSponsorLeads(db),
     writePayments(db),
     writeReceipts(db),
+    writePromoCodes(db),
+    writeBadgeTemplates(db),
   ]);
+  // Ledger entries depend on `writePayments` having landed so the paymentId
+  // they reference exists; payouts in turn flip ledger rows, so they follow.
+  const balanceTransactions = await writeBalanceTransactions(db);
+  const payouts = await writePayouts(db);
   return {
     registrations,
     badges,
@@ -980,5 +1284,9 @@ export async function seedActivity(db: Firestore): Promise<ActivityCounts> {
     sponsorLeads,
     payments,
     receipts,
+    balanceTransactions: balanceTransactions + 1, // +1 for the payout ledger entry
+    payouts,
+    promoCodes,
+    badgeTemplates,
   };
 }

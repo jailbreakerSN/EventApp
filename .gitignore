@@ -12,6 +12,10 @@ lib/
 # aren't silently ignored.
 !apps/**/src/lib/
 !apps/**/src/lib/**
+# Repo-root scripts may carry shared helpers under scripts/lib/ — those are
+# source, not build output.
+!scripts/lib/
+!scripts/lib/**
 venv/
 .next/
 out/

@@ -158,25 +158,19 @@ function registerRegistrationListeners(): void {
 // ─── Event lifecycle ──────────────────────────────────────────────────────
 
 function registerEventListeners(): void {
-  eventBus.on("event.updated", async (payload) => {
-    // Detect reschedule: startDate or endDate in the changes payload.
-    const changes = payload.changes ?? {};
-    const rescheduled = "startDate" in changes || "endDate" in changes || "newStartDate" in changes;
-    if (!rescheduled) return;
-
+  // Subscribes to the dedicated `event.rescheduled` event (distinct from
+  // `event.updated`). The service now computes the diff once and emits
+  // both events — the generic one for audit/denorm fan-out, and this
+  // one for notification routing. No more inline diff-sniffing here.
+  eventBus.on("event.rescheduled", async (payload) => {
     try {
       const event = await eventRepository.findById(payload.eventId);
       if (!event) return;
-      // Fan out to every confirmed registrant. Uses the registration
-      // repository's listConfirmed helper when available; falls back to
-      // a bulk query otherwise (delegated to the future listener Phase
-      // 2c hardening — for now we no-op if the helper is missing).
+      // Fan out to every confirmed registrant. Hard cap protects against
+      // a runaway fanout on a mega-event — Phase 5 observability will
+      // chunk via findByEventCursor once the scheduler supports batched
+      // sends. Until then we stop at 500 recipients per reschedule.
       const { registrationRepository } = await import("@/repositories/registration.repository");
-      // Hard cap to protect against a runaway fanout on a mega-event.
-      // Phase 2 security review P1-3: findByEvent defaults to 1000 rows;
-      // a single dispatch of 1000 sequential `recipientFromUserId` reads
-      // would stall the loop. Phase 5 observability will chunk via
-      // findByEventCursor once the scheduler supports batched sends.
       const MAX_RESCHEDULE_FANOUT = 500;
       const page = await registrationRepository
         .findByEvent(payload.eventId, ["confirmed"], {
@@ -202,23 +196,20 @@ function registerEventListeners(): void {
       }
       if (recipients.length === 0) return;
 
-      const oldDate =
-        typeof (changes as Record<string, unknown>).oldStartDate === "string"
-          ? formatDate((changes as Record<string, string>).oldStartDate)
-          : formatDate(event.startDate);
-      const newDate = formatDate(event.startDate);
-
       await notificationDispatcher.dispatch({
         key: "event.rescheduled",
         recipients,
         params: {
           eventTitle: event.title,
-          oldDate,
-          newDate,
-          newLocation: event.location ?? undefined,
+          oldDate: formatDate(payload.previousStartDate),
+          newDate: formatDate(payload.newStartDate),
+          newLocation: payload.newLocation ?? undefined,
           eventUrl: `/events/${event.slug ?? event.id}`,
         },
-        idempotencyKey: `event-rescheduled/${event.id}/${event.startDate}`,
+        // Include the newStartDate on the idempotency key so a
+        // second reschedule (e.g. postponed again) fires a fresh email
+        // instead of silently deduping against the first.
+        idempotencyKey: `event-rescheduled/${event.id}/${payload.newStartDate}`,
       });
     } catch (err) {
       logHandlerError("event.rescheduled", err instanceof Error ? err.message : String(err));
@@ -287,9 +278,13 @@ function registerPaymentListeners(): void {
     }
   });
 
-  eventBus.on("payment.refunded", async (payload) => {
+  // Subscribes to `refund.issued` (the notification-facing event), NOT
+  // `payment.refunded` (the generic audit event). Both fire on every
+  // successful refund — we route the customer-facing email off the
+  // dedicated refund event so the failure counterpart (`refund.failed`)
+  // can drive its own template without branching here.
+  eventBus.on("refund.issued", async (payload) => {
     try {
-      // Same fix as payment.failed: resolve userId from the registration.
       const { registrationRepository } = await import("@/repositories/registration.repository");
       const registration = await registrationRepository
         .findById(payload.registrationId)
@@ -298,9 +293,6 @@ function registerPaymentListeners(): void {
       const recipient = await recipientFromUserId(registration.userId);
       if (!recipient) return;
       const event = await eventRepository.findById(payload.eventId);
-      // Phase 2 MVP treats every refund as "issued" — the future refund
-      // service will emit refund.failed explicitly and wire this handler
-      // to branch on it. For now we ship the success template only.
       await notificationDispatcher.dispatch({
         key: "refund.issued",
         recipients: [recipient],
@@ -315,6 +307,36 @@ function registerPaymentListeners(): void {
       });
     } catch (err) {
       logHandlerError("refund.issued", err instanceof Error ? err.message : String(err));
+    }
+  });
+
+  eventBus.on("refund.failed", async (payload) => {
+    try {
+      const { registrationRepository } = await import("@/repositories/registration.repository");
+      const registration = await registrationRepository
+        .findById(payload.registrationId)
+        .catch(() => null);
+      if (!registration) return;
+      const recipient = await recipientFromUserId(registration.userId);
+      if (!recipient) return;
+      const event = await eventRepository.findById(payload.eventId);
+      await notificationDispatcher.dispatch({
+        key: "refund.failed",
+        recipients: [recipient],
+        params: {
+          amount: formatXof(payload.amount),
+          eventTitle: event?.title ?? "",
+          refundId: payload.paymentId,
+          failureReason: payload.failureReason,
+          supportUrl: "mailto:support@terangaevent.com",
+        },
+        // Idempotency keyed on paymentId — if the same refund fails
+        // twice (e.g. a retry), we want the customer to get a fresh
+        // email each attempt, so include the timestamp slice as a salt.
+        idempotencyKey: `refund-failed/${payload.paymentId}/${payload.timestamp.slice(0, 16)}`,
+      });
+    } catch (err) {
+      logHandlerError("refund.failed", err instanceof Error ? err.message : String(err));
     }
   });
 }
@@ -381,7 +403,7 @@ function registerTeamListeners(): void {
   for (const { event, kind } of [
     { event: "member.added" as const, kind: "added" as const },
     { event: "member.removed" as const, kind: "removed" as const },
-    { event: "member.role_updated" as const, kind: "role_changed" as const },
+    { event: "member.role_changed" as const, kind: "role_changed" as const },
   ]) {
     eventBus.on(event, async (payload) => {
       try {
@@ -672,6 +694,160 @@ function registerUserListeners(): void {
   });
 }
 
+// ─── Phase 2.3 — post-event + lifecycle nudges ───────────────────────────
+
+function registerPostEventListeners(): void {
+  // Post-event feedback — one dispatch per user. The scheduled function
+  // emits one `event.feedback_requested` event per registrant so each
+  // runs through its own opt-out + dedup path.
+  eventBus.on("event.feedback_requested", async (payload) => {
+    try {
+      const recipient = await recipientFromUserId(payload.userId);
+      if (!recipient) return;
+      const event = await eventRepository.findById(payload.eventId);
+      if (!event) return;
+      const eventEndedAt = formatDateTime(event.endDate);
+      await notificationDispatcher.dispatch({
+        key: "event.feedback_requested",
+        recipients: [recipient],
+        params: {
+          participantName: recipient.email ?? "",
+          eventTitle: event.title,
+          eventEndedAt,
+          feedbackUrl: `/events/${event.slug ?? event.id}/feedback`,
+          feedbackDeadline: payload.feedbackDeadline,
+        },
+        // Keyed on eventId + userId — one feedback email per attendee per
+        // event. The scheduled job's 15-min window is inside the default
+        // 24h dedup window so retries converge on the same key.
+        idempotencyKey: `event-feedback/${payload.eventId}/${payload.userId}`,
+      });
+    } catch (err) {
+      logHandlerError(
+        "event.feedback_requested",
+        err instanceof Error ? err.message : String(err),
+      );
+    }
+  });
+}
+
+function registerCertificateListeners(): void {
+  // Certificates issued — fan out to every eligible user id carried in
+  // the domain-event payload. No Firestore round-trips for the list
+  // (the issuer already enumerated it); we only fetch per-user recipient
+  // context here.
+  eventBus.on("event.certificates_issued", async (payload) => {
+    try {
+      const event = await eventRepository.findById(payload.eventId);
+      if (!event) return;
+      const eventDate = formatDate(event.endDate);
+      for (const userId of payload.userIds) {
+        const recipient = await recipientFromUserId(userId);
+        if (!recipient) continue;
+        await notificationDispatcher.dispatch({
+          key: "certificate.ready",
+          recipients: [recipient],
+          params: {
+            participantName: recipient.email ?? "",
+            eventTitle: event.title,
+            eventDate,
+            // URL shape matches the future certificate download route.
+            // Real signed URL minting happens in the certificate service
+            // when the user clicks; the email just hands over the
+            // participant-facing deep link.
+            certificateUrl: `/events/${event.slug ?? event.id}/certificate`,
+            validityHint: payload.validityHint,
+          },
+          // Stable per user+event so re-issues dedup into the same log row
+          // within the 24h window; a deliberate re-issue weeks later fires
+          // a fresh email.
+          idempotencyKey: `certificate-ready/${payload.eventId}/${userId}`,
+        });
+      }
+    } catch (err) {
+      logHandlerError(
+        "event.certificates_issued",
+        err instanceof Error ? err.message : String(err),
+      );
+    }
+  });
+}
+
+function registerSubscriptionReminderListeners(): void {
+  eventBus.on("subscription.expiring_soon", async (payload) => {
+    try {
+      const recipients = await recipientsForOrgBillingContacts(payload.organizationId);
+      if (recipients.length === 0) return;
+      const org = await organizationRepository.findById(payload.organizationId);
+      if (!org) return;
+      await notificationDispatcher.dispatch({
+        key: "subscription.expiring_soon",
+        recipients,
+        params: {
+          organizationName: org.name,
+          planName: payload.planKey,
+          amount: payload.amount,
+          renewalDate: formatDate(payload.renewalAt),
+          daysUntilRenewal: payload.daysUntilRenewal,
+          manageBillingUrl: "/organization/billing",
+        },
+        // Dedup per-day: the cron runs daily at 09:00. If it retries,
+        // we want the same row. A deliberate resubscribe next month
+        // fires a fresh row (different YYYY-MM-DD).
+        idempotencyKey: `subscription-expiring-soon/${payload.organizationId}/${payload.renewalAt.slice(0, 10)}`,
+      });
+    } catch (err) {
+      logHandlerError(
+        "subscription.expiring_soon",
+        err instanceof Error ? err.message : String(err),
+      );
+    }
+  });
+
+  eventBus.on("subscription.approaching_limit", async (payload) => {
+    try {
+      // Org-owners resolver: owners (+ member list today, until the
+      // dedicated owner-only role lands). Same helper as billing contacts.
+      const recipients = await recipientsForOrgBillingContacts(payload.organizationId);
+      if (recipients.length === 0) return;
+      const org = await organizationRepository.findById(payload.organizationId);
+      if (!org) return;
+      // Dimension → localized label. We keep the three labels inline so
+      // this listener stays dependency-light — the template itself is
+      // i18n'd once by the email adapter.
+      const dimensionLabel =
+        payload.dimension === "events"
+          ? "Événements actifs"
+          : payload.dimension === "members"
+            ? "Membres"
+            : "Participants inscrits";
+      await notificationDispatcher.dispatch({
+        key: "subscription.approaching_limit",
+        recipients,
+        params: {
+          organizationName: org.name,
+          planName: payload.planKey,
+          dimensionLabel,
+          current: String(payload.current),
+          limit: String(payload.limit),
+          percent: String(Math.round(payload.percent)),
+          upgradeUrl: "/organization/billing",
+        },
+        // Dedup per org per day per dimension — different dimensions
+        // should each be able to warn separately (a Starter at 80%
+        // events + 85% members gets two different alerts, day-stamped
+        // so the cron retry converges).
+        idempotencyKey: `subscription-approaching-limit/${payload.organizationId}/${payload.dimension}/${payload.timestamp.slice(0, 10)}`,
+      });
+    } catch (err) {
+      logHandlerError(
+        "subscription.approaching_limit",
+        err instanceof Error ? err.message : String(err),
+      );
+    }
+  });
+}
+
 // ─── Public ───────────────────────────────────────────────────────────────
 
 export function registerNotificationDispatcherListeners(): void {
@@ -682,4 +858,8 @@ export function registerNotificationDispatcherListeners(): void {
   registerTeamListeners();
   registerBillingListeners();
   registerUserListeners();
+  // Phase 2.3
+  registerPostEventListeners();
+  registerCertificateListeners();
+  registerSubscriptionReminderListeners();
 }

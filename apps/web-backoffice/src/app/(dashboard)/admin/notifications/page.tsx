@@ -19,7 +19,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
-import { AlertTriangle, Bell, Edit3, ShieldCheck } from "lucide-react";
+import { AlertTriangle, Bell, Edit3, Eye, History, ShieldCheck } from "lucide-react";
+import { PreviewDialog } from "./preview-dialog";
+import { HistoryPanel } from "./history-panel";
 import {
   Badge,
   Breadcrumb,
@@ -131,6 +133,11 @@ export default function AdminNotificationsPage() {
   const [loadError, setLoadError] = useState<ResolvedError | null>(null);
   const [rowError, setRowError] = useState<ResolvedError | null>(null);
   const [editing, setEditing] = useState<AdminNotificationRow | null>(null);
+  // Phase 2.4 — preview dialog + inline history panel. Preview is a
+  // per-row dialog; history is an inline expansion (only one open at a
+  // time) to keep the table scannable.
+  const [previewing, setPreviewing] = useState<AdminNotificationRow | null>(null);
+  const [historyKey, setHistoryKey] = useState<string | null>(null);
   const [pendingKeys, setPendingKeys] = useState<Set<string>>(new Set());
 
   // ── Initial load: catalog + stats in parallel ─────────────────────────────
@@ -387,6 +394,10 @@ export default function AdminNotificationsPage() {
                       pending={pendingKeys.has(row.key)}
                       onToggle={(next) => void handleToggle(row, next)}
                       onEdit={() => setEditing(row)}
+                      onPreview={() => setPreviewing(row)}
+                      onHistory={() =>
+                        setHistoryKey((prev) => (prev === row.key ? null : row.key))
+                      }
                     />
                   ))}
                 </tbody>
@@ -404,6 +415,19 @@ export default function AdminNotificationsPage() {
           onSave={(next) => void handleDrawerSave(editing, next)}
         />
       )}
+
+      {/* Phase 2.4 — Preview + Test-send dialog. */}
+      {previewing && (
+        <PreviewDialog row={previewing} onClose={() => setPreviewing(null)} />
+      )}
+
+      {/* Phase 2.4 — Inline history panel (one open at a time). */}
+      {historyKey && (
+        <HistoryPanel
+          notificationKey={historyKey}
+          onClose={() => setHistoryKey(null)}
+        />
+      )}
     </div>
   );
 }
@@ -416,9 +440,23 @@ interface NotificationRowProps {
   pending: boolean;
   onToggle: (next: boolean) => void;
   onEdit: () => void;
+  /** Phase 2.4 — opens the preview + test-send dialog. Optional so the
+   *  component remains backward-compatible with callers that only wire
+   *  the edit path. */
+  onPreview?: () => void;
+  /** Phase 2.4 — toggles the inline history panel below the row. */
+  onHistory?: () => void;
 }
 
-function NotificationRow({ row, stats, pending, onToggle, onEdit }: NotificationRowProps) {
+function NotificationRow({
+  row,
+  stats,
+  pending,
+  onToggle,
+  onEdit,
+  onPreview,
+  onHistory,
+}: NotificationRowProps) {
   const t = useTranslations("admin.notifications");
   const rate = suppressionRate(stats);
   const highSuppression = rate > SUPPRESSION_THRESHOLD;
@@ -494,15 +532,39 @@ function NotificationRow({ row, stats, pending, onToggle, onEdit }: Notification
         </div>
       </td>
       <td className="px-4 py-3 text-right align-top">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={onEdit}
-          aria-label={`${t("table.edit")} — ${row.displayName.fr}`}
-        >
-          <Edit3 className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
-          {t("table.edit")}
-        </Button>
+        <div className="inline-flex items-center gap-1">
+          {onPreview && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onPreview}
+              aria-label={`Aperçu — ${row.displayName.fr}`}
+            >
+              <Eye className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
+              Aperçu
+            </Button>
+          )}
+          {onHistory && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onHistory}
+              aria-label={`Historique — ${row.displayName.fr}`}
+            >
+              <History className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
+              Historique
+            </Button>
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onEdit}
+            aria-label={`${t("table.edit")} — ${row.displayName.fr}`}
+          >
+            <Edit3 className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
+            {t("table.edit")}
+          </Button>
+        </div>
       </td>
     </tr>
   );

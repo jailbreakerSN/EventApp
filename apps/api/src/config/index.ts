@@ -24,6 +24,16 @@ const envSchema = z.object({
   RESEND_API_KEY: z.string().optional(),
   RESEND_FROM_NAME: z.string().default("Teranga Events"),
 
+  // Legal / compliance footer (Phase 2.5) — physical postal address
+  // stamped into every non-auth / non-billing email. Gmail + Yahoo 2024
+  // bulk-sender rules + Senegalese consumer-protection guidelines
+  // require a reachable postal address on anything that isn't a strict
+  // security send. Default is the Teranga Events office in Dakar; set
+  // an environment-specific override in staging / production.
+  RESEND_POSTAL_ADDRESS: z
+    .string()
+    .default("Teranga Events, Almadies, BP 45678 Dakar, Sénégal"),
+
   // Legacy single-sender fallback — kept so existing environments stay green.
   // New code should resolve senders via the EmailCategory registry; this value
   // is only used when a category-specific var is unset. Default updated
@@ -143,6 +153,21 @@ const envSchema = z.object({
     (v) => (typeof v === "string" ? v.toLowerCase() === "true" || v === "1" : v),
     z.boolean().default(false),
   ),
+
+  // ─── Internal dispatch endpoint (Phase 2.3) ──────────────────────────────
+  // Shared secret that gates `POST /v1/internal/notifications/dispatch`,
+  // the endpoint the scheduled Cloud Functions (reminder / post-event /
+  // subscription-reminder) call to fan out notifications. The dev default
+  // is a visibly-fake sentinel — production MUST override via the
+  // ops-prerequisites workflow, which provisions a random 48-char secret
+  // into Secret Manager and binds it on both the Cloud Run service and
+  // the Cloud Functions runtime. The route fails closed (404) when the
+  // runtime value is empty, so a missing production override degrades
+  // to "endpoint invisible" rather than "endpoint crashes".
+  INTERNAL_DISPATCH_SECRET: z
+    .string()
+    .min(32, "INTERNAL_DISPATCH_SECRET must be at least 32 characters")
+    .default("dev-internal-dispatch-secret-change-in-prod-000000"),
 });
 
 const parsed = envSchema.safeParse(process.env);

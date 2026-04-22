@@ -34,6 +34,11 @@ import {
   buildPasswordChangedEmail,
   buildEmailChangedEmail,
   buildSubscriptionPastDueEmail,
+  // Phase 2.3 builders
+  buildEventFeedbackRequestedEmail,
+  buildCertificateReadyEmail,
+  buildSubscriptionExpiringSoonEmail,
+  buildSubscriptionApproachingLimitEmail,
   type RenderedEmail,
 } from "./templates";
 
@@ -199,6 +204,27 @@ const TEMPLATE_BUILDERS: Record<string, TemplateEntry> = {
     build: buildSubscriptionPastDueEmail as unknown as TemplateBuilder,
     category: "billing",
     tagType: "subscription_past_due",
+  },
+  // ─── Phase 2.3 templates ──────────────────────────────────────────────
+  EventFeedbackRequested: {
+    build: buildEventFeedbackRequestedEmail as unknown as TemplateBuilder,
+    category: "transactional",
+    tagType: "event_feedback_requested",
+  },
+  CertificateReady: {
+    build: buildCertificateReadyEmail as unknown as TemplateBuilder,
+    category: "organizational",
+    tagType: "certificate_ready",
+  },
+  SubscriptionExpiringSoon: {
+    build: buildSubscriptionExpiringSoonEmail as unknown as TemplateBuilder,
+    category: "billing",
+    tagType: "subscription_expiring_soon",
+  },
+  SubscriptionApproachingLimit: {
+    build: buildSubscriptionApproachingLimitEmail as unknown as TemplateBuilder,
+    category: "organizational",
+    tagType: "subscription_approaching_limit",
   },
 };
 

@@ -1,6 +1,7 @@
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { logger } from "firebase-functions/v2";
 import { db, messaging, COLLECTIONS } from "../utils/admin";
+import { dispatchInternalChunked, type InternalDispatchRecipient } from "../utils/internal-dispatch";
 
 /**
  * Scheduled event reminder function.
@@ -150,6 +151,68 @@ async function sendReminders(
             }),
           ),
         );
+      }
+
+      // ── Email channel via the dispatcher (Phase 2.3) ────────────────
+      // In addition to the in-app + FCM fan-out above, hand off the
+      // `event.reminder` catalog key to the API's internal dispatch
+      // endpoint so the branded email template ships too. The dispatcher
+      // owns admin kill-switches, user opt-out, and audit logging — we
+      // intentionally DO NOT duplicate the email adapter here.
+      //
+      // Recipients are fetched user-by-user via getAll so we can surface
+      // the preferred locale; the API would otherwise default every
+      // recipient to fr via the `self` resolver.
+      try {
+        const recipientDocs = await db.getAll(
+          ...usersToNotify.map((uid) => db.collection(COLLECTIONS.USERS).doc(uid)),
+        );
+        const emailRecipients: InternalDispatchRecipient[] = [];
+        for (const doc of recipientDocs) {
+          if (!doc.exists) continue;
+          const data = doc.data()!;
+          if (!data.email) continue;
+          const lang = data.preferredLanguage;
+          const preferredLocale =
+            lang === "en" || lang === "wo" ? (lang as "en" | "wo") : "fr";
+          emailRecipients.push({
+            userId: doc.id,
+            email: data.email,
+            preferredLocale,
+          });
+        }
+
+        if (emailRecipients.length > 0) {
+          const summary = await dispatchInternalChunked({
+            key: "event.reminder",
+            recipients: emailRecipients,
+            params: {
+              eventTitle,
+              eventDate: event.startDate,
+              eventLocation: event.location ?? "",
+              timeUntil: timeLabel,
+              badgeUrl: `/events/${event.slug ?? eventId}/badge`,
+            },
+            // Deterministic per user+event+variant so retries (cron at-
+            // least-once) converge into the same dispatch-log row and
+            // the dispatcher's persistent idempotency check short-
+            // circuits the dup before re-hitting Resend.
+            idempotencyKey: `event_reminder_${reminderType}_${eventId}`,
+          });
+          logger.info("event.reminder email dispatched", {
+            eventId,
+            variant: reminderType,
+            recipients: emailRecipients.length,
+            sent: summary.sent,
+            failed: summary.failed,
+          });
+        }
+      } catch (emailErr) {
+        // Fire-and-forget — email failure never blocks in-app/FCM delivery.
+        logger.error("event.reminder email dispatch failed", {
+          eventId,
+          err: emailErr instanceof Error ? emailErr.message : String(emailErr),
+        });
       }
 
       logger.info(`${reminderType} reminder sent`, {

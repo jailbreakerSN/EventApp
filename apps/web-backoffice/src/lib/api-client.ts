@@ -553,7 +553,58 @@ export const notificationsApi = {
       method: "PUT",
       body: JSON.stringify(dto),
     }),
+
+  // Phase 2.5 — per-user communication history. Returns the dispatch-
+  // log rows addressed to the current user over the last 90 days so
+  // the history page can show "emails we sent you" with delivery-
+  // status badges. The API strips `recipientRef` / `requestId` before
+  // response — operator trails, not user-facing.
+  history: (params: { limit?: number; cursor?: string } = {}) =>
+    api.get<{
+      success: boolean;
+      data: NotificationHistoryRow[];
+      meta: { limit: number; nextCursor: string | null };
+    }>(`/v1/notifications/history${buildQuery(params)}`),
+
+  // Phase 2.5 — reverse a per-key opt-out. Users hit this from the
+  // history page after seeing a suppressed row for a key they still
+  // want to receive.
+  resubscribe: (key: string) =>
+    api.post<ApiResponse<{ key: string; enabled: boolean }>>(
+      "/v1/notifications/resubscribe",
+      { key },
+    ),
 };
+
+export interface NotificationHistoryRow {
+  id: string;
+  key: string;
+  channel: "email" | "sms" | "push" | "in_app";
+  subject: string;
+  status: "sent" | "suppressed" | "deduplicated";
+  deliveryStatus:
+    | "sent"
+    | "delivered"
+    | "opened"
+    | "clicked"
+    | "bounced"
+    | "complained"
+    | null;
+  attemptedAt: string;
+  deliveredAt: string | null;
+  openedAt: string | null;
+  clickedAt: string | null;
+  bouncedAt: string | null;
+  complainedAt: string | null;
+  reason:
+    | "admin_disabled"
+    | "user_opted_out"
+    | "on_suppression_list"
+    | "bounced"
+    | "no_recipient"
+    | null;
+  userOptOutAllowed: boolean;
+}
 
 export const speakersApi = {
   list: (eventId: string, params: { page?: number; limit?: number } = {}) =>
@@ -786,11 +837,43 @@ export interface AdminNotificationStatsResponse {
   stats: Record<string, AdminNotificationStatsEntry>;
 }
 
-export const adminNotificationsApi = {
-  list: () =>
-    api.get<ApiResponse<AdminNotificationRow[]>>("/v1/admin/notifications"),
+// ─── Phase 2.4 — preview / test-send / history / per-org ───────────────────
 
-  update: (key: string, dto: AdminNotificationUpdateDto) =>
+export interface AdminNotificationPreviewDto {
+  locale: "fr" | "en" | "wo";
+  sampleParams?: Record<string, unknown>;
+}
+
+export interface AdminNotificationPreviewResponse {
+  subject: string;
+  html: string;
+  previewText: string;
+}
+
+export interface AdminNotificationTestSendDto {
+  email: string;
+  locale: "fr" | "en" | "wo";
+  sampleParams?: Record<string, unknown>;
+  channels?: NotificationChannel[];
+}
+
+export interface AdminNotificationHistoryEntry {
+  id: string;
+  key: string;
+  organizationId: string | null;
+  previousValue: unknown;
+  newValue: unknown;
+  diff: string[];
+  actorId: string;
+  actorRole: string;
+  reason?: string;
+  changedAt: string;
+}
+
+export const adminNotificationsApi = {
+  list: () => api.get<ApiResponse<AdminNotificationRow[]>>("/v1/admin/notifications"),
+
+  update: (key: string, dto: AdminNotificationUpdateDto & { reason?: string }) =>
     request<ApiResponse<unknown>>(`/v1/admin/notifications/${encodeURIComponent(key)}`, {
       method: "PUT",
       body: JSON.stringify(dto),
@@ -799,6 +882,28 @@ export const adminNotificationsApi = {
   stats: (days = 7) =>
     api.get<ApiResponse<AdminNotificationStatsResponse>>(
       `/v1/admin/notifications/stats${buildQuery({ days })}`,
+    ),
+
+  preview: (key: string, dto: AdminNotificationPreviewDto) =>
+    request<ApiResponse<AdminNotificationPreviewResponse>>(
+      `/v1/admin/notifications/${encodeURIComponent(key)}/preview`,
+      { method: "POST", body: JSON.stringify(dto) },
+    ),
+
+  testSend: (key: string, dto: AdminNotificationTestSendDto) =>
+    request<ApiResponse<{ dispatched: boolean; previewSubject?: string }>>(
+      `/v1/admin/notifications/${encodeURIComponent(key)}/test-send`,
+      { method: "POST", body: JSON.stringify(dto) },
+    ),
+
+  history: (key: string, params: { limit?: number; organizationId?: string } = {}) =>
+    api.get<ApiResponse<{ entries: AdminNotificationHistoryEntry[]; count: number }>>(
+      `/v1/admin/notifications/${encodeURIComponent(key)}/history${buildQuery(params)}`,
+    ),
+
+  perOrgOverrides: () =>
+    api.get<ApiResponse<Array<{ key: string; organizationId: string; enabled: boolean; channels: NotificationChannel[]; updatedAt: string; updatedBy: string }>>>(
+      "/v1/admin/notifications/per-org",
     ),
 };
 

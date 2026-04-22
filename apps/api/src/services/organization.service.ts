@@ -367,7 +367,7 @@ export class OrganizationService extends BaseService {
       throw err;
     }
 
-    eventBus.emit("member.role_updated", {
+    eventBus.emit("member.role_changed", {
       organizationId: orgId,
       memberId: userId,
       newRole: role,

@@ -125,6 +125,28 @@ export interface EventUpdatedEvent extends BaseEventPayload {
 }
 
 /**
+ * Fires when an organizer edits the date, time, or location of a
+ * published event. Distinct from the generic `event.updated` (which
+ * covers any PATCH) so the notification dispatcher can route to the
+ * `event.rescheduled` template without re-inspecting the diff, and so
+ * audit queries can ask "who rescheduled this event, when" without a
+ * join. Carries the before/after pair for each changed field — the
+ * template renders both in the email.
+ */
+export interface EventRescheduledEvent extends BaseEventPayload {
+  eventId: string;
+  organizationId: string;
+  previousStartDate: string;
+  newStartDate: string;
+  previousEndDate?: string;
+  newEndDate?: string;
+  previousLocation?: string;
+  newLocation?: string;
+  /** Optional free-text reason the organizer supplied. Never rendered verbatim. */
+  reason?: string;
+}
+
+/**
  * Fires when an organizer rotates the event's QR signing key id. Distinct
  * from `event.updated` so the audit trail can tell "rotated the HMAC key"
  * apart from "edited the event description" — both matter for different
@@ -210,7 +232,7 @@ export interface MemberRemovedEvent extends BaseEventPayload {
   memberId: string;
 }
 
-export interface MemberRoleUpdatedEvent extends BaseEventPayload {
+export interface MemberRoleChangedEvent extends BaseEventPayload {
   organizationId: string;
   memberId: string;
   newRole: string;
@@ -272,6 +294,40 @@ export interface PaymentRefundedEvent extends BaseEventPayload {
   organizationId: string;
   amount: number;
   reason?: string;
+}
+
+/**
+ * Fires when a refund has been successfully issued by the provider
+ * and committed to our ledger. Distinct from `payment.refunded` —
+ * which is the generic audit/state-transition event (fires on every
+ * refund regardless of outcome). `refund.issued` drives the
+ * customer-facing "refund issued" email template. Split so future
+ * refund flows can stamp a `refundId` / provider metadata without
+ * polluting the audit stream's contract.
+ */
+export interface RefundIssuedEvent extends BaseEventPayload {
+  paymentId: string;
+  registrationId: string;
+  eventId: string;
+  organizationId: string;
+  amount: number;
+  reason?: string;
+}
+
+/**
+ * Fires when the refund processor reports failure (e.g. provider
+ * refused, funds unreachable, stale transaction). Drives the
+ * customer-facing "refund failed — contact support" email.
+ * `failureReason` is a short string for internal use — never rendered
+ * directly into the template, the UI copy is pre-baked.
+ */
+export interface RefundFailedEvent extends BaseEventPayload {
+  paymentId: string;
+  registrationId: string;
+  eventId: string;
+  organizationId: string;
+  amount: number;
+  failureReason: string;
 }
 
 // ── Badge ────────────────────────────────────────────────────────────────────
@@ -344,6 +400,18 @@ export interface NotificationUnsubscribedEvent extends BaseEventPayload {
   source: "list_unsubscribe_click" | "list_unsubscribe_post";
 }
 
+/**
+ * Phase 2.5 — emitted when a user reverses a per-key opt-out from the
+ * history page. Mirrors NotificationUnsubscribedEvent for audit-trail
+ * symmetry so the admin audit UI can show both sides of the story.
+ */
+export interface NotificationResubscribedEvent extends BaseEventPayload {
+  /** User whose preference flipped back to enabled. */
+  userId: string;
+  /** The catalog key the user resubscribed to. */
+  key: string;
+}
+
 // ── Notification dispatcher (Phase 1) ────────────────────────────────────
 // Emitted by NotificationService.dispatch on every channel delivery,
 // every suppression decision, and every super-admin write to
@@ -367,11 +435,50 @@ export interface NotificationSuppressedEvent extends BaseEventPayload {
   channel?: "email" | "sms" | "push" | "in_app";
 }
 
+/**
+ * Phase 2.2 — emitted when the dispatcher short-circuits a duplicate
+ * emit using the persistent idempotency log. Distinct from
+ * notification.sent (no provider round-trip happened) and from
+ * notification.suppressed (no decision was made — we just deferred
+ * to the previous send). Powers the admin "duplicates caught" widget
+ * and alerts on retry storms.
+ */
+export interface NotificationDeduplicatedEvent extends BaseEventPayload {
+  key: string;
+  channel: "email" | "sms" | "push" | "in_app";
+  recipientRef: string;
+  /** The idempotency key that matched a prior log entry. */
+  idempotencyKey: string;
+  /** Timestamp of the prior entry that caused the dedup. */
+  originalAttemptedAt: string;
+}
+
 export interface NotificationSettingUpdatedEvent extends BaseEventPayload {
   key: string;
+  /** Phase 2.4 — null for platform-wide overrides, orgId for per-org overrides. */
+  organizationId: string | null;
   enabled: boolean;
   channels: ("email" | "sms" | "push" | "in_app")[];
   hasSubjectOverride: boolean;
+  /** Doc id of the notificationSettingsHistory entry appended alongside the update. */
+  historyId?: string;
+}
+
+/**
+ * Phase 2.4 — emitted when a super_admin issues a "test send" from the
+ * notifications control plane. Distinct from notification.sent so stats
+ * widgets and the dispatch log can filter these previews out of real
+ * delivery counters.
+ */
+export interface NotificationTestSentEvent extends BaseEventPayload {
+  key: string;
+  channel: "email" | "sms" | "push" | "in_app";
+  /** Redacted recipient — mirrors the recipientRef format used elsewhere. */
+  recipientRef: string;
+  /** Locale the preview was rendered in. */
+  locale: "fr" | "en" | "wo";
+  /** Provider-returned message id when available. */
+  messageId?: string;
 }
 
 // ── User lifecycle (Phase 2 — security + onboarding notifications) ───────
@@ -436,6 +543,72 @@ export interface SubscriptionCancelledEvent extends BaseEventPayload {
   effectiveAt: string;
   /** "self" (admin clicked cancel) | "system" (past_due grace expired). */
   cancelledBy: "self" | "system";
+}
+
+// ── Phase 2.3 — lifecycle nudges ────────────────────────────────────────
+// Scheduled/triggered notification events that close the feedback loop
+// after events end, surface certificates, and nudge organizers when
+// their subscription is about to expire or near a plan-cap.
+
+/**
+ * Fires from the post-event scheduled function (2h after an event ends)
+ * per checked-in registrant. Drives the `event.feedback_requested` email
+ * and in-app notification.
+ */
+export interface EventFeedbackRequestedEvent extends BaseEventPayload {
+  eventId: string;
+  organizationId: string;
+  /** The specific user being nudged. */
+  userId: string;
+  /** Pre-formatted feedback deadline (optional), e.g. "29 avril 2026". */
+  feedbackDeadline?: string;
+}
+
+/**
+ * Fires when an organizer clicks "Issue certificates" in the back-office.
+ * Payload carries the eventId + organizationId + the list of registrant
+ * user ids whose certificate is now downloadable. The dispatcher listener
+ * fans out one email per userId — certificateUrl is resolved per-user
+ * from the certificate service (signed URL).
+ */
+export interface EventCertificatesIssuedEvent extends BaseEventPayload {
+  eventId: string;
+  organizationId: string;
+  /** User ids eligible to receive a certificate (checked-in attendees). */
+  userIds: string[];
+  /** Optional link validity hint surfaced to the recipient. */
+  validityHint?: string;
+}
+
+/**
+ * Fires from the subscription-reminder scheduled function exactly once
+ * when `daysUntilRenewal == 7` for a paid, active subscription. Payload
+ * carries pre-formatted copy so the listener doesn't need the
+ * subscription repository.
+ */
+export interface SubscriptionExpiringSoonEvent extends BaseEventPayload {
+  organizationId: string;
+  planKey: string;
+  /** Pre-formatted XOF amount for the template. */
+  amount: string;
+  /** ISO timestamp of the current period end. */
+  renewalAt: string;
+  daysUntilRenewal: number;
+}
+
+/**
+ * Fires (at most) once per day per org when any plan usage dimension
+ * crosses 80%. `dimension` is a stable key (events/members/participants);
+ * listeners translate it to a localized label.
+ */
+export interface SubscriptionApproachingLimitEvent extends BaseEventPayload {
+  organizationId: string;
+  planKey: string;
+  dimension: "events" | "members" | "participants";
+  current: number;
+  limit: number;
+  /** Rounded percentage (0-100). */
+  percent: number;
 }
 
 // ── Speaker ───────────────────────────────────────────────────────────────
@@ -725,6 +898,7 @@ export interface DomainEventMap {
   "access_zone.removed": AccessZoneRemovedEvent;
   "event.created": EventCreatedEvent;
   "event.updated": EventUpdatedEvent;
+  "event.rescheduled": EventRescheduledEvent;
   "event.qr_key_rotated": EventQrKeyRotatedEvent;
   "event.published": EventPublishedEvent;
   "event.unpublished": EventUnpublishedEvent;
@@ -740,13 +914,15 @@ export interface DomainEventMap {
   "organization.updated": OrganizationUpdatedEvent;
   "member.added": MemberAddedEvent;
   "member.removed": MemberRemovedEvent;
-  "member.role_updated": MemberRoleUpdatedEvent;
+  "member.role_changed": MemberRoleChangedEvent;
   "badge.generated": BadgeGeneratedEvent;
   "badge.bulk_generated": BadgeBulkGeneratedEvent;
   "payment.initiated": PaymentInitiatedEvent;
   "payment.succeeded": PaymentSucceededEvent;
   "payment.failed": PaymentFailedEvent;
   "payment.refunded": PaymentRefundedEvent;
+  "refund.issued": RefundIssuedEvent;
+  "refund.failed": RefundFailedEvent;
   "broadcast.sent": BroadcastSentEvent;
   "speaker.added": SpeakerAddedEvent;
   "speaker.removed": SpeakerRemovedEvent;
@@ -804,10 +980,15 @@ export interface DomainEventMap {
   "newsletter.sent": NewsletterSentEvent;
   // Notification preferences
   "notification.unsubscribed": NotificationUnsubscribedEvent;
+  "notification.resubscribed": NotificationResubscribedEvent;
   // Notification dispatcher (Phase 1)
   "notification.sent": NotificationSentEvent;
   "notification.suppressed": NotificationSuppressedEvent;
   "notification.setting_updated": NotificationSettingUpdatedEvent;
+  // Phase 2.4 — admin "test send" path.
+  "notification.test_sent": NotificationTestSentEvent;
+  // Notification dispatcher (Phase 2.2 — persistent dedup)
+  "notification.deduplicated": NotificationDeduplicatedEvent;
   // User lifecycle (Phase 2)
   "user.created": UserCreatedEvent;
   "user.password_changed": UserPasswordChangedEvent;
@@ -815,6 +996,11 @@ export interface DomainEventMap {
   // Subscription billing (Phase 2)
   "subscription.past_due": SubscriptionPastDueEvent;
   "subscription.cancelled": SubscriptionCancelledEvent;
+  // Phase 2.3 — post-event + lifecycle nudges
+  "event.feedback_requested": EventFeedbackRequestedEvent;
+  "event.certificates_issued": EventCertificatesIssuedEvent;
+  "subscription.expiring_soon": SubscriptionExpiringSoonEvent;
+  "subscription.approaching_limit": SubscriptionApproachingLimitEvent;
 }
 
 export type DomainEventName = keyof DomainEventMap;

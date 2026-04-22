@@ -1,0 +1,428 @@
+name: Notification Ops Prerequisites
+
+# One-shot workflow that provisions the out-of-band notification
+# infrastructure the regular deploy can't (or shouldn't) set up on every
+# push: Firestore TTL policies, Cloud Monitoring log-based alert policies,
+# and Secret Manager entries for the internal dispatch secret.
+#
+# Explicitly NOT in scope (to avoid duplicating work the regular pipeline
+# already owns):
+#   • Firestore composite indexes — deployed on every push to develop by
+#     `.github/workflows/deploy-staging.yml → deploy-firebase` via
+#     `firebase deploy --only firestore:indexes`. Drift is caught by the
+#     `Firestore Index Coverage` CI check.
+#   • Cloud Run service creation — owned by deploy-staging.yml.
+#   • Cloud Functions deploy — owned by deploy-staging.yml.
+#
+# Idempotency: every step is safe to re-run. Secret versions are only
+# appended when the value differs; TTL is a no-op if already enabled;
+# alert policies are upserted by displayName.
+#
+# Trigger: manual (`workflow_dispatch`). Staging is unprotected; the
+# `production` environment relies on GitHub's "required reviewers"
+# protection (configure under Settings → Environments → production).
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment"
+        required: true
+        default: staging
+        type: choice
+        options:
+          - staging
+          - production
+      dry_run:
+        description: "Preview changes without applying (true = read-only)"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "true"
+          - "false"
+      skip_ttl:
+        description: "Skip Firestore TTL activation"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "true"
+          - "false"
+      skip_alert_policies:
+        description: "Skip Cloud Monitoring alert policies"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "true"
+          - "false"
+      skip_secret_provisioning:
+        description: "Skip Secret Manager + Cloud Run binding"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "true"
+          - "false"
+
+concurrency:
+  # Don't run two ops workflows against the same env at once.
+  group: notification-ops-${{ inputs.environment }}
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: "22"
+  # Region pinned to match every other workload in deploy-staging.yml.
+  REGION: europe-west1
+  # Firestore collection group that carries `expiresAt` (Phase 2.5).
+  TTL_COLLECTION_GROUP: notificationDispatchLog
+  TTL_FIELD: expiresAt
+  # Cloud Run service names — must match the ones created by
+  # deploy-staging.yml. Staging uses -staging suffix; production uses
+  # -production. Both are derived at runtime from the environment input.
+  API_SERVICE_NAME: teranga-api-${{ inputs.environment }}
+  # Name of the Cloud Functions runtime service account. In the absence
+  # of an override, Cloud Functions v2 runs as the default compute SA
+  # which we also grant access to the dispatch secret.
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    name: Plan (summarize actions)
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    outputs:
+      project_id: ${{ steps.summary.outputs.project_id }}
+    steps:
+      - name: Summarise planned actions
+        id: summary
+        env:
+          SA_KEY: ${{ secrets.GCP_SA_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SA_KEY:-}" ]; then
+            echo "::error::GCP_SA_KEY secret is missing on environment '${{ inputs.environment }}'."
+            echo "::error::Add it under Settings → Environments → ${{ inputs.environment }} → Environment secrets."
+            exit 1
+          fi
+          PROJECT_ID=$(echo "$SA_KEY" | jq -r '.project_id')
+          if [ -z "$PROJECT_ID" ] || [ "$PROJECT_ID" = "null" ]; then
+            echo "::error::GCP_SA_KEY does not contain a project_id field."
+            exit 1
+          fi
+          echo "project_id=$PROJECT_ID" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "# Notification ops plan"
+            echo
+            echo "- Environment: **${{ inputs.environment }}**"
+            echo "- GCP project: **$PROJECT_ID**"
+            echo "- Dry-run: **${{ inputs.dry_run }}**"
+            echo "- Region: **$REGION**"
+            echo
+            echo "## Actions"
+            echo "| Step | Skipped? |"
+            echo "| --- | --- |"
+            echo "| Firestore TTL on \`$TTL_COLLECTION_GROUP.$TTL_FIELD\` | ${{ inputs.skip_ttl }} |"
+            echo "| Cloud Monitoring alert policies (warn + critical) | ${{ inputs.skip_alert_policies }} |"
+            echo "| Secret Manager \`INTERNAL_DISPATCH_SECRET\` + Cloud Run binding | ${{ inputs.skip_secret_provisioning }} |"
+            echo
+            if [ "${{ inputs.dry_run }}" = "true" ]; then
+              echo "> **Dry-run mode** — no changes will be applied. Re-run with \`dry_run=false\` to execute."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ─── Firestore TTL activation ────────────────────────────────────────────
+  firestore-ttl:
+    name: Enable Firestore TTL on notificationDispatchLog.expiresAt
+    runs-on: ubuntu-latest
+    needs: plan
+    if: ${{ inputs.skip_ttl == 'false' }}
+    environment: ${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Ensure required service is enabled
+        # firestore.googleapis.com is already enabled by deploy-staging.yml,
+        # but we verify here so a first-run against a fresh project works.
+        # Idempotent.
+        run: |
+          set -euo pipefail
+          gcloud services enable firestore.googleapis.com \
+            --project="${{ needs.plan.outputs.project_id }}" \
+            --quiet
+
+      - name: Inspect current TTL state
+        id: current
+        run: |
+          set -euo pipefail
+          # `gcloud firestore fields describe` returns the field config
+          # including TTL policy. Exits 0 even when no policy is set — we
+          # parse the output to decide whether to toggle.
+          STATE=$(gcloud firestore fields describe "$TTL_FIELD" \
+            --collection-group="$TTL_COLLECTION_GROUP" \
+            --project="${{ needs.plan.outputs.project_id }}" \
+            --database="(default)" \
+            --format='value(ttlConfig.state)' 2>/dev/null || echo "NOT_CONFIGURED")
+          echo "Current TTL state: $STATE"
+          echo "state=$STATE" >> "$GITHUB_OUTPUT"
+
+      - name: Enable TTL
+        if: ${{ inputs.dry_run == 'false' && steps.current.outputs.state != 'ACTIVE' && steps.current.outputs.state != 'CREATING' }}
+        run: |
+          set -euo pipefail
+          # `gcloud firestore fields ttls update` is the canonical async
+          # command — it returns an operation id we don't need to block on.
+          # TTL typically activates within a few minutes; until then, rows
+          # accumulate but nothing breaks.
+          gcloud firestore fields ttls update "$TTL_FIELD" \
+            --collection-group="$TTL_COLLECTION_GROUP" \
+            --project="${{ needs.plan.outputs.project_id }}" \
+            --database="(default)" \
+            --enable-ttl \
+            --async \
+            --quiet
+          echo "::notice::TTL activation requested. Check state with: gcloud firestore fields describe $TTL_FIELD --collection-group=$TTL_COLLECTION_GROUP"
+
+      - name: Log dry-run decision
+        if: ${{ inputs.dry_run == 'true' }}
+        run: |
+          echo "::notice::DRY-RUN — would enable TTL on $TTL_COLLECTION_GROUP.$TTL_FIELD (current state: ${{ steps.current.outputs.state }})"
+
+      - name: Log no-op when already active
+        if: ${{ inputs.dry_run == 'false' && (steps.current.outputs.state == 'ACTIVE' || steps.current.outputs.state == 'CREATING') }}
+        run: |
+          echo "::notice::TTL already ${{ steps.current.outputs.state }} — no action taken."
+
+  # ─── Cloud Monitoring alert policies ─────────────────────────────────────
+  alert-policies:
+    name: Upsert Cloud Monitoring alert policies
+    runs-on: ubuntu-latest
+    needs: plan
+    if: ${{ inputs.skip_alert_policies == 'false' }}
+    environment: ${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Ensure monitoring API is enabled
+        run: |
+          set -euo pipefail
+          gcloud services enable monitoring.googleapis.com \
+            --project="${{ needs.plan.outputs.project_id }}" \
+            --quiet
+
+      - name: Upsert "Notification bounce rate (warn)"
+        if: ${{ inputs.dry_run == 'false' }}
+        run: |
+          set -euo pipefail
+          bash ./.github/scripts/upsert-alert-policy.sh \
+            "${{ needs.plan.outputs.project_id }}" \
+            "Notification bounce rate (warn)" \
+            "infrastructure/monitoring/notification-bounce-rate-warn.yaml"
+
+      - name: Upsert "Notification bounce rate (critical)"
+        if: ${{ inputs.dry_run == 'false' }}
+        run: |
+          set -euo pipefail
+          bash ./.github/scripts/upsert-alert-policy.sh \
+            "${{ needs.plan.outputs.project_id }}" \
+            "Notification bounce rate (critical)" \
+            "infrastructure/monitoring/notification-bounce-rate-critical.yaml"
+
+      - name: Log dry-run decision
+        if: ${{ inputs.dry_run == 'true' }}
+        run: |
+          echo "::notice::DRY-RUN — would upsert 2 alert policies (warn + critical). See infrastructure/monitoring/*.yaml."
+
+      - name: Remind operators to attach notification channels
+        run: |
+          cat <<EOF >> "$GITHUB_STEP_SUMMARY"
+
+          ### Alert policies
+
+          The policy YAMLs ship without \`notificationChannels\` because
+          channel ids are environment-specific. Attach them once via:
+
+          \`\`\`
+          gcloud alpha monitoring policies list \\
+            --filter='displayName:"Notification bounce rate"' \\
+            --project=${{ needs.plan.outputs.project_id }}
+
+          gcloud alpha monitoring policies update <POLICY_ID> \\
+            --add-notification-channels=<CHANNEL_ID> \\
+            --project=${{ needs.plan.outputs.project_id }}
+          \`\`\`
+
+          Create channels first in the console: Cloud Monitoring → Alerting
+          → Notification channels. PagerDuty for the critical policy,
+          Slack (#notifications-ops) for the warn policy.
+          EOF
+
+  # ─── Secret Manager + Cloud Run binding ──────────────────────────────────
+  secret-provisioning:
+    name: Provision INTERNAL_DISPATCH_SECRET and bind to Cloud Run
+    runs-on: ubuntu-latest
+    needs: plan
+    if: ${{ inputs.skip_secret_provisioning == 'false' }}
+    environment: ${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Ensure required services are enabled
+        run: |
+          set -euo pipefail
+          gcloud services enable \
+            secretmanager.googleapis.com \
+            run.googleapis.com \
+            --project="${{ needs.plan.outputs.project_id }}" \
+            --quiet
+
+      - name: Provision INTERNAL_DISPATCH_SECRET
+        if: ${{ inputs.dry_run == 'false' }}
+        env:
+          PROJECT_ID: ${{ needs.plan.outputs.project_id }}
+          # INTERNAL_DISPATCH_SECRET_VALUE is optional. When set, the
+          # provided value is used as the Secret Manager payload. When
+          # empty / unset, a random 48-char token is generated here so
+          # the secret never starts life as a known value. Rotation path:
+          # update the GitHub environment secret, then re-run this
+          # workflow — the version is appended only when changed.
+          DESIRED_VALUE: ${{ secrets.INTERNAL_DISPATCH_SECRET_VALUE }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${DESIRED_VALUE:-}" ]; then
+            # Generate a cryptographically random secret. 48 random bytes,
+            # base64 urlsafe encoded → ~64 chars, well above the 32 min
+            # enforced by the API config schema.
+            DESIRED_VALUE=$(openssl rand -base64 48 | tr -d '\n=' | tr '+/' '-_')
+            echo "::notice::No INTERNAL_DISPATCH_SECRET_VALUE env secret provided — generated a random 48-byte token."
+          fi
+
+          # Cloud Functions v2 runtime SA = default compute SA unless overridden.
+          PROJECT_NUMBER=$(gcloud projects describe "$PROJECT_ID" --format='value(projectNumber)')
+          FUNCTIONS_SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
+          CLOUD_RUN_SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
+
+          if ! gcloud secrets describe INTERNAL_DISPATCH_SECRET \
+              --project="$PROJECT_ID" >/dev/null 2>&1; then
+            echo "::notice::Creating secret INTERNAL_DISPATCH_SECRET"
+            gcloud secrets create INTERNAL_DISPATCH_SECRET \
+              --project="$PROJECT_ID" \
+              --replication-policy=automatic \
+              --quiet
+          else
+            echo "::notice::Secret INTERNAL_DISPATCH_SECRET already exists"
+          fi
+
+          # Add a version only when the latest stored value differs from
+          # the desired one. Prevents version churn on re-runs.
+          CURRENT=$(gcloud secrets versions access latest \
+            --secret=INTERNAL_DISPATCH_SECRET \
+            --project="$PROJECT_ID" 2>/dev/null || echo "")
+
+          if [ "$CURRENT" = "$DESIRED_VALUE" ]; then
+            echo "::notice::Secret version unchanged — skipping add"
+          else
+            printf '%s' "$DESIRED_VALUE" | gcloud secrets versions add INTERNAL_DISPATCH_SECRET \
+              --project="$PROJECT_ID" \
+              --data-file=- \
+              --quiet >/dev/null
+            echo "::notice::Added new version to INTERNAL_DISPATCH_SECRET"
+          fi
+
+          # Grant both runtimes read access. Idempotent.
+          for sa in "$FUNCTIONS_SA" "$CLOUD_RUN_SA"; do
+            gcloud secrets add-iam-policy-binding INTERNAL_DISPATCH_SECRET \
+              --project="$PROJECT_ID" \
+              --member="serviceAccount:$sa" \
+              --role=roles/secretmanager.secretAccessor \
+              --condition=None \
+              --quiet >/dev/null || \
+              echo "::warning::Could not grant accessor on INTERNAL_DISPATCH_SECRET to $sa"
+          done
+
+      - name: Bind secret onto the API Cloud Run service
+        if: ${{ inputs.dry_run == 'false' }}
+        env:
+          PROJECT_ID: ${{ needs.plan.outputs.project_id }}
+        run: |
+          set -euo pipefail
+          # Cloud Run merges --update-secrets with any existing env vars /
+          # secrets on the service. Re-running is a no-op when the binding
+          # already points at :latest.
+          if ! gcloud run services describe "$API_SERVICE_NAME" \
+              --region="$REGION" \
+              --project="$PROJECT_ID" >/dev/null 2>&1; then
+            echo "::warning::Cloud Run service $API_SERVICE_NAME does not exist yet."
+            echo "::warning::Run the regular deploy workflow first, then re-run this one."
+            exit 0
+          fi
+
+          gcloud run services update "$API_SERVICE_NAME" \
+            --region="$REGION" \
+            --project="$PROJECT_ID" \
+            --update-secrets="INTERNAL_DISPATCH_SECRET=INTERNAL_DISPATCH_SECRET:latest" \
+            --quiet
+
+          echo "::notice::Bound INTERNAL_DISPATCH_SECRET=latest onto $API_SERVICE_NAME"
+
+      - name: Log dry-run decision
+        if: ${{ inputs.dry_run == 'true' }}
+        run: |
+          echo "::notice::DRY-RUN — would (a) create/update Secret Manager entry INTERNAL_DISPATCH_SECRET, (b) grant both runtimes accessor, (c) bind secret to $API_SERVICE_NAME."
+
+      - name: Remind operators about Cloud Functions env
+        run: |
+          cat <<EOF >> "$GITHUB_STEP_SUMMARY"
+
+          ### Cloud Functions side
+
+          Functions v2 reads \`INTERNAL_DISPATCH_SECRET\` from plain env.
+          Wire it into \`apps/functions/\` by one of:
+
+          1. Add a \`defineSecret("INTERNAL_DISPATCH_SECRET")\` declaration
+             in \`apps/functions/src/utils/internal-dispatch.ts\` and bind
+             it on the reminder / post-event / subscription-reminder
+             trigger options (preferred — rotation without redeploy).
+          2. Set via \`firebase functions:secrets:set INTERNAL_DISPATCH_SECRET\`
+             once; subsequent deploys pick it up automatically.
+
+          Either way the value must equal the Secret Manager entry this
+          workflow provisioned.
+          EOF
+
+  # ─── Summary ─────────────────────────────────────────────────────────────
+  summary:
+    name: Summary
+    runs-on: ubuntu-latest
+    needs: [plan, firestore-ttl, alert-policies, secret-provisioning]
+    if: always()
+    steps:
+      - name: Emit run outcome
+        run: |
+          {
+            echo "## Run outcome"
+            echo
+            echo "| Step | Result |"
+            echo "| --- | --- |"
+            echo "| plan | ${{ needs.plan.result }} |"
+            echo "| firestore-ttl | ${{ needs.firestore-ttl.result }} |"
+            echo "| alert-policies | ${{ needs.alert-policies.result }} |"
+            echo "| secret-provisioning | ${{ needs.secret-provisioning.result }} |"
+          } >> "$GITHUB_STEP_SUMMARY"

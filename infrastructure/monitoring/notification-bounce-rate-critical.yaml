@@ -1,0 +1,28 @@
+# Cloud Monitoring log-based alert policy — bounce-rate CRITICAL.
+#
+# Provisioned by .github/workflows/notification-ops-prereqs.yml. See the
+# warn-threshold sibling file for the full rationale.
+
+displayName: "Notification bounce rate (critical)"
+documentation:
+  content: |
+    Bounce-rate ≥ 5% over a rolling 1 h window for a single sending domain.
+    Page on-call IMMEDIATELY — Gmail/Yahoo will start deferring or
+    rejecting outright if this isn't acted on within ~30 min.
+    Runbook: docs/notifications/alerting.md.
+  mimeType: text/markdown
+combiner: OR
+enabled: true
+conditions:
+  - displayName: "monitorBounceRate emitted a critical alert"
+    conditionMatchedLog:
+      filter: |
+        severity="ERROR"
+        resource.type="cloud_function"
+        resource.labels.function_name="monitorBounceRate"
+        jsonPayload.message="notification.bounce_rate_alert"
+        jsonPayload.severity="critical"
+alertStrategy:
+  notificationRateLimit:
+    period: 300s # one page every 5 min
+  autoClose: 86400s

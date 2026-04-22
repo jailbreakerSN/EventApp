@@ -432,6 +432,59 @@ describe("EventService.update", () => {
       service.update(event.id, { title: "Nope" } as unknown as UpdateEventDto, user),
     ).rejects.toThrow("Accès refusé");
   });
+
+  it("emits BOTH event.updated and event.rescheduled when startDate changes", async () => {
+    // Phase 2 notification split: rescheduling must fire a dedicated
+    // `event.rescheduled` event alongside the generic `event.updated`.
+    // The notification dispatcher subscribes to the former for template
+    // routing; the latter still fires for audit + denorm fan-out.
+    const user = buildOrganizerUser("org-1");
+    const event = buildEvent({
+      organizationId: "org-1",
+      status: "published",
+      startDate: "2026-06-01T09:00:00.000Z",
+      endDate: "2026-07-01T18:00:00.000Z",
+    });
+    mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
+    mockEventRepo.update.mockResolvedValue(undefined);
+
+    await service.update(
+      event.id,
+      { startDate: "2026-06-15T09:00:00.000Z" } as unknown as UpdateEventDto,
+      user,
+    );
+
+    const emittedEventNames = mockEventEmit.mock.calls.map((c) => c[0]);
+    expect(emittedEventNames).toContain("event.updated");
+    expect(emittedEventNames).toContain("event.rescheduled");
+
+    const rescheduledCall = mockEventEmit.mock.calls.find(
+      (c) => c[0] === "event.rescheduled",
+    );
+    expect(rescheduledCall![1]).toMatchObject({
+      eventId: event.id,
+      organizationId: "org-1",
+      previousStartDate: "2026-06-01T09:00:00.000Z",
+      newStartDate: "2026-06-15T09:00:00.000Z",
+    });
+  });
+
+  it("does NOT emit event.rescheduled when only the title changes", async () => {
+    const user = buildOrganizerUser("org-1");
+    const event = buildEvent({ organizationId: "org-1", status: "published" });
+    mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
+    mockEventRepo.update.mockResolvedValue(undefined);
+
+    await service.update(
+      event.id,
+      { title: "Renamed" } as unknown as UpdateEventDto,
+      user,
+    );
+
+    const emittedEventNames = mockEventEmit.mock.calls.map((c) => c[0]);
+    expect(emittedEventNames).toContain("event.updated");
+    expect(emittedEventNames).not.toContain("event.rescheduled");
+  });
 });
 
 describe("EventService.publish", () => {

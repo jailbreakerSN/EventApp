@@ -1,0 +1,37 @@
+# Cloud Monitoring log-based alert policy — bounce-rate WARN.
+#
+# Provisioned by .github/workflows/notification-ops-prereqs.yml. Edit this
+# file rather than touching policies in the console; the workflow upserts
+# from this YAML via gcloud, so console edits get clobbered on the next run.
+#
+# Mirror file for the critical threshold lives next to this one. We split
+# into two policies (not one with two conditions) because each severity
+# routes to a different channel set (warn → Slack, critical → PagerDuty)
+# and Cloud Monitoring's per-condition channel routing is not first-class.
+#
+# Channels list is intentionally empty here — the workflow injects the
+# right ids per environment via:
+#   gcloud alpha monitoring policies update <id> --add-notification-channels=...
+# so this file stays portable across staging / production.
+
+displayName: "Notification bounce rate (warn)"
+documentation:
+  content: |
+    Bounce-rate ≥ 2% over a rolling 1 h window for a single sending domain.
+    Investigate within 4 h. Runbook: docs/notifications/alerting.md.
+  mimeType: text/markdown
+combiner: OR
+enabled: true
+conditions:
+  - displayName: "monitorBounceRate emitted a warn alert"
+    conditionMatchedLog:
+      filter: |
+        severity="ERROR"
+        resource.type="cloud_function"
+        resource.labels.function_name="monitorBounceRate"
+        jsonPayload.message="notification.bounce_rate_alert"
+        jsonPayload.severity="warn"
+alertStrategy:
+  notificationRateLimit:
+    period: 600s # one notification every 10 min — the function emits every 10 min
+  autoClose: 86400s # auto-close after 24 h of no matching logs

@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import {
   NOTIFICATION_CATALOG_BY_KEY,
   type DispatchRequest,
+  type NotificationCategory,
   type NotificationChannel,
   type NotificationDefinition,
   type NotificationRecipient,
@@ -68,6 +69,13 @@ export interface EmailChannelDispatchParams {
   recipient: NotificationRecipient;
   templateParams: Record<string, unknown>;
   idempotencyKey: string;
+  /**
+   * Phase 2.4 — set when the dispatch originates from the admin
+   * "test send" flow. The email adapter forwards this to the
+   * suppression-list check (bypassed) and tags the outbound email
+   * so support can triage preview-generated deliveries.
+   */
+  testMode?: boolean;
 }
 
 export interface EmailChannelDispatchResult {
@@ -78,6 +86,40 @@ export interface EmailChannelDispatchResult {
   /** Machine-readable suppression reason when ok=false. */
   suppressed?: NotificationSuppressionReason;
 }
+
+// ─── Dedup window policy (Phase 2.2) ───────────────────────────────────────
+// How far back the dispatcher looks in the dispatch log to catch a
+// duplicate emit. Keyed by NotificationCategory — event reminders
+// reasonably recur every few days (weekly series, "Save the date" +
+// T-24h reminders) so the window must be shorter than the cadence.
+// Marketing drips are tight (1h ≈ a fat-finger double-click).
+// Transactional / auth / billing are terminal one-shots; 24h gives
+// ample grace for pubsub redelivery + manual retries without blocking
+// legitimate re-sends on day 2.
+//
+// The dispatcher derives the key from definition.category; unknown
+// categories fall back to DEFAULT_DEDUP_WINDOW_MS via the map's nullish
+// lookup below (category is always populated in the catalog, so this
+// is defense in depth).
+const DEDUP_WINDOW_MS: Record<NotificationCategory, number> = {
+  auth: 24 * 60 * 60 * 1000, // 24h
+  billing: 24 * 60 * 60 * 1000, // 24h
+  transactional: 24 * 60 * 60 * 1000, // 24h
+  organizational: 24 * 60 * 60 * 1000, // 24h
+  marketing: 60 * 60 * 1000, // 1h
+};
+/** Fallback for catalog entries with an unknown/unmapped category. */
+const DEFAULT_DEDUP_WINDOW_MS = 24 * 60 * 60 * 1000;
+/**
+ * event.reminder is the one outlier — reminders ship on a 7-day
+ * cadence (Save the date / T-7d / T-1d), so a 24h window misses
+ * nothing yet a 7d window catches accidental double-schedules from
+ * the reminder cron. Keyed by catalog key so we don't punish every
+ * `organizational` notification with the longer window.
+ */
+const DEDUP_WINDOW_MS_BY_KEY: Record<string, number> = {
+  "event.reminder": 7 * 24 * 60 * 60 * 1000, // 7d
+};
 
 // ─── Adapter registry ──────────────────────────────────────────────────────
 // Single global registry. Swappable at test time via setEmailChannelAdapter().
@@ -119,7 +161,11 @@ export class NotificationDispatcherService {
 
       const override = await notificationSettingsRepository.findByKey(req.key);
 
-      if (override && override.enabled === false) {
+      // Phase 2.4 — testMode flows (admin "test send" from the
+      // notifications control plane) bypass admin-disabled and
+      // user-opt-out. A super-admin explicitly triggered the preview,
+      // so we never want a prior admin toggle to hide the template.
+      if (!req.testMode && override && override.enabled === false) {
         this.emitSuppressed(req.key, "batch", "admin_disabled", baseEvent);
         return;
       }
@@ -161,8 +207,10 @@ export class NotificationDispatcherService {
   ): Promise<void> {
     const recipientRef = this.recipientRef(recipient);
 
-    // User opt-out — only applies when the definition allows it.
-    if (definition.userOptOutAllowed && recipient.userId) {
+    // User opt-out — only applies when the definition allows it AND
+    // the caller is not running a test send (admins previewing a
+    // template shouldn't be blocked by an unrelated user's preference).
+    if (!req.testMode && definition.userOptOutAllowed && recipient.userId) {
       const optedOut = await this.isUserOptedOut(recipient.userId, definition.key);
       if (optedOut) {
         this.emitSuppressed(definition.key, recipientRef, "user_opted_out", baseEvent);
@@ -209,16 +257,75 @@ export class NotificationDispatcherService {
 
     const idempotencyKey = this.resolveIdempotencyKey(definition.key, recipient, req);
 
+    // Phase 2.2 — persistent idempotency check. The dispatch log is
+    // queried before every adapter.send so a retried listener / pubsub
+    // redelivery / buggy caller gets short-circuited BEFORE a provider
+    // round-trip, and the event is recorded as "deduplicated" (not
+    // "sent") so admin stats stay accurate. Resend's own idempotency
+    // would catch the dup too, but only after the HTTP round-trip and
+    // without surfacing the retry to our observability stack.
+    //
+    // Window derives from the definition's category (see DEDUP_WINDOW_MS
+    // above) with a per-key override for event.reminder's 7-day cadence.
+    //
+    // Phase 2.4 — testMode skips the dedup check. Every admin preview
+    // is expected to be unique and must always round-trip to the
+    // provider (otherwise "send again" after tweaking sample params
+    // would be silently suppressed).
+    if (!req.testMode) {
+      const windowMs = DEDUP_WINDOW_MS_BY_KEY[definition.key] ??
+        DEDUP_WINDOW_MS[definition.category] ??
+        DEFAULT_DEDUP_WINDOW_MS;
+      const prior = await notificationDispatchLogRepository.findRecentByIdempotencyKey(
+        idempotencyKey,
+        windowMs,
+      );
+      if (prior) {
+        this.emitDeduplicated(
+          definition.key,
+          "email",
+          recipientRef,
+          idempotencyKey,
+          prior.attemptedAt,
+          baseEvent,
+        );
+        return;
+      }
+    }
+
     try {
       const result = await adapter.send({
         definition,
         recipient,
         templateParams: req.params,
         idempotencyKey,
+        ...(req.testMode ? { testMode: true } : {}),
       });
 
       if (result.ok) {
-        this.emitSent(definition.key, "email", recipientRef, result.messageId, baseEvent);
+        if (req.testMode) {
+          // Phase 2.4 — test sends emit a distinct audit event and
+          // NEVER append to the dispatch log so admin stats widgets
+          // stay accurate (test sends are out-of-band previews, not
+          // real traffic).
+          this.emitTestSent(
+            definition.key,
+            "email",
+            recipientRef,
+            result.messageId,
+            recipient.preferredLocale,
+            baseEvent,
+          );
+        } else {
+          this.emitSent(
+            definition.key,
+            "email",
+            recipientRef,
+            result.messageId,
+            idempotencyKey,
+            baseEvent,
+          );
+        }
       } else {
         this.emitSuppressed(
           definition.key,
@@ -226,11 +333,19 @@ export class NotificationDispatcherService {
           result.suppressed ?? "bounced",
           baseEvent,
           "email",
+          idempotencyKey,
         );
       }
     } catch (err) {
       this.logServerError(definition.key, err instanceof Error ? err.message : String(err));
-      this.emitSuppressed(definition.key, recipientRef, "bounced", baseEvent, "email");
+      this.emitSuppressed(
+        definition.key,
+        recipientRef,
+        "bounced",
+        baseEvent,
+        "email",
+        idempotencyKey,
+      );
     }
   }
 
@@ -337,6 +452,7 @@ export class NotificationDispatcherService {
     channel: NotificationChannel,
     recipientRef: string,
     messageId: string | undefined,
+    idempotencyKey: string,
     baseEvent: { actorId: string; requestId: string; timestamp: string },
   ): void {
     eventBus.emit("notification.sent", {
@@ -355,6 +471,7 @@ export class NotificationDispatcherService {
       recipientRef,
       status: "sent",
       ...(messageId ? { messageId } : {}),
+      idempotencyKey,
       attemptedAt: baseEvent.timestamp,
       requestId: baseEvent.requestId,
       actorId: baseEvent.actorId,
@@ -367,6 +484,7 @@ export class NotificationDispatcherService {
     reason: NotificationSuppressionReason,
     baseEvent: { actorId: string; requestId: string; timestamp: string },
     channel?: NotificationChannel,
+    idempotencyKey?: string,
   ): void {
     eventBus.emit("notification.suppressed", {
       ...baseEvent,
@@ -378,12 +496,86 @@ export class NotificationDispatcherService {
     // Phase 5 observability — same log pipeline as `sent`. `reason`
     // lets the admin UI aggregate suppression by cause (admin_disabled
     // / user_opted_out / on_suppression_list / bounced / no_recipient).
+    //
+    // `idempotencyKey` is optional on this path because pre-adapter
+    // short-circuits (empty recipients, admin_disabled with no per-
+    // recipient context, unsupported channels) happen before it's
+    // computed. When absent we persist a placeholder derived from the
+    // key + recipientRef so the row still carries a stable dedup
+    // identifier for audit queries.
+    const effectiveIdempotencyKey =
+      idempotencyKey ?? `${key}:${recipientRef}:pre-adapter`;
     void notificationDispatchLogRepository.append({
       key,
       channel: channel ?? "email",
       recipientRef,
       status: "suppressed",
       reason,
+      idempotencyKey: effectiveIdempotencyKey,
+      attemptedAt: baseEvent.timestamp,
+      requestId: baseEvent.requestId,
+      actorId: baseEvent.actorId,
+    });
+  }
+
+  /**
+   * Phase 2.2 — persistent-dedup emit path. Fires a
+   * `notification.deduplicated` domain event AND appends a log row
+   * with status="deduplicated" so the admin stats aggregation can
+   * count retry storms separately from real sends. Intentionally
+   * does NOT emit notification.sent — that would double-count the
+   * send in downstream listeners (audit trail would show two
+   * deliveries when only one ever reached the provider).
+   */
+  /**
+   * Phase 2.4 — test-send emit path. Fires `notification.test_sent`
+   * (distinct from `notification.sent`) and deliberately does NOT
+   * append to the dispatch log. Rationale: admin previews must not
+   * inflate delivery stats — an admin testing a template 20 times in
+   * a row would otherwise skew the bounce rate and fill the suppression
+   * histogram with noise.
+   */
+  private emitTestSent(
+    key: string,
+    channel: NotificationChannel,
+    recipientRef: string,
+    messageId: string | undefined,
+    locale: "fr" | "en" | "wo",
+    baseEvent: { actorId: string; requestId: string; timestamp: string },
+  ): void {
+    eventBus.emit("notification.test_sent", {
+      ...baseEvent,
+      key,
+      channel,
+      recipientRef,
+      locale,
+      ...(messageId ? { messageId } : {}),
+    });
+  }
+
+  private emitDeduplicated(
+    key: string,
+    channel: NotificationChannel,
+    recipientRef: string,
+    idempotencyKey: string,
+    originalAttemptedAt: string,
+    baseEvent: { actorId: string; requestId: string; timestamp: string },
+  ): void {
+    eventBus.emit("notification.deduplicated", {
+      ...baseEvent,
+      key,
+      channel,
+      recipientRef,
+      idempotencyKey,
+      originalAttemptedAt,
+    });
+    void notificationDispatchLogRepository.append({
+      key,
+      channel,
+      recipientRef,
+      status: "deduplicated",
+      idempotencyKey,
+      deduplicated: true,
       attemptedAt: baseEvent.timestamp,
       requestId: baseEvent.requestId,
       actorId: baseEvent.actorId,

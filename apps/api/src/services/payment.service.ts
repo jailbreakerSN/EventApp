@@ -627,6 +627,24 @@ export class PaymentService extends BaseService {
       throw err;
     }
     if (!result.success) {
+      // Notify the customer-facing "refund failed" template BEFORE
+      // throwing. Emits `refund.failed` so the dispatcher listener
+      // routes to the dedicated copy ("we couldn't process your refund
+      // — contact support"). Separate emit from the thrown error so
+      // dispatch stays fire-and-forget.
+      const failureNow = new Date().toISOString();
+      eventBus.emit("refund.failed", {
+        paymentId,
+        registrationId: payment.registrationId,
+        eventId: payment.eventId,
+        organizationId: payment.organizationId,
+        amount: refundAmount,
+        failureReason: result.reason ?? "provider_refused",
+        actorId: user.uid,
+        requestId: getRequestId(),
+        timestamp: failureNow,
+      });
+
       // Surface the specific reason when the provider tags it. Orange
       // Money in particular never supports programmatic refunds — the
       // operator has to process the refund via their OM merchant
@@ -734,7 +752,28 @@ export class PaymentService extends BaseService {
       tx.delete(lockRef);
     });
 
+    // Generic audit / state-transition event — fires on every successful
+    // refund regardless of template routing. Kept so audit consumers,
+    // accounting exports, and the admin-facing timeline don't have to
+    // track the new refund-specific events.
     eventBus.emit("payment.refunded", {
+      paymentId,
+      registrationId: payment.registrationId,
+      eventId: payment.eventId,
+      organizationId: payment.organizationId,
+      amount: refundAmount,
+      reason,
+      actorId: user.uid,
+      requestId: getRequestId(),
+      timestamp: now,
+    });
+
+    // Notification trigger — dispatcher listener routes this to the
+    // customer-facing `refund.issued` template. Separate from
+    // `payment.refunded` per the Phase 2 notification catalog split so
+    // the failure path (`refund.failed`) can drive its own template
+    // with distinct copy without branching off `payment.refunded`.
+    eventBus.emit("refund.issued", {
       paymentId,
       registrationId: payment.registrationId,
       eventId: payment.eventId,
