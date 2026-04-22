@@ -21,3 +21,4 @@ export * from "./venue.types";
 export * from "./subscription.types";
 export * from "./plan.types";
 export * from "./notification-catalog";
+export * from "./notification-preferences.types";

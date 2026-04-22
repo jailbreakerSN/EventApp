@@ -894,3 +894,77 @@ export function assertCatalogIntegrity(
 // Fail-fast at import. The invariants are cheap and a misconfigured
 // catalog in prod would silently drop sends — better to never boot.
 assertCatalogIntegrity();
+
+// ─── Channel Adapter Contract (Phase 2.6) ──────────────────────────────────
+// Forward-looking, cross-channel adapter contract. Today only email is wired
+// through `EmailChannelAdapter` (see apps/api/src/services/
+// notification-dispatcher.service.ts). As SMS / push / in_app land in
+// Phase 6+, each provider ships a `ChannelAdapter` matching the shape below
+// and registers it with the channel registry
+// (apps/api/src/services/notifications/channel-registry.ts). The dispatcher
+// is not yet wired to the forward-looking registry — integration is Phase 3.
+
+/**
+ * Machine-readable capability profile each adapter advertises so the
+ * dispatcher / admin UI can reason about template fit without calling the
+ * provider. e.g. SMS adapters expose `maxBodyLength: 160`, email adapters
+ * expose `attachments: true`.
+ */
+export const ChannelCapabilitiesSchema = z.object({
+  /** True when the channel honours file attachments (today: email only). */
+  attachments: z.boolean(),
+  /** True when the channel renders HTML / rich markup (email + in_app). */
+  richText: z.boolean(),
+  /** Max body length in chars. 0 = unlimited. */
+  maxBodyLength: z.number().int().nonnegative(),
+  /** Locales the provider supports. Empty = every catalog locale. */
+  supportedLocales: z.array(NotificationLocaleSchema),
+});
+
+export type ChannelCapabilities = z.infer<typeof ChannelCapabilitiesSchema>;
+
+/**
+ * Cross-channel dispatch params — the dispatcher hands these to every
+ * channel adapter. Email today, SMS / push / in_app as adapters are
+ * wired in Phase 6+. The shape is intentionally generic: template
+ * resolution (react-email, SMS string builder, push payload builder)
+ * is the adapter's responsibility.
+ */
+export interface ChannelDispatchParams<
+  P extends Record<string, unknown> = Record<string, unknown>,
+> {
+  definition: NotificationDefinition;
+  recipient: NotificationRecipient;
+  templateParams: P;
+  idempotencyKey: string;
+  /** Populated when the admin issued a "test send" from the control plane. */
+  testMode?: boolean;
+}
+
+export interface ChannelDispatchResult {
+  ok: boolean;
+  /** Provider-returned id (Resend message id, Twilio sid, FCM message name). */
+  providerMessageId?: string;
+  /** Machine-readable suppression reason when ok=false. */
+  suppressed?: NotificationSuppressionReason;
+  /** Cost in XOF *1000 micro-units (integer). Optional — only SMS tracks this today. */
+  costXofMicro?: number;
+}
+
+/**
+ * Every channel implementation registers an adapter matching this contract.
+ * Contract rules (enforced in code review, not yet by types):
+ *   - send() never throws; failures bubble via ok=false + suppressed.
+ *   - supports() is a fast synchronous check (used by the dispatcher to
+ *     skip a channel without touching Firestore).
+ *   - capabilities describes what templating features the channel honours
+ *     (attachments: email only; richText: email+in_app; shortBody: sms).
+ */
+export interface ChannelAdapter<
+  P extends Record<string, unknown> = Record<string, unknown>,
+> {
+  readonly channel: NotificationChannel;
+  readonly capabilities: ChannelCapabilities;
+  supports(definition: NotificationDefinition): boolean;
+  send(params: ChannelDispatchParams<P>): Promise<ChannelDispatchResult>;
+}
