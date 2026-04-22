@@ -13,7 +13,13 @@ import {
   UpdateUserRolesSchema,
   UpdateUserStatusSchema,
   AssignPlanSchema,
+  NOTIFICATION_CATALOG,
+  NotificationSettingSchema,
+  type NotificationDefinition,
 } from "@teranga/shared-types";
+import { notificationSettingsRepository } from "@/repositories/notification-settings.repository";
+import { eventBus } from "@/events/event-bus";
+import { getRequestId } from "@/context/request-context";
 
 const ParamsUserId = z.object({ userId: z.string() });
 const ParamsOrgId = z.object({ orgId: z.string() });
@@ -230,6 +236,137 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
         request.user!,
       );
       return reply.send({ success: true, data: subscription });
+    },
+  );
+
+  // ─── Notification Control Plane (Phase 4) ─────────────────────────────
+  // Super-admin-only endpoints for enabling/disabling notifications,
+  // overriding default channels, and customising subject lines without
+  // a code deploy. Every write emits notification.setting_updated for
+  // audit; the server-only Firestore rules on notificationSettings mean
+  // these are the ONLY path to toggle a notification.
+  //
+  // Read path: GET /notifications → catalog ⋈ stored overrides (merged)
+  // Write path: PUT /notifications/:key → upsert the setting
+
+  fastify.get(
+    "/notifications",
+    {
+      preHandler: adminPreHandler,
+      schema: {
+        tags: ["Admin", "Notifications"],
+        summary: "List every notification with admin override state",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (_request, reply) => {
+      // Pull every override; small collection (~26 entries in Phase 2),
+      // no pagination. Merge with the catalog so the UI sees one row per
+      // notification with its effective state.
+      const overrides = await notificationSettingsRepository.listAll();
+      const overridesByKey = new Map(overrides.map((s) => [s.key, s]));
+
+      const entries = NOTIFICATION_CATALOG.map((def: NotificationDefinition) => {
+        const override = overridesByKey.get(def.key);
+        return {
+          key: def.key,
+          category: def.category,
+          displayName: def.displayName,
+          description: def.description,
+          supportedChannels: def.supportedChannels,
+          userOptOutAllowed: def.userOptOutAllowed,
+          // Effective state — override wins when present.
+          enabled: override?.enabled ?? true,
+          channels: override?.channels ?? def.defaultChannels,
+          subjectOverride: override?.subjectOverride,
+          hasOverride: override !== undefined,
+          updatedAt: override?.updatedAt,
+          updatedBy: override?.updatedBy,
+        };
+      });
+
+      return reply.send({ success: true, data: entries });
+    },
+  );
+
+  // Body schema: just the mutable fields of NotificationSetting (key +
+  // updatedAt + updatedBy are derived server-side).
+  const UpdateNotificationSettingBody = NotificationSettingSchema.pick({
+    enabled: true,
+    channels: true,
+    subjectOverride: true,
+  });
+  const ParamsNotificationKey = z.object({ key: z.string().min(1) });
+
+  fastify.put<{
+    Params: z.infer<typeof ParamsNotificationKey>;
+    Body: z.infer<typeof UpdateNotificationSettingBody>;
+  }>(
+    "/notifications/:key",
+    {
+      preHandler: [
+        ...adminPreHandler,
+        validate({ params: ParamsNotificationKey, body: UpdateNotificationSettingBody }),
+      ],
+      schema: {
+        tags: ["Admin", "Notifications"],
+        summary: "Upsert the super-admin override for a notification key",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const { key } = request.params;
+      const body = request.body;
+
+      // Catalog check — reject unknown keys so a typo can't create
+      // orphan Firestore docs that the dispatcher would never read.
+      const definition = NOTIFICATION_CATALOG.find((d) => d.key === key);
+      if (!definition) {
+        return reply.status(404).send({
+          success: false,
+          error: { code: "NOT_FOUND", message: `Unknown notification key: ${key}` },
+        });
+      }
+
+      // Enforce channel subset-of-supported (belt-and-suspenders; the
+      // dispatcher already filters). Rejecting here gives a clearer
+      // error than silent filtering.
+      const invalid = body.channels.filter((c) => !definition.supportedChannels.includes(c));
+      if (invalid.length > 0) {
+        return reply.status(400).send({
+          success: false,
+          error: {
+            code: "INVALID_CHANNEL",
+            message: `Channels ${invalid.join(", ")} not supported for ${key}. Supported: ${definition.supportedChannels.join(", ")}.`,
+          },
+        });
+      }
+
+      const now = new Date().toISOString();
+      const setting = {
+        key,
+        enabled: body.enabled,
+        channels: body.channels,
+        ...(body.subjectOverride ? { subjectOverride: body.subjectOverride } : {}),
+        updatedAt: now,
+        updatedBy: request.user!.uid,
+      };
+
+      await notificationSettingsRepository.upsert(setting);
+
+      // Emit the audit event — the listener wired in Phase 1 routes
+      // this into auditLogs under resourceType="notification".
+      eventBus.emit("notification.setting_updated", {
+        actorId: request.user!.uid,
+        requestId: getRequestId(),
+        timestamp: now,
+        key,
+        enabled: body.enabled,
+        channels: body.channels,
+        hasSubjectOverride: body.subjectOverride !== undefined,
+      });
+
+      return reply.send({ success: true, data: setting });
     },
   );
 };

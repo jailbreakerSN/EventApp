@@ -60,6 +60,29 @@ vi.mock("@/services/subscription.service", () => ({
   ),
 }));
 
+const mockNotificationSettingsRepository = {
+  listAll: vi.fn(async () => []),
+  findByKey: vi.fn(async () => null),
+  upsert: vi.fn(async () => undefined),
+};
+
+vi.mock("@/repositories/notification-settings.repository", () => ({
+  notificationSettingsRepository: new Proxy(
+    {},
+    {
+      get: (_t, p) => (mockNotificationSettingsRepository as Record<string, unknown>)[p as string],
+    },
+  ),
+}));
+
+vi.mock("@/events/event-bus", () => ({
+  eventBus: { emit: vi.fn(), on: vi.fn(), off: vi.fn() },
+}));
+
+vi.mock("@/context/request-context", () => ({
+  getRequestId: () => "test-request-id",
+}));
+
 let app: FastifyInstance;
 
 beforeAll(async () => {
@@ -104,7 +127,7 @@ const authHeader = { authorization: "Bearer mock-token" };
 // pass body validation so the rejection comes from the permission
 // middleware, not the validator.
 const ORGANIZER_DENIED_MATRIX: Array<{
-  method: "GET" | "POST" | "PATCH" | "DELETE";
+  method: "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
   url: string;
   body?: Record<string, unknown>;
 }> = [
@@ -121,6 +144,13 @@ const ORGANIZER_DENIED_MATRIX: Array<{
     method: "POST",
     url: "/v1/admin/organizations/org-1/subscription/assign",
     body: { planId: "plan-pro" },
+  },
+  // Phase 4 — notification control plane
+  { method: "GET", url: "/v1/admin/notifications" },
+  {
+    method: "PUT",
+    url: "/v1/admin/notifications/registration.created",
+    body: { enabled: false, channels: ["email"] },
   },
 ];
 
@@ -250,5 +280,98 @@ describe("Admin routes — super_admin happy paths", () => {
       expect.any(Object),
       expect.objectContaining({ limit: 10 }),
     );
+  });
+});
+
+describe("Admin notification control plane (Phase 4)", () => {
+  it("GET /notifications returns every catalog entry merged with stored overrides", async () => {
+    mockNotificationSettingsRepository.listAll.mockResolvedValue([
+      {
+        key: "event.reminder",
+        enabled: false,
+        channels: ["email"],
+        updatedAt: "2026-04-22T10:00:00.000Z",
+        updatedBy: "admin-1",
+      },
+    ]);
+
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/admin/notifications",
+      headers: authHeader,
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body);
+    expect(body.success).toBe(true);
+    expect(body.data.length).toBeGreaterThan(10);
+
+    // Overridden key surfaces enabled=false + hasOverride=true.
+    const overridden = body.data.find((d: { key: string }) => d.key === "event.reminder");
+    expect(overridden.enabled).toBe(false);
+    expect(overridden.hasOverride).toBe(true);
+    // Non-overridden key keeps catalog defaults.
+    const vanilla = body.data.find((d: { key: string }) => d.key === "registration.created");
+    expect(vanilla.hasOverride).toBe(false);
+    expect(vanilla.enabled).toBe(true);
+  });
+
+  it("PUT /notifications/:key upserts the override + emits setting_updated", async () => {
+    const res = await app.inject({
+      method: "PUT",
+      url: "/v1/admin/notifications/event.reminder",
+      headers: { ...authHeader, "content-type": "application/json" },
+      payload: {
+        enabled: false,
+        channels: ["email"],
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(mockNotificationSettingsRepository.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        key: "event.reminder",
+        enabled: false,
+        channels: ["email"],
+        updatedBy: "super-1",
+      }),
+    );
+    // Audit event fired.
+    const { eventBus } = (await import("@/events/event-bus")) as unknown as {
+      eventBus: { emit: ReturnType<typeof vi.fn> };
+    };
+    expect(eventBus.emit).toHaveBeenCalledWith(
+      "notification.setting_updated",
+      expect.objectContaining({
+        key: "event.reminder",
+        enabled: false,
+        channels: ["email"],
+        actorId: "super-1",
+      }),
+    );
+  });
+
+  it("PUT /notifications/:key rejects an unknown notification key (404)", async () => {
+    const res = await app.inject({
+      method: "PUT",
+      url: "/v1/admin/notifications/not.a.real.key",
+      headers: { ...authHeader, "content-type": "application/json" },
+      payload: { enabled: false, channels: ["email"] },
+    });
+    expect(res.statusCode).toBe(404);
+    expect(mockNotificationSettingsRepository.upsert).not.toHaveBeenCalled();
+  });
+
+  it("PUT /notifications/:key rejects unsupported channels (400)", async () => {
+    const res = await app.inject({
+      method: "PUT",
+      url: "/v1/admin/notifications/registration.created",
+      headers: { ...authHeader, "content-type": "application/json" },
+      // Catalog has supportedChannels: ["email"] — "sms" is out of range.
+      payload: { enabled: true, channels: ["sms"] },
+    });
+    expect(res.statusCode).toBe(400);
+    const body = JSON.parse(res.body);
+    expect(body.error.code).toBe("INVALID_CHANNEL");
   });
 });

@@ -45,6 +45,10 @@ interface NotificationPrefs {
   emailTransactional?: boolean;
   emailOrganizational?: boolean;
   emailMarketing?: boolean;
+  // Per-notification-key opt-out (Phase 3). Absent keys = default;
+  // explicit false = opted out for that notification only. Read by the
+  // NotificationDispatcherService.isUserOptedOut guard.
+  byKey?: Record<string, boolean>;
 }
 
 const DEFAULT_PREFS: NotificationPrefs = { email: true, sms: true, push: true };
@@ -156,6 +160,7 @@ export class EmailService {
         emailTransactional: data.emailTransactional,
         emailOrganizational: data.emailOrganizational,
         emailMarketing: data.emailMarketing,
+        byKey: data.byKey,
       };
     } catch {
       return DEFAULT_PREFS;
