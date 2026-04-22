@@ -128,6 +128,17 @@ export type NotificationDefinition = z.infer<typeof NotificationDefinitionSchema
 export const NotificationSettingSchema = z.object({
   /** Matches NotificationDefinition.key. Doc id in Firestore. */
   key: z.string().min(1),
+  /**
+   * Phase 2.4 — when present, this override applies only to the given
+   * organization. Null/omitted = platform-wide override. The dispatcher
+   * resolves per-org first, then falls back to platform, then the catalog
+   * default (see apps/api/src/services/notifications/setting-resolution.ts).
+   *
+   * Doc id layout:
+   *   - platform: `{key}` (back-compat with v1 docs written before this field)
+   *   - per-org:  `{key}__{organizationId}`
+   */
+  organizationId: z.string().min(1).nullable().optional(),
   enabled: z.boolean(),
   channels: z.array(NotificationChannelSchema),
   subjectOverride: I18nStringSchema.optional(),
@@ -136,6 +147,40 @@ export const NotificationSettingSchema = z.object({
 });
 
 export type NotificationSetting = z.infer<typeof NotificationSettingSchema>;
+
+/**
+ * Phase 2.4 — append-only edit history for NotificationSetting docs.
+ * One entry per PUT (admin or organizer), used by the admin UI's history
+ * panel. Retention target: 1 year TTL (Firestore TTL config tracked as a
+ * follow-up ticket — the collection is declared in COLLECTIONS so any
+ * future TTL tooling can reference it by name).
+ */
+export const NotificationSettingHistorySchema = z.object({
+  id: z.string().min(1),
+  key: z.string().min(1),
+  organizationId: z.string().min(1).nullable(),
+  /**
+   * Snapshot of the setting before this edit, or null for the very first
+   * write (no prior platform or org override existed).
+   */
+  previousValue: NotificationSettingSchema.nullable(),
+  /** Snapshot of the setting after this edit. */
+  newValue: NotificationSettingSchema,
+  /**
+   * Machine-readable diff — lists the top-level fields that changed
+   * between previousValue and newValue. Empty array = no-op write (kept
+   * for forensic completeness, should never happen in practice).
+   */
+  diff: z.array(z.string()),
+  actorId: z.string().min(1),
+  /** Role of the actor at the time of the write — "super_admin" or "organizer". */
+  actorRole: z.string().min(1),
+  /** Optional free-text reason for the change (admin UI form field). */
+  reason: z.string().optional(),
+  changedAt: z.string().datetime(),
+});
+
+export type NotificationSettingHistory = z.infer<typeof NotificationSettingHistorySchema>;
 
 // ─── Dispatcher Input ──────────────────────────────────────────────────────
 
@@ -168,6 +213,17 @@ export interface DispatchRequest<P extends Record<string, unknown> = Record<stri
   idempotencyKey?: string;
   /** Force a channel subset — used for admin "test send" flows. */
   channelOverride?: NotificationChannel[];
+  /**
+   * Phase 2.4 — admin "test send" flag. When true the dispatcher:
+   *   - Bypasses the admin-disabled short-circuit.
+   *   - Bypasses user opt-out (test sends target admin-entered addresses).
+   *   - Bypasses the suppression list (admin typed this address explicitly).
+   *   - Skips the persistent-dedup window (every test send is unique).
+   *   - Emits `notification.test_sent` instead of `notification.sent` so
+   *     the audit trail flags these as out-of-band previews and the
+   *     Phase 5 dispatch-log stats stay accurate.
+   */
+  testMode?: boolean;
 }
 
 // ─── Suppression reasons ───────────────────────────────────────────────────
@@ -830,6 +886,98 @@ export const NOTIFICATION_CATALOG: readonly NotificationDefinition[] = [
     triggerDomainEvent: "user.email_changed",
     recipientResolver: "custom",
     scope: "platform",
+  },
+
+  // ─── Phase 2.3 — post-event + lifecycle nudges ─────────────────────────
+  // Scheduled / triggered lifecycle emails that close the feedback loop
+  // after an event ends, surface certificates, and nudge organizers when
+  // their subscription is about to expire or hitting its usage caps.
+  // Scheduled emitters live in apps/functions/src/triggers/ (post-event,
+  // certificate, subscription-reminder) and route through the API's
+  // internal dispatch endpoint.
+  {
+    key: "event.feedback_requested",
+    category: "transactional",
+    displayName: {
+      fr: "Demande de retour sur l'événement",
+      en: "Post-event feedback request",
+      wo: "Ñaan ñu joxe seen xalaat ci événement bi",
+    },
+    description: {
+      fr: "Envoyé 2 heures après la fin d'un événement aux participants présents.",
+      en: "Sent 2 hours after an event ends to every attendee who showed up.",
+      wo: "Yeboo 2 waxtu ginnaaw événement bi, ci ñépp ñu ko wone.",
+    },
+    supportedChannels: ["email", "in_app"],
+    defaultChannels: ["email", "in_app"],
+    userOptOutAllowed: true,
+    templates: { email: "EventFeedbackRequested", in_app: "EventFeedbackRequested" },
+    triggerDomainEvent: "event.feedback_requested",
+    recipientResolver: "custom",
+    scope: "event",
+  },
+  {
+    key: "certificate.ready",
+    category: "organizational",
+    displayName: {
+      fr: "Certificat de participation disponible",
+      en: "Certificate of attendance ready",
+      wo: "Certificat participation bi wóor na",
+    },
+    description: {
+      fr: "Informe le participant que son certificat de participation est prêt à télécharger.",
+      en: "Tells the participant their certificate of attendance is ready to download.",
+      wo: "Yeboo ci kiy bokk ne sa certificat wóor na ngir download.",
+    },
+    supportedChannels: ["email"],
+    defaultChannels: ["email"],
+    userOptOutAllowed: true,
+    templates: { email: "CertificateReady" },
+    triggerDomainEvent: "event.certificates_issued",
+    recipientResolver: "custom",
+    scope: "event",
+  },
+  {
+    key: "subscription.expiring_soon",
+    category: "billing",
+    displayName: {
+      fr: "Abonnement arrivant à expiration",
+      en: "Subscription expiring soon",
+      wo: "Abonnement bi, damay jeex",
+    },
+    description: {
+      fr: "Alerte le contact de facturation 7 jours avant le renouvellement d'un abonnement payant.",
+      en: "Alerts the billing contact 7 days before a paid subscription renews.",
+      wo: "Yeboo ci kiy faye yoon wi 7 fan laata renouvellement bi.",
+    },
+    supportedChannels: ["email"],
+    defaultChannels: ["email"],
+    userOptOutAllowed: false,
+    templates: { email: "SubscriptionExpiringSoon" },
+    triggerDomainEvent: "subscription.expiring_soon",
+    recipientResolver: "org-billing",
+    scope: "organization",
+  },
+  {
+    key: "subscription.approaching_limit",
+    category: "organizational",
+    displayName: {
+      fr: "Limite du plan bientôt atteinte",
+      en: "Plan limit approaching",
+      wo: "Limite plan bi jegesi na",
+    },
+    description: {
+      fr: "Prévient les propriétaires de l'organisation quand une limite du plan dépasse 80%.",
+      en: "Warns organization owners when any plan limit exceeds 80% usage.",
+      wo: "Yeboo ci ñi yor organisation bi bu benn limite ci plan bi weesu 80%.",
+    },
+    supportedChannels: ["email"],
+    defaultChannels: ["email"],
+    userOptOutAllowed: true,
+    templates: { email: "SubscriptionApproachingLimit" },
+    triggerDomainEvent: "subscription.approaching_limit",
+    recipientResolver: "org-owners",
+    scope: "organization",
   },
 ] as const;
 

@@ -32,6 +32,17 @@ export { onPaymentTimeout, onPaymentSucceeded, onPaymentFailed } from "./trigger
 // ─── Scheduled Reminders ────────────────────────────────────────────────────
 export { sendEventReminders, sendSessionReminders } from "./triggers/reminder.triggers";
 
+// ─── Post-event feedback (Phase 2.3) ────────────────────────────────────────
+// Runs every 15 minutes. For events that ended 2h ago, emits
+// event.feedback_requested per checked-in attendee via the API's internal
+// dispatch endpoint.
+export { sendPostEventFollowups } from "./triggers/post-event.triggers";
+
+// ─── Subscription lifecycle nudges (Phase 2.3) ─────────────────────────────
+// Daily 09:00 Africa/Dakar. Emits subscription.expiring_soon (7 days out)
+// and subscription.approaching_limit (>=80% of any usage cap).
+export { sendSubscriptionReminders } from "./triggers/subscription-reminder.triggers";
+
 // ─── Subscription Rollover (Phase 4c: honor prepaid periods) ────────────────
 export { applySubscriptionRollovers } from "./triggers/subscription-rollover.triggers";
 
@@ -49,3 +60,9 @@ export { onNewsletterSubscriberCreated } from "./triggers/resend/on-subscriber-c
 export { onNewsletterSubscriberUpdated } from "./triggers/resend/on-subscriber-updated.trigger";
 export { resendWebhook } from "./triggers/resend/resend-webhook.https";
 export { reconcileResendSegment } from "./triggers/resend/reconcile-resend-segment.scheduled";
+
+// ─── Notification Health Monitor (Phase 2.5) ────────────────────────────────
+// Scheduled 10-min job: aggregates last-hour bounce / complaint rates per
+// sending mailbox and writes alert docs + ERROR-level Cloud Logs when the
+// rate exceeds platform thresholds (2% warn, 5% critical).
+export { monitorBounceRate } from "./triggers/notification-health.triggers";

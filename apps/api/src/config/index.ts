@@ -24,6 +24,16 @@ const envSchema = z.object({
   RESEND_API_KEY: z.string().optional(),
   RESEND_FROM_NAME: z.string().default("Teranga Events"),
 
+  // Legal / compliance footer (Phase 2.5) — physical postal address
+  // stamped into every non-auth / non-billing email. Gmail + Yahoo 2024
+  // bulk-sender rules + Senegalese consumer-protection guidelines
+  // require a reachable postal address on anything that isn't a strict
+  // security send. Default is the Teranga Events office in Dakar; set
+  // an environment-specific override in staging / production.
+  RESEND_POSTAL_ADDRESS: z
+    .string()
+    .default("Teranga Events, Almadies, BP 45678 Dakar, Sénégal"),
+
   // Legacy single-sender fallback — kept so existing environments stay green.
   // New code should resolve senders via the EmailCategory registry; this value
   // is only used when a category-specific var is unset. Default updated

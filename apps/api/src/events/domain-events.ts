@@ -400,6 +400,18 @@ export interface NotificationUnsubscribedEvent extends BaseEventPayload {
   source: "list_unsubscribe_click" | "list_unsubscribe_post";
 }
 
+/**
+ * Phase 2.5 — emitted when a user reverses a per-key opt-out from the
+ * history page. Mirrors NotificationUnsubscribedEvent for audit-trail
+ * symmetry so the admin audit UI can show both sides of the story.
+ */
+export interface NotificationResubscribedEvent extends BaseEventPayload {
+  /** User whose preference flipped back to enabled. */
+  userId: string;
+  /** The catalog key the user resubscribed to. */
+  key: string;
+}
+
 // ── Notification dispatcher (Phase 1) ────────────────────────────────────
 // Emitted by NotificationService.dispatch on every channel delivery,
 // every suppression decision, and every super-admin write to
@@ -443,9 +455,30 @@ export interface NotificationDeduplicatedEvent extends BaseEventPayload {
 
 export interface NotificationSettingUpdatedEvent extends BaseEventPayload {
   key: string;
+  /** Phase 2.4 — null for platform-wide overrides, orgId for per-org overrides. */
+  organizationId: string | null;
   enabled: boolean;
   channels: ("email" | "sms" | "push" | "in_app")[];
   hasSubjectOverride: boolean;
+  /** Doc id of the notificationSettingsHistory entry appended alongside the update. */
+  historyId?: string;
+}
+
+/**
+ * Phase 2.4 — emitted when a super_admin issues a "test send" from the
+ * notifications control plane. Distinct from notification.sent so stats
+ * widgets and the dispatch log can filter these previews out of real
+ * delivery counters.
+ */
+export interface NotificationTestSentEvent extends BaseEventPayload {
+  key: string;
+  channel: "email" | "sms" | "push" | "in_app";
+  /** Redacted recipient — mirrors the recipientRef format used elsewhere. */
+  recipientRef: string;
+  /** Locale the preview was rendered in. */
+  locale: "fr" | "en" | "wo";
+  /** Provider-returned message id when available. */
+  messageId?: string;
 }
 
 // ── User lifecycle (Phase 2 — security + onboarding notifications) ───────
@@ -510,6 +543,72 @@ export interface SubscriptionCancelledEvent extends BaseEventPayload {
   effectiveAt: string;
   /** "self" (admin clicked cancel) | "system" (past_due grace expired). */
   cancelledBy: "self" | "system";
+}
+
+// ── Phase 2.3 — lifecycle nudges ────────────────────────────────────────
+// Scheduled/triggered notification events that close the feedback loop
+// after events end, surface certificates, and nudge organizers when
+// their subscription is about to expire or near a plan-cap.
+
+/**
+ * Fires from the post-event scheduled function (2h after an event ends)
+ * per checked-in registrant. Drives the `event.feedback_requested` email
+ * and in-app notification.
+ */
+export interface EventFeedbackRequestedEvent extends BaseEventPayload {
+  eventId: string;
+  organizationId: string;
+  /** The specific user being nudged. */
+  userId: string;
+  /** Pre-formatted feedback deadline (optional), e.g. "29 avril 2026". */
+  feedbackDeadline?: string;
+}
+
+/**
+ * Fires when an organizer clicks "Issue certificates" in the back-office.
+ * Payload carries the eventId + organizationId + the list of registrant
+ * user ids whose certificate is now downloadable. The dispatcher listener
+ * fans out one email per userId — certificateUrl is resolved per-user
+ * from the certificate service (signed URL).
+ */
+export interface EventCertificatesIssuedEvent extends BaseEventPayload {
+  eventId: string;
+  organizationId: string;
+  /** User ids eligible to receive a certificate (checked-in attendees). */
+  userIds: string[];
+  /** Optional link validity hint surfaced to the recipient. */
+  validityHint?: string;
+}
+
+/**
+ * Fires from the subscription-reminder scheduled function exactly once
+ * when `daysUntilRenewal == 7` for a paid, active subscription. Payload
+ * carries pre-formatted copy so the listener doesn't need the
+ * subscription repository.
+ */
+export interface SubscriptionExpiringSoonEvent extends BaseEventPayload {
+  organizationId: string;
+  planKey: string;
+  /** Pre-formatted XOF amount for the template. */
+  amount: string;
+  /** ISO timestamp of the current period end. */
+  renewalAt: string;
+  daysUntilRenewal: number;
+}
+
+/**
+ * Fires (at most) once per day per org when any plan usage dimension
+ * crosses 80%. `dimension` is a stable key (events/members/participants);
+ * listeners translate it to a localized label.
+ */
+export interface SubscriptionApproachingLimitEvent extends BaseEventPayload {
+  organizationId: string;
+  planKey: string;
+  dimension: "events" | "members" | "participants";
+  current: number;
+  limit: number;
+  /** Rounded percentage (0-100). */
+  percent: number;
 }
 
 // ── Speaker ───────────────────────────────────────────────────────────────
@@ -881,10 +980,13 @@ export interface DomainEventMap {
   "newsletter.sent": NewsletterSentEvent;
   // Notification preferences
   "notification.unsubscribed": NotificationUnsubscribedEvent;
+  "notification.resubscribed": NotificationResubscribedEvent;
   // Notification dispatcher (Phase 1)
   "notification.sent": NotificationSentEvent;
   "notification.suppressed": NotificationSuppressedEvent;
   "notification.setting_updated": NotificationSettingUpdatedEvent;
+  // Phase 2.4 — admin "test send" path.
+  "notification.test_sent": NotificationTestSentEvent;
   // Notification dispatcher (Phase 2.2 — persistent dedup)
   "notification.deduplicated": NotificationDeduplicatedEvent;
   // User lifecycle (Phase 2)
@@ -894,6 +996,11 @@ export interface DomainEventMap {
   // Subscription billing (Phase 2)
   "subscription.past_due": SubscriptionPastDueEvent;
   "subscription.cancelled": SubscriptionCancelledEvent;
+  // Phase 2.3 — post-event + lifecycle nudges
+  "event.feedback_requested": EventFeedbackRequestedEvent;
+  "event.certificates_issued": EventCertificatesIssuedEvent;
+  "subscription.expiring_soon": SubscriptionExpiringSoonEvent;
+  "subscription.approaching_limit": SubscriptionApproachingLimitEvent;
 }
 
 export type DomainEventName = keyof DomainEventMap;

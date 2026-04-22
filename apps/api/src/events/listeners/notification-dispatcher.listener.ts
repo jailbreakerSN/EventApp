@@ -694,6 +694,160 @@ function registerUserListeners(): void {
   });
 }
 
+// ─── Phase 2.3 — post-event + lifecycle nudges ───────────────────────────
+
+function registerPostEventListeners(): void {
+  // Post-event feedback — one dispatch per user. The scheduled function
+  // emits one `event.feedback_requested` event per registrant so each
+  // runs through its own opt-out + dedup path.
+  eventBus.on("event.feedback_requested", async (payload) => {
+    try {
+      const recipient = await recipientFromUserId(payload.userId);
+      if (!recipient) return;
+      const event = await eventRepository.findById(payload.eventId);
+      if (!event) return;
+      const eventEndedAt = formatDateTime(event.endDate);
+      await notificationDispatcher.dispatch({
+        key: "event.feedback_requested",
+        recipients: [recipient],
+        params: {
+          participantName: recipient.email ?? "",
+          eventTitle: event.title,
+          eventEndedAt,
+          feedbackUrl: `/events/${event.slug ?? event.id}/feedback`,
+          feedbackDeadline: payload.feedbackDeadline,
+        },
+        // Keyed on eventId + userId — one feedback email per attendee per
+        // event. The scheduled job's 15-min window is inside the default
+        // 24h dedup window so retries converge on the same key.
+        idempotencyKey: `event-feedback/${payload.eventId}/${payload.userId}`,
+      });
+    } catch (err) {
+      logHandlerError(
+        "event.feedback_requested",
+        err instanceof Error ? err.message : String(err),
+      );
+    }
+  });
+}
+
+function registerCertificateListeners(): void {
+  // Certificates issued — fan out to every eligible user id carried in
+  // the domain-event payload. No Firestore round-trips for the list
+  // (the issuer already enumerated it); we only fetch per-user recipient
+  // context here.
+  eventBus.on("event.certificates_issued", async (payload) => {
+    try {
+      const event = await eventRepository.findById(payload.eventId);
+      if (!event) return;
+      const eventDate = formatDate(event.endDate);
+      for (const userId of payload.userIds) {
+        const recipient = await recipientFromUserId(userId);
+        if (!recipient) continue;
+        await notificationDispatcher.dispatch({
+          key: "certificate.ready",
+          recipients: [recipient],
+          params: {
+            participantName: recipient.email ?? "",
+            eventTitle: event.title,
+            eventDate,
+            // URL shape matches the future certificate download route.
+            // Real signed URL minting happens in the certificate service
+            // when the user clicks; the email just hands over the
+            // participant-facing deep link.
+            certificateUrl: `/events/${event.slug ?? event.id}/certificate`,
+            validityHint: payload.validityHint,
+          },
+          // Stable per user+event so re-issues dedup into the same log row
+          // within the 24h window; a deliberate re-issue weeks later fires
+          // a fresh email.
+          idempotencyKey: `certificate-ready/${payload.eventId}/${userId}`,
+        });
+      }
+    } catch (err) {
+      logHandlerError(
+        "event.certificates_issued",
+        err instanceof Error ? err.message : String(err),
+      );
+    }
+  });
+}
+
+function registerSubscriptionReminderListeners(): void {
+  eventBus.on("subscription.expiring_soon", async (payload) => {
+    try {
+      const recipients = await recipientsForOrgBillingContacts(payload.organizationId);
+      if (recipients.length === 0) return;
+      const org = await organizationRepository.findById(payload.organizationId);
+      if (!org) return;
+      await notificationDispatcher.dispatch({
+        key: "subscription.expiring_soon",
+        recipients,
+        params: {
+          organizationName: org.name,
+          planName: payload.planKey,
+          amount: payload.amount,
+          renewalDate: formatDate(payload.renewalAt),
+          daysUntilRenewal: payload.daysUntilRenewal,
+          manageBillingUrl: "/organization/billing",
+        },
+        // Dedup per-day: the cron runs daily at 09:00. If it retries,
+        // we want the same row. A deliberate resubscribe next month
+        // fires a fresh row (different YYYY-MM-DD).
+        idempotencyKey: `subscription-expiring-soon/${payload.organizationId}/${payload.renewalAt.slice(0, 10)}`,
+      });
+    } catch (err) {
+      logHandlerError(
+        "subscription.expiring_soon",
+        err instanceof Error ? err.message : String(err),
+      );
+    }
+  });
+
+  eventBus.on("subscription.approaching_limit", async (payload) => {
+    try {
+      // Org-owners resolver: owners (+ member list today, until the
+      // dedicated owner-only role lands). Same helper as billing contacts.
+      const recipients = await recipientsForOrgBillingContacts(payload.organizationId);
+      if (recipients.length === 0) return;
+      const org = await organizationRepository.findById(payload.organizationId);
+      if (!org) return;
+      // Dimension → localized label. We keep the three labels inline so
+      // this listener stays dependency-light — the template itself is
+      // i18n'd once by the email adapter.
+      const dimensionLabel =
+        payload.dimension === "events"
+          ? "Événements actifs"
+          : payload.dimension === "members"
+            ? "Membres"
+            : "Participants inscrits";
+      await notificationDispatcher.dispatch({
+        key: "subscription.approaching_limit",
+        recipients,
+        params: {
+          organizationName: org.name,
+          planName: payload.planKey,
+          dimensionLabel,
+          current: String(payload.current),
+          limit: String(payload.limit),
+          percent: String(Math.round(payload.percent)),
+          upgradeUrl: "/organization/billing",
+        },
+        // Dedup per org per day per dimension — different dimensions
+        // should each be able to warn separately (a Starter at 80%
+        // events + 85% members gets two different alerts, day-stamped
+        // so the cron retry converges).
+        idempotencyKey: `subscription-approaching-limit/${payload.organizationId}/${payload.dimension}/${payload.timestamp.slice(0, 10)}`,
+      });
+    } catch (err) {
+      logHandlerError(
+        "subscription.approaching_limit",
+        err instanceof Error ? err.message : String(err),
+      );
+    }
+  });
+}
+
 // ─── Public ───────────────────────────────────────────────────────────────
 
 export function registerNotificationDispatcherListeners(): void {
@@ -704,4 +858,8 @@ export function registerNotificationDispatcherListeners(): void {
   registerTeamListeners();
   registerBillingListeners();
   registerUserListeners();
+  // Phase 2.3
+  registerPostEventListeners();
+  registerCertificateListeners();
+  registerSubscriptionReminderListeners();
 }
