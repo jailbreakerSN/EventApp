@@ -73,6 +73,10 @@
       "title": "Xew-xew bi fees na",
       "description": "Seat yépp jotoon nañu ko."
     },
+    "ZONE_FULL": {
+      "title": "Zoon bi fees na",
+      "description": "Zoon bi jotoon na sa xayma. Joxal participant bi beneen zoon walla xaar."
+    },
     "ORGANIZATION_PLAN_LIMIT": {
       "title": "Xayma bu plan bi jotoon na",
       "description": "Takkal sa plan ngir jal."

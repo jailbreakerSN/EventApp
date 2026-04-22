@@ -165,6 +165,7 @@ export default function SettingsPage() {
   const { resolve: resolveError } = useErrorHandler();
   const tErrors = useTranslations("errors");
   const tErrorActions = useTranslations("errors.actions");
+  const tErrorValidation = useTranslations("errors.validation");
 
   // Load data
   useEffect(() => {
@@ -211,7 +212,7 @@ export default function SettingsPage() {
       setPasswordError(
         resolveError({
           code: "VALIDATION_ERROR",
-          message: "Les mots de passe ne correspondent pas",
+          message: tErrorValidation("passwordMismatch"),
         }),
       );
       return;
@@ -220,7 +221,7 @@ export default function SettingsPage() {
       setPasswordError(
         resolveError({
           code: "VALIDATION_ERROR",
-          message: "Le mot de passe doit contenir au moins 8 caractères",
+          message: tErrorValidation("passwordTooShort"),
         }),
       );
       return;
@@ -488,7 +489,7 @@ export default function SettingsPage() {
                 />
                 {confirmPassword.length > 0 && newPassword !== confirmPassword && (
                   <p className="text-xs text-red-500 mt-1">
-                    Les mots de passe ne correspondent pas
+                    {tErrorValidation("passwordMismatch")}
                   </p>
                 )}
               </div>

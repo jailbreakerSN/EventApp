@@ -92,6 +92,7 @@ export function AssignPlanDialog({ open, org, onClose }: AssignPlanDialogProps) 
   const { resolve: resolveError } = useErrorHandler();
   const tErrors = useTranslations("errors");
   const tErrorActions = useTranslations("errors.actions");
+  const tErrorValidation = useTranslations("errors.validation");
 
   const plans = useMemo<Plan[]>(() => plansQuery.data?.data ?? [], [plansQuery.data]);
 
@@ -189,7 +190,7 @@ export function AssignPlanDialog({ open, org, onClose }: AssignPlanDialogProps) 
       setSubmitError(
         resolveError({
           code: "VALIDATION_ERROR",
-          message: parsed.error.issues[0]?.message ?? "Formulaire invalide",
+          message: parsed.error.issues[0]?.message ?? tErrorValidation("invalidForm"),
         }),
       );
       return;
