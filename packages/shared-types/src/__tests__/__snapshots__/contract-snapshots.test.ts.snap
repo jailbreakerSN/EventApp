@@ -720,6 +720,9 @@ exports[`shared-types contract snapshots > AuditLogEntrySchema shape is stable 1
           "event.qr_key_rotated",
           "event.unpublished",
           "event.updated",
+          "fcm.token_registered",
+          "fcm.token_revoked",
+          "fcm.tokens_cleared",
           "feed_post.created",
           "feed_post.deleted",
           "feed_post.pinned",
@@ -741,6 +744,7 @@ exports[`shared-types contract snapshots > AuditLogEntrySchema shape is stable 1
           "notification.setting_updated",
           "notification.suppressed",
           "notification.test_sent",
+          "notification.test_sent_self",
           "notification.unsubscribed",
           "organization.created",
           "organization.suspended",
@@ -754,6 +758,8 @@ exports[`shared-types contract snapshots > AuditLogEntrySchema shape is stable 1
           "plan.archived",
           "plan.created",
           "plan.updated",
+          "push.clicked",
+          "push.displayed",
           "receipt.generated",
           "registration.approved",
           "registration.cancelled",
@@ -4727,10 +4733,70 @@ exports[`shared-types contract snapshots > UserProfileSchema shape is stable 1`]
       "required": false,
       "shape": {
         "inner": {
-          "element": {
-            "kind": "string",
-          },
-          "kind": "array",
+          "kind": "union",
+          "options": [
+            {
+              "element": {
+                "fields": {
+                  "lastSeenAt": {
+                    "required": true,
+                    "shape": {
+                      "checks": [
+                        "datetime",
+                      ],
+                      "kind": "string",
+                    },
+                  },
+                  "platform": {
+                    "required": true,
+                    "shape": {
+                      "kind": "enum",
+                      "values": [
+                        "android",
+                        "ios",
+                        "web",
+                      ],
+                    },
+                  },
+                  "registeredAt": {
+                    "required": true,
+                    "shape": {
+                      "checks": [
+                        "datetime",
+                      ],
+                      "kind": "string",
+                    },
+                  },
+                  "token": {
+                    "required": true,
+                    "shape": {
+                      "checks": [
+                        "min",
+                      ],
+                      "kind": "string",
+                    },
+                  },
+                  "userAgent": {
+                    "required": false,
+                    "shape": {
+                      "inner": {
+                        "kind": "string",
+                      },
+                      "kind": "optional",
+                    },
+                  },
+                },
+                "kind": "object",
+              },
+              "kind": "array",
+            },
+            {
+              "element": {
+                "kind": "string",
+              },
+              "kind": "array",
+            },
+          ],
         },
         "kind": "optional",
       },

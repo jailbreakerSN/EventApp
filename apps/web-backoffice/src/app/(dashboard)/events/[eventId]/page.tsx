@@ -25,6 +25,7 @@ import {
   QueryError,
 } from "@teranga/shared-ui";
 import { PlanGate } from "@/components/plan/PlanGate";
+import { PushPermissionBanner } from "@/components/push-permission-banner";
 import { CsvExportButton, type CsvColumn } from "@/components/csv-export-button";
 import {
   useEvent,
@@ -147,6 +148,13 @@ export default function EventDetailPage() {
   const { data, isLoading, isError, refetch } = useEvent(eventId);
   const event = data?.data;
 
+  // Phase C.2 — Web Push opt-in prompt. Flipped true in EventActions on a
+  // successful publish so the PushPermissionBanner renders at a meaningful
+  // moment (never on page load — see CLAUDE.md). The banner component itself
+  // gates on permission / dismissal count, so setting this true when the
+  // user already granted / denied is a no-op.
+  const [showPushBanner, setShowPushBanner] = useState(false);
+
   if (isLoading) {
     return (
       <div>
@@ -220,9 +228,16 @@ export default function EventDetailPage() {
               Check-in
             </Link>
           )}
-          <EventActions event={event} />
+          <EventActions event={event} onPublished={() => setShowPushBanner(true)} />
         </div>
       </div>
+
+      {/* Phase C.2 — push opt-in banner, shown only after a successful
+          publish. The banner self-hides if the user already granted /
+          denied / hit the dismiss cap. Never renders on initial load. */}
+      {showPushBanner && (
+        <PushPermissionBanner trigger="event-published" className="mb-6" />
+      )}
 
       {/* Tabs */}
       <div className="flex gap-1 border-b border-border mb-6 overflow-x-auto scrollbar-none">
@@ -271,7 +286,7 @@ function StatusBadge({ status }: { status: string }) {
   return <Badge variant={getStatusVariant(status)}>{getEventStatusLabel(status)}</Badge>;
 }
 
-function EventActions({ event }: { event: Event }) {
+function EventActions({ event, onPublished }: { event: Event; onPublished?: () => void }) {
   const router = useRouter();
   const publish = usePublishEvent();
   const unpublish = useUnpublishEvent();
@@ -320,7 +335,14 @@ function EventActions({ event }: { event: Event }) {
           <button
             onClick={() => {
               publish.mutate(event.id, {
-                onSuccess: () => toast.success("Événement publié."),
+                onSuccess: () => {
+                  toast.success("Événement publié.");
+                  // Phase C.2 — publishing is our "meaningful moment" for
+                  // the push-opt-in prompt on the backoffice. The banner
+                  // itself bails if the user already granted / denied /
+                  // hit the dismiss cap, so this is a safe nudge.
+                  onPublished?.();
+                },
                 onError: (err: unknown) => {
                   const code = (err as { code?: string })?.code;
                   const message = (err as { message?: string })?.message;

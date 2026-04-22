@@ -24,7 +24,18 @@ export class UserRepository extends BaseRepository<UserDoc> {
 
   async getFcmTokens(userIds: string[]): Promise<string[]> {
     const users = await this.batchGet(userIds);
-    return users.flatMap((u) => u.fcmTokens ?? []);
+    // Handle both legacy and new shapes transparently. Phase C.1
+    // (see apps/api/src/services/fcm-tokens.service.ts) introduced
+    // an object-shaped FcmToken ({ token, platform, ... }); legacy
+    // users still have `string[]` until they re-register. The FCM
+    // admin SDK only needs the raw token string, so extract it
+    // either way. Without this guard, any user who has registered
+    // via POST /v1/me/fcm-tokens would have their pushes fail —
+    // sendEachForMulticast would receive objects and reject them.
+    return users.flatMap((u) => {
+      const raw = (u.fcmTokens ?? []) as unknown[];
+      return raw.map((t) => (typeof t === "string" ? t : (t as { token: string }).token));
+    });
   }
 
   /**
@@ -57,9 +68,25 @@ export class UserRepository extends BaseRepository<UserDoc> {
     return await this.createWithId(uid, profileData);
   }
 
+  /**
+   * @deprecated Since Phase C.1 (commit 422fd8b). Use FcmTokensService.register
+   * instead — it runs inside a transaction, caps at 10 tokens (not 5),
+   * persists the richer FcmToken shape ({ token, platform, userAgent?,
+   * registeredAt, lastSeenAt }), emits audit events, and is idempotent.
+   *
+   * Kept only to avoid breaking the legacy POST /v1/users/me/fcm-token
+   * route until its callers migrate. Accepts both the legacy string[] and
+   * the new FcmToken[] stored shapes on read; writes back as string[], so
+   * invoking this on a user who already registered via Phase C.1 will
+   * lose their FcmToken metadata (platform, userAgent, timestamps).
+   * When migrating the last caller, delete this method.
+   */
   async addFcmToken(userId: string, token: string): Promise<void> {
     const user = await this.findByIdOrThrow(userId);
-    const existing: string[] = user.fcmTokens ?? [];
+    const raw = (user.fcmTokens ?? []) as unknown[];
+    const existing = raw.map((t) =>
+      typeof t === "string" ? t : (t as { token: string }).token,
+    );
     if (existing.includes(token)) return;
 
     await this.update(userId, {

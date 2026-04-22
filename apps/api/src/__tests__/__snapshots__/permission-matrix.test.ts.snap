@@ -100,6 +100,7 @@ GET /v1/notifications/preferences perm=notification:read_own allow=[co_organizer
 PUT /v1/notifications/preferences perm=notification:read_own allow=[co_organizer,organizer,participant,speaker,sponsor,staff,super_admin,venue_manager]
 PATCH /v1/notifications/read-all perm=notification:read_own allow=[co_organizer,organizer,participant,speaker,sponsor,staff,super_admin,venue_manager]
 POST /v1/notifications/resubscribe perm=notification:read_own allow=[co_organizer,organizer,participant,speaker,sponsor,staff,super_admin,venue_manager]
+POST /v1/notifications/test-send perm=notification:read_own allow=[co_organizer,organizer,participant,speaker,sponsor,staff,super_admin,venue_manager]
 GET /v1/notifications/unread-count perm=notification:read_own allow=[co_organizer,organizer,participant,speaker,sponsor,staff,super_admin,venue_manager]
 POST /v1/organizations perm=organization:create allow=[super_admin]
 GET /v1/organizations/:orgId perm=organization:read allow=[organizer,super_admin]

@@ -84,6 +84,42 @@ export function useUpdateNotificationPreferences() {
     mutationFn: (dto: UpdateNotificationPreferenceDto) => notificationsApi.updatePreferences(dto),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["notification-preferences"] });
+      // Phase B.2 — the catalog's `effectiveChannels` depends on the same
+      // byKey map we just mutated, so its cached response is stale. Refetch
+      // so the prefs UI reflects the newly-resolved per-channel state.
+      queryClient.invalidateQueries({ queryKey: ["notification-catalog"] });
     },
+  });
+}
+
+// ─── Phase B.2 — catalog + self test-send ──────────────────────────────────
+// The preferences page (under /account/notifications/preferences) consumes
+// these. Kept next to the other notification hooks so the mental model
+// stays "one file per resource".
+
+/**
+ * GET /v1/notifications/catalog — 5-min stale time. The catalog is code-
+ * driven plus admin overrides; neither is mutated from the participant
+ * surface, so aggressive caching is safe and keeps the prefs page snappy
+ * on 3G connections (the canonical African-market network floor).
+ */
+export function useNotificationCatalog() {
+  return useQuery({
+    queryKey: ["notification-catalog"],
+    queryFn: () => notificationsApi.getCatalog(),
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+/**
+ * POST /v1/notifications/test-send — dispatches a self-targeted preview.
+ * Does NOT surface user-facing copy from the hook: the participant UI is
+ * next-intl-localised, so the page inspects `error.code` / `error.status`
+ * and renders the right message via `t(...)`. Success toast is still fired
+ * here with a generic key the caller translates.
+ */
+export function useTestSendSelf() {
+  return useMutation({
+    mutationFn: (key: string) => notificationsApi.testSendSelf(key),
   });
 }

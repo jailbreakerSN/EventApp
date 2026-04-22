@@ -526,6 +526,28 @@ export interface NotificationCatalogEntry {
   description: I18nString;
   userOptOutAllowed: boolean;
   enabled: boolean;
+  // Phase B.1 per-channel grid — catalog advertises which channels a key
+  // supports, which fire by default, and which are actually live for the
+  // current user after admin override + user opt-out are resolved. The
+  // legacy `enabled` boolean stays for the single-switch UI.
+  supportedChannels: NotificationChannel[];
+  defaultChannels: NotificationChannel[];
+  effectiveChannels: Record<NotificationChannel, boolean>;
+  // Raw user override for this key — `null` when the user has never
+  // touched this notification. Either a bare boolean (legacy map) or a
+  // per-channel object (Phase 2.6). Surfaces so the prefs UI can render
+  // the stored shape without a second parse.
+  userPreference: boolean | Partial<Record<NotificationChannel, boolean>> | null;
+}
+
+/**
+ * Response from POST /v1/notifications/test-send — self-targeted preview
+ * dispatched via the notification dispatcher with `testMode=true`.
+ */
+export interface TestSendSelfResponse {
+  dispatched: boolean;
+  key: string;
+  locale: "fr" | "en" | "wo";
 }
 
 export const notificationsApi = {
@@ -554,6 +576,26 @@ export const notificationsApi = {
   // channels / quiet hours without a new method.
   catalog: () =>
     api.get<ApiResponse<NotificationCatalogEntry[]>>("/v1/notifications/catalog"),
+
+  // Alias for `catalog` — matches the naming used elsewhere for paired
+  // GET/mutation methods (e.g. `getPreferences` + `updatePreferences`).
+  // Both names stay exported so call sites that already use `catalog()`
+  // keep working.
+  getCatalog: () =>
+    api.get<ApiResponse<NotificationCatalogEntry[]>>("/v1/notifications/catalog"),
+
+  // Phase B.1 — mirrors the backoffice admin test-send shape but targets
+  // the caller's own inbox. Rate-limited 5/hour at the API layer; rejects
+  // mandatory keys (userOptOutAllowed=false) with 400 NOT_OPTABLE.
+  testSendSelf: (key: string) =>
+    api.post<ApiResponse<TestSendSelfResponse>>("/v1/notifications/test-send", { key }),
+
+  // Phase B.1 — preferences GET is required now that the backoffice has
+  // a user-preferences page (previously only the admin notifications
+  // control plane read this). The PUT call accepts the widened byKey
+  // shape (per-channel objects) alongside the legacy boolean map.
+  getPreferences: () =>
+    api.get<ApiResponse<NotificationPreference>>("/v1/notifications/preferences"),
 
   updatePreferences: (dto: UpdateNotificationPreferenceDto) =>
     request<ApiResponse<NotificationPreference>>("/v1/notifications/preferences", {
@@ -912,6 +954,26 @@ export const adminNotificationsApi = {
     api.get<ApiResponse<Array<{ key: string; organizationId: string; enabled: boolean; channels: NotificationChannel[]; updatedAt: string; updatedBy: string }>>>(
       "/v1/admin/notifications/per-org",
     ),
+};
+
+// ─── Me / FCM Tokens (Phase C.1 — Web Push) ─────────────────────────────────
+// Thin wrappers over /v1/me/fcm-tokens. The hook `useWebPushRegistration`
+// owns the browser-side lifecycle (permission, token fetch, localStorage);
+// this just ships the token to the API and drops it by fingerprint.
+//
+// POST is rate-limited 20/hour/user server-side — callers MUST surface
+// 429 as "try later" rather than retrying, or a permission-flip loop will
+// DoS the write path (see apps/api/src/routes/me.routes.ts rateLimit config).
+
+export const meApi = {
+  registerFcmToken: (body: { token: string; platform: "web"; userAgent?: string }) =>
+    api.post<ApiResponse<{ tokenFingerprint: string; status: "registered" | "refreshed"; tokenCount: number }>>(
+      "/v1/me/fcm-tokens",
+      body,
+    ),
+  revokeFcmToken: (tokenFingerprint: string) =>
+    api.delete<void>(`/v1/me/fcm-tokens/${encodeURIComponent(tokenFingerprint)}`),
+  revokeAllFcmTokens: () => api.delete<void>("/v1/me/fcm-tokens"),
 };
 
 export { ApiError };

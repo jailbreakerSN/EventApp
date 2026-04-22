@@ -9,15 +9,24 @@ const mockVerifyIdToken = vi.fn();
 // `prefStorage.set(uid, data)`.
 const prefStorage = new Map<string, Record<string, unknown>>();
 
+// User doc storage — doc id == userId. The test-send endpoint reads
+// `preferredLanguage` from here.
+const userStorage = new Map<string, Record<string, unknown>>();
+
 vi.mock("@/config/firebase", () => ({
   auth: {
     verifyIdToken: (...args: unknown[]) => mockVerifyIdToken(...args),
   },
   db: {
-    collection: vi.fn((_name: string) => ({
+    collection: vi.fn((name: string) => ({
       doc: vi.fn((id: string) => ({
+        // Carry both the collection + doc id so the transaction mock
+        // can look up the right storage map via the ref.
+        _collection: name,
+        _id: id,
         get: vi.fn(async () => {
-          const data = prefStorage.get(id);
+          const store = name === "users" ? userStorage : prefStorage;
+          const data = store.get(id);
           return {
             exists: data !== undefined,
             data: () => data,
@@ -29,8 +38,62 @@ vi.mock("@/config/firebase", () => ({
         }),
       })),
     })),
+    // Used by the `/resubscribe` handler's read-modify-write guard.
+    runTransaction: vi.fn(
+      async (fn: (tx: unknown) => unknown | Promise<unknown>) => {
+        const tx = {
+          get: async (ref: { _collection: string; _id: string }) => {
+            const store = ref._collection === "users" ? userStorage : prefStorage;
+            const data = store.get(ref._id);
+            return { exists: data !== undefined, data: () => data };
+          },
+          set: (
+            ref: { _collection: string; _id: string },
+            payload: Record<string, unknown>,
+          ) => {
+            const store = ref._collection === "users" ? userStorage : prefStorage;
+            const existing = store.get(ref._id) ?? {};
+            store.set(ref._id, { ...existing, ...payload });
+          },
+        };
+        return fn(tx);
+      },
+    ),
   },
-  COLLECTIONS: { NOTIFICATION_PREFERENCES: "notificationPreferences" },
+  COLLECTIONS: {
+    NOTIFICATION_PREFERENCES: "notificationPreferences",
+    USERS: "users",
+  },
+}));
+
+// The catalog endpoint reads platform-level overrides to compute each
+// entry's effective channels. Tests that care about specific overrides
+// can override `mockListAll`; the default returns an empty list so the
+// catalog behaves as if no admin has ever edited any notification.
+const mockListAll = vi.fn().mockResolvedValue([]);
+vi.mock("@/repositories/notification-settings.repository", () => ({
+  notificationSettingsRepository: {
+    listAll: (...args: unknown[]) => mockListAll(...args),
+    findByKey: vi.fn().mockResolvedValue(null),
+  },
+}));
+
+// The test-send route calls the real dispatcher, but tests only assert
+// routing + rate-limit behavior — mock to a no-op so we don't drag the
+// email pipeline into this suite.
+const mockDispatch = vi.fn().mockResolvedValue(undefined);
+vi.mock("@/services/notification-dispatcher.service", () => ({
+  notificationDispatcher: {
+    dispatch: (...args: unknown[]) => mockDispatch(...args),
+  },
+}));
+
+// Dispatch-log reads in the `/history` route aren't exercised here; stub
+// so the import chain resolves cleanly.
+vi.mock("@/repositories/notification-dispatch-log.repository", () => ({
+  notificationDispatchLogRepository: {
+    listRecentForUser: vi.fn().mockResolvedValue([]),
+  },
 }));
 
 const mockNotificationService = {
@@ -68,6 +131,10 @@ afterAll(async () => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  prefStorage.clear();
+  userStorage.clear();
+  mockListAll.mockResolvedValue([]);
+  mockDispatch.mockResolvedValue(undefined);
   mockVerifyIdToken.mockResolvedValue({
     uid: "user-1",
     email: "user@example.com",
@@ -199,5 +266,205 @@ describe("Notification catalog + preferences — Phase 3 per-key opt-out", () =>
       "event.reminder": false,
       "subscription.upgraded": true,
     });
+  });
+});
+
+// ─── Phase B.1: per-channel byKey shape + catalog channel grid ─────────────
+describe("Phase B.1 — per-channel preference round-trip", () => {
+  it("PUT /preferences accepts per-channel byKey objects and persists them", async () => {
+    const res = await app.inject({
+      method: "PUT",
+      url: "/v1/notifications/preferences",
+      headers: { authorization: "Bearer mock-token", "content-type": "application/json" },
+      payload: {
+        byKey: {
+          "event.reminder": { email: true, sms: false, push: true },
+        },
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const stored = prefStorage.get("user-1");
+    expect(stored?.byKey).toEqual({
+      "event.reminder": { email: true, sms: false, push: true },
+    });
+
+    // Round-trip via GET — the preferences endpoint must echo the same shape.
+    const getRes = await app.inject({
+      method: "GET",
+      url: "/v1/notifications/preferences",
+      headers: { authorization: "Bearer mock-token" },
+    });
+    const getBody = JSON.parse(getRes.body);
+    expect(getBody.data.byKey["event.reminder"]).toEqual({
+      email: true,
+      sms: false,
+      push: true,
+    });
+  });
+
+  it("PUT /preferences accepts legacy bare-boolean values (backward compat)", async () => {
+    const res = await app.inject({
+      method: "PUT",
+      url: "/v1/notifications/preferences",
+      headers: { authorization: "Bearer mock-token", "content-type": "application/json" },
+      payload: { byKey: { "newsletter.welcome": false } },
+    });
+    expect(res.statusCode).toBe(200);
+    const stored = prefStorage.get("user-1");
+    expect(stored?.byKey).toEqual({ "newsletter.welcome": false });
+  });
+
+  it("PUT /preferences accepts a mixed byKey map (per-channel + legacy boolean in same request)", async () => {
+    const res = await app.inject({
+      method: "PUT",
+      url: "/v1/notifications/preferences",
+      headers: { authorization: "Bearer mock-token", "content-type": "application/json" },
+      payload: {
+        byKey: {
+          // Per-channel for one key…
+          "event.reminder": { sms: false },
+          // …and a legacy bare boolean for another. The dispatcher
+          // resolves each value independently so mixing is fine.
+          "newsletter.welcome": true,
+        },
+      },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const stored = prefStorage.get("user-1");
+    expect(stored?.byKey).toEqual({
+      "event.reminder": { sms: false },
+      "newsletter.welcome": true,
+    });
+  });
+
+  it("GET /catalog exposes supportedChannels + defaultChannels + effectiveChannels per entry", async () => {
+    prefStorage.set("user-1", {
+      byKey: { "event.reminder": { sms: false } },
+    });
+
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/notifications/catalog",
+      headers: { authorization: "Bearer mock-token" },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body);
+    const entries: Array<{
+      key: string;
+      supportedChannels: string[];
+      defaultChannels: string[];
+      effectiveChannels: Record<string, boolean>;
+      userPreference: unknown;
+    }> = body.data;
+
+    const reminder = entries.find((e) => e.key === "event.reminder");
+    expect(reminder).toBeDefined();
+    expect(Array.isArray(reminder!.supportedChannels)).toBe(true);
+    expect(Array.isArray(reminder!.defaultChannels)).toBe(true);
+    // Email stays live because default+not-opted-out; sms flipped off.
+    if (reminder!.supportedChannels.includes("email")) {
+      expect(reminder!.effectiveChannels.email).toBe(true);
+    }
+    if (reminder!.supportedChannels.includes("sms")) {
+      expect(reminder!.effectiveChannels.sms).toBe(false);
+    }
+    expect(reminder!.userPreference).toEqual({ sms: false });
+
+    // A mandatory notification ignores any user opt-out, so its
+    // effectiveChannels mirror the catalog's default channels.
+    const mandatory = entries.find((e) => e.key === "auth.password_reset");
+    expect(mandatory).toBeDefined();
+    for (const ch of mandatory!.defaultChannels) {
+      expect(mandatory!.effectiveChannels[ch]).toBe(true);
+    }
+  });
+});
+
+// ─── Phase B.1: test-send self endpoint ────────────────────────────────────
+describe("POST /v1/notifications/test-send", () => {
+  beforeEach(() => {
+    userStorage.set("user-1", { preferredLanguage: "fr" });
+  });
+
+  it("dispatches and returns 202 for an opt-outable key", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/notifications/test-send",
+      headers: { authorization: "Bearer mock-token", "content-type": "application/json" },
+      payload: { key: "event.reminder" },
+    });
+
+    expect(res.statusCode).toBe(202);
+    const body = JSON.parse(res.body);
+    expect(body).toMatchObject({
+      success: true,
+      data: { dispatched: true, key: "event.reminder", locale: "fr" },
+    });
+    expect(mockDispatch).toHaveBeenCalledTimes(1);
+    const [dispatchReq] = mockDispatch.mock.calls[0];
+    expect(dispatchReq).toMatchObject({
+      key: "event.reminder",
+      testMode: true,
+    });
+  });
+
+  it("rejects mandatory-category keys with 400 (no abuse lever)", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/notifications/test-send",
+      headers: { authorization: "Bearer mock-token", "content-type": "application/json" },
+      payload: { key: "auth.password_reset" },
+    });
+
+    expect(res.statusCode).toBe(400);
+    const body = JSON.parse(res.body);
+    expect(body.error.code).toBe("NOT_OPTABLE");
+    expect(mockDispatch).not.toHaveBeenCalled();
+  });
+
+  it("returns 404 for an unknown notification key", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/notifications/test-send",
+      headers: { authorization: "Bearer mock-token", "content-type": "application/json" },
+      payload: { key: "not.a.real.key" },
+    });
+
+    expect(res.statusCode).toBe(404);
+    expect(mockDispatch).not.toHaveBeenCalled();
+  });
+
+  it("rate-limits: 6th attempt within an hour returns 429", async () => {
+    // Use a fresh uid so the in-memory bucket starts empty for this test
+    // (other tests in this file share the same process-wide bucket).
+    mockVerifyIdToken.mockResolvedValue({
+      uid: "user-ratelimit",
+      email: "ratelimit@example.com",
+      email_verified: true,
+      roles: ["participant"],
+    });
+    userStorage.set("user-ratelimit", { preferredLanguage: "fr" });
+
+    const fire = () =>
+      app.inject({
+        method: "POST",
+        url: "/v1/notifications/test-send",
+        headers: { authorization: "Bearer mock-token", "content-type": "application/json" },
+        payload: { key: "event.reminder" },
+      });
+
+    for (let i = 0; i < 5; i++) {
+      const ok = await fire();
+      expect(ok.statusCode).toBe(202);
+    }
+    const blocked = await fire();
+    expect(blocked.statusCode).toBe(429);
+    const body = JSON.parse(blocked.body);
+    expect(body.error.code).toBe("RATE_LIMITED");
+    // Dispatcher fired exactly 5 times — the 6th was blocked pre-dispatch.
+    expect(mockDispatch).toHaveBeenCalledTimes(5);
   });
 });

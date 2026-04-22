@@ -13,6 +13,10 @@ import { eventBus } from "@/events/event-bus";
 import { getRequestContext } from "@/context/request-context";
 import { notificationSettingsRepository } from "@/repositories/notification-settings.repository";
 import { notificationDispatchLogRepository } from "@/repositories/notification-dispatch-log.repository";
+import {
+  isChannelAllowedForUser,
+  type NotificationPreferencesLike,
+} from "./notifications/channel-preferences";
 
 // ─── Notification Dispatcher Service ───────────────────────────────────────
 // Single entry point for every branded notification the platform sends.
@@ -207,18 +211,44 @@ export class NotificationDispatcherService {
   ): Promise<void> {
     const recipientRef = this.recipientRef(recipient);
 
-    // User opt-out — only applies when the definition allows it AND
-    // the caller is not running a test send (admins previewing a
-    // template shouldn't be blocked by an unrelated user's preference).
-    if (!req.testMode && definition.userOptOutAllowed && recipient.userId) {
-      const optedOut = await this.isUserOptedOut(recipient.userId, definition.key);
-      if (optedOut) {
+    // Phase B.1 — load the caller's preferences ONCE per recipient so we
+    // can honour per-channel opt-outs inside dispatchOnChannel. In test
+    // mode (admin preview) we skip the lookup entirely; opt-out rules
+    // never apply there. Mandatory notifications (`userOptOutAllowed =
+    // false`) also skip the lookup — the dispatcher explicitly ignores
+    // preferences for auth/billing and we don't want a Firestore read
+    // per password-reset dispatch.
+    const preferences: NotificationPreferencesLike | null =
+      !req.testMode && definition.userOptOutAllowed && recipient.userId
+        ? await this.loadUserPreferences(recipient.userId)
+        : null;
+
+    // Legacy-aggregate fast path — a user who set `byKey[key] = false`
+    // (bare-boolean opt-out) blankets every channel. Emit a single
+    // per-recipient suppression event rather than N per-channel ones so
+    // the audit trail stays readable for pre-Phase-2.6 docs.
+    if (preferences) {
+      const entry = preferences.byKey?.[definition.key];
+      if (entry === false) {
         this.emitSuppressed(definition.key, recipientRef, "user_opted_out", baseEvent);
         return;
       }
     }
 
     for (const channel of channels) {
+      // Per-channel opt-out — Phase 2.6 per-channel object OR the no-op
+      // "absent / true" case. Skips silently for mandatory keys
+      // (`preferences` is null) so the check never blocks security mail.
+      if (preferences && !isChannelAllowedForUser(preferences, definition.key, channel)) {
+        this.emitSuppressed(
+          definition.key,
+          recipientRef,
+          "user_opted_out",
+          baseEvent,
+          channel,
+        );
+        continue;
+      }
       await this.dispatchOnChannel(definition, channel, recipient, req, recipientRef, baseEvent);
     }
   }
@@ -352,16 +382,20 @@ export class NotificationDispatcherService {
   // ─── Helpers ────────────────────────────────────────────────────────────
 
   /**
-   * User per-key opt-out check. Reads notificationPreferences.byKey[key]
-   * from the user's notification-preferences doc via the existing
-   * emailService.getPreferences() read path. Absent / true → allowed;
-   * explicit false → opted out.
+   * Load the caller's notification-preferences doc for per-channel
+   * resolution (Phase B.1 fold-in of Phase 2.6's isChannelAllowedForUser).
+   * Reads via the existing emailService.getPreferences() path so docs
+   * written before Phase 2.6 stay readable as `Record<string, boolean>`.
    *
-   * Fails open (returns false = not opted out) on Firestore error so a
+   * Fails open (returns null = no opt-out known) on Firestore error so a
    * transient read failure doesn't silently drop mail — better to deliver
-   * one extra email than silently eat a transactional send.
+   * one extra email than silently eat a transactional send. A null return
+   * intentionally also disables the in-loop channel check; legacy callers
+   * whose prefs can't be read keep the pre-B.1 behavior.
    */
-  private async isUserOptedOut(userId: string, key: string): Promise<boolean> {
+  private async loadUserPreferences(
+    userId: string,
+  ): Promise<NotificationPreferencesLike | null> {
     try {
       // Lazy import to avoid a boot cycle: emailService → dispatcher →
       // emailService (registers adapter).
@@ -372,12 +406,11 @@ export class NotificationDispatcherService {
       >;
       const byKey = prefs["byKey"];
       if (byKey && typeof byKey === "object") {
-        const value = (byKey as Record<string, unknown>)[key];
-        if (value === false) return true;
+        return { byKey: byKey as NotificationPreferencesLike["byKey"] };
       }
-      return false;
+      return { byKey: {} };
     } catch {
-      return false;
+      return null;
     }
   }
 

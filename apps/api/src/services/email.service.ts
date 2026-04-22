@@ -1,5 +1,9 @@
 import crypto from "node:crypto";
-import { type EmailCategory, isKnownNotificationKey } from "@teranga/shared-types";
+import {
+  type EmailCategory,
+  isKnownNotificationKey,
+  type NotificationPreferenceValue,
+} from "@teranga/shared-types";
 import { notificationDispatcher, isDispatcherEnabled } from "./notification-dispatcher.service";
 import { db, COLLECTIONS } from "@/config/firebase";
 import { unsubscribeUrl } from "@/config/public-urls";
@@ -45,10 +49,12 @@ interface NotificationPrefs {
   emailTransactional?: boolean;
   emailOrganizational?: boolean;
   emailMarketing?: boolean;
-  // Per-notification-key opt-out (Phase 3). Absent keys = default;
-  // explicit false = opted out for that notification only. Read by the
-  // NotificationDispatcherService.isUserOptedOut guard.
-  byKey?: Record<string, boolean>;
+  // Per-notification-key opt-out (Phase 3 + Phase 2.6 per-channel extension).
+  // Values are either a bare boolean (legacy — applies to every channel)
+  // or a per-channel object (email/sms/push/in_app). Resolution via the
+  // shared `isChannelAllowedForUser` helper so the dispatcher and the
+  // email fast-path agree on shape handling. Absent keys = default.
+  byKey?: Record<string, NotificationPreferenceValue>;
 }
 
 const DEFAULT_PREFS: NotificationPrefs = { email: true, sms: true, push: true };

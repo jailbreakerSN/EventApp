@@ -526,6 +526,89 @@ describe("NotificationDispatcherService", () => {
     expect(deduplicatedEvents).toHaveLength(0);
   });
 
+  // ─── Phase B.1 — per-channel opt-out fold-in ─────────────────────────
+  // The dispatcher now consults `isChannelAllowedForUser()` per channel
+  // before handing to the adapter. Legacy aggregate opt-outs (bare
+  // `false` on byKey[key]) still short-circuit the whole recipient
+  // (regression guard for pre-Phase-2.6 docs).
+
+  it("per-channel opt-out: suppresses only the opted-out channel", async () => {
+    // event.feedback_requested supports both `email` and `in_app`. User
+    // opts out of in_app but leaves email on — the dispatcher should
+    // deliver via the email adapter and emit a user_opted_out
+    // suppression specifically for in_app.
+    const key = "event.feedback_requested";
+    expect(NOTIFICATION_CATALOG_BY_KEY[key]!.supportedChannels).toContain("email");
+    expect(NOTIFICATION_CATALOG_BY_KEY[key]!.supportedChannels).toContain("in_app");
+
+    vi.doMock("../email.service", () => ({
+      emailService: {
+        getPreferences: vi.fn().mockResolvedValue({
+          byKey: { [key]: { email: true, in_app: false } },
+        }),
+      },
+    }));
+
+    await notificationDispatcher.dispatch({
+      key,
+      recipients: [{ userId: "u1", email: "a@b.co", preferredLocale: "fr" }],
+      params: { eventTitle: "Kickoff" },
+    });
+    await flush();
+
+    // Email went through the adapter (the only channel with a Phase-1
+    // adapter registered in this suite).
+    expect(mockAdapter.send).toHaveBeenCalledTimes(1);
+    expect(sentEvents).toHaveLength(1);
+    expect((sentEvents[0] as { channel: string }).channel).toBe("email");
+
+    // in_app has no adapter yet, but it should surface as user_opted_out
+    // (not no_recipient) so the admin audit view shows the user's choice.
+    const inAppSuppress = suppressedEvents.find(
+      (e) => (e as { channel?: string }).channel === "in_app",
+    ) as { reason: string } | undefined;
+    expect(inAppSuppress).toBeDefined();
+    expect(inAppSuppress!.reason).toBe("user_opted_out");
+
+    vi.doUnmock("../email.service");
+  });
+
+  it("legacy aggregate opt-out (byKey[key] === false) suppresses every non-mandatory channel", async () => {
+    vi.spyOn(notificationSettingsRepository, "findByKey").mockResolvedValueOnce({
+      key: "event.reminder",
+      enabled: true,
+      channels: NOTIFICATION_CATALOG_BY_KEY["event.reminder"]!.supportedChannels,
+      updatedAt: new Date().toISOString(),
+      updatedBy: "admin",
+    });
+
+    vi.doMock("../email.service", () => ({
+      emailService: {
+        getPreferences: vi.fn().mockResolvedValue({
+          // Legacy bare-boolean opt-out — pre-Phase-2.6 docs look like this.
+          byKey: { "event.reminder": false },
+        }),
+      },
+    }));
+
+    await notificationDispatcher.dispatch({
+      key: "event.reminder",
+      recipients: [{ userId: "u1", email: "a@b.co", preferredLocale: "fr" }],
+      params: { eventTitle: "Kickoff" },
+    });
+    await flush();
+
+    expect(mockAdapter.send).not.toHaveBeenCalled();
+    expect(sentEvents).toHaveLength(0);
+    // Exactly one aggregate suppressed event — the legacy path fires a
+    // single per-recipient record, not one per channel, so the audit
+    // trail stays clean for old docs.
+    expect(suppressedEvents).toHaveLength(1);
+    expect((suppressedEvents[0] as { reason: string }).reason).toBe("user_opted_out");
+
+    vi.doUnmock("../email.service");
+  });
+
   it("dispatches to multiple recipients in parallel", async () => {
     await notificationDispatcher.dispatch({
       key: "event.cancelled",

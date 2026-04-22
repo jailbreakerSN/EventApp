@@ -808,6 +808,88 @@
       "hoursShort": "{n}h ago",
       "yesterday": "Yesterday",
       "daysShort": "{n}d ago"
+    },
+    "push": {
+      "permission_banner": {
+        "title": "Turn on push notifications",
+        "body": "Get event reminders, confirmations and updates in this browser — even when Teranga isn't open.",
+        "cta": "Turn on notifications",
+        "activating": "Activating…",
+        "dismiss": "Later",
+        "denied_help": "You have blocked notifications for Teranga. To turn them back on, open your browser settings and allow notifications for this site."
+      },
+      "registration": {
+        "success": "Push notifications turned on.",
+        "failure": "Couldn't turn on notifications. Please try again.",
+        "rate_limited": "Too many attempts. Please try again in an hour.",
+        "unsupported": "Your browser doesn't support push notifications."
+      },
+      "revoke": {
+        "success": "Push notifications turned off on this browser."
+      }
+    },
+    "prefs": {
+      "kicker": "— PREFERENCES",
+      "title": "My notification preferences",
+      "subtitle": "Choose which notifications land on which channel — email, in-app, push and SMS. Security and billing alerts always stay on.",
+      "backToSettings": "Back to settings",
+      "loadingAria": "Loading notification preferences",
+      "empty": "No notifications available",
+      "emptyDescription": "Check back later, our catalog grows regularly.",
+      "retry": "Retry",
+      "errorLoadingTitle": "Unable to load your preferences",
+      "errorLoadingDescription": "Check your connection and try again in a moment.",
+      "saveSuccess": "Preferences saved",
+      "saveError": "Couldn’t save your changes. Please try again.",
+      "quietHoursHeading": "Quiet hours",
+      "quietHoursDescription": "Non-urgent notifications queue during this range and deliver after. Mandatory alerts (security, payment) always get through.",
+      "quietHoursStart": "Start",
+      "quietHoursEnd": "End",
+      "quietHoursTimezoneNote": "Timezone: {timezone}",
+      "quietHoursTooltip": "Times are interpreted in your current timezone.",
+      "categoriesHeading": "By category",
+      "categoriesDescription": "Coarse switches for each email family. Combined with the per-notification toggles below.",
+      "perKeyHeading": "By notification type",
+      "perKeyDescription": "One switch per supported channel for each notification.",
+      "mandatoryBadge": "Mandatory",
+      "mandatoryTooltip": "This notification is required for your security.",
+      "mandatorySrHint": "Mandatory notification, cannot be disabled",
+      "pushDisabledTooltip": "Enable push notifications in the banner above to use this channel.",
+      "channel": {
+        "email": "Email",
+        "in_app": "In-app",
+        "push": "Push",
+        "sms": "SMS"
+      },
+      "channelAriaLabel": "{channel} for {name}",
+      "testSend": "Test",
+      "testSendAria": "Send a preview of {name} to my inbox",
+      "testSendMandatoryTooltip": "Mandatory notifications cannot be tested from this page.",
+      "testSendSending": "Sending…",
+      "testSendSuccess": "Sent! Check your inbox.",
+      "testSendRateLimited": "You’ve reached the test limit (5/hour). Try again later.",
+      "testSendNotOptable": "This notification is mandatory and cannot be simulated.",
+      "testSendError": "Failed to send test.",
+      "emailCategories": {
+        "transactional": "Transactional emails",
+        "transactionalDescription": "Registration confirmations, event reminders, badge ready notices.",
+        "organizational": "Organizational emails",
+        "organizationalDescription": "Team invitations, role changes, and organization updates.",
+        "marketing": "Marketing emails",
+        "marketingDescription": "Product updates, tips and offers."
+      },
+      "categories": {
+        "auth": "Security & account",
+        "authDescription": "Sign-ins, email verifications and password changes.",
+        "transactional": "Transactional",
+        "transactionalDescription": "Registrations, badges and confirmations for your events.",
+        "billing": "Billing",
+        "billingDescription": "Payments, receipts and subscriptions. These alerts remain mandatory.",
+        "organizational": "Organization",
+        "organizationalDescription": "Team invites, role changes and organization activity.",
+        "marketing": "Marketing communications",
+        "marketingDescription": "Product updates, tips and offers. Opt out any time."
+      }
     }
   },
   "messages": {

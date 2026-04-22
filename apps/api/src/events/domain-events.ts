@@ -481,6 +481,22 @@ export interface NotificationTestSentEvent extends BaseEventPayload {
   messageId?: string;
 }
 
+/**
+ * Phase B.1 — emitted when a user issues a self-targeted test send from
+ * the preferences UI (POST /v1/notifications/test-send). Kept separate
+ * from `notification.test_sent` (admin-triggered previews) so the audit
+ * trail can distinguish who asked for the send and so admin-stats
+ * widgets can filter self-sends out of operational test volume.
+ */
+export interface NotificationTestSentSelfEvent extends BaseEventPayload {
+  /** Catalog key the user asked to test. */
+  key: string;
+  /** uid of the caller — same value appears as `actorId`, duplicated here for audit clarity. */
+  userId: string;
+  /** Locale the preview was rendered in (derived from the user doc). */
+  locale: "fr" | "en" | "wo";
+}
+
 // ── User lifecycle (Phase 2 — security + onboarding notifications) ───────
 // Emitted by the auth trigger (user.created) and the API self-service
 // endpoints for password + email changes. The notification listener
@@ -516,6 +532,62 @@ export interface UserEmailChangedEvent extends BaseEventPayload {
   /** New email on the account. */
   newEmail: string;
   changedAt: string;
+}
+
+// ── FCM device tokens (Phase C.1 — Web Push) ──────────────────────────────
+// Emitted by FcmTokensService on register / refresh / revoke. The raw FCM
+// token NEVER lands on the event bus or in audit logs — we emit only the
+// sha256 fingerprint (first 16 hex chars) so forensics can correlate "which
+// device" without carrying a replayable push credential in the trail.
+
+export interface FcmTokenRegisteredEvent extends BaseEventPayload {
+  userId: string;
+  platform: "web" | "ios" | "android";
+  /** sha256(token).slice(0, 16) — never the raw token. */
+  tokenFingerprint: string;
+  /** Total tokens on the user doc after this write (post-cap, post-dedupe). */
+  tokenCount: number;
+  /** "registered" = new entry appended, "refreshed" = existing entry bumped. */
+  status: "registered" | "refreshed";
+}
+
+export interface FcmTokenRevokedEvent extends BaseEventPayload {
+  userId: string;
+  /** sha256(token).slice(0, 16) — the fingerprint the client sent. */
+  tokenFingerprint: string;
+  /** Whether a matching token was found and removed. */
+  removed: boolean;
+  /** Total tokens on the user doc after the revoke. */
+  tokenCount: number;
+}
+
+export interface FcmTokensClearedEvent extends BaseEventPayload {
+  userId: string;
+  /** Number of tokens removed — may be 0 if the user had none. */
+  removedCount: number;
+}
+
+// ── Web Push back-annotations (Phase C.2) ───────────────────────────────
+// Emitted when the SW pings /v1/notifications/:id/push-displayed (on
+// `showNotification`) or /v1/notifications/:id/push-clicked (on
+// `notificationclick`). Both carry the user id (from Bearer token when
+// present) + the notification id off the payload.data — that's enough
+// for a future "delivered vs clicked" dashboard to join against the
+// dispatchLog by notificationId without storing device-level PII.
+//
+// These are observability-only events — no user action the server needs
+// to react to. Listeners should be append-only writes (audit trail) and
+// an eventual back-annotation on the dispatch log row.
+
+export interface PushDisplayedEvent extends BaseEventPayload {
+  userId: string;
+  /** Notification doc id in Firestore. */
+  notificationId: string;
+}
+
+export interface PushClickedEvent extends BaseEventPayload {
+  userId: string;
+  notificationId: string;
 }
 
 // ── Subscription billing (Phase 2) ───────────────────────────────────────
@@ -987,12 +1059,21 @@ export interface DomainEventMap {
   "notification.setting_updated": NotificationSettingUpdatedEvent;
   // Phase 2.4 — admin "test send" path.
   "notification.test_sent": NotificationTestSentEvent;
+  // Phase B.1 — user self-triggered test send from the preferences UI.
+  "notification.test_sent_self": NotificationTestSentSelfEvent;
   // Notification dispatcher (Phase 2.2 — persistent dedup)
   "notification.deduplicated": NotificationDeduplicatedEvent;
   // User lifecycle (Phase 2)
   "user.created": UserCreatedEvent;
   "user.password_changed": UserPasswordChangedEvent;
   "user.email_changed": UserEmailChangedEvent;
+  // FCM device tokens (Phase C.1 — Web Push)
+  "fcm.token_registered": FcmTokenRegisteredEvent;
+  "fcm.token_revoked": FcmTokenRevokedEvent;
+  "fcm.tokens_cleared": FcmTokensClearedEvent;
+  // Web Push back-annotations (Phase C.2)
+  "push.displayed": PushDisplayedEvent;
+  "push.clicked": PushClickedEvent;
   // Subscription billing (Phase 2)
   "subscription.past_due": SubscriptionPastDueEvent;
   "subscription.cancelled": SubscriptionCancelledEvent;

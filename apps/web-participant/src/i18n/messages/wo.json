@@ -679,6 +679,88 @@
       "hoursShort": "{n} waxtu ci ginnaaw",
       "yesterday": "Démb",
       "daysShort": "{n} fan ci ginnaaw"
+    },
+    "push": {
+      "permission_banner": {
+        "title": "Tàggatal yëglekaay push",
+        "body": "Jotal yëglekaay ci lu jëm ci sa kër, ci bokkoo ak yeneen xew-xew yi — sax su Teranga ubbiku.",
+        "cta": "Tàggatal yëglekaay",
+        "activating": "Di tàggat…",
+        "dismiss": "Léegi",
+        "denied_help": "Nga baññ yëglekaay yu Teranga. Ngir tàggatal leen, ubbil paramet yi ci sa navigateur te mayul yëglekaay yu kër gii."
+      },
+      "registration": {
+        "success": "Yëglekaay push tàggatal nañu.",
+        "failure": "Mënunu tàggat yëglekaay. Jéémaatal.",
+        "rate_limited": "Jéem nga lu bari. Xaaral ci benn waxtu, jéémaatal.",
+        "unsupported": "Sa navigateur nangoo yëglekaay push."
+      },
+      "revoke": {
+        "success": "Yëglekaay push tàgguwalnañu ci navigateur bi."
+      }
+    },
+    "prefs": {
+      "kicker": "— TÀNNÉEF YI",
+      "title": "Samay tànnéef yëglekaay",
+      "subtitle": "Tànnal canal bu yëglekaay bu ne — imeyl, app, push, SMS. Yëglekaay yu kaaraange ak fay, ñu fàww dinañu dem.",
+      "backToSettings": "Dellu ci paramet yi",
+      "loadingAria": "Di yëngu tànnéef yi",
+      "empty": "Amul yëglekaay",
+      "emptyDescription": "Dellul ci kanam, catalog bi dina dox.",
+      "retry": "Jéémaatal",
+      "errorLoadingTitle": "Manuñu jàng sa tànnéef yi",
+      "errorLoadingDescription": "Xoolaatal sa konsa te jéémaatal.",
+      "saveSuccess": "Tànnéef yi denc nañu",
+      "saveError": "Manuñu denc soppi yi. Jéémaatal.",
+      "quietHoursHeading": "Waxtu yu xëy",
+      "quietHoursDescription": "Yëglekaay yu urgentul duñu dem ci bii waxtu, dinañu leen yónnee ci ginnaaw. Yëglekaay yu fàww dinañu dem.",
+      "quietHoursStart": "Tambalee",
+      "quietHoursEnd": "Jeex",
+      "quietHoursTimezoneNote": "Fuseau : {timezone}",
+      "quietHoursTooltip": "Waxtu yi, ci fuseau bu yaw lañuy xelu.",
+      "categoriesHeading": "Ci catégorie",
+      "categoriesDescription": "Inter mu mag ci benn bokk bu imeyl.",
+      "perKeyHeading": "Ci waaso wu yëglekaay",
+      "perKeyDescription": "Bennu inter ci canal bu ne ci yëglekaay bu ne.",
+      "mandatoryBadge": "Fàww",
+      "mandatoryTooltip": "Yëglekaay bii, dafa fàww.",
+      "mandatorySrHint": "Yëglekaay bu fàww, manuñu ko tëj",
+      "pushDisabledTooltip": "Taxawal push notifications ci kaw, laaj ji dinga ko jariñoo.",
+      "channel": {
+        "email": "Imeyl",
+        "in_app": "App",
+        "push": "Push",
+        "sms": "SMS"
+      },
+      "channelAriaLabel": "{channel} ngir {name}",
+      "testSend": "Tester",
+      "testSendAria": "Yónnee aperçu bu {name} ci sama imeyl",
+      "testSendMandatoryTooltip": "Yëglekaay yu fàww, manuñu leen tester ci bii page.",
+      "testSendSending": "Di yónnee…",
+      "testSendSuccess": "Yónnee nañu ! Xoolaatal sa boîte.",
+      "testSendRateLimited": "Yegg nga limit bu test (5/waxtu). Jéémaatal ginnaaw.",
+      "testSendNotOptable": "Yëglekaay bii dafa fàww, manuñu ko tester.",
+      "testSendError": "Test bi, manul a dem.",
+      "emailCategories": {
+        "transactional": "Imeyl transaction",
+        "transactionalDescription": "Dëggal inscription, rappels, badge.",
+        "organizational": "Imeyl organisation",
+        "organizationalDescription": "Invitation, soppi rôle, actualité organisation.",
+        "marketing": "Imeyl marketing",
+        "marketingDescription": "Yu bees, conseil ak promo."
+      },
+      "categories": {
+        "auth": "Kaaraange ak kont",
+        "authDescription": "Dugg, vérifications imeyl ak soppi baatu-ruus.",
+        "transactional": "Transaction",
+        "transactionalDescription": "Bindu, badge ak dëggal.",
+        "billing": "Fay",
+        "billingDescription": "Fay, reçu ak abonnement. Yii fàww nañu.",
+        "organizational": "Organisation",
+        "organizationalDescription": "Invitation équipe, soppi ci rôle.",
+        "marketing": "Marketing",
+        "marketingDescription": "Yu bees, conseil ak promo."
+      }
     }
   },
   "messages": {

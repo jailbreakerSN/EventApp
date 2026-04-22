@@ -7,6 +7,7 @@ import {
   connectFirestoreEmulator,
 } from "firebase/firestore";
 import { getStorage, connectStorageEmulator } from "firebase/storage";
+import { getMessaging, isSupported } from "firebase/messaging";
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -43,3 +44,14 @@ if (useEmulators) {
   connectFirestoreEmulator(firestore, "localhost", 8080);
   connectStorageEmulator(firebaseStorage, "localhost", 9199);
 }
+
+// Firebase Cloud Messaging (Phase C.2 — Web Push). Lazy accessor because
+// the SDK probes `indexedDB` + `serviceWorker` availability at import, and
+// both are undefined during SSR or in incognito/iOS-Safari-pre-16.4. The
+// `isSupported()` check short-circuits those environments to `null` so the
+// push hook can render a graceful "unsupported" state instead of crashing.
+export const getFirebaseMessaging = async () => {
+  if (typeof window === "undefined") return null;
+  const supported = await isSupported();
+  return supported ? getMessaging(app) : null;
+};

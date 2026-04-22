@@ -811,6 +811,88 @@
       "hoursShort": "Il y a {n} h",
       "yesterday": "Hier",
       "daysShort": "Il y a {n} j"
+    },
+    "push": {
+      "permission_banner": {
+        "title": "Activez les notifications push",
+        "body": "Recevez les rappels d'événements, confirmations et mises à jour directement dans ce navigateur — même lorsque Teranga est fermé.",
+        "cta": "Activer les notifications",
+        "activating": "Activation…",
+        "dismiss": "Plus tard",
+        "denied_help": "Vous avez refusé les notifications pour Teranga. Pour les activer, ouvrez les réglages de votre navigateur et autorisez les notifications pour ce site."
+      },
+      "registration": {
+        "success": "Notifications push activées.",
+        "failure": "Impossible d'activer les notifications. Réessayez.",
+        "rate_limited": "Trop de tentatives. Réessayez dans une heure.",
+        "unsupported": "Votre navigateur ne supporte pas les notifications push."
+      },
+      "revoke": {
+        "success": "Notifications push désactivées sur ce navigateur."
+      }
+    },
+    "prefs": {
+      "kicker": "— PRÉFÉRENCES",
+      "title": "Mes préférences de notifications",
+      "subtitle": "Choisissez quelle notification arrive sur quel canal — e-mail, notification dans l'application, push et SMS. Les alertes de sécurité et de facturation restent toujours actives.",
+      "backToSettings": "Retour aux paramètres",
+      "loadingAria": "Chargement des préférences de notifications",
+      "empty": "Aucune notification disponible",
+      "emptyDescription": "Revenez plus tard, notre catalogue s'enrichit régulièrement.",
+      "retry": "Réessayer",
+      "errorLoadingTitle": "Impossible de charger vos préférences",
+      "errorLoadingDescription": "Vérifiez votre connexion et réessayez dans quelques instants.",
+      "saveSuccess": "Préférences enregistrées",
+      "saveError": "Impossible d'enregistrer les modifications. Réessayez.",
+      "quietHoursHeading": "Heures silencieuses",
+      "quietHoursDescription": "Les notifications non urgentes seront mises en file d'attente pendant cette plage et livrées après. Les alertes obligatoires (sécurité, paiement) passent toujours.",
+      "quietHoursStart": "Début",
+      "quietHoursEnd": "Fin",
+      "quietHoursTimezoneNote": "Fuseau horaire : {timezone}",
+      "quietHoursTooltip": "Les heures sont interprétées dans votre fuseau horaire actuel.",
+      "categoriesHeading": "Par catégorie",
+      "categoriesDescription": "Gros interrupteurs pour chaque famille d'e-mails. Combinés aux toggles par notification ci-dessous.",
+      "perKeyHeading": "Par type de notification",
+      "perKeyDescription": "Un interrupteur par canal pris en charge pour chaque notification.",
+      "mandatoryBadge": "Obligatoire",
+      "mandatoryTooltip": "Cette notification est requise pour votre sécurité.",
+      "mandatorySrHint": "Notification obligatoire, ne peut pas être désactivée",
+      "pushDisabledTooltip": "Activez les notifications push dans la bannière ci-dessus pour utiliser ce canal.",
+      "channel": {
+        "email": "E-mail",
+        "in_app": "Application",
+        "push": "Push",
+        "sms": "SMS"
+      },
+      "channelAriaLabel": "{channel} pour {name}",
+      "testSend": "Tester",
+      "testSendAria": "Envoyer un aperçu de {name} à mon adresse",
+      "testSendMandatoryTooltip": "Les notifications obligatoires ne peuvent pas être testées depuis cette page.",
+      "testSendSending": "Envoi…",
+      "testSendSuccess": "Envoyé ! Vérifiez votre boîte de réception.",
+      "testSendRateLimited": "Vous avez atteint la limite de tests (5/heure). Réessayez plus tard.",
+      "testSendNotOptable": "Cette notification est obligatoire et ne peut pas être simulée.",
+      "testSendError": "Échec de l'envoi du test.",
+      "emailCategories": {
+        "transactional": "E-mails transactionnels",
+        "transactionalDescription": "Confirmations d'inscription, rappels d'événements, badges prêts.",
+        "organizational": "E-mails organisationnels",
+        "organizationalDescription": "Invitations d'équipe, changements de rôle et mises à jour d'organisation.",
+        "marketing": "E-mails marketing",
+        "marketingDescription": "Nouveautés produit, conseils et offres."
+      },
+      "categories": {
+        "auth": "Sécurité et compte",
+        "authDescription": "Connexions, vérifications d'e-mail et changements de mot de passe.",
+        "transactional": "Transactionnel",
+        "transactionalDescription": "Inscriptions, badges et confirmations liés à vos événements.",
+        "billing": "Facturation",
+        "billingDescription": "Paiements, reçus et abonnements. Ces alertes restent obligatoires.",
+        "organizational": "Organisation",
+        "organizationalDescription": "Invitations d'équipe, changements de rôle et activité de l'organisation.",
+        "marketing": "Communications marketing",
+        "marketingDescription": "Nouveautés produit, conseils et offres. Désinscription possible à tout moment."
+      }
     }
   },
   "messages": {

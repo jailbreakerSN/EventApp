@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { NotificationPreferenceValueSchema } from "./notification-preferences.types";
 
 // ─── Communication Channel ──────────────────────────────────────────────────
 
@@ -108,14 +109,21 @@ export const NotificationPreferenceSchema = z.object({
   eventReminders: z.boolean().default(true),
   quietHoursStart: z.string().nullable(), // "22:00"
   quietHoursEnd: z.string().nullable(), // "08:00"
-  // Per-notification-key opt-out (Phase 3). Map of catalog key → enabled
-  // flag. Explicit false = opted out; absent / true = follow defaults.
-  // The dispatcher reads this before every send to honour granular
-  // preferences without needing the user to flip category-level toggles.
+  // Per-notification-key opt-out (Phase 3 + Phase 2.6 per-channel extension).
+  //
+  // Map of catalog key → preference value. Each value is EITHER a bare
+  // boolean (legacy: applies to every channel — absent / true = follow
+  // defaults, false = opt out of all channels) OR a per-channel object
+  // (Phase 2.6) with optional { email, sms, push, in_app } booleans.
+  //
+  // Resolution is delegated to `isChannelAllowedForUser()` in
+  // apps/api/src/services/notifications/channel-preferences.ts so legacy
+  // docs written as `Record<string, boolean>` keep working byte-for-byte.
+  //
   // Security + transactional notifications (userOptOutAllowed=false in
   // the catalog) bypass this map entirely — see
   // docs/notification-system-architecture.md §8.
-  byKey: z.record(z.string(), z.boolean()).optional(),
+  byKey: z.record(z.string(), NotificationPreferenceValueSchema).optional(),
   updatedAt: z.string().datetime(),
 });
 
@@ -131,7 +139,10 @@ export const UpdateNotificationPreferenceSchema = z.object({
   eventReminders: z.boolean().optional(),
   quietHoursStart: z.string().nullable().optional(),
   quietHoursEnd: z.string().nullable().optional(),
-  byKey: z.record(z.string(), z.boolean()).optional(),
+  // Accepts the per-channel shape OR the legacy bare-boolean map (Phase
+  // 2.6). Frontend may mix the two in the same map for the same request —
+  // the dispatcher resolves each value via isChannelAllowedForUser().
+  byKey: z.record(z.string(), NotificationPreferenceValueSchema).optional(),
 });
 
 export type UpdateNotificationPreferenceDto = z.infer<typeof UpdateNotificationPreferenceSchema>;

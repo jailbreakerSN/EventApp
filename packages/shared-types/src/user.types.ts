@@ -11,6 +11,32 @@ export type UserRole = z.infer<typeof UserRoleSchema>;
 
 // ─── Profile ──────────────────────────────────────────────────────────────────
 
+// ─── FCM Tokens (Web Push + Mobile) ──────────────────────────────────────────
+// Each token is a registered push destination. We track the platform and user
+// agent so we can prune stale web-push subscriptions (Phase C.1). The legacy
+// shape was `string[]` — the API service (`fcm-tokens.service.ts`) transparently
+// migrates either representation on first write.
+
+export const FcmTokenPlatformSchema = z.enum(["web", "ios", "android"]);
+export type FcmTokenPlatform = z.infer<typeof FcmTokenPlatformSchema>;
+
+export const FcmTokenSchema = z.object({
+  token: z.string().min(1),
+  platform: FcmTokenPlatformSchema,
+  userAgent: z.string().optional(), // browser UA at registration time (web only)
+  registeredAt: z.string().datetime(),
+  lastSeenAt: z.string().datetime(),
+});
+export type FcmToken = z.infer<typeof FcmTokenSchema>;
+
+// Backward-compat: legacy docs stored `fcmTokens: string[]`. The service layer
+// upgrades the shape on the next write. Clients MUST never write this field
+// directly — Firestore rules exclude it from the owner-writable field set;
+// registration flows through POST /v1/me/fcm-tokens.
+export const UserFcmTokensSchema = z
+  .union([z.array(FcmTokenSchema), z.array(z.string())])
+  .optional();
+
 export const UserProfileSchema = z.object({
   uid: z.string(),
   email: z.string().email(),
@@ -26,7 +52,10 @@ export const UserProfileSchema = z.object({
   // identified in the security audit.
   orgRole: OrgMemberRoleSchema.nullable().optional(),
   preferredLanguage: z.enum(["fr", "en", "wo"]).default("fr"),
-  fcmTokens: z.array(z.string()).optional(), // FCM device tokens for push notifications
+  // FCM device tokens for push notifications. Accepts both the legacy
+  // `string[]` shape and the new `FcmToken[]` shape while the migration
+  // rolls out; `fcm-tokens.service.ts` always writes the new shape.
+  fcmTokens: UserFcmTokensSchema,
   isEmailVerified: z.boolean().default(false),
   isActive: z.boolean().default(true),
   createdAt: z.string().datetime(),
@@ -75,3 +104,17 @@ export const LoginSchema = z.object({
 });
 
 export type LoginDto = z.infer<typeof LoginSchema>;
+
+// ─── FCM Token Registration (Phase C.1 — Web Push) ───────────────────────────
+// Body contract for POST /v1/me/fcm-tokens. The client never writes the user
+// doc directly; registration/refresh/revocation flow through the API so we
+// can dedupe, cap, and audit. Token length is capped at 4096 chars — FCM web
+// tokens are ~160 chars, APNs ~180, but we leave headroom for provider drift.
+
+export const RegisterFcmTokenRequestSchema = z.object({
+  token: z.string().min(1).max(4096),
+  platform: FcmTokenPlatformSchema,
+  userAgent: z.string().max(512).optional(),
+});
+
+export type RegisterFcmTokenRequest = z.infer<typeof RegisterFcmTokenRequestSchema>;
