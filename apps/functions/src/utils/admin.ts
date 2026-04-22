@@ -52,4 +52,8 @@ export const COLLECTIONS = {
   PLANS: "plans",
   SESSION_BOOKMARKS: "sessionBookmarks",
   COUNTERS: "counters",
+  // Notification system (Phase 5) — dispatch log populated by the API
+  // service; the Resend webhook trigger backfills delivery status here
+  // (bounced / complained → status="suppressed", reason="bounced").
+  NOTIFICATION_DISPATCH_LOG: "notificationDispatchLog",
 } as const;
