@@ -60,10 +60,24 @@ vi.mock("@/services/subscription.service", () => ({
   ),
 }));
 
+interface MockSetting {
+  key: string;
+  enabled: boolean;
+  channels: string[];
+  subjectOverride?: Record<string, string>;
+  updatedAt: string;
+  updatedBy: string;
+}
+
 const mockNotificationSettingsRepository = {
-  listAll: vi.fn(async () => []),
-  findByKey: vi.fn(async () => null),
+  listAll: vi.fn(async (): Promise<MockSetting[]> => []),
+  findByKey: vi.fn(async (): Promise<MockSetting | null> => null),
   upsert: vi.fn(async () => undefined),
+};
+
+const mockNotificationDispatchLogRepository = {
+  append: vi.fn(async () => "log-id"),
+  aggregateStats: vi.fn(async () => ({})),
 };
 
 vi.mock("@/repositories/notification-settings.repository", () => ({
@@ -71,6 +85,16 @@ vi.mock("@/repositories/notification-settings.repository", () => ({
     {},
     {
       get: (_t, p) => (mockNotificationSettingsRepository as Record<string, unknown>)[p as string],
+    },
+  ),
+}));
+
+vi.mock("@/repositories/notification-dispatch-log.repository", () => ({
+  notificationDispatchLogRepository: new Proxy(
+    {},
+    {
+      get: (_t, p) =>
+        (mockNotificationDispatchLogRepository as Record<string, unknown>)[p as string],
     },
   ),
 }));
@@ -152,6 +176,8 @@ const ORGANIZER_DENIED_MATRIX: Array<{
     url: "/v1/admin/notifications/registration.created",
     body: { enabled: false, channels: ["email"] },
   },
+  // Phase 5 — observability stats
+  { method: "GET", url: "/v1/admin/notifications/stats?days=7" },
 ];
 
 describe("Admin routes — deny matrix (organizer role lacks platform:manage)", () => {
@@ -373,5 +399,39 @@ describe("Admin notification control plane (Phase 4)", () => {
     expect(res.statusCode).toBe(400);
     const body = JSON.parse(res.body);
     expect(body.error.code).toBe("INVALID_CHANNEL");
+  });
+
+  it("GET /notifications/stats aggregates dispatch counts per key", async () => {
+    mockNotificationDispatchLogRepository.aggregateStats.mockResolvedValue({
+      "registration.created": {
+        sent: 42,
+        suppressed: 3,
+        suppressionByReason: { user_opted_out: 2, bounced: 1 },
+      },
+    });
+
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/admin/notifications/stats?days=14",
+      headers: authHeader,
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body);
+    expect(body.data.windowDays).toBe(14);
+    expect(body.data.stats["registration.created"]).toMatchObject({
+      sent: 42,
+      suppressed: 3,
+    });
+    expect(mockNotificationDispatchLogRepository.aggregateStats).toHaveBeenCalledWith(14);
+  });
+
+  it("GET /notifications/stats rejects days > 90", async () => {
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/admin/notifications/stats?days=120",
+      headers: authHeader,
+    });
+    expect(res.statusCode).toBe(400);
   });
 });

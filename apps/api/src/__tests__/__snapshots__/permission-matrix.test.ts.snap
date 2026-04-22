@@ -3,6 +3,9 @@
 exports[`permission matrix (API routes × shared-types model) > role × permission access matrix matches the shared model (snapshot) 1`] = `
 "GET /v1/admin/audit-logs perm=platform:manage allow=[super_admin]
 GET /v1/admin/events perm=platform:manage allow=[super_admin]
+GET /v1/admin/notifications perm=platform:manage allow=[super_admin]
+PUT /v1/admin/notifications/:key perm=platform:manage allow=[super_admin]
+GET /v1/admin/notifications/stats perm=platform:manage allow=[super_admin]
 GET /v1/admin/organizations perm=platform:manage allow=[super_admin]
 PATCH /v1/admin/organizations/:orgId/status perm=platform:manage allow=[super_admin]
 POST /v1/admin/organizations/:orgId/subscription/assign perm=platform:manage allow=[super_admin]
