@@ -18,6 +18,7 @@ import {
   type NotificationDefinition,
 } from "@teranga/shared-types";
 import { notificationSettingsRepository } from "@/repositories/notification-settings.repository";
+import { notificationDispatchLogRepository } from "@/repositories/notification-dispatch-log.repository";
 import { eventBus } from "@/events/event-bus";
 import { getRequestId } from "@/context/request-context";
 
@@ -367,6 +368,34 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
       });
 
       return reply.send({ success: true, data: setting });
+    },
+  );
+
+  // ─── Notification dispatch metrics (Phase 5 observability) ────────────
+  // Aggregates the notificationDispatchLog collection into per-key
+  // sent / suppressed counts with suppression-reason breakdown. Powers
+  // the admin notifications dashboard widget.
+  const NotificationStatsQuery = z.object({
+    days: z.coerce.number().int().positive().max(90).default(7),
+  });
+
+  fastify.get<{ Querystring: z.infer<typeof NotificationStatsQuery> }>(
+    "/notifications/stats",
+    {
+      preHandler: [...adminPreHandler, validate({ query: NotificationStatsQuery })],
+      schema: {
+        tags: ["Admin", "Notifications"],
+        summary: "Aggregated dispatch stats per notification key",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const { days } = request.query;
+      const stats = await notificationDispatchLogRepository.aggregateStats(days);
+      return reply.send({
+        success: true,
+        data: { windowDays: days, stats },
+      });
     },
   );
 };
