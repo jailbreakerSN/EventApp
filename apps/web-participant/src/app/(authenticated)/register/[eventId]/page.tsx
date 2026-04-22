@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
   ArrowRight,
@@ -98,6 +98,7 @@ export default function RegisterPage() {
   const { resolve: resolveError } = useErrorHandler();
   const tErrors = useTranslations("errors");
   const tErrorActions = useTranslations("errors.actions");
+  const queryClient = useQueryClient();
 
   const [selectedMethod, setSelectedMethod] = useState<PaymentMethod>("wave");
 
@@ -153,10 +154,18 @@ export default function RegisterPage() {
     staleTime: 5 * 60_000,
   });
 
+  // Preflight against the user's existing registrations so we never let
+  // them submit a request that the server will reject with 409 CONFLICT
+  // (duplicate_registration). Tight `staleTime` + refetch-on-focus
+  // keeps the check honest when the user opens the page in a new tab
+  // after registering elsewhere — without it, the cached "no existing
+  // registration" answer races the server and produces the silent-toast
+  // loop that error-handling.md was written to kill.
   const { data: myRegsData, isLoading: regsLoading } = useQuery({
     queryKey: ["my-registrations-check", eventId],
     queryFn: () => registrationsApi.getMyRegistrations({ limit: 100 }),
-    staleTime: 60_000,
+    staleTime: 5_000,
+    refetchOnWindowFocus: true,
   });
 
   const registerMutation = useRegister();
@@ -260,6 +269,18 @@ export default function RegisterPage() {
       setEmailNotVerified(true);
       setSubmitError(null);
       return;
+    }
+    // Duplicate-registration race: the preflight cache missed a parallel
+    // signup (other tab / slow refetch). Force-refresh the registrations
+    // list so the next render swaps the form for the
+    // `existingRegistration` card with the user's badge — no need to
+    // leave them stuck on a banner with no path forward.
+    if (
+      resolved.descriptor.code === "CONFLICT" &&
+      resolved.descriptor.reason === "duplicate_registration"
+    ) {
+      queryClient.invalidateQueries({ queryKey: ["my-registrations-check", eventId] });
+      queryClient.invalidateQueries({ queryKey: ["my-registrations"] });
     }
     setSubmitError(resolved);
   };
@@ -427,16 +448,18 @@ export default function RegisterPage() {
             kicker={tErrors("kicker")}
             title={submitError.title}
             description={submitError.description}
-            actions={[
-              {
-                label: tErrorActions("browseEvents"),
-                href: "/events",
-              },
-              {
-                label: tErrorActions("dismiss"),
-                onClick: () => setSubmitError(null),
-              },
-            ]}
+            actions={
+              submitError.descriptor.code === "CONFLICT" &&
+              submitError.descriptor.reason === "duplicate_registration"
+                ? [
+                    { label: tErrorActions("viewMyRegistrations"), href: "/my-events" },
+                    { label: tErrorActions("dismiss"), onClick: () => setSubmitError(null) },
+                  ]
+                : [
+                    { label: tErrorActions("browseEvents"), href: "/events" },
+                    { label: tErrorActions("dismiss"), onClick: () => setSubmitError(null) },
+                  ]
+            }
             onDismiss={() => setSubmitError(null)}
             dismissLabel={tErrorActions("dismiss")}
           />

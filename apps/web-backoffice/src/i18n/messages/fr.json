@@ -320,7 +320,13 @@
     },
     "CONFLICT": {
       "title": "Action déjà effectuée",
-      "description": "Cette action est en conflit avec l'état actuel. Rafraîchissez la page et réessayez."
+      "description": "Cette action est en conflit avec l'état actuel. Rafraîchissez la page et réessayez.",
+      "reasons": {
+        "duplicate_registration": {
+          "title": "Participant déjà inscrit",
+          "description": "Ce participant possède déjà une inscription active pour cet événement."
+        }
+      }
     },
     "RATE_LIMIT_EXCEEDED": {
       "title": "Trop de tentatives",

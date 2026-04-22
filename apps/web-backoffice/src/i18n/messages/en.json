@@ -320,7 +320,13 @@
     },
     "CONFLICT": {
       "title": "Action already performed",
-      "description": "This action conflicts with the current state. Refresh and try again."
+      "description": "This action conflicts with the current state. Refresh and try again.",
+      "reasons": {
+        "duplicate_registration": {
+          "title": "Participant already registered",
+          "description": "This participant already has an active registration for this event."
+        }
+      }
     },
     "RATE_LIMIT_EXCEEDED": {
       "title": "Too many attempts",

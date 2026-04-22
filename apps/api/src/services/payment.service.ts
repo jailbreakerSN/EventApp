@@ -15,6 +15,7 @@ import { type AuthUser } from "@/middlewares/auth.middleware";
 import {
   ValidationError,
   ConflictError,
+  DuplicateRegistrationError,
   NotFoundError,
   RegistrationClosedError,
   EventFullError,
@@ -244,7 +245,7 @@ export class PaymentService extends BaseService {
           .limit(1),
       );
       if (!dupeSnap.empty) {
-        throw new ConflictError("Vous êtes déjà inscrit(e) à cet événement");
+        throw new DuplicateRegistrationError(eventId);
       }
 
       const registration = {

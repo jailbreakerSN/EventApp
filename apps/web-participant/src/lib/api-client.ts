@@ -37,6 +37,15 @@ class ApiError extends Error {
     public readonly code: string,
     message: string,
     public readonly status: number,
+    /**
+     * Structured payload the server attached via `AppError.toJSON`. The
+     * shape is error-specific — e.g. `CONFLICT` carries
+     * `{ reason: "duplicate_registration", eventId }`,
+     * `REGISTRATION_CLOSED` carries `{ reason, eventId }`. Kept on the
+     * thrown error so `useErrorHandler` can branch on `details.reason`
+     * to render targeted copy. Mirrors the backoffice client.
+     */
+    public readonly details?: Record<string, unknown>,
   ) {
     super(message);
     this.name = "ApiError";
@@ -116,11 +125,14 @@ async function request<T>(
   }
 
   if (!response.ok || data.success === false) {
-    const error = data.error as { code?: string; message?: string } | undefined;
+    const error = data.error as
+      | { code?: string; message?: string; details?: Record<string, unknown> }
+      | undefined;
     throw new ApiError(
       error?.code ?? "UNKNOWN",
       error?.message ?? "La requête a échoué",
       response.status,
+      error?.details,
     );
   }
 

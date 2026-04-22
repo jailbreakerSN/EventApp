@@ -799,7 +799,13 @@
     },
     "CONFLICT": {
       "title": "Jëf ji defeesoon na",
-      "description": "Jëf bi jàppoo ak li fi nekk. Rafraîchis pàccu bi te jéémaat."
+      "description": "Jëf bi jàppoo ak li fi nekk. Rafraîchis pàccu bi te jéémaat.",
+      "reasons": {
+        "duplicate_registration": {
+          "title": "Bind nga ba noppi",
+          "description": "Am nga bindu ngir xew-xew bi. Wone sa badge ci « Sama bindu yi »."
+        }
+      }
     },
     "RATE_LIMIT_EXCEEDED": {
       "title": "Li ñu jéemaat bare na",
@@ -871,6 +877,7 @@
       "retry": "Jéémaat",
       "contactSupport": "Jokkoo ak ndimbal",
       "browseEvents": "Xool xew-xew yi",
+      "viewMyRegistrations": "Wone sama bindu yi",
       "upgradePlan": "Yore sama plan",
       "verifyEmail": "Yónneeti lien bi",
       "dismiss": "Tëj"

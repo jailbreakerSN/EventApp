@@ -16,7 +16,7 @@ import { db, COLLECTIONS } from "@/config/firebase";
 import { type AuthUser } from "@/middlewares/auth.middleware";
 import {
   ValidationError,
-  ConflictError,
+  DuplicateRegistrationError,
   EmailNotVerifiedError,
   EventFullError,
   RegistrationClosedError,
@@ -116,7 +116,10 @@ export class RegistrationService extends BaseService {
         .limit(1);
       const duplicateSnap = await tx.get(duplicateQuery);
       if (!duplicateSnap.empty) {
-        throw new ConflictError("Vous êtes déjà inscrit(e) à cet événement");
+        // Typed `details.reason` lets the UI render a targeted "Vous êtes
+        // déjà inscrit(e)" state with a "Voir mes inscriptions" CTA
+        // instead of the generic CONFLICT copy. See error-handling.md.
+        throw new DuplicateRegistrationError(eventId);
       }
 
       // ── Validate ticket type ──

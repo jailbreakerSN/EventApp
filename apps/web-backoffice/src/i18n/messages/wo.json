@@ -59,7 +59,13 @@
     },
     "CONFLICT": {
       "title": "Jëf ji defeesoon na",
-      "description": "Rafraîchis pàccu bi te jéémaat."
+      "description": "Rafraîchis pàccu bi te jéémaat.",
+      "reasons": {
+        "duplicate_registration": {
+          "title": "Bind ko ba noppi",
+          "description": "Ki bindu na ngir xew-xew bi."
+        }
+      }
     },
     "INTERNAL_ERROR": {
       "title": "Njuumte ci suñu wàll",
