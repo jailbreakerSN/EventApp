@@ -792,7 +792,23 @@
     "paginationOf": "Page {page} of {total}",
     "errorTitle": "Couldn’t load notifications",
     "errorDescription": "We couldn’t fetch your notifications. Please try again in a moment.",
-    "retry": "Retry"
+    "retry": "Retry",
+    "bell": {
+      "triggerAria": "Notifications ({count} unread)",
+      "markAllRead": "Mark all as read",
+      "seeAll": "See all notifications",
+      "emptyTitle": "No notifications",
+      "emptyBody": "New updates will appear here.",
+      "loading": "Loading…",
+      "errorMessage": "Couldn’t load notifications. Please try again later."
+    },
+    "relative": {
+      "now": "Just now",
+      "minutesShort": "{n}m ago",
+      "hoursShort": "{n}h ago",
+      "yesterday": "Yesterday",
+      "daysShort": "{n}d ago"
+    }
   },
   "messages": {
     "title": "Messages",
