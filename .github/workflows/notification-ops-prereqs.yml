@@ -214,13 +214,23 @@ jobs:
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
       - uses: google-github-actions/setup-gcloud@v2
-        with:
-          # `gcloud monitoring policies` is still alpha-only — the
-          # setup-gcloud runner image ships GA commands only, so we
-          # must opt in here. Without this, the first upsert call
-          # fails with "components: [alpha]. Do you want to continue
-          # (Y/n)?" because GHA runners are non-interactive.
-          install_components: "alpha"
+
+      - name: Install gcloud alpha component (apt-managed SDK)
+        # `gcloud monitoring policies` is still alpha-only. The
+        # ubuntu-latest runner ships an apt-managed gcloud that
+        # refuses `gcloud components install`, so setup-gcloud's
+        # `install_components` input is silently skipped and the
+        # first `gcloud alpha …` call stops on an interactive
+        # "install alpha? (Y/n)" prompt. Installing via apt sidesteps
+        # the component manager entirely. CLOUDSDK_CORE_DISABLE_PROMPTS
+        # is belt-and-suspenders so any future gcloud component
+        # negotiation auto-accepts rather than blocking.
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq google-cloud-sdk-alpha
+          echo "CLOUDSDK_CORE_DISABLE_PROMPTS=1" >> "$GITHUB_ENV"
+          gcloud alpha --version | head -5
 
       - name: Ensure monitoring API is enabled
         run: |
