@@ -239,6 +239,12 @@ describe("route inventory", () => {
         "POST /v1/users/me/fcm-tokens",
         "POST /v1/users/me/fcm-token", // singular legacy alias
         "DELETE /v1/users/me/fcm-tokens/:token",
+        // Phase C.1 — Web Push registration on the /v1/me namespace. Each
+        // route mutates only the caller's own user doc; the handler calls
+        // fcmTokensService with `request.user` so ownership is implicit.
+        "POST /v1/me/fcm-tokens",
+        "DELETE /v1/me/fcm-tokens",
+        "DELETE /v1/me/fcm-tokens/:tokenFingerprint",
         "POST /v1/notifications/:id/read",
         "POST /v1/notifications/read-all",
         "POST /v1/notifications/subscribe",

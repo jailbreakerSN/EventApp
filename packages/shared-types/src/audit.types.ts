@@ -105,6 +105,14 @@ export const AuditActionSchema = z.enum([
   // Never conflated with real delivery — admin previews must not skew
   // stats or the dispatch log.
   "notification.test_sent",
+  // ── FCM device-token registration (Phase C.1 — Web Push) ────────────────
+  // Emitted by FcmTokensService on register / revoke / revoke-all so the
+  // audit trail carries a record of which browser/device each user trusts
+  // for push. Tokens themselves never land in the audit log — only their
+  // sha256 fingerprint (first 16 hex chars).
+  "fcm.token_registered",
+  "fcm.token_revoked",
+  "fcm.tokens_cleared",
   // ── Resend webhook-sourced events (written from apps/functions) ───────────
   // Cloud Functions can't emit on the API's in-process eventBus, so the
   // resendWebhook handler writes these audit rows directly. Values kept in

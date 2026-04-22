@@ -1300,6 +1300,85 @@ export function registerAuditListeners(): void {
     });
   });
 
+  eventBus.on("notification.test_sent_self", async (payload) => {
+    // Phase B.1 — user triggered a self-targeted test send from their
+    // preferences page. Logged distinctly from admin-triggered test
+    // sends so the admin audit view can tell the two apart at a glance.
+    await auditService.log({
+      action: "notification.test_sent_self",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "notification",
+      resourceId: payload.key,
+      eventId: null,
+      organizationId: null,
+      details: {
+        userId: payload.userId,
+        locale: payload.locale,
+      },
+    });
+  });
+
+  // ── FCM Device Tokens (Phase C.1 — Web Push) ──────────────────────────
+  // Token registrations are user-scoped (no event / org), so both eventId
+  // and organizationId are null. resourceId = userId so admins can filter
+  // "all device-token activity for user X" at a glance. The raw token is
+  // never persisted in the audit trail — only its sha256 fingerprint.
+
+  eventBus.on("fcm.token_registered", async (payload) => {
+    await auditService.log({
+      action: "fcm.token_registered",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "user",
+      resourceId: payload.userId,
+      eventId: null,
+      organizationId: null,
+      details: {
+        platform: payload.platform,
+        tokenFingerprint: payload.tokenFingerprint,
+        tokenCount: payload.tokenCount,
+        status: payload.status,
+      },
+    });
+  });
+
+  eventBus.on("fcm.token_revoked", async (payload) => {
+    await auditService.log({
+      action: "fcm.token_revoked",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "user",
+      resourceId: payload.userId,
+      eventId: null,
+      organizationId: null,
+      details: {
+        tokenFingerprint: payload.tokenFingerprint,
+        removed: payload.removed,
+        tokenCount: payload.tokenCount,
+      },
+    });
+  });
+
+  eventBus.on("fcm.tokens_cleared", async (payload) => {
+    await auditService.log({
+      action: "fcm.tokens_cleared",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "user",
+      resourceId: payload.userId,
+      eventId: null,
+      organizationId: null,
+      details: {
+        removedCount: payload.removedCount,
+      },
+    });
+  });
+
   // ── Subscription Override (Phase 5 — admin per-org assign) ─────────────
 
   eventBus.on("subscription.overridden", async (payload) => {

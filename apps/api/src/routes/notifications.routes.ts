@@ -10,13 +10,17 @@ import {
   UpdateNotificationPreferenceSchema,
   NOTIFICATION_CATALOG,
   NOTIFICATION_CATALOG_BY_KEY,
+  type NotificationChannel,
   type NotificationDefinition,
+  type NotificationPreferenceValue,
 } from "@teranga/shared-types";
 import { verifyUnsubscribeToken } from "@/services/notifications/unsubscribe-token";
 import { unsubscribeCategory } from "@/services/notifications/unsubscribe.service";
 import { renderLandingPage, backToParticipantCta } from "./_shared/landing-page";
 import { notificationDispatchLogRepository } from "@/repositories/notification-dispatch-log.repository";
 import { notificationSettingsRepository } from "@/repositories/notification-settings.repository";
+import { isChannelAllowedForUser } from "@/services/notifications/channel-preferences";
+import { notificationDispatcher } from "@/services/notification-dispatcher.service";
 import { eventBus } from "@/events/event-bus";
 import { getRequestId } from "@/context/request-context";
 
@@ -154,7 +158,9 @@ export const notificationRoutes: FastifyPluginAsync = async (fastify) => {
         .doc(request.user!.uid)
         .get();
       if (!doc.exists) {
-        // Return defaults
+        // Return defaults. `byKey` is always serialized (as `{}`) so the
+        // preferences UI can diff against a stable shape without testing
+        // for undefined — matches the Phase 2.6 per-channel contract.
         return reply.send({
           success: true,
           data: {
@@ -165,11 +171,19 @@ export const notificationRoutes: FastifyPluginAsync = async (fastify) => {
             push: true,
             quietHoursStart: null,
             quietHoursEnd: null,
+            byKey: {},
             updatedAt: new Date().toISOString(),
           },
         });
       }
-      return reply.send({ success: true, data: doc.data() });
+      // Shape already forward-compatible — `byKey` values are whatever
+      // Firestore returned (bare boolean OR per-channel object). Clients
+      // resolve each value via the same union shape the validator accepts.
+      const data = doc.data() as Record<string, unknown> | undefined;
+      return reply.send({
+        success: true,
+        data: { ...(data ?? {}), byKey: (data?.byKey as unknown) ?? {} },
+      });
     },
   );
 
@@ -209,40 +223,94 @@ export const notificationRoutes: FastifyPluginAsync = async (fastify) => {
     },
   );
 
-  // ─── Notification catalog (Phase 3 — user preferences UI) ────────────
+  // ─── Notification catalog (Phase 3 + Phase B.1 per-channel grid) ────
   // Returns the full NOTIFICATION_CATALOG plus the current user's byKey
   // overrides, shaped so the preferences page can render the list
-  // without a second round-trip. Only catalog entries with
-  // `userOptOutAllowed === true` are togglable — the UI greys out the
-  // rest with a hover tooltip ("this notification is required").
+  // without a second round-trip.
+  //
+  // Phase B.1 additions (per-channel UI): every entry now carries the
+  // catalog's `supportedChannels` + `defaultChannels`, plus an
+  // `effectiveChannels` map keyed by channel for the current user. The
+  // effective map merges admin override (platform-level — per-org is
+  // scoped elsewhere) → catalog defaults → user opt-out (resolved via
+  // `isChannelAllowedForUser()` so the same helper the dispatcher uses
+  // drives what the UI displays). Mandatory notifications (where
+  // `userOptOutAllowed === false`) ignore the opt-out step — their
+  // effective channels always match the catalog/admin source of truth.
   fastify.get(
     "/catalog",
     {
       preHandler: [authenticate, requirePermission("notification:read_own")],
       schema: {
         tags: ["Notifications"],
-        summary: "List every notification + user's per-key opt-out state",
+        summary: "List every notification + user's per-key/per-channel opt-out state",
         security: [{ BearerAuth: [] }],
       },
     },
     async (request, reply) => {
-      const prefDoc = await db
-        .collection(COLLECTIONS.NOTIFICATION_PREFERENCES)
-        .doc(request.user!.uid)
-        .get();
-      const byKey = (prefDoc.data()?.byKey as Record<string, boolean> | undefined) ?? {};
+      const [prefDoc, platformOverrides] = await Promise.all([
+        db.collection(COLLECTIONS.NOTIFICATION_PREFERENCES).doc(request.user!.uid).get(),
+        notificationSettingsRepository.listAll(),
+      ]);
+      const byKey =
+        (prefDoc.data()?.byKey as Record<string, NotificationPreferenceValue> | undefined) ?? {};
+      const overrideByKey = new Map(platformOverrides.map((s) => [s.key, s]));
 
-      // Shape: flat list of { key, category, displayName, description,
-      // userOptOutAllowed, enabled }. `enabled` is the effective state
-      // (catalog default unless user explicitly opted out).
-      const entries = NOTIFICATION_CATALOG.map((def: NotificationDefinition) => ({
-        key: def.key,
-        category: def.category,
-        displayName: def.displayName,
-        description: def.description,
-        userOptOutAllowed: def.userOptOutAllowed,
-        enabled: byKey[def.key] ?? true,
-      }));
+      const entries = NOTIFICATION_CATALOG.map((def: NotificationDefinition) => {
+        const override = overrideByKey.get(def.key);
+
+        // Effective channels before the user-opt-out step: admin override
+        // if present and that override enables the notification, else
+        // catalog defaults. Filter against supportedChannels defensively —
+        // admins can't enable a channel the catalog doesn't advertise.
+        const sourceChannels: NotificationChannel[] =
+          override && override.enabled
+            ? override.channels.filter((c) => def.supportedChannels.includes(c))
+            : override && !override.enabled
+              ? []
+              : [...def.defaultChannels];
+
+        // Per-channel legacy summary: bare-boolean `enabled` kept for the
+        // pre-B.1 UI that renders a single switch per key. Derived from
+        // the same resolution pipeline so the two never drift.
+        // - If admin disabled the notification → false
+        // - If the user opted out on every supported channel → false
+        // - Otherwise true
+        const someChannelLive = sourceChannels.some(
+          (ch) => !def.userOptOutAllowed || isChannelAllowedForUser(prefDoc.data() ?? {}, def.key, ch),
+        );
+        const enabled = sourceChannels.length > 0 && someChannelLive;
+
+        // `effectiveChannels`: for every channel the catalog supports,
+        // return whether it will actually fire for this user right now.
+        // Mandatory keys (`userOptOutAllowed=false`) ignore the user
+        // step, matching dispatcher behaviour.
+        const effectiveChannels = Object.fromEntries(
+          def.supportedChannels.map((ch) => {
+            const channelLiveAtAdminLayer = sourceChannels.includes(ch);
+            if (!channelLiveAtAdminLayer) return [ch, false];
+            if (!def.userOptOutAllowed) return [ch, true];
+            return [ch, isChannelAllowedForUser(prefDoc.data() ?? {}, def.key, ch)];
+          }),
+        ) as Record<NotificationChannel, boolean>;
+
+        return {
+          key: def.key,
+          category: def.category,
+          displayName: def.displayName,
+          description: def.description,
+          supportedChannels: def.supportedChannels,
+          defaultChannels: def.defaultChannels,
+          userOptOutAllowed: def.userOptOutAllowed,
+          enabled,
+          effectiveChannels,
+          // Pass the raw user override value for this key so the UI can
+          // render the "edit" surface pre-populated without re-parsing
+          // the preferences doc. `undefined` = no entry yet (user hasn't
+          // touched this notification).
+          userPreference: (byKey[def.key] ?? null) as NotificationPreferenceValue | null,
+        };
+      });
 
       return reply.send({ success: true, data: entries });
     },
@@ -376,7 +444,7 @@ export const notificationRoutes: FastifyPluginAsync = async (fastify) => {
         const snap = await tx.get(ref);
         const existing = snap.exists ? (snap.data() as Record<string, unknown>) : {};
         const byKey = {
-          ...((existing.byKey as Record<string, boolean> | undefined) ?? {}),
+          ...((existing.byKey as Record<string, NotificationPreferenceValue> | undefined) ?? {}),
           [key]: true,
         };
         tx.set(
@@ -400,6 +468,139 @@ export const notificationRoutes: FastifyPluginAsync = async (fastify) => {
       });
 
       return reply.send({ success: true, data: { key, enabled: true } });
+    },
+  );
+
+  // ─── Test-send to self (Phase B.1) ────────────────────────────────────
+  // Users can trigger a send of any opt-outable notification to their own
+  // inbox from the preferences UI. Guard rails:
+  //   - Mandatory categories (userOptOutAllowed=false in the catalog) are
+  //     REJECTED with 400. Rationale: even though the target inbox is the
+  //     user's own, we don't want a "send me a fake password reset" lever
+  //     in the UI — it's a footgun against phishing-awareness training
+  //     and keeps the abuse surface small. Admins retain the ability via
+  //     POST /v1/admin/notifications/:key/test-send.
+  //   - Rate limit: 5 / hour / user, enforced in-memory. Acceptable for
+  //     dev / staging; the production rollout will swap in a Firestore-
+  //     backed counter keyed by (userId, hourBucket) so clusters share
+  //     the budget. Tracked as a TODO on the ticket.
+  //   - Dispatch runs with testMode=true so the send bypasses admin-
+  //     disabled + user-opt-out + dedup (same semantics as the admin
+  //     preview path, just self-targeted).
+  const TestSendBody = z.object({ key: z.string().min(1) });
+
+  // In-memory rate-limit bucket. Key = userId, value = rolling list of
+  // ISO timestamps of the last attempts. Window + max kept next to the
+  // route for easy audit: 5 attempts per hour per user.
+  const TEST_SEND_WINDOW_MS = 60 * 60 * 1000; // 1h
+  const TEST_SEND_MAX = 5;
+  const testSendBucket = new Map<string, number[]>();
+
+  function allowTestSend(userId: string, now: number): boolean {
+    const windowStart = now - TEST_SEND_WINDOW_MS;
+    const existing = testSendBucket.get(userId) ?? [];
+    const trimmed = existing.filter((t) => t > windowStart);
+    if (trimmed.length >= TEST_SEND_MAX) {
+      testSendBucket.set(userId, trimmed);
+      return false;
+    }
+    trimmed.push(now);
+    testSendBucket.set(userId, trimmed);
+    return true;
+  }
+
+  fastify.post(
+    "/test-send",
+    {
+      preHandler: [
+        authenticate,
+        requireEmailVerified,
+        requirePermission("notification:read_own"),
+        validate({ body: TestSendBody }),
+      ],
+      schema: {
+        tags: ["Notifications"],
+        summary: "Send a notification preview to the caller's own inbox",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const { key } = request.body as z.infer<typeof TestSendBody>;
+      const definition = NOTIFICATION_CATALOG_BY_KEY[key];
+      if (!definition) {
+        return reply.status(404).send({
+          success: false,
+          error: { code: "NOT_FOUND", message: `Unknown notification key: ${key}` },
+        });
+      }
+      if (!definition.userOptOutAllowed) {
+        return reply.status(400).send({
+          success: false,
+          error: {
+            code: "NOT_OPTABLE",
+            message:
+              "This notification is mandatory and cannot be self-triggered as a test. Ask an admin to preview it from the notifications control plane.",
+          },
+        });
+      }
+
+      const userId = request.user!.uid;
+      if (!allowTestSend(userId, Date.now())) {
+        return reply.status(429).send({
+          success: false,
+          error: {
+            code: "RATE_LIMITED",
+            message: "Too many test sends. Please wait and try again later.",
+          },
+        });
+      }
+
+      // Look up the caller's locale from the user doc so the preview
+      // renders in the language they actually read. Defaults to "fr"
+      // (platform primary language) if the doc is missing or mute.
+      let locale: "fr" | "en" | "wo" = "fr";
+      const userSnap = await db.collection(COLLECTIONS.USERS).doc(userId).get();
+      if (userSnap.exists) {
+        const pref = userSnap.data()?.preferredLanguage;
+        if (pref === "fr" || pref === "en" || pref === "wo") locale = pref;
+      }
+      const email = request.user!.email ?? undefined;
+
+      const requestId = getRequestId();
+      const now = new Date().toISOString();
+
+      // Fire-and-forget dispatch — matches the admin test-send contract.
+      // testMode=true bypasses admin-disabled / user-opt-out / dedup so
+      // the user always gets the preview even if they've opted out.
+      await notificationDispatcher.dispatch(
+        {
+          key,
+          recipients: [
+            email
+              ? { userId, email, preferredLocale: locale }
+              : { userId, preferredLocale: locale },
+          ],
+          params: {},
+          testMode: true,
+        },
+        { actorId: userId, requestId },
+      );
+
+      // Distinct audit trail — admin test-sends emit `notification.test_sent`,
+      // self-sends emit this one so the admin view can filter per actor.
+      eventBus.emit("notification.test_sent_self", {
+        key,
+        userId,
+        locale,
+        actorId: userId,
+        requestId,
+        timestamp: now,
+      });
+
+      return reply.status(202).send({
+        success: true,
+        data: { dispatched: true, key, locale },
+      });
     },
   );
 

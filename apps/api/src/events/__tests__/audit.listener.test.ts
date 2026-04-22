@@ -596,8 +596,12 @@ describe("Audit Listener", () => {
       // audit log. If you removed a handler, also drop the matching
       // emission test so stale expectations don't silently pass.
       // Phase 2.4 added `notification.test_sent` (+1 handler over the
-      // 76 registered as of Phase 2.3).
-      const EXPECTED_HANDLER_COUNT = 77;
+      // 76 registered as of Phase 2.3). Phase B.1 added
+      // `notification.test_sent_self` (+1) for the user-triggered
+      // self-test flow. Phase C.1 added the three `fcm.*` handlers
+      // (token_registered, token_revoked, tokens_cleared) for the
+      // Web Push credential lifecycle (+3).
+      const EXPECTED_HANDLER_COUNT = 81;
 
       expect(registered).toHaveLength(EXPECTED_HANDLER_COUNT);
       // Each registered event name should be unique — a double
