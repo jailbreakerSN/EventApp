@@ -423,6 +423,24 @@ export interface NotificationSuppressedEvent extends BaseEventPayload {
   channel?: "email" | "sms" | "push" | "in_app";
 }
 
+/**
+ * Phase 2.2 — emitted when the dispatcher short-circuits a duplicate
+ * emit using the persistent idempotency log. Distinct from
+ * notification.sent (no provider round-trip happened) and from
+ * notification.suppressed (no decision was made — we just deferred
+ * to the previous send). Powers the admin "duplicates caught" widget
+ * and alerts on retry storms.
+ */
+export interface NotificationDeduplicatedEvent extends BaseEventPayload {
+  key: string;
+  channel: "email" | "sms" | "push" | "in_app";
+  recipientRef: string;
+  /** The idempotency key that matched a prior log entry. */
+  idempotencyKey: string;
+  /** Timestamp of the prior entry that caused the dedup. */
+  originalAttemptedAt: string;
+}
+
 export interface NotificationSettingUpdatedEvent extends BaseEventPayload {
   key: string;
   enabled: boolean;
@@ -867,6 +885,8 @@ export interface DomainEventMap {
   "notification.sent": NotificationSentEvent;
   "notification.suppressed": NotificationSuppressedEvent;
   "notification.setting_updated": NotificationSettingUpdatedEvent;
+  // Notification dispatcher (Phase 2.2 — persistent dedup)
+  "notification.deduplicated": NotificationDeduplicatedEvent;
   // User lifecycle (Phase 2)
   "user.created": UserCreatedEvent;
   "user.password_changed": UserPasswordChangedEvent;

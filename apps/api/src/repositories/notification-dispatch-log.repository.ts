@@ -9,9 +9,9 @@ import { BaseRepository } from "./base.repository";
 // ─── Notification Dispatch Log Repository (Phase 5) ────────────────────────
 // Append-only send log written by NotificationDispatcherService. Each doc
 // captures ONE dispatched-or-suppressed send: the catalog key, channel,
-// redacted recipient ref, status ("sent" | "suppressed"), provider
-// messageId (for cross-referencing bounces / opens / clicks), and an
-// optional failure reason.
+// redacted recipient ref, status ("sent" | "suppressed" | "deduplicated"),
+// provider messageId (for cross-referencing bounces / opens / clicks),
+// and an optional failure reason.
 //
 // Collection schema:
 //   notificationDispatchLog/{id}
@@ -19,10 +19,11 @@ import { BaseRepository } from "./base.repository";
 //     key: string (catalog key, e.g. "registration.created")
 //     channel: "email" | "sms" | "push" | "in_app"
 //     recipientRef: string ("user:<uid>" or "email:<8ch-sha256>@<domain>")
-//     status: "sent" | "suppressed"
+//     status: "sent" | "suppressed" | "deduplicated"
 //     reason?: suppression reason (only when status === "suppressed")
 //     messageId?: string (provider id for sends)
-//     idempotencyKey?: string
+//     idempotencyKey: string (Phase 2.2 — required; dispatcher dedup key)
+//     deduplicated?: boolean (true when status === "deduplicated")
 //     attemptedAt: ISO string (server timestamp of the dispatch)
 //     requestId: string (from the AsyncLocalStorage request context)
 //     actorId: string
@@ -35,16 +36,24 @@ import { BaseRepository } from "./base.repository";
 // TTL: Firestore TTL policy on `attemptedAt` (90 days) will be wired in
 // a follow-up Terraform change. Until then the collection grows without
 // bound — admins should prune manually if volume gets large.
+//
+// Required composite index (Phase 2.2):
+//   (idempotencyKey ASC, attemptedAt DESC) on notificationDispatchLog
+// Declared in infrastructure/firebase/firestore.indexes.json. The
+// dispatcher queries this index in `findRecentByIdempotencyKey` before
+// every adapter.send to catch duplicate emits from retried listeners /
+// pubsub redeliveries / buggy callers.
 
 export interface DispatchLogEntry {
   id: string;
   key: string;
   channel: NotificationChannel;
   recipientRef: string;
-  status: "sent" | "suppressed";
+  status: "sent" | "suppressed" | "deduplicated";
   reason?: NotificationSuppressionReason;
   messageId?: string;
-  idempotencyKey?: string;
+  idempotencyKey: string;
+  deduplicated?: boolean;
   attemptedAt: string;
   requestId: string;
   actorId: string;
@@ -87,15 +96,21 @@ export class NotificationDispatchLogRepository extends BaseRepository<DispatchLo
   /**
    * Aggregate stats for the admin dashboard (Phase 5 UI).
    *
-   * Per-key counts of sent / suppressed in the last N days. Called with
-   * N=1 for the today widget and N=7 for the weekly summary on the
-   * super-admin notifications page. Result shape is keyed by notification
-   * key so the UI can render per-row rates alongside the catalog.
+   * Per-key counts of sent / suppressed / deduplicated in the last N
+   * days. Called with N=1 for the today widget and N=7 for the weekly
+   * summary on the super-admin notifications page. Result shape is
+   * keyed by notification key so the UI can render per-row rates
+   * alongside the catalog.
    *
    * Implementation: single-collection scan with a `where attemptedAt >=
    * cutoff` filter. Small write volumes (low thousands per day at our
    * scale) make a scan acceptable; migrate to a pre-aggregated
    * `notificationMetrics` collection once volume warrants.
+   *
+   * `deduplicated` (Phase 2.2) counts are separate from `sent` — a dup
+   * that was short-circuited never hit the provider, so rolling it in
+   * with `sent` would inflate delivery metrics. Admins see both counts
+   * so they can quickly spot retry storms / buggy listeners.
    */
   async aggregateStats(days: number): Promise<
     Record<
@@ -103,6 +118,7 @@ export class NotificationDispatchLogRepository extends BaseRepository<DispatchLo
       {
         sent: number;
         suppressed: number;
+        deduplicated: number;
         suppressionByReason: Partial<Record<NotificationSuppressionReason, number>>;
       }
     >
@@ -136,6 +152,7 @@ export class NotificationDispatchLogRepository extends BaseRepository<DispatchLo
         {
           sent: number;
           suppressed: number;
+          deduplicated: number;
           suppressionByReason: Partial<Record<NotificationSuppressionReason, number>>;
         }
       > = {};
@@ -143,11 +160,18 @@ export class NotificationDispatchLogRepository extends BaseRepository<DispatchLo
       for (const doc of snap.docs) {
         const data = doc.data() as DispatchLogEntry;
         if (!stats[data.key]) {
-          stats[data.key] = { sent: 0, suppressed: 0, suppressionByReason: {} };
+          stats[data.key] = {
+            sent: 0,
+            suppressed: 0,
+            deduplicated: 0,
+            suppressionByReason: {},
+          };
         }
         const entry = stats[data.key]!;
         if (data.status === "sent") {
           entry.sent++;
+        } else if (data.status === "deduplicated") {
+          entry.deduplicated++;
         } else {
           entry.suppressed++;
           if (data.reason) {
@@ -160,6 +184,68 @@ export class NotificationDispatchLogRepository extends BaseRepository<DispatchLo
       return stats;
     } catch {
       return {};
+    }
+  }
+
+  /**
+   * Lookup the most recent "sent" or admin/user-suppressed entry for a
+   * given idempotency key within `withinMs`. Used by the dispatcher to
+   * dedup duplicate emits (retried listener, pubsub redelivery, buggy
+   * caller) BEFORE hitting the provider — Resend's own idempotency
+   * would catch the collision, but only after an HTTP round-trip and
+   * without surfacing the dup to our admin stats.
+   *
+   * A "suppressed" entry with reason `admin_disabled` or `user_opted_out`
+   * also counts as a terminal decision — no point replaying the same
+   * decision on a retry. Other suppression reasons (`bounced`,
+   * `on_suppression_list`, `no_recipient`) are transient-ish and we
+   * allow the retry to re-evaluate.
+   *
+   * Fire-and-forget — a read failure (missing index, transient
+   * Firestore error) returns null so the send proceeds rather than
+   * silently dropping mail. "Fail open" matches isSuppressed + opt-out
+   * behavior elsewhere in the email stack.
+   *
+   * Requires composite index: (idempotencyKey ASC, attemptedAt DESC)
+   * — declared in infrastructure/firebase/firestore.indexes.json.
+   */
+  async findRecentByIdempotencyKey(
+    idempotencyKey: string,
+    withinMs: number,
+  ): Promise<DispatchLogEntry | null> {
+    try {
+      const cutoff = new Date(Date.now() - withinMs).toISOString();
+      const snap = await this.collection
+        .where("idempotencyKey", "==", idempotencyKey)
+        .where("attemptedAt", ">=", cutoff)
+        .orderBy("attemptedAt", "desc")
+        .limit(1)
+        .get();
+      if (snap.empty) return null;
+      const data = snap.docs[0]!.data() as DispatchLogEntry;
+      // Only terminal decisions count as dedup triggers. A previous
+      // `bounced` / `no_recipient` entry does NOT suppress a retry —
+      // the address may have been corrected, the recipient list
+      // refilled, etc.
+      if (
+        data.status === "sent" ||
+        data.status === "deduplicated" ||
+        (data.status === "suppressed" &&
+          (data.reason === "admin_disabled" || data.reason === "user_opted_out"))
+      ) {
+        return data;
+      }
+      return null;
+    } catch (err) {
+      process.stderr.write(
+        JSON.stringify({
+          level: "warn",
+          event: "notification.dedup_lookup_failed",
+          idempotencyKey,
+          err: err instanceof Error ? err.message : String(err),
+        }) + "\n",
+      );
+      return null;
     }
   }
 }

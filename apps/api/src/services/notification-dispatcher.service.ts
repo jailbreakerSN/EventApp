@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import {
   NOTIFICATION_CATALOG_BY_KEY,
   type DispatchRequest,
+  type NotificationCategory,
   type NotificationChannel,
   type NotificationDefinition,
   type NotificationRecipient,
@@ -78,6 +79,40 @@ export interface EmailChannelDispatchResult {
   /** Machine-readable suppression reason when ok=false. */
   suppressed?: NotificationSuppressionReason;
 }
+
+// ─── Dedup window policy (Phase 2.2) ───────────────────────────────────────
+// How far back the dispatcher looks in the dispatch log to catch a
+// duplicate emit. Keyed by NotificationCategory — event reminders
+// reasonably recur every few days (weekly series, "Save the date" +
+// T-24h reminders) so the window must be shorter than the cadence.
+// Marketing drips are tight (1h ≈ a fat-finger double-click).
+// Transactional / auth / billing are terminal one-shots; 24h gives
+// ample grace for pubsub redelivery + manual retries without blocking
+// legitimate re-sends on day 2.
+//
+// The dispatcher derives the key from definition.category; unknown
+// categories fall back to DEFAULT_DEDUP_WINDOW_MS via the map's nullish
+// lookup below (category is always populated in the catalog, so this
+// is defense in depth).
+const DEDUP_WINDOW_MS: Record<NotificationCategory, number> = {
+  auth: 24 * 60 * 60 * 1000, // 24h
+  billing: 24 * 60 * 60 * 1000, // 24h
+  transactional: 24 * 60 * 60 * 1000, // 24h
+  organizational: 24 * 60 * 60 * 1000, // 24h
+  marketing: 60 * 60 * 1000, // 1h
+};
+/** Fallback for catalog entries with an unknown/unmapped category. */
+const DEFAULT_DEDUP_WINDOW_MS = 24 * 60 * 60 * 1000;
+/**
+ * event.reminder is the one outlier — reminders ship on a 7-day
+ * cadence (Save the date / T-7d / T-1d), so a 24h window misses
+ * nothing yet a 7d window catches accidental double-schedules from
+ * the reminder cron. Keyed by catalog key so we don't punish every
+ * `organizational` notification with the longer window.
+ */
+const DEDUP_WINDOW_MS_BY_KEY: Record<string, number> = {
+  "event.reminder": 7 * 24 * 60 * 60 * 1000, // 7d
+};
 
 // ─── Adapter registry ──────────────────────────────────────────────────────
 // Single global registry. Swappable at test time via setEmailChannelAdapter().
@@ -209,6 +244,35 @@ export class NotificationDispatcherService {
 
     const idempotencyKey = this.resolveIdempotencyKey(definition.key, recipient, req);
 
+    // Phase 2.2 — persistent idempotency check. The dispatch log is
+    // queried before every adapter.send so a retried listener / pubsub
+    // redelivery / buggy caller gets short-circuited BEFORE a provider
+    // round-trip, and the event is recorded as "deduplicated" (not
+    // "sent") so admin stats stay accurate. Resend's own idempotency
+    // would catch the dup too, but only after the HTTP round-trip and
+    // without surfacing the retry to our observability stack.
+    //
+    // Window derives from the definition's category (see DEDUP_WINDOW_MS
+    // above) with a per-key override for event.reminder's 7-day cadence.
+    const windowMs = DEDUP_WINDOW_MS_BY_KEY[definition.key] ??
+      DEDUP_WINDOW_MS[definition.category] ??
+      DEFAULT_DEDUP_WINDOW_MS;
+    const prior = await notificationDispatchLogRepository.findRecentByIdempotencyKey(
+      idempotencyKey,
+      windowMs,
+    );
+    if (prior) {
+      this.emitDeduplicated(
+        definition.key,
+        "email",
+        recipientRef,
+        idempotencyKey,
+        prior.attemptedAt,
+        baseEvent,
+      );
+      return;
+    }
+
     try {
       const result = await adapter.send({
         definition,
@@ -218,7 +282,14 @@ export class NotificationDispatcherService {
       });
 
       if (result.ok) {
-        this.emitSent(definition.key, "email", recipientRef, result.messageId, baseEvent);
+        this.emitSent(
+          definition.key,
+          "email",
+          recipientRef,
+          result.messageId,
+          idempotencyKey,
+          baseEvent,
+        );
       } else {
         this.emitSuppressed(
           definition.key,
@@ -226,11 +297,19 @@ export class NotificationDispatcherService {
           result.suppressed ?? "bounced",
           baseEvent,
           "email",
+          idempotencyKey,
         );
       }
     } catch (err) {
       this.logServerError(definition.key, err instanceof Error ? err.message : String(err));
-      this.emitSuppressed(definition.key, recipientRef, "bounced", baseEvent, "email");
+      this.emitSuppressed(
+        definition.key,
+        recipientRef,
+        "bounced",
+        baseEvent,
+        "email",
+        idempotencyKey,
+      );
     }
   }
 
@@ -337,6 +416,7 @@ export class NotificationDispatcherService {
     channel: NotificationChannel,
     recipientRef: string,
     messageId: string | undefined,
+    idempotencyKey: string,
     baseEvent: { actorId: string; requestId: string; timestamp: string },
   ): void {
     eventBus.emit("notification.sent", {
@@ -355,6 +435,7 @@ export class NotificationDispatcherService {
       recipientRef,
       status: "sent",
       ...(messageId ? { messageId } : {}),
+      idempotencyKey,
       attemptedAt: baseEvent.timestamp,
       requestId: baseEvent.requestId,
       actorId: baseEvent.actorId,
@@ -367,6 +448,7 @@ export class NotificationDispatcherService {
     reason: NotificationSuppressionReason,
     baseEvent: { actorId: string; requestId: string; timestamp: string },
     channel?: NotificationChannel,
+    idempotencyKey?: string,
   ): void {
     eventBus.emit("notification.suppressed", {
       ...baseEvent,
@@ -378,12 +460,60 @@ export class NotificationDispatcherService {
     // Phase 5 observability — same log pipeline as `sent`. `reason`
     // lets the admin UI aggregate suppression by cause (admin_disabled
     // / user_opted_out / on_suppression_list / bounced / no_recipient).
+    //
+    // `idempotencyKey` is optional on this path because pre-adapter
+    // short-circuits (empty recipients, admin_disabled with no per-
+    // recipient context, unsupported channels) happen before it's
+    // computed. When absent we persist a placeholder derived from the
+    // key + recipientRef so the row still carries a stable dedup
+    // identifier for audit queries.
+    const effectiveIdempotencyKey =
+      idempotencyKey ?? `${key}:${recipientRef}:pre-adapter`;
     void notificationDispatchLogRepository.append({
       key,
       channel: channel ?? "email",
       recipientRef,
       status: "suppressed",
       reason,
+      idempotencyKey: effectiveIdempotencyKey,
+      attemptedAt: baseEvent.timestamp,
+      requestId: baseEvent.requestId,
+      actorId: baseEvent.actorId,
+    });
+  }
+
+  /**
+   * Phase 2.2 — persistent-dedup emit path. Fires a
+   * `notification.deduplicated` domain event AND appends a log row
+   * with status="deduplicated" so the admin stats aggregation can
+   * count retry storms separately from real sends. Intentionally
+   * does NOT emit notification.sent — that would double-count the
+   * send in downstream listeners (audit trail would show two
+   * deliveries when only one ever reached the provider).
+   */
+  private emitDeduplicated(
+    key: string,
+    channel: NotificationChannel,
+    recipientRef: string,
+    idempotencyKey: string,
+    originalAttemptedAt: string,
+    baseEvent: { actorId: string; requestId: string; timestamp: string },
+  ): void {
+    eventBus.emit("notification.deduplicated", {
+      ...baseEvent,
+      key,
+      channel,
+      recipientRef,
+      idempotencyKey,
+      originalAttemptedAt,
+    });
+    void notificationDispatchLogRepository.append({
+      key,
+      channel,
+      recipientRef,
+      status: "deduplicated",
+      idempotencyKey,
+      deduplicated: true,
       attemptedAt: baseEvent.timestamp,
       requestId: baseEvent.requestId,
       actorId: baseEvent.actorId,

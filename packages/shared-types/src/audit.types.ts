@@ -94,6 +94,10 @@ export const AuditActionSchema = z.enum([
   "notification.sent",
   "notification.suppressed",
   "notification.setting_updated",
+  // Phase 2.2 — emitted when the dispatcher short-circuits a dup emit
+  // using the persistent idempotency log. Distinct from "sent" so
+  // dashboards don't conflate providers-delivered vs. caller-retried.
+  "notification.deduplicated",
   // ── Resend webhook-sourced events (written from apps/functions) ───────────
   // Cloud Functions can't emit on the API's in-process eventBus, so the
   // resendWebhook handler writes these audit rows directly. Values kept in

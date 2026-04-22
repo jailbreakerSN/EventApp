@@ -1219,6 +1219,25 @@ export function registerAuditListeners(): void {
     });
   });
 
+  eventBus.on("notification.deduplicated", async (payload) => {
+    await auditService.log({
+      action: "notification.deduplicated",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "notification",
+      resourceId: payload.key,
+      eventId: null,
+      organizationId: null,
+      details: {
+        channel: payload.channel,
+        recipientRef: payload.recipientRef,
+        idempotencyKey: payload.idempotencyKey,
+        originalAttemptedAt: payload.originalAttemptedAt,
+      },
+    });
+  });
+
   eventBus.on("notification.setting_updated", async (payload) => {
     await auditService.log({
       action: "notification.setting_updated",

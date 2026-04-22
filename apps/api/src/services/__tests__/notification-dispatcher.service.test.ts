@@ -23,6 +23,7 @@ vi.mock("@/config/firebase", () => ({
   },
   COLLECTIONS: {
     NOTIFICATION_SETTINGS: "notificationSettings",
+    NOTIFICATION_DISPATCH_LOG: "notificationDispatchLog",
   },
 }));
 
@@ -35,22 +36,28 @@ import {
   type EmailChannelAdapter,
 } from "../notification-dispatcher.service";
 import { notificationSettingsRepository } from "@/repositories/notification-settings.repository";
+import { notificationDispatchLogRepository } from "@/repositories/notification-dispatch-log.repository";
 import { NOTIFICATION_CATALOG_BY_KEY } from "@teranga/shared-types";
 
 // ─── Test doubles ──────────────────────────────────────────────────────────
 
 const sentEvents: unknown[] = [];
 const suppressedEvents: unknown[] = [];
+const deduplicatedEvents: unknown[] = [];
 
 function captureEvents() {
   eventBus.removeAllListeners();
   sentEvents.length = 0;
   suppressedEvents.length = 0;
+  deduplicatedEvents.length = 0;
   eventBus.on("notification.sent", (p) => {
     sentEvents.push(p);
   });
   eventBus.on("notification.suppressed", (p) => {
     suppressedEvents.push(p);
+  });
+  eventBus.on("notification.deduplicated", (p) => {
+    deduplicatedEvents.push(p);
   });
 }
 
@@ -71,6 +78,14 @@ describe("NotificationDispatcherService", () => {
     vi.clearAllMocks();
     captureEvents();
     setEmailChannelAdapter(mockAdapter);
+    // Default: no prior dedup entry. Individual tests override to
+    // exercise the dedup short-circuit.
+    vi.spyOn(notificationDispatchLogRepository, "findRecentByIdempotencyKey").mockResolvedValue(
+      null,
+    );
+    // Stub the append path so log writes don't bleed into Firestore
+    // mocks — the dispatcher calls this after every send/suppress.
+    vi.spyOn(notificationDispatchLogRepository, "append").mockResolvedValue("log-id");
   });
 
   afterEach(() => {
@@ -289,6 +304,154 @@ describe("NotificationDispatcherService", () => {
     }
 
     vi.doUnmock("../email.service");
+  });
+
+  // ─── Phase 2.2 persistent idempotency ─────────────────────────────────
+  // The dispatcher queries notificationDispatchLog before every
+  // adapter.send. A hit within the category's dedup window short-
+  // circuits the send and emits `notification.deduplicated` instead
+  // of `notification.sent`.
+
+  it("dedup: second dispatch with same idempotencyKey within window skips adapter.send", async () => {
+    const priorEntry = {
+      id: "prior-1",
+      key: "registration.created",
+      channel: "email" as const,
+      recipientRef: "user:u1",
+      status: "sent" as const,
+      idempotencyKey: "registration.created:u1:reg-confirm/r1",
+      attemptedAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(), // 1h ago
+      requestId: "req-prior",
+      actorId: "system",
+    };
+    vi.spyOn(
+      notificationDispatchLogRepository,
+      "findRecentByIdempotencyKey",
+    ).mockResolvedValueOnce(priorEntry);
+
+    await notificationDispatcher.dispatch({
+      key: "registration.created",
+      recipients: [{ userId: "u1", preferredLocale: "fr" }],
+      params: { registrationId: "r1" },
+      idempotencyKey: "reg-confirm/r1",
+    });
+    await flush();
+
+    // Adapter never called — dedup short-circuited before the provider.
+    expect(mockAdapter.send).not.toHaveBeenCalled();
+    // notification.sent NOT emitted — avoids double-counting delivery.
+    expect(sentEvents).toHaveLength(0);
+    // notification.deduplicated IS emitted — stats can see the retry.
+    expect(deduplicatedEvents).toHaveLength(1);
+    const dedup = deduplicatedEvents[0] as {
+      key: string;
+      channel: string;
+      idempotencyKey: string;
+      originalAttemptedAt: string;
+    };
+    expect(dedup.key).toBe("registration.created");
+    expect(dedup.channel).toBe("email");
+    expect(dedup.idempotencyKey).toBe("registration.created:u1:reg-confirm/r1");
+    expect(dedup.originalAttemptedAt).toBe(priorEntry.attemptedAt);
+  });
+
+  it("dedup: unknown category falls back to 24h default window (marketing-unknown behaves identically)", async () => {
+    // registration.created is "transactional" → 24h default window.
+    // Simulate a prior entry 23h ago (inside window) — should dedup.
+    const priorEntry = {
+      id: "prior-2",
+      key: "registration.created",
+      channel: "email" as const,
+      recipientRef: "user:u1",
+      status: "sent" as const,
+      idempotencyKey: "registration.created:u1:reg-confirm/r2",
+      attemptedAt: new Date(Date.now() - 23 * 60 * 60 * 1000).toISOString(),
+      requestId: "req-prior-2",
+      actorId: "system",
+    };
+    const spy = vi
+      .spyOn(notificationDispatchLogRepository, "findRecentByIdempotencyKey")
+      .mockResolvedValueOnce(priorEntry);
+
+    await notificationDispatcher.dispatch({
+      key: "registration.created",
+      recipients: [{ userId: "u1", preferredLocale: "fr" }],
+      params: { registrationId: "r2" },
+      idempotencyKey: "reg-confirm/r2",
+    });
+    await flush();
+
+    // Verify the dispatcher asked for a ~24h window (±1ms clock skew).
+    expect(spy).toHaveBeenCalled();
+    const [, windowMs] = spy.mock.calls[0]!;
+    expect(windowMs).toBe(24 * 60 * 60 * 1000);
+    expect(deduplicatedEvents).toHaveLength(1);
+  });
+
+  it("dedup: window respects category — marketing uses a 1h window", async () => {
+    // newsletter.welcome has category "marketing" → 1h window. The
+    // dispatcher must pass exactly 1h to findRecentByIdempotencyKey.
+    const spy = vi
+      .spyOn(notificationDispatchLogRepository, "findRecentByIdempotencyKey")
+      .mockResolvedValue(null);
+
+    // First call: no prior → adapter fires.
+    await notificationDispatcher.dispatch({
+      key: "newsletter.welcome",
+      recipients: [{ email: "a@b.co", preferredLocale: "fr" }],
+      params: { email: "a@b.co" },
+      idempotencyKey: "newsletter/a@b.co",
+    });
+    await flush();
+
+    expect(spy).toHaveBeenCalled();
+    const [, windowMs] = spy.mock.calls[0]!;
+    expect(windowMs).toBe(60 * 60 * 1000); // 1h for marketing
+    // No dedup entry returned → adapter fired, normal send flow.
+    expect(mockAdapter.send).toHaveBeenCalledTimes(1);
+    expect(sentEvents).toHaveLength(1);
+    expect(deduplicatedEvents).toHaveLength(0);
+  });
+
+  it("dedup: event.reminder uses a 7-day override window (per-key policy)", async () => {
+    // event.reminder has a per-key override because reminders ship on
+    // a weekly cadence — the default 24h organizational window would
+    // miss genuine duplicates from a cron double-fire.
+    const spy = vi
+      .spyOn(notificationDispatchLogRepository, "findRecentByIdempotencyKey")
+      .mockResolvedValue(null);
+
+    await notificationDispatcher.dispatch({
+      key: "event.reminder",
+      recipients: [{ userId: "u1", preferredLocale: "fr" }],
+      params: { eventTitle: "Test event" },
+      idempotencyKey: "event-reminder/e1/u1",
+    });
+    await flush();
+
+    expect(spy).toHaveBeenCalled();
+    const [, windowMs] = spy.mock.calls[0]!;
+    expect(windowMs).toBe(7 * 24 * 60 * 60 * 1000); // 7d for event.reminder
+  });
+
+  it("dedup: second dispatch BEYOND window proceeds (no short-circuit)", async () => {
+    // Repo returns null for stale entries — simulating "within window"
+    // lookup that found nothing. Dispatcher must fall through to send.
+    vi.spyOn(notificationDispatchLogRepository, "findRecentByIdempotencyKey").mockResolvedValue(
+      null,
+    );
+
+    await notificationDispatcher.dispatch({
+      key: "registration.created",
+      recipients: [{ userId: "u1", preferredLocale: "fr" }],
+      params: { registrationId: "r3" },
+      idempotencyKey: "reg-confirm/r3",
+    });
+    await flush();
+
+    expect(mockAdapter.send).toHaveBeenCalledTimes(1);
+    expect(sentEvents).toHaveLength(1);
+    expect(deduplicatedEvents).toHaveLength(0);
   });
 
   it("dispatches to multiple recipients in parallel", async () => {
