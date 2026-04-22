@@ -436,6 +436,91 @@ describe("Audit Listener", () => {
     );
   });
 
+  // ─── Notification dispatcher (Phase 1) ─────────────────────────────────
+  // Three events from NotificationDispatcherService: a successful send
+  // (channel delivered), a suppression (with reason), and a super-admin
+  // kill-switch / channel override write. All three land under
+  // resourceType="notification" so the audit UI can filter by catalog key.
+
+  it("logs notification.sent with channel + recipient ref + messageId", async () => {
+    eventBus.emit("notification.sent", {
+      actorId: "system",
+      requestId: "req-notif-1",
+      timestamp: "2026-04-21T10:00:00.000Z",
+      key: "registration.created",
+      channel: "email",
+      recipientRef: "user:u-123",
+      messageId: "resend-msg-abc",
+    });
+    await flush();
+
+    expect(auditService.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "notification.sent",
+        resourceType: "notification",
+        resourceId: "registration.created",
+        actorId: "system",
+        details: expect.objectContaining({
+          channel: "email",
+          recipientRef: "user:u-123",
+          messageId: "resend-msg-abc",
+        }),
+      }),
+    );
+  });
+
+  it("logs notification.suppressed with reason (admin_disabled)", async () => {
+    eventBus.emit("notification.suppressed", {
+      actorId: "system",
+      requestId: "req-notif-2",
+      timestamp: "2026-04-21T10:00:00.000Z",
+      key: "registration.created",
+      recipientRef: "user:u-123",
+      reason: "admin_disabled",
+    });
+    await flush();
+
+    expect(auditService.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "notification.suppressed",
+        resourceType: "notification",
+        resourceId: "registration.created",
+        details: expect.objectContaining({
+          reason: "admin_disabled",
+          recipientRef: "user:u-123",
+          channel: null,
+        }),
+      }),
+    );
+  });
+
+  it("logs notification.setting_updated with enabled/channels diff", async () => {
+    eventBus.emit("notification.setting_updated", {
+      actorId: "admin-u-1",
+      requestId: "req-notif-3",
+      timestamp: "2026-04-21T10:00:00.000Z",
+      key: "event.reminder",
+      enabled: false,
+      channels: ["email"],
+      hasSubjectOverride: true,
+    });
+    await flush();
+
+    expect(auditService.log).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "notification.setting_updated",
+        resourceType: "notification",
+        resourceId: "event.reminder",
+        actorId: "admin-u-1",
+        details: expect.objectContaining({
+          enabled: false,
+          channels: ["email"],
+          hasSubjectOverride: true,
+        }),
+      }),
+    );
+  });
+
   // ─── SPEC: dynamic completeness check (post-audit) ─────────────────────
   // Pre-audit, the suite hard-coded `toHaveBeenCalledTimes(18)` which
   // silently rotted when new domain events were added to
@@ -480,7 +565,7 @@ describe("Audit Listener", () => {
       // mapping writes the right `action` / `resourceType` to the
       // audit log. If you removed a handler, also drop the matching
       // emission test so stale expectations don't silently pass.
-      const EXPECTED_HANDLER_COUNT = 71;
+      const EXPECTED_HANDLER_COUNT = 74;
 
       expect(registered).toHaveLength(EXPECTED_HANDLER_COUNT);
       // Each registered event name should be unique — a double
@@ -563,6 +648,13 @@ describe("Audit Listener", () => {
           newKid: "kid-new",
           previousKid: "kid-old",
           itemCount: 0,
+          // notification dispatcher:
+          key: "registration.created",
+          channel: "email",
+          recipientRef: "user:u-stub",
+          enabled: true,
+          channels: ["email"],
+          hasSubjectOverride: false,
         });
       }
 

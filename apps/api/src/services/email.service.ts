@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
-import { type EmailCategory } from "@teranga/shared-types";
+import { type EmailCategory, isKnownNotificationKey } from "@teranga/shared-types";
+import { notificationDispatcher, isDispatcherEnabled } from "./notification-dispatcher.service";
 import { db, COLLECTIONS } from "@/config/firebase";
 import { unsubscribeUrl } from "@/config/public-urls";
 import { getEmailProvider } from "@/providers/index";
@@ -398,11 +399,72 @@ export class EmailService {
   // Convenience methods that combine template rendering with sending.
   // Each helper hands sendToUser a factory, so the user's preferredLanguage
   // drives the render — no double-fetch of the user doc.
+  //
+  // Phase 1 rollout: when NOTIFICATIONS_DISPATCHER_ENABLED is true, these
+  // methods route through the NotificationDispatcherService (catalog
+  // lookup, admin kill-switch, per-key user opt-out, audit trail). Flag
+  // defaults to false in prod so the legacy code path stays authoritative
+  // until Phase 2 migrates listeners to call dispatch() directly.
+
+  /**
+   * Dispatch through the catalog when the feature flag is on. Returns
+   * `true` when dispatched (caller should short-circuit); `false` when
+   * the legacy path should run.
+   *
+   * Unknown catalog keys fall through to `false` so a typo in a shim's
+   * key literal doesn't silently swallow the send — the dispatcher would
+   * log-and-return for unknown keys, but returning `true` here would
+   * skip the legacy send AND drop the email. See security review P1-1
+   * (docs/notification-system-architecture.md §16).
+   */
+  private async tryDispatch(
+    key: string,
+    userId: string | undefined,
+    email: string | undefined,
+    params: Record<string, unknown>,
+    idempotencyKey?: string,
+  ): Promise<boolean> {
+    if (!isDispatcherEnabled()) return false;
+    if (!isKnownNotificationKey(key)) {
+      process.stderr.write(
+        JSON.stringify({
+          level: "error",
+          event: "email.try_dispatch.unknown_key",
+          key,
+        }) + "\n",
+      );
+      return false;
+    }
+    await notificationDispatcher.dispatch({
+      key,
+      recipients: [
+        {
+          ...(userId ? { userId } : {}),
+          ...(email ? { email } : {}),
+          preferredLocale: "fr",
+        },
+      ],
+      params,
+      ...(idempotencyKey ? { idempotencyKey } : {}),
+    });
+    return true;
+  }
 
   async sendRegistrationConfirmation(
     userId: string,
     params: RegistrationConfirmationParams,
   ): Promise<void> {
+    if (
+      await this.tryDispatch(
+        "registration.created",
+        userId,
+        undefined,
+        params as unknown as Record<string, unknown>,
+        `reg-confirm/${params.registrationId}`,
+      )
+    ) {
+      return;
+    }
     await this.sendToUser(
       userId,
       (locale) => buildRegistrationEmail({ ...params, locale }),
@@ -418,6 +480,16 @@ export class EmailService {
     userId: string,
     params: RegistrationApprovedParams,
   ): Promise<void> {
+    if (
+      await this.tryDispatch(
+        "registration.approved",
+        userId,
+        undefined,
+        params as unknown as Record<string, unknown>,
+      )
+    ) {
+      return;
+    }
     await this.sendToUser(
       userId,
       (locale) => buildRegistrationApprovedEmail({ ...params, locale }),
@@ -427,6 +499,16 @@ export class EmailService {
   }
 
   async sendBadgeReady(userId: string, params: BadgeReadyParams): Promise<void> {
+    if (
+      await this.tryDispatch(
+        "badge.ready",
+        userId,
+        undefined,
+        params as unknown as Record<string, unknown>,
+      )
+    ) {
+      return;
+    }
     await this.sendToUser(
       userId,
       (locale) => buildBadgeReadyEmail({ ...params, locale }),
@@ -436,6 +518,16 @@ export class EmailService {
   }
 
   async sendEventCancelled(userId: string, params: EventCancelledParams): Promise<void> {
+    if (
+      await this.tryDispatch(
+        "event.cancelled",
+        userId,
+        undefined,
+        params as unknown as Record<string, unknown>,
+      )
+    ) {
+      return;
+    }
     await this.sendToUser(
       userId,
       (locale) => buildEventCancelledEmail({ ...params, locale }),
@@ -445,6 +537,16 @@ export class EmailService {
   }
 
   async sendEventReminder(userId: string, params: EventReminderParams): Promise<void> {
+    if (
+      await this.tryDispatch(
+        "event.reminder",
+        userId,
+        undefined,
+        params as unknown as Record<string, unknown>,
+      )
+    ) {
+      return;
+    }
     await this.sendToUser(
       userId,
       (locale) => buildEventReminderEmail({ ...params, locale }),
@@ -454,6 +556,17 @@ export class EmailService {
   }
 
   async sendPaymentReceipt(userId: string, params: PaymentReceiptParams): Promise<void> {
+    if (
+      await this.tryDispatch(
+        "payment.succeeded",
+        userId,
+        undefined,
+        params as unknown as Record<string, unknown>,
+        `payment-receipt/${params.receiptId}`,
+      )
+    ) {
+      return;
+    }
     await this.sendToUser(
       userId,
       (locale) => buildPaymentReceiptEmail({ ...params, locale }),
@@ -466,6 +579,9 @@ export class EmailService {
   }
 
   async sendWelcomeNewsletter(email: string, locale?: Locale): Promise<void> {
+    if (await this.tryDispatch("newsletter.welcome", undefined, email, { email, locale })) {
+      return;
+    }
     const template = await buildWelcomeEmail({ email, locale });
     await this.sendDirect(email, template, "marketing", {
       tags: [{ name: "type", value: "newsletter_welcome" }],
@@ -483,6 +599,16 @@ export class EmailService {
     email: string,
     params: { name: string; verificationUrl: string; locale?: Locale },
   ): Promise<void> {
+    if (
+      await this.tryDispatch(
+        "auth.email_verification",
+        undefined,
+        email,
+        params as unknown as Record<string, unknown>,
+      )
+    ) {
+      return;
+    }
     const template = await buildEmailVerificationEmail(params);
     await this.sendDirect(email, template, "auth", {
       tags: [{ name: "type", value: "email_verification" }],
@@ -500,6 +626,16 @@ export class EmailService {
     email: string,
     params: { resetUrl: string; locale?: Locale },
   ): Promise<void> {
+    if (
+      await this.tryDispatch(
+        "auth.password_reset",
+        undefined,
+        email,
+        params as unknown as Record<string, unknown>,
+      )
+    ) {
+      return;
+    }
     const template = await buildPasswordResetEmail(params);
     await this.sendDirect(email, template, "auth", {
       tags: [{ name: "type", value: "password_reset" }],
@@ -518,6 +654,11 @@ export class EmailService {
     confirmationUrl: string,
     locale?: Locale,
   ): Promise<void> {
+    if (
+      await this.tryDispatch("newsletter.confirm", undefined, email, { confirmationUrl, locale })
+    ) {
+      return;
+    }
     const template = await buildNewsletterConfirmationEmail({ confirmationUrl, locale });
     await this.sendDirect(email, template, "transactional", {
       tags: [{ name: "type", value: "newsletter_confirmation" }],

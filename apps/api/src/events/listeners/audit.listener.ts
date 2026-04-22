@@ -1175,6 +1175,68 @@ export function registerAuditListeners(): void {
     });
   });
 
+  // ── Notification dispatcher (Phase 1) ──────────────────────────────────
+  // Three events emitted by NotificationService: a send succeeded, a send
+  // was suppressed (with reason), and a super-admin toggled a setting.
+  // `resourceType: "notification"` groups them under a single filter in
+  // the audit UI; resourceId is the catalog key so admins can drill into
+  // "show me everything that happened for registration.created in the
+  // last 24h" without a join.
+
+  eventBus.on("notification.sent", async (payload) => {
+    await auditService.log({
+      action: "notification.sent",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "notification",
+      resourceId: payload.key,
+      eventId: null,
+      organizationId: null,
+      details: {
+        channel: payload.channel,
+        recipientRef: payload.recipientRef,
+        messageId: payload.messageId ?? null,
+      },
+    });
+  });
+
+  eventBus.on("notification.suppressed", async (payload) => {
+    await auditService.log({
+      action: "notification.suppressed",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "notification",
+      resourceId: payload.key,
+      eventId: null,
+      organizationId: null,
+      details: {
+        reason: payload.reason,
+        recipientRef: payload.recipientRef,
+        channel: payload.channel ?? null,
+      },
+    });
+  });
+
+  eventBus.on("notification.setting_updated", async (payload) => {
+    await auditService.log({
+      action: "notification.setting_updated",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "notification",
+      resourceId: payload.key,
+      eventId: null,
+      organizationId: null,
+      details: {
+        enabled: payload.enabled,
+        channels: payload.channels,
+        hasSubjectOverride: payload.hasSubjectOverride,
+      },
+    });
+  });
+
   // ── Subscription Override (Phase 5 — admin per-org assign) ─────────────
 
   eventBus.on("subscription.overridden", async (payload) => {

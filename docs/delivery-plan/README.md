@@ -129,6 +129,12 @@ A 4-phase implementation adding a complete SaaS freemium monetization model with
 
 ---
 
+## Cross-cutting initiatives
+
+- [Notification system roadmap](../notification-system-roadmap.md) — catalog + dispatcher + super-admin control plane (6 phases; v1 = phases 1-4, v2 = phases 5-6)
+
+---
+
 ## What Remains: Path to Production Launch
 
 The web platform is feature-complete at ~98%. What remains is **production hardening, legal compliance, launch preparation, and venue host UX** — not new core features.

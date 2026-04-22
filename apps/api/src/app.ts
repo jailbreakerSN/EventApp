@@ -14,6 +14,10 @@ import { registerAuditListeners } from "@/events/listeners/audit.listener";
 import { registerEffectivePlanListeners } from "@/events/listeners/effective-plan.listener";
 import { registerEventDenormListeners } from "@/events/listeners/event-denorm.listener";
 import { captureError } from "@/observability/sentry";
+// Side-effect import: registers the email channel adapter on the
+// NotificationDispatcherService so catalog-driven sends work out of the
+// box. No exported bindings used here; the import statement is the wiring.
+import "@/services/email/dispatcher-adapter";
 
 export async function buildApp() {
   const app = Fastify({

@@ -564,6 +564,29 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // ─── Notification Settings (Phase 1) ────────────────────────────────────
+    // Per-notification-key admin overrides. Doc id = notification key
+    // (e.g. "registration.created"). Body = NotificationSetting from
+    // @teranga/shared-types. Readable by super_admin for the admin
+    // notifications UI (Phase 4); all writes go through the admin API
+    // which enforces `platform:manage` and emits notification.setting_updated
+    // for audit. Client-side writes are blocked even for super-admins to
+    // preserve the audit trail.
+    match /notificationSettings/{key} {
+      allow read: if isSuperAdmin();
+      allow create, update, delete: if false;
+    }
+
+    // ─── Notification Dispatch Log (Phase 5 — v2) ───────────────────────────
+    // Append-only send log written by the dispatcher once observability
+    // ships. Server-only; super_admin reads power the "recent sends"
+    // diagnostic drawer. Collection exists now so the rules surface is
+    // locked down ahead of the v2 writer.
+    match /notificationDispatchLog/{id} {
+      allow read: if isSuperAdmin();
+      allow create, update, delete: if false;
+    }
+
     // ─── Plan Catalog ──────────────────────────────────────────────────────
     // Superadmin-managed catalog of subscription plans. Any authenticated
     // user can read published (public, non-archived) plans so the billing

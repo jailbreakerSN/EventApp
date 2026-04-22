@@ -86,6 +86,14 @@ export const AuditActionSchema = z.enum([
   "newsletter.sent",
   // ── Notification preferences ──────────────────────────────────────────────
   "notification.unsubscribed",
+  // ── Notification system (dispatcher, super-admin settings) ───────────────
+  // Emitted by the NotificationService dispatcher on every channel delivery,
+  // every suppression decision (admin_disabled / user_opted_out / on_suppression_list
+  // / bounced / no_recipient), and every super-admin write to notificationSettings.
+  // See docs/notification-system-architecture.md §11 + §12.
+  "notification.sent",
+  "notification.suppressed",
+  "notification.setting_updated",
   // ── Resend webhook-sourced events (written from apps/functions) ───────────
   // Cloud Functions can't emit on the API's in-process eventBus, so the
   // resendWebhook handler writes these audit rows directly. Values kept in
