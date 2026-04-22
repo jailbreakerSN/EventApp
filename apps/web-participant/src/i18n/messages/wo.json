@@ -663,7 +663,23 @@
   "notifications": {
     "errorTitle": "Mënul a xéy xibaar yi",
     "errorDescription": "Mënul a xéy sa xibaar yi. Jéem waaf ci kanam gu gàtt.",
-    "retry": "Jéem waaf"
+    "retry": "Jéem waaf",
+    "bell": {
+      "triggerAria": "Xibaar yi ({count} yu jàngarul)",
+      "markAllRead": "Jàngal yépp",
+      "seeAll": "Xool xibaar yépp",
+      "emptyTitle": "Amul xibaar",
+      "emptyBody": "Xibaar yu bees dinañu feeñ fii.",
+      "loading": "Di xéy…",
+      "errorMessage": "Mënul a xéy xibaar yi. Jéem waaf ci kanam."
+    },
+    "relative": {
+      "now": "Léegi sax",
+      "minutesShort": "{n} simili ci ginnaaw",
+      "hoursShort": "{n} waxtu ci ginnaaw",
+      "yesterday": "Démb",
+      "daysShort": "{n} fan ci ginnaaw"
+    }
   },
   "messages": {
     "retry": "Jéem waaf"

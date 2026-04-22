@@ -529,8 +529,15 @@ export interface NotificationCatalogEntry {
 }
 
 export const notificationsApi = {
+  // Phase 2.4 — bell panel + history use this; API returns the standard
+  // paginated envelope, the `meta` shape is widened here so callers can read
+  // page / limit / totalPages without a cast.
   list: (params: { page?: number; limit?: number; unreadOnly?: boolean } = {}) =>
-    api.get<{ success: boolean; data: Notification[]; meta: { total: number } }>(`/v1/notifications${buildQuery(params)}`),
+    api.get<{
+      success: boolean;
+      data: Notification[];
+      meta: { page: number; limit: number; total: number; totalPages: number };
+    }>(`/v1/notifications${buildQuery(params)}`),
 
   unreadCount: () =>
     api.get<ApiResponse<{ count: number }>>("/v1/notifications/unread-count"),
@@ -539,7 +546,7 @@ export const notificationsApi = {
     api.patch<{ success: boolean }>(`/v1/notifications/${notificationId}/read`, {}),
 
   markAllAsRead: () =>
-    api.patch<{ success: boolean }>("/v1/notifications/read-all", {}),
+    api.patch<{ success: boolean; updatedCount?: number }>("/v1/notifications/read-all", {}),
 
   // Phase 3 — catalog + per-key opt-out. The PUT endpoint takes the full
   // UpdateNotificationPreferenceDto shape; consumers in this app only pass

@@ -795,7 +795,23 @@
     "paginationOf": "Page {page} sur {total}",
     "errorTitle": "Chargement impossible",
     "errorDescription": "Nous n'avons pas pu récupérer vos notifications. Réessayez dans un instant.",
-    "retry": "Réessayer"
+    "retry": "Réessayer",
+    "bell": {
+      "triggerAria": "Notifications ({count} non lues)",
+      "markAllRead": "Tout marquer comme lu",
+      "seeAll": "Voir toutes les notifications",
+      "emptyTitle": "Aucune notification",
+      "emptyBody": "Les nouveautés apparaîtront ici.",
+      "loading": "Chargement…",
+      "errorMessage": "Impossible de charger les notifications. Réessayez plus tard."
+    },
+    "relative": {
+      "now": "À l'instant",
+      "minutesShort": "Il y a {n} min",
+      "hoursShort": "Il y a {n} h",
+      "yesterday": "Hier",
+      "daysShort": "Il y a {n} j"
+    }
   },
   "messages": {
     "title": "Messages",
