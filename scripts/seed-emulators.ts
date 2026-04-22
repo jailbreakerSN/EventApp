@@ -205,7 +205,9 @@ async function seed() {
     console.log(
       `  ✓ activity seeded — ${c.registrations} registrations, ${c.badges} badges, ` +
         `${c.sessions} sessions, ${c.speakers} speakers, ${c.sponsors} sponsors, ` +
-        `${c.sponsorLeads} leads, ${c.payments} payments, ${c.receipts} receipts`,
+        `${c.sponsorLeads} leads, ${c.payments} payments, ${c.receipts} receipts, ` +
+        `${c.balanceTransactions} ledger entries, ${c.payouts} payouts, ` +
+        `${c.promoCodes} promo codes, ${c.badgeTemplates} badge templates`,
     );
   }
 
@@ -228,8 +230,11 @@ async function seed() {
         `${s.conversations} conversations, ${s.messages} messages, ` +
         `${s.notifications} notifications, ${s.notificationPreferences} prefs, ` +
         `${s.notificationSettings} admin settings overrides, ` +
+        `${s.notificationSettingsHistory} settings-history entries, ` +
         `${s.broadcasts} broadcasts, ${s.checkinFeed} checkin feed, ` +
-        `${s.auditLogs} audit logs, ${s.subscriptions} subscriptions`,
+        `${s.auditLogs} audit logs, ${s.subscriptions} subscriptions, ` +
+        `${s.emailSuppressions} email suppressions, ` +
+        `${s.newsletterSubscribers} newsletter subscribers`,
     );
   }
 

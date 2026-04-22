@@ -1059,6 +1059,191 @@ async function writeNotificationSettings(db: Firestore): Promise<number> {
   return overrides.length;
 }
 
+// ─── Notification Settings History (append-only edit log) ────────────────
+// One prior-version entry per seeded NotificationSetting override so the
+// admin UI history panel has non-empty data on first boot. Doc ids are
+// deterministic (`history-<settingKey>-0001`) — re-running the seed writes
+// to the same docs rather than duplicating rows.
+
+async function writeNotificationSettingsHistory(db: Firestore): Promise<number> {
+  const actor = IDS.superAdmin;
+  const entries = [
+    // newsletter.welcome: previously enabled on email; we just flipped it off.
+    {
+      docId: "history-newsletter-welcome-0001",
+      key: "newsletter.welcome",
+      organizationId: null,
+      previousValue: {
+        key: "newsletter.welcome",
+        enabled: true,
+        channels: ["email"],
+        updatedAt: oneWeekAgo,
+        updatedBy: actor,
+      },
+      newValue: {
+        key: "newsletter.welcome",
+        enabled: false,
+        channels: ["email"],
+        updatedAt: now,
+        updatedBy: "system-seed",
+      },
+      diff: ["enabled", "updatedAt", "updatedBy"],
+      actorId: actor,
+      actorRole: "super_admin",
+      reason: "QA staging: stop the welcome newsletter from firing against seed users.",
+      changedAt: now,
+    },
+    // event.reminder: previously the default subject; we just added French + English + Wolof overrides.
+    {
+      docId: "history-event-reminder-0001",
+      key: "event.reminder",
+      organizationId: null,
+      previousValue: {
+        key: "event.reminder",
+        enabled: true,
+        channels: ["email", "push", "in_app"],
+        updatedAt: twoWeeksAgo,
+        updatedBy: actor,
+      },
+      newValue: {
+        key: "event.reminder",
+        enabled: true,
+        channels: ["email", "push", "in_app"],
+        subjectOverride: {
+          fr: "Votre événement approche ✨",
+          en: "Your event is coming up ✨",
+          wo: "Sa xew bi am na ci yoon ✨",
+        },
+        updatedAt: now,
+        updatedBy: "system-seed",
+      },
+      diff: ["subjectOverride", "updatedAt", "updatedBy"],
+      actorId: actor,
+      actorRole: "super_admin",
+      reason: "Added locale-aware subject lines to match the landing copy.",
+      changedAt: now,
+    },
+    // subscription.approaching_limit per org_dakar_digital_hub — no prior
+    // override (previousValue: null) so the history panel also shows the
+    // "first-time creation" shape, not just edits.
+    {
+      docId: "history-subscription-approaching-limit-dakar-0001",
+      key: "subscription.approaching_limit",
+      organizationId: "org_dakar_digital_hub",
+      previousValue: null,
+      newValue: {
+        key: "subscription.approaching_limit",
+        organizationId: "org_dakar_digital_hub",
+        enabled: false,
+        channels: [],
+        updatedAt: now,
+        updatedBy: "system-seed",
+      },
+      diff: ["enabled", "channels", "organizationId", "updatedAt", "updatedBy"],
+      actorId: actor,
+      actorRole: "super_admin",
+      reason: "Org opted out of approaching-limit nudges pending product rework.",
+      changedAt: now,
+    },
+  ];
+
+  await Promise.all(
+    entries.map((e) =>
+      db
+        .collection("notificationSettingsHistory")
+        .doc(e.docId)
+        .set({
+          id: e.docId,
+          key: e.key,
+          organizationId: e.organizationId,
+          previousValue: e.previousValue,
+          newValue: e.newValue,
+          diff: e.diff,
+          actorId: e.actorId,
+          actorRole: e.actorRole,
+          reason: e.reason,
+          changedAt: e.changedAt,
+        }),
+    ),
+  );
+  return entries.length;
+}
+
+// ─── Email suppressions (bounce + complaint list) ─────────────────────────
+// One seed entry representing a hard-bounced address so the admin
+// "Suppressions" page has visible data on day 1. Doc id = lowercased email
+// (matches the Cloud Function behaviour — see apps/functions/src/triggers/
+// resend/resend-webhook.https.ts suppressEmail()).
+
+async function writeEmailSuppressions(db: Firestore): Promise<number> {
+  const email = "hard-bounce@dev-suppressed.test";
+  const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
+  await db
+    .collection("emailSuppressions")
+    .doc(email)
+    .set({
+      email,
+      reason: "bounced",
+      source: "resend.webhook",
+      sourceEmailId: "seed-resend-evt-0001",
+      createdAt: threeDaysAgo,
+    });
+  return 1;
+}
+
+// ─── Newsletter subscribers (double-opt-in flow) ──────────────────────────
+// 2 confirmed subscribers + 1 pending — exercises every branch of the
+// double-opt-in lifecycle the admin dashboard needs to render.
+
+async function writeNewsletterSubscribers(db: Firestore): Promise<number> {
+  const subscribers = [
+    {
+      id: "newsletter-sub-001",
+      email: "subscriber1@teranga.dev",
+      status: "confirmed" as const,
+      isActive: true,
+      source: "website",
+      subscribedAt: oneWeekAgo,
+      confirmedAt: oneWeekAgo,
+      ipAddress: "196.171.0.42",
+      userAgent: "Mozilla/5.0 (seed fixture)",
+      createdAt: oneWeekAgo,
+      updatedAt: oneWeekAgo,
+    },
+    {
+      id: "newsletter-sub-002",
+      email: "subscriber2@teranga.dev",
+      status: "confirmed" as const,
+      isActive: true,
+      source: "website",
+      subscribedAt: twoWeeksAgo,
+      confirmedAt: twoWeeksAgo,
+      ipAddress: "41.214.0.18",
+      userAgent: "Mozilla/5.0 (seed fixture)",
+      createdAt: twoWeeksAgo,
+      updatedAt: twoWeeksAgo,
+    },
+    {
+      id: "newsletter-sub-003",
+      email: "pending-subscriber@teranga.dev",
+      status: "pending" as const,
+      isActive: false,
+      source: "website",
+      subscribedAt: yesterday,
+      confirmedAt: null,
+      ipAddress: "41.214.0.19",
+      userAgent: "Mozilla/5.0 (seed fixture)",
+      createdAt: yesterday,
+      updatedAt: yesterday,
+    },
+  ];
+
+  await Promise.all(
+    subscribers.map((s) => db.collection("newsletterSubscribers").doc(s.id).set(s)),
+  );
+  return subscribers.length;
+}
+
 // ─── Orchestrator ─────────────────────────────────────────────────────────
 
 export type SocialCounts = {
@@ -1069,10 +1254,13 @@ export type SocialCounts = {
   notifications: number;
   notificationPreferences: number;
   notificationSettings: number;
+  notificationSettingsHistory: number;
   broadcasts: number;
   checkinFeed: number;
   auditLogs: number;
   subscriptions: number;
+  emailSuppressions: number;
+  newsletterSubscribers: number;
 };
 
 export async function seedSocial(db: Firestore): Promise<SocialCounts> {
@@ -1083,10 +1271,13 @@ export async function seedSocial(db: Firestore): Promise<SocialCounts> {
     notifications,
     notificationPreferences,
     notificationSettings,
+    notificationSettingsHistory,
     broadcasts,
     checkinFeed,
     auditLogs,
     subscriptions,
+    emailSuppressions,
+    newsletterSubscribers,
   ] = await Promise.all([
     writeFeedPosts(db),
     writeFeedComments(db),
@@ -1094,10 +1285,13 @@ export async function seedSocial(db: Firestore): Promise<SocialCounts> {
     writeNotifications(db),
     writeNotificationPreferences(db),
     writeNotificationSettings(db),
+    writeNotificationSettingsHistory(db),
     writeBroadcasts(db),
     writeCheckinFeed(db),
     writeAuditLogs(db),
     writeSubscriptions(db),
+    writeEmailSuppressions(db),
+    writeNewsletterSubscribers(db),
   ]);
   return {
     feedPosts,
@@ -1107,9 +1301,12 @@ export async function seedSocial(db: Firestore): Promise<SocialCounts> {
     notifications,
     notificationPreferences,
     notificationSettings,
+    notificationSettingsHistory,
     broadcasts,
     checkinFeed,
     auditLogs,
     subscriptions,
+    emailSuppressions,
+    newsletterSubscribers,
   };
 }
