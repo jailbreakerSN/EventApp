@@ -250,6 +250,47 @@ describe("NotificationDispatcherService", () => {
     expect(callArgs.idempotencyKey).toBe("registration.created:u1:reg-confirm/r1");
   });
 
+  // ─── Phase 3 security-category bypass regression guard ────────────────
+  // Mandatory notifications (`userOptOutAllowed: false` in the catalog)
+  // MUST deliver regardless of the user's byKey preference. Exercises
+  // every such key in the catalog so a future "simplification" that
+  // strips the guard fails loud.
+  it("mandatory notifications bypass byKey opt-out", async () => {
+    const mandatoryKeys = Object.values(NOTIFICATION_CATALOG_BY_KEY)
+      .filter((def) => !def.userOptOutAllowed)
+      .map((def) => def.key);
+    expect(mandatoryKeys.length).toBeGreaterThan(5);
+
+    // User explicitly opts out of every mandatory key — dispatcher must
+    // still deliver all of them.
+    const optOutMap = Object.fromEntries(mandatoryKeys.map((k) => [k, false]));
+    vi.doMock("../email.service", () => ({
+      emailService: {
+        getPreferences: vi.fn().mockResolvedValue({ byKey: optOutMap }),
+      },
+    }));
+
+    for (const key of mandatoryKeys) {
+      await notificationDispatcher.dispatch({
+        key,
+        recipients: [{ userId: "u-secure", email: "user@example.com", preferredLocale: "fr" }],
+        params: {},
+      });
+    }
+    await flush();
+
+    // Every key must have dispatched (not suppressed).
+    expect((mockAdapter.send as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThanOrEqual(
+      mandatoryKeys.length,
+    );
+    // And no suppression event fired for user_opted_out.
+    for (const ev of suppressedEvents) {
+      expect((ev as { reason: string }).reason).not.toBe("user_opted_out");
+    }
+
+    vi.doUnmock("../email.service");
+  });
+
   it("dispatches to multiple recipients in parallel", async () => {
     await notificationDispatcher.dispatch({
       key: "event.cancelled",

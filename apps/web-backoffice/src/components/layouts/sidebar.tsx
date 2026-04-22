@@ -103,6 +103,7 @@ const adminNavItems: NavItem[] = [
   { href: "/admin/events", icon: CalendarDays, label: "Événements (tous)", roles: ["super_admin"] },
   { href: "/admin/venues", icon: MapPin, label: "Lieux", roles: ["super_admin"] },
   { href: "/admin/plans", icon: CreditCard, label: "Plans", roles: ["super_admin"] },
+  { href: "/admin/notifications", icon: Bell, label: "Notifications", roles: ["super_admin"] },
   { href: "/admin/audit", icon: FileText, label: "Journal d'audit", roles: ["super_admin"] },
 ];
 

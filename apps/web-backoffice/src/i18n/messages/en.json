@@ -207,6 +207,87 @@
     "upgrade": "Upgrade",
     "currentPlan": "Current plan"
   },
+  "admin": {
+    "notifications": {
+      "breadcrumbAdmin": "Administration",
+      "breadcrumbCurrent": "Notifications",
+      "kicker": "— CONTROL PLANE",
+      "title": "Platform notifications",
+      "subtitle": "Enable, disable and fine-tune channels for every system notification. Changes are audited.",
+      "loading": "Loading catalog...",
+      "empty": "No notifications found in the catalog.",
+      "errorTitle": "Unable to load notifications",
+      "errorDescription": "Something went wrong loading the catalog. Please retry.",
+      "window": {
+        "label": "Stats window",
+        "days1": "Last 24 hours",
+        "days7": "Last 7 days",
+        "days30": "Last 30 days"
+      },
+      "table": {
+        "key": "Key",
+        "name": "Notification",
+        "category": "Category",
+        "channels": "Channels",
+        "enabled": "Enabled",
+        "sent": "Sent",
+        "suppressed": "Suppressed",
+        "actions": "Actions",
+        "edit": "Edit",
+        "overridden": "Override active",
+        "defaults": "Defaults",
+        "mandatory": "Mandatory"
+      },
+      "category": {
+        "auth": "Authentication",
+        "transactional": "Transactional",
+        "organizational": "Organization",
+        "billing": "Billing",
+        "marketing": "Marketing"
+      },
+      "channel": {
+        "email": "Email",
+        "sms": "SMS",
+        "push": "Push",
+        "in_app": "In-app"
+      },
+      "suppression": {
+        "warningLabel": "High suppression rate: {percent}%",
+        "breakdownTitle": "Suppression reasons",
+        "admin_disabled": "Disabled by admin",
+        "user_opted_out": "User opted out",
+        "on_suppression_list": "Suppression list",
+        "bounced": "Bounced",
+        "no_recipient": "No recipient"
+      },
+      "drawer": {
+        "title": "Edit notification",
+        "subtitle": "Adjust channels and email subject for this notification.",
+        "close": "Close",
+        "channelsLabel": "Active channels",
+        "channelsHelp": "Pick at least one channel among those the code supports.",
+        "channelsEmptyError": "Pick at least one channel.",
+        "subjectLabel": "Custom subject (optional)",
+        "subjectHelp": "Leave empty to keep the template's default subject.",
+        "subjectFr": "Subject (French)",
+        "subjectEn": "Subject (English)",
+        "subjectWo": "Subject (Wolof)",
+        "save": "Save",
+        "saving": "Saving...",
+        "cancel": "Cancel"
+      },
+      "toast": {
+        "enabled": "Notification enabled",
+        "disabled": "Notification disabled",
+        "saved": "Settings saved"
+      },
+      "meta": {
+        "mandatoryHint": "Mandatory notification — users cannot opt out.",
+        "lastUpdated": "Last updated: {date}",
+        "noStats": "No data"
+      }
+    }
+  },
   "errors": {
     "kicker": "— Error",
     "unknown": {

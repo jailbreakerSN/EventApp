@@ -747,5 +747,60 @@ export const uploadsApi = {
     api.post<ApiResponse<UploadUrlResponse>>(`/v1/events/${eventId}/upload-url`, body),
 };
 
+// ─── Admin Notifications Control Plane (Phase 4) ────────────────────────────
+// Super-admin-only catalog editor. The GET payload merges the catalog
+// definitions with any Firestore overrides into a single flat row per
+// notification key; the PUT endpoint upserts the override. Stats are a
+// read-only aggregation of the notificationDispatchLog collection over a
+// rolling window (max 90 days, default 7).
+
+export interface AdminNotificationRow {
+  key: string;
+  category: NotificationCategory;
+  displayName: I18nString;
+  description: I18nString;
+  supportedChannels: NotificationChannel[];
+  userOptOutAllowed: boolean;
+  enabled: boolean;
+  channels: NotificationChannel[];
+  subjectOverride?: I18nString;
+  hasOverride: boolean;
+  updatedAt?: string;
+  updatedBy?: string;
+}
+
+export interface AdminNotificationUpdateDto {
+  enabled: boolean;
+  channels: NotificationChannel[];
+  subjectOverride?: I18nString;
+}
+
+export interface AdminNotificationStatsEntry {
+  sent: number;
+  suppressed: number;
+  suppressionByReason: Partial<Record<NotificationSuppressionReason, number>>;
+}
+
+export interface AdminNotificationStatsResponse {
+  windowDays: number;
+  stats: Record<string, AdminNotificationStatsEntry>;
+}
+
+export const adminNotificationsApi = {
+  list: () =>
+    api.get<ApiResponse<AdminNotificationRow[]>>("/v1/admin/notifications"),
+
+  update: (key: string, dto: AdminNotificationUpdateDto) =>
+    request<ApiResponse<unknown>>(`/v1/admin/notifications/${encodeURIComponent(key)}`, {
+      method: "PUT",
+      body: JSON.stringify(dto),
+    }),
+
+  stats: (days = 7) =>
+    api.get<ApiResponse<AdminNotificationStatsResponse>>(
+      `/v1/admin/notifications/stats${buildQuery({ days })}`,
+    ),
+};
+
 export { ApiError };
 export type { ApiResponse, PaginatedResponse };
