@@ -24,6 +24,56 @@ vi.mock("@/config/firebase", () => ({
   auth: {
     verifyIdToken: (...args: unknown[]) => mockVerifyIdToken(...args),
   },
+  // Phase 2.4 — routes run their upsert+history-append inside
+  // db.runTransaction. Hand back a transaction stub with no-op set/get/update
+  // so the existing route tests can exercise the PUT path without a real
+  // Firestore.
+  db: {
+    collection: () => ({
+      doc: () => ({ set: async () => undefined }),
+    }),
+    runTransaction: async (fn: (tx: unknown) => Promise<unknown>) =>
+      fn({ set: () => undefined, update: () => undefined, get: async () => ({ exists: false }) }),
+  },
+  COLLECTIONS: {
+    NOTIFICATION_SETTINGS: "notificationSettings",
+    NOTIFICATION_SETTINGS_HISTORY: "notificationSettingsHistory",
+    NOTIFICATION_DISPATCH_LOG: "notificationDispatchLog",
+  },
+}));
+
+// Phase 2.4 — new repositories + services touched by the admin routes.
+// Keep them as light mocks so the admin routes test file focuses on the
+// HTTP layer; the individual services/repositories have their own suites.
+vi.mock("@/repositories/notification-settings-history.repository", () => ({
+  notificationSettingsHistoryRepository: {
+    append: vi.fn(async () => "history-id-1"),
+    listByKey: vi.fn(async () => []),
+  },
+  computeSettingDiff: () => ["enabled"],
+}));
+
+vi.mock("@/services/notifications/setting-resolution", () => ({
+  settingResolutionService: {
+    resolve: vi.fn(),
+    merge: vi.fn(),
+  },
+}));
+
+vi.mock("@/services/notifications/preview.service", () => ({
+  notificationPreviewService: {
+    preview: vi.fn(async () => ({
+      subject: "Preview subject",
+      html: "<p>preview</p>",
+      previewText: "preview text",
+    })),
+  },
+}));
+
+vi.mock("@/services/notification-dispatcher.service", () => ({
+  notificationDispatcher: {
+    dispatch: vi.fn(async () => undefined),
+  },
 }));
 
 const mockAdminService = {
@@ -71,7 +121,9 @@ interface MockSetting {
 
 const mockNotificationSettingsRepository = {
   listAll: vi.fn(async (): Promise<MockSetting[]> => []),
+  listAllPerOrg: vi.fn(async (): Promise<MockSetting[]> => []),
   findByKey: vi.fn(async (): Promise<MockSetting | null> => null),
+  findByKeyAndOrg: vi.fn(async (): Promise<MockSetting | null> => null),
   upsert: vi.fn(async () => undefined),
 };
 
@@ -87,6 +139,8 @@ vi.mock("@/repositories/notification-settings.repository", () => ({
       get: (_t, p) => (mockNotificationSettingsRepository as Record<string, unknown>)[p as string],
     },
   ),
+  notificationSettingDocId: (key: string, orgId: string | null) =>
+    orgId ? `${key}__${orgId}` : key,
 }));
 
 vi.mock("@/repositories/notification-dispatch-log.repository", () => ({
@@ -354,15 +408,9 @@ describe("Admin notification control plane (Phase 4)", () => {
     });
 
     expect(res.statusCode).toBe(200);
-    expect(mockNotificationSettingsRepository.upsert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        key: "event.reminder",
-        enabled: false,
-        channels: ["email"],
-        updatedBy: "super-1",
-      }),
-    );
-    // Audit event fired.
+    // Phase 2.4 — the upsert now happens inside a Firestore transaction
+    // (via tx.set) instead of through the repository wrapper, so we
+    // assert on the fired audit event as the load-bearing observable.
     const { eventBus } = (await import("@/events/event-bus")) as unknown as {
       eventBus: { emit: ReturnType<typeof vi.fn> };
     };
@@ -373,6 +421,7 @@ describe("Admin notification control plane (Phase 4)", () => {
         enabled: false,
         channels: ["email"],
         actorId: "super-1",
+        organizationId: null,
       }),
     );
   });
@@ -385,7 +434,6 @@ describe("Admin notification control plane (Phase 4)", () => {
       payload: { enabled: false, channels: ["email"] },
     });
     expect(res.statusCode).toBe(404);
-    expect(mockNotificationSettingsRepository.upsert).not.toHaveBeenCalled();
   });
 
   it("PUT /notifications/:key rejects unsupported channels (400)", async () => {
@@ -433,5 +481,164 @@ describe("Admin notification control plane (Phase 4)", () => {
       headers: authHeader,
     });
     expect(res.statusCode).toBe(400);
+  });
+});
+
+// ─── Phase 2.4 — Preview, Test-send, History ─────────────────────────────
+
+describe("Admin notification control plane (Phase 2.4)", () => {
+  it("POST /notifications/:key/preview returns rendered HTML + subject", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/admin/notifications/registration.created/preview",
+      headers: { ...authHeader, "content-type": "application/json" },
+      payload: { locale: "fr" },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body);
+    expect(body.success).toBe(true);
+    expect(body.data.subject).toBe("Preview subject");
+    expect(body.data.html).toBe("<p>preview</p>");
+    expect(body.data.previewText).toBe("preview text");
+  });
+
+  it("POST /notifications/:key/preview rejects unknown keys (404)", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/admin/notifications/not.a.real.key/preview",
+      headers: { ...authHeader, "content-type": "application/json" },
+      payload: { locale: "fr" },
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("POST /notifications/:key/test-send dispatches with testMode and returns subject", async () => {
+    const { notificationDispatcher } = (await import(
+      "@/services/notification-dispatcher.service"
+    )) as unknown as {
+      notificationDispatcher: { dispatch: ReturnType<typeof vi.fn> };
+    };
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/admin/notifications/registration.created/test-send",
+      headers: { ...authHeader, "content-type": "application/json" },
+      payload: { email: "qa@teranga.events", locale: "fr" },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(notificationDispatcher.dispatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        key: "registration.created",
+        recipients: [{ email: "qa@teranga.events", preferredLocale: "fr" }],
+        testMode: true,
+      }),
+      expect.objectContaining({ actorId: "super-1" }),
+    );
+  });
+
+  it("POST /notifications/:key/test-send rejects unsupported channels (400)", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/admin/notifications/registration.created/test-send",
+      headers: { ...authHeader, "content-type": "application/json" },
+      payload: { email: "qa@teranga.events", locale: "fr", channels: ["sms"] },
+    });
+    expect(res.statusCode).toBe(400);
+    const body = JSON.parse(res.body);
+    expect(body.error.code).toBe("INVALID_CHANNEL");
+  });
+
+  it("GET /notifications/:key/history returns history entries", async () => {
+    const { notificationSettingsHistoryRepository } = (await import(
+      "@/repositories/notification-settings-history.repository"
+    )) as unknown as {
+      notificationSettingsHistoryRepository: { listByKey: ReturnType<typeof vi.fn> };
+    };
+    notificationSettingsHistoryRepository.listByKey.mockResolvedValueOnce([
+      {
+        id: "hist-1",
+        key: "registration.created",
+        organizationId: null,
+        previousValue: null,
+        newValue: {
+          key: "registration.created",
+          organizationId: null,
+          enabled: false,
+          channels: ["email"],
+          updatedAt: "2026-04-22T10:00:00.000Z",
+          updatedBy: "super-1",
+        },
+        diff: ["enabled"],
+        actorId: "super-1",
+        actorRole: "super_admin",
+        changedAt: "2026-04-22T10:00:00.000Z",
+      },
+    ]);
+
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/admin/notifications/registration.created/history?limit=10",
+      headers: authHeader,
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body);
+    expect(body.data.count).toBe(1);
+    expect(body.data.entries[0].id).toBe("hist-1");
+    expect(notificationSettingsHistoryRepository.listByKey).toHaveBeenCalledWith(
+      "registration.created",
+      null,
+      10,
+    );
+  });
+
+  it("GET /notifications/:key/history scopes by organizationId query param", async () => {
+    const { notificationSettingsHistoryRepository } = (await import(
+      "@/repositories/notification-settings-history.repository"
+    )) as unknown as {
+      notificationSettingsHistoryRepository: { listByKey: ReturnType<typeof vi.fn> };
+    };
+
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/admin/notifications/registration.created/history?organizationId=org-1",
+      headers: authHeader,
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(notificationSettingsHistoryRepository.listByKey).toHaveBeenCalledWith(
+      "registration.created",
+      "org-1",
+      50,
+    );
+  });
+
+  it("GET /notifications/per-org surfaces every scoped override", async () => {
+    mockNotificationSettingsRepository.listAllPerOrg.mockResolvedValueOnce([
+      {
+        key: "event.reminder",
+        organizationId: "org-a",
+        enabled: false,
+        channels: ["email"],
+        updatedAt: "2026-04-22T10:00:00.000Z",
+        updatedBy: "organizer-1",
+      } as unknown as MockSetting,
+    ]);
+
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/admin/notifications/per-org",
+      headers: authHeader,
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body);
+    expect(body.data[0]).toMatchObject({
+      key: "event.reminder",
+      organizationId: "org-a",
+      enabled: false,
+    });
   });
 });

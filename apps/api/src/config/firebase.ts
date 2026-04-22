@@ -107,4 +107,8 @@ export const COLLECTIONS = {
   // now so the Firestore rules and audit listener know about it even
   // though the writer (dispatcher's log-to-firestore option) lands in v2.
   NOTIFICATION_DISPATCH_LOG: "notificationDispatchLog",
+  // Append-only edit history for NotificationSetting docs (Phase 2.4).
+  // One entry per PUT (admin or organizer). TTL: 1 year target —
+  // Firestore TTL config tracked as an infra follow-up.
+  NOTIFICATION_SETTINGS_HISTORY: "notificationSettingsHistory",
 } as const;

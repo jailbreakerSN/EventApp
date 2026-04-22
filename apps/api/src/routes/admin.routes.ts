@@ -15,10 +15,23 @@ import {
   AssignPlanSchema,
   NOTIFICATION_CATALOG,
   NotificationSettingSchema,
+  NotificationLocaleSchema,
+  NotificationChannelSchema,
   type NotificationDefinition,
+  type NotificationSetting,
 } from "@teranga/shared-types";
-import { notificationSettingsRepository } from "@/repositories/notification-settings.repository";
+import {
+  notificationSettingsRepository,
+  notificationSettingDocId,
+} from "@/repositories/notification-settings.repository";
 import { notificationDispatchLogRepository } from "@/repositories/notification-dispatch-log.repository";
+import {
+  notificationSettingsHistoryRepository,
+  computeSettingDiff,
+} from "@/repositories/notification-settings-history.repository";
+import { notificationPreviewService } from "@/services/notifications/preview.service";
+import { notificationDispatcher } from "@/services/notification-dispatcher.service";
+import { db, COLLECTIONS } from "@/config/firebase";
 import { eventBus } from "@/events/event-bus";
 import { getRequestId } from "@/context/request-context";
 
@@ -292,10 +305,14 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
 
   // Body schema: just the mutable fields of NotificationSetting (key +
   // updatedAt + updatedBy are derived server-side).
+  // Phase 2.4 — optional `reason` field lands in the history doc alongside
+  // the diff so future auditors can answer "why did this change".
   const UpdateNotificationSettingBody = NotificationSettingSchema.pick({
     enabled: true,
     channels: true,
     subjectOverride: true,
+  }).extend({
+    reason: z.string().max(500).optional(),
   });
   const ParamsNotificationKey = z.object({ key: z.string().min(1) });
 
@@ -344,8 +361,9 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
       }
 
       const now = new Date().toISOString();
-      const setting = {
+      const setting: NotificationSetting = {
         key,
+        organizationId: null,
         enabled: body.enabled,
         channels: body.channels,
         ...(body.subjectOverride ? { subjectOverride: body.subjectOverride } : {}),
@@ -353,7 +371,44 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
         updatedBy: request.user!.uid,
       };
 
-      await notificationSettingsRepository.upsert(setting);
+      // Phase 2.4 — transactional upsert + history append so the audit
+      // trail never drifts from the live setting. Fetched previous
+      // outside the tx (read-only; safe) so we can compute the diff.
+      const previous = await notificationSettingsRepository.findByKey(key);
+      const diff = computeSettingDiff(previous, setting);
+      const historyId = await db.runTransaction(async (tx) => {
+        const ref = db
+          .collection(COLLECTIONS.NOTIFICATION_SETTINGS)
+          .doc(notificationSettingDocId(key, null));
+        tx.set(
+          ref,
+          {
+            id: notificationSettingDocId(key, null),
+            key,
+            organizationId: null,
+            enabled: setting.enabled,
+            channels: setting.channels,
+            ...(setting.subjectOverride ? { subjectOverride: setting.subjectOverride } : {}),
+            updatedAt: setting.updatedAt,
+            updatedBy: setting.updatedBy,
+          },
+          { merge: false },
+        );
+        return notificationSettingsHistoryRepository.append(
+          {
+            key,
+            organizationId: null,
+            previousValue: previous,
+            newValue: setting,
+            diff,
+            actorId: request.user!.uid,
+            actorRole: "super_admin",
+            ...(body.reason ? { reason: body.reason } : {}),
+            changedAt: now,
+          },
+          tx,
+        );
+      });
 
       // Emit the audit event — the listener wired in Phase 1 routes
       // this into auditLogs under resourceType="notification".
@@ -362,12 +417,222 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
         requestId: getRequestId(),
         timestamp: now,
         key,
+        organizationId: null,
         enabled: body.enabled,
         channels: body.channels,
         hasSubjectOverride: body.subjectOverride !== undefined,
+        historyId,
       });
 
       return reply.send({ success: true, data: setting });
+    },
+  );
+
+  // ─── Preview (Phase 2.4) ──────────────────────────────────────────────
+  // Renders a catalog template with sample params at the requested locale
+  // and returns the HTML so the admin UI can drop it into an srcdoc
+  // iframe. Pure render — no provider call, no audit side effect.
+  const PreviewBodySchema = z.object({
+    locale: NotificationLocaleSchema,
+    sampleParams: z.record(z.string(), z.unknown()).optional(),
+  });
+
+  fastify.post<{
+    Params: z.infer<typeof ParamsNotificationKey>;
+    Body: z.infer<typeof PreviewBodySchema>;
+  }>(
+    "/notifications/:key/preview",
+    {
+      // 60 previews/min per caller (spec). Combines with the global
+      // limiter; auth-aware keying is already wired on the global plugin.
+      config: { rateLimit: { max: 60, timeWindow: "1 minute" } },
+      preHandler: [
+        ...adminPreHandler,
+        validate({ params: ParamsNotificationKey, body: PreviewBodySchema }),
+      ],
+      schema: {
+        tags: ["Admin", "Notifications"],
+        summary: "Render a notification template preview (HTML + subject)",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const { key } = request.params;
+      const { locale, sampleParams } = request.body;
+
+      const definition = NOTIFICATION_CATALOG.find((d) => d.key === key);
+      if (!definition) {
+        return reply.status(404).send({
+          success: false,
+          error: { code: "NOT_FOUND", message: `Unknown notification key: ${key}` },
+        });
+      }
+
+      try {
+        const preview = await notificationPreviewService.preview(key, locale, sampleParams ?? {});
+        return reply.send({ success: true, data: preview });
+      } catch (err) {
+        return reply.status(500).send({
+          success: false,
+          error: {
+            code: "PREVIEW_FAILED",
+            message: err instanceof Error ? err.message : "Preview render failed",
+          },
+        });
+      }
+    },
+  );
+
+  // ─── Test send (Phase 2.4) ────────────────────────────────────────────
+  // Dispatches the template to an arbitrary email with testMode=true,
+  // bypassing admin-disabled / opt-out / suppression / dedup checks.
+  const TestSendBodySchema = z.object({
+    email: z.string().email(),
+    locale: NotificationLocaleSchema,
+    sampleParams: z.record(z.string(), z.unknown()).optional(),
+    channels: z.array(NotificationChannelSchema).min(1).optional(),
+  });
+
+  fastify.post<{
+    Params: z.infer<typeof ParamsNotificationKey>;
+    Body: z.infer<typeof TestSendBodySchema>;
+  }>(
+    "/notifications/:key/test-send",
+    {
+      // 10 sends/hour/admin (spec). Tighter than preview — every send
+      // round-trips to Resend, so a runaway "Send" click is costly.
+      config: { rateLimit: { max: 10, timeWindow: "1 hour" } },
+      preHandler: [
+        ...adminPreHandler,
+        validate({ params: ParamsNotificationKey, body: TestSendBodySchema }),
+      ],
+      schema: {
+        tags: ["Admin", "Notifications"],
+        summary: "Send a test notification to an arbitrary email",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const { key } = request.params;
+      const { email, locale, sampleParams, channels } = request.body;
+
+      const definition = NOTIFICATION_CATALOG.find((d) => d.key === key);
+      if (!definition) {
+        return reply.status(404).send({
+          success: false,
+          error: { code: "NOT_FOUND", message: `Unknown notification key: ${key}` },
+        });
+      }
+
+      if (channels) {
+        const invalid = channels.filter((c) => !definition.supportedChannels.includes(c));
+        if (invalid.length > 0) {
+          return reply.status(400).send({
+            success: false,
+            error: {
+              code: "INVALID_CHANNEL",
+              message: `Channels ${invalid.join(", ")} not supported for ${key}. Supported: ${definition.supportedChannels.join(", ")}.`,
+            },
+          });
+        }
+      }
+
+      // Render the preview subject so the UI can display it in the
+      // success toast alongside the delivery confirmation.
+      let previewSubject: string | undefined;
+      try {
+        const preview = await notificationPreviewService.preview(key, locale, sampleParams ?? {});
+        previewSubject = preview.subject;
+      } catch {
+        // Preview failure is non-blocking — still dispatch.
+      }
+
+      await notificationDispatcher.dispatch(
+        {
+          key,
+          recipients: [{ email, preferredLocale: locale }],
+          params: sampleParams ?? {},
+          testMode: true,
+          ...(channels ? { channelOverride: channels } : {}),
+        },
+        { actorId: request.user!.uid },
+      );
+
+      return reply.send({
+        success: true,
+        data: {
+          dispatched: true,
+          key,
+          locale,
+          ...(previewSubject ? { previewSubject } : {}),
+        },
+      });
+    },
+  );
+
+  // ─── History (Phase 2.4) ──────────────────────────────────────────────
+  // Read the append-only edit history for a notification key. Supports
+  // optional per-org scoping via `organizationId` query param.
+  const HistoryQuerySchema = z.object({
+    limit: z.coerce.number().int().positive().max(200).default(50),
+    organizationId: z.string().min(1).optional(),
+  });
+
+  fastify.get<{
+    Params: z.infer<typeof ParamsNotificationKey>;
+    Querystring: z.infer<typeof HistoryQuerySchema>;
+  }>(
+    "/notifications/:key/history",
+    {
+      preHandler: [
+        ...adminPreHandler,
+        validate({ params: ParamsNotificationKey, query: HistoryQuerySchema }),
+      ],
+      schema: {
+        tags: ["Admin", "Notifications"],
+        summary: "List edit history for a notification setting",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const { key } = request.params;
+      const { limit, organizationId } = request.query;
+
+      const definition = NOTIFICATION_CATALOG.find((d) => d.key === key);
+      if (!definition) {
+        return reply.status(404).send({
+          success: false,
+          error: { code: "NOT_FOUND", message: `Unknown notification key: ${key}` },
+        });
+      }
+
+      const entries = await notificationSettingsHistoryRepository.listByKey(
+        key,
+        organizationId ?? null,
+        limit,
+      );
+
+      return reply.send({
+        success: true,
+        data: { entries, count: entries.length },
+      });
+    },
+  );
+
+  // ─── Per-org overrides list (Phase 2.4) ──────────────────────────────
+  fastify.get(
+    "/notifications/per-org",
+    {
+      preHandler: adminPreHandler,
+      schema: {
+        tags: ["Admin", "Notifications"],
+        summary: "List every notificationSetting override scoped to an organization",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (_request, reply) => {
+      const overrides = await notificationSettingsRepository.listAllPerOrg();
+      return reply.send({ success: true, data: overrides });
     },
   );
 

@@ -69,6 +69,13 @@ export interface EmailChannelDispatchParams {
   recipient: NotificationRecipient;
   templateParams: Record<string, unknown>;
   idempotencyKey: string;
+  /**
+   * Phase 2.4 — set when the dispatch originates from the admin
+   * "test send" flow. The email adapter forwards this to the
+   * suppression-list check (bypassed) and tags the outbound email
+   * so support can triage preview-generated deliveries.
+   */
+  testMode?: boolean;
 }
 
 export interface EmailChannelDispatchResult {
@@ -154,7 +161,11 @@ export class NotificationDispatcherService {
 
       const override = await notificationSettingsRepository.findByKey(req.key);
 
-      if (override && override.enabled === false) {
+      // Phase 2.4 — testMode flows (admin "test send" from the
+      // notifications control plane) bypass admin-disabled and
+      // user-opt-out. A super-admin explicitly triggered the preview,
+      // so we never want a prior admin toggle to hide the template.
+      if (!req.testMode && override && override.enabled === false) {
         this.emitSuppressed(req.key, "batch", "admin_disabled", baseEvent);
         return;
       }
@@ -196,8 +207,10 @@ export class NotificationDispatcherService {
   ): Promise<void> {
     const recipientRef = this.recipientRef(recipient);
 
-    // User opt-out — only applies when the definition allows it.
-    if (definition.userOptOutAllowed && recipient.userId) {
+    // User opt-out — only applies when the definition allows it AND
+    // the caller is not running a test send (admins previewing a
+    // template shouldn't be blocked by an unrelated user's preference).
+    if (!req.testMode && definition.userOptOutAllowed && recipient.userId) {
       const optedOut = await this.isUserOptedOut(recipient.userId, definition.key);
       if (optedOut) {
         this.emitSuppressed(definition.key, recipientRef, "user_opted_out", baseEvent);
@@ -254,23 +267,30 @@ export class NotificationDispatcherService {
     //
     // Window derives from the definition's category (see DEDUP_WINDOW_MS
     // above) with a per-key override for event.reminder's 7-day cadence.
-    const windowMs = DEDUP_WINDOW_MS_BY_KEY[definition.key] ??
-      DEDUP_WINDOW_MS[definition.category] ??
-      DEFAULT_DEDUP_WINDOW_MS;
-    const prior = await notificationDispatchLogRepository.findRecentByIdempotencyKey(
-      idempotencyKey,
-      windowMs,
-    );
-    if (prior) {
-      this.emitDeduplicated(
-        definition.key,
-        "email",
-        recipientRef,
+    //
+    // Phase 2.4 — testMode skips the dedup check. Every admin preview
+    // is expected to be unique and must always round-trip to the
+    // provider (otherwise "send again" after tweaking sample params
+    // would be silently suppressed).
+    if (!req.testMode) {
+      const windowMs = DEDUP_WINDOW_MS_BY_KEY[definition.key] ??
+        DEDUP_WINDOW_MS[definition.category] ??
+        DEFAULT_DEDUP_WINDOW_MS;
+      const prior = await notificationDispatchLogRepository.findRecentByIdempotencyKey(
         idempotencyKey,
-        prior.attemptedAt,
-        baseEvent,
+        windowMs,
       );
-      return;
+      if (prior) {
+        this.emitDeduplicated(
+          definition.key,
+          "email",
+          recipientRef,
+          idempotencyKey,
+          prior.attemptedAt,
+          baseEvent,
+        );
+        return;
+      }
     }
 
     try {
@@ -279,17 +299,33 @@ export class NotificationDispatcherService {
         recipient,
         templateParams: req.params,
         idempotencyKey,
+        ...(req.testMode ? { testMode: true } : {}),
       });
 
       if (result.ok) {
-        this.emitSent(
-          definition.key,
-          "email",
-          recipientRef,
-          result.messageId,
-          idempotencyKey,
-          baseEvent,
-        );
+        if (req.testMode) {
+          // Phase 2.4 — test sends emit a distinct audit event and
+          // NEVER append to the dispatch log so admin stats widgets
+          // stay accurate (test sends are out-of-band previews, not
+          // real traffic).
+          this.emitTestSent(
+            definition.key,
+            "email",
+            recipientRef,
+            result.messageId,
+            recipient.preferredLocale,
+            baseEvent,
+          );
+        } else {
+          this.emitSent(
+            definition.key,
+            "email",
+            recipientRef,
+            result.messageId,
+            idempotencyKey,
+            baseEvent,
+          );
+        }
       } else {
         this.emitSuppressed(
           definition.key,
@@ -491,6 +527,32 @@ export class NotificationDispatcherService {
    * send in downstream listeners (audit trail would show two
    * deliveries when only one ever reached the provider).
    */
+  /**
+   * Phase 2.4 — test-send emit path. Fires `notification.test_sent`
+   * (distinct from `notification.sent`) and deliberately does NOT
+   * append to the dispatch log. Rationale: admin previews must not
+   * inflate delivery stats — an admin testing a template 20 times in
+   * a row would otherwise skew the bounce rate and fill the suppression
+   * histogram with noise.
+   */
+  private emitTestSent(
+    key: string,
+    channel: NotificationChannel,
+    recipientRef: string,
+    messageId: string | undefined,
+    locale: "fr" | "en" | "wo",
+    baseEvent: { actorId: string; requestId: string; timestamp: string },
+  ): void {
+    eventBus.emit("notification.test_sent", {
+      ...baseEvent,
+      key,
+      channel,
+      recipientRef,
+      locale,
+      ...(messageId ? { messageId } : {}),
+    });
+  }
+
   private emitDeduplicated(
     key: string,
     channel: NotificationChannel,

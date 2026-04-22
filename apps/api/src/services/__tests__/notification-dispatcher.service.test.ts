@@ -454,6 +454,75 @@ describe("NotificationDispatcherService", () => {
     expect(deduplicatedEvents).toHaveLength(0);
   });
 
+  // ─── Phase 2.4 — testMode (admin "test send" path) ───────────────────
+  // Admin previews must bypass admin-disabled, user opt-out, dedup, and
+  // emit `notification.test_sent` instead of `notification.sent` so
+  // stats stay accurate.
+
+  it("testMode: bypasses admin-disabled short-circuit", async () => {
+    vi.spyOn(notificationSettingsRepository, "findByKey").mockResolvedValueOnce({
+      key: "registration.created",
+      enabled: false,
+      channels: ["email"],
+      updatedAt: new Date().toISOString(),
+      updatedBy: "admin",
+    });
+    const testSentEvents: unknown[] = [];
+    eventBus.on("notification.test_sent", (p) => {
+      testSentEvents.push(p);
+    });
+
+    await notificationDispatcher.dispatch({
+      key: "registration.created",
+      recipients: [{ email: "qa@teranga.dev", preferredLocale: "fr" }],
+      params: {},
+      testMode: true,
+    });
+    await flush();
+
+    expect(mockAdapter.send).toHaveBeenCalledTimes(1);
+    expect(testSentEvents).toHaveLength(1);
+    // Critically — no normal `sent` event fires; that would pollute stats.
+    expect(sentEvents).toHaveLength(0);
+    // testMode flag forwarded to the adapter so it can tag the outbound
+    // email (for observability).
+    const adapterArgs = (mockAdapter.send as ReturnType<typeof vi.fn>).mock.calls[0]![0];
+    expect(adapterArgs.testMode).toBe(true);
+  });
+
+  it("testMode: skips the persistent idempotency dedup check", async () => {
+    // Seed a prior-send that WOULD normally trigger dedup.
+    const priorEntry = {
+      id: "prior-test",
+      key: "registration.created",
+      channel: "email" as const,
+      recipientRef: "email:xxx@dev",
+      status: "sent" as const,
+      idempotencyKey: "registration.created:qa@teranga.dev:test",
+      attemptedAt: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
+      requestId: "req-prior",
+      actorId: "system",
+    };
+    vi.spyOn(
+      notificationDispatchLogRepository,
+      "findRecentByIdempotencyKey",
+    ).mockResolvedValueOnce(priorEntry);
+
+    await notificationDispatcher.dispatch({
+      key: "registration.created",
+      recipients: [{ email: "qa@teranga.dev", preferredLocale: "fr" }],
+      params: {},
+      idempotencyKey: "test",
+      testMode: true,
+    });
+    await flush();
+
+    // testMode path — adapter MUST fire even though a prior log row
+    // exists. Dedup is intentional only for real traffic.
+    expect(mockAdapter.send).toHaveBeenCalledTimes(1);
+    expect(deduplicatedEvents).toHaveLength(0);
+  });
+
   it("dispatches to multiple recipients in parallel", async () => {
     await notificationDispatcher.dispatch({
       key: "event.cancelled",
