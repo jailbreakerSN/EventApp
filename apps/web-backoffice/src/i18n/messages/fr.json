@@ -244,6 +244,18 @@
     "currentPlan": "Plan actuel"
   },
   "admin": {
+    "shell": {
+      "loading": "Chargement de l'administration...",
+      "skipToContent": "Aller au contenu principal",
+      "paletteHint": "Rechercher · saisir, event, lieu…",
+      "identityMenu": "Ouvrir le menu utilisateur",
+      "viewAsOrganizer": "Voir comme organisateur",
+      "signOut": "Se déconnecter"
+    },
+    "nav": {
+      "administrationPill": "Administration",
+      "administrationPillAria": "Accéder à la console d'administration"
+    },
     "notifications": {
       "breadcrumbAdmin": "Administration",
       "breadcrumbCurrent": "Notifications",

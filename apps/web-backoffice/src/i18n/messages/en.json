@@ -244,6 +244,18 @@
     "currentPlan": "Current plan"
   },
   "admin": {
+    "shell": {
+      "loading": "Loading administration...",
+      "skipToContent": "Skip to main content",
+      "paletteHint": "Search · type, event, venue…",
+      "identityMenu": "Open user menu",
+      "viewAsOrganizer": "View as organizer",
+      "signOut": "Sign out"
+    },
+    "nav": {
+      "administrationPill": "Administration",
+      "administrationPillAria": "Open the administration console"
+    },
     "notifications": {
       "breadcrumbAdmin": "Administration",
       "breadcrumbCurrent": "Notifications",

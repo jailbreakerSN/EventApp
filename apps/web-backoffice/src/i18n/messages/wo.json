@@ -169,6 +169,18 @@
     }
   },
   "admin": {
+    "shell": {
+      "loading": "Ñu ngi yeeg administration...",
+      "skipToContent": "Dem ci barab bu gën a njariñ",
+      "paletteHint": "Seet · bind, event, lieu…",
+      "identityMenu": "Ubbi menu bu jëfandikukat",
+      "viewAsOrganizer": "Xool ni organisateur",
+      "signOut": "Génn"
+    },
+    "nav": {
+      "administrationPill": "Administration",
+      "administrationPillAria": "Dem ci konsol administration"
+    },
     "notifications": {
       "breadcrumbAdmin": "Administration",
       "breadcrumbCurrent": "Yëglekaay",

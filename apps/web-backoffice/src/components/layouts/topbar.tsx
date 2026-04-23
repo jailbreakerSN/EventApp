@@ -5,6 +5,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useAdminRole } from "@/hooks/use-admin-role";
 import { useTheme } from "next-themes";
 import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { ThemeToggle, NotificationBell, type NotificationBellRow } from "@teranga/shared-ui";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { Keyboard, LogOut, Menu, Search, Shield } from "lucide-react";
@@ -68,6 +69,7 @@ export function TopBar({ onShowShortcuts }: TopBarProps) {
   const { theme, setTheme } = useTheme();
   const { isOpen, toggle } = useSidebar();
   const router = useRouter();
+  const tNav = useTranslations("admin.nav");
 
   // Bridge back to the admin shell — rendered only when the viewer holds
   // an admin role. A pure organizer/co-organizer never sees this button,
@@ -153,11 +155,11 @@ export function TopBar({ onShowShortcuts }: TopBarProps) {
           <Link
             href="/admin/inbox"
             className="hidden sm:inline-flex min-h-[36px] items-center gap-1.5 rounded-full border border-primary/20 bg-primary/5 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/10 motion-safe:transition-colors dark:border-teranga-gold/40 dark:bg-teranga-gold/10 dark:text-teranga-gold dark:hover:bg-teranga-gold/20"
-            aria-label="Accéder à la console d'administration"
-            title="Console d'administration"
+            aria-label={tNav("administrationPillAria")}
+            title={tNav("administrationPillAria")}
           >
             <Shield className="h-3.5 w-3.5" aria-hidden="true" />
-            Administration
+            {tNav("administrationPill")}
           </Link>
         )}
         <LanguageSwitcher />

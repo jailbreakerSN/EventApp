@@ -31,21 +31,26 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useTheme } from "next-themes";
+import { useTranslations } from "next-intl";
 import { ChevronDown, Eye, LogOut } from "lucide-react";
-import { Badge } from "@teranga/shared-ui";
+import { Badge, ThemeToggle } from "@teranga/shared-ui";
 import { useAuth } from "@/hooks/use-auth";
 import { useAdminRole } from "@/hooks/use-admin-role";
 import { BrandedLoader } from "@/components/branded-loader";
 import { AdminSidebar } from "@/components/admin/admin-sidebar";
 import { CommandPalette } from "@/components/admin/command-palette";
 import { ImpersonationBanner } from "@/components/admin/impersonation-banner";
+import { LanguageSwitcher } from "@/components/language-switcher";
 import { canViewOrganizerShell } from "@/lib/access";
 import type { UserRole } from "@teranga/shared-types";
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
+  const t = useTranslations("admin.shell");
   const { user, loading, logout } = useAuth();
   const adminRole = useAdminRole();
   const router = useRouter();
+  const { theme, setTheme } = useTheme();
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [identityOpen, setIdentityOpen] = useState(false);
   const identityRef = useRef<HTMLDivElement>(null);
@@ -126,7 +131,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     };
   }, [identityOpen]);
 
-  if (loading) return <BrandedLoader label="Chargement de l'administration..." />;
+  if (loading) return <BrandedLoader label={t("loading")} />;
   if (!user || !adminRole) return null;
 
   const roleLabel = adminRole.label;
@@ -144,7 +149,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         href="#admin-main"
         className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[100] focus:rounded-lg focus:bg-primary focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-white"
       >
-        Aller au contenu principal
+        {t("skipToContent")}
       </a>
 
       {/* Impersonation banner — stays at the very top so the entire shell
@@ -180,7 +185,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                   <circle cx="11" cy="11" r="8" />
                   <path d="M21 21l-4.35-4.35" />
                 </svg>
-                Rechercher · saisir, event, lieu…
+                {t("paletteHint")}
                 <kbd className="ml-2 rounded border border-border bg-background px-1 py-0.5 font-mono text-[9px]">
                   ⌘K
                 </kbd>
@@ -188,6 +193,14 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             </div>
 
             <div className="relative flex items-center gap-3" ref={identityRef}>
+              {/* Shell-level controls — parity with the organizer topbar
+                  (see components/layouts/topbar.tsx) so operators do not
+                  lose theme / locale preferences when crossing between
+                  shells. Notifications bell is deliberately omitted here:
+                  admin notifications live under /admin/notifications with
+                  their own dedicated surface. */}
+              <LanguageSwitcher />
+              <ThemeToggle theme={theme} setTheme={setTheme} />
               <Badge variant="outline" className="text-[10px]">
                 {roleLabel}
               </Badge>
@@ -199,7 +212,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 aria-haspopup="menu"
                 aria-expanded={identityOpen}
                 aria-controls="admin-identity-menu"
-                aria-label="Ouvrir le menu utilisateur"
+                aria-label={t("identityMenu")}
               >
                 <span className="max-w-[160px] truncate">{user.displayName ?? user.email}</span>
                 <ChevronDown className="h-3 w-3 shrink-0" aria-hidden="true" />
@@ -224,7 +237,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                         className="flex min-h-[44px] w-full items-center gap-2 px-3 py-2 text-left text-xs text-foreground hover:bg-muted focus-visible:bg-muted focus-visible:outline-none"
                       >
                         <Eye className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
-                        Voir comme organisateur
+                        {t("viewAsOrganizer")}
                       </button>
                       <div className="border-t border-border" />
                     </>
@@ -239,7 +252,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                     className="flex min-h-[44px] w-full items-center gap-2 px-3 py-2 text-left text-xs text-foreground hover:bg-muted focus-visible:bg-muted focus-visible:outline-none"
                   >
                     <LogOut className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
-                    Se déconnecter
+                    {t("signOut")}
                   </button>
                 </div>
               )}
