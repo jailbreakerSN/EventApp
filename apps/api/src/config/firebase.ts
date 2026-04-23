@@ -119,4 +119,10 @@ export const COLLECTIONS = {
   // `expiresAt` auto-purges expired windows (see
   // infrastructure/firebase/firestore.ttl.md).
   RATE_LIMIT_BUCKETS: "rateLimitBuckets",
+  // Phase 6 (admin overhaul) — platform feature flags. Doc id = flag
+  // key (e.g. "new-checkin-flow"). Fields: { enabled: bool,
+  // description?: string, rolloutPercent?: 0..100, updatedAt, updatedBy }.
+  // Rules: deny-all at the client SDK; only super_admin via the API
+  // may read/write.
+  FEATURE_FLAGS: "featureFlags",
 } as const;

@@ -4,6 +4,8 @@ exports[`permission matrix (API routes × shared-types model) > role × permissi
 "GET /v1/admin/audit-logs perm=platform:manage allow=[super_admin]
 GET /v1/admin/events perm=platform:manage allow=[super_admin]
 GET /v1/admin/export/:resource.csv perm=platform:manage allow=[super_admin]
+GET /v1/admin/feature-flags perm=platform:manage allow=[super_admin]
+PUT /v1/admin/feature-flags/:key perm=platform:manage allow=[super_admin]
 GET /v1/admin/inbox perm=platform:manage allow=[super_admin]
 GET /v1/admin/notifications perm=platform:manage allow=[super_admin]
 PUT /v1/admin/notifications/:key perm=platform:manage allow=[super_admin]

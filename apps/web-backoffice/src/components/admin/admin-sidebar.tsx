@@ -96,7 +96,7 @@ const NAV: NavSection[] = [
       { href: "/admin/notifications", label: "Notifications", icon: Bell },
       { href: "/admin/webhooks", label: "Webhooks", icon: Webhook, comingSoon: true },
       { href: "/admin/jobs", label: "Jobs", icon: PlayCircle, comingSoon: true },
-      { href: "/admin/feature-flags", label: "Feature flags", icon: Flag, comingSoon: true },
+      { href: "/admin/feature-flags", label: "Feature flags", icon: Flag },
       { href: "/admin/api-keys", label: "Clés API", icon: KeyRound, comingSoon: true },
       { href: "/admin/audit", label: "Audit", icon: ScrollText },
     ],

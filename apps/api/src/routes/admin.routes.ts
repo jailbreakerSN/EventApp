@@ -63,6 +63,82 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
     },
   );
 
+  // ── Feature flags (Phase 6) ───────────────────────────────────────────
+  // Minimal CRUD over the featureFlags collection. Backed directly by
+  // Firestore because flags are low-cardinality (target: ~20 flags,
+  // each read is a single doc). Full UI in /admin/feature-flags.
+  //
+  // Listing: returns every flag doc as-is. Simple; no filtering yet.
+  // Upsert: enforces a narrow body so an operator can't accidentally
+  // override internal metadata.
+  fastify.get(
+    "/feature-flags",
+    {
+      preHandler: adminPreHandler,
+      schema: {
+        tags: ["Admin"],
+        summary: "List all platform feature flags",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const snap = await db
+        .collection(COLLECTIONS.FEATURE_FLAGS)
+        .orderBy("updatedAt", "desc")
+        .get();
+      const flags = snap.docs.map((d) => ({ key: d.id, ...d.data() }));
+      return reply.send({ success: true, data: flags });
+    },
+  );
+
+  const FeatureFlagBodySchema = z.object({
+    enabled: z.boolean(),
+    description: z.string().max(200).optional(),
+    rolloutPercent: z.number().int().min(0).max(100).optional(),
+  });
+  const FeatureFlagParams = z.object({ key: z.string().regex(/^[a-z0-9-_.]+$/) });
+
+  fastify.put<{ Params: z.infer<typeof FeatureFlagParams> }>(
+    "/feature-flags/:key",
+    {
+      preHandler: [
+        ...adminPreHandler,
+        validate({ params: FeatureFlagParams, body: FeatureFlagBodySchema }),
+      ],
+      schema: {
+        tags: ["Admin"],
+        summary: "Create or update a feature flag",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const { key } = request.params;
+      const body = request.body as z.infer<typeof FeatureFlagBodySchema>;
+      const payload = {
+        key,
+        enabled: body.enabled,
+        description: body.description ?? null,
+        rolloutPercent: body.rolloutPercent ?? 100,
+        updatedAt: new Date().toISOString(),
+        updatedBy: request.user!.uid,
+      };
+      await db.collection(COLLECTIONS.FEATURE_FLAGS).doc(key).set(payload, { merge: true });
+      // Audit log — feature-flag flips are operationally significant.
+      await db.collection(COLLECTIONS.AUDIT_LOGS).add({
+        action: "admin.feature_flag_updated",
+        actorId: request.user!.uid,
+        actorRole: "super_admin",
+        resourceType: "feature_flag",
+        resourceId: key,
+        organizationId: null,
+        details: { enabled: body.enabled, rolloutPercent: body.rolloutPercent ?? 100 },
+        requestId: getRequestId(),
+        timestamp: new Date().toISOString(),
+      });
+      return reply.send({ success: true, data: payload });
+    },
+  );
+
   // ── CSV export (Phase 5) ───────────────────────────────────────────────
   // Streaming CSV dump of a resource list with the same filters the UI
   // uses. Heavy responses are flushed row-by-row so a 50 000-row export
