@@ -53,6 +53,7 @@ import { saveBadge } from "@/lib/badge-store";
 import { useAuth } from "@/hooks/use-auth";
 import { useErrorHandler, type ResolvedError } from "@/hooks/use-error-handler";
 import { PushPermissionBanner } from "@/components/push-permission-banner";
+import { AddToHomeScreenBanner } from "@/components/add-to-home-screen-banner";
 
 type Step = "select" | "confirm" | "success";
 type StepNum = 1 | 2 | 3;
@@ -847,6 +848,14 @@ export default function RegisterPage() {
                 users who already granted / denied / dismissed. */}
             <div className="mx-auto mt-6 max-w-md">
               <PushPermissionBanner trigger="registration-confirmed" />
+            </div>
+
+            {/* Phase D.5 — "Add to Home Screen" precursor on iOS. The banner
+                self-gates on platform, visit count, and dismissal history,
+                so it only surfaces when it's actually actionable. Hidden
+                for users who are already running the PWA. */}
+            <div className="mx-auto mt-4 max-w-md">
+              <AddToHomeScreenBanner />
             </div>
 
             {/* Next-step cue — drives verified-email rate + offline-ready

@@ -90,10 +90,30 @@ vi.mock("@/services/notification-dispatcher.service", () => ({
 
 // Dispatch-log reads in the `/history` route aren't exercised here; stub
 // so the import chain resolves cleanly.
+// `vi.hoisted` so the mock factory (which is itself hoisted by vitest)
+// can close over the spy without a TDZ error.
+const { mockBackAnnotatePush } = vi.hoisted(() => ({
+  mockBackAnnotatePush: vi.fn().mockResolvedValue({ matched: 1, updated: 1 }),
+}));
 vi.mock("@/repositories/notification-dispatch-log.repository", () => ({
   notificationDispatchLogRepository: {
     listRecentForUser: vi.fn().mockResolvedValue([]),
+    backAnnotatePushEvent: mockBackAnnotatePush,
   },
+}));
+
+// Rate-limit service — Phase D.4. The test-send route calls
+// `rateLimit({ scope: "test-send:self", ... })`. Default to "always
+// allow" so every test that isn't specifically exercising the limiter
+// can stay oblivious to it. The `rate-limits 6th attempt` test overrides
+// the mock to flip to deny on its 6th call.
+const mockRateLimit = vi.fn().mockResolvedValue({
+  allowed: true,
+  count: 1,
+  limit: 5,
+});
+vi.mock("@/services/rate-limit.service", () => ({
+  rateLimit: (...args: unknown[]) => mockRateLimit(...args),
 }));
 
 const mockNotificationService = {
@@ -135,6 +155,9 @@ beforeEach(() => {
   userStorage.clear();
   mockListAll.mockResolvedValue([]);
   mockDispatch.mockResolvedValue(undefined);
+  // Default rate-limit behavior: always allow. Tests that exercise the
+  // limiter override this inside the test body.
+  mockRateLimit.mockResolvedValue({ allowed: true, count: 1, limit: 5 });
   mockVerifyIdToken.mockResolvedValue({
     uid: "user-1",
     email: "user@example.com",
@@ -437,9 +460,12 @@ describe("POST /v1/notifications/test-send", () => {
     expect(mockDispatch).not.toHaveBeenCalled();
   });
 
-  it("rate-limits: 6th attempt within an hour returns 429", async () => {
-    // Use a fresh uid so the in-memory bucket starts empty for this test
-    // (other tests in this file share the same process-wide bucket).
+  it("rate-limits: 6th attempt within an hour returns 429 with Retry-After", async () => {
+    // Phase D.4: the bucket lives in Firestore, so the route delegates
+    // the decision to `rateLimit()`. We simulate the distributed limiter
+    // by returning `allowed: true` for the first five calls and
+    // `allowed: false` on the sixth — same user-visible semantics as the
+    // old in-memory bucket, different implementation underneath.
     mockVerifyIdToken.mockResolvedValue({
       uid: "user-ratelimit",
       email: "ratelimit@example.com",
@@ -447,6 +473,15 @@ describe("POST /v1/notifications/test-send", () => {
       roles: ["participant"],
     });
     userStorage.set("user-ratelimit", { preferredLanguage: "fr" });
+
+    let callCount = 0;
+    mockRateLimit.mockImplementation(async () => {
+      callCount += 1;
+      if (callCount <= 5) {
+        return { allowed: true, count: callCount, limit: 5 };
+      }
+      return { allowed: false, count: 5, limit: 5, retryAfterSec: 1234 };
+    });
 
     const fire = () =>
       app.inject({
@@ -462,9 +497,77 @@ describe("POST /v1/notifications/test-send", () => {
     }
     const blocked = await fire();
     expect(blocked.statusCode).toBe(429);
+    // Retry-After header surfaces the server-computed remainder so the
+    // UI can show a concrete "try again in N minutes" without parsing
+    // the JSON body.
+    expect(blocked.headers["retry-after"]).toBe("1234");
     const body = JSON.parse(blocked.body);
     expect(body.error.code).toBe("RATE_LIMITED");
+    expect(body.error.details).toMatchObject({ retryAfterSec: 1234 });
     // Dispatcher fired exactly 5 times — the 6th was blocked pre-dispatch.
     expect(mockDispatch).toHaveBeenCalledTimes(5);
+
+    // Route invoked the limiter with the expected scope / budget.
+    expect(mockRateLimit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scope: "test-send:self",
+        identifier: "user-ratelimit",
+        limit: 5,
+        windowSec: 3600,
+      }),
+    );
+  });
+});
+
+// ─── Phase D.2 — SW back-annotation ──────────────────────────────────────
+describe("Phase D.2 — Web Push SW back-annotation", () => {
+  beforeEach(() => {
+    mockBackAnnotatePush.mockClear();
+  });
+
+  it("POST /:id/push-displayed returns 204 and back-annotates the dispatch log", async () => {
+    // Route is optionalAuth so we don't need a bearer token. The SW can't
+    // attach one from a closed tab; this matches the Phase C.2 contract.
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/notifications/notif-doc-abc/push-displayed",
+    });
+    expect(res.statusCode).toBe(204);
+    expect(mockBackAnnotatePush).toHaveBeenCalledTimes(1);
+    expect(mockBackAnnotatePush).toHaveBeenCalledWith(
+      expect.objectContaining({
+        notificationId: "notif-doc-abc",
+        kind: "displayed",
+      }),
+    );
+    // occurredAt is a fresh ISO string — just assert shape.
+    const { occurredAt } = mockBackAnnotatePush.mock.calls[0]![0];
+    expect(typeof occurredAt).toBe("string");
+    expect(() => new Date(occurredAt).toISOString()).not.toThrow();
+  });
+
+  it("POST /:id/push-clicked returns 204 and back-annotates with kind=clicked", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/notifications/notif-doc-xyz/push-clicked",
+    });
+    expect(res.statusCode).toBe(204);
+    expect(mockBackAnnotatePush).toHaveBeenCalledWith(
+      expect.objectContaining({
+        notificationId: "notif-doc-xyz",
+        kind: "clicked",
+      }),
+    );
+  });
+
+  it("back-annotation failure does not 500 the SW ping (fire-and-forget)", async () => {
+    // Even if the repo throws, the route returns 204 — the SW retry path
+    // would otherwise spin.
+    mockBackAnnotatePush.mockRejectedValueOnce(new Error("Firestore down"));
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/notifications/notif-doc-flaky/push-displayed",
+    });
+    expect(res.statusCode).toBe(204);
   });
 });

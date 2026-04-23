@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { useTranslations } from "next-intl";
 import { Bell, X } from "lucide-react";
 import { useWebPushRegistration } from "@/hooks/use-web-push-registration";
+import { useIsPwa } from "@/hooks/use-is-pwa";
 
 // ─── Push Permission Banner (Phase C.2 — Participant) ───────────────────────
 // Renders an inline, dismissible CTA prompting the user to enable Web Push.
@@ -22,13 +23,22 @@ import { useWebPushRegistration } from "@/hooks/use-web-push-registration";
 
 const DISMISS_COUNT_KEY = "teranga.push.banner.dismissCount";
 const DISMISS_AT_KEY = "teranga.push.banner.dismissedAt";
+// Phase D.5: one-shot marker so the "pwa-installed" trigger only auto-shows
+// once per browser. After the first ask we defer to the existing cadence.
+const PWA_INSTALLED_SHOWN_KEY = "teranga.push.banner.pwaInstalledShown";
+// Short delay before the post-install auto-prompt so we don't race iOS
+// repainting the status bar + splash screen on the first standalone launch.
+const PWA_INSTALLED_DELAY_MS = 5_000;
 const MAX_DISMISSALS = 3;
 const COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000; // 7 days.
 
 export type PushBannerTrigger =
   | "post-first-action"
   | "settings-page"
-  | "registration-confirmed";
+  | "registration-confirmed"
+  // Phase D.5: fired once when a user opens the PWA for the first time on
+  // iOS. The push banner is delayed 5s after mount to let the splash settle.
+  | "pwa-installed";
 
 interface PushPermissionBannerProps {
   /** Which meaningful moment triggered this banner — used for analytics only. */
@@ -73,9 +83,39 @@ function prefersReducedMotion(): boolean {
   return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
+// iOS Safari only exposes the Notification API inside the PWA context (post
+// "Add to Home Screen"). Other platforms have had the chance via the
+// post-first-action / registration-confirmed triggers already, so the
+// pwa-installed auto-prompt is iOS-only to avoid double-nagging.
+function isIosSafari(): boolean {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent || "";
+  const isIpadOs = /Macintosh/.test(ua) && (navigator.maxTouchPoints ?? 0) > 1;
+  return /iPad|iPhone|iPod/.test(ua) || isIpadOs;
+}
+
+function readPwaInstalledShown(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(PWA_INSTALLED_SHOWN_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+function writePwaInstalledShown(): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(PWA_INSTALLED_SHOWN_KEY, "true");
+  } catch {
+    // best-effort
+  }
+}
+
 export function PushPermissionBanner({ trigger, className }: PushPermissionBannerProps) {
   const t = useTranslations("notifications.push");
   const { permission, isRegistering, register } = useWebPushRegistration();
+  const isPwa = useIsPwa();
   const [visible, setVisible] = useState(false);
   const [showDeniedHelp, setShowDeniedHelp] = useState(false);
   const [animate, setAnimate] = useState(false);
@@ -109,12 +149,43 @@ export function PushPermissionBanner({ trigger, className }: PushPermissionBanne
       setVisible(false);
       return;
     }
+
+    // Phase D.5: the pwa-installed trigger is a fire-and-forget post-install
+    // nudge. We only want it (a) on iOS — every other platform has had the
+    // chance via the post-first-action / registration-confirmed triggers
+    // already — (b) while `useIsPwa()` reports true, (c) exactly once per
+    // browser (`PWA_INSTALLED_SHOWN_KEY`), and (d) after a 5s delay so the
+    // iOS splash-screen animation is out of the way.
+    if (trigger === "pwa-installed") {
+      if (isPwa !== true) {
+        setVisible(false);
+        return;
+      }
+      if (!isIosSafari()) {
+        setVisible(false);
+        return;
+      }
+      if (readPwaInstalledShown()) {
+        setVisible(false);
+        return;
+      }
+      const timer = window.setTimeout(() => {
+        writePwaInstalledShown();
+        if (typeof document !== "undefined") {
+          triggerElRef.current = (document.activeElement as HTMLElement) ?? null;
+        }
+        setVisible(true);
+        setAnimate(!prefersReducedMotion());
+      }, PWA_INSTALLED_DELAY_MS);
+      return () => window.clearTimeout(timer);
+    }
+
     if (typeof document !== "undefined") {
       triggerElRef.current = (document.activeElement as HTMLElement) ?? null;
     }
     setVisible(true);
     setAnimate(!prefersReducedMotion());
-  }, [permission]);
+  }, [permission, trigger, isPwa]);
 
   const handleActivate = useCallback(async () => {
     const result = await register();
@@ -125,7 +196,7 @@ export function PushPermissionBanner({ trigger, className }: PushPermissionBanne
     }
     switch (result.reason) {
       case "permission_denied":
-        toast.error(t("denied_help"));
+        toast.error(t("permission_banner.denied_help"));
         setVisible(false);
         setShowDeniedHelp(true);
         break;
@@ -169,7 +240,7 @@ export function PushPermissionBanner({ trigger, className }: PushPermissionBanne
           .join(" ")}
       >
         <Bell className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" aria-hidden="true" />
-        <p>{t("denied_help")}</p>
+        <p>{t("permission_banner.denied_help")}</p>
       </div>
     );
   }

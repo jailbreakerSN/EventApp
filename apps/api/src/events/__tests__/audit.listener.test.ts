@@ -602,8 +602,10 @@ describe("Audit Listener", () => {
       // (token_registered, token_revoked, tokens_cleared) for the
       // Web Push credential lifecycle (+3). Phase C.2 added the two
       // `push.displayed` / `push.clicked` back-annotation handlers
-      // written by the service worker (+2).
-      const EXPECTED_HANDLER_COUNT = 83;
+      // written by the service worker (+2). Phase D.3 added the
+      // `admin.delivery_dashboard_viewed` handler emitted by the super-
+      // admin observability dashboard route (+1).
+      const EXPECTED_HANDLER_COUNT = 84;
 
       expect(registered).toHaveLength(EXPECTED_HANDLER_COUNT);
       // Each registered event name should be unique — a double

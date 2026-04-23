@@ -24,6 +24,7 @@
     "audit:firestore-indexes:strict": "AUDIT_SUBSETS=1 tsx scripts/audit-firestore-indexes.ts",
     "notifications:status": "tsx scripts/generate-notification-catalog-status.ts",
     "notifications:check": "tsx scripts/check-notification-catalog-integrity.ts",
+    "in-app:diff": "tsx scripts/diff-in-app-adapter-output.ts",
     "seed": "tsx scripts/seed-emulators.ts",
     "seed:staging": "SEED_TARGET=staging tsx scripts/seed-emulators.ts",
     "seed:reset": "tsx scripts/seed-reset.ts",

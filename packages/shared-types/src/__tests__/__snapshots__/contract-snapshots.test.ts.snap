@@ -702,6 +702,7 @@ exports[`shared-types contract snapshots > AuditLogEntrySchema shape is stable 1
       "shape": {
         "kind": "enum",
         "values": [
+          "admin.delivery_dashboard_viewed",
           "badge.bulk_generated",
           "badge.generated",
           "broadcast.sent",

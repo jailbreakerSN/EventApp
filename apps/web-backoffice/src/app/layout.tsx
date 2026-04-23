@@ -34,18 +34,29 @@ const jetbrainsMono = JetBrains_Mono({
 export const metadata: Metadata = {
   title: { default: "Teranga", template: "%s | Teranga" },
   description: "L'Événementiel Africain, Connecté et Mémorable",
-  manifest: "/manifest.json",
+  // Phase D.5: switch to `.webmanifest` for iOS 16.4+ Web Push PWA support.
+  // The legacy /manifest.json stays on disk for already-installed clients.
+  manifest: "/manifest.webmanifest",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "Teranga Admin",
+  },
   icons: {
     icon: [
       { url: "/favicon.png", sizes: "32x32", type: "image/png" },
       { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
     ],
+    // When /icons/apple-touch-icon.png ships (see apps/web-backoffice/public/icons/README.md)
+    // iOS will prefer it over the legacy /apple-icon.png via the purpose-any match.
     apple: { url: "/apple-icon.png", sizes: "180x180" },
   },
 };
 
 export const viewport: Viewport = {
-  themeColor: "#1A1A2E",
+  // Aligned with manifest.webmanifest theme_color for a consistent status-bar
+  // tint across browser + PWA launches.
+  themeColor: "#0a2540",
   width: "device-width",
   initialScale: 1,
 };

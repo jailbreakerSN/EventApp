@@ -3,6 +3,10 @@ import { Header } from "@/components/layouts/header";
 import { Footer } from "@/components/layouts/footer";
 import { AuthGuard } from "@/components/auth-guard";
 import { EmailVerificationBanner } from "@/components/email-verification-banner";
+// Phase D.5 — post-install push nudge. The component itself gates on iOS +
+// PWA + one-shot marker so it only ever renders in a very narrow slice of
+// sessions (iOS Safari, running as standalone PWA, first launch).
+import { PushPermissionBanner } from "@/components/push-permission-banner";
 
 export default async function AuthenticatedLayout({ children }: { children: React.ReactNode }) {
   const tNav = await getTranslations("nav");
@@ -17,6 +21,11 @@ export default async function AuthenticatedLayout({ children }: { children: Reac
       </a>
       <Header />
       <EmailVerificationBanner />
+      {/* Deferred, self-gating push nudge: only renders on iOS 16.4+ inside
+          the installed PWA, five seconds after mount, exactly once. */}
+      <div className="mx-auto w-full max-w-5xl px-4 empty:hidden">
+        <PushPermissionBanner trigger="pwa-installed" />
+      </div>
       <main id="main-content" className="flex-1" tabIndex={-1}>
         <AuthGuard>{children}</AuthGuard>
       </main>

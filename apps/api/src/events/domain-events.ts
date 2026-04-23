@@ -497,6 +497,29 @@ export interface NotificationTestSentSelfEvent extends BaseEventPayload {
   locale: "fr" | "en" | "wo";
 }
 
+/**
+ * Phase D.3 — emitted when a super_admin opens the delivery-observability
+ * dashboard (GET /v1/admin/notifications/delivery). Audited because the
+ * endpoint exposes a cross-tenant view of notification traffic, including
+ * per-key, per-channel volumes. The payload echoes the query so compliance
+ * reviewers can replay what the admin actually saw.
+ */
+export interface AdminDeliveryDashboardViewedEvent extends BaseEventPayload {
+  /** Optional catalog-key filter applied to the query. */
+  key?: string;
+  /** Optional channel filter applied to the query. */
+  channel?: "email" | "sms" | "push" | "in_app";
+  /** ISO window start (inclusive). */
+  windowStart: string;
+  /** ISO window end (inclusive). */
+  windowEnd: string;
+  /** Granularity the response was bucketed at. */
+  granularity: "hour" | "day";
+  /** Number of dispatch-log rows scanned — helps reviewers spot when the
+   *  hard cap was hit. */
+  scanned: number;
+}
+
 // ── User lifecycle (Phase 2 — security + onboarding notifications) ───────
 // Emitted by the auth trigger (user.created) and the API self-service
 // endpoints for password + email changes. The notification listener
@@ -1063,6 +1086,8 @@ export interface DomainEventMap {
   "notification.test_sent_self": NotificationTestSentSelfEvent;
   // Notification dispatcher (Phase 2.2 — persistent dedup)
   "notification.deduplicated": NotificationDeduplicatedEvent;
+  // Super-admin delivery-observability dashboard viewed (Phase D.3).
+  "admin.delivery_dashboard_viewed": AdminDeliveryDashboardViewedEvent;
   // User lifecycle (Phase 2)
   "user.created": UserCreatedEvent;
   "user.password_changed": UserPasswordChangedEvent;

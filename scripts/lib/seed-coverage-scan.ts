@@ -143,6 +143,10 @@ export const SEED_COVERAGE_WAIVER: ReadonlyMap<string, string> = new Map<
     "checkinFeed",
     "Already seeded today in 06-social.ts, but waived here so the collection can be demoted back to runtime-only without breaking CI if the QA fixture is ever removed.",
   ],
+  [
+    "rateLimitBuckets",
+    "Runtime-written rate-limit buckets — transient; populated by rateLimit() only when endpoints fire.",
+  ],
 ]);
 
 // ─── COLLECTIONS constant parsing ──────────────────────────────────────────

@@ -246,6 +246,97 @@
         "mandatoryHint": "Yëglekaay bu fàww — jëfandikukat yi manuñu génn.",
         "lastUpdated": "Bu mujj yi soppi : {date}",
         "noStats": "Amul statistique"
+      },
+      "delivery": {
+        "breadcrumb": "Gisal",
+        "breadcrumbHome": "Tableau de bord",
+        "breadcrumbAdmin": "Administration",
+        "breadcrumbNotifications": "Yëglekaay",
+        "kicker": "— GISAL",
+        "title": "Gisal yëglekaay",
+        "subtitle": "Xoolal livraison, ubbi ak suppression yi ci platfoorm bi.",
+        "window": "Fenêtre",
+        "windowAriaLabel": "Fenêtre analyse",
+        "windowOptions": {
+          "day": "24 w",
+          "week": "7 f",
+          "month": "30 f"
+        },
+        "export": "Jébbal CSV",
+        "exportAriaLabel": "Jébbal ci CSV",
+        "errorKicker": "— Njuumte",
+        "kpi": {
+          "totalSent": "Mbooleem yi ñu yónne",
+          "totalSentHint": "Bataaxal yi jot ci fournisseur",
+          "deliveryRate": "Taux livraison",
+          "deliveryRateHint": "Jot walla woy / yónne",
+          "clickRate": "Taux click",
+          "clickRateHint": "Click e-mail + push / yónne",
+          "bounceRate": "Taux rebond",
+          "bounceRateHint": "Rebond + plainte / yónne"
+        },
+        "panels": {
+          "perChannel": "Ci canal",
+          "perChannelTitle": "Njariñ ci canal",
+          "suppression": "Suppression yi",
+          "suppressionTitle": "Lu tax suppression",
+          "timeseries": "Dox ci jamono",
+          "timeseriesTitle": "Mbooleem ci bucket",
+          "timeseriesSevenDays": "Dox ci jamono (7 f)",
+          "timeseriesSevenDaysTitle": "Mbooleem ci bés",
+          "focusOnKey": "Xoolal benn yëglekaay",
+          "emailFunnel": "Entonwaar e-mail",
+          "pushFunnel": "Entonwaar push / in-app",
+          "pushFunnelTitle": "Entonwaar push"
+        },
+        "granularity": {
+          "hour": "Granularité : waxtu",
+          "day": "Granularité : bés"
+        },
+        "focusBody": {
+          "before": "Ubbil ",
+          "link": "catalog yëglekaay",
+          "after": " te tapp ci « Gisal » ngir clé bi ngir am entonwaar ak 20 ligne yu mujj ci journal dispatch."
+        },
+        "emptyChart": "Amul xeeti jëf ci fenêtre bi.",
+        "emptyChannel": "Amul canal bu dox ci fenêtre bi.",
+        "emptySuppression": "Amul suppression ci fenêtre bi.",
+        "errorTitle": "Manuñ koo sàkku tableau bi",
+        "errorDescription": "Jéemal ci ba kanam.",
+        "rowAction": "Gisal",
+        "detail": {
+          "kicker": "— DRILL-DOWN",
+          "mandatoryBadge": "Fàww",
+          "errorTitle": "Manuñ koo sàkku données yi",
+          "notFoundKicker": "— Gisuñu ko",
+          "notFoundTitle": "Clé bi xamuñu ko",
+          "notFoundDescription": "Amul « {key} » ci catalog bi."
+        },
+        "chartLabels": {
+          "sent": "Yónne",
+          "delivered": "Jot",
+          "opened": "Ubbi",
+          "clicked": "Tapp",
+          "pushDisplayed": "Push woy",
+          "pushClicked": "Push tapp",
+          "suppressed": "Suppression",
+          "admin_disabled": "Admin tëju",
+          "user_opted_out": "Jëfandikukat génn",
+          "on_suppression_list": "Liste suppression",
+          "no_recipient": "Amul destinataire",
+          "rate_limited": "Rate-limit",
+          "deduplicated": "Déduplike",
+          "bounced": "Rebond",
+          "complained": "Plainte",
+          "successRate": "Taux njariñ"
+        },
+        "funnelStages": {
+          "sent": "Yónne",
+          "delivered": "Jot",
+          "opened": "Ubbi",
+          "clicked": "Tapp",
+          "displayed": "Woy"
+        }
       }
     }
   }

@@ -68,3 +68,67 @@ path stopped populating `expiresAt`).
 - Disabling and re-enabling the TTL policy is a free operation but it
   takes ~5 minutes to propagate. No manual cleanup is needed during the
   switch.
+
+---
+
+## `rateLimitBuckets.expiresAt` (Phase D.4)
+
+**What it does.** Auto-expires `rateLimitBuckets` rows once `expiresAt` is
+in the past. The `rateLimit()` helper writes one doc per
+`(scope, hashedIdentifier, windowStartBucket)` triple; without TTL the
+collection grows monotonically with every distinct caller × endpoint ×
+window. TTL keeps it bounded without a scheduled cleanup job.
+
+**Retention policy (enforced in code at write time).** `expiresAt =
+windowStartAt + 2 × windowSec`. The 2× headroom gives operators a window
+to inspect a hot bucket after it rolls over (e.g. a `test-send:self`
+abuse investigation) before Firestore's async sweep takes the doc. For
+the `test-send:self` scope (windowSec=3600), that's 2 hours post-
+rollover — well under the ~24 h TTL sweep latency.
+
+The field is populated by `rateLimit()` —
+see `apps/api/src/services/rate-limit.service.ts`.
+
+### Provisioning
+
+Run once per environment (staging + production). The
+`notification-ops-prereqs` workflow already handles this for both
+`notificationDispatchLog` and `rateLimitBuckets` in a single loop; the
+raw gcloud command is:
+
+```bash
+gcloud firestore fields ttls update expiresAt \
+  --collection-group=rateLimitBuckets \
+  --enable-ttl \
+  --project=<FIREBASE_PROJECT_ID>
+```
+
+Verify:
+
+```bash
+gcloud firestore fields ttls list --project=<FIREBASE_PROJECT_ID>
+```
+
+Look for a row keyed `rateLimitBuckets.expiresAt` with
+`ttlConfig.state: ACTIVE`.
+
+### Monitoring
+
+Same metric as notificationDispatchLog —
+`firestore.googleapis.com/document/ttl_deletion_count` in Cloud
+Monitoring. If the limiter is in active use the daily deletion rate
+should trend positive; a week of zeros means either the TTL policy
+lapsed or the limiter stopped being called (both worth investigating).
+
+### Caveats
+
+- **Fail-open collection**: `rateLimit()` fails open on Firestore
+  errors. If TTL ever gets disabled, the collection grows without bound
+  but the rate-limit logic itself keeps working — the only cost is
+  Firestore storage. Monitor for it via the metric above.
+- Doc ids are deterministic (`${scope}:${hashedId}:${windowStartBucket}`),
+  so duplicate writers across pods converge on the same doc rather than
+  creating parallel entries. TTL fires once the last writer has rolled
+  off.
+- Server-only collection: never exposed to clients (see
+  `firestore.rules` → `match /rateLimitBuckets/{bucketId}`).

@@ -954,7 +954,75 @@ export const adminNotificationsApi = {
     api.get<ApiResponse<Array<{ key: string; organizationId: string; enabled: boolean; channels: NotificationChannel[]; updatedAt: string; updatedBy: string }>>>(
       "/v1/admin/notifications/per-org",
     ),
+
+  // Phase D.3 — delivery observability dashboard. Pre-aggregated (no
+  // raw-row pagination). Window capped at 30 days server-side; the 400
+  // response carries `details.maxWindowDays: 30` so the UI can pin the
+  // limit in its error banner.
+  delivery: (params: AdminDeliveryDashboardQuery = {}) =>
+    api.get<ApiResponse<AdminDeliveryDashboardResponse>>(
+      // `AdminDeliveryDashboardQuery` is an interface with explicit
+      // optional properties; TS won't narrow it to `Record<string,
+      // unknown>` (missing index signature). Cast at the call site
+      // rather than widening buildQuery's signature — every other
+      // caller passes already-Record-typed query bags.
+      `/v1/admin/notifications/delivery${buildQuery(params as Record<string, unknown>)}`,
+    ),
 };
+
+// ─── Phase D.3 — delivery dashboard shapes ───────────────────────────────
+
+export interface AdminDeliveryDashboardQuery {
+  key?: string;
+  channel?: NotificationChannel;
+  from?: string;
+  to?: string;
+  granularity?: "hour" | "day";
+}
+
+export interface AdminDeliveryDashboardTotals {
+  sent: number;
+  delivered: number;
+  opened: number;
+  clicked: number;
+  pushDisplayed: number;
+  pushClicked: number;
+  suppressed: {
+    admin_disabled: number;
+    user_opted_out: number;
+    on_suppression_list: number;
+    no_recipient: number;
+    rate_limited: number;
+    deduplicated: number;
+    bounced: number;
+    complained: number;
+  };
+}
+
+export interface AdminDeliveryDashboardBucket {
+  bucket: string;
+  sent: number;
+  delivered: number;
+  opened: number;
+  clicked: number;
+  pushDisplayed: number;
+  pushClicked: number;
+  suppressed: number;
+}
+
+export interface AdminDeliveryDashboardPerChannel {
+  channel: NotificationChannel;
+  sent: number;
+  suppressed: number;
+  successRate: number;
+}
+
+export interface AdminDeliveryDashboardResponse {
+  range: { from: string; to: string; granularity: "hour" | "day" };
+  totals: AdminDeliveryDashboardTotals;
+  timeseries: AdminDeliveryDashboardBucket[];
+  perChannel: AdminDeliveryDashboardPerChannel[];
+}
 
 // ─── Me / FCM Tokens (Phase C.1 — Web Push) ─────────────────────────────────
 // Thin wrappers over /v1/me/fcm-tokens. The hook `useWebPushRegistration`

@@ -1320,6 +1320,31 @@ export function registerAuditListeners(): void {
     });
   });
 
+  eventBus.on("admin.delivery_dashboard_viewed", async (payload) => {
+    // Phase D.3 — super-admin opened the delivery observability
+    // dashboard. Audited because the query returns a cross-tenant view
+    // of the dispatch log; we log the filters (key / channel / window)
+    // so compliance reviewers can replay the exact slice.
+    await auditService.log({
+      action: "admin.delivery_dashboard_viewed",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "notification",
+      resourceId: payload.key ?? "all",
+      eventId: null,
+      organizationId: null,
+      details: {
+        ...(payload.key ? { key: payload.key } : {}),
+        ...(payload.channel ? { channel: payload.channel } : {}),
+        windowStart: payload.windowStart,
+        windowEnd: payload.windowEnd,
+        granularity: payload.granularity,
+        scanned: payload.scanned,
+      },
+    });
+  });
+
   // ── FCM Device Tokens (Phase C.1 — Web Push) ──────────────────────────
   // Token registrations are user-scoped (no event / org), so both eventId
   // and organizationId are null. resourceId = userId so admins can filter

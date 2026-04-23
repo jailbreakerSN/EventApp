@@ -19,6 +19,10 @@ import { captureError } from "@/observability/sentry";
 // NotificationDispatcherService so catalog-driven sends work out of the
 // box. No exported bindings used here; the import statement is the wiring.
 import "@/services/email/dispatcher-adapter";
+// Side-effect import: registers the in-app channel adapter (Phase D.1) in
+// the forward-looking ChannelAdapter registry. Dispatcher-driven in-app
+// sends require this to land before the first dispatch fires.
+import "@/services/notifications/channels/in-app.channel";
 
 export async function buildApp() {
   const app = Fastify({
