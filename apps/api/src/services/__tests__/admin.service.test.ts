@@ -24,6 +24,8 @@ const mockUserDocGet = vi.fn();
 const mockUserDocUpdate = vi.fn();
 const mockOrgDocGet = vi.fn();
 const mockOrgDocUpdate = vi.fn();
+// Phase 4 — capture impersonation audit-log appends for assertions.
+export const mockAuditAdd = vi.fn().mockResolvedValue({ id: "audit-doc-fake" });
 
 vi.mock("@/config/firebase", () => ({
   db: {
@@ -37,6 +39,8 @@ vi.mock("@/config/firebase", () => ({
         }
         return { get: vi.fn(), update: vi.fn(), id };
       }),
+      // Admin impersonation appends a new audit doc; capture via spy.
+      add: name === "auditLogs" ? mockAuditAdd : vi.fn(),
     })),
     // Route tx.get / tx.update on user/org docs to the same spies as
     // non-tx writes so existing assertions keep working after the
@@ -45,8 +49,7 @@ vi.mock("@/config/firebase", () => ({
     runTransaction: vi.fn(async (cb: (tx: unknown) => unknown) => {
       const tx = {
         get: (ref: { get: () => unknown }) => ref.get(),
-        update: (ref: { update: (data: unknown) => unknown }, data: unknown) =>
-          ref.update(data),
+        update: (ref: { update: (data: unknown) => unknown }, data: unknown) => ref.update(data),
         set: vi.fn(),
       };
       return cb(tx);
@@ -56,6 +59,10 @@ vi.mock("@/config/firebase", () => ({
     setCustomUserClaims: vi.fn().mockResolvedValue(undefined),
     updateUser: vi.fn().mockResolvedValue(undefined),
     getUser: vi.fn().mockResolvedValue({ customClaims: {} }),
+    // Phase 4 — impersonation mints a custom token. The mock returns a
+    // stable string so tests can assert what flows to the UI.
+    createCustomToken: vi.fn().mockResolvedValue("mock-custom-token"),
+    revokeRefreshTokens: vi.fn().mockResolvedValue(undefined),
   },
   COLLECTIONS: {
     USERS: "users",
@@ -65,6 +72,9 @@ vi.mock("@/config/firebase", () => ({
     PAYMENTS: "payments",
     VENUES: "venues",
     AUDIT_LOGS: "auditLogs",
+    SUBSCRIPTIONS: "subscriptions",
+    INVITES: "invites",
+    FEATURE_FLAGS: "featureFlags",
   },
 }));
 
@@ -741,5 +751,288 @@ describe("AdminService — super_admin can access all methods", () => {
     });
 
     await expect(adminService.listAuditLogs(admin, { page: 1, limit: 20 })).resolves.toBeDefined();
+  });
+});
+
+// ─── Phase 4 — Impersonation ─────────────────────────────────────────────
+// Covers every permission rail on startImpersonation() since it is the
+// highest-privilege action in the admin surface:
+//  - happy path (super_admin → participant): mints a token, writes audit
+//    *before* returning, emits domain event.
+//  - non-super_admin callers are rejected.
+//  - self-impersonation is rejected.
+//  - impersonating another super_admin is rejected (privilege-escalation
+//    chain prevention).
+//  - missing target user surfaces a 404-shaped error.
+
+describe("AdminService.startImpersonation (Phase 4)", () => {
+  const admin = buildSuperAdmin();
+
+  const participantTarget = {
+    uid: "user-participant",
+    email: "alice@teranga.dev",
+    displayName: "Alice Dupont",
+    roles: ["participant"],
+    organizationId: "org-001",
+    orgRole: "member",
+  };
+
+  function mockTargetDoc(data: unknown, exists = true) {
+    mockUserDocGet.mockResolvedValueOnce({ exists, data: () => data });
+  }
+
+  it("mints a custom token, writes audit synchronously, emits domain event", async () => {
+    mockTargetDoc(participantTarget);
+
+    const res = await adminService.startImpersonation(admin, participantTarget.uid);
+
+    expect(res.customToken).toBe("mock-custom-token");
+    expect(res.targetUid).toBe(participantTarget.uid);
+    expect(res.targetDisplayName).toBe(participantTarget.displayName);
+    expect(res.expiresAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+
+    expect(auth.createCustomToken).toHaveBeenCalledWith(
+      participantTarget.uid,
+      expect.objectContaining({
+        impersonatedBy: admin.uid,
+        roles: participantTarget.roles,
+      }),
+    );
+
+    // Audit log must land BEFORE the token is returned.
+    expect(mockAuditAdd).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "user.impersonated",
+        actorId: admin.uid,
+        resourceType: "user",
+        resourceId: participantTarget.uid,
+      }),
+    );
+
+    expect(eventBus.emit).toHaveBeenCalledWith(
+      "user.impersonated",
+      expect.objectContaining({ actorUid: admin.uid, targetUid: participantTarget.uid }),
+    );
+  });
+
+  it("rejects non-super_admin callers with a ForbiddenError", async () => {
+    const orgAdmin = buildAuthUser({ uid: "u-non-super", roles: ["organizer"] });
+    // No doc read is reached since the gate trips first.
+    await expect(
+      adminService.startImpersonation(orgAdmin, participantTarget.uid),
+    ).rejects.toThrow();
+    expect(auth.createCustomToken).not.toHaveBeenCalled();
+    expect(mockAuditAdd).not.toHaveBeenCalled();
+  });
+
+  it("refuses self-impersonation", async () => {
+    await expect(adminService.startImpersonation(admin, admin.uid)).rejects.toThrow(
+      /Cannot impersonate yourself/i,
+    );
+    expect(auth.createCustomToken).not.toHaveBeenCalled();
+  });
+
+  it("refuses impersonating another super_admin", async () => {
+    mockTargetDoc({
+      ...participantTarget,
+      uid: "another-super",
+      roles: ["super_admin"],
+    });
+    await expect(adminService.startImpersonation(admin, "another-super")).rejects.toThrow(
+      /another super_admin/i,
+    );
+    expect(auth.createCustomToken).not.toHaveBeenCalled();
+    // Audit MUST NOT be written because the precondition failed.
+    expect(mockAuditAdd).not.toHaveBeenCalled();
+  });
+
+  it("refuses impersonating a platform:super_admin (top-tier parity)", async () => {
+    // Closure I hygiene — both legacy super_admin and the granular
+    // platform:super_admin are top-tier. The target guard must reject
+    // both classes symmetrically so the audit trail always ends on the
+    // highest-privilege admin.
+    mockTargetDoc({
+      ...participantTarget,
+      uid: "another-top-admin",
+      roles: ["platform:super_admin"],
+    });
+    await expect(adminService.startImpersonation(admin, "another-top-admin")).rejects.toThrow(
+      /another super_admin/i,
+    );
+    expect(auth.createCustomToken).not.toHaveBeenCalled();
+    expect(mockAuditAdd).not.toHaveBeenCalled();
+  });
+
+  it("throws NotFoundError when the target user doc does not exist", async () => {
+    mockTargetDoc(undefined, false);
+    await expect(adminService.startImpersonation(admin, "ghost-user")).rejects.toThrow();
+    expect(auth.createCustomToken).not.toHaveBeenCalled();
+  });
+
+  it("accepts a platform:super_admin caller and stamps that role on the audit row", async () => {
+    const platformSuper = buildAuthUser({
+      uid: "u-platform-super",
+      roles: ["platform:super_admin"],
+    });
+    mockTargetDoc(participantTarget);
+
+    await adminService.startImpersonation(platformSuper, participantTarget.uid);
+
+    expect(mockAuditAdd).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "user.impersonated",
+        actorId: platformSuper.uid,
+        actorRole: "platform:super_admin",
+      }),
+    );
+  });
+
+  it("refuses platform:support (and other non-super platform:* roles)", async () => {
+    // platform:support holds platform:manage (so passes requirePermission)
+    // but MUST NOT be allowed to impersonate — impersonation is the most
+    // sensitive action on the platform, gated to super_admin tier only.
+    const support = buildAuthUser({ uid: "u-support", roles: ["platform:support"] });
+    // Target doc is NOT reached since the role gate trips first.
+    await expect(adminService.startImpersonation(support, participantTarget.uid)).rejects.toThrow(
+      /Only super_admin may impersonate/i,
+    );
+    expect(auth.createCustomToken).not.toHaveBeenCalled();
+    expect(mockAuditAdd).not.toHaveBeenCalled();
+  });
+});
+
+// Covers the session-exit path. `endImpersonation` relies on the signed
+// `impersonatedBy` claim extracted by auth.middleware.ts. These tests
+// guard the three branches:
+//  - happy path: claim matches actorUid → revoke + audit.
+//  - missing claim: caller is not actually inside an impersonation session.
+//  - claim mismatch: another admin's session — must NOT be endable.
+
+describe("AdminService.endImpersonation (Phase 4)", () => {
+  const adminUid = "admin-super-1";
+  const targetUid = "user-participant-7";
+
+  it("revokes the impersonated user's refresh tokens, stamps super_admin, emits event", async () => {
+    // Simulate the middleware: `impersonatedBy` populated from a valid
+    // session token minted by startImpersonation for targetUid.
+    const caller = buildAuthUser({
+      uid: targetUid,
+      roles: ["participant"],
+      impersonatedBy: adminUid,
+    });
+    // Closure I — endImpersonation looks up the admin's doc to stamp
+    // the correct actorRole on the audit record.
+    mockUserDocGet.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({ uid: adminUid, roles: ["super_admin"] }),
+    });
+
+    await adminService.endImpersonation(caller, adminUid);
+
+    expect(auth.revokeRefreshTokens).toHaveBeenCalledWith(targetUid);
+    expect(mockAuditAdd).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "user.impersonation_ended",
+        actorId: adminUid,
+        actorRole: "super_admin",
+        resourceType: "user",
+        resourceId: targetUid,
+        details: expect.objectContaining({ actorRoleLookup: "firestore" }),
+      }),
+    );
+    expect(eventBus.emit).toHaveBeenCalledWith(
+      "user.impersonation_ended",
+      expect.objectContaining({ actorUid: adminUid, targetUid }),
+    );
+  });
+
+  it("stamps platform:super_admin when the actor holds that granular role", async () => {
+    const caller = buildAuthUser({
+      uid: targetUid,
+      roles: ["participant"],
+      impersonatedBy: adminUid,
+    });
+    mockUserDocGet.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({ uid: adminUid, roles: ["platform:super_admin"] }),
+    });
+
+    await adminService.endImpersonation(caller, adminUid);
+
+    expect(mockAuditAdd).toHaveBeenCalledWith(
+      expect.objectContaining({ actorRole: "platform:super_admin" }),
+    );
+  });
+
+  it("falls back to super_admin + flags lookup when the admin doc is missing", async () => {
+    const caller = buildAuthUser({
+      uid: targetUid,
+      roles: ["participant"],
+      impersonatedBy: adminUid,
+    });
+    // Lookup throws — mimics a demoted admin mid-session or Firestore hiccup.
+    mockUserDocGet.mockRejectedValueOnce(new Error("firestore unavailable"));
+
+    await adminService.endImpersonation(caller, adminUid);
+
+    expect(mockAuditAdd).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actorRole: "super_admin",
+        details: expect.objectContaining({ actorRoleLookup: "fallback" }),
+      }),
+    );
+  });
+
+  it("rejects callers whose session has no impersonatedBy claim", async () => {
+    // Regular (non-impersonating) session — the claim is missing entirely.
+    const caller = buildAuthUser({ uid: "regular-user", roles: ["participant"] });
+
+    await expect(adminService.endImpersonation(caller, adminUid)).rejects.toThrow(
+      /Session d'impersonation non reconnue/i,
+    );
+
+    // No side effects: nothing was revoked, nothing was audited.
+    expect(auth.revokeRefreshTokens).not.toHaveBeenCalled();
+    expect(mockAuditAdd).not.toHaveBeenCalled();
+    expect(eventBus.emit).not.toHaveBeenCalled();
+  });
+
+  it("rejects when the actorUid param does not match the signed claim", async () => {
+    // Session minted by admin-A but the client posts admin-B's uid —
+    // a tampered breadcrumb. Must refuse before revoking anything.
+    const caller = buildAuthUser({
+      uid: targetUid,
+      roles: ["participant"],
+      impersonatedBy: "admin-A",
+    });
+
+    await expect(adminService.endImpersonation(caller, "admin-B")).rejects.toThrow(
+      /Session d'impersonation non reconnue/i,
+    );
+
+    expect(auth.revokeRefreshTokens).not.toHaveBeenCalled();
+    expect(mockAuditAdd).not.toHaveBeenCalled();
+    expect(eventBus.emit).not.toHaveBeenCalled();
+  });
+
+  it("propagates revokeRefreshTokens failure and does NOT write a success audit", async () => {
+    // Closure I — previously the code swallowed Firebase Auth errors,
+    // meaning a transient revoke failure was recorded as a successful
+    // session exit. The fix surfaces the error and skips the audit.
+    const caller = buildAuthUser({
+      uid: targetUid,
+      roles: ["participant"],
+      impersonatedBy: adminUid,
+    });
+    vi.mocked(auth.revokeRefreshTokens).mockRejectedValueOnce(
+      new Error("firebase-auth/network-unavailable"),
+    );
+
+    await expect(adminService.endImpersonation(caller, adminUid)).rejects.toThrow(
+      /firebase-auth\/network-unavailable/,
+    );
+
+    expect(mockAuditAdd).not.toHaveBeenCalled();
+    expect(eventBus.emit).not.toHaveBeenCalled();
   });
 });

@@ -64,6 +64,12 @@ export const AuditActionSchema = z.enum([
   "venue.reactivated",
   // ── Admin ─────────────────────────────────────────────────────────────────
   "user.role_changed",
+  // Admin overhaul Phase 4 — impersonation audit actions.
+  "user.impersonated",
+  "user.impersonation_ended",
+  // Admin overhaul Phase 6 / D — platform ops actions.
+  "admin.feature_flag_updated",
+  "admin.announcement_published",
   "user.suspended",
   "user.activated",
   "organization.verified",

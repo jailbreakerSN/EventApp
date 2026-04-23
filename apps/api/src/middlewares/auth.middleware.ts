@@ -16,6 +16,15 @@ export interface AuthUser {
    * backoffice dashboard layout's UX-level gate (CLAUDE.md §H6).
    */
   emailVerified: boolean;
+  /**
+   * When set, this session is an impersonation session: `impersonatedBy`
+   * is the UID of the super-admin who minted the custom token. Sourced
+   * from the signed `impersonatedBy` custom claim baked by
+   * `AdminService.startImpersonation`. Consumed by `endImpersonation`
+   * to verify the caller owns the session before revoking it, and by
+   * the backoffice `ImpersonationBanner` to surface the actor's identity.
+   */
+  impersonatedBy?: string;
 }
 
 declare module "fastify" {
@@ -47,6 +56,8 @@ export async function authenticate(request: FastifyRequest, reply: FastifyReply)
       roles: Array.isArray(decoded.roles) ? (decoded.roles as UserRole[]) : ["participant"],
       organizationId: (decoded.organizationId as string) ?? undefined,
       emailVerified: decoded.email_verified === true,
+      impersonatedBy:
+        typeof decoded.impersonatedBy === "string" ? decoded.impersonatedBy : undefined,
     };
   } catch (_err) {
     request.log.warn({ err: _err }, "Token verification failed");
@@ -72,6 +83,8 @@ export async function optionalAuth(request: FastifyRequest, _reply: FastifyReply
       roles: Array.isArray(decoded.roles) ? (decoded.roles as UserRole[]) : ["participant"],
       organizationId: (decoded.organizationId as string) ?? undefined,
       emailVerified: decoded.email_verified === true,
+      impersonatedBy:
+        typeof decoded.impersonatedBy === "string" ? decoded.impersonatedBy : undefined,
     };
   } catch {
     // Token present but invalid — treat as anonymous
@@ -114,8 +127,7 @@ export async function requireEmailVerified(request: FastifyRequest, reply: Fasti
       success: false,
       error: {
         code: "EMAIL_NOT_VERIFIED",
-        message:
-          "Email verification required. Check your inbox for the verification link.",
+        message: "Email verification required. Check your inbox for the verification link.",
       },
     });
   }

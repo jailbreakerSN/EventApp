@@ -291,6 +291,11 @@ describe("route inventory", () => {
         // by design and are rate-limited at the route level.
         "POST /v1/notifications/:notificationId/push-displayed",
         "POST /v1/notifications/:notificationId/push-clicked",
+        // Admin overhaul Phase 4 closure — exiting an impersonation
+        // session. Service-layer guard validates the caller's JWT carries
+        // the `impersonatedBy === actorUid` claim (ownership of the
+        // impersonation session itself), so no named permission applies.
+        "POST /v1/admin/impersonation/end",
       ]);
       const violators: string[] = [];
       for (const r of captured) {

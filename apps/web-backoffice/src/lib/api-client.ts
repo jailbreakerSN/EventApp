@@ -192,6 +192,8 @@ export const api = {
     request<T>(path, { method: "POST", body: JSON.stringify(body) }, auth),
   patch: <T>(path: string, body: unknown) =>
     request<T>(path, { method: "PATCH", body: JSON.stringify(body) }),
+  put: <T>(path: string, body: unknown) =>
+    request<T>(path, { method: "PUT", body: JSON.stringify(body) }),
   delete: <T>(path: string) =>
     request<T>(path, { method: "DELETE" }),
 };
@@ -703,6 +705,30 @@ export const adminApi = {
 
   listUsers: (query: Partial<AdminUserQuery> = {}) =>
     api.get<PaginatedResponse<AdminUserRow>>(`/v1/admin/users${buildQuery(query)}`),
+
+  // Phase 3 — targeted fetch for /admin/users/[uid] detail page.
+  getUser: (userId: string) =>
+    api.get<ApiResponse<AdminUserRow>>(`/v1/admin/users/${encodeURIComponent(userId)}`),
+
+  // Phase 4 — start an impersonation session. The response includes a
+  // short-lived Firebase custom token the caller must exchange with
+  // signInWithCustomToken() after signing-out the current session.
+  impersonate: (userId: string) =>
+    api.post<
+      ApiResponse<{
+        customToken: string;
+        targetUid: string;
+        targetDisplayName: string | null;
+        targetEmail: string | null;
+        expiresAt: string;
+      }>
+    >(`/v1/admin/users/${encodeURIComponent(userId)}/impersonate`, {}),
+
+  // Phase 4 closure — server-side revocation of the impersonated session.
+  // Client calls this BEFORE signOut to ensure the short-lived ID token
+  // stops being accepted even if captured mid-flight.
+  endImpersonation: (actorUid: string) =>
+    api.post<void>(`/v1/admin/impersonation/end`, { actorUid }),
 
   updateUserRoles: (userId: string, roles: string[]) =>
     api.patch<void>(`/v1/admin/users/${userId}/roles`, { roles }),

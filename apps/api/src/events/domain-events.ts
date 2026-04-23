@@ -1107,6 +1107,29 @@ export interface DomainEventMap {
   "event.certificates_issued": EventCertificatesIssuedEvent;
   "subscription.expiring_soon": SubscriptionExpiringSoonEvent;
   "subscription.approaching_limit": SubscriptionApproachingLimitEvent;
+  // Admin overhaul Phase 4 — impersonation audit signal. Listeners can
+  // react (security alerting, rate limiting) when a super-admin starts
+  // a session on behalf of another user.
+  "user.impersonated": UserImpersonatedEvent;
+  // Closure I — matching exit signal. Fired synchronously by
+  // endImpersonation() after the impersonated user's refresh tokens
+  // have been revoked. Parity with `user.impersonated` so security
+  // listeners see both halves of a session.
+  "user.impersonation_ended": UserImpersonationEndedEvent;
+}
+
+/** Phase 4 — emitted by adminService.startImpersonation(). */
+export interface UserImpersonatedEvent {
+  actorUid: string;
+  targetUid: string;
+  /** ISO timestamp when the minted token stops being accepted. */
+  expiresAt: string;
+}
+
+/** Closure I — emitted by adminService.endImpersonation() after revoke. */
+export interface UserImpersonationEndedEvent {
+  actorUid: string;
+  targetUid: string;
 }
 
 export type DomainEventName = keyof DomainEventMap;

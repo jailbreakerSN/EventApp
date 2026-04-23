@@ -119,4 +119,17 @@ export const COLLECTIONS = {
   // `expiresAt` auto-purges expired windows (see
   // infrastructure/firebase/firestore.ttl.md).
   RATE_LIMIT_BUCKETS: "rateLimitBuckets",
+  // Phase 6 (admin overhaul) — platform feature flags. Doc id = flag
+  // key (e.g. "new-checkin-flow"). Fields: { enabled: bool,
+  // description?: string, rolloutPercent?: 0..100, updatedAt, updatedBy }.
+  // Rules: deny-all at the client SDK; only super_admin via the API
+  // may read/write.
+  FEATURE_FLAGS: "featureFlags",
+  // Phase D (closure) — platform-wide announcements shown as banners.
+  // Doc id = announcement id. Super-admin only writes; clients read
+  // via a dedicated public route that strips admin-only metadata.
+  ANNOUNCEMENTS: "announcements",
+  // Phase D — manual job-runs triggered from /admin/jobs. Each doc
+  // records the triggering admin + status + timing for observability.
+  ADMIN_JOB_RUNS: "adminJobRuns",
 } as const;

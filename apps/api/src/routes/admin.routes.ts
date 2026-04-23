@@ -19,6 +19,9 @@ import {
   NotificationChannelSchema,
   type NotificationDefinition,
   type NotificationSetting,
+  FeatureFlagKeySchema,
+  UpsertFeatureFlagSchema,
+  type FeatureFlag,
 } from "@teranga/shared-types";
 import {
   notificationSettingsRepository,
@@ -63,6 +66,340 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
     },
   );
 
+  // ── Feature flags (Phase 6) ───────────────────────────────────────────
+  // Minimal CRUD over the featureFlags collection. Backed directly by
+  // Firestore because flags are low-cardinality (target: ~20 flags,
+  // each read is a single doc). Full UI in /admin/feature-flags.
+  //
+  // Listing: returns every flag doc as-is. Simple; no filtering yet.
+  // Upsert: enforces a narrow body so an operator can't accidentally
+  // override internal metadata.
+  fastify.get(
+    "/feature-flags",
+    {
+      preHandler: adminPreHandler,
+      schema: {
+        tags: ["Admin"],
+        summary: "List all platform feature flags",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const snap = await db
+        .collection(COLLECTIONS.FEATURE_FLAGS)
+        .orderBy("updatedAt", "desc")
+        .get();
+      const flags = snap.docs.map((d) => ({ key: d.id, ...d.data() }));
+      return reply.send({ success: true, data: flags });
+    },
+  );
+
+  const FeatureFlagParams = z.object({ key: FeatureFlagKeySchema });
+
+  fastify.put<{ Params: z.infer<typeof FeatureFlagParams> }>(
+    "/feature-flags/:key",
+    {
+      preHandler: [
+        ...adminPreHandler,
+        validate({ params: FeatureFlagParams, body: UpsertFeatureFlagSchema }),
+      ],
+      schema: {
+        tags: ["Admin"],
+        summary: "Create or update a feature flag",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const { key } = request.params;
+      const body = request.body as z.infer<typeof UpsertFeatureFlagSchema>;
+      const nowIso = new Date().toISOString();
+      const payload: FeatureFlag = {
+        key,
+        enabled: body.enabled,
+        description: body.description ?? null,
+        rolloutPercent: body.rolloutPercent ?? 100,
+        updatedAt: nowIso,
+        updatedBy: request.user!.uid,
+      };
+
+      // Transactional upsert + audit log — per CLAUDE.md security-hardening
+      // checklist, any multi-write must be atomic. If the audit fails after
+      // the flag doc is written, the flag change silently escapes traceability
+      // and violates the "audit everything sensitive" principle.
+      const flagRef = db.collection(COLLECTIONS.FEATURE_FLAGS).doc(key);
+      const auditRef = db.collection(COLLECTIONS.AUDIT_LOGS).doc();
+      await db.runTransaction(async (tx) => {
+        // READ first — Firestore transactions require reads before writes.
+        // We fetch the prior state so the audit log captures the diff, not
+        // just the new value. This is the same pattern the notifications
+        // history log uses.
+        const prior = await tx.get(flagRef);
+        const previousValue = prior.exists ? (prior.data() as FeatureFlag) : null;
+        tx.set(flagRef, payload, { merge: true });
+        tx.set(auditRef, {
+          id: auditRef.id,
+          action: "admin.feature_flag_updated",
+          actorId: request.user!.uid,
+          actorRole: "super_admin",
+          resourceType: "feature_flag",
+          resourceId: key,
+          organizationId: null,
+          details: {
+            enabled: body.enabled,
+            rolloutPercent: body.rolloutPercent ?? 100,
+            previousEnabled: previousValue?.enabled ?? null,
+            previousRolloutPercent: previousValue?.rolloutPercent ?? null,
+          },
+          requestId: getRequestId(),
+          timestamp: nowIso,
+        });
+      });
+      return reply.send({ success: true, data: payload });
+    },
+  );
+
+  // ── Revenue dashboard (Phase F — P7 closure) ─────────────────────────
+  // Minimal computation on top of the existing subscriptions collection.
+  // Sums priceXof per active plan to derive MRR (monthly) + ARR (×12
+  // approximation) + breakdown by plan. On-demand; no materialised view
+  // yet — cardinality is tens of orgs, so this stays cheap.
+  fastify.get(
+    "/revenue",
+    {
+      preHandler: adminPreHandler,
+      schema: {
+        tags: ["Admin"],
+        summary: "Platform revenue snapshot (MRR / ARR / breakdown)",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (_request, reply) => {
+      const snap = await db
+        .collection(COLLECTIONS.SUBSCRIPTIONS)
+        .where("status", "==", "active")
+        .get();
+      type Sub = {
+        organizationId?: string;
+        plan?: string;
+        status?: string;
+        priceXof?: number;
+        billingCycle?: string;
+      };
+      let mrrXof = 0;
+      const byPlan: Record<string, { count: number; mrrXof: number }> = {};
+      for (const doc of snap.docs) {
+        const s = doc.data() as Sub;
+        const price = Number(s.priceXof ?? 0);
+        // Normalise annual subs into monthly for the MRR aggregate.
+        const monthly = s.billingCycle === "annual" ? Math.round(price / 12) : price;
+        mrrXof += monthly;
+        const plan = s.plan ?? "unknown";
+        if (!byPlan[plan]) byPlan[plan] = { count: 0, mrrXof: 0 };
+        byPlan[plan].count += 1;
+        byPlan[plan].mrrXof += monthly;
+      }
+      return reply.send({
+        success: true,
+        data: {
+          mrrXof,
+          arrXof: mrrXof * 12,
+          activeSubscriptions: snap.size,
+          byPlan,
+          computedAt: new Date().toISOString(),
+        },
+      });
+    },
+  );
+
+  // ── Announcements (Phase D closure — platform banners) ────────────────
+  // Super-admins publish short-lived messages visible as banners
+  // across the platform. Backed by the `announcements` collection;
+  // doc shape { id, title, body, severity, audience, publishedAt,
+  // expiresAt, active, createdBy }.
+  const AnnouncementBodySchema = z.object({
+    title: z.string().min(1).max(140),
+    body: z.string().min(1).max(1000),
+    severity: z.enum(["info", "warning", "critical"]).default("info"),
+    audience: z.enum(["all", "organizers", "participants"]).default("all"),
+    expiresAt: z.string().datetime().optional(),
+    active: z.boolean().default(true),
+  });
+
+  fastify.get(
+    "/announcements",
+    {
+      preHandler: adminPreHandler,
+      schema: { tags: ["Admin"], summary: "List announcements", security: [{ BearerAuth: [] }] },
+    },
+    async (_request, reply) => {
+      const snap = await db
+        .collection(COLLECTIONS.ANNOUNCEMENTS)
+        .orderBy("publishedAt", "desc")
+        .limit(50)
+        .get();
+      return reply.send({
+        success: true,
+        data: snap.docs.map((d) => ({ id: d.id, ...d.data() })),
+      });
+    },
+  );
+
+  fastify.post(
+    "/announcements",
+    {
+      preHandler: [...adminPreHandler, validate({ body: AnnouncementBodySchema })],
+      schema: {
+        tags: ["Admin"],
+        summary: "Publish a platform announcement",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const body = request.body as z.infer<typeof AnnouncementBodySchema>;
+      const ref = db.collection(COLLECTIONS.ANNOUNCEMENTS).doc();
+      const payload = {
+        id: ref.id,
+        ...body,
+        publishedAt: new Date().toISOString(),
+        createdBy: request.user!.uid,
+      };
+      // Transactional write + audit so banner publishing is tracked.
+      await db.runTransaction(async (tx) => {
+        tx.set(ref, payload);
+        const auditRef = db.collection(COLLECTIONS.AUDIT_LOGS).doc();
+        tx.set(auditRef, {
+          id: auditRef.id,
+          action: "admin.announcement_published",
+          actorId: request.user!.uid,
+          actorRole: "super_admin",
+          resourceType: "announcement",
+          resourceId: ref.id,
+          organizationId: null,
+          details: { title: body.title, severity: body.severity, audience: body.audience },
+          requestId: getRequestId(),
+          timestamp: payload.publishedAt,
+        });
+      });
+      return reply.status(201).send({ success: true, data: payload });
+    },
+  );
+
+  // ── Admin job runs (Phase D closure — observable script triggers) ─────
+  // Read-only list of past/ongoing manual triggers. Actual trigger
+  // endpoints are intentionally whitelisted (no arbitrary shell
+  // execution) — for now this is a read-only observability surface.
+  fastify.get(
+    "/jobs",
+    {
+      preHandler: adminPreHandler,
+      schema: { tags: ["Admin"], summary: "List admin job runs", security: [{ BearerAuth: [] }] },
+    },
+    async (_request, reply) => {
+      const snap = await db
+        .collection(COLLECTIONS.ADMIN_JOB_RUNS)
+        .orderBy("startedAt", "desc")
+        .limit(50)
+        .get();
+      return reply.send({
+        success: true,
+        data: snap.docs.map((d) => ({ id: d.id, ...d.data() })),
+      });
+    },
+  );
+
+  // ── CSV export (Phase 5) ───────────────────────────────────────────────
+  // Streaming CSV dump of a resource list with the same filters the UI
+  // uses. Heavy responses are flushed row-by-row so a 50 000-row export
+  // doesn't blow the Cloud Run memory budget.
+  //
+  // Shape: GET /v1/admin/export/:resource.csv?<filters>
+  // Resources: users, organizations, events, audit-logs
+  //
+  // Filters are the same query schemas used by the list endpoints
+  // (AdminUserQuerySchema, AdminOrgQuerySchema, etc) so an admin can
+  // "save their current filtered view + export". Saved-view sharing
+  // works naturally via URL.
+  fastify.get(
+    "/export/:resource.csv",
+    {
+      preHandler: adminPreHandler,
+      schema: {
+        tags: ["Admin"],
+        summary: "Streaming CSV export of a filtered list",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const { resource } = request.params as { resource: string };
+      const query = (request.query ?? {}) as Record<string, string | undefined>;
+      reply.type("text/csv; charset=utf-8");
+      reply.header(
+        "Content-Disposition",
+        `attachment; filename="teranga-${resource}-${new Date().toISOString().slice(0, 10)}.csv"`,
+      );
+      const stream = adminService.exportCsv(request.user!, resource, query);
+      return reply.send(stream);
+    },
+  );
+
+  // ── Inbox signals (Phase 2 — task-oriented admin landing) ──────────────
+  // Returns the list of "things that need admin attention" — pending
+  // moderation items, past-due billing, stale payments, expired invites.
+  // Every signal carries (id, category, severity, title, description,
+  // count, href) so the UI can render a card + CTA with no extra business
+  // logic. Queries run in parallel server-side; per-section failures
+  // degrade to count=0 rather than failing the whole response.
+  fastify.get(
+    "/inbox",
+    {
+      preHandler: adminPreHandler,
+      schema: {
+        tags: ["Admin"],
+        summary: "Aggregated admin inbox signals (moderation, billing, ops…)",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const data = await adminService.getInboxSignals(request.user!);
+      return reply.send({ success: true, data });
+    },
+  );
+
+  // ── Cross-object search (Phase 1 — powers the ⌘K command palette) ──────
+  // Returns up to 5 hits per object type. Search is substring on the
+  // human-readable fields callers are most likely to type:
+  //   - users: displayName + email
+  //   - organizations: name + slug
+  //   - events: title + slug
+  //   - venues: name + slug + city
+  //
+  // Performance model: each call issues 4 parallel small Firestore reads
+  // (limit 5 per collection) + client-side substring filter. We deliberately
+  // keep it simple and skip Algolia/ElasticSearch — admin search doesn't
+  // justify a third-party dependency today.
+  fastify.get(
+    "/search",
+    {
+      preHandler: adminPreHandler,
+      schema: {
+        tags: ["Admin"],
+        summary: "Cross-object search for the admin command palette",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const q = String((request.query as { q?: unknown })?.q ?? "").trim();
+      if (q.length < 2) {
+        return reply.send({
+          success: true,
+          data: { users: [], organizations: [], events: [], venues: [] },
+        });
+      }
+      const data = await adminService.globalSearch(request.user!, q);
+      return reply.send({ success: true, data });
+    },
+  );
+
   // ── Users ───────────────────────────────────────────────────────────────
 
   fastify.get(
@@ -81,6 +418,88 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
         request.query as z.infer<typeof AdminUserQuerySchema>,
       );
       return reply.send({ success: true, ...result });
+    },
+  );
+
+  // Phase 4 (Closure A5) — End an impersonation session server-side by
+  // revoking the impersonated user's refresh tokens. Client-side signout
+  // is mandatory but not enough: a stolen in-flight ID token would still
+  // work until expiry without this call.
+  //
+  // INTENTIONAL PERMISSION EXCEPTION (closure I, post-review #3):
+  // This route deliberately does NOT use `adminPreHandler` /
+  // `requirePermission("platform:manage")`. The caller is CURRENTLY
+  // inside an impersonation session, so their JWT carries the
+  // impersonated user's roles — typically a non-admin participant who
+  // does not hold platform:manage. Requiring platform:manage here would
+  // make the session impossible to end server-side, forcing the admin
+  // to wait for the 30-minute token expiry.
+  //
+  // The authorization is instead enforced by the service layer
+  // (`adminService.endImpersonation`) which validates the signed
+  // `impersonatedBy` claim (baked into the custom token by
+  // startImpersonation) against the actorUid echoed by the client.
+  // Only a session minted by THIS server with a valid super-admin
+  // origin can reach the audit/revoke write — defence-in-depth via
+  // claim-matching rather than role-checking.
+  const EndImpersonationBody = z.object({ actorUid: z.string().min(1) });
+  fastify.post(
+    "/impersonation/end",
+    {
+      preHandler: [authenticate, validate({ body: EndImpersonationBody })],
+      schema: {
+        tags: ["Admin"],
+        summary: "End an active impersonation session",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const { actorUid } = request.body as z.infer<typeof EndImpersonationBody>;
+      await adminService.endImpersonation(request.user!, actorUid);
+      return reply.status(204).send();
+    },
+  );
+
+  // Phase 4 — Super-admin impersonation.
+  // Returns a Firebase custom token + metadata. The client exchanges
+  // the token via signInWithCustomToken() on a fresh auth session,
+  // signing-out the caller first to avoid cross-session leaks. The
+  // admin-grade SaaS "Log in as user" pattern. Every call is audit-
+  // logged (user.impersonated) with the original actor uid stamped
+  // on the minted token's custom claims (`impersonatedBy`).
+  fastify.post(
+    "/users/:userId/impersonate",
+    {
+      preHandler: [...adminPreHandler, validate({ params: ParamsUserId })],
+      schema: {
+        tags: ["Admin"],
+        summary: "Mint a custom Firebase token to log in as the target user",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const { userId } = request.params as z.infer<typeof ParamsUserId>;
+      const data = await adminService.startImpersonation(request.user!, userId);
+      return reply.send({ success: true, data });
+    },
+  );
+
+  // Phase 3 — fetch a single admin user row (Phase 1 already exposes
+  // list; the detail page needs a targeted getter to avoid iterating).
+  fastify.get(
+    "/users/:userId",
+    {
+      preHandler: [...adminPreHandler, validate({ params: ParamsUserId })],
+      schema: {
+        tags: ["Admin"],
+        summary: "Get a single admin user row (with JWT drift check)",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const { userId } = request.params as z.infer<typeof ParamsUserId>;
+      const data = await adminService.getUserById(request.user!, userId);
+      return reply.send({ success: true, data });
     },
   );
 

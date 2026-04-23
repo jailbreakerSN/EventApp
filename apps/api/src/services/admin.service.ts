@@ -5,6 +5,7 @@ import { db, auth, COLLECTIONS } from "@/config/firebase";
 import { eventBus } from "@/events/event-bus";
 import { getRequestId } from "@/context/request-context";
 import { NotFoundError, ForbiddenError } from "@/errors/app-error";
+import { rateLimit } from "./rate-limit.service";
 import type {
   PlatformStats,
   PlanAnalytics,
@@ -24,6 +25,7 @@ import type {
 import type { PaginatedResult } from "@/repositories/base.repository";
 import { eventRepository } from "@/repositories/event.repository";
 import { computePlanAnalytics } from "./plan-analytics";
+import { Readable } from "node:stream";
 
 // ─── Admin Service ──────────────────────────────────────────────────────────
 // Platform-wide administration. Every method requires platform:manage permission.
@@ -49,6 +51,20 @@ function arraysEqualAsSet(a: string[], b: string[]): boolean {
   return true;
 }
 
+/**
+ * Closure I — resolve the caller's narrowest impersonation-privileged
+ * role. Impersonation is gated to `super_admin` and `platform:super_admin`
+ * only; other `platform:*` roles (support, finance, ops, security) are
+ * refused even though they hold `platform:manage`. Returning the narrow
+ * role lets the audit log distinguish a legacy super_admin from a
+ * granular platform:super_admin operator.
+ */
+function resolveImpersonationRole(user: AuthUser): "super_admin" | "platform:super_admin" {
+  if (user.roles.includes("platform:super_admin")) return "platform:super_admin";
+  if (user.roles.includes("super_admin")) return "super_admin";
+  throw new ForbiddenError("Only super_admin may impersonate other users.");
+}
+
 class AdminService extends BaseService {
   // ── Platform Stats ────────────────────────────────────────────────────
 
@@ -57,7 +73,635 @@ class AdminService extends BaseService {
     return adminRepository.getPlatformStats();
   }
 
+  // ── CSV export (Phase 5) ──────────────────────────────────────────────
+  // Streams a filtered list as CSV, one row at a time, so large exports
+  // don't blow the Cloud Run heap. The caller must pass `resource` in
+  // {users, organizations, events, audit-logs}. Filters are loose
+  // (string → string) because the route layer hasn't validated them
+  // against the Zod schemas yet — each export path does its own
+  // sanitization.
+  //
+  // CSV quoting rules (RFC 4180): any value containing `"`, `,`, `\n`,
+  // `\r` is wrapped in double-quotes, internal `"` doubled. Helper
+  // csvCell() centralises the escape.
+  exportCsv(
+    user: AuthUser,
+    resource: string,
+    filters: Record<string, string | undefined>,
+  ): Readable {
+    this.requirePermission(user, "platform:manage");
+
+    const csvCell = (v: unknown): string => {
+      if (v == null) return "";
+      const s = String(v);
+      return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    // PAGE_SIZE = 500 keeps each Firestore read small + caps max memory
+    // per chunk while still being efficient (max 100 reads for 50k rows).
+    const PAGE_SIZE = 500;
+
+    async function* rows(): AsyncGenerator<string> {
+      if (resource === "users") {
+        yield "uid,email,displayName,roles,organizationId,orgRole,isActive,createdAt\n";
+        let page = 1;
+        for (;;) {
+          const result = await adminRepository.listAllUsers({}, { page, limit: PAGE_SIZE });
+          if (result.data.length === 0) break;
+          for (const u of result.data) {
+            yield [
+              csvCell(u.uid),
+              csvCell(u.email),
+              csvCell(u.displayName),
+              csvCell((u.roles ?? []).join("|")),
+              csvCell(u.organizationId ?? ""),
+              csvCell(u.orgRole ?? ""),
+              csvCell(u.isActive),
+              csvCell(u.createdAt),
+            ].join(",") + "\n";
+          }
+          if (result.data.length < PAGE_SIZE) break;
+          page++;
+        }
+        return;
+      }
+
+      if (resource === "organizations") {
+        yield "id,name,slug,plan,city,country,isVerified,isActive,memberCount,createdAt\n";
+        let page = 1;
+        for (;;) {
+          const result = await adminRepository.listAllOrganizations({}, { page, limit: PAGE_SIZE });
+          if (result.data.length === 0) break;
+          for (const o of result.data) {
+            yield [
+              csvCell(o.id),
+              csvCell(o.name),
+              csvCell(o.slug),
+              csvCell(o.plan),
+              csvCell(o.city ?? ""),
+              csvCell(o.country),
+              csvCell(o.isVerified),
+              csvCell(o.isActive),
+              csvCell((o.memberIds ?? []).length),
+              csvCell(o.createdAt),
+            ].join(",") + "\n";
+          }
+          if (result.data.length < PAGE_SIZE) break;
+          page++;
+        }
+        return;
+      }
+
+      if (resource === "events") {
+        yield "id,title,slug,status,format,organizationId,startDate,endDate,registeredCount,createdAt\n";
+        const filterStatus = filters.status;
+        const filterOrg = filters.organizationId;
+        let page = 1;
+        for (;;) {
+          const result = await adminRepository.listAllEvents(
+            { status: filterStatus, organizationId: filterOrg },
+            { page, limit: PAGE_SIZE },
+          );
+          if (result.data.length === 0) break;
+          for (const e of result.data) {
+            yield [
+              csvCell(e.id),
+              csvCell(e.title),
+              csvCell(e.slug),
+              csvCell(e.status),
+              csvCell(e.format),
+              csvCell(e.organizationId),
+              csvCell(e.startDate),
+              csvCell(e.endDate),
+              csvCell((e as unknown as { registeredCount?: number }).registeredCount ?? 0),
+              csvCell(e.createdAt),
+            ].join(",") + "\n";
+          }
+          if (result.data.length < PAGE_SIZE) break;
+          page++;
+        }
+        return;
+      }
+
+      if (resource === "audit-logs") {
+        yield "timestamp,action,actorId,actorRole,resourceType,resourceId,organizationId\n";
+        let page = 1;
+        for (;;) {
+          const result = await adminRepository.listAuditLogs(
+            {
+              action: filters.action,
+              actorId: filters.actorId,
+              resourceType: filters.resourceType,
+              dateFrom: filters.dateFrom,
+              dateTo: filters.dateTo,
+            },
+            { page, limit: PAGE_SIZE },
+          );
+          if (result.data.length === 0) break;
+          for (const a of result.data) {
+            yield [
+              csvCell(a.timestamp),
+              csvCell(a.action),
+              csvCell(a.actorId),
+              csvCell((a as unknown as { actorRole?: string }).actorRole ?? ""),
+              csvCell(a.resourceType),
+              csvCell(a.resourceId),
+              csvCell(a.organizationId ?? ""),
+            ].join(",") + "\n";
+          }
+          if (result.data.length < PAGE_SIZE) break;
+          page++;
+        }
+        return;
+      }
+
+      // Unknown resource — emit a single-column CSV explaining the error.
+      yield `error\n"Unknown resource: ${resource}"\n`;
+    }
+
+    return Readable.from(rows(), { encoding: "utf8" });
+  }
+
+  // ── Admin inbox signals (Phase 2) ─────────────────────────────────────
+  // Returns the aggregated list of "things that need an operator's
+  // attention". Each signal is a (category, title, count, severity,
+  // href-with-filters) tuple so the UI can render a card + CTA without
+  // any extra business logic.
+  //
+  // Design constraints:
+  //  - FAST — all queries run in parallel, target <1s total.
+  //  - Read-only — no side effects, safe to poll every 60s.
+  //  - Bounded counts — we do NOT fetch the full doc, only counts.
+  //  - Gracefully degraded — per-section failures return null counts
+  //    instead of failing the whole inbox.
+  async getInboxSignals(user: AuthUser): Promise<{
+    signals: Array<{
+      id: string;
+      category: "moderation" | "accounts" | "billing" | "ops" | "events_live";
+      severity: "info" | "warning" | "critical";
+      title: string;
+      description: string;
+      count: number;
+      href: string;
+    }>;
+    computedAt: string;
+  }> {
+    this.requirePermission(user, "platform:manage");
+
+    // Safe counting helper — a single failing collection shouldn't tank
+    // the whole inbox. We swallow and return 0 on error, logging via
+    // stderr since we don't want to pollute structured logs with
+    // read-only probe noise.
+    const safeCount = async (label: string, fn: () => Promise<number>): Promise<number> => {
+      try {
+        return await fn();
+      } catch (err) {
+        process.stderr.write(
+          `[inbox] ${label} count failed: ${err instanceof Error ? err.message : String(err)}\n`,
+        );
+        return 0;
+      }
+    };
+
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+    const [
+      pendingVenues,
+      unverifiedOrgs,
+      pendingPayments,
+      pastDueSubs,
+      failedPayments,
+      expiredInvites,
+    ] = await Promise.all([
+      safeCount("venues.pending", async () => {
+        const snap = await db
+          .collection(COLLECTIONS.VENUES)
+          .where("status", "==", "pending")
+          .count()
+          .get();
+        return snap.data().count;
+      }),
+      safeCount("orgs.unverified", async () => {
+        const snap = await db
+          .collection(COLLECTIONS.ORGANIZATIONS)
+          .where("isVerified", "==", false)
+          .count()
+          .get();
+        return snap.data().count;
+      }),
+      safeCount("payments.pending_24h", async () => {
+        const snap = await db
+          .collection(COLLECTIONS.PAYMENTS)
+          .where("status", "==", "pending")
+          .where("initiatedAt", "<=", twentyFourHoursAgo)
+          .count()
+          .get();
+        return snap.data().count;
+      }),
+      safeCount("subscriptions.past_due", async () => {
+        const snap = await db
+          .collection(COLLECTIONS.SUBSCRIPTIONS)
+          .where("status", "==", "past_due")
+          .count()
+          .get();
+        return snap.data().count;
+      }),
+      safeCount("payments.failed", async () => {
+        const snap = await db
+          .collection(COLLECTIONS.PAYMENTS)
+          .where("status", "==", "failed")
+          .count()
+          .get();
+        return snap.data().count;
+      }),
+      safeCount("invites.expired", async () => {
+        const snap = await db
+          .collection(COLLECTIONS.INVITES)
+          .where("status", "==", "expired")
+          .count()
+          .get();
+        return snap.data().count;
+      }),
+    ]);
+
+    const signals: Array<{
+      id: string;
+      category: "moderation" | "accounts" | "billing" | "ops" | "events_live";
+      severity: "info" | "warning" | "critical";
+      title: string;
+      description: string;
+      count: number;
+      href: string;
+    }> = [];
+
+    if (pendingVenues > 0) {
+      signals.push({
+        id: "venues.pending",
+        category: "moderation",
+        severity: "warning",
+        title: `${pendingVenues} ${pendingVenues > 1 ? "lieux" : "lieu"} en attente de modération`,
+        description: "Soumis par des organisateurs, à approuver ou rejeter.",
+        count: pendingVenues,
+        href: "/admin/venues?status=pending",
+      });
+    }
+
+    if (unverifiedOrgs > 0) {
+      signals.push({
+        id: "orgs.unverified",
+        category: "moderation",
+        severity: "info",
+        title: `${unverifiedOrgs} organisation${unverifiedOrgs > 1 ? "s" : ""} non vérifiée${unverifiedOrgs > 1 ? "s" : ""}`,
+        description: "À KYB : confirmer l'identité avant activation complète.",
+        count: unverifiedOrgs,
+        href: "/admin/organizations?isVerified=false",
+      });
+    }
+
+    if (pendingPayments > 0) {
+      signals.push({
+        id: "payments.pending",
+        category: "billing",
+        severity: "warning",
+        title: `${pendingPayments} paiement${pendingPayments > 1 ? "s" : ""} en attente depuis plus de 24h`,
+        description: "Vérifier auprès du provider ou marquer comme échoué.",
+        count: pendingPayments,
+        href: "/admin/audit?action=payment.initiated",
+      });
+    }
+
+    if (pastDueSubs > 0) {
+      signals.push({
+        id: "subscriptions.past_due",
+        category: "billing",
+        severity: "critical",
+        title: `${pastDueSubs} abonnement${pastDueSubs > 1 ? "s" : ""} en impayé`,
+        description: "Relance en cours — accompagner avant churn.",
+        count: pastDueSubs,
+        href: "/admin/organizations",
+      });
+    }
+
+    if (failedPayments > 0) {
+      signals.push({
+        id: "payments.failed",
+        category: "billing",
+        severity: "info",
+        title: `${failedPayments} paiement${failedPayments > 1 ? "s" : ""} échoué${failedPayments > 1 ? "s" : ""}`,
+        description: "Historique des échecs — relancer ou contacter.",
+        count: failedPayments,
+        href: "/admin/audit?action=payment.failed",
+      });
+    }
+
+    if (expiredInvites > 0) {
+      signals.push({
+        id: "invites.expired",
+        category: "accounts",
+        severity: "info",
+        title: `${expiredInvites} invitation${expiredInvites > 1 ? "s" : ""} expirée${expiredInvites > 1 ? "s" : ""}`,
+        description: "À nettoyer ou à relancer selon le contexte.",
+        count: expiredInvites,
+        href: "/admin/organizations",
+      });
+    }
+
+    return {
+      signals,
+      computedAt: new Date().toISOString(),
+    };
+  }
+
+  // ── Cross-object search ───────────────────────────────────────────────
+  // Phase 1 — powers the admin command palette (⌘K). Fans out to 4
+  // paginated-list queries in parallel, filters each client-side by
+  // substring, and caps at 5 hits per type. Intentionally NOT hitting
+  // a dedicated search index — volumes are small enough that a few
+  // limit(20) reads + string contains gives acceptable latency at
+  // 1/100th the complexity of Algolia. See the route in admin.routes.ts
+  // for shape + caller contract.
+  async globalSearch(
+    user: AuthUser,
+    query: string,
+  ): Promise<{
+    users: Array<{ id: string; label: string; sublabel?: string }>;
+    organizations: Array<{ id: string; label: string; sublabel?: string }>;
+    events: Array<{ id: string; label: string; sublabel?: string }>;
+    venues: Array<{ id: string; label: string; sublabel?: string }>;
+  }> {
+    this.requirePermission(user, "platform:manage");
+    const q = query.trim().toLowerCase();
+    if (q.length < 2) {
+      return { users: [], organizations: [], events: [], venues: [] };
+    }
+
+    const matches = (...fields: Array<string | null | undefined>): boolean =>
+      fields.some((f) => f && f.toLowerCase().includes(q));
+
+    const [usersPage, orgsPage, eventsPage, venuesPage] = await Promise.all([
+      adminRepository.listAllUsers({}, { page: 1, limit: 50 }),
+      adminRepository.listAllOrganizations({}, { page: 1, limit: 50 }),
+      adminRepository.listAllEvents({}, { page: 1, limit: 50 }),
+      adminRepository.listAllVenues({}, { page: 1, limit: 50 }),
+    ]);
+
+    const users = usersPage.data
+      .filter((u) => matches(u.displayName, u.email))
+      .slice(0, 5)
+      .map((u) => ({
+        id: u.uid,
+        label: u.displayName ?? u.email,
+        sublabel: u.email !== u.displayName ? u.email : undefined,
+      }));
+
+    const organizations = orgsPage.data
+      .filter((o) => matches(o.name, o.slug))
+      .slice(0, 5)
+      .map((o) => ({
+        id: o.id,
+        label: o.name,
+        sublabel: o.slug,
+      }));
+
+    const events = eventsPage.data
+      .filter((e) => matches(e.title, e.slug))
+      .slice(0, 5)
+      .map((e) => ({
+        id: e.id,
+        label: e.title,
+        sublabel: e.slug,
+      }));
+
+    const venues = venuesPage.data
+      .filter((v) => matches(v.name, v.slug, v.address?.city))
+      .slice(0, 5)
+      .map((v) => ({
+        id: v.id,
+        label: v.name,
+        sublabel: v.address?.city ?? v.slug,
+      }));
+
+    return { users, organizations, events, venues };
+  }
+
   // ── User Management ───────────────────────────────────────────────────
+
+  // ── Impersonation (Phase 4) ───────────────────────────────────────────
+  // Mint a short-lived Firebase custom token that lets the calling
+  // super-admin "log in as" another user. Security rails:
+  //   - super_admin only (hard-gated by platform:manage permission
+  //     + tighter sanity check here to protect against future role
+  //     downgrades).
+  //   - Cannot impersonate another super_admin (prevent privilege
+  //     escalation chains).
+  //   - Custom claims carry `impersonatedBy: <adminUid>` so every
+  //     downstream action traces back to the original actor even if
+  //     the impersonated session writes to Firestore.
+  //   - Audit log `user.impersonated` emitted synchronously for
+  //     compliance.
+  //   - Client must treat the returned token as single-use: it is
+  //     minted fresh on every call, and the legacy session MUST be
+  //     signed-out before exchanging the new token.
+  //
+  // The returned token is a Firebase custom token (not an ID token).
+  // The client exchanges it via signInWithCustomToken() which gives
+  // back a real ID token whose custom claims are stamped at exchange
+  // time.
+  async startImpersonation(
+    user: AuthUser,
+    targetUid: string,
+  ): Promise<{
+    customToken: string;
+    targetUid: string;
+    targetDisplayName: string | null;
+    targetEmail: string | null;
+    expiresAt: string;
+  }> {
+    this.requirePermission(user, "platform:manage");
+    // Closure I — accept both legacy `super_admin` and the granular
+    // `platform:super_admin` role shipped in closure C. Other platform:*
+    // roles (support, finance, ops, security) MUST NOT be able to
+    // impersonate — this is the most sensitive action on the platform.
+    // The resolved label is also what we stamp on the audit row so the
+    // audit trail reflects who actually acted.
+    const actorRole = resolveImpersonationRole(user);
+    if (user.uid === targetUid) {
+      throw new ForbiddenError("Cannot impersonate yourself.");
+    }
+
+    // Phase 4 rate limit — bound impersonation usage per admin so a
+    // compromised super-admin session can't be used to probe 1000
+    // accounts in a row. 20 successful sessions per rolling hour is
+    // generous for legitimate customer-success workflows.
+    const rl = await rateLimit({
+      scope: "admin.impersonate",
+      identifier: user.uid,
+      limit: 20,
+      windowSec: 3600,
+    });
+    if (!rl.allowed) {
+      throw new ForbiddenError(
+        `Quota d'impersonation atteint (20/h). Réessayez dans ${rl.retryAfterSec ?? 600}s.`,
+      );
+    }
+
+    const targetDoc = await db.collection(COLLECTIONS.USERS).doc(targetUid).get();
+    if (!targetDoc.exists) {
+      throw new NotFoundError("User", targetUid);
+    }
+    const targetProfile = targetDoc.data() as UserProfile;
+
+    // Never impersonate another top-tier admin — blocks privilege
+    // escalation / lateral-attack loops and forces the audit trail on
+    // the HIGHEST-privilege admin. Closure I: both `super_admin` and
+    // `platform:super_admin` are top-tier; guard both target classes.
+    const targetRoles = targetProfile.roles ?? [];
+    const targetIsTopAdmin =
+      targetRoles.includes("super_admin") || targetRoles.includes("platform:super_admin");
+    if (targetIsTopAdmin && targetUid !== user.uid) {
+      throw new ForbiddenError("Cannot impersonate another super_admin.");
+    }
+
+    const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+    const customToken = await auth.createCustomToken(targetUid, {
+      // Stamp the original actor onto the minted token. The ID token
+      // exchanged client-side will carry these as custom claims.
+      impersonatedBy: user.uid,
+      impersonationExpiresAt: expiresAt,
+      // Carry the target's real roles so downstream RBAC works.
+      roles: targetProfile.roles ?? [],
+      organizationId: targetProfile.organizationId ?? null,
+      orgRole: targetProfile.orgRole ?? null,
+    });
+
+    // Audit log — synchronous so the trail is visible before the UI
+    // even gets the token. If the audit write fails, the impersonation
+    // doesn't proceed.
+    await db.collection(COLLECTIONS.AUDIT_LOGS).add({
+      action: "user.impersonated",
+      actorId: user.uid,
+      actorRole,
+      resourceType: "user",
+      resourceId: targetUid,
+      organizationId: targetProfile.organizationId ?? null,
+      details: {
+        targetDisplayName: targetProfile.displayName ?? null,
+        targetEmail: targetProfile.email ?? null,
+        expiresAt,
+      },
+      requestId: getRequestId(),
+      timestamp: new Date().toISOString(),
+    });
+
+    // Emit a domain event so downstream listeners (e.g. security alerts)
+    // can react to impersonation usage in near-real-time.
+    eventBus.emit("user.impersonated", {
+      actorUid: user.uid,
+      targetUid,
+      expiresAt,
+    });
+
+    return {
+      customToken,
+      targetUid,
+      targetDisplayName: targetProfile.displayName ?? null,
+      targetEmail: targetProfile.email ?? null,
+      expiresAt,
+    };
+  }
+
+  /**
+   * Phase 4 — ends an impersonation session by revoking the impersonated
+   * user's refresh tokens on the Firebase Auth side. Combined with the
+   * client-side signOut + redirect flow, this guarantees the short-lived
+   * ID token minted by startImpersonation() cannot be re-used even if it
+   * was captured between sign-in and sign-out.
+   *
+   * Only super-admin may call this endpoint, and only with their OWN
+   * admin uid (they pass the `actorUid` from the sessionStorage
+   * breadcrumb). The server validates that the caller's claims include
+   * `impersonatedBy === actorUid` which proves they're in a session
+   * started by that admin.
+   */
+  async endImpersonation(user: AuthUser, actorUid: string): Promise<void> {
+    // The caller is CURRENTLY impersonating — their JWT carries the
+    // signed `impersonatedBy` claim baked by `startImpersonation`,
+    // extracted into `AuthUser.impersonatedBy` by the auth middleware.
+    // We validate it matches the actorUid the client echoed back from
+    // its sessionStorage breadcrumb — both must agree.
+    if (!user.impersonatedBy || user.impersonatedBy !== actorUid) {
+      throw new ForbiddenError("Session d'impersonation non reconnue.");
+    }
+    // Revoke the impersonated uid's refresh tokens. If Firebase Auth
+    // rejects (network, quota, internal error) we MUST NOT write an
+    // audit claim of success — propagate the error to the route handler
+    // so the admin UI can surface it and retry. The audit trail must
+    // reflect reality. (Closure I, post-review #3.)
+    await auth.revokeRefreshTokens(user.uid);
+
+    // Stamp the admin's actual role (super_admin | platform:super_admin)
+    // on the audit record. `user.roles` at this point reflects the
+    // IMPERSONATED user, not the admin, so we look up the admin's doc
+    // by UID. If the doc can't be read we fall back to "super_admin"
+    // with a warning flag on the details blob — safer than blocking
+    // the session exit on a transient read failure.
+    const actorRole = await this.resolveActorRoleByUid(actorUid);
+
+    await db.collection(COLLECTIONS.AUDIT_LOGS).add({
+      action: "user.impersonation_ended",
+      actorId: actorUid,
+      actorRole: actorRole.role,
+      resourceType: "user",
+      resourceId: user.uid,
+      organizationId: null,
+      details: { ended: "manual", actorRoleLookup: actorRole.source },
+      requestId: getRequestId(),
+      timestamp: new Date().toISOString(),
+    });
+
+    // Emit a domain event for convention parity with every other admin
+    // mutation — downstream listeners (security alerts, webhook relay)
+    // can react without having to subscribe to the audit collection.
+    eventBus.emit("user.impersonation_ended", {
+      actorUid,
+      targetUid: user.uid,
+    });
+  }
+
+  /**
+   * Closure I — look up the admin's narrowest super-admin role for
+   * accurate audit stamping on `endImpersonation`. Returns `source`
+   * so the audit record distinguishes a verified lookup from a
+   * fallback (useful when forensically reconstructing sessions where
+   * the admin doc was deleted mid-session).
+   */
+  private async resolveActorRoleByUid(actorUid: string): Promise<{
+    role: "super_admin" | "platform:super_admin";
+    source: "firestore" | "fallback";
+  }> {
+    try {
+      const doc = await db.collection(COLLECTIONS.USERS).doc(actorUid).get();
+      const roles = (doc.data() as { roles?: string[] } | undefined)?.roles ?? [];
+      if (roles.includes("platform:super_admin")) {
+        return { role: "platform:super_admin", source: "firestore" };
+      }
+      if (roles.includes("super_admin")) {
+        return { role: "super_admin", source: "firestore" };
+      }
+    } catch {
+      /* fall through to fallback */
+    }
+    return { role: "super_admin", source: "fallback" };
+  }
+
+  async getUserById(user: AuthUser, targetUid: string): Promise<AdminUserRow> {
+    this.requirePermission(user, "platform:manage");
+    const doc = await db.collection(COLLECTIONS.USERS).doc(targetUid).get();
+    if (!doc.exists) {
+      throw new NotFoundError("User", targetUid);
+    }
+    const profile = { uid: targetUid, ...doc.data() } as UserProfile;
+    return this.attachClaimsMatch(profile);
+  }
 
   async listUsers(user: AuthUser, query: AdminUserQuery): Promise<PaginatedResult<AdminUserRow>> {
     this.requirePermission(user, "platform:manage");
