@@ -852,3 +852,67 @@ describe("AdminService.startImpersonation (Phase 4)", () => {
     expect(auth.createCustomToken).not.toHaveBeenCalled();
   });
 });
+
+// Covers the session-exit path. `endImpersonation` relies on the signed
+// `impersonatedBy` claim extracted by auth.middleware.ts. These tests
+// guard the three branches:
+//  - happy path: claim matches actorUid → revoke + audit.
+//  - missing claim: caller is not actually inside an impersonation session.
+//  - claim mismatch: another admin's session — must NOT be endable.
+
+describe("AdminService.endImpersonation (Phase 4)", () => {
+  const adminUid = "admin-super-1";
+  const targetUid = "user-participant-7";
+
+  it("revokes the impersonated user's refresh tokens and writes audit", async () => {
+    // Simulate the middleware: `impersonatedBy` populated from a valid
+    // session token minted by startImpersonation for targetUid.
+    const caller = buildAuthUser({
+      uid: targetUid,
+      roles: ["participant"],
+      impersonatedBy: adminUid,
+    });
+
+    await adminService.endImpersonation(caller, adminUid);
+
+    expect(auth.revokeRefreshTokens).toHaveBeenCalledWith(targetUid);
+    expect(mockAuditAdd).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "user.impersonation_ended",
+        actorId: adminUid,
+        resourceType: "user",
+        resourceId: targetUid,
+      }),
+    );
+  });
+
+  it("rejects callers whose session has no impersonatedBy claim", async () => {
+    // Regular (non-impersonating) session — the claim is missing entirely.
+    const caller = buildAuthUser({ uid: "regular-user", roles: ["participant"] });
+
+    await expect(adminService.endImpersonation(caller, adminUid)).rejects.toThrow(
+      /Session d'impersonation non reconnue/i,
+    );
+
+    // No side effects: nothing was revoked, nothing was audited.
+    expect(auth.revokeRefreshTokens).not.toHaveBeenCalled();
+    expect(mockAuditAdd).not.toHaveBeenCalled();
+  });
+
+  it("rejects when the actorUid param does not match the signed claim", async () => {
+    // Session minted by admin-A but the client posts admin-B's uid —
+    // a tampered breadcrumb. Must refuse before revoking anything.
+    const caller = buildAuthUser({
+      uid: targetUid,
+      roles: ["participant"],
+      impersonatedBy: "admin-A",
+    });
+
+    await expect(adminService.endImpersonation(caller, "admin-B")).rejects.toThrow(
+      /Session d'impersonation non reconnue/i,
+    );
+
+    expect(auth.revokeRefreshTokens).not.toHaveBeenCalled();
+    expect(mockAuditAdd).not.toHaveBeenCalled();
+  });
+});
