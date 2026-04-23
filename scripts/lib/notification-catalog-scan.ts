@@ -76,7 +76,8 @@ export interface CatalogViolation {
     | "missing_email_template"
     | "template_id_not_found"
     | "no_emitter_or_listener"
-    | "default_channel_not_supported";
+    | "default_channel_not_supported"
+    | "missing_in_app_template";
   message: string;
 }
 
@@ -105,6 +106,25 @@ export const NO_EMITTER_OR_LISTENER_WAIVER: ReadonlySet<string> = new Set([
   "auth.email_verification",
   "auth.password_reset",
   "event.reminder",
+]);
+
+/**
+ * Phase D.1 — catalog entries that list `in_app` in `supportedChannels`
+ * without a matching `templates.in_app` mapping. The real in-app adapter
+ * (apps/api/src/services/notifications/channels/in-app.channel.ts) derives
+ * title + body from the catalog's `displayName` + `description` as a
+ * reasonable fallback, so a missing template id does NOT block delivery.
+ * Adding a formal `templates.in_app` field per entry is a Phase E polish —
+ * keys that still rely on the fallback go here so CI stays green while
+ * the migration is in flight.
+ *
+ * Every entry MUST have a follow-up ticket / phase reference in a short
+ * comment so the list stays visible. Empty today because the first entry
+ * to list in_app in supportedChannels (`event.feedback_requested`) shipped
+ * with its template id from day one.
+ */
+export const NO_IN_APP_TEMPLATE_WAIVER: ReadonlySet<string> = new Set<string>([
+  // e.g.  "subscription.approaching_limit", // Phase E polish — see NOTIF-123
 ]);
 
 // ─── File walker ───────────────────────────────────────────────────────────
@@ -334,6 +354,25 @@ export function computeViolations(scan: ScanResult): CatalogViolation[] {
           key: def.key,
           reason: "template_id_not_found",
           message: `templates.email="${templateId}" does not resolve to any file under apps/api/src/services/email/templates/`,
+        });
+      }
+    }
+
+    // Rule 2b (Phase D.1) — if in_app is a supported channel, we expect a
+    // `templates.in_app` mapping too. The real adapter derives title+body
+    // from displayName+description when the mapping is missing, so this is
+    // a soft check gated by NO_IN_APP_TEMPLATE_WAIVER. Entries in the
+    // waiver surface in the report as gaps but don't fail CI.
+    if (def.supportedChannels.includes("in_app")) {
+      const templateId = def.templates["in_app"];
+      if (!templateId && !NO_IN_APP_TEMPLATE_WAIVER.has(def.key)) {
+        violations.push({
+          key: def.key,
+          reason: "missing_in_app_template",
+          message:
+            `supportedChannels includes "in_app" but templates.in_app is unset. ` +
+            `Either add a templates.in_app mapping or add "${def.key}" to ` +
+            `NO_IN_APP_TEMPLATE_WAIVER in scripts/lib/notification-catalog-scan.ts.`,
         });
       }
     }

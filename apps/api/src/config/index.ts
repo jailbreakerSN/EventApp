@@ -154,6 +154,24 @@ const envSchema = z.object({
     z.boolean().default(false),
   ),
 
+  // ─── In-app adapter rollout flag (Phase D.1) ─────────────────────────────
+  // When enabled, `notificationService.send()` and `notificationService.
+  // broadcast()` route through the multi-channel NotificationDispatcher so
+  // the in-app Firestore write + FCM multicast now benefit from the same
+  // admin kill-switch, per-channel user opt-out, persistent idempotency,
+  // and dispatch-log audit trail the email channel already has. When
+  // disabled the legacy direct-write path runs unchanged.
+  //
+  // Default OFF — this PR lands the flag dark. A follow-up PR flips it to
+  // true in staging after a 48h diff soak (see scripts/diff-in-app-adapter-
+  // output.ts). A third PR removes the legacy path once staging shows zero
+  // drift. See the header comment of notification.service.ts for the full
+  // rollback plan.
+  USE_IN_APP_ADAPTER: z.preprocess(
+    (v) => (typeof v === "string" ? v.toLowerCase() === "true" || v === "1" : v),
+    z.boolean().default(false),
+  ),
+
   // ─── Internal dispatch endpoint (Phase 2.3) ──────────────────────────────
   // Shared secret that gates `POST /v1/internal/notifications/dispatch`,
   // the endpoint the scheduled Cloud Functions (reminder / post-event /

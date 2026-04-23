@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import {
   NOTIFICATION_CATALOG_BY_KEY,
+  type ChannelAdapter,
   type DispatchRequest,
   type NotificationCategory,
   type NotificationChannel,
@@ -17,6 +18,7 @@ import {
   isChannelAllowedForUser,
   type NotificationPreferencesLike,
 } from "./notifications/channel-preferences";
+import { getChannelAdapter } from "./notifications/channel-registry";
 
 // ─── Notification Dispatcher Service ───────────────────────────────────────
 // Single entry point for every branded notification the platform sends.
@@ -261,30 +263,76 @@ export class NotificationDispatcherService {
     recipientRef: string,
     baseEvent: { actorId: string; requestId: string; timestamp: string },
   ): Promise<void> {
-    if (channel !== "email") {
-      // Phase 1: only email is live. Record the intent so admins see in
-      // the audit trail that an SMS / push / in_app send was configured
-      // but not delivered — helps surface misconfigurations early.
+    // Channel-specific preflight:
+    //   - email retains the legacy EmailChannelAdapter contract (tagged
+    //     via `adapters.email`) so the Resend/react-email stack is
+    //     untouched by Phase D.1.
+    //   - in_app (Phase D.1) and any future sms/push adapter resolve
+    //     through the forward-looking ChannelAdapter registry.
+    if (channel === "email") {
+      // The email adapter needs EITHER a userId (it looks up the user doc
+      // for address + preferredLanguage) OR an explicit email address (for
+      // invitee / newsletter-confirm flows where the caller never has a uid).
+      if (!recipient.userId && !recipient.email) {
+        this.emitSuppressed(definition.key, recipientRef, "no_recipient", baseEvent, "email");
+        return;
+      }
+
+      const emailAdapter = adapters.email;
+      if (!emailAdapter) {
+        // Adapter not registered = configuration bug, not a send failure.
+        // Emit no audit event (would double-log on retries); stderr only.
+        this.logServerError(definition.key, "email channel adapter not registered");
+        return;
+      }
+
+      return this.dispatchOnEmailChannel(
+        definition,
+        recipient,
+        req,
+        recipientRef,
+        emailAdapter,
+        baseEvent,
+      );
+    }
+
+    // Phase D.1 — in_app routes through the ChannelAdapter registry. Any
+    // future sms/push adapter will take the same path for free once the
+    // registry is populated.
+    const registeredAdapter = getChannelAdapter(channel);
+    if (!registeredAdapter) {
+      // Adapter not wired yet (sms / push) OR the in-app adapter was not
+      // registered at boot. Emit a suppression so admins can see the
+      // misconfiguration in the dispatch log.
       this.emitSuppressed(definition.key, recipientRef, "no_recipient", baseEvent, channel);
       return;
     }
 
-    // The email adapter needs EITHER a userId (it looks up the user doc
-    // for address + preferredLanguage) OR an explicit email address (for
-    // invitee / newsletter-confirm flows where the caller never has a uid).
-    if (!recipient.userId && !recipient.email) {
-      this.emitSuppressed(definition.key, recipientRef, "no_recipient", baseEvent, "email");
-      return;
-    }
+    return this.dispatchOnGenericChannel(
+      definition,
+      channel,
+      recipient,
+      req,
+      recipientRef,
+      registeredAdapter,
+      baseEvent,
+    );
+  }
 
-    const adapter = adapters.email;
-    if (!adapter) {
-      // Adapter not registered = configuration bug, not a send failure.
-      // Emit no audit event (would double-log on retries); stderr only.
-      this.logServerError(definition.key, "email channel adapter not registered");
-      return;
-    }
+  // ─── Email-specific adapter path ───────────────────────────────────────
+  // Lifted out of dispatchOnChannel so the non-email path (in_app today,
+  // sms/push in Phase E) stays readable. The email path predates the
+  // forward-looking ChannelAdapter contract and keeps its own typed
+  // EmailChannelAdapter interface (messageId vs providerMessageId, etc.).
 
+  private async dispatchOnEmailChannel<P extends Record<string, unknown>>(
+    definition: NotificationDefinition,
+    recipient: NotificationRecipient,
+    req: DispatchRequest<P>,
+    recipientRef: string,
+    adapter: EmailChannelAdapter,
+    baseEvent: { actorId: string; requestId: string; timestamp: string },
+  ): Promise<void> {
     const idempotencyKey = this.resolveIdempotencyKey(definition.key, recipient, req);
 
     // Phase 2.2 — persistent idempotency check. The dispatch log is
@@ -374,6 +422,100 @@ export class NotificationDispatcherService {
         "bounced",
         baseEvent,
         "email",
+        idempotencyKey,
+      );
+    }
+  }
+
+  // ─── Generic ChannelAdapter path (Phase D.1 and beyond) ────────────────
+  // in_app today; sms + push once their adapters land. Mirrors the email
+  // path — idempotency dedup, adapter.send, then `notification.sent` /
+  // `notification.test_sent` / `notification.suppressed` + dispatch-log
+  // row — but consumes the forward-looking `ChannelAdapter` contract
+  // (providerMessageId instead of messageId, etc.).
+
+  private async dispatchOnGenericChannel<P extends Record<string, unknown>>(
+    definition: NotificationDefinition,
+    channel: NotificationChannel,
+    recipient: NotificationRecipient,
+    req: DispatchRequest<P>,
+    recipientRef: string,
+    adapter: ChannelAdapter,
+    baseEvent: { actorId: string; requestId: string; timestamp: string },
+  ): Promise<void> {
+    const idempotencyKey = this.resolveIdempotencyKey(definition.key, recipient, req);
+
+    // Persistent idempotency — same policy as email (see dispatchOnEmailChannel
+    // for the rationale). testMode deliberately skips the dedup check so
+    // admin previews always reach the provider.
+    if (!req.testMode) {
+      const windowMs = DEDUP_WINDOW_MS_BY_KEY[definition.key] ??
+        DEDUP_WINDOW_MS[definition.category] ??
+        DEFAULT_DEDUP_WINDOW_MS;
+      const prior = await notificationDispatchLogRepository.findRecentByIdempotencyKey(
+        idempotencyKey,
+        windowMs,
+      );
+      if (prior) {
+        this.emitDeduplicated(
+          definition.key,
+          channel,
+          recipientRef,
+          idempotencyKey,
+          prior.attemptedAt,
+          baseEvent,
+        );
+        return;
+      }
+    }
+
+    try {
+      const result = await adapter.send({
+        definition,
+        recipient,
+        templateParams: req.params,
+        idempotencyKey,
+        ...(req.testMode ? { testMode: true } : {}),
+      });
+
+      if (result.ok) {
+        if (req.testMode) {
+          this.emitTestSent(
+            definition.key,
+            channel,
+            recipientRef,
+            result.providerMessageId,
+            recipient.preferredLocale,
+            baseEvent,
+          );
+        } else {
+          this.emitSent(
+            definition.key,
+            channel,
+            recipientRef,
+            result.providerMessageId,
+            idempotencyKey,
+            baseEvent,
+          );
+        }
+      } else {
+        this.emitSuppressed(
+          definition.key,
+          recipientRef,
+          result.suppressed ?? "bounced",
+          baseEvent,
+          channel,
+          idempotencyKey,
+        );
+      }
+    } catch (err) {
+      this.logServerError(definition.key, err instanceof Error ? err.message : String(err));
+      this.emitSuppressed(
+        definition.key,
+        recipientRef,
+        "bounced",
+        baseEvent,
+        channel,
         idempotencyKey,
       );
     }
