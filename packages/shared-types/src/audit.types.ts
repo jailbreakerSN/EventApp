@@ -156,6 +156,18 @@ export const AuditLogEntrySchema = z.object({
   id: z.string(),
   action: AuditActionSchema,
   actorId: z.string(),
+  /**
+   * Denormalized human-readable label for the acting user, set at
+   * write-time by `auditService.log()` by looking up the user's
+   * `displayName ?? email` from Firestore (5-minute in-memory cache
+   * inside the API). Null for system actors (cron jobs, triggers) or
+   * when the lookup fails — readers MUST fall back to `actorId`.
+   *
+   * Added in Tier-1.1 of the admin overhaul follow-up. Historical
+   * rows predating this field will render with the actorId fallback;
+   * backfilling them is tracked as a separate follow-up.
+   */
+  actorDisplayName: z.string().nullable().optional(),
   requestId: z.string(),
   timestamp: z.string().datetime(),
   resourceType: z.string(),

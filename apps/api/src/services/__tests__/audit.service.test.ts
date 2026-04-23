@@ -1,31 +1,51 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // ─── Mocks ─────────────────────────────────────────────────────────────────
+//
+// The audit service now denormalizes the acting user's displayName at
+// write time (T1.1 of the admin overhaul follow-up). The mock exposes
+// two distinct collections — `auditLogs` (write-only) and `users`
+// (read-only doc lookup) — so tests can drive the resolver independently
+// of the write path.
 
 const mockDocRef = {
   id: "auto-generated-id",
   set: vi.fn(),
 };
 
+const mockUserGet = vi.fn();
+
 vi.mock("@/config/firebase", () => ({
   db: {
-    collection: vi.fn(() => ({
-      doc: vi.fn(() => mockDocRef),
-    })),
+    collection: vi.fn((name: string) => {
+      if (name === "users") {
+        return {
+          doc: vi.fn(() => ({ get: mockUserGet })),
+        };
+      }
+      return {
+        doc: vi.fn(() => mockDocRef),
+      };
+    }),
   },
   COLLECTIONS: {
     AUDIT_LOGS: "auditLogs",
+    USERS: "users",
   },
 }));
 
 // Import AFTER mocks
-import { auditService } from "../audit.service";
+import { auditService, __clearActorNameCache } from "../audit.service";
 import { db } from "@/config/firebase";
 
 // ─── Tests ─────────────────────────────────────────────────────────────────
 
 beforeEach(() => {
   vi.clearAllMocks();
+  __clearActorNameCache();
+  // By default the user lookup returns "not found" so existing tests
+  // that don't care about denorm keep their assertions intact.
+  mockUserGet.mockResolvedValue({ exists: false, data: () => undefined });
 });
 
 describe("AuditService.log", () => {
@@ -50,6 +70,8 @@ describe("AuditService.log", () => {
     expect(mockDocRef.set).toHaveBeenCalledWith({
       id: "auto-generated-id",
       ...entry,
+      // Denorm lookup returned not-found → null.
+      actorDisplayName: null,
     });
   });
 
@@ -122,5 +144,141 @@ describe("AuditService.log", () => {
     expect(result).toBeUndefined();
 
     stderrSpy.mockRestore();
+  });
+});
+
+// ─── Actor display-name denormalization (T1.1) ──────────────────────────────
+
+describe("AuditService.log — actorDisplayName denormalization", () => {
+  const baseEntry = {
+    action: "event.created" as const,
+    resourceType: "event",
+    resourceId: "event-1",
+    organizationId: "org-1",
+    eventId: "event-1",
+    details: {} as Record<string, unknown>,
+    requestId: "req-denorm",
+    timestamp: new Date().toISOString(),
+  };
+
+  it("resolves displayName from the users collection", async () => {
+    mockDocRef.set.mockResolvedValue(undefined);
+    mockUserGet.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({ displayName: "Alice Dupont", email: "alice@teranga.dev" }),
+    });
+
+    await auditService.log({ ...baseEntry, actorId: "user-alice" });
+
+    expect(mockDocRef.set).toHaveBeenCalledWith(
+      expect.objectContaining({ actorDisplayName: "Alice Dupont" }),
+    );
+  });
+
+  it("falls back to email when displayName is empty", async () => {
+    mockDocRef.set.mockResolvedValue(undefined);
+    mockUserGet.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({ displayName: "  ", email: "bob@teranga.dev" }),
+    });
+
+    await auditService.log({ ...baseEntry, actorId: "user-bob" });
+
+    expect(mockDocRef.set).toHaveBeenCalledWith(
+      expect.objectContaining({ actorDisplayName: "bob@teranga.dev" }),
+    );
+  });
+
+  it("writes null actorDisplayName when the user doc does not exist", async () => {
+    mockDocRef.set.mockResolvedValue(undefined);
+    mockUserGet.mockResolvedValueOnce({ exists: false, data: () => undefined });
+
+    await auditService.log({ ...baseEntry, actorId: "ghost-user" });
+
+    expect(mockDocRef.set).toHaveBeenCalledWith(
+      expect.objectContaining({ actorDisplayName: null }),
+    );
+  });
+
+  it("writes null actorDisplayName for system-sentinel actors without a users lookup", async () => {
+    mockDocRef.set.mockResolvedValue(undefined);
+
+    await auditService.log({ ...baseEntry, actorId: "system" });
+
+    expect(mockUserGet).not.toHaveBeenCalled();
+    expect(mockDocRef.set).toHaveBeenCalledWith(
+      expect.objectContaining({ actorDisplayName: null }),
+    );
+  });
+
+  it("caches successful lookups for 5 minutes (second write hits the cache)", async () => {
+    mockDocRef.set.mockResolvedValue(undefined);
+    mockUserGet.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({ displayName: "Carla Ba" }),
+    });
+
+    await auditService.log({ ...baseEntry, actorId: "user-carla" });
+    await auditService.log({ ...baseEntry, actorId: "user-carla" });
+
+    // One network read for both writes thanks to the cache.
+    expect(mockUserGet).toHaveBeenCalledTimes(1);
+    expect(mockDocRef.set).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ actorDisplayName: "Carla Ba" }),
+    );
+    expect(mockDocRef.set).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ actorDisplayName: "Carla Ba" }),
+    );
+  });
+
+  it("does NOT cache negative hits — a user that shows up later resolves on the next write", async () => {
+    mockDocRef.set.mockResolvedValue(undefined);
+    mockUserGet
+      .mockResolvedValueOnce({ exists: false, data: () => undefined })
+      .mockResolvedValueOnce({
+        exists: true,
+        data: () => ({ displayName: "Daouda Sow" }),
+      });
+
+    await auditService.log({ ...baseEntry, actorId: "user-daouda" });
+    await auditService.log({ ...baseEntry, actorId: "user-daouda" });
+
+    expect(mockUserGet).toHaveBeenCalledTimes(2);
+    expect(mockDocRef.set).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ actorDisplayName: null }),
+    );
+    expect(mockDocRef.set).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ actorDisplayName: "Daouda Sow" }),
+    );
+  });
+
+  it("falls back to null when the users lookup throws — never blocks the audit write", async () => {
+    mockDocRef.set.mockResolvedValue(undefined);
+    mockUserGet.mockRejectedValueOnce(new Error("firestore unavailable"));
+
+    await auditService.log({ ...baseEntry, actorId: "user-e" });
+
+    expect(mockDocRef.set).toHaveBeenCalledWith(
+      expect.objectContaining({ actorDisplayName: null }),
+    );
+  });
+
+  it("honours an explicit actorDisplayName passed by the caller (short-circuits the lookup)", async () => {
+    mockDocRef.set.mockResolvedValue(undefined);
+
+    await auditService.log({
+      ...baseEntry,
+      actorId: "user-f",
+      actorDisplayName: "Fatou Sarr (backfill)",
+    });
+
+    expect(mockUserGet).not.toHaveBeenCalled();
+    expect(mockDocRef.set).toHaveBeenCalledWith(
+      expect.objectContaining({ actorDisplayName: "Fatou Sarr (backfill)" }),
+    );
   });
 });

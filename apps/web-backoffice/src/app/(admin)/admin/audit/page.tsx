@@ -50,6 +50,24 @@ function getActionStyle(action: string) {
   return ACTION_GROUP_STYLES[group] ?? { variant: "outline" as const };
 }
 
+// Map resourceType → admin detail URL builder. Extend when a new admin
+// detail page lands. Returning null keeps the cell non-clickable (the
+// current fallback, used for actor / plan / audit-self resources that
+// have no dedicated drill-down page).
+const RESOURCE_DETAIL_URL: Record<string, (id: string) => string | null> = {
+  event: (id) => `/admin/events/${encodeURIComponent(id)}`,
+  organization: (id) => `/admin/organizations/${encodeURIComponent(id)}`,
+  user: (id) => `/admin/users/${encodeURIComponent(id)}`,
+  venue: (id) => `/admin/venues/${encodeURIComponent(id)}`,
+  plan: (id) => `/admin/plans/${encodeURIComponent(id)}`,
+};
+
+function getResourceUrl(type: string, id: string): string | null {
+  const builder = RESOURCE_DETAIL_URL[type];
+  if (!builder || !id) return null;
+  return builder(id);
+}
+
 function formatDate(timestamp: string) {
   return new Date(timestamp).toLocaleString("fr-FR", {
     dateStyle: "medium",
@@ -69,6 +87,14 @@ export default function AdminAuditPage() {
   const [page, setPage] = useState(1);
   const [actionFilter, setActionFilter] = useState(searchParams?.get("action") ?? "");
   const [actorIdFilter, setActorIdFilter] = useState(searchParams?.get("actorId") ?? "");
+  // Client-side free-text filter that matches against action,
+  // actorDisplayName, actorId, and resourceId. Deliberately client-
+  // side: the server query stays index-covered (action/actorId/etc),
+  // and the text filter acts on the current page. For historical
+  // full-text search we'll either pipe to a search index (Typesense /
+  // ElasticSearch) or a Firestore full-text field — tracked as a
+  // follow-up.
+  const [textFilter, setTextFilter] = useState("");
   const [resourceTypeFilter, setResourceTypeFilter] = useState(
     searchParams?.get("resourceType") ?? "",
   );
@@ -87,6 +113,29 @@ export default function AdminAuditPage() {
 
   const logs = data?.data ?? [];
   const meta = data?.meta ?? { page: 1, limit: 20, total: 0, totalPages: 1 };
+
+  // Client-side text filter applied on the current page. Case-insensitive,
+  // matches against action / actorDisplayName / actorId / resourceId so an
+  // operator can type "fatou" or "event-abc" and narrow the visible rows
+  // without re-querying.
+  const filteredLogs = useMemo(() => {
+    const q = textFilter.trim().toLowerCase();
+    if (!q) return logs;
+    return logs.filter((log) => {
+      const row = log as {
+        action?: string;
+        actorDisplayName?: string | null;
+        actorId?: string;
+        resourceId?: string;
+      };
+      return (
+        (row.action ?? "").toLowerCase().includes(q) ||
+        (row.actorDisplayName ?? "").toLowerCase().includes(q) ||
+        (row.actorId ?? "").toLowerCase().includes(q) ||
+        (row.resourceId ?? "").toLowerCase().includes(q)
+      );
+    });
+  }, [logs, textFilter]);
 
   // Build the querystring passed to the CSV export so the exported file
   // mirrors whatever the admin is currently looking at.
@@ -163,7 +212,23 @@ export default function AdminAuditPage() {
       )}
 
       {/* Filters */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:flex-wrap">
+        <div className="w-full sm:flex-1 sm:min-w-[200px]">
+          <label
+            htmlFor="audit-text-filter"
+            className="mb-1.5 block text-xs font-medium text-muted-foreground"
+          >
+            Recherche
+          </label>
+          <Input
+            id="audit-text-filter"
+            type="search"
+            placeholder="Acteur, ID, action…"
+            value={textFilter}
+            onChange={(e) => setTextFilter(e.target.value)}
+            aria-label="Rechercher dans la page actuelle (acteur, ID ressource, action)"
+          />
+        </div>
         <div className="w-full sm:w-56">
           <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
             Type d&apos;action
@@ -221,7 +286,7 @@ export default function AdminAuditPage() {
             emptyMessage="Aucune entrée trouvée"
             responsiveCards
             loading={isLoading}
-            data={logs as Record<string, unknown>[]}
+            data={filteredLogs as Record<string, unknown>[]}
             columns={
               [
                 {
@@ -235,30 +300,66 @@ export default function AdminAuditPage() {
                   ),
                 },
                 {
-                  key: "actorId",
+                  key: "actor",
                   header: "Acteur",
-                  render: (log) => (
-                    <span className="font-mono text-xs text-muted-foreground">
-                      {(log.actorId as string)?.slice(0, 12)}...
-                    </span>
-                  ),
+                  render: (log) => {
+                    // Prefer the denormalized actorDisplayName (T1.1); fall
+                    // back to the truncated actorId for historical rows
+                    // written before the denorm landed. Render the actorId
+                    // underneath in a muted font when both are present so
+                    // operators can still copy the raw UID from the UI.
+                    const displayName = log.actorDisplayName as string | null | undefined;
+                    const actorId = (log.actorId as string) ?? "";
+                    if (displayName) {
+                      return (
+                        <div className="flex flex-col">
+                          <span className="text-sm font-medium text-foreground">{displayName}</span>
+                          <code className="font-mono text-[10px] text-muted-foreground">
+                            {actorId.slice(0, 12)}
+                            {actorId.length > 12 ? "…" : ""}
+                          </code>
+                        </div>
+                      );
+                    }
+                    return (
+                      <span className="font-mono text-xs text-muted-foreground">
+                        {actorId.slice(0, 12)}
+                        {actorId.length > 12 ? "…" : ""}
+                      </span>
+                    );
+                  },
                 },
                 {
                   key: "resource",
                   header: "Ressource",
                   hideOnMobile: true,
-                  render: (log) => (
-                    <span className="text-muted-foreground">
-                      <span className="font-medium text-foreground">
-                        {log.resourceType as string}
+                  render: (log) => {
+                    const type = (log.resourceType as string) ?? "";
+                    const id = (log.resourceId as string) ?? "";
+                    const url = getResourceUrl(type, id);
+                    const label = (
+                      <span className="text-muted-foreground">
+                        <span className="font-medium text-foreground">{type}</span>
+                        {id ? (
+                          <span className="ml-1 font-mono text-xs">
+                            {id.slice(0, 12)}
+                            {id.length > 12 ? "…" : ""}
+                          </span>
+                        ) : null}
                       </span>
-                      {log.resourceId ? (
-                        <span className="ml-1 font-mono text-xs">
-                          {(log.resourceId as string).slice(0, 12)}...
-                        </span>
-                      ) : null}
-                    </span>
-                  ),
+                    );
+                    return url ? (
+                      <Link
+                        href={url}
+                        className="hover:underline hover:text-teranga-gold"
+                        title={`Ouvrir ${type} ${id}`}
+                      >
+                        {label}
+                      </Link>
+                    ) : (
+                      label
+                    );
+                  },
                 },
                 {
                   key: "timestamp",

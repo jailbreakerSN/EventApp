@@ -800,6 +800,18 @@ exports[`shared-types contract snapshots > AuditLogEntrySchema shape is stable 1
         ],
       },
     },
+    "actorDisplayName": {
+      "required": false,
+      "shape": {
+        "inner": {
+          "inner": {
+            "kind": "string",
+          },
+          "kind": "nullable",
+        },
+        "kind": "optional",
+      },
+    },
     "actorId": {
       "required": true,
       "shape": {
