@@ -1072,6 +1072,57 @@ const EXPANSION_AUDIT: AuditEntry[] = [
     organizationId: IDS.enterpriseOrgId,
     details: { name: "Sofitel Abidjan Hôtel Ivoire" },
   },
+  // ── Subscription lifecycle (Phase 9) ─────────────────────────────────
+  // Exercises the subscription.{upgraded,downgraded,cancelled,
+  // change_scheduled,scheduled_reverted,overridden,period_rolled_over}
+  // audit actions the admin history page surfaces.
+  {
+    action: "subscription.change_scheduled",
+    resourceType: "organization",
+    resourceId: IDS.starterOrgId,
+    actorId: IDS.starterOrganizer,
+    eventId: null,
+    organizationId: IDS.starterOrgId,
+    details: {
+      from: "starter",
+      to: "pro",
+      scheduledFor: "inOneMonth",
+      reason: "End-of-trial upgrade commit.",
+    },
+  },
+  {
+    action: "subscription.downgraded",
+    resourceType: "organization",
+    resourceId: IDS.freeOrgId,
+    actorId: IDS.freeOrganizer,
+    eventId: null,
+    organizationId: IDS.freeOrgId,
+    details: { from: "starter", to: "free", immediate: false },
+  },
+  // NOTE: AuditActionSchema carries no "subscription.cancelled" action —
+  // cancellations reduce to `subscription.downgraded` (to free) and the
+  // cancellation reason is captured in the subscription doc itself.
+  {
+    action: "subscription.period_rolled_over",
+    resourceType: "organization",
+    resourceId: IDS.orgId,
+    actorId: "system:billing",
+    eventId: null,
+    organizationId: IDS.orgId,
+    details: { from: "2026-03-23", to: "2026-04-22" },
+  },
+  {
+    action: "subscription.overridden",
+    resourceType: "organization",
+    resourceId: IDS.enterpriseOrgId,
+    actorId: IDS.superAdmin,
+    eventId: null,
+    organizationId: IDS.enterpriseOrgId,
+    details: {
+      reason: "Custom enterprise agreement — lifted maxParticipantsPerEvent cap.",
+      overrides: { "limits.maxParticipantsPerEvent": "Infinity" },
+    },
+  },
 ];
 
 async function writeAuditLogs(db: Firestore): Promise<number> {
@@ -1365,34 +1416,143 @@ async function writeNotificationDispatchLog(db: Firestore): Promise<number> {
 async function writeSubscriptions(db: Firestore): Promise<number> {
   const periodStart = twoDaysAgo;
   const periodEnd = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+  const inSevenDays = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+  const annualPeriodEnd = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
 
   // `priceXof` is read from the shared `PLAN_DISPLAY` catalogue instead of
   // being re-declared here, so any price change in `@teranga/shared-types`
   // flows into the seed without a manual sync.
-  const subs: Array<{ id: string; organizationId: string; plan: OrganizationPlan }> = [
-    { id: "sub-001", organizationId: IDS.venueOrgId, plan: "starter" },
-    { id: "sub-002", organizationId: IDS.orgId, plan: "pro" },
-    { id: "sub-003", organizationId: IDS.enterpriseOrgId, plan: "enterprise" },
+  type SubFixture = {
+    id: string;
+    organizationId: string;
+    plan: OrganizationPlan;
+    status: "active" | "trialing" | "past_due" | "cancelled";
+    currentPeriodStart: string;
+    currentPeriodEnd: string;
+    cancelledAt: string | null;
+    cancelReason: string | null;
+    paymentMethod: "wave" | "orange_money" | "free_money" | "card" | "mock" | null;
+    billingCycle?: "monthly" | "annual";
+    priceXof: number;
+  };
+
+  const subs: SubFixture[] = [
+    // Legacy — preserved byte-for-byte so downstream references stay happy.
+    {
+      id: "sub-001",
+      organizationId: IDS.venueOrgId,
+      plan: "starter",
+      status: "active",
+      currentPeriodStart: periodStart,
+      currentPeriodEnd: periodEnd,
+      cancelledAt: null,
+      cancelReason: null,
+      paymentMethod: null,
+      priceXof: PLAN_DISPLAY.starter.priceXof,
+    },
+    {
+      id: "sub-002",
+      organizationId: IDS.orgId,
+      plan: "pro",
+      status: "active",
+      currentPeriodStart: periodStart,
+      currentPeriodEnd: periodEnd,
+      cancelledAt: null,
+      cancelReason: null,
+      paymentMethod: null,
+      priceXof: PLAN_DISPLAY.pro.priceXof,
+    },
+    {
+      id: "sub-003",
+      organizationId: IDS.enterpriseOrgId,
+      plan: "enterprise",
+      status: "active",
+      currentPeriodStart: periodStart,
+      currentPeriodEnd: periodEnd,
+      cancelledAt: null,
+      cancelReason: null,
+      paymentMethod: null,
+      priceXof: PLAN_DISPLAY.enterprise.priceXof,
+    },
+    // ── Phase 9 — edge-case subscription states ─────────────────────────
+    // sub-004 (TRIALING): starter-org Thiès Tech Collective is mid-trial —
+    // paid upgrade coming in 7 days. Billing page must render the trial
+    // countdown + "Add payment method" CTA.
+    {
+      id: "sub-004",
+      organizationId: IDS.starterOrgId,
+      plan: "starter",
+      status: "trialing",
+      currentPeriodStart: oneWeekAgo,
+      currentPeriodEnd: inSevenDays,
+      cancelledAt: null,
+      cancelReason: null,
+      paymentMethod: null,
+      priceXof: PLAN_DISPLAY.starter.priceXof,
+    },
+    // sub-005 (PAST_DUE): simulated on the pro org's Teranga Events —
+    // mock "grace-period" scenario for the billing UI. DO NOT block
+    // feature access, just show the "Payment required" banner.
+    {
+      id: "sub-005",
+      organizationId: IDS.orgId,
+      plan: "pro",
+      status: "past_due",
+      currentPeriodStart: oneMonthAgo,
+      currentPeriodEnd: oneWeekAgo, // payment overdue by one week
+      cancelledAt: null,
+      cancelReason: null,
+      paymentMethod: "wave",
+      priceXof: PLAN_DISPLAY.pro.priceXof,
+    },
+    // sub-006 (CANCELLED): historical — free-org previously tried starter.
+    // cancelledAt + cancelReason populated so the audit log / billing
+    // history page has a complete row to render.
+    {
+      id: "sub-006",
+      organizationId: IDS.freeOrgId,
+      plan: "starter",
+      status: "cancelled",
+      currentPeriodStart: fortyFiveDaysAgo,
+      currentPeriodEnd: oneMonthAgo,
+      cancelledAt: oneMonthAgo,
+      cancelReason: "Downgraded back to free after end of paid month.",
+      paymentMethod: "orange_money",
+      priceXof: PLAN_DISPLAY.starter.priceXof,
+    },
+    // sub-007 (ANNUAL billing cycle): enterprise commits to 1 year up
+    // front — exercises billingCycle="annual" + year-long
+    // currentPeriodEnd + the annualPriceXof (if catalog exposes one).
+    // The enterprise `priceXof` is 0 in the display catalog (custom-
+    // priced), so we post a non-zero value that matches a custom agreement.
+    {
+      id: "sub-007",
+      organizationId: IDS.enterpriseOrgId,
+      plan: "enterprise",
+      status: "active",
+      currentPeriodStart: oneMonthAgo,
+      currentPeriodEnd: annualPeriodEnd,
+      cancelledAt: null,
+      cancelReason: null,
+      paymentMethod: "card",
+      billingCycle: "annual",
+      priceXof: 2_500_000, // negotiated annual — 208 333/mo equivalent
+    },
   ];
 
   await Promise.all(
-    subs.map((s) =>
-      db
+    subs.map((s) => {
+      const { billingCycle, ...rest } = s;
+      return db
         .collection("subscriptions")
         .doc(s.id)
         .set({
-          ...s,
-          priceXof: PLAN_DISPLAY[s.plan].priceXof,
-          status: "active",
-          currentPeriodStart: periodStart,
-          currentPeriodEnd: periodEnd,
-          cancelledAt: null,
-          cancelReason: null,
-          paymentMethod: null,
-          createdAt: twoDaysAgo,
+          ...rest,
+          ...(billingCycle ? { billingCycle } : {}),
+          createdAt: rest.currentPeriodStart,
           updatedAt: now,
-        }),
-    ),
+        });
+    }),
   );
   return subs.length;
 }
