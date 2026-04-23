@@ -773,6 +773,7 @@ exports[`shared-types contract snapshots > AuditLogEntrySchema shape is stable 1
           "sponsor.added",
           "sponsor.lead_captured",
           "sponsor.removed",
+          "subscription.cancelled",
           "subscription.change_scheduled",
           "subscription.downgraded",
           "subscription.overridden",

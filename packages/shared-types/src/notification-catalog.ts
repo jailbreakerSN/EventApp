@@ -239,6 +239,61 @@ export const NotificationSuppressionReasonSchema = z.enum([
 ]);
 export type NotificationSuppressionReason = z.infer<typeof NotificationSuppressionReasonSchema>;
 
+// ─── Notification Dispatch Log Schema (Phase 5+) ────────────────────────────
+// Zod mirror of `DispatchLogEntry` from apps/api/src/repositories/
+// notification-dispatch-log.repository.ts. Exported so the seed validator
+// (scripts/validate-seed-schemas.ts) and any future replay tooling can
+// parse dispatch rows without reaching into the API package.
+//
+// Keep in lockstep with the TS interface: new fields must land in both
+// places. The TS interface remains the authoritative shape used by the
+// repository at runtime (Firestore writes are untyped); this Zod schema
+// is the validation contract for fixtures + external inputs.
+
+export const NotificationDispatchLogDeliveryStatusSchema = z.enum([
+  "sent",
+  "delivered",
+  "opened",
+  "clicked",
+  "bounced",
+  "complained",
+]);
+export type NotificationDispatchLogDeliveryStatus = z.infer<
+  typeof NotificationDispatchLogDeliveryStatusSchema
+>;
+
+export const NotificationDispatchLogStatusSchema = z.enum(["sent", "suppressed", "deduplicated"]);
+export type NotificationDispatchLogStatus = z.infer<typeof NotificationDispatchLogStatusSchema>;
+
+export const NotificationDispatchLogSchema = z.object({
+  id: z.string(),
+  key: z.string(),
+  channel: NotificationChannelSchema,
+  recipientRef: z.string(),
+  status: NotificationDispatchLogStatusSchema,
+  reason: NotificationSuppressionReasonSchema.optional(),
+  messageId: z.string().optional(),
+  idempotencyKey: z.string(),
+  deduplicated: z.boolean().optional(),
+  attemptedAt: z.string().datetime(),
+  requestId: z.string(),
+  actorId: z.string(),
+  // Phase 2.5 — email delivery observability back-annotated from Resend
+  deliveryStatus: NotificationDispatchLogDeliveryStatusSchema.optional(),
+  deliveredAt: z.string().datetime().optional(),
+  openedAt: z.string().datetime().optional(),
+  clickedAt: z.string().datetime().optional(),
+  bouncedAt: z.string().datetime().optional(),
+  complainedAt: z.string().datetime().optional(),
+  // Phase D.2 — push delivery observability (in_app / push channels only)
+  pushDisplayedAt: z.string().datetime().optional(),
+  pushClickedAt: z.string().datetime().optional(),
+  // Firestore TTL: 90d standard, 365d for bounced/complained compliance
+  expiresAt: z.string().datetime(),
+});
+
+export type NotificationDispatchLogEntry = z.infer<typeof NotificationDispatchLogSchema>;
+
 // ─── Catalog ───────────────────────────────────────────────────────────────
 // Seeded with the 10 notifications already shipped in
 // apps/api/src/services/email.service.ts (lines 402-524). Adding a new
@@ -1108,9 +1163,7 @@ export interface ChannelDispatchResult {
  *   - capabilities describes what templating features the channel honours
  *     (attachments: email only; richText: email+in_app; shortBody: sms).
  */
-export interface ChannelAdapter<
-  P extends Record<string, unknown> = Record<string, unknown>,
-> {
+export interface ChannelAdapter<P extends Record<string, unknown> = Record<string, unknown>> {
   readonly channel: NotificationChannel;
   readonly capabilities: ChannelCapabilities;
   supports(definition: NotificationDefinition): boolean;

@@ -81,6 +81,7 @@ export const AuditActionSchema = z.enum([
   // ── Subscription lifecycle (Phase 4c) ─────────────────────────────────────
   "subscription.upgraded",
   "subscription.downgraded",
+  "subscription.cancelled",
   "subscription.change_scheduled",
   "subscription.scheduled_reverted",
   "subscription.period_rolled_over",

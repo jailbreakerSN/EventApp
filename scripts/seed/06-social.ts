@@ -1099,9 +1099,20 @@ const EXPANSION_AUDIT: AuditEntry[] = [
     organizationId: IDS.freeOrgId,
     details: { from: "starter", to: "free", immediate: false },
   },
-  // NOTE: AuditActionSchema carries no "subscription.cancelled" action —
-  // cancellations reduce to `subscription.downgraded` (to free) and the
-  // cancellation reason is captured in the subscription doc itself.
+  // NOTE: AuditActionSchema now carries "subscription.cancelled" — the
+  // dedicated cancellation audit row below captures the org-003 flow.
+  {
+    action: "subscription.cancelled",
+    resourceType: "organization",
+    resourceId: IDS.freeOrgId,
+    actorId: IDS.freeOrganizer,
+    eventId: null,
+    organizationId: IDS.freeOrgId,
+    details: {
+      from: "starter",
+      reason: "Downgraded back to free after end of paid month.",
+    },
+  },
   {
     action: "subscription.period_rolled_over",
     resourceType: "organization",
@@ -1164,7 +1175,13 @@ async function writeNotificationDispatchLog(db: Firestore): Promise<number> {
     channel: "email" | "sms" | "push" | "in_app";
     recipientRef: string;
     status: "sent" | "suppressed" | "deduplicated";
-    reason?: "user_opt_out" | "setting_disabled" | "bounced" | "complained" | "quota_exceeded";
+    // Aligned with NotificationSuppressionReasonSchema in shared-types.
+    reason?:
+      | "admin_disabled"
+      | "user_opted_out"
+      | "on_suppression_list"
+      | "bounced"
+      | "no_recipient";
     messageId?: string;
     idempotencyKey: string;
     deduplicated?: boolean;
@@ -1243,7 +1260,7 @@ async function writeNotificationDispatchLog(db: Firestore): Promise<number> {
       channel: "email",
       recipientRef: `user:${IDS.participant2}`,
       status: "suppressed",
-      reason: "user_opt_out",
+      reason: "user_opted_out",
       idempotencyKey: "idem-event-001-reminder-p2",
       attemptedAt: oneHourAgo,
       requestId: "seed-req-dispatch-005",
@@ -1257,7 +1274,7 @@ async function writeNotificationDispatchLog(db: Firestore): Promise<number> {
       channel: "email",
       recipientRef: "email:a8f3c21b@teranga.dev",
       status: "suppressed",
-      reason: "setting_disabled",
+      reason: "admin_disabled",
       idempotencyKey: "idem-newsletter-welcome-seed",
       attemptedAt: now,
       requestId: "seed-req-dispatch-006",
@@ -1391,14 +1408,15 @@ async function writeNotificationDispatchLog(db: Firestore): Promise<number> {
       deliveredAt: oneWeekAgo,
       openedAt: twoDaysAgo,
     },
-    // Subscription past due
+    // Subscription past due — suppressed because the email is on the
+    // platform-wide suppression list after an earlier bounce.
     {
       id: "dispatch-seed-015",
       key: "subscription.past_due",
       channel: "email",
       recipientRef: `user:${IDS.freeOrganizer}`,
       status: "suppressed",
-      reason: "quota_exceeded",
+      reason: "on_suppression_list",
       idempotencyKey: "idem-sub-past-due-seed",
       attemptedAt: yesterday,
       requestId: "seed-req-dispatch-015",

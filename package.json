@@ -30,6 +30,7 @@
     "seed:reset": "tsx scripts/seed-reset.ts",
     "seed:check": "tsx scripts/check-seed-coverage.ts",
     "seed:status": "tsx scripts/generate-seed-coverage-status.ts",
+    "seed:validate": "tsx scripts/validate-seed-schemas.ts",
     "clean": "turbo clean && rm -rf node_modules/.cache",
     "prepare": "husky"
   },
