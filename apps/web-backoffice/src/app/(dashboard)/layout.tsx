@@ -13,7 +13,6 @@ import { KeyboardShortcutsDialog } from "@/components/keyboard-shortcuts-dialog"
 import { ImpersonationBanner } from "@/components/admin/impersonation-banner";
 import { useAuth } from "@/hooks/use-auth";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
-import { useTranslations } from "next-intl";
 // Shared access taxonomy — single source of truth for who may traverse
 // the backoffice shell. See apps/web-backoffice/src/lib/access.ts.
 // Admin roles (`super_admin`, `platform:*`) are included so a super-
@@ -137,8 +136,6 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
 }
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const tCommon = useTranslations("common");
-  void tCommon;
   const { user, loading, hasRole } = useAuth();
   const router = useRouter();
 

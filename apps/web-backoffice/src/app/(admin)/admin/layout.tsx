@@ -221,6 +221,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 <div
                   id="admin-identity-menu"
                   role="menu"
+                  aria-orientation="vertical"
                   aria-label={t("identityMenuLabel")}
                   ref={menuRef}
                   className="absolute right-0 top-full z-50 mt-1 w-60 overflow-hidden rounded-md border border-border bg-background shadow-lg"
