@@ -704,6 +704,10 @@ export const adminApi = {
   listUsers: (query: Partial<AdminUserQuery> = {}) =>
     api.get<PaginatedResponse<AdminUserRow>>(`/v1/admin/users${buildQuery(query)}`),
 
+  // Phase 3 — targeted fetch for /admin/users/[uid] detail page.
+  getUser: (userId: string) =>
+    api.get<ApiResponse<AdminUserRow>>(`/v1/admin/users/${encodeURIComponent(userId)}`),
+
   updateUserRoles: (userId: string, roles: string[]) =>
     api.patch<void>(`/v1/admin/users/${userId}/roles`, { roles }),
 

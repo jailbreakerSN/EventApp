@@ -142,6 +142,25 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
     },
   );
 
+  // Phase 3 — fetch a single admin user row (Phase 1 already exposes
+  // list; the detail page needs a targeted getter to avoid iterating).
+  fastify.get(
+    "/users/:userId",
+    {
+      preHandler: [...adminPreHandler, validate({ params: ParamsUserId })],
+      schema: {
+        tags: ["Admin"],
+        summary: "Get a single admin user row (with JWT drift check)",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const { userId } = request.params as z.infer<typeof ParamsUserId>;
+      const data = await adminService.getUserById(request.user!, userId);
+      return reply.send({ success: true, data });
+    },
+  );
+
   fastify.patch(
     "/users/:userId/roles",
     {

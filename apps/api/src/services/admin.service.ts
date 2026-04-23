@@ -321,6 +321,16 @@ class AdminService extends BaseService {
 
   // ── User Management ───────────────────────────────────────────────────
 
+  async getUserById(user: AuthUser, targetUid: string): Promise<AdminUserRow> {
+    this.requirePermission(user, "platform:manage");
+    const doc = await db.collection(COLLECTIONS.USERS).doc(targetUid).get();
+    if (!doc.exists) {
+      throw new NotFoundError("User", targetUid);
+    }
+    const profile = { uid: targetUid, ...doc.data() } as UserProfile;
+    return this.attachClaimsMatch(profile);
+  }
+
   async listUsers(user: AuthUser, query: AdminUserQuery): Promise<PaginatedResult<AdminUserRow>> {
     this.requirePermission(user, "platform:manage");
     const page = await adminRepository.listAllUsers(
