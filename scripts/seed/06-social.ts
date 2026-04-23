@@ -1093,6 +1093,273 @@ async function writeAuditLogs(db: Firestore): Promise<number> {
   return all.length;
 }
 
+// ─── Notification dispatch log (observability) ────────────────────────────
+// Phase 5+ the backend appends one row per dispatched-or-suppressed send.
+// Seed ~15 entries across all three statuses (sent / suppressed /
+// deduplicated), every channel, mixed catalog keys, and a variety of
+// actor/recipient shapes so the super-admin observability page renders
+// real metrics on first boot of staging. Deterministic doc ids
+// (`dispatch-seed-NNN`) keep re-runs idempotent; production rows are
+// auto-id via repository add().
+
+async function writeNotificationDispatchLog(db: Firestore): Promise<number> {
+  const inSixtyDays = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString();
+  const inNinetyDays = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString();
+  const inOneYear = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
+
+  type DispatchRow = {
+    id: string;
+    key: string;
+    channel: "email" | "sms" | "push" | "in_app";
+    recipientRef: string;
+    status: "sent" | "suppressed" | "deduplicated";
+    reason?: "user_opt_out" | "setting_disabled" | "bounced" | "complained" | "quota_exceeded";
+    messageId?: string;
+    idempotencyKey: string;
+    deduplicated?: boolean;
+    attemptedAt: string;
+    requestId: string;
+    actorId: string;
+    expiresAt: string;
+    deliveryStatus?: "sent" | "delivered" | "opened" | "clicked" | "bounced" | "complained";
+    deliveredAt?: string;
+    openedAt?: string;
+  };
+
+  const rows: DispatchRow[] = [
+    // Registration confirmations — mix of delivered + opened
+    {
+      id: "dispatch-seed-001",
+      key: "registration.created",
+      channel: "email",
+      recipientRef: `user:${IDS.participant1}`,
+      status: "sent",
+      messageId: "resend-msg-0001",
+      idempotencyKey: "idem-reg-001-email",
+      attemptedAt: yesterday,
+      requestId: "seed-req-dispatch-001",
+      actorId: IDS.organizer,
+      expiresAt: inNinetyDays,
+      deliveryStatus: "opened",
+      deliveredAt: yesterday,
+      openedAt: oneHourAgo,
+    },
+    {
+      id: "dispatch-seed-002",
+      key: "registration.created",
+      channel: "in_app",
+      recipientRef: `user:${IDS.participant1}`,
+      status: "sent",
+      idempotencyKey: "idem-reg-001-inapp",
+      attemptedAt: yesterday,
+      requestId: "seed-req-dispatch-001",
+      actorId: IDS.organizer,
+      expiresAt: inNinetyDays,
+    },
+    {
+      id: "dispatch-seed-003",
+      key: "badge.ready",
+      channel: "email",
+      recipientRef: `user:${IDS.participant2}`,
+      status: "sent",
+      messageId: "resend-msg-0002",
+      idempotencyKey: "idem-badge-ready-002",
+      attemptedAt: twoHoursAgo,
+      requestId: "seed-req-dispatch-002",
+      actorId: IDS.organizer,
+      expiresAt: inNinetyDays,
+      deliveryStatus: "delivered",
+      deliveredAt: oneHourAgo,
+    },
+    // Event reminder — dedup dropped (same idempotencyKey)
+    {
+      id: "dispatch-seed-004",
+      key: "event.reminder",
+      channel: "email",
+      recipientRef: `user:${IDS.participant1}`,
+      status: "deduplicated",
+      deduplicated: true,
+      idempotencyKey: "idem-event-001-reminder-d1",
+      attemptedAt: oneHourAgo,
+      requestId: "seed-req-dispatch-004",
+      actorId: "system:scheduler",
+      expiresAt: inNinetyDays,
+    },
+    // Suppressed: user opted out
+    {
+      id: "dispatch-seed-005",
+      key: "event.reminder",
+      channel: "email",
+      recipientRef: `user:${IDS.participant2}`,
+      status: "suppressed",
+      reason: "user_opt_out",
+      idempotencyKey: "idem-event-001-reminder-p2",
+      attemptedAt: oneHourAgo,
+      requestId: "seed-req-dispatch-005",
+      actorId: "system:scheduler",
+      expiresAt: inNinetyDays,
+    },
+    // Suppressed: setting disabled platform-wide (newsletter.welcome)
+    {
+      id: "dispatch-seed-006",
+      key: "newsletter.welcome",
+      channel: "email",
+      recipientRef: "email:a8f3c21b@teranga.dev",
+      status: "suppressed",
+      reason: "setting_disabled",
+      idempotencyKey: "idem-newsletter-welcome-seed",
+      attemptedAt: now,
+      requestId: "seed-req-dispatch-006",
+      actorId: "system:newsletter",
+      expiresAt: inNinetyDays,
+    },
+    // Bounced email → 1-year retention (compliance)
+    {
+      id: "dispatch-seed-007",
+      key: "payment.succeeded",
+      channel: "email",
+      recipientRef: "email:9c7d1a42@teranga.dev",
+      status: "sent",
+      messageId: "resend-msg-0003",
+      idempotencyKey: "idem-pay-001-success",
+      attemptedAt: yesterday,
+      requestId: "seed-req-dispatch-007",
+      actorId: "system:payment-webhook",
+      expiresAt: inOneYear,
+      deliveryStatus: "bounced",
+      deliveredAt: yesterday,
+    },
+    // Complained email → 1-year retention
+    {
+      id: "dispatch-seed-008",
+      key: "event.reminder",
+      channel: "email",
+      recipientRef: "email:2e4f8b93@teranga.dev",
+      status: "sent",
+      messageId: "resend-msg-0004",
+      idempotencyKey: "idem-reminder-complained",
+      attemptedAt: twoDaysAgo,
+      requestId: "seed-req-dispatch-008",
+      actorId: "system:scheduler",
+      expiresAt: inOneYear,
+      deliveryStatus: "complained",
+      deliveredAt: twoDaysAgo,
+    },
+    // SMS sent
+    {
+      id: "dispatch-seed-009",
+      key: "registration.approved",
+      channel: "sms",
+      recipientRef: `user:${EXPANSION_PARTICIPANTS[0].uid}`,
+      status: "sent",
+      messageId: "sms-provider-msg-0001",
+      idempotencyKey: "idem-approved-sms-001",
+      attemptedAt: yesterday,
+      requestId: "seed-req-dispatch-009",
+      actorId: IDS.organizer,
+      expiresAt: inNinetyDays,
+    },
+    // Push sent + clicked
+    {
+      id: "dispatch-seed-010",
+      key: "check_in.success",
+      channel: "push",
+      recipientRef: `user:${IDS.participant1}`,
+      status: "sent",
+      messageId: "fcm-msg-0001",
+      idempotencyKey: "idem-checkin-push-001",
+      attemptedAt: oneHourAgo,
+      requestId: "seed-req-dispatch-010",
+      actorId: IDS.staffUser,
+      expiresAt: inNinetyDays,
+      deliveryStatus: "clicked",
+      deliveredAt: oneHourAgo,
+      openedAt: oneHourAgo,
+    },
+    // Payment succeeded push
+    {
+      id: "dispatch-seed-011",
+      key: "payment.succeeded",
+      channel: "push",
+      recipientRef: `user:${IDS.participant2}`,
+      status: "sent",
+      messageId: "fcm-msg-0002",
+      idempotencyKey: "idem-pay-002-push",
+      attemptedAt: yesterday,
+      requestId: "seed-req-dispatch-011",
+      actorId: "system:payment-webhook",
+      expiresAt: inNinetyDays,
+    },
+    // Broadcast sent (starter org)
+    {
+      id: "dispatch-seed-012",
+      key: "broadcast",
+      channel: "email",
+      recipientRef: `user:${EXPANSION_PARTICIPANTS[13].uid}`,
+      status: "sent",
+      messageId: "resend-msg-0005",
+      idempotencyKey: "idem-broadcast-e10-01-p13",
+      attemptedAt: twoDaysAgo,
+      requestId: "seed-req-dispatch-012",
+      actorId: IDS.starterOrganizer,
+      expiresAt: inNinetyDays,
+      deliveryStatus: "opened",
+      deliveredAt: twoDaysAgo,
+      openedAt: twoDaysAgo,
+    },
+    // Invite sent
+    {
+      id: "dispatch-seed-013",
+      key: "invite.sent",
+      channel: "email",
+      recipientRef: "email:nouveau-membre@teranga.dev",
+      status: "sent",
+      messageId: "resend-msg-0006",
+      idempotencyKey: "idem-invite-001",
+      attemptedAt: yesterday,
+      requestId: "seed-req-dispatch-013",
+      actorId: IDS.organizer,
+      expiresAt: inNinetyDays,
+      deliveryStatus: "delivered",
+      deliveredAt: yesterday,
+    },
+    // Refund issued
+    {
+      id: "dispatch-seed-014",
+      key: "refund.issued",
+      channel: "email",
+      recipientRef: `user:${EXPANSION_PARTICIPANTS[0].uid}`,
+      status: "sent",
+      messageId: "resend-msg-0007",
+      idempotencyKey: "idem-refund-004",
+      attemptedAt: oneWeekAgo,
+      requestId: "seed-req-dispatch-014",
+      actorId: "system:refund",
+      expiresAt: inOneYear, // refund comms retained longer
+      deliveryStatus: "opened",
+      deliveredAt: oneWeekAgo,
+      openedAt: twoDaysAgo,
+    },
+    // Subscription past due
+    {
+      id: "dispatch-seed-015",
+      key: "subscription.past_due",
+      channel: "email",
+      recipientRef: `user:${IDS.freeOrganizer}`,
+      status: "suppressed",
+      reason: "quota_exceeded",
+      idempotencyKey: "idem-sub-past-due-seed",
+      attemptedAt: yesterday,
+      requestId: "seed-req-dispatch-015",
+      actorId: "system:billing",
+      expiresAt: inSixtyDays,
+    },
+  ];
+
+  await Promise.all(rows.map((r) => db.collection("notificationDispatchLog").doc(r.id).set(r)));
+  return rows.length;
+}
+
 // ─── Subscriptions ────────────────────────────────────────────────────────
 
 async function writeSubscriptions(db: Firestore): Promise<number> {
@@ -1383,6 +1650,7 @@ export type SocialCounts = {
   notificationPreferences: number;
   notificationSettings: number;
   notificationSettingsHistory: number;
+  notificationDispatchLog: number;
   broadcasts: number;
   checkinFeed: number;
   auditLogs: number;
@@ -1400,6 +1668,7 @@ export async function seedSocial(db: Firestore): Promise<SocialCounts> {
     notificationPreferences,
     notificationSettings,
     notificationSettingsHistory,
+    notificationDispatchLog,
     broadcasts,
     checkinFeed,
     auditLogs,
@@ -1414,6 +1683,7 @@ export async function seedSocial(db: Firestore): Promise<SocialCounts> {
     writeNotificationPreferences(db),
     writeNotificationSettings(db),
     writeNotificationSettingsHistory(db),
+    writeNotificationDispatchLog(db),
     writeBroadcasts(db),
     writeCheckinFeed(db),
     writeAuditLogs(db),
@@ -1430,6 +1700,7 @@ export async function seedSocial(db: Firestore): Promise<SocialCounts> {
     notificationPreferences,
     notificationSettings,
     notificationSettingsHistory,
+    notificationDispatchLog,
     broadcasts,
     checkinFeed,
     auditLogs,

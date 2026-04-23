@@ -248,6 +248,7 @@ async function seed() {
         `${s.notifications} notifications, ${s.notificationPreferences} prefs, ` +
         `${s.notificationSettings} admin settings overrides, ` +
         `${s.notificationSettingsHistory} settings-history entries, ` +
+        `${s.notificationDispatchLog} dispatch log entries, ` +
         `${s.broadcasts} broadcasts, ${s.checkinFeed} checkin feed, ` +
         `${s.auditLogs} audit logs, ${s.subscriptions} subscriptions, ` +
         `${s.emailSuppressions} email suppressions, ` +
