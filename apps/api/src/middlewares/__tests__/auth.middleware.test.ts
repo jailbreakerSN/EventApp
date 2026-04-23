@@ -251,6 +251,35 @@ describe("requireEmailVerified", () => {
     expect(reply.status).not.toHaveBeenCalled();
   });
 
+  // PR #163 review — the previous `roles.includes("super_admin")` check
+  // produced a correctness gap: `platform:*` subroles (closure C of the
+  // admin overhaul) hold `platform:manage` at the service layer and bypass
+  // the web-side email gate, but the API middleware was still denying them.
+  // This parameterised test locks in parity for every subrole.
+  const PLATFORM_ADMIN_ROLES = [
+    "platform:super_admin",
+    "platform:support",
+    "platform:finance",
+    "platform:ops",
+    "platform:security",
+  ] as const;
+
+  for (const role of PLATFORM_ADMIN_ROLES) {
+    it(`exempts ${role} even when email is not verified`, async () => {
+      const request = makeMockRequestWithUser({
+        uid: `user-${role}`,
+        email: `${role}@teranga.sn`,
+        roles: [role] as UserRole[],
+        emailVerified: false,
+      });
+      const reply = makeMockReply();
+
+      await requireEmailVerified(request, reply);
+
+      expect(reply.status).not.toHaveBeenCalled();
+    });
+  }
+
   it("returns 401 UNAUTHORIZED when request.user is missing (authenticate not run first)", async () => {
     const request = makeMockRequest(undefined);
     const reply = makeMockReply();

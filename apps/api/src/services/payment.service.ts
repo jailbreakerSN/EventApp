@@ -6,6 +6,7 @@ import {
   type PaymentSummary,
   type Registration,
   type Event,
+  isAdminSystemRole,
 } from "@teranga/shared-types";
 import { paymentRepository } from "@/repositories/payment.repository";
 import { eventRepository } from "@/repositories/event.repository";
@@ -498,7 +499,7 @@ export class PaymentService extends BaseService {
   async getPaymentStatus(paymentId: string, user: AuthUser): Promise<Payment> {
     this.requirePermission(user, "payment:read_own");
     const payment = await paymentRepository.findByIdOrThrow(paymentId);
-    if (payment.userId !== user.uid && !user.roles.includes("super_admin")) {
+    if (payment.userId !== user.uid && !user.roles.some(isAdminSystemRole)) {
       this.requirePermission(user, "payment:read_all");
       this.requireOrganizationAccess(user, payment.organizationId);
     }

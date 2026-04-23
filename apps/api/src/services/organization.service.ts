@@ -3,6 +3,7 @@ import {
   type OrgMemberRole,
   type CreateOrganizationDto,
   type UpdateOrganizationDto,
+  isAdminSystemRole,
 } from "@teranga/shared-types";
 import { organizationRepository } from "@/repositories/organization.repository";
 import { type AuthUser } from "@/middlewares/auth.middleware";
@@ -24,8 +25,10 @@ export class OrganizationService extends BaseService {
       throw new ConflictError(`Organization slug '${dto.slug}' is already taken`);
     }
 
-    // One org per user (unless super_admin)
-    if (!user.roles.includes("super_admin")) {
+    // One org per user — unless the caller is a platform admin (super_admin
+    // or any platform:* subrole), who may create / own orgs on behalf of
+    // customers during onboarding or migration.
+    if (!user.roles.some(isAdminSystemRole)) {
       const existingOwned = await organizationRepository.findByOwner(user.uid);
       if (existingOwned) {
         throw new ConflictError("Vous possédez déjà une organisation");

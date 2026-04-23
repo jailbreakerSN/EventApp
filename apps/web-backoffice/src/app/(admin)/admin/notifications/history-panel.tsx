@@ -13,10 +13,7 @@
 import { useEffect, useState } from "react";
 import { Badge, Button, InlineErrorBanner, Skeleton } from "@teranga/shared-ui";
 import { X } from "lucide-react";
-import {
-  adminNotificationsApi,
-  type AdminNotificationHistoryEntry,
-} from "@/lib/api-client";
+import { adminNotificationsApi, type AdminNotificationHistoryEntry } from "@/lib/api-client";
 import { useErrorHandler } from "@/hooks/use-error-handler";
 
 interface HistoryPanelProps {
@@ -122,9 +119,7 @@ export function HistoryPanel({ notificationKey, organizationId, onClose }: Histo
                   ))}
                 </div>
               )}
-              {entry.reason && (
-                <div className="mt-1 text-muted-foreground">« {entry.reason} »</div>
-              )}
+              {entry.reason && <div className="mt-1 text-muted-foreground">« {entry.reason} »</div>}
             </li>
           ))}
         </ul>

@@ -136,6 +136,31 @@ export const SystemRoleSchema = z.enum([
 
 export type SystemRole = z.infer<typeof SystemRoleSchema>;
 
+/**
+ * Roles that operate the platform itself (as opposed to running events
+ * on it). Canonical list shared by every app: API middlewares gate
+ * admin-only routes on this set, the web-backoffice derives its
+ * `(admin)` shell access list from it, audit records stamp the narrowest
+ * entry as `actorRole`. When a new admin subrole lands, adding it
+ * here and mapping permissions in `DEFAULT_ROLE_PERMISSIONS` is the
+ * only code change required.
+ */
+export const ADMIN_SYSTEM_ROLES = [
+  "super_admin",
+  "platform:super_admin",
+  "platform:support",
+  "platform:finance",
+  "platform:ops",
+  "platform:security",
+] as const satisfies readonly SystemRole[];
+
+export type AdminSystemRole = (typeof ADMIN_SYSTEM_ROLES)[number];
+
+/** Cheap `roles.some(isAdminSystemRole)` predicate. */
+export function isAdminSystemRole(role: string): role is AdminSystemRole {
+  return (ADMIN_SYSTEM_ROLES as readonly string[]).includes(role);
+}
+
 // ─── Role → Permission Mapping ────────────────────────────────────────────────
 // Default permissions per system role. Can be overridden per organization.
 

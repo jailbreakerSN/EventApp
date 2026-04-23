@@ -30,10 +30,7 @@ import {
 } from "@teranga/shared-ui";
 import { toast } from "sonner";
 import { Send } from "lucide-react";
-import {
-  adminNotificationsApi,
-  type AdminNotificationRow,
-} from "@/lib/api-client";
+import { adminNotificationsApi, type AdminNotificationRow } from "@/lib/api-client";
 import { useErrorHandler } from "@/hooks/use-error-handler";
 
 type Locale = "fr" | "en" | "wo";

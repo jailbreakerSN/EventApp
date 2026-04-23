@@ -16,9 +16,7 @@ import {
   Wallet,
   Megaphone,
   X,
-  Shield,
   MapPin,
-  FileText,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -96,16 +94,14 @@ const venueNavItems: NavItem[] = [
   { href: "/venues", icon: MapPin, label: "Mes Lieux", roles: ["venue_manager", "super_admin"] },
 ];
 
-const adminNavItems: NavItem[] = [
-  { href: "/admin", icon: Shield, label: "Admin Plateforme", roles: ["super_admin"] },
-  { href: "/admin/users", icon: Users, label: "Utilisateurs", roles: ["super_admin"] },
-  { href: "/admin/organizations", icon: Building2, label: "Organisations", roles: ["super_admin"] },
-  { href: "/admin/events", icon: CalendarDays, label: "Événements (tous)", roles: ["super_admin"] },
-  { href: "/admin/venues", icon: MapPin, label: "Lieux", roles: ["super_admin"] },
-  { href: "/admin/plans", icon: CreditCard, label: "Plans", roles: ["super_admin"] },
-  { href: "/admin/notifications", icon: Bell, label: "Notifications", roles: ["super_admin"] },
-  { href: "/admin/audit", icon: FileText, label: "Journal d'audit", roles: ["super_admin"] },
-];
+// NOTE: the admin section used to be rendered inside this sidebar. It
+// was removed when the admin shell moved to its own (admin) route group
+// — see commit af3636e "refactor(shell): split admin into dedicated
+// (admin) route group". An admin user now reaches /admin/inbox either
+// (a) by landing there after login (resolveLandingRoute in lib/access.ts)
+// or (b) via the "Administration" pill rendered in the top bar when
+// useAdminRole() is truthy. Never re-add admin entries here or the
+// nested-shell UX bug returns.
 
 export function Sidebar() {
   const pathname = usePathname();
@@ -222,34 +218,10 @@ export function Sidebar() {
           </>
         )}
 
-        {/* Admin section — super_admin only */}
-        {hasRole("super_admin") && (
-          <>
-            <div className="my-3 mx-3 border-t border-white/10" />
-            <p className="px-3 text-[10px] text-white/40 uppercase tracking-wider mb-1">
-              Administration
-            </p>
-            {adminNavItems.map(({ href, icon: Icon, label }) => {
-              const isActive = pathname === href || pathname.startsWith(href + "/");
-              return (
-                <Link
-                  key={href}
-                  href={href}
-                  aria-current={isActive ? "page" : undefined}
-                  className={cn(
-                    "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm motion-safe:transition-colors",
-                    isActive
-                      ? "bg-white/15 text-white font-medium"
-                      : "text-white/60 hover:bg-white/10 hover:text-white",
-                  )}
-                >
-                  <Icon size={17} aria-hidden="true" />
-                  {label}
-                </Link>
-              );
-            })}
-          </>
-        )}
+        {/* Admin entries used to render here. Intentionally removed —
+            admins reach /admin/* via the dedicated shell in the
+            (admin) route group, triggered by the "Administration" pill
+            in the top bar. See lib/access.ts + components/layouts/topbar.tsx. */}
       </nav>
 
       {/* Plan widget */}

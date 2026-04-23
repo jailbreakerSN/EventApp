@@ -106,11 +106,7 @@ export function DeliveryTimeseriesChart({
             fontSize={11}
             tickFormatter={(v: string) => formatBucketTick(v, granularity)}
           />
-          <YAxis
-            stroke="hsl(var(--muted-foreground))"
-            fontSize={11}
-            allowDecimals={false}
-          />
+          <YAxis stroke="hsl(var(--muted-foreground))" fontSize={11} allowDecimals={false} />
           <RTooltip
             formatter={(value: number, name: string) => [value, labelFor(name, labels)]}
             labelFormatter={(v: string) => formatBucketTick(v, granularity)}
@@ -187,14 +183,8 @@ export function PerChannelBarChart({ data, title, emptyLabel, labels }: PerChann
         >
           <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
           <XAxis dataKey="channel" stroke="hsl(var(--muted-foreground))" fontSize={12} />
-          <YAxis
-            stroke="hsl(var(--muted-foreground))"
-            fontSize={11}
-            allowDecimals={false}
-          />
-          <RTooltip
-            formatter={(value: number, name: string) => [value, labelFor(name, labels)]}
-          />
+          <YAxis stroke="hsl(var(--muted-foreground))" fontSize={11} allowDecimals={false} />
+          <RTooltip formatter={(value: number, name: string) => [value, labelFor(name, labels)]} />
           <Legend
             formatter={(name: string) => (
               <span className="text-xs text-muted-foreground">{labelFor(name, labels)}</span>
@@ -219,10 +209,7 @@ export interface SuppressionDonutProps {
   labels: ChartLabelMap;
 }
 
-const SUPPRESSION_PALETTE: Record<
-  keyof AdminDeliveryDashboardTotals["suppressed"],
-  string
-> = {
+const SUPPRESSION_PALETTE: Record<keyof AdminDeliveryDashboardTotals["suppressed"], string> = {
   admin_disabled: "hsl(var(--muted-foreground))",
   user_opted_out: CHART_COLORS.suppressed,
   on_suppression_list: CHART_COLORS.dedup,
@@ -234,9 +221,9 @@ const SUPPRESSION_PALETTE: Record<
 };
 
 export function SuppressionDonut({ totals, title, emptyLabel, labels }: SuppressionDonutProps) {
-  const entries = (Object.entries(totals) as Array<
-    [keyof AdminDeliveryDashboardTotals["suppressed"], number]
-  >).filter(([, v]) => v > 0);
+  const entries = (
+    Object.entries(totals) as Array<[keyof AdminDeliveryDashboardTotals["suppressed"], number]>
+  ).filter(([, v]) => v > 0);
 
   if (entries.length === 0) {
     return <EmptyChart label={emptyLabel} title={title} />;
@@ -258,9 +245,7 @@ export function SuppressionDonut({ totals, title, emptyLabel, labels }: Suppress
               <Cell key={name} fill={SUPPRESSION_PALETTE[name]} />
             ))}
           </Pie>
-          <RTooltip
-            formatter={(value: number, name: string) => [value, labelFor(name, labels)]}
-          />
+          <RTooltip formatter={(value: number, name: string) => [value, labelFor(name, labels)]} />
           <Legend
             formatter={(name: string) => (
               <span className="text-xs text-muted-foreground">{labelFor(name, labels)}</span>
@@ -297,7 +282,12 @@ export interface DeliveryFunnelChartProps {
   stageLabels: FunnelStageLabels;
 }
 
-export function DeliveryFunnelChart({ totals, kind, title, stageLabels }: DeliveryFunnelChartProps) {
+export function DeliveryFunnelChart({
+  totals,
+  kind,
+  title,
+  stageLabels,
+}: DeliveryFunnelChartProps) {
   // Funnel rendered as horizontal bars with explicit magnitude labels.
   // Recharts has no first-class funnel chart; stacking horizontal bars is
   // the simplest accessible representation and matches how the ops team
@@ -305,14 +295,34 @@ export function DeliveryFunnelChart({ totals, kind, title, stageLabels }: Delive
   const stages =
     kind === "email"
       ? [
-          { label: stageLabels.sent, value: totals.sent + totals.delivered + totals.opened + totals.clicked, color: CHART_COLORS.sent },
-          { label: stageLabels.delivered, value: totals.delivered + totals.opened + totals.clicked, color: CHART_COLORS.delivered },
-          { label: stageLabels.opened, value: totals.opened + totals.clicked, color: CHART_COLORS.opened },
+          {
+            label: stageLabels.sent,
+            value: totals.sent + totals.delivered + totals.opened + totals.clicked,
+            color: CHART_COLORS.sent,
+          },
+          {
+            label: stageLabels.delivered,
+            value: totals.delivered + totals.opened + totals.clicked,
+            color: CHART_COLORS.delivered,
+          },
+          {
+            label: stageLabels.opened,
+            value: totals.opened + totals.clicked,
+            color: CHART_COLORS.opened,
+          },
           { label: stageLabels.clicked, value: totals.clicked, color: CHART_COLORS.clicked },
         ]
       : [
-          { label: stageLabels.sent, value: totals.sent + totals.pushDisplayed, color: CHART_COLORS.sent },
-          { label: stageLabels.displayed, value: totals.pushDisplayed, color: CHART_COLORS.displayed },
+          {
+            label: stageLabels.sent,
+            value: totals.sent + totals.pushDisplayed,
+            color: CHART_COLORS.sent,
+          },
+          {
+            label: stageLabels.displayed,
+            value: totals.pushDisplayed,
+            color: CHART_COLORS.displayed,
+          },
           { label: stageLabels.clicked, value: totals.pushClicked, color: CHART_COLORS.clicked },
         ];
 

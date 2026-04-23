@@ -36,10 +36,7 @@ import {
   SectionHeader,
   Skeleton,
 } from "@teranga/shared-ui";
-import {
-  NOTIFICATION_CATALOG,
-  type NotificationDefinition,
-} from "@teranga/shared-types";
+import { NOTIFICATION_CATALOG, type NotificationDefinition } from "@teranga/shared-types";
 import { useAdminDeliveryDashboard } from "@/hooks/use-admin-notifications";
 import {
   DeliveryFunnelChart,
@@ -108,7 +105,9 @@ export default function AdminDeliveryByKeyPage() {
   }, []);
 
   const query = useAdminDeliveryDashboard(
-    key ? { key, from: fromIso, to: toIso, granularity: "day" } : { from: fromIso, to: toIso, granularity: "day" },
+    key
+      ? { key, from: fromIso, to: toIso, granularity: "day" }
+      : { from: fromIso, to: toIso, granularity: "day" },
   );
 
   if (!key) {
@@ -193,11 +192,7 @@ export default function AdminDeliveryByKeyPage() {
           severity="destructive"
           kicker={t("errorKicker")}
           title={t("detail.errorTitle")}
-          description={
-            query.error instanceof Error
-              ? query.error.message
-              : t("errorDescription")
-          }
+          description={query.error instanceof Error ? query.error.message : t("errorDescription")}
         />
       )}
 

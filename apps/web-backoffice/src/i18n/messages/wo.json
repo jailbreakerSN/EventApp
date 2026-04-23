@@ -6,6 +6,25 @@
     "note": "Seed file — covers the highest-visibility keys (nav, auth, common actions). Long-tail translations land with TASK-P1-I1d."
   },
   "common": {
+    "topbar": {
+      "menuOpen": "Ubbi menu",
+      "menuClose": "Tëj menu",
+      "paletteAria": "Ubbi palette bu komand (Ctrl+K)",
+      "paletteTitle": "Palette bu komand",
+      "paletteLabel": "Seet…",
+      "shortcutsAria": "Raccourcis klaawe (?)",
+      "logoutAria": "Génn",
+      "avatarAltNamed": "Nataal bu {name}",
+      "avatarAltGeneric": "Nataal bu profil",
+      "notificationsError": "Mënul jël yoolu yi. Jéem ko ci biir ab waxtu."
+    },
+    "roles": {
+      "super_admin": "Super Admin",
+      "organizer": "Organisateur",
+      "co_organizer": "Co-organisateur",
+      "staff": "Staff",
+      "participant": "Participant"
+    },
     "loading": "Di yëngu...",
     "error": "Bënn mbir bu bon am na",
     "retry": "Jéem waaf",
@@ -169,6 +188,20 @@
     }
   },
   "admin": {
+    "shell": {
+      "loading": "Ñu ngi yeeg administration...",
+      "skipToContent": "Dem ci barab bu gën a njariñ",
+      "paletteHint": "Seet · bind, event, lieu…",
+      "paletteAria": "Ubbi palette bu komand",
+      "identityMenu": "Ubbi menu bu jëfandikukat",
+      "identityMenuLabel": "Menu bu jëfandikukat administration",
+      "viewAsOrganizer": "Xool ni organisateur",
+      "signOut": "Génn"
+    },
+    "nav": {
+      "administrationPill": "Administration",
+      "administrationPillAria": "Dem ci konsol administration"
+    },
     "notifications": {
       "breadcrumbAdmin": "Administration",
       "breadcrumbCurrent": "Yëglekaay",
