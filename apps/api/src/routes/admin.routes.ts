@@ -373,11 +373,20 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
       };
 
       // Phase 2.4 — transactional upsert + history append so the audit
-      // trail never drifts from the live setting. Fetched previous
-      // outside the tx (read-only; safe) so we can compute the diff.
-      const previous = await notificationSettingsRepository.findByKey(key);
-      const diff = computeSettingDiff(previous, setting);
-      const historyId = await db.runTransaction(async (tx) => {
+      // trail never drifts from the live setting.
+      //
+      // Phase D.M-3 fix — the `previous` read MUST happen inside the
+      // transaction, not before it. Before this change two concurrent
+      // PUTs from two admins to the same key would both observe the
+      // same `previous` snapshot, both append identical-previousValue
+      // rows to `notificationSettingsHistory`, and the second writer
+      // would silently clobber the first's diff chain. Using
+      // `findByKeyTx(tx, …)` adds the doc to the transaction's read
+      // set — Firestore retries the closure on conflict, so the diff
+      // always reflects the actual previous state at commit time.
+      const { historyId } = await db.runTransaction(async (tx) => {
+        const previous = await notificationSettingsRepository.findByKeyTx(tx, key, null);
+        const diff = computeSettingDiff(previous, setting);
         const ref = db
           .collection(COLLECTIONS.NOTIFICATION_SETTINGS)
           .doc(notificationSettingDocId(key, null));
@@ -395,7 +404,7 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
           },
           { merge: false },
         );
-        return notificationSettingsHistoryRepository.append(
+        const id = await notificationSettingsHistoryRepository.append(
           {
             key,
             organizationId: null,
@@ -409,6 +418,7 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
           },
           tx,
         );
+        return { historyId: id };
       });
 
       // Emit the audit event — the listener wired in Phase 1 routes
@@ -708,6 +718,26 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
         windowSec: 60,
       });
       if (!limitRes.allowed) {
+        // Phase D.L-1 — structured log emitted before the 429 response so
+        // ops has a signal for adversarial / misbehaving admin clients
+        // without waiting for the endpoint to show up in the Resend-
+        // webhook bounce-rate monitor (wrong monitor, different layer).
+        // Fields kept minimal: actor (super-admin uid, already non-PII
+        // at this layer), count vs limit (so a spike is visible in
+        // Cloud Logging dashboards), requestId for cross-log
+        // correlation. A downstream log-based metric + alerting policy
+        // can layer on top of this line without a code change.
+        process.stderr.write(
+          JSON.stringify({
+            level: "warn",
+            event: "admin.delivery_dashboard.rate_limited",
+            actorId: request.user!.uid,
+            requestId: getRequestId(),
+            count: limitRes.count,
+            limit: limitRes.limit,
+            retryAfterSec: limitRes.retryAfterSec,
+          }) + "\n",
+        );
         if (limitRes.retryAfterSec !== undefined) {
           reply.header("Retry-After", String(limitRes.retryAfterSec));
         }

@@ -1,4 +1,5 @@
 import { NotificationSettingSchema, type NotificationSetting } from "@teranga/shared-types";
+import type { Transaction } from "firebase-admin/firestore";
 import { COLLECTIONS } from "@/config/firebase";
 import { BaseRepository } from "./base.repository";
 
@@ -139,6 +140,32 @@ export class NotificationSettingsRepository extends BaseRepository<NotificationS
     const doc = await this.collection.doc(docId).get();
     if (!doc.exists) return null;
     const data = doc.data();
+    if (!data) return null;
+    return this.parseFirestoreDoc(docId, data, { key, organizationId });
+  }
+
+  /**
+   * Transaction-scoped read (Phase D.M-3). Use this inside
+   * `db.runTransaction()` when the caller needs a read-modify-write
+   * cycle to be atomic under concurrent PUTs — Firestore tracks the
+   * read set and retries the whole closure if another writer touched
+   * the same doc between the read and commit. Routes that fetch the
+   * "previous" setting OUTSIDE the transaction (legacy pattern) race
+   * on two concurrent admin PUTs to the same key: both see the same
+   * previous snapshot, both append to history with the same
+   * `previousValue`, and the second write silently clobbers the
+   * first's diff chain. Prefer this method every time the result
+   * feeds a write in the same transaction.
+   */
+  async findByKeyTx(
+    tx: Transaction,
+    key: string,
+    organizationId: string | null = null,
+  ): Promise<NotificationSetting | null> {
+    const docId = notificationSettingDocId(key, organizationId);
+    const snap = await tx.get(this.collection.doc(docId));
+    if (!snap.exists) return null;
+    const data = snap.data();
     if (!data) return null;
     return this.parseFirestoreDoc(docId, data, { key, organizationId });
   }
