@@ -90,9 +90,15 @@ vi.mock("@/services/notification-dispatcher.service", () => ({
 
 // Dispatch-log reads in the `/history` route aren't exercised here; stub
 // so the import chain resolves cleanly.
+// `vi.hoisted` so the mock factory (which is itself hoisted by vitest)
+// can close over the spy without a TDZ error.
+const { mockBackAnnotatePush } = vi.hoisted(() => ({
+  mockBackAnnotatePush: vi.fn().mockResolvedValue({ matched: 1, updated: 1 }),
+}));
 vi.mock("@/repositories/notification-dispatch-log.repository", () => ({
   notificationDispatchLogRepository: {
     listRecentForUser: vi.fn().mockResolvedValue([]),
+    backAnnotatePushEvent: mockBackAnnotatePush,
   },
 }));
 
@@ -510,5 +516,58 @@ describe("POST /v1/notifications/test-send", () => {
         windowSec: 3600,
       }),
     );
+  });
+});
+
+// ─── Phase D.2 — SW back-annotation ──────────────────────────────────────
+describe("Phase D.2 — Web Push SW back-annotation", () => {
+  beforeEach(() => {
+    mockBackAnnotatePush.mockClear();
+  });
+
+  it("POST /:id/push-displayed returns 204 and back-annotates the dispatch log", async () => {
+    // Route is optionalAuth so we don't need a bearer token. The SW can't
+    // attach one from a closed tab; this matches the Phase C.2 contract.
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/notifications/notif-doc-abc/push-displayed",
+    });
+    expect(res.statusCode).toBe(204);
+    expect(mockBackAnnotatePush).toHaveBeenCalledTimes(1);
+    expect(mockBackAnnotatePush).toHaveBeenCalledWith(
+      expect.objectContaining({
+        notificationId: "notif-doc-abc",
+        kind: "displayed",
+      }),
+    );
+    // occurredAt is a fresh ISO string — just assert shape.
+    const { occurredAt } = mockBackAnnotatePush.mock.calls[0]![0];
+    expect(typeof occurredAt).toBe("string");
+    expect(() => new Date(occurredAt).toISOString()).not.toThrow();
+  });
+
+  it("POST /:id/push-clicked returns 204 and back-annotates with kind=clicked", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/notifications/notif-doc-xyz/push-clicked",
+    });
+    expect(res.statusCode).toBe(204);
+    expect(mockBackAnnotatePush).toHaveBeenCalledWith(
+      expect.objectContaining({
+        notificationId: "notif-doc-xyz",
+        kind: "clicked",
+      }),
+    );
+  });
+
+  it("back-annotation failure does not 500 the SW ping (fire-and-forget)", async () => {
+    // Even if the repo throws, the route returns 204 — the SW retry path
+    // would otherwise spin.
+    mockBackAnnotatePush.mockRejectedValueOnce(new Error("Firestore down"));
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/notifications/notif-doc-flaky/push-displayed",
+    });
+    expect(res.statusCode).toBe(204);
   });
 });

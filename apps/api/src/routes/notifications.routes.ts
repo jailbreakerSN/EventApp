@@ -765,12 +765,26 @@ export const notificationRoutes: FastifyPluginAsync = async (fastify) => {
     async (request, reply) => {
       const { notificationId } = request.params as z.infer<typeof ParamsWithNotificationId>;
       const actorId = request.user?.uid ?? "anonymous";
+      const occurredAt = new Date().toISOString();
+
+      // Phase D.2 — back-annotate the dispatch-log row(s) whose
+      // messageId matches this notification doc id (the in-app channel
+      // adapter stamps `messageId = <notificationDocId>` at send time).
+      // Fire-and-forget: we still emit the audit event even when the
+      // back-annotation turns up zero rows (e.g. a pre-Phase-D.1 send
+      // that has no log row yet).
+      void notificationDispatchLogRepository.backAnnotatePushEvent({
+        notificationId,
+        kind: "displayed",
+        occurredAt,
+      });
+
       eventBus.emit("push.displayed", {
         userId: actorId,
         notificationId,
         actorId,
         requestId: getRequestId(),
-        timestamp: new Date().toISOString(),
+        timestamp: occurredAt,
       });
       return reply.status(204).send();
     },
@@ -795,12 +809,21 @@ export const notificationRoutes: FastifyPluginAsync = async (fastify) => {
     async (request, reply) => {
       const { notificationId } = request.params as z.infer<typeof ParamsWithNotificationId>;
       const actorId = request.user?.uid ?? "anonymous";
+      const occurredAt = new Date().toISOString();
+
+      // Phase D.2 — see push-displayed handler above for the pattern.
+      void notificationDispatchLogRepository.backAnnotatePushEvent({
+        notificationId,
+        kind: "clicked",
+        occurredAt,
+      });
+
       eventBus.emit("push.clicked", {
         userId: actorId,
         notificationId,
         actorId,
         requestId: getRequestId(),
-        timestamp: new Date().toISOString(),
+        timestamp: occurredAt,
       });
       return reply.status(204).send();
     },

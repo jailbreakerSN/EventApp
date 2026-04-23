@@ -92,7 +92,7 @@ export interface DispatchLogEntry {
   requestId: string;
   actorId: string;
 
-  // ─── Phase 2.5 — delivery observability ─────────────────────────────
+  // ─── Phase 2.5 — delivery observability (email) ─────────────────────
   // Back-annotated by the Resend webhook. Never written on the initial
   // append — the dispatcher only knows the send was accepted by the
   // provider, not that it was delivered.
@@ -102,6 +102,17 @@ export interface DispatchLogEntry {
   clickedAt?: string;
   bouncedAt?: string;
   complainedAt?: string;
+
+  // ─── Phase D.2 — push delivery observability ────────────────────────
+  // Back-annotated by POST /v1/notifications/:id/push-displayed and
+  // .../push-clicked when the service worker reports that a background
+  // FCM push was rendered or tapped. Kept orthogonal to the email
+  // delivery-status lifecycle above — a push has no "delivered" vs
+  // "opened" split (the browser either shows it or it never happened).
+  // Rows for the `in_app` channel fill these in; rows for `email`
+  // never do.
+  pushDisplayedAt?: string;
+  pushClickedAt?: string;
 
   // Firestore TTL target. 90 days for normal sends; 365 for bounced/
   // complained compliance rows. See computeDispatchLogExpiry below.
@@ -339,6 +350,67 @@ export class NotificationDispatchLogRepository extends BaseRepository<DispatchLo
         }) + "\n",
       );
       return [];
+    }
+  }
+
+  /**
+   * Phase D.2 — push delivery back-annotation.
+   *
+   * When the service worker POSTs /v1/notifications/:id/push-displayed
+   * or .../push-clicked, this method looks up every dispatch-log row
+   * whose `messageId` equals the notification doc id (the in-app
+   * adapter sets this at send time) and stamps the corresponding
+   * timestamp field. Idempotent — repeated back-annotations only ever
+   * stamp the same timestamp, never demote.
+   *
+   * Reuses the (messageId, attemptedAt) composite index already declared
+   * for Phase 2.5's webhook back-annotation. Fails silently (fire-and-
+   * forget) so a missing log row (older than TTL, or pre-Phase-D.1) does
+   * not 500 the SW ping.
+   */
+  async backAnnotatePushEvent(params: {
+    notificationId: string;
+    kind: "displayed" | "clicked";
+    occurredAt: string;
+  }): Promise<{ matched: number; updated: number }> {
+    const { notificationId, kind, occurredAt } = params;
+    if (!notificationId) return { matched: 0, updated: 0 };
+    const tsField = kind === "displayed" ? "pushDisplayedAt" : "pushClickedAt";
+    try {
+      const snap = await this.collection
+        .where("messageId", "==", notificationId)
+        .limit(10)
+        .get();
+      if (snap.empty) return { matched: 0, updated: 0 };
+
+      let updated = 0;
+      const batch = this.collection.firestore.batch();
+      for (const doc of snap.docs) {
+        const data = doc.data() as DispatchLogEntry;
+        // Only stamp when the field is unset — the SW can fire the
+        // same event multiple times (tab reopen, network retry) and a
+        // first-displayed timestamp is more useful than a
+        // last-displayed one. If you ever want "last displayed",
+        // add a separate field; don't overload this one.
+        if (data[tsField] != null) continue;
+        batch.update(doc.ref, { [tsField]: occurredAt });
+        updated++;
+      }
+      if (updated > 0) {
+        await batch.commit();
+      }
+      return { matched: snap.size, updated };
+    } catch (err) {
+      process.stderr.write(
+        JSON.stringify({
+          level: "warn",
+          event: "notification.dispatch_log_push_backannotate_failed",
+          notificationId,
+          kind,
+          err: err instanceof Error ? err.message : String(err),
+        }) + "\n",
+      );
+      return { matched: 0, updated: 0 };
     }
   }
 
