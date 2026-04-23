@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import {
   Card,
   CardContent,
@@ -75,9 +76,15 @@ const STATUS_LABELS: Record<string, string> = {
 export default function AdminVenuesPage() {
   const tCommon = useTranslations("common");
   void tCommon;
+  // Hydrate the status filter from the URL so deep-links from the admin
+  // inbox (e.g. `/admin/venues?status=pending` from the "X lieux en
+  // attente de modération" signal in `admin.service.ts:getInboxSignals`)
+  // actually apply the filter instead of silently showing the whole list.
+  const searchParams = useSearchParams();
+  const initialStatus = searchParams?.get("status") ?? "";
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState(initialStatus);
   const [page, setPage] = useState(1);
   const limit = 20;
 

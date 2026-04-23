@@ -377,7 +377,11 @@ class AdminService extends BaseService {
         title: `${pastDueSubs} abonnement${pastDueSubs > 1 ? "s" : ""} en impayé`,
         description: "Relance en cours — accompagner avant churn.",
         count: pastDueSubs,
-        href: "/admin/organizations",
+        // `/admin/subscriptions` is the canonical subscriptions surface
+        // (closure F). Previously the href went to `/admin/organizations`
+        // without any filter — the admin would land on the full org list
+        // with no link between the signal count and what they saw.
+        href: "/admin/subscriptions",
       });
     }
 
