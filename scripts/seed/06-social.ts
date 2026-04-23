@@ -1099,9 +1099,20 @@ const EXPANSION_AUDIT: AuditEntry[] = [
     organizationId: IDS.freeOrgId,
     details: { from: "starter", to: "free", immediate: false },
   },
-  // NOTE: AuditActionSchema carries no "subscription.cancelled" action —
-  // cancellations reduce to `subscription.downgraded` (to free) and the
-  // cancellation reason is captured in the subscription doc itself.
+  // NOTE: AuditActionSchema now carries "subscription.cancelled" — the
+  // dedicated cancellation audit row below captures the org-003 flow.
+  {
+    action: "subscription.cancelled",
+    resourceType: "organization",
+    resourceId: IDS.freeOrgId,
+    actorId: IDS.freeOrganizer,
+    eventId: null,
+    organizationId: IDS.freeOrgId,
+    details: {
+      from: "starter",
+      reason: "Downgraded back to free after end of paid month.",
+    },
+  },
   {
     action: "subscription.period_rolled_over",
     resourceType: "organization",
