@@ -206,3 +206,28 @@ la première passe avait manqués :
 - `tsc --noEmit` clean sur `apps/api` et `apps/web-backoffice`.
 - La surface impersonation est maintenant bout-en-bout testée : start (5 cas) + end (3 cas).
 - La taxonomie `platform:*` est effective — un utilisateur à qui on accorde `platform:support` atteint maintenant `/admin/**` au lieu d'être redirigé vers `/unauthorized`.
+
+## Revue #3 — Hardening impersonation (closure I)
+
+Une troisième passe des agents de revue (security-reviewer, firestore-transaction-auditor, domain-event-auditor) sur closure H a soulevé 1 FAIL non-bloquant + 3 observations hygiène + 1 convention deviation. Toutes fermées sous closure I :
+
+| Observation                                                                                                    | Correction                                                                                                                                                                            | Commit                |
+| -------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------- |
+| Bouton "Se connecter en tant que" gaté strictement sur `super_admin` — `platform:super_admin` exclu            | I1 — `useAdminRole().isSuperAdmin` (accepte super_admin ET platform:super_admin)                                                                                                      | `fcccbab`             |
+| `actorRole` stamped codé en dur "super_admin" dans les audit records d'impersonation                           | I2 — `resolveImpersonationRole` pour start + `resolveActorRoleByUid` pour end (lookup Firestore, fallback tracé)                                                                      | `fcccbab`             |
+| `auth.revokeRefreshTokens` wrappé dans try/catch silencieux — un échec transient produisait un audit mensonger | I3 — try/catch supprimé, erreurs remontent au route handler, l'audit n'est pas écrit en cas d'échec                                                                                   | `fcccbab`             |
+| `endImpersonation` écrit un audit record directement mais n'émet PAS de domain event — déviation convention    | I4 — `user.impersonation_ended` ajouté au `DomainEventMap` + émis après revoke+audit OK                                                                                               | `fcccbab`             |
+| `/impersonation/end` sans `requirePermission` — non documenté comme exception volontaire                       | I5 — commentaire en-tête de route expliquant que l'autorisation est assurée par le claim signé `impersonatedBy` validé côté service (le caller porte les rôles du user impersonnifié) | `fcccbab`             |
+| Target-guard startImpersonation ne rejette que les super_admin targets, pas les platform:super_admin           | I.1 — guard étendu aux deux rôles top-tier symétriquement                                                                                                                             | `<closure-I1 commit>` |
+
+**Tests ajoutés** :
+
+- startImpersonation accepte platform:super_admin + stamp correct.
+- startImpersonation refuse platform:support (et extensivement support/finance/ops/security).
+- startImpersonation refuse d'impersonnifier un platform:super_admin target (parité top-tier).
+- endImpersonation happy-path assert event emission + actorRole "super_admin" avec source "firestore".
+- endImpersonation stamp "platform:super_admin" quand l'admin a ce rôle granulaire.
+- endImpersonation fallback vers super_admin + source "fallback" quand le lookup admin throw.
+- endImpersonation propage les échecs de revokeRefreshTokens et ne produit PAS d'audit row.
+
+**Résultats** : 54 tests admin.service, 1356 tests API total, 105 tests shared-types, typecheck clean. Les trois agents de revue repassent `APPROVE` / `NO_RACES_FOUND` / `NO_MISSES`.

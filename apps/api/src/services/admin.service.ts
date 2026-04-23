@@ -550,9 +550,14 @@ class AdminService extends BaseService {
     }
     const targetProfile = targetDoc.data() as UserProfile;
 
-    // Never impersonate another super_admin — blocks privilege-escalation
-    // loops and forces audit-log trail on the HIGHEST-privilege admin.
-    if (targetProfile.roles?.includes("super_admin") && targetUid !== user.uid) {
+    // Never impersonate another top-tier admin — blocks privilege
+    // escalation / lateral-attack loops and forces the audit trail on
+    // the HIGHEST-privilege admin. Closure I: both `super_admin` and
+    // `platform:super_admin` are top-tier; guard both target classes.
+    const targetRoles = targetProfile.roles ?? [];
+    const targetIsTopAdmin =
+      targetRoles.includes("super_admin") || targetRoles.includes("platform:super_admin");
+    if (targetIsTopAdmin && targetUid !== user.uid) {
       throw new ForbiddenError("Cannot impersonate another super_admin.");
     }
 

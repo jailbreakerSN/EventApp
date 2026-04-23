@@ -846,6 +846,23 @@ describe("AdminService.startImpersonation (Phase 4)", () => {
     expect(mockAuditAdd).not.toHaveBeenCalled();
   });
 
+  it("refuses impersonating a platform:super_admin (top-tier parity)", async () => {
+    // Closure I hygiene — both legacy super_admin and the granular
+    // platform:super_admin are top-tier. The target guard must reject
+    // both classes symmetrically so the audit trail always ends on the
+    // highest-privilege admin.
+    mockTargetDoc({
+      ...participantTarget,
+      uid: "another-top-admin",
+      roles: ["platform:super_admin"],
+    });
+    await expect(adminService.startImpersonation(admin, "another-top-admin")).rejects.toThrow(
+      /another super_admin/i,
+    );
+    expect(auth.createCustomToken).not.toHaveBeenCalled();
+    expect(mockAuditAdd).not.toHaveBeenCalled();
+  });
+
   it("throws NotFoundError when the target user doc does not exist", async () => {
     mockTargetDoc(undefined, false);
     await expect(adminService.startImpersonation(admin, "ghost-user")).rejects.toThrow();
