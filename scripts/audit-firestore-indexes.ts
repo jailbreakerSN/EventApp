@@ -61,8 +61,15 @@ const COLLECTIONS_SOURCES = [
 ];
 const SCAN_DIRS = [
   path.join(ROOT, "apps/api/src/repositories"),
+  path.join(ROOT, "apps/api/src/services"),
   path.join(ROOT, "apps/functions/src/triggers"),
 ];
+// Services don't declare a class-collection binding, so the primary
+// `this.findMany(...)` → composite-index inference isn't driven from
+// them. They are scanned ONLY to pick up the caller-controlled orderBy
+// pattern (`orderBy: query.orderBy` without a literal fallback) that
+// the repository layer hides from the audit. See the staging
+// regression on GET /v1/venues fixed alongside this change.
 const SKIP_FILES = new Set(["base.repository.ts"]); // generic helper, no collection
 
 // Inequality ops treated as "range" for Firestore index rules.
@@ -144,8 +151,17 @@ function walkDir(dir: string): string[] {
   const out: string[] = [];
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, entry.name);
+    // Skip test directories + files — they hold synthetic fixtures
+    // (e.g. `field` as a variable name) that trip the caller-orderBy
+    // heuristic without touching production code paths.
+    if (entry.name === "__tests__" || entry.name === "__mocks__") continue;
     if (entry.isDirectory()) out.push(...walkDir(full));
-    else if (entry.isFile() && entry.name.endsWith(".ts") && !SKIP_FILES.has(entry.name))
+    else if (
+      entry.isFile() &&
+      entry.name.endsWith(".ts") &&
+      !entry.name.endsWith(".test.ts") &&
+      !SKIP_FILES.has(entry.name)
+    )
       out.push(full);
   }
   return out;
@@ -268,10 +284,26 @@ type OrderByFragment = {
   dir: "ASCENDING" | "DESCENDING";
 };
 
+/**
+ * Info surfaced when a service forwards `orderBy: <variable>` to a repo
+ * method without a literal fallback. The audit cannot resolve the value
+ * at scan-time, so it warns the reviewer to double-check that composite
+ * indexes exist for every orderBy value in the Zod schema the variable
+ * comes from. Tracking commit (2026-04-23): GET /v1/venues 500'd on
+ * staging because VenueQuerySchema.orderBy defaults to "name" but the
+ * audit only saw `orderBy: query.orderBy` (no literal) and generated
+ * an index shape that assumed the BaseRepository default ("createdAt").
+ */
+type UnresolvedOrderBy = {
+  /** The variable expression we saw, e.g. `query.orderBy` or `pagination.orderBy`. */
+  expression: string;
+};
+
 function extractQueryFragments(body: string): {
   wheres: QueryFragment[];
   orderBys: OrderByFragment[];
   hasSelect: boolean;
+  unresolvedOrderBys: UnresolvedOrderBy[];
 } {
   const wheres: QueryFragment[] = [];
   const orderBys: OrderByFragment[] = [];
@@ -343,7 +375,30 @@ function extractQueryFragments(body: string): {
   // use the default orderBy but still need the equality index.
   const hasSelect = /\.select\s*\(/.test(body);
 
-  return { wheres, orderBys, hasSelect };
+  // Second pass — flag `orderBy: <variable>` WITHOUT a literal fallback.
+  // These are the patterns the primary regexes above can't resolve
+  // (e.g. `orderBy: query.orderBy` where the default lives in a Zod
+  // schema the audit cannot see). We surface each occurrence as a
+  // warning so the reviewer can cross-check indexes against the Zod
+  // schema's orderBy vocabulary. Matches:
+  //   orderBy: query.orderBy
+  //   orderBy: pagination.orderBy
+  //   orderBy: filters.orderBy
+  // But NOT:
+  //   orderBy: "name"           (resolved by the primary regex)
+  //   orderBy: x ?? "createdAt" (resolved by the primary regex)
+  const unresolvedOrderBys: UnresolvedOrderBy[] = [];
+  const orderByVarRe = /orderBy\s*:\s*([a-zA-Z_$][\w.$]*)\s*(?=[,}\n])/g;
+  while ((m = orderByVarRe.exec(body)) !== null) {
+    const expr = m[1];
+    // Skip any match that's already the LHS of a `??` — the primary
+    // regex handled those.
+    const afterMatch = body.slice(m.index + m[0].length, m.index + m[0].length + 5);
+    if (/^\s*\?\?/.test(afterMatch)) continue;
+    unresolvedOrderBys.push({ expression: expr });
+  }
+
+  return { wheres, orderBys, hasSelect, unresolvedOrderBys };
 }
 
 // Scan for `if (...) { ... }` blocks and return the [start, end) character
@@ -745,12 +800,36 @@ function main(): void {
         // Skip constructors.
         if (method.name === "constructor") continue;
 
-        const { wheres, orderBys, hasSelect } = extractQueryFragments(method.body);
+        const { wheres, orderBys, hasSelect, unresolvedOrderBys } = extractQueryFragments(
+          method.body,
+        );
 
         // Also inspect raw .collection(COLLECTIONS.X) chains embedded in this method.
         const rawChunks = extractRawCollectionQueries(method.body, collectionsMap);
 
         const source_ = `${relPath}:${method.startLine}`;
+
+        // Warn when an orderBy is forwarded from a caller-controlled
+        // variable without a literal fallback. The audit cannot resolve
+        // the value at scan-time; indexes may be missing for some
+        // orderBy values in the Zod schema. Surface the occurrence so
+        // the reviewer can cross-check manually against the schema
+        // vocabulary (commonly 3–6 orderBy × orderDir combinations).
+        //
+        // This is the detection-gap that caused the staging regression
+        // on GET /v1/venues — `orderBy: query.orderBy` from
+        // VenueQuerySchema had a Zod default of "name", but the index
+        // catalog only carried `(status, createdAt DESC)` so a default
+        // page load 500'd. See the commit doubling the venue index set.
+        for (const unresolved of unresolvedOrderBys) {
+          warnings.push({
+            source: source_,
+            message:
+              `orderBy forwarded from \`${unresolved.expression}\` without a literal fallback — ` +
+              `audit cannot resolve the value. Ensure composite indexes cover every orderBy × orderDir ` +
+              `combination declared in the associated Zod query schema (e.g. VenueQuerySchema.orderBy).`,
+          });
+        }
 
         // Class-based repository method: use its class's collection.
         // We need to find which class this method belongs to — match by
