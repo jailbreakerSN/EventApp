@@ -118,12 +118,6 @@ export default function AdminVenuesPage() {
         <BreadcrumbList>
           <BreadcrumbItem>
             <BreadcrumbLink asChild>
-              <Link href="/dashboard">Tableau de bord</Link>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
               <Link href="/admin">Administration</Link>
             </BreadcrumbLink>
           </BreadcrumbItem>

@@ -275,12 +275,6 @@ export default function AdminNotificationsPage() {
         <BreadcrumbList>
           <BreadcrumbItem>
             <BreadcrumbLink asChild>
-              <Link href="/dashboard">Tableau de bord</Link>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
               <Link href="/admin">{t("breadcrumbAdmin")}</Link>
             </BreadcrumbLink>
           </BreadcrumbItem>

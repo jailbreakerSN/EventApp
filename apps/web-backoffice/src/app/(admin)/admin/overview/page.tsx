@@ -87,12 +87,12 @@ export default function AdminPage() {
         <BreadcrumbList>
           <BreadcrumbItem>
             <BreadcrumbLink asChild>
-              <Link href="/dashboard">Tableau de bord</Link>
+              <Link href="/admin">Administration</Link>
             </BreadcrumbLink>
           </BreadcrumbItem>
           <BreadcrumbSeparator />
           <BreadcrumbItem>
-            <BreadcrumbPage>Administration</BreadcrumbPage>
+            <BreadcrumbPage>Vue d&apos;ensemble</BreadcrumbPage>
           </BreadcrumbItem>
         </BreadcrumbList>
       </Breadcrumb>

@@ -29,8 +29,9 @@
  * CLAUDE.md §H6 — operational necessity. No banner is rendered here.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { ChevronDown, Eye, LogOut } from "lucide-react";
 import { Badge } from "@teranga/shared-ui";
 import { useAuth } from "@/hooks/use-auth";
 import { useAdminRole } from "@/hooks/use-admin-role";
@@ -40,10 +41,12 @@ import { CommandPalette } from "@/components/admin/command-palette";
 import { ImpersonationBanner } from "@/components/admin/impersonation-banner";
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
-  const { user, loading } = useAuth();
+  const { user, loading, logout } = useAuth();
   const adminRole = useAdminRole();
   const router = useRouter();
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [identityOpen, setIdentityOpen] = useState(false);
+  const identityRef = useRef<HTMLDivElement>(null);
 
   // Auth + admin role gate — ran once the session resolves.
   useEffect(() => {
@@ -69,6 +72,25 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onKey]);
+
+  // Close the identity dropdown when clicking outside or pressing Escape.
+  useEffect(() => {
+    if (!identityOpen) return;
+    const onClickOutside = (e: MouseEvent) => {
+      if (identityRef.current && !identityRef.current.contains(e.target as Node)) {
+        setIdentityOpen(false);
+      }
+    };
+    const onEscape = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setIdentityOpen(false);
+    };
+    document.addEventListener("mousedown", onClickOutside);
+    document.addEventListener("keydown", onEscape);
+    return () => {
+      document.removeEventListener("mousedown", onClickOutside);
+      document.removeEventListener("keydown", onEscape);
+    };
+  }, [identityOpen]);
 
   if (loading) return <BrandedLoader label="Chargement de l'administration..." />;
   if (!user || !adminRole) return null;
@@ -125,13 +147,54 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               </button>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="relative flex items-center gap-3" ref={identityRef}>
               <Badge variant="outline" className="text-[10px]">
                 {roleLabel}
               </Badge>
-              <span className="text-xs text-muted-foreground" aria-label="Utilisateur actif">
-                {user.displayName ?? user.email}
-              </span>
+              <button
+                type="button"
+                onClick={() => setIdentityOpen((prev) => !prev)}
+                className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                aria-haspopup="menu"
+                aria-expanded={identityOpen}
+                aria-label="Ouvrir le menu utilisateur"
+              >
+                <span className="max-w-[160px] truncate">{user.displayName ?? user.email}</span>
+                <ChevronDown className="h-3 w-3 shrink-0" aria-hidden="true" />
+              </button>
+              {identityOpen && (
+                <div
+                  role="menu"
+                  aria-label="Menu utilisateur administration"
+                  className="absolute right-0 top-full z-50 mt-1 w-56 overflow-hidden rounded-md border border-border bg-background shadow-lg"
+                >
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setIdentityOpen(false);
+                      router.push("/dashboard");
+                    }}
+                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-foreground hover:bg-muted"
+                  >
+                    <Eye className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+                    Voir comme organisateur
+                  </button>
+                  <div className="border-t border-border" />
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setIdentityOpen(false);
+                      void logout();
+                    }}
+                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-foreground hover:bg-muted"
+                  >
+                    <LogOut className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+                    Se déconnecter
+                  </button>
+                </div>
+              )}
             </div>
           </header>
 
