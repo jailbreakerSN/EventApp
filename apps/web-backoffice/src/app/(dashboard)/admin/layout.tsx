@@ -7,13 +7,14 @@
  *   - Persistent sidebar (AdminSidebar, collapsible, persisted in localStorage)
  *   - Top bar with active admin identity + effective role pill
  *   - Global ⌘K / Ctrl+K keyboard shortcut → CommandPalette
- *   - Super-admin permission gate (unchanged from previous behaviour)
+ *   - Admin-role permission gate (super_admin OR any platform:* role)
  *
  * Design notes:
- * - Super-admin check lives AT THIS LAYER so every nested page inherits
- *   protection without re-implementing the gate. Phase 4 will replace
- *   the single super_admin check with a permission-matrix lookup that
- *   lets per-role sub-admins access the routes they're scoped to.
+ * - The gate delegates to `useAdminRole()` which is the single source of
+ *   truth for "is this caller an admin?". It accepts both the legacy
+ *   `super_admin` role and the granular `platform:*` roles introduced
+ *   in closure C. Without this the `platform:*` taxonomy would be
+ *   dead-code — redirected to /unauthorized before reaching any page.
  * - The shell is flex-based (sidebar + content) so content stretches to
  *   fill available width and scrolls independently of the sidebar.
  */
@@ -28,18 +29,19 @@ import { AdminSidebar } from "@/components/admin/admin-sidebar";
 import { CommandPalette } from "@/components/admin/command-palette";
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
-  const { user, loading, hasRole } = useAuth();
+  const { user, loading } = useAuth();
   const adminRole = useAdminRole();
   const router = useRouter();
   const [paletteOpen, setPaletteOpen] = useState(false);
 
-  // Permission gate (Phase 1 parity). Phase 4 swaps for a granular check.
+  // Permission gate — accept super_admin AND every platform:* role.
+  // `useAdminRole()` returns null when the caller holds none of them.
   useEffect(() => {
     if (loading) return;
-    if (!user || !hasRole("super_admin")) {
+    if (!user || !adminRole) {
       router.replace("/unauthorized");
     }
-  }, [user, loading, hasRole, router]);
+  }, [user, loading, adminRole, router]);
 
   // ⌘K / Ctrl+K — open palette.
   const onKey = useCallback((e: KeyboardEvent) => {
@@ -55,11 +57,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   }, [onKey]);
 
   if (loading) return <BrandedLoader label="Chargement de l'administration..." />;
-  if (!user || !hasRole("super_admin")) return null;
+  if (!user || !adminRole) return null;
 
   // Display the effective admin role via the Phase E hook so platform:*
   // roles introduced in closure C show up as proper labels.
-  const roleLabel = adminRole?.label ?? "Admin";
+  const roleLabel = adminRole.label;
 
   return (
     <div className="flex h-[calc(100vh-4rem)] overflow-hidden">
