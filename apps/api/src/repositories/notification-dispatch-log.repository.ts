@@ -119,6 +119,62 @@ export interface DispatchLogEntry {
   expiresAt: string;
 }
 
+// ─── Phase D.3 — delivery dashboard aggregation contract ───────────────────
+// Shape consumed by the super-admin observability dashboard. Totals mirror
+// the dispatcher's outcome vocabulary (sent, delivered, opened, clicked for
+// email; pushDisplayed/pushClicked for in-app + push) and the suppression
+// reasons from NotificationSuppressionReasonSchema, plus `bounced` /
+// `complained` back-annotated from the Resend webhook and the
+// `deduplicated` status the dispatcher stamps on dedup short-circuits.
+// Exported for the route layer + admin dashboard tests.
+export interface DeliveryDashboardTotals {
+  sent: number;
+  delivered: number;
+  opened: number;
+  clicked: number;
+  pushDisplayed: number;
+  pushClicked: number;
+  suppressed: {
+    admin_disabled: number;
+    user_opted_out: number;
+    on_suppression_list: number;
+    no_recipient: number;
+    rate_limited: number;
+    deduplicated: number;
+    bounced: number;
+    complained: number;
+  };
+}
+
+export interface DeliveryDashboardBucket {
+  /** ISO timestamp at the granularity boundary (hour or day). */
+  bucket: string;
+  sent: number;
+  delivered: number;
+  opened: number;
+  clicked: number;
+  pushDisplayed: number;
+  pushClicked: number;
+  suppressed: number;
+}
+
+export interface DeliveryDashboardPerChannel {
+  channel: NotificationChannel;
+  sent: number;
+  suppressed: number;
+  /** delivered|displayed / sent, 0..1. 0 when sent === 0. */
+  successRate: number;
+}
+
+export interface DeliveryDashboardAggregate {
+  totals: DeliveryDashboardTotals;
+  timeseries: DeliveryDashboardBucket[];
+  perChannel: DeliveryDashboardPerChannel[];
+  /** Count of underlying dispatch-log rows scanned. Used by the route to
+   *  warn when the hard cap was hit. */
+  scanned: number;
+}
+
 export class NotificationDispatchLogRepository extends BaseRepository<DispatchLogEntry> {
   constructor() {
     super(COLLECTIONS.NOTIFICATION_DISPATCH_LOG, "NotificationDispatchLog");
@@ -526,9 +582,269 @@ export class NotificationDispatchLogRepository extends BaseRepository<DispatchLo
     }
     return tallies;
   }
+
+  /**
+   * Phase D.3 — super-admin delivery dashboard aggregation.
+   *
+   * Scans dispatch-log rows in the `[windowStart, windowEnd]` interval
+   * (window capped at 30 days at the route layer — matches the 90-day
+   * TTL minus a safety margin), optionally filtered by catalog key and
+   * channel, and emits three slices:
+   *
+   *   - totals: summed outcomes across the window
+   *   - timeseries: bucketed by `hour` or `day` using UTC boundaries
+   *   - perChannel: per-channel sent / suppressed / successRate
+   *
+   * Cost envelope: one collection-scan, ~10k row hard cap. The same
+   * cap used by `aggregateDeliveryOutcomes`. The route returns `scanned`
+   * so the UI can warn when the cap was hit (indicating the window
+   * should be narrowed).
+   *
+   * Correctness notes:
+   *   - Email outcomes (delivered/opened/clicked) derive from
+   *     `deliveryStatus` back-annotated by the Resend webhook. A row
+   *     without deliveryStatus is counted as `sent` when `status === "sent"`.
+   *   - `bounced` / `complained` are counted under suppressed (they
+   *     terminate the happy path), NOT under delivered/opened even if
+   *     those flags were once set — the webhook back-annotation strictly
+   *     promotes forward.
+   *   - Push outcomes (pushDisplayed/pushClicked) are orthogonal to the
+   *     email lifecycle — a single row can contribute to both `sent` and
+   *     `pushDisplayed`.
+   *   - `deduplicated` rows count as suppressed (no provider round-trip
+   *     happened) AND increment the `deduplicated` reason bucket.
+   */
+  async aggregateDeliveryDashboard(params: {
+    windowStart: string;
+    windowEnd: string;
+    granularity: "hour" | "day";
+    key?: string;
+    channel?: NotificationChannel;
+  }): Promise<DeliveryDashboardAggregate> {
+    const { windowStart, windowEnd, granularity, key, channel } = params;
+
+    const totals: DeliveryDashboardTotals = {
+      sent: 0,
+      delivered: 0,
+      opened: 0,
+      clicked: 0,
+      pushDisplayed: 0,
+      pushClicked: 0,
+      suppressed: {
+        admin_disabled: 0,
+        user_opted_out: 0,
+        on_suppression_list: 0,
+        no_recipient: 0,
+        rate_limited: 0,
+        deduplicated: 0,
+        bounced: 0,
+        complained: 0,
+      },
+    };
+
+    const bucketMap = new Map<string, DeliveryDashboardBucket>();
+    const perChannelMap = new Map<
+      NotificationChannel,
+      { sent: number; suppressed: number; deliveredOrDisplayed: number }
+    >();
+
+    let scanned = 0;
+    const HARD_ROW_CAP = 10_000;
+
+    try {
+      let q = this.collection
+        .where("attemptedAt", ">=", windowStart)
+        .where("attemptedAt", "<=", windowEnd);
+      if (key) q = q.where("key", "==", key);
+      if (channel) q = q.where("channel", "==", channel);
+
+      const snap = await q.limit(HARD_ROW_CAP).get();
+      scanned = snap.size;
+
+      for (const doc of snap.docs) {
+        const data = doc.data() as DispatchLogEntry;
+        const bucket = bucketKey(data.attemptedAt, granularity);
+
+        // Initialise per-bucket record lazily so we only allocate entries
+        // for time slots where activity actually happened.
+        let b = bucketMap.get(bucket);
+        if (!b) {
+          b = {
+            bucket,
+            sent: 0,
+            delivered: 0,
+            opened: 0,
+            clicked: 0,
+            pushDisplayed: 0,
+            pushClicked: 0,
+            suppressed: 0,
+          };
+          bucketMap.set(bucket, b);
+        }
+
+        const ch = data.channel;
+        let chRec = perChannelMap.get(ch);
+        if (!chRec) {
+          chRec = { sent: 0, suppressed: 0, deliveredOrDisplayed: 0 };
+          perChannelMap.set(ch, chRec);
+        }
+
+        // ── Primary status classification ────────────────────────────
+        if (data.status === "deduplicated") {
+          // Dedup rows never hit the provider. Count them as suppressed
+          // with reason=deduplicated so retry-storm audits are distinct
+          // from real suppressions.
+          totals.suppressed.deduplicated++;
+          b.suppressed++;
+          chRec.suppressed++;
+        } else if (data.status === "suppressed") {
+          // Map dispatcher reason → totals bucket. Webhook-originated
+          // bounced/complained rows set deliveryStatus AND
+          // status=suppressed — deliveryStatus wins so we double-count
+          // neither.
+          if (data.deliveryStatus === "bounced") {
+            totals.suppressed.bounced++;
+          } else if (data.deliveryStatus === "complained") {
+            totals.suppressed.complained++;
+          } else if (data.reason) {
+            // Defensive: only increment known reason keys so a stray
+            // Firestore value can't crash the aggregator.
+            switch (data.reason) {
+              case "admin_disabled":
+              case "user_opted_out":
+              case "on_suppression_list":
+              case "no_recipient":
+              case "bounced":
+                totals.suppressed[data.reason]++;
+                break;
+            }
+          }
+          b.suppressed++;
+          chRec.suppressed++;
+        } else if (data.status === "sent") {
+          // Email lifecycle — deliveryStatus may have been promoted by
+          // the webhook. Count at the highest attained state; do NOT
+          // double-count by incrementing sent+delivered+opened+clicked.
+          // Rationale: funnel charts read the bucketed totals as stacked
+          // values (sent - delivered = "in-flight"). If every delivered
+          // row also counted as sent, "sent" would permanently include
+          // everything that ever happened and the funnel collapses.
+          const deliveryStatus = data.deliveryStatus;
+          switch (deliveryStatus) {
+            case "clicked":
+              totals.clicked++;
+              b.clicked++;
+              chRec.deliveredOrDisplayed++;
+              break;
+            case "opened":
+              totals.opened++;
+              b.opened++;
+              chRec.deliveredOrDisplayed++;
+              break;
+            case "delivered":
+              totals.delivered++;
+              b.delivered++;
+              chRec.deliveredOrDisplayed++;
+              break;
+            case "bounced":
+              // Promoted to terminal failure via webhook but status
+              // may still read "sent" if the suppression-flip hasn't
+              // been applied. Count as suppressed/bounced to match
+              // operator intuition.
+              totals.suppressed.bounced++;
+              b.suppressed++;
+              chRec.suppressed++;
+              break;
+            case "complained":
+              totals.suppressed.complained++;
+              b.suppressed++;
+              chRec.suppressed++;
+              break;
+            default:
+              // No webhook promotion yet — baseline sent count.
+              totals.sent++;
+              b.sent++;
+              chRec.sent++;
+              break;
+          }
+        }
+
+        // ── Push lifecycle — orthogonal to email ─────────────────────
+        // A row with pushDisplayedAt means the service worker reported
+        // the push was rendered, regardless of where the email
+        // lifecycle ended. Count it on top of the primary
+        // classification so the dashboard can show email funnel AND
+        // push funnel from the same scan.
+        if (data.pushDisplayedAt) {
+          totals.pushDisplayed++;
+          b.pushDisplayed++;
+          // For the per-channel success-rate denominator, every non-
+          // dedup send on a push/in_app row still counts as sent — so
+          // we recycle the sent counter above when status === "sent".
+          chRec.deliveredOrDisplayed++;
+        }
+        if (data.pushClickedAt) {
+          totals.pushClicked++;
+          b.pushClicked++;
+        }
+      }
+    } catch (err) {
+      process.stderr.write(
+        JSON.stringify({
+          level: "warn",
+          event: "notification.dispatch_log_delivery_dashboard_failed",
+          err: err instanceof Error ? err.message : String(err),
+        }) + "\n",
+      );
+    }
+
+    const timeseries = Array.from(bucketMap.values()).sort((a, b) =>
+      a.bucket < b.bucket ? -1 : a.bucket > b.bucket ? 1 : 0,
+    );
+
+    const perChannel: DeliveryDashboardPerChannel[] = Array.from(
+      perChannelMap.entries(),
+    ).map(([ch, rec]) => ({
+      channel: ch,
+      sent: rec.sent,
+      suppressed: rec.suppressed,
+      successRate: rec.sent === 0 ? 0 : rec.deliveredOrDisplayed / rec.sent,
+    }));
+
+    return { totals, timeseries, perChannel, scanned };
+  }
 }
 
 export const notificationDispatchLogRepository = new NotificationDispatchLogRepository();
+
+// ─── Time-bucket helper (Phase D.3) ────────────────────────────────────────
+// Deterministic UTC boundary for the delivery-dashboard time-series. Hour
+// granularity truncates to `YYYY-MM-DDTHH:00:00.000Z`; day granularity to
+// `YYYY-MM-DDT00:00:00.000Z`. Both formats sort lexicographically in ISO
+// order — no Date comparisons on the hot path.
+export function bucketKey(attemptedAt: string, granularity: "hour" | "day"): string {
+  // Defensive parse — a malformed ISO lands in the epoch bucket rather
+  // than crashing the aggregator.
+  const ms = Date.parse(attemptedAt);
+  const anchor = Number.isFinite(ms) ? ms : 0;
+  const d = new Date(anchor);
+  if (granularity === "hour") {
+    return new Date(
+      Date.UTC(
+        d.getUTCFullYear(),
+        d.getUTCMonth(),
+        d.getUTCDate(),
+        d.getUTCHours(),
+        0,
+        0,
+        0,
+      ),
+    ).toISOString();
+  }
+  return new Date(
+    Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 0, 0, 0, 0),
+  ).toISOString();
+}
 
 // ─── TTL helper ─────────────────────────────────────────────────────────────
 // Compliance rows (bounced / complained) live for 365 days; everything

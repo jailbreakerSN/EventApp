@@ -321,6 +321,40 @@
         "mandatoryHint": "Mandatory notification — users cannot opt out.",
         "lastUpdated": "Last updated: {date}",
         "noStats": "No data"
+      },
+      "delivery": {
+        "breadcrumb": "Observability",
+        "title": "Notification observability",
+        "subtitle": "Track delivery, opens and suppressions across the platform.",
+        "window": "Window",
+        "windowOptions": {
+          "day": "24 h",
+          "week": "7 d",
+          "month": "30 d"
+        },
+        "export": "Export CSV",
+        "kpi": {
+          "totalSent": "Total sent",
+          "totalSentHint": "Messages handed to the provider",
+          "deliveryRate": "Delivery rate",
+          "deliveryRateHint": "Delivered or displayed / sent",
+          "clickRate": "Click rate",
+          "clickRateHint": "Email + push clicks / sent",
+          "bounceRate": "Bounce rate",
+          "bounceRateHint": "Bounces + complaints / sent"
+        },
+        "panels": {
+          "perChannel": "By channel",
+          "suppression": "Suppressions",
+          "timeseries": "Volume over time",
+          "focusOnKey": "Focus on one notification",
+          "emailFunnel": "Email funnel",
+          "pushFunnel": "Push / in-app funnel"
+        },
+        "emptyChart": "No activity in the selected window.",
+        "errorTitle": "Unable to load the delivery dashboard",
+        "errorDescription": "Try again in a few moments.",
+        "rowAction": "Observability"
       }
     }
   },

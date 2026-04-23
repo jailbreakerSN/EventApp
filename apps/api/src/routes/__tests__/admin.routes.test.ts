@@ -130,7 +130,41 @@ const mockNotificationSettingsRepository = {
 const mockNotificationDispatchLogRepository = {
   append: vi.fn(async () => "log-id"),
   aggregateStats: vi.fn(async () => ({})),
+  aggregateDeliveryDashboard: vi.fn(
+    async () =>
+      ({
+        totals: {
+          sent: 0,
+          delivered: 0,
+          opened: 0,
+          clicked: 0,
+          pushDisplayed: 0,
+          pushClicked: 0,
+          suppressed: {
+            admin_disabled: 0,
+            user_opted_out: 0,
+            on_suppression_list: 0,
+            no_recipient: 0,
+            rate_limited: 0,
+            deduplicated: 0,
+            bounced: 0,
+            complained: 0,
+          },
+        },
+        timeseries: [],
+        perChannel: [],
+        scanned: 0,
+      }) as unknown,
+  ),
 };
+
+// Phase D.4 — distributed rate limiter lives behind the route. Mock it so
+// the happy-path tests can assert on the route itself rather than the
+// Firestore txn. The 429 test overrides this per-call.
+const mockRateLimit = vi.fn(async () => ({ allowed: true, count: 1, limit: 60 }));
+vi.mock("@/services/rate-limit.service", () => ({
+  rateLimit: (opts: unknown) => mockRateLimit(opts as never),
+}));
 
 vi.mock("@/repositories/notification-settings.repository", () => ({
   notificationSettingsRepository: new Proxy(
@@ -232,6 +266,8 @@ const ORGANIZER_DENIED_MATRIX: Array<{
   },
   // Phase 5 — observability stats
   { method: "GET", url: "/v1/admin/notifications/stats?days=7" },
+  // Phase D.3 — delivery dashboard
+  { method: "GET", url: "/v1/admin/notifications/delivery" },
 ];
 
 describe("Admin routes — deny matrix (organizer role lacks platform:manage)", () => {
@@ -640,5 +676,152 @@ describe("Admin notification control plane (Phase 2.4)", () => {
       organizationId: "org-a",
       enabled: false,
     });
+  });
+});
+
+// ─── Phase D.3 — delivery observability dashboard ─────────────────────────
+
+describe("Admin delivery-dashboard (Phase D.3)", () => {
+  beforeEach(() => {
+    mockRateLimit.mockImplementation(async () => ({ allowed: true, count: 1, limit: 60 }));
+  });
+
+  it("GET /notifications/delivery returns the aggregate shape (no filters)", async () => {
+    // Fixture mimicking the aggregator output for a non-empty window.
+    mockNotificationDispatchLogRepository.aggregateDeliveryDashboard.mockResolvedValueOnce({
+      totals: {
+        sent: 42,
+        delivered: 40,
+        opened: 25,
+        clicked: 8,
+        pushDisplayed: 3,
+        pushClicked: 1,
+        suppressed: {
+          admin_disabled: 0,
+          user_opted_out: 2,
+          on_suppression_list: 1,
+          no_recipient: 0,
+          rate_limited: 0,
+          deduplicated: 3,
+          bounced: 1,
+          complained: 0,
+        },
+      },
+      timeseries: [
+        {
+          bucket: "2026-04-20T00:00:00.000Z",
+          sent: 20,
+          delivered: 18,
+          opened: 10,
+          clicked: 2,
+          pushDisplayed: 1,
+          pushClicked: 0,
+          suppressed: 3,
+        },
+      ],
+      perChannel: [
+        { channel: "email", sent: 40, suppressed: 4, successRate: 0.95 },
+        { channel: "in_app", sent: 2, suppressed: 0, successRate: 1 },
+      ],
+      scanned: 48,
+    } as never);
+
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/admin/notifications/delivery",
+      headers: authHeader,
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body);
+    expect(body.success).toBe(true);
+    expect(body.data.range.granularity).toBe("day");
+    expect(body.data.totals.sent).toBe(42);
+    expect(body.data.totals.suppressed.bounced).toBe(1);
+    expect(body.data.timeseries).toHaveLength(1);
+    expect(body.data.perChannel).toHaveLength(2);
+    expect(
+      mockNotificationDispatchLogRepository.aggregateDeliveryDashboard,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        granularity: "day",
+      }),
+    );
+    // Audit event fired.
+    const { eventBus } = (await import("@/events/event-bus")) as unknown as {
+      eventBus: { emit: ReturnType<typeof vi.fn> };
+    };
+    expect(eventBus.emit).toHaveBeenCalledWith(
+      "admin.delivery_dashboard_viewed",
+      expect.objectContaining({
+        actorId: "super-1",
+        granularity: "day",
+        scanned: 48,
+      }),
+    );
+  });
+
+  it("GET /notifications/delivery forwards the key + channel filters", async () => {
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/admin/notifications/delivery?key=event.reminder&channel=email&granularity=hour",
+      headers: authHeader,
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(
+      mockNotificationDispatchLogRepository.aggregateDeliveryDashboard,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        key: "event.reminder",
+        channel: "email",
+        granularity: "hour",
+      }),
+    );
+  });
+
+  it("GET /notifications/delivery rejects a window > 30 days (400 + maxWindowDays)", async () => {
+    const from = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString();
+    const to = new Date().toISOString();
+    const res = await app.inject({
+      method: "GET",
+      url: `/v1/admin/notifications/delivery?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+      headers: authHeader,
+    });
+
+    expect(res.statusCode).toBe(400);
+    const body = JSON.parse(res.body);
+    expect(body.error.code).toBe("WINDOW_TOO_LARGE");
+    expect(body.error.details.maxWindowDays).toBe(30);
+  });
+
+  it("GET /notifications/delivery returns 429 when the rate limit is exhausted", async () => {
+    mockRateLimit.mockResolvedValueOnce({
+      allowed: false,
+      count: 61,
+      limit: 60,
+      retryAfterSec: 30,
+    });
+
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/admin/notifications/delivery",
+      headers: authHeader,
+    });
+
+    expect(res.statusCode).toBe(429);
+    expect(res.headers["retry-after"]).toBe("30");
+    const body = JSON.parse(res.body);
+    expect(body.error.code).toBe("RATE_LIMITED");
+  });
+
+  it("GET /notifications/delivery rejects unknown channel values (400)", async () => {
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/admin/notifications/delivery?channel=fax",
+      headers: authHeader,
+    });
+    // validate() middleware rejects the enum mismatch.
+    expect(res.statusCode).toBe(400);
   });
 });

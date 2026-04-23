@@ -321,6 +321,40 @@
         "mandatoryHint": "Notification obligatoire — les utilisateurs ne peuvent pas s'en désinscrire.",
         "lastUpdated": "Dernière mise à jour : {date}",
         "noStats": "Aucune donnée"
+      },
+      "delivery": {
+        "breadcrumb": "Observabilité",
+        "title": "Observabilité notifications",
+        "subtitle": "Suivi de la livraison, des ouvertures et des suppressions sur l'ensemble de la plateforme.",
+        "window": "Fenêtre",
+        "windowOptions": {
+          "day": "24 h",
+          "week": "7 j",
+          "month": "30 j"
+        },
+        "export": "Exporter CSV",
+        "kpi": {
+          "totalSent": "Envois totaux",
+          "totalSentHint": "Messages remis au fournisseur",
+          "deliveryRate": "Taux de livraison",
+          "deliveryRateHint": "Livrés ou affichés / envoyés",
+          "clickRate": "Taux de clic",
+          "clickRateHint": "Clics e-mail + push / envoyés",
+          "bounceRate": "Taux de rebond",
+          "bounceRateHint": "Rebonds + plaintes / envoyés"
+        },
+        "panels": {
+          "perChannel": "Par canal",
+          "suppression": "Suppressions",
+          "timeseries": "Évolution temporelle",
+          "focusOnKey": "Focaliser sur une notification",
+          "emailFunnel": "Entonnoir e-mail",
+          "pushFunnel": "Entonnoir push / in-app"
+        },
+        "emptyChart": "Aucune activité sur la fenêtre sélectionnée.",
+        "errorTitle": "Impossible de charger le tableau de livraison",
+        "errorDescription": "Réessayez dans quelques instants.",
+        "rowAction": "Observabilité"
       }
     }
   },

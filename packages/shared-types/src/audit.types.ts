@@ -68,6 +68,12 @@ export const AuditActionSchema = z.enum([
   "user.activated",
   "organization.verified",
   "organization.suspended",
+  // Phase D.3 — super-admin queried the delivery-observability dashboard.
+  // Queries scan the dispatch log over a 30-day window and surface
+  // per-channel delivery funnels. Treated as audit-worthy because the
+  // endpoint exposes cross-tenant recipient metadata (redacted) + a
+  // cross-organizational view of notification traffic.
+  "admin.delivery_dashboard_viewed",
   // ── Plan Catalog ──────────────────────────────────────────────────────────
   "plan.created",
   "plan.updated",

@@ -25,6 +25,7 @@ import {
   notificationSettingDocId,
 } from "@/repositories/notification-settings.repository";
 import { notificationDispatchLogRepository } from "@/repositories/notification-dispatch-log.repository";
+import { rateLimit } from "@/services/rate-limit.service";
 import {
   notificationSettingsHistoryRepository,
   computeSettingDiff,
@@ -660,6 +661,137 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.send({
         success: true,
         data: { windowDays: days, stats },
+      });
+    },
+  );
+
+  // ─── Delivery observability dashboard (Phase D.3) ─────────────────────
+  // Returns per-channel totals + a time-series + suppression breakdown
+  // over a caller-chosen window. The 30-day cap matches the dispatch-log
+  // TTL horizon so callers can never scroll past "data we still have."
+  //
+  // Cost envelope: single collection scan, 10k-row hard cap inside the
+  // repository method. The caller-facing rate limit (60/min) means a
+  // runaway dashboard client can't compound the scan load.
+
+  const MAX_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+  const DEFAULT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+  const DeliveryDashboardQuery = z.object({
+    key: z.string().min(1).optional(),
+    channel: NotificationChannelSchema.optional(),
+    from: z.string().datetime().optional(),
+    to: z.string().datetime().optional(),
+    granularity: z.enum(["hour", "day"]).default("day"),
+  });
+
+  fastify.get<{ Querystring: z.infer<typeof DeliveryDashboardQuery> }>(
+    "/notifications/delivery",
+    {
+      preHandler: [...adminPreHandler, validate({ query: DeliveryDashboardQuery })],
+      schema: {
+        tags: ["Admin", "Notifications"],
+        summary: "Delivery outcomes dashboard — per-channel totals + time series",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const { key, channel, from, to, granularity } = request.query;
+
+      // Rate-limit BEFORE touching Firestore. Admins clicking through
+      // the dashboard can hit 60 req/min easily if they flip filters;
+      // we cap at 60/min to stay well inside the 10k-row repository
+      // budget and keep observability queries cheap.
+      const limitRes = await rateLimit({
+        scope: "admin.delivery_dashboard",
+        identifier: request.user!.uid,
+        limit: 60,
+        windowSec: 60,
+      });
+      if (!limitRes.allowed) {
+        if (limitRes.retryAfterSec !== undefined) {
+          reply.header("Retry-After", String(limitRes.retryAfterSec));
+        }
+        return reply.status(429).send({
+          success: false,
+          error: {
+            code: "RATE_LIMITED",
+            message: "Too many delivery-dashboard queries. Please wait.",
+            ...(limitRes.retryAfterSec !== undefined
+              ? { details: { retryAfterSec: limitRes.retryAfterSec } }
+              : {}),
+          },
+        });
+      }
+
+      const now = Date.now();
+      const toMs = to ? Date.parse(to) : now;
+      const fromMs = from ? Date.parse(from) : toMs - DEFAULT_WINDOW_MS;
+
+      if (!Number.isFinite(toMs) || !Number.isFinite(fromMs)) {
+        return reply.status(400).send({
+          success: false,
+          error: {
+            code: "INVALID_WINDOW",
+            message: "Invalid `from` / `to` timestamp.",
+          },
+        });
+      }
+
+      if (toMs < fromMs) {
+        return reply.status(400).send({
+          success: false,
+          error: {
+            code: "INVALID_WINDOW",
+            message: "`to` must be >= `from`.",
+          },
+        });
+      }
+
+      const windowMs = toMs - fromMs;
+      if (windowMs > MAX_WINDOW_MS) {
+        return reply.status(400).send({
+          success: false,
+          error: {
+            code: "WINDOW_TOO_LARGE",
+            message: `Window exceeds ${MAX_WINDOW_MS / (24 * 60 * 60 * 1000)} days — dispatch log TTL horizon.`,
+            details: { maxWindowDays: 30 },
+          },
+        });
+      }
+
+      const windowStart = new Date(fromMs).toISOString();
+      const windowEnd = new Date(toMs).toISOString();
+
+      const aggregate = await notificationDispatchLogRepository.aggregateDeliveryDashboard({
+        windowStart,
+        windowEnd,
+        granularity,
+        ...(key ? { key } : {}),
+        ...(channel ? { channel } : {}),
+      });
+
+      // Emit the audit event AFTER the aggregation succeeded — an audit
+      // row for a query that 500'd is more noise than signal.
+      eventBus.emit("admin.delivery_dashboard_viewed", {
+        actorId: request.user!.uid,
+        requestId: getRequestId(),
+        timestamp: new Date().toISOString(),
+        ...(key ? { key } : {}),
+        ...(channel ? { channel } : {}),
+        windowStart,
+        windowEnd,
+        granularity,
+        scanned: aggregate.scanned,
+      });
+
+      return reply.send({
+        success: true,
+        data: {
+          range: { from: windowStart, to: windowEnd, granularity },
+          totals: aggregate.totals,
+          timeseries: aggregate.timeseries,
+          perChannel: aggregate.perChannel,
+        },
       });
     },
   );

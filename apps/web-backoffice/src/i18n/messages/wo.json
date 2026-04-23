@@ -246,6 +246,40 @@
         "mandatoryHint": "Yëglekaay bu fàww — jëfandikukat yi manuñu génn.",
         "lastUpdated": "Bu mujj yi soppi : {date}",
         "noStats": "Amul statistique"
+      },
+      "delivery": {
+        "breadcrumb": "Gisal",
+        "title": "Gisal yëglekaay",
+        "subtitle": "Xoolal livraison, ubbi ak suppression yi ci platfoorm bi.",
+        "window": "Fenêtre",
+        "windowOptions": {
+          "day": "24 w",
+          "week": "7 f",
+          "month": "30 f"
+        },
+        "export": "Jébbal CSV",
+        "kpi": {
+          "totalSent": "Mbooleem yi ñu yónne",
+          "totalSentHint": "Bataaxal yi jot ci fournisseur",
+          "deliveryRate": "Taux livraison",
+          "deliveryRateHint": "Jot walla woy / yónne",
+          "clickRate": "Taux click",
+          "clickRateHint": "Click e-mail + push / yónne",
+          "bounceRate": "Taux rebond",
+          "bounceRateHint": "Rebond + plainte / yónne"
+        },
+        "panels": {
+          "perChannel": "Ci canal",
+          "suppression": "Suppression yi",
+          "timeseries": "Dox ci jamono",
+          "focusOnKey": "Xoolal benn yëglekaay",
+          "emailFunnel": "Entonwaar e-mail",
+          "pushFunnel": "Entonwaar push / in-app"
+        },
+        "emptyChart": "Amul xeeti jëf ci fenêtre bi.",
+        "errorTitle": "Manuñ koo sàkku tableau bi",
+        "errorDescription": "Jéemal ci ba kanam.",
+        "rowAction": "Gisal"
       }
     }
   }

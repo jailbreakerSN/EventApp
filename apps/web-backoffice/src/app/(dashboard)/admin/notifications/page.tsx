@@ -19,7 +19,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
-import { AlertTriangle, Bell, Edit3, Eye, History, ShieldCheck } from "lucide-react";
+import { Activity, AlertTriangle, Bell, Edit3, Eye, History, ShieldCheck } from "lucide-react";
 import { PreviewDialog } from "./preview-dialog";
 import { HistoryPanel } from "./history-panel";
 import {
@@ -555,6 +555,25 @@ function NotificationRow({
               Historique
             </Button>
           )}
+          {/* Phase D.3 — per-key delivery drill-down link. Wrapped in a
+              Next.js <Link> so navigation stays client-side with
+              prefetch; the Button is rendered via a styled anchor-like
+              element inside the link. */}
+          <Link
+            href={`/admin/notifications/delivery/${encodeURIComponent(row.key)}`}
+            className="inline-flex"
+            aria-label={`Observabilité — ${row.displayName.fr}`}
+          >
+            <Button
+              variant="ghost"
+              size="sm"
+              type="button"
+              tabIndex={-1}
+            >
+              <Activity className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
+              Observabilité
+            </Button>
+          </Link>
           <Button
             variant="outline"
             size="sm"
