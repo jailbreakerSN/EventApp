@@ -57,6 +57,196 @@ class AdminService extends BaseService {
     return adminRepository.getPlatformStats();
   }
 
+  // ── Admin inbox signals (Phase 2) ─────────────────────────────────────
+  // Returns the aggregated list of "things that need an operator's
+  // attention". Each signal is a (category, title, count, severity,
+  // href-with-filters) tuple so the UI can render a card + CTA without
+  // any extra business logic.
+  //
+  // Design constraints:
+  //  - FAST — all queries run in parallel, target <1s total.
+  //  - Read-only — no side effects, safe to poll every 60s.
+  //  - Bounded counts — we do NOT fetch the full doc, only counts.
+  //  - Gracefully degraded — per-section failures return null counts
+  //    instead of failing the whole inbox.
+  async getInboxSignals(user: AuthUser): Promise<{
+    signals: Array<{
+      id: string;
+      category: "moderation" | "accounts" | "billing" | "ops" | "events_live";
+      severity: "info" | "warning" | "critical";
+      title: string;
+      description: string;
+      count: number;
+      href: string;
+    }>;
+    computedAt: string;
+  }> {
+    this.requirePermission(user, "platform:manage");
+
+    // Safe counting helper — a single failing collection shouldn't tank
+    // the whole inbox. We swallow and return 0 on error, logging via
+    // stderr since we don't want to pollute structured logs with
+    // read-only probe noise.
+    const safeCount = async (label: string, fn: () => Promise<number>): Promise<number> => {
+      try {
+        return await fn();
+      } catch (err) {
+        process.stderr.write(
+          `[inbox] ${label} count failed: ${err instanceof Error ? err.message : String(err)}\n`,
+        );
+        return 0;
+      }
+    };
+
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+    const [
+      pendingVenues,
+      unverifiedOrgs,
+      pendingPayments,
+      pastDueSubs,
+      failedPayments,
+      expiredInvites,
+    ] = await Promise.all([
+      safeCount("venues.pending", async () => {
+        const snap = await db
+          .collection(COLLECTIONS.VENUES)
+          .where("status", "==", "pending")
+          .count()
+          .get();
+        return snap.data().count;
+      }),
+      safeCount("orgs.unverified", async () => {
+        const snap = await db
+          .collection(COLLECTIONS.ORGANIZATIONS)
+          .where("isVerified", "==", false)
+          .count()
+          .get();
+        return snap.data().count;
+      }),
+      safeCount("payments.pending_24h", async () => {
+        const snap = await db
+          .collection(COLLECTIONS.PAYMENTS)
+          .where("status", "==", "pending")
+          .where("initiatedAt", "<=", twentyFourHoursAgo)
+          .count()
+          .get();
+        return snap.data().count;
+      }),
+      safeCount("subscriptions.past_due", async () => {
+        const snap = await db
+          .collection(COLLECTIONS.SUBSCRIPTIONS)
+          .where("status", "==", "past_due")
+          .count()
+          .get();
+        return snap.data().count;
+      }),
+      safeCount("payments.failed", async () => {
+        const snap = await db
+          .collection(COLLECTIONS.PAYMENTS)
+          .where("status", "==", "failed")
+          .count()
+          .get();
+        return snap.data().count;
+      }),
+      safeCount("invites.expired", async () => {
+        const snap = await db
+          .collection(COLLECTIONS.INVITES)
+          .where("status", "==", "expired")
+          .count()
+          .get();
+        return snap.data().count;
+      }),
+    ]);
+
+    const signals: Array<{
+      id: string;
+      category: "moderation" | "accounts" | "billing" | "ops" | "events_live";
+      severity: "info" | "warning" | "critical";
+      title: string;
+      description: string;
+      count: number;
+      href: string;
+    }> = [];
+
+    if (pendingVenues > 0) {
+      signals.push({
+        id: "venues.pending",
+        category: "moderation",
+        severity: "warning",
+        title: `${pendingVenues} ${pendingVenues > 1 ? "lieux" : "lieu"} en attente de modération`,
+        description: "Soumis par des organisateurs, à approuver ou rejeter.",
+        count: pendingVenues,
+        href: "/admin/venues?status=pending",
+      });
+    }
+
+    if (unverifiedOrgs > 0) {
+      signals.push({
+        id: "orgs.unverified",
+        category: "moderation",
+        severity: "info",
+        title: `${unverifiedOrgs} organisation${unverifiedOrgs > 1 ? "s" : ""} non vérifiée${unverifiedOrgs > 1 ? "s" : ""}`,
+        description: "À KYB : confirmer l'identité avant activation complète.",
+        count: unverifiedOrgs,
+        href: "/admin/organizations?isVerified=false",
+      });
+    }
+
+    if (pendingPayments > 0) {
+      signals.push({
+        id: "payments.pending",
+        category: "billing",
+        severity: "warning",
+        title: `${pendingPayments} paiement${pendingPayments > 1 ? "s" : ""} en attente depuis plus de 24h`,
+        description: "Vérifier auprès du provider ou marquer comme échoué.",
+        count: pendingPayments,
+        href: "/admin/audit?action=payment.initiated",
+      });
+    }
+
+    if (pastDueSubs > 0) {
+      signals.push({
+        id: "subscriptions.past_due",
+        category: "billing",
+        severity: "critical",
+        title: `${pastDueSubs} abonnement${pastDueSubs > 1 ? "s" : ""} en impayé`,
+        description: "Relance en cours — accompagner avant churn.",
+        count: pastDueSubs,
+        href: "/admin/organizations",
+      });
+    }
+
+    if (failedPayments > 0) {
+      signals.push({
+        id: "payments.failed",
+        category: "billing",
+        severity: "info",
+        title: `${failedPayments} paiement${failedPayments > 1 ? "s" : ""} échoué${failedPayments > 1 ? "s" : ""}`,
+        description: "Historique des échecs — relancer ou contacter.",
+        count: failedPayments,
+        href: "/admin/audit?action=payment.failed",
+      });
+    }
+
+    if (expiredInvites > 0) {
+      signals.push({
+        id: "invites.expired",
+        category: "accounts",
+        severity: "info",
+        title: `${expiredInvites} invitation${expiredInvites > 1 ? "s" : ""} expirée${expiredInvites > 1 ? "s" : ""}`,
+        description: "À nettoyer ou à relancer selon le contexte.",
+        count: expiredInvites,
+        href: "/admin/organizations",
+      });
+    }
+
+    return {
+      signals,
+      computedAt: new Date().toISOString(),
+    };
+  }
+
   // ── Cross-object search ───────────────────────────────────────────────
   // Phase 1 — powers the admin command palette (⌘K). Fans out to 4
   // paginated-list queries in parallel, filters each client-side by

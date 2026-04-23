@@ -5,6 +5,7 @@ exports[`route inventory > matches the snapshot 1`] = `
 GET /ready none
 GET /v1/admin/audit-logs auth perms=[platform:manage]
 GET /v1/admin/events auth perms=[platform:manage]
+GET /v1/admin/inbox auth perms=[platform:manage]
 GET /v1/admin/notifications auth perms=[platform:manage]
 PUT /v1/admin/notifications/:key auth perms=[platform:manage]
 GET /v1/admin/notifications/:key/history auth perms=[platform:manage]

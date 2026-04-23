@@ -63,6 +63,29 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
     },
   );
 
+  // ── Inbox signals (Phase 2 — task-oriented admin landing) ──────────────
+  // Returns the list of "things that need admin attention" — pending
+  // moderation items, past-due billing, stale payments, expired invites.
+  // Every signal carries (id, category, severity, title, description,
+  // count, href) so the UI can render a card + CTA with no extra business
+  // logic. Queries run in parallel server-side; per-section failures
+  // degrade to count=0 rather than failing the whole response.
+  fastify.get(
+    "/inbox",
+    {
+      preHandler: adminPreHandler,
+      schema: {
+        tags: ["Admin"],
+        summary: "Aggregated admin inbox signals (moderation, billing, ops…)",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const data = await adminService.getInboxSignals(request.user!);
+      return reply.send({ success: true, data });
+    },
+  );
+
   // ── Cross-object search (Phase 1 — powers the ⌘K command palette) ──────
   // Returns up to 5 hits per object type. Search is substring on the
   // human-readable fields callers are most likely to type:
