@@ -82,6 +82,14 @@ jobs:
       # docs/seed/coverage-status.md for the data model.
       - name: Seed-data coverage
         run: npm run seed:check
+      # Seed-data drift — runs every seed writer in-process against an
+      # in-memory Firestore shim, then parses each captured fixture
+      # through its Zod schema from @teranga/shared-types. Catches
+      # schema drift at PR time (e.g. a new required field in
+      # EventSchema that the 04-events.ts fixtures don't populate).
+      # See scripts/validate-seed-schemas.ts.
+      - name: Seed-data drift validator
+        run: npm run seed:validate
       - uses: actions/upload-artifact@v4
         with:
           name: shared-types-dist
