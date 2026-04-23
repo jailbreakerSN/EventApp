@@ -15,7 +15,7 @@
  */
 
 import Link from "next/link";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -109,6 +109,11 @@ export default function AdminInboxPage() {
   const [lastUpdate, setLastUpdate] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
 
+  // Exponential-backoff counter: on network/5xx failures, double the
+  // polling interval (cap 10 min) so a sustained API outage doesn't
+  // spam the backend. Reset on first successful fetch.
+  const backoffRef = useRef(1);
+
   const fetchSignals = useCallback(async () => {
     try {
       setRefreshing(true);
@@ -116,22 +121,35 @@ export default function AdminInboxPage() {
       setSignals(res.data.signals);
       setLastUpdate(res.data.computedAt);
       setError(null);
+      backoffRef.current = 1; // healthy — reset
     } catch (err) {
       setError((err as Error)?.message ?? "Erreur inconnue");
+      // Double the backoff multiplier; capped at 10 (= 10 min between polls).
+      backoffRef.current = Math.min(backoffRef.current * 2, 10);
     } finally {
       setRefreshing(false);
     }
   }, []);
 
-  // Initial fetch + visibility-aware auto-refresh.
+  // Initial fetch + visibility-aware auto-refresh with exponential backoff.
   useEffect(() => {
     void fetchSignals();
-    const id = setInterval(() => {
+    // Setup is done once; the poll callback reads the current backoff
+    // on each tick so the interval adjusts on the next scheduled poll
+    // without tearing down the useEffect.
+    let nextDelay = REFRESH_INTERVAL_MS;
+    let timerId: ReturnType<typeof setTimeout> | null = null;
+    const tick = async () => {
       if (document.visibilityState === "visible") {
-        void fetchSignals();
+        await fetchSignals();
       }
-    }, REFRESH_INTERVAL_MS);
-    return () => clearInterval(id);
+      nextDelay = REFRESH_INTERVAL_MS * backoffRef.current;
+      timerId = setTimeout(() => void tick(), nextDelay);
+    };
+    timerId = setTimeout(() => void tick(), nextDelay);
+    return () => {
+      if (timerId) clearTimeout(timerId);
+    };
   }, [fetchSignals]);
 
   // Sort by severity then keep natural server order within the same tier.

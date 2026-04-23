@@ -73,9 +73,25 @@ export default function AdminFeatureFlagsPage() {
 
   const saveFlag = useCallback(
     async (key: string, next: Partial<FeatureFlag>) => {
+      const current = flags?.find((f) => f.key === key);
+      // Phase E closure — confirm dialog on "enabled → disabled" flip.
+      // A disabled flag in production is indistinguishable from an
+      // outage for users on the code path gated behind it; make the
+      // action deliberate.
+      if (
+        current?.enabled === true &&
+        next.enabled === false &&
+        typeof window !== "undefined" &&
+        !window.confirm(
+          `Désactiver le feature flag "${key}" ?\n\n` +
+            "Toute fonctionnalité gated derrière ce flag cessera immédiatement. " +
+            "Assurez-vous que c'est intentionnel avant de confirmer.",
+        )
+      ) {
+        return;
+      }
       setSaving((prev) => ({ ...prev, [key]: true }));
       try {
-        const current = flags?.find((f) => f.key === key);
         const body = {
           enabled: next.enabled ?? current?.enabled ?? false,
           description: next.description ?? current?.description ?? undefined,

@@ -22,12 +22,14 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Badge } from "@teranga/shared-ui";
 import { useAuth } from "@/hooks/use-auth";
+import { useAdminRole } from "@/hooks/use-admin-role";
 import { BrandedLoader } from "@/components/branded-loader";
 import { AdminSidebar } from "@/components/admin/admin-sidebar";
 import { CommandPalette } from "@/components/admin/command-palette";
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const { user, loading, hasRole } = useAuth();
+  const adminRole = useAdminRole();
   const router = useRouter();
   const [paletteOpen, setPaletteOpen] = useState(false);
 
@@ -55,9 +57,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   if (loading) return <BrandedLoader label="Chargement de l'administration..." />;
   if (!user || !hasRole("super_admin")) return null;
 
-  // Display the effective admin role. Phase 4 introduces distinct
-  // platform:* roles; for now everyone in /admin is super_admin.
-  const roleLabel = user.roles.includes("super_admin") ? "Super admin" : "Admin";
+  // Display the effective admin role via the Phase E hook so platform:*
+  // roles introduced in closure C show up as proper labels.
+  const roleLabel = adminRole?.label ?? "Admin";
 
   return (
     <div className="flex h-[calc(100vh-4rem)] overflow-hidden">
