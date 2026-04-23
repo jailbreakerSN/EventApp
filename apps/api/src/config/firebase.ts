@@ -125,4 +125,11 @@ export const COLLECTIONS = {
   // Rules: deny-all at the client SDK; only super_admin via the API
   // may read/write.
   FEATURE_FLAGS: "featureFlags",
+  // Phase D (closure) — platform-wide announcements shown as banners.
+  // Doc id = announcement id. Super-admin only writes; clients read
+  // via a dedicated public route that strips admin-only metadata.
+  ANNOUNCEMENTS: "announcements",
+  // Phase D — manual job-runs triggered from /admin/jobs. Each doc
+  // records the triggering admin + status + timing for observability.
+  ADMIN_JOB_RUNS: "adminJobRuns",
 } as const;

@@ -288,6 +288,10 @@ export const RESETTABLE_COLLECTIONS = [
   // fixtures don't persist across seed runs; production deploys never
   // invoke the reset script so prod flags are safe.
   "featureFlags",
+  // Phase D closure — admin ops surfaces. Reset in staging so demo
+  // data (announcements + job-runs) doesn't leak across runs.
+  "announcements",
+  "adminJobRuns",
   // Identity last — deletes after everything that references users / orgs
   "users",
   "organizations",

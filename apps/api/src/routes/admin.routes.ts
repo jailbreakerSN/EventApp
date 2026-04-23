@@ -158,6 +158,102 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
     },
   );
 
+  // ── Announcements (Phase D closure — platform banners) ────────────────
+  // Super-admins publish short-lived messages visible as banners
+  // across the platform. Backed by the `announcements` collection;
+  // doc shape { id, title, body, severity, audience, publishedAt,
+  // expiresAt, active, createdBy }.
+  const AnnouncementBodySchema = z.object({
+    title: z.string().min(1).max(140),
+    body: z.string().min(1).max(1000),
+    severity: z.enum(["info", "warning", "critical"]).default("info"),
+    audience: z.enum(["all", "organizers", "participants"]).default("all"),
+    expiresAt: z.string().datetime().optional(),
+    active: z.boolean().default(true),
+  });
+
+  fastify.get(
+    "/announcements",
+    {
+      preHandler: adminPreHandler,
+      schema: { tags: ["Admin"], summary: "List announcements", security: [{ BearerAuth: [] }] },
+    },
+    async (_request, reply) => {
+      const snap = await db
+        .collection(COLLECTIONS.ANNOUNCEMENTS)
+        .orderBy("publishedAt", "desc")
+        .limit(50)
+        .get();
+      return reply.send({
+        success: true,
+        data: snap.docs.map((d) => ({ id: d.id, ...d.data() })),
+      });
+    },
+  );
+
+  fastify.post(
+    "/announcements",
+    {
+      preHandler: [...adminPreHandler, validate({ body: AnnouncementBodySchema })],
+      schema: {
+        tags: ["Admin"],
+        summary: "Publish a platform announcement",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const body = request.body as z.infer<typeof AnnouncementBodySchema>;
+      const ref = db.collection(COLLECTIONS.ANNOUNCEMENTS).doc();
+      const payload = {
+        id: ref.id,
+        ...body,
+        publishedAt: new Date().toISOString(),
+        createdBy: request.user!.uid,
+      };
+      // Transactional write + audit so banner publishing is tracked.
+      await db.runTransaction(async (tx) => {
+        tx.set(ref, payload);
+        const auditRef = db.collection(COLLECTIONS.AUDIT_LOGS).doc();
+        tx.set(auditRef, {
+          id: auditRef.id,
+          action: "admin.announcement_published",
+          actorId: request.user!.uid,
+          actorRole: "super_admin",
+          resourceType: "announcement",
+          resourceId: ref.id,
+          organizationId: null,
+          details: { title: body.title, severity: body.severity, audience: body.audience },
+          requestId: getRequestId(),
+          timestamp: payload.publishedAt,
+        });
+      });
+      return reply.status(201).send({ success: true, data: payload });
+    },
+  );
+
+  // ── Admin job runs (Phase D closure — observable script triggers) ─────
+  // Read-only list of past/ongoing manual triggers. Actual trigger
+  // endpoints are intentionally whitelisted (no arbitrary shell
+  // execution) — for now this is a read-only observability surface.
+  fastify.get(
+    "/jobs",
+    {
+      preHandler: adminPreHandler,
+      schema: { tags: ["Admin"], summary: "List admin job runs", security: [{ BearerAuth: [] }] },
+    },
+    async (_request, reply) => {
+      const snap = await db
+        .collection(COLLECTIONS.ADMIN_JOB_RUNS)
+        .orderBy("startedAt", "desc")
+        .limit(50)
+        .get();
+      return reply.send({
+        success: true,
+        data: snap.docs.map((d) => ({ id: d.id, ...d.data() })),
+      });
+    },
+  );
+
   // ── CSV export (Phase 5) ───────────────────────────────────────────────
   // Streaming CSV dump of a resource list with the same filters the UI
   // uses. Heavy responses are flushed row-by-row so a 50 000-row export
