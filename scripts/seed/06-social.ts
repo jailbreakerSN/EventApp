@@ -1008,6 +1008,70 @@ const EXPANSION_AUDIT: AuditEntry[] = [
     organizationId: e.organizationId,
     details: { title: e.title },
   })),
+  // ── Venue lifecycle (Phase 2) — exercises the full venue moderation UX ──
+  {
+    action: "venue.created",
+    resourceType: "venue",
+    resourceId: IDS.venue3,
+    actorId: IDS.venueManager,
+    eventId: null,
+    organizationId: IDS.venueOrgId,
+    details: { name: "Jokkolabs Dakar", submittedFor: "review" },
+  },
+  {
+    action: "venue.suspended",
+    resourceType: "venue",
+    resourceId: IDS.venue3,
+    actorId: IDS.superAdmin,
+    eventId: null,
+    organizationId: IDS.venueOrgId,
+    details: {
+      name: "Jokkolabs Dakar",
+      reason: "Missing safety certificate renewal — requested 2026-04-10",
+    },
+  },
+  {
+    action: "venue.updated",
+    resourceType: "venue",
+    resourceId: "venue-004",
+    actorId: IDS.venueManager,
+    eventId: null,
+    organizationId: IDS.venueOrgId,
+    details: {
+      name: "Les Almadies Events",
+      changed: ["capacity.max", "amenities"],
+    },
+  },
+  {
+    action: "venue.reactivated",
+    resourceType: "venue",
+    resourceId: "venue-006",
+    actorId: IDS.superAdmin,
+    eventId: null,
+    organizationId: IDS.venueOrgId,
+    details: {
+      name: "Palm Beach Resort Saly",
+      reason: "Safety certificate renewed — cleared by inspection 2026-04-15",
+    },
+  },
+  {
+    action: "venue.created",
+    resourceType: "venue",
+    resourceId: "venue-013",
+    actorId: IDS.enterpriseOrganizer,
+    eventId: null,
+    organizationId: IDS.enterpriseOrgId,
+    details: { name: "Sofitel Abidjan Hôtel Ivoire", submittedFor: "review" },
+  },
+  {
+    action: "venue.approved",
+    resourceType: "venue",
+    resourceId: "venue-013",
+    actorId: IDS.superAdmin,
+    eventId: null,
+    organizationId: IDS.enterpriseOrgId,
+    details: { name: "Sofitel Abidjan Hôtel Ivoire" },
+  },
 ];
 
 async function writeAuditLogs(db: Firestore): Promise<number> {
