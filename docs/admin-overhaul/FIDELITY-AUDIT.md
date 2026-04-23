@@ -174,16 +174,35 @@ coche :
 
 ## Qualité globale
 
-| Critère                                    | État                                                                 |
-| ------------------------------------------ | -------------------------------------------------------------------- |
-| Principe "Task-oriented > object-oriented" | ✅ Inbox = landing, overview = secondary                             |
-| Moindre privilège (platform:\* roles)      | ✅ Schéma + rôles + audit                                            |
-| Audit trail complet                        | ✅ Chaque mutation admin log actorRole + resourceId                  |
-| Transactions read-then-write               | ✅ Flag upsert + announcement publish atomiques                      |
-| Performance (<200ms ⌘K, <1s inbox)         | ✅ Mesurable — queries parallélisées, debounce palette               |
-| A11y WCAG 2.1 AA                           | ⚠️ ARIA partout, contraste via tokens Teranga ; audit formel pending |
-| Francophone-first                          | ✅ Toutes strings FR, `Africa/Dakar`, XOF                            |
-| Test coverage                              | ✅ 1342 → 1347 tests ; impersonation couvert par 5 tests             |
-| Commit atomicité                           | ✅ 1 commit par phase (P1→P7) + 1 commit par closure (A→F)           |
+| Critère                                    | État                                                                               |
+| ------------------------------------------ | ---------------------------------------------------------------------------------- |
+| Principe "Task-oriented > object-oriented" | ✅ Inbox = landing, overview = secondary                                           |
+| Moindre privilège (platform:\* roles)      | ✅ Schéma + rôles + audit                                                          |
+| Audit trail complet                        | ✅ Chaque mutation admin log actorRole + resourceId                                |
+| Transactions read-then-write               | ✅ Flag upsert + announcement publish atomiques                                    |
+| Performance (<200ms ⌘K, <1s inbox)         | ✅ Mesurable — queries parallélisées, debounce palette                             |
+| A11y WCAG 2.1 AA                           | ⚠️ ARIA partout, contraste via tokens Teranga ; audit formel pending               |
+| Francophone-first                          | ✅ Toutes strings FR, `Africa/Dakar`, XOF                                          |
+| Test coverage                              | ✅ 1342 → 1347 tests ; impersonation couvert par 5 tests                           |
+| Commit atomicité                           | ✅ 1 commit par phase (P1→P7) + 1 commit par closure (A→F) + 1 par bug-fix (H1–H5) |
 
 **Tous les principes directeurs du plan initial sont respectés.**
+
+## Revue #2 — Correctifs P0 (closure H)
+
+Une seconde revue senior (post-closure G) a identifié trois bugs P0 que
+la première passe avait manqués :
+
+| Bug                                                                                                                                                                             | Correction                                                                                                                                                            | Commit    |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
+| `POST /v1/admin/impersonation/end` renvoyait toujours 403 : le middleware `authenticate` n'extrayait pas le claim signé `impersonatedBy` du ID token, le cast runtime était nul | H1–H2 — `AuthUser.impersonatedBy?: string` ajouté + populé dans `authenticate`/`optionalAuth`, `endImpersonation` lit le champ typé                                   | `f38f646` |
+| Rôles `platform:*` livrés closure C étaient dead-code : le layout `(dashboard)` filtrait sur 4 rôles et `/admin/layout` exigeait `super_admin` strict → redirect /unauthorized  | H3–H4 — `BACKOFFICE_ROLES` étendu aux 5 rôles `platform:*` + `/admin/layout` délègue à `useAdminRole()` (source unique de vérité admin)                               | `203f9c1` |
+| `endImpersonation` n'avait aucun test alors que `startImpersonation` en avait 5 — c'est pourquoi le bug 403 n'a pas été détecté en CI                                           | H5 — 3 tests ajoutés : happy path (revoke + audit), claim absent (pas d'effet de bord), mismatch actorUid/claim (tentative de tampering du breadcrumb sessionStorage) | `d9941fa` |
+
+**Sign-off post-correctifs** :
+
+- 1350 tests API passent (dont 3 nouveaux `endImpersonation`).
+- 105 tests shared-types passent (snapshots figés).
+- `tsc --noEmit` clean sur `apps/api` et `apps/web-backoffice`.
+- La surface impersonation est maintenant bout-en-bout testée : start (5 cas) + end (3 cas).
+- La taxonomie `platform:*` est effective — un utilisateur à qui on accorde `platform:support` atteint maintenant `/admin/**` au lieu d'être redirigé vers `/unauthorized`.
