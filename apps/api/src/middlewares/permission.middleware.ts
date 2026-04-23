@@ -5,6 +5,7 @@ import {
   hasPermission,
   hasAllPermissions,
   hasAnyPermission,
+  isAdminSystemRole,
   resolvePermissions,
 } from "@teranga/shared-types";
 import { type AuthUser } from "./auth.middleware";
@@ -156,8 +157,10 @@ export function requireOrganizationScope(orgIdSource: "params" | "body" = "param
       });
     }
 
-    // super_admin bypasses org scope
-    if (request.user.roles.includes("super_admin")) return;
+    // Every admin system role bypasses org scope — sourced from
+    // `isAdminSystemRole` so this stays aligned with requireOrganization
+    // in auth.middleware.ts and requireOrganizationAccess in base.service.ts.
+    if (request.user.roles.some(isAdminSystemRole)) return;
 
     const source = orgIdSource === "params" ? request.params : request.body;
     const orgId = (source as Record<string, string>)?.organizationId;

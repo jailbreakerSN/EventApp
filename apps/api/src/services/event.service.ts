@@ -21,7 +21,7 @@ import {
 import { organizationRepository } from "@/repositories/organization.repository";
 import { subscriptionRepository } from "@/repositories/subscription.repository";
 import { venueRepository } from "@/repositories/venue.repository";
-import { PLAN_LIMITS, PLAN_LIMIT_UNLIMITED } from "@teranga/shared-types";
+import { PLAN_LIMITS, PLAN_LIMIT_UNLIMITED, isAdminSystemRole } from "@teranga/shared-types";
 import { type PaginationParams, type PaginatedResult } from "@/repositories/base.repository";
 import { type AuthUser } from "@/middlewares/auth.middleware";
 import { ForbiddenError, ValidationError, PlanLimitError } from "@/errors/app-error";
@@ -91,7 +91,7 @@ export class EventService extends BaseService {
 
     // Verify organization exists and user belongs to it
     const org = await organizationRepository.findByIdOrThrow(dto.organizationId);
-    if (user.organizationId !== org.id && !user.roles.includes("super_admin")) {
+    if (user.organizationId !== org.id && !user.roles.some(isAdminSystemRole)) {
       throw new ForbiddenError("Vous ne faites pas partie de cette organisation");
     }
 
@@ -206,7 +206,7 @@ export class EventService extends BaseService {
   ): Promise<PaginatedResult<Event>> {
     this.requirePermission(user, "event:read");
 
-    if (user.organizationId !== organizationId && !user.roles.includes("super_admin")) {
+    if (user.organizationId !== organizationId && !user.roles.some(isAdminSystemRole)) {
       throw new ForbiddenError("Accès refusé aux événements de cette organisation");
     }
 
@@ -291,8 +291,7 @@ export class EventService extends BaseService {
               .filter(Boolean)
               .join(", ")
           : undefined;
-        const nextLocationRaw =
-          (changes as Record<string, unknown>).location ?? event.location;
+        const nextLocationRaw = (changes as Record<string, unknown>).location ?? event.location;
         const nextLocationObj =
           nextLocationRaw && typeof nextLocationRaw === "object"
             ? (nextLocationRaw as { name?: string; city?: string; country?: string })

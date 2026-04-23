@@ -150,7 +150,10 @@ export function requireOrganization(orgIdSource: "params" | "body" = "params") {
       });
     }
 
-    if (request.user.roles.includes("super_admin")) return;
+    // Every admin system role bypasses the org-scoping check — same
+    // exemption as requireEmailVerified above. Sourced from the
+    // canonical `isAdminSystemRole` predicate to prevent drift.
+    if (request.user.roles.some(isAdminSystemRole)) return;
 
     const source = orgIdSource === "params" ? request.params : request.body;
     const orgId = (source as Record<string, string>)?.organizationId;
