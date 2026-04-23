@@ -161,9 +161,27 @@ const mockNotificationDispatchLogRepository = {
 // Phase D.4 — distributed rate limiter lives behind the route. Mock it so
 // the happy-path tests can assert on the route itself rather than the
 // Firestore txn. The 429 test overrides this per-call.
-const mockRateLimit = vi.fn(async () => ({ allowed: true, count: 1, limit: 60 }));
+type RateLimitResultMock = {
+  allowed: boolean;
+  count: number;
+  limit: number;
+  retryAfterSec?: number;
+};
+const mockRateLimit = vi.fn(
+  async (_opts: {
+    scope: string;
+    identifier: string;
+    limit: number;
+    windowSec: number;
+  }): Promise<RateLimitResultMock> => ({
+    allowed: true,
+    count: 1,
+    limit: 60,
+  }),
+);
 vi.mock("@/services/rate-limit.service", () => ({
-  rateLimit: (opts: unknown) => mockRateLimit(opts as never),
+  rateLimit: (opts: { scope: string; identifier: string; limit: number; windowSec: number }) =>
+    mockRateLimit(opts),
 }));
 
 vi.mock("@/repositories/notification-settings.repository", () => ({

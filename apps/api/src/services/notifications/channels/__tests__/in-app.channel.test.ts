@@ -11,8 +11,26 @@ import type {
 // import (ChannelAdapter → registry wiring) and the lazy dynamic import both
 // resolve to the same stub.
 
-const writeInAppDoc = vi.fn(async () => "notif-doc-42");
-const sendFcmToUser = vi.fn(async () => undefined);
+// Typed `vi.fn` signatures so `.mock.calls[0]!` resolves to a tuple with
+// elements rather than `never[]` (strict TS). We only care about the
+// argument shapes the adapter actually passes.
+type WriteInAppDocInput = {
+  userId: string;
+  type: string;
+  title: string;
+  body: string;
+  data?: Record<string, string>;
+  imageURL: string | null;
+  isTestSend?: boolean;
+};
+type SendFcmInput = {
+  title: string;
+  body: string;
+  data?: Record<string, string>;
+  imageURL: string | null;
+};
+const writeInAppDoc = vi.fn(async (_input: WriteInAppDocInput) => "notif-doc-42");
+const sendFcmToUser = vi.fn(async (_userId: string, _payload: SendFcmInput) => undefined);
 
 vi.mock("@/services/notification.service", () => ({
   notificationService: {

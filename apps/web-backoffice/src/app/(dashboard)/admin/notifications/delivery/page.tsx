@@ -285,7 +285,7 @@ export default function AdminNotificationsDeliveryPage() {
 
       {query.isError && (
         <InlineErrorBanner
-          severity="error"
+          severity="destructive"
           kicker={t("errorKicker")}
           title={t("errorTitle")}
           description={

@@ -122,7 +122,7 @@ export default function AdminDeliveryByKeyPage() {
     return (
       <div className="space-y-6">
         <InlineErrorBanner
-          severity="error"
+          severity="destructive"
           kicker={t("detail.notFoundKicker")}
           title={t("detail.notFoundTitle")}
           description={t("detail.notFoundDescription", { key: String(key) })}
@@ -190,7 +190,7 @@ export default function AdminDeliveryByKeyPage() {
 
       {query.isError && (
         <InlineErrorBanner
-          severity="error"
+          severity="destructive"
           kicker={t("errorKicker")}
           title={t("detail.errorTitle")}
           description={

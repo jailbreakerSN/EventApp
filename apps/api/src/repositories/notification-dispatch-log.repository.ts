@@ -665,7 +665,6 @@ export class NotificationDispatchLogRepository extends BaseRepository<DispatchLo
         user_opted_out: 0,
         on_suppression_list: 0,
         no_recipient: 0,
-        rate_limited: 0,
         deduplicated: 0,
         bounced: 0,
         complained: 0,

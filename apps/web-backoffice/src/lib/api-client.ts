@@ -961,7 +961,12 @@ export const adminNotificationsApi = {
   // limit in its error banner.
   delivery: (params: AdminDeliveryDashboardQuery = {}) =>
     api.get<ApiResponse<AdminDeliveryDashboardResponse>>(
-      `/v1/admin/notifications/delivery${buildQuery(params)}`,
+      // `AdminDeliveryDashboardQuery` is an interface with explicit
+      // optional properties; TS won't narrow it to `Record<string,
+      // unknown>` (missing index signature). Cast at the call site
+      // rather than widening buildQuery's signature — every other
+      // caller passes already-Record-typed query bags.
+      `/v1/admin/notifications/delivery${buildQuery(params as Record<string, unknown>)}`,
     ),
 };
 
