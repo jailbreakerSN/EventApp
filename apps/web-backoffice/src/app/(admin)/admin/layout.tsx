@@ -39,6 +39,8 @@ import { BrandedLoader } from "@/components/branded-loader";
 import { AdminSidebar } from "@/components/admin/admin-sidebar";
 import { CommandPalette } from "@/components/admin/command-palette";
 import { ImpersonationBanner } from "@/components/admin/impersonation-banner";
+import { canViewOrganizerShell } from "@/lib/access";
+import type { UserRole } from "@teranga/shared-types";
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const { user, loading, logout } = useAuth();
@@ -47,6 +49,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [identityOpen, setIdentityOpen] = useState(false);
   const identityRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
   // Auth + admin role gate — ran once the session resolves.
   useEffect(() => {
@@ -74,21 +78,51 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   }, [onKey]);
 
   // Close the identity dropdown when clicking outside or pressing Escape.
+  // Also move focus INTO the menu on open (WAI-ARIA menu pattern) and
+  // return focus to the trigger on close for keyboard-only callers.
   useEffect(() => {
     if (!identityOpen) return;
+    // Focus the first menuitem after the portal is rendered.
+    const focusId = requestAnimationFrame(() => {
+      const first = menuRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]');
+      first?.focus();
+    });
     const onClickOutside = (e: MouseEvent) => {
       if (identityRef.current && !identityRef.current.contains(e.target as Node)) {
         setIdentityOpen(false);
       }
     };
-    const onEscape = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setIdentityOpen(false);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setIdentityOpen(false);
+        triggerRef.current?.focus();
+        return;
+      }
+      // Arrow-key traversal within the menu — loop on ends.
+      if (e.key !== "ArrowDown" && e.key !== "ArrowUp" && e.key !== "Home" && e.key !== "End") {
+        return;
+      }
+      const items = Array.from(
+        menuRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]') ?? [],
+      );
+      if (items.length === 0) return;
+      const active = document.activeElement as HTMLElement | null;
+      const idx = items.findIndex((item) => item === active);
+      e.preventDefault();
+      let next = idx;
+      if (e.key === "ArrowDown") next = idx < 0 ? 0 : (idx + 1) % items.length;
+      if (e.key === "ArrowUp")
+        next = idx < 0 ? items.length - 1 : (idx - 1 + items.length) % items.length;
+      if (e.key === "Home") next = 0;
+      if (e.key === "End") next = items.length - 1;
+      items[next]?.focus();
     };
     document.addEventListener("mousedown", onClickOutside);
-    document.addEventListener("keydown", onEscape);
+    document.addEventListener("keydown", onKey);
     return () => {
+      cancelAnimationFrame(focusId);
       document.removeEventListener("mousedown", onClickOutside);
-      document.removeEventListener("keydown", onEscape);
+      document.removeEventListener("keydown", onKey);
     };
   }, [identityOpen]);
 
@@ -96,6 +130,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   if (!user || !adminRole) return null;
 
   const roleLabel = adminRole.label;
+  // Show "Voir comme organisateur" only when the user actually has a
+  // reason to land on /dashboard — i.e. they hold an organizer /
+  // co_organizer / venue_manager role on top of their admin role.
+  // A pure platform:finance admin would otherwise land on an empty
+  // organizer sidebar, a UX dead-end flagged by review #3.
+  const showOrganizerView = canViewOrganizerShell(user.roles as UserRole[]);
 
   return (
     <div className="flex h-screen flex-col overflow-hidden">
@@ -152,11 +192,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 {roleLabel}
               </Badge>
               <button
+                ref={triggerRef}
                 type="button"
                 onClick={() => setIdentityOpen((prev) => !prev)}
-                className="flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                className="flex min-h-[44px] items-center gap-1 rounded-md px-2 py-2 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                 aria-haspopup="menu"
                 aria-expanded={identityOpen}
+                aria-controls="admin-identity-menu"
                 aria-label="Ouvrir le menu utilisateur"
               >
                 <span className="max-w-[160px] truncate">{user.displayName ?? user.email}</span>
@@ -164,23 +206,29 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               </button>
               {identityOpen && (
                 <div
+                  id="admin-identity-menu"
                   role="menu"
                   aria-label="Menu utilisateur administration"
-                  className="absolute right-0 top-full z-50 mt-1 w-56 overflow-hidden rounded-md border border-border bg-background shadow-lg"
+                  ref={menuRef}
+                  className="absolute right-0 top-full z-50 mt-1 w-60 overflow-hidden rounded-md border border-border bg-background shadow-lg"
                 >
-                  <button
-                    type="button"
-                    role="menuitem"
-                    onClick={() => {
-                      setIdentityOpen(false);
-                      router.push("/dashboard");
-                    }}
-                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-foreground hover:bg-muted"
-                  >
-                    <Eye className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
-                    Voir comme organisateur
-                  </button>
-                  <div className="border-t border-border" />
+                  {showOrganizerView && (
+                    <>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => {
+                          setIdentityOpen(false);
+                          router.push("/dashboard");
+                        }}
+                        className="flex min-h-[44px] w-full items-center gap-2 px-3 py-2 text-left text-xs text-foreground hover:bg-muted focus-visible:bg-muted focus-visible:outline-none"
+                      >
+                        <Eye className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+                        Voir comme organisateur
+                      </button>
+                      <div className="border-t border-border" />
+                    </>
+                  )}
                   <button
                     type="button"
                     role="menuitem"
@@ -188,7 +236,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                       setIdentityOpen(false);
                       void logout();
                     }}
-                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-foreground hover:bg-muted"
+                    className="flex min-h-[44px] w-full items-center gap-2 px-3 py-2 text-left text-xs text-foreground hover:bg-muted focus-visible:bg-muted focus-visible:outline-none"
                   >
                     <LogOut className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
                     Se déconnecter

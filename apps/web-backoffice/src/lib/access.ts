@@ -70,6 +70,19 @@ export function isVenueRole(userRoles: readonly UserRole[]): boolean {
 }
 
 /**
+ * Does this caller have a reason to traverse the organizer shell?
+ * True when they hold an organizer/co_organizer role (primary persona
+ * of /dashboard) OR a venue_manager role (for whom /venues lives in
+ * the same shell). False for pure admins — they would land on an
+ * empty sidebar. Consumed by the "Voir comme organisateur" menu-item
+ * guard in the admin shell so the affordance only shows for users who
+ * actually have something to do in the organizer shell.
+ */
+export function canViewOrganizerShell(userRoles: readonly UserRole[]): boolean {
+  return isOrganizerRole(userRoles) || isVenueRole(userRoles);
+}
+
+/**
  * Resolve the preferred landing route for a freshly-authenticated user.
  *
  * Priority order:

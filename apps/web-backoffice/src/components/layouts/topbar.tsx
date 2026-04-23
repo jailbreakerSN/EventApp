@@ -152,7 +152,7 @@ export function TopBar({ onShowShortcuts }: TopBarProps) {
         {adminRole && (
           <Link
             href="/admin/inbox"
-            className="hidden sm:inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-xs font-medium text-primary hover:bg-primary/10 motion-safe:transition-colors dark:border-teranga-gold/40 dark:bg-teranga-gold/10 dark:text-teranga-gold dark:hover:bg-teranga-gold/20"
+            className="hidden sm:inline-flex min-h-[36px] items-center gap-1.5 rounded-full border border-primary/20 bg-primary/5 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/10 motion-safe:transition-colors dark:border-teranga-gold/40 dark:bg-teranga-gold/10 dark:text-teranga-gold dark:hover:bg-teranga-gold/20"
             aria-label="Accéder à la console d'administration"
             title="Console d'administration"
           >

@@ -19,7 +19,8 @@ import { useTranslations } from "next-intl";
 // Admin roles (`super_admin`, `platform:*`) are included so a super-
 // admin who is ALSO an organizer can navigate to /dashboard manually;
 // pure admins are redirected to /admin/inbox at login by resolveLandingRoute.
-import { BACKOFFICE_ROLES } from "@/lib/access";
+import { BACKOFFICE_ROLES, ADMIN_ROLES } from "@/lib/access";
+import type { UserRole } from "@teranga/shared-types";
 
 // Grace period before the email-verification hard gate kicks in. Configurable
 // via NEXT_PUBLIC_EMAIL_GRACE_DAYS; default 7. Set to 0 to gate immediately.
@@ -31,8 +32,14 @@ const GRACE_MS =
 
 /**
  * Returns true when an unverified user has exceeded the grace period.
- * Super-admins are always exempt so platform operators can triage without
- * locking themselves out.
+ *
+ * Every admin role (super_admin + 5 platform:* subroles) is exempt —
+ * platform operators must never be locked out by a verification race
+ * (CLAUDE.md §H6). The exemption reads from ADMIN_ROLES in lib/access.ts
+ * so adding a new admin subrole automatically inherits the exemption.
+ * Before this change the exemption was hardcoded to "super_admin" only,
+ * which made a platform:support admin clicking "Voir comme organisateur"
+ * end up on /verify-email — the opposite of the intended behaviour.
  */
 function shouldHardGateEmail(user: {
   emailVerified: boolean;
@@ -40,7 +47,9 @@ function shouldHardGateEmail(user: {
   roles: readonly string[];
 }): boolean {
   if (user.emailVerified) return false;
-  if (user.roles.includes("super_admin")) return false;
+  if (user.roles.some((r) => (ADMIN_ROLES as readonly string[]).includes(r as UserRole))) {
+    return false;
+  }
   if (!user.createdAt) return false;
   const age = Date.now() - new Date(user.createdAt).getTime();
   return age > GRACE_MS;
