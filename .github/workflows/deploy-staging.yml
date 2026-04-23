@@ -887,6 +887,13 @@ jobs:
       contents: read
       issues: write # Required to file a failure issue
     steps:
+      # Checkout so the admin-probe step can invoke scripts/smoke-probe-admin.mjs.
+      # The basic probe step below uses inline bash curl calls so it historically
+      # ran without needing the repo tree; the new admin probe lives in a file.
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
       - name: Probe endpoints
         id: probe
         env:

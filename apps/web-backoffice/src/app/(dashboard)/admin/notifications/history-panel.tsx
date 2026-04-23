@@ -10,13 +10,10 @@
  * same source of truth the audit log builds on.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Badge, Button, InlineErrorBanner, Skeleton } from "@teranga/shared-ui";
 import { X } from "lucide-react";
-import {
-  adminNotificationsApi,
-  type AdminNotificationHistoryEntry,
-} from "@/lib/api-client";
+import { adminNotificationsApi, type AdminNotificationHistoryEntry } from "@/lib/api-client";
 import { useErrorHandler } from "@/hooks/use-error-handler";
 
 interface HistoryPanelProps {
@@ -30,6 +27,21 @@ export function HistoryPanel({ notificationKey, organizationId, onClose }: Histo
   const [entries, setEntries] = useState<AdminNotificationHistoryEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // The panel renders below the notification table, which on staging carries
+  // 34+ rows. Without a scroll-into-view the admin clicks "Historique" and
+  // sees literally nothing change because the panel lives below the fold.
+  // Staging bug report: "Je clique sur Historique, rien ne se passe dans
+  // l'UI". Auto-focusing the mounted panel gives immediate visual feedback
+  // AND moves keyboard focus for accessibility.
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    // Defer to the next frame so the panel has painted before scrolling.
+    const id = requestAnimationFrame(() => {
+      panelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      panelRef.current?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(id);
+  }, [notificationKey]);
 
   useEffect(() => {
     let cancelled = false;
@@ -54,10 +66,19 @@ export function HistoryPanel({ notificationKey, organizationId, onClose }: Histo
   }, [notificationKey, organizationId, resolve]);
 
   return (
-    <div className="rounded-md border border-border bg-muted/10 p-4">
+    <div
+      ref={panelRef}
+      tabIndex={-1}
+      role="region"
+      aria-labelledby={`history-title-${notificationKey}`}
+      className="rounded-md border-2 border-teranga-gold/60 bg-muted/10 p-4 outline-none focus-visible:ring-2 focus-visible:ring-teranga-gold"
+    >
       <div className="mb-3 flex items-center justify-between">
         <div>
-          <div className="text-sm font-semibold text-foreground">
+          <div
+            id={`history-title-${notificationKey}`}
+            className="text-sm font-semibold text-foreground"
+          >
             Historique — <code className="font-mono text-[11px]">{notificationKey}</code>
           </div>
           <div className="text-xs text-muted-foreground">
@@ -122,9 +143,7 @@ export function HistoryPanel({ notificationKey, organizationId, onClose }: Histo
                   ))}
                 </div>
               )}
-              {entry.reason && (
-                <div className="mt-1 text-muted-foreground">« {entry.reason} »</div>
-              )}
+              {entry.reason && <div className="mt-1 text-muted-foreground">« {entry.reason} »</div>}
             </li>
           ))}
         </ul>
