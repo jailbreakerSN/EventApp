@@ -7,6 +7,7 @@ import {
   type NotificationLocale,
   type NotificationType,
 } from "@teranga/shared-types";
+import { getRequestId } from "@/context/request-context";
 import { registerChannelAdapter } from "../channel-registry";
 
 // ─── In-app channel adapter (Phase D.1) ────────────────────────────────────
@@ -129,8 +130,23 @@ function resolveData(
 }
 
 function resolveImageURL(templateParams: Record<string, unknown>): string | null {
+  // Only https:// URLs are written to the notifications/{id} doc and
+  // forwarded to FCM. Dropping javascript: / data: / file: at the source
+  // means any downstream renderer (bell panel, mobile app, FCM push
+  // image) can trust the stored value without a second round of
+  // validation. templateParams arrives from server-trusted listeners
+  // today, but the admin test-send endpoint (Phase 2.4) accepts
+  // caller-controlled `sampleParams` which funnel here — hence the
+  // belt-and-suspenders check.
   const raw = templateParams["imageURL"];
-  return typeof raw === "string" && raw.length > 0 ? raw : null;
+  if (typeof raw !== "string" || raw.length === 0) return null;
+  try {
+    const parsed = new URL(raw);
+    if (parsed.protocol !== "https:") return null;
+    return parsed.toString();
+  } catch {
+    return null;
+  }
 }
 
 // ─── Adapter ───────────────────────────────────────────────────────────────
@@ -191,6 +207,7 @@ class InAppChannelAdapter implements ChannelAdapter {
         JSON.stringify({
           level: "error",
           event: "in_app_channel.send_error",
+          requestId: getRequestId(),
           key: definition.key,
           userId: recipient.userId,
           err: err instanceof Error ? err.message : String(err),

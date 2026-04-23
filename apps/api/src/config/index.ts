@@ -172,6 +172,19 @@ const envSchema = z.object({
     z.boolean().default(false),
   ),
 
+  // ─── Rate-limit escape hatch (Phase D.4) ─────────────────────────────────
+  // Test/dev-only bypass for the Firestore-backed rate limiter. Validated
+  // here (not `process.env` direct reads) so "1" / "True" / "TRUE" all
+  // resolve identically, and so a lint of the env shape catches typos.
+  // The service layer gates on `NODE_ENV !== "production"` before
+  // honouring this flag — a tampered prod revision emits a structured
+  // warn log instead of silently removing the limiter. See
+  // apps/api/src/services/rate-limit.service.ts for the enforcement.
+  RATE_LIMIT_DISABLED: z.preprocess(
+    (v) => (typeof v === "string" ? v.toLowerCase() === "true" || v === "1" : v),
+    z.boolean().default(false),
+  ),
+
   // ─── Internal dispatch endpoint (Phase 2.3) ──────────────────────────────
   // Shared secret that gates `POST /v1/internal/notifications/dispatch`,
   // the endpoint the scheduled Cloud Functions (reminder / post-event /

@@ -96,6 +96,20 @@ vi.mock("@/context/request-context", () => ({
   getRequestId: () => "test-request-id",
 }));
 
+// Mutable mock config so individual tests can flip the disabled flag +
+// switch NODE_ENV without reloading the module graph. Phase D post-review
+// (H-1 / N-1): the service now reads `config.RATE_LIMIT_DISABLED` + gates
+// on `config.NODE_ENV !== "production"` rather than raw `process.env`.
+const { mockConfig } = vi.hoisted(() => ({
+  mockConfig: {
+    RATE_LIMIT_DISABLED: false,
+    NODE_ENV: "test" as "development" | "staging" | "production" | "test",
+  },
+}));
+vi.mock("@/config", () => ({
+  config: mockConfig,
+}));
+
 // Capture structured warn logs emitted via process.stderr.write so the
 // fail-open test can assert the warning was logged.
 let stderrChunks: string[];
@@ -120,12 +134,14 @@ beforeEach(() => {
     stderrChunks.push(String(chunk));
     return originalStderrWrite(chunk as string | Uint8Array, ...(rest as []));
   }) as typeof process.stderr.write;
-  delete process.env.RATE_LIMIT_DISABLED;
+  mockConfig.RATE_LIMIT_DISABLED = false;
+  mockConfig.NODE_ENV = "test";
 });
 
 afterEach(() => {
   process.stderr.write = originalStderrWrite;
-  delete process.env.RATE_LIMIT_DISABLED;
+  mockConfig.RATE_LIMIT_DISABLED = false;
+  mockConfig.NODE_ENV = "test";
 });
 
 // ─── Tests ─────────────────────────────────────────────────────────────────
@@ -248,7 +264,8 @@ describe("rateLimit()", () => {
   });
 
   it("RATE_LIMIT_DISABLED=true short-circuits before any Firestore call", async () => {
-    process.env.RATE_LIMIT_DISABLED = "true";
+    mockConfig.RATE_LIMIT_DISABLED = true;
+    mockConfig.NODE_ENV = "development";
 
     const result = await rateLimit({
       scope: "test-send:self",
@@ -261,6 +278,28 @@ describe("rateLimit()", () => {
     expect(txCallCount).toBe(0);
     expect(getCallCount).toBe(0);
     expect(bucketStore.size).toBe(0);
+  });
+
+  it("RATE_LIMIT_DISABLED=true IS IGNORED in production (H-1)", async () => {
+    mockConfig.RATE_LIMIT_DISABLED = true;
+    mockConfig.NODE_ENV = "production";
+
+    const result = await rateLimit({
+      scope: "test-send:self",
+      identifier: "uid-prod-guard",
+      limit: 5,
+      windowSec: 3600,
+    });
+
+    // The flag is ignored — the first call goes through normally.
+    expect(result).toEqual({ allowed: true, count: 1, limit: 5 });
+    expect(txCallCount).toBe(1);
+    // A structured warn line must fire so the tamper / misconfig
+    // surfaces on the observability dashboard.
+    const warned = stderrChunks.some((chunk) =>
+      chunk.includes("rate_limit.disabled_in_production_ignored"),
+    );
+    expect(warned).toBe(true);
   });
 
   it("fails open on Firestore error and logs a structured warn line", async () => {

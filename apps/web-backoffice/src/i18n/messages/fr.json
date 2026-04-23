@@ -324,15 +324,22 @@
       },
       "delivery": {
         "breadcrumb": "Observabilité",
+        "breadcrumbHome": "Tableau de bord",
+        "breadcrumbAdmin": "Administration",
+        "breadcrumbNotifications": "Notifications",
+        "kicker": "— OBSERVABILITÉ",
         "title": "Observabilité notifications",
         "subtitle": "Suivi de la livraison, des ouvertures et des suppressions sur l'ensemble de la plateforme.",
         "window": "Fenêtre",
+        "windowAriaLabel": "Fenêtre d'analyse",
         "windowOptions": {
           "day": "24 h",
           "week": "7 j",
           "month": "30 j"
         },
         "export": "Exporter CSV",
+        "exportAriaLabel": "Exporter en CSV",
+        "errorKicker": "— Erreur",
         "kpi": {
           "totalSent": "Envois totaux",
           "totalSentHint": "Messages remis au fournisseur",
@@ -345,16 +352,66 @@
         },
         "panels": {
           "perChannel": "Par canal",
+          "perChannelTitle": "Succès par canal",
           "suppression": "Suppressions",
+          "suppressionTitle": "Motifs de suppression",
           "timeseries": "Évolution temporelle",
+          "timeseriesTitle": "Volumes par bucket",
+          "timeseriesSevenDays": "Évolution temporelle (7 j)",
+          "timeseriesSevenDaysTitle": "Volumes par jour",
           "focusOnKey": "Focaliser sur une notification",
           "emailFunnel": "Entonnoir e-mail",
-          "pushFunnel": "Entonnoir push / in-app"
+          "pushFunnel": "Entonnoir push / in-app",
+          "pushFunnelTitle": "Entonnoir push"
+        },
+        "granularity": {
+          "hour": "Granularité : heure",
+          "day": "Granularité : jour"
+        },
+        "focusBody": {
+          "before": "Ouvrez le ",
+          "link": "catalogue notifications",
+          "after": " et cliquez sur « Observabilité » pour la clé concernée pour obtenir un entonnoir détaillé et les 20 dernières lignes du journal de dispatch."
         },
         "emptyChart": "Aucune activité sur la fenêtre sélectionnée.",
+        "emptyChannel": "Aucun canal actif sur la fenêtre.",
+        "emptySuppression": "Aucune suppression sur la fenêtre.",
         "errorTitle": "Impossible de charger le tableau de livraison",
         "errorDescription": "Réessayez dans quelques instants.",
-        "rowAction": "Observabilité"
+        "rowAction": "Observabilité",
+        "detail": {
+          "kicker": "— DRILL-DOWN",
+          "mandatoryBadge": "Obligatoire",
+          "errorTitle": "Impossible de charger les données",
+          "notFoundKicker": "— Introuvable",
+          "notFoundTitle": "Clé inconnue",
+          "notFoundDescription": "Aucune entrée « {key} » dans le catalogue."
+        },
+        "chartLabels": {
+          "sent": "Envoyés",
+          "delivered": "Livrés",
+          "opened": "Ouverts",
+          "clicked": "Cliqués",
+          "pushDisplayed": "Push affichés",
+          "pushClicked": "Push cliqués",
+          "suppressed": "Supprimés",
+          "admin_disabled": "Désactivée admin",
+          "user_opted_out": "Désabonnement utilisateur",
+          "on_suppression_list": "Liste de suppression",
+          "no_recipient": "Pas de destinataire",
+          "rate_limited": "Rate-limit",
+          "deduplicated": "Dédupliqués",
+          "bounced": "Rebond",
+          "complained": "Plainte",
+          "successRate": "Taux de succès"
+        },
+        "funnelStages": {
+          "sent": "Envoyés",
+          "delivered": "Livrés",
+          "opened": "Ouverts",
+          "clicked": "Cliqués",
+          "displayed": "Affichés"
+        }
       }
     }
   },

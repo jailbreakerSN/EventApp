@@ -773,10 +773,16 @@ export const notificationRoutes: FastifyPluginAsync = async (fastify) => {
       // Fire-and-forget: we still emit the audit event even when the
       // back-annotation turns up zero rows (e.g. a pre-Phase-D.1 send
       // that has no log row yet).
+      //
+      // Tenant isolation (M-4): callerUid is passed through so the repo
+      // only stamps rows addressed to this user. Anonymous SW pings
+      // (callerUid null) skip the write — the audit event remains the
+      // observable signal.
       void notificationDispatchLogRepository.backAnnotatePushEvent({
         notificationId,
         kind: "displayed",
         occurredAt,
+        callerUid: request.user?.uid ?? null,
       });
 
       eventBus.emit("push.displayed", {
@@ -811,11 +817,13 @@ export const notificationRoutes: FastifyPluginAsync = async (fastify) => {
       const actorId = request.user?.uid ?? "anonymous";
       const occurredAt = new Date().toISOString();
 
-      // Phase D.2 — see push-displayed handler above for the pattern.
+      // Phase D.2 — see push-displayed handler above for the pattern
+      // (including the M-4 tenant-isolation note on callerUid).
       void notificationDispatchLogRepository.backAnnotatePushEvent({
         notificationId,
         kind: "clicked",
         occurredAt,
+        callerUid: request.user?.uid ?? null,
       });
 
       eventBus.emit("push.clicked", {

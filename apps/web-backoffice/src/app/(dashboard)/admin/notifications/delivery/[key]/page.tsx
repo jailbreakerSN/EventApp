@@ -19,6 +19,7 @@
 import { useMemo } from "react";
 import Link from "next/link";
 import { notFound, useParams } from "next/navigation";
+import { useTranslations } from "next-intl";
 import {
   Badge,
   Breadcrumb,
@@ -48,9 +49,47 @@ import {
 } from "../delivery-charts";
 
 export default function AdminDeliveryByKeyPage() {
+  const t = useTranslations("admin.notifications.delivery");
+  const tChartLabels = useTranslations("admin.notifications.delivery.chartLabels");
+  const tFunnelStages = useTranslations("admin.notifications.delivery.funnelStages");
   const params = useParams<{ key: string }>();
   const rawKey = params?.key;
   const key = typeof rawKey === "string" ? decodeURIComponent(rawKey) : undefined;
+
+  // Localised label maps — same pattern as the top-level dashboard. These
+  // stay stable per render and keep delivery-charts.tsx locale-agnostic.
+  const chartLabels = useMemo<Record<string, string>>(
+    () => ({
+      sent: tChartLabels("sent"),
+      delivered: tChartLabels("delivered"),
+      opened: tChartLabels("opened"),
+      clicked: tChartLabels("clicked"),
+      pushDisplayed: tChartLabels("pushDisplayed"),
+      pushClicked: tChartLabels("pushClicked"),
+      suppressed: tChartLabels("suppressed"),
+      admin_disabled: tChartLabels("admin_disabled"),
+      user_opted_out: tChartLabels("user_opted_out"),
+      on_suppression_list: tChartLabels("on_suppression_list"),
+      no_recipient: tChartLabels("no_recipient"),
+      rate_limited: tChartLabels("rate_limited"),
+      deduplicated: tChartLabels("deduplicated"),
+      bounced: tChartLabels("bounced"),
+      complained: tChartLabels("complained"),
+      successRate: tChartLabels("successRate"),
+    }),
+    [tChartLabels],
+  );
+
+  const funnelStageLabels = useMemo(
+    () => ({
+      sent: tFunnelStages("sent"),
+      delivered: tFunnelStages("delivered"),
+      opened: tFunnelStages("opened"),
+      clicked: tFunnelStages("clicked"),
+      displayed: tFunnelStages("displayed"),
+    }),
+    [tFunnelStages],
+  );
 
   const definition = useMemo<NotificationDefinition | undefined>(() => {
     if (!key) return undefined;
@@ -84,9 +123,9 @@ export default function AdminDeliveryByKeyPage() {
       <div className="space-y-6">
         <InlineErrorBanner
           severity="error"
-          kicker="— Introuvable"
-          title="Clé inconnue"
-          description={`Aucune entrée « ${key} » dans le catalogue.`}
+          kicker={t("detail.notFoundKicker")}
+          title={t("detail.notFoundTitle")}
+          description={t("detail.notFoundDescription", { key: String(key) })}
         />
       </div>
     );
@@ -98,19 +137,19 @@ export default function AdminDeliveryByKeyPage() {
         <BreadcrumbList>
           <BreadcrumbItem>
             <BreadcrumbLink asChild>
-              <Link href="/admin">Administration</Link>
+              <Link href="/admin">{t("breadcrumbAdmin")}</Link>
             </BreadcrumbLink>
           </BreadcrumbItem>
           <BreadcrumbSeparator />
           <BreadcrumbItem>
             <BreadcrumbLink asChild>
-              <Link href="/admin/notifications">Notifications</Link>
+              <Link href="/admin/notifications">{t("breadcrumbNotifications")}</Link>
             </BreadcrumbLink>
           </BreadcrumbItem>
           <BreadcrumbSeparator />
           <BreadcrumbItem>
             <BreadcrumbLink asChild>
-              <Link href="/admin/notifications/delivery">Observabilité</Link>
+              <Link href="/admin/notifications/delivery">{t("breadcrumb")}</Link>
             </BreadcrumbLink>
           </BreadcrumbItem>
           <BreadcrumbSeparator />
@@ -121,7 +160,7 @@ export default function AdminDeliveryByKeyPage() {
       </Breadcrumb>
 
       <SectionHeader
-        kicker="— DRILL-DOWN"
+        kicker={t("detail.kicker")}
         title={definition.displayName.fr}
         subtitle={definition.description.fr}
         size="hero"
@@ -143,7 +182,7 @@ export default function AdminDeliveryByKeyPage() {
           </div>
           {!definition.userOptOutAllowed && (
             <Badge variant="destructive" className="text-[10px]">
-              Obligatoire
+              {t("detail.mandatoryBadge")}
             </Badge>
           )}
         </CardContent>
@@ -152,12 +191,12 @@ export default function AdminDeliveryByKeyPage() {
       {query.isError && (
         <InlineErrorBanner
           severity="error"
-          kicker="— Erreur"
-          title="Impossible de charger les données"
+          kicker={t("errorKicker")}
+          title={t("detail.errorTitle")}
           description={
             query.error instanceof Error
               ? query.error.message
-              : "Réessayez dans quelques instants."
+              : t("errorDescription")
           }
         />
       )}
@@ -174,26 +213,28 @@ export default function AdminDeliveryByKeyPage() {
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             <Card>
               <CardHeader>
-                <CardTitle>Entonnoir e-mail</CardTitle>
+                <CardTitle>{t("panels.emailFunnel")}</CardTitle>
               </CardHeader>
               <CardContent>
                 <DeliveryFunnelChart
                   totals={query.data.data.totals}
                   kind="email"
-                  title="Entonnoir e-mail"
+                  title={t("panels.emailFunnel")}
+                  stageLabels={funnelStageLabels}
                 />
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader>
-                <CardTitle>Entonnoir push / in-app</CardTitle>
+                <CardTitle>{t("panels.pushFunnel")}</CardTitle>
               </CardHeader>
               <CardContent>
                 <DeliveryFunnelChart
                   totals={query.data.data.totals}
                   kind="push"
-                  title="Entonnoir push"
+                  title={t("panels.pushFunnelTitle")}
+                  stageLabels={funnelStageLabels}
                 />
               </CardContent>
             </Card>
@@ -202,24 +243,28 @@ export default function AdminDeliveryByKeyPage() {
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             <Card>
               <CardHeader>
-                <CardTitle>Par canal</CardTitle>
+                <CardTitle>{t("panels.perChannel")}</CardTitle>
               </CardHeader>
               <CardContent>
                 <PerChannelBarChart
                   data={query.data.data.perChannel}
-                  title="Succès par canal"
+                  title={t("panels.perChannelTitle")}
+                  emptyLabel={t("emptyChannel")}
+                  labels={chartLabels}
                 />
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader>
-                <CardTitle>Suppressions</CardTitle>
+                <CardTitle>{t("panels.suppression")}</CardTitle>
               </CardHeader>
               <CardContent>
                 <SuppressionDonut
                   totals={query.data.data.totals.suppressed}
-                  title="Motifs de suppression"
+                  title={t("panels.suppressionTitle")}
+                  emptyLabel={t("emptySuppression")}
+                  labels={chartLabels}
                 />
               </CardContent>
             </Card>
@@ -227,13 +272,15 @@ export default function AdminDeliveryByKeyPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle>Évolution temporelle (7 j)</CardTitle>
+              <CardTitle>{t("panels.timeseriesSevenDays")}</CardTitle>
             </CardHeader>
             <CardContent>
               <DeliveryTimeseriesChart
                 data={query.data.data.timeseries}
                 granularity="day"
-                title="Volumes par jour"
+                title={t("panels.timeseriesSevenDaysTitle")}
+                emptyLabel={t("emptyChart")}
+                labels={chartLabels}
               />
             </CardContent>
           </Card>

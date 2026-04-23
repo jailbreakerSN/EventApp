@@ -134,12 +134,21 @@ export interface DeliveryDashboardTotals {
   clicked: number;
   pushDisplayed: number;
   pushClicked: number;
+  // Keyed by NotificationSuppressionReasonSchema (packages/shared-types/
+  // notification-catalog.ts). Every field here MUST appear in that
+  // enum; otherwise the aggregation switch silently under-counts.
+  //
+  // `deduplicated` + `bounced` / `complained` are first-class here even
+  // though they aren't "suppression reasons" in the Zod enum:
+  //   - deduplicated is its own dispatch-log `status`.
+  //   - bounced/complained are delivery-status terminal failures
+  //     back-annotated from the Resend webhook.
+  // See aggregateDeliveryDashboard() below for the full categorisation.
   suppressed: {
     admin_disabled: number;
     user_opted_out: number;
     on_suppression_list: number;
     no_recipient: number;
-    rate_limited: number;
     deduplicated: number;
     bounced: number;
     complained: number;
@@ -428,21 +437,42 @@ export class NotificationDispatchLogRepository extends BaseRepository<DispatchLo
     notificationId: string;
     kind: "displayed" | "clicked";
     occurredAt: string;
-  }): Promise<{ matched: number; updated: number }> {
-    const { notificationId, kind, occurredAt } = params;
-    if (!notificationId) return { matched: 0, updated: 0 };
+    /**
+     * When set, only rows whose `recipientRef` equals `user:${callerUid}`
+     * are stamped. Unset means the caller couldn't attach a Bearer —
+     * typical SW background ping; we emit the audit event (handled by
+     * the route) but skip the data mutation so an anonymous caller
+     * with a guessed notificationId cannot stamp another user's row.
+     */
+    callerUid: string | null;
+  }): Promise<{ matched: number; updated: number; skippedAnonymous: boolean }> {
+    const { notificationId, kind, occurredAt, callerUid } = params;
+    if (!notificationId) return { matched: 0, updated: 0, skippedAnonymous: false };
+    // Anonymous SW pings don't get to mutate — the audit event in the
+    // route handler remains the observable signal.
+    if (!callerUid) {
+      return { matched: 0, updated: 0, skippedAnonymous: true };
+    }
     const tsField = kind === "displayed" ? "pushDisplayedAt" : "pushClickedAt";
+    const expectedRecipient = `user:${callerUid}`;
     try {
       const snap = await this.collection
         .where("messageId", "==", notificationId)
         .limit(10)
         .get();
-      if (snap.empty) return { matched: 0, updated: 0 };
+      if (snap.empty) return { matched: 0, updated: 0, skippedAnonymous: false };
 
       let updated = 0;
       const batch = this.collection.firestore.batch();
       for (const doc of snap.docs) {
         const data = doc.data() as DispatchLogEntry;
+        // Per-row recipient check: even though the dispatch-log ids are
+        // 20-char random, an attacker who somehow learned a
+        // notificationId would otherwise stamp the victim's row.
+        // We trust-but-verify: filter by recipient in memory (the
+        // alternative composite index on (messageId, recipientRef)
+        // isn't worth the cost for ≤ 10 doc reads).
+        if (data.recipientRef !== expectedRecipient) continue;
         // Only stamp when the field is unset — the SW can fire the
         // same event multiple times (tab reopen, network retry) and a
         // first-displayed timestamp is more useful than a
@@ -455,7 +485,7 @@ export class NotificationDispatchLogRepository extends BaseRepository<DispatchLo
       if (updated > 0) {
         await batch.commit();
       }
-      return { matched: snap.size, updated };
+      return { matched: snap.size, updated, skippedAnonymous: false };
     } catch (err) {
       process.stderr.write(
         JSON.stringify({
@@ -466,7 +496,7 @@ export class NotificationDispatchLogRepository extends BaseRepository<DispatchLo
           err: err instanceof Error ? err.message : String(err),
         }) + "\n",
       );
-      return { matched: 0, updated: 0 };
+      return { matched: 0, updated: 0, skippedAnonymous: false };
     }
   }
 

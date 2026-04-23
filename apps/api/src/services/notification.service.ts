@@ -191,8 +191,17 @@ export class NotificationService extends BaseService {
         data: payload.data,
       });
     } catch (err) {
+      // Structured JSON so future PII-scrubbing + log-aggregator rules
+      // operate on explicit fields. Matches the shape used by every
+      // other error log in the notification system (dispatch-log repo,
+      // rate-limit service, in-app channel adapter).
       process.stderr.write(
-        `[NotificationService] FCM push failed for user ${userId}: ${err}\n`,
+        JSON.stringify({
+          level: "error",
+          event: "notification_service.fcm_push_failed",
+          userId,
+          err: err instanceof Error ? err.message : String(err),
+        }) + "\n",
       );
     }
   }

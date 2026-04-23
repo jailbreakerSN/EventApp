@@ -19,6 +19,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import {
   AlertTriangle,
   Download,
@@ -54,10 +55,10 @@ import type { AdminDeliveryDashboardResponse } from "@/lib/api-client";
 
 // ─── Constants ───────────────────────────────────────────────────────────
 
-const WINDOW_OPTIONS: Array<{ days: number; label: string }> = [
-  { days: 1, label: "24 h" },
-  { days: 7, label: "7 j" },
-  { days: 30, label: "30 j" },
+const WINDOW_OPTIONS: Array<{ days: number; key: "day" | "week" | "month" }> = [
+  { days: 1, key: "day" },
+  { days: 7, key: "week" },
+  { days: 30, key: "month" },
 ];
 
 // ─── Helpers ─────────────────────────────────────────────────────────────
@@ -154,7 +155,34 @@ function downloadCsv(csv: string, filename: string) {
 // ─── Page ────────────────────────────────────────────────────────────────
 
 export default function AdminNotificationsDeliveryPage() {
+  const t = useTranslations("admin.notifications.delivery");
+  const tChartLabels = useTranslations("admin.notifications.delivery.chartLabels");
   const [windowDays, setWindowDays] = useState<number>(7);
+
+  // Build the localised label maps up front. These are stable per render
+  // of the page and passed down to the chart primitives so the charts
+  // themselves stay locale-agnostic.
+  const chartLabels = useMemo<Record<string, string>>(
+    () => ({
+      sent: tChartLabels("sent"),
+      delivered: tChartLabels("delivered"),
+      opened: tChartLabels("opened"),
+      clicked: tChartLabels("clicked"),
+      pushDisplayed: tChartLabels("pushDisplayed"),
+      pushClicked: tChartLabels("pushClicked"),
+      suppressed: tChartLabels("suppressed"),
+      admin_disabled: tChartLabels("admin_disabled"),
+      user_opted_out: tChartLabels("user_opted_out"),
+      on_suppression_list: tChartLabels("on_suppression_list"),
+      no_recipient: tChartLabels("no_recipient"),
+      rate_limited: tChartLabels("rate_limited"),
+      deduplicated: tChartLabels("deduplicated"),
+      bounced: tChartLabels("bounced"),
+      complained: tChartLabels("complained"),
+      successRate: tChartLabels("successRate"),
+    }),
+    [tChartLabels],
+  );
 
   // Compute from/to as ISO strings so the query key is stable for the
   // whole session window. We do NOT include `new Date()` at render time
@@ -191,32 +219,32 @@ export default function AdminNotificationsDeliveryPage() {
         <BreadcrumbList>
           <BreadcrumbItem>
             <BreadcrumbLink asChild>
-              <Link href="/dashboard">Tableau de bord</Link>
+              <Link href="/dashboard">{t("breadcrumbHome")}</Link>
             </BreadcrumbLink>
           </BreadcrumbItem>
           <BreadcrumbSeparator />
           <BreadcrumbItem>
             <BreadcrumbLink asChild>
-              <Link href="/admin">Administration</Link>
+              <Link href="/admin">{t("breadcrumbAdmin")}</Link>
             </BreadcrumbLink>
           </BreadcrumbItem>
           <BreadcrumbSeparator />
           <BreadcrumbItem>
             <BreadcrumbLink asChild>
-              <Link href="/admin/notifications">Notifications</Link>
+              <Link href="/admin/notifications">{t("breadcrumbNotifications")}</Link>
             </BreadcrumbLink>
           </BreadcrumbItem>
           <BreadcrumbSeparator />
           <BreadcrumbItem>
-            <BreadcrumbPage>Observabilité</BreadcrumbPage>
+            <BreadcrumbPage>{t("breadcrumb")}</BreadcrumbPage>
           </BreadcrumbItem>
         </BreadcrumbList>
       </Breadcrumb>
 
       <SectionHeader
-        kicker="— OBSERVABILITÉ"
-        title="Observabilité notifications"
-        subtitle="Suivi de la livraison, des ouvertures et des suppressions sur l’ensemble de la plateforme."
+        kicker={t("kicker")}
+        title={t("title")}
+        subtitle={t("subtitle")}
         size="hero"
         as="h1"
       />
@@ -226,18 +254,18 @@ export default function AdminNotificationsDeliveryPage() {
           htmlFor="delivery-window-picker"
           className="text-xs font-medium uppercase tracking-wider text-muted-foreground"
         >
-          Fenêtre
+          {t("window")}
         </label>
         <Select
           id="delivery-window-picker"
           value={String(windowDays)}
           onChange={(e) => setWindowDays(Number(e.target.value))}
-          aria-label="Fenêtre d’analyse"
+          aria-label={t("windowAriaLabel")}
           className="max-w-xs"
         >
           {WINDOW_OPTIONS.map((opt) => (
             <option key={opt.days} value={opt.days}>
-              {opt.label}
+              {t(`windowOptions.${opt.key}`)}
             </option>
           ))}
         </Select>
@@ -247,10 +275,10 @@ export default function AdminNotificationsDeliveryPage() {
             size="sm"
             onClick={handleExport}
             disabled={!query.data || query.isLoading}
-            aria-label="Exporter en CSV"
+            aria-label={t("exportAriaLabel")}
           >
             <Download className="mr-2 h-4 w-4" aria-hidden="true" />
-            Exporter CSV
+            {t("export")}
           </Button>
         </div>
       </div>
@@ -258,12 +286,12 @@ export default function AdminNotificationsDeliveryPage() {
       {query.isError && (
         <InlineErrorBanner
           severity="error"
-          kicker="— Erreur"
-          title="Impossible de charger le tableau de livraison"
+          kicker={t("errorKicker")}
+          title={t("errorTitle")}
           description={
             query.error instanceof Error
               ? query.error.message
-              : "Réessayez dans quelques instants."
+              : t("errorDescription")
           }
         />
       )}
@@ -271,7 +299,12 @@ export default function AdminNotificationsDeliveryPage() {
       {query.isLoading && <DashboardSkeleton />}
 
       {query.data && !query.isLoading && kpis && (
-        <DashboardBody data={query.data.data} kpis={kpis} granularity={granularity} />
+        <DashboardBody
+          data={query.data.data}
+          kpis={kpis}
+          granularity={granularity}
+          chartLabels={chartLabels}
+        />
       )}
     </div>
   );
@@ -283,6 +316,7 @@ function DashboardBody({
   data,
   kpis,
   granularity,
+  chartLabels,
 }: {
   data: AdminDeliveryDashboardResponse;
   kpis: {
@@ -292,7 +326,9 @@ function DashboardBody({
     bounceRate: number;
   };
   granularity: "hour" | "day";
+  chartLabels: Record<string, string>;
 }) {
+  const t = useTranslations("admin.notifications.delivery");
   const highBounce = kpis.bounceRate > 0.05;
   return (
     <>
@@ -300,21 +336,21 @@ function DashboardBody({
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <KpiCard
           icon={<Send className="h-5 w-5 text-teranga-navy" />}
-          label="Envois totaux"
+          label={t("kpi.totalSent")}
           value={kpis.totalSent.toLocaleString("fr-FR")}
-          hint="Messages remis au fournisseur"
+          hint={t("kpi.totalSentHint")}
         />
         <KpiCard
           icon={<TrendingUp className="h-5 w-5 text-teranga-green" />}
-          label="Taux de livraison"
+          label={t("kpi.deliveryRate")}
           value={percentFormatter(kpis.deliveryRate)}
-          hint="Livrés ou affichés / envoyés"
+          hint={t("kpi.deliveryRateHint")}
         />
         <KpiCard
           icon={<Gauge className="h-5 w-5 text-teranga-gold" />}
-          label="Taux de clic"
+          label={t("kpi.clickRate")}
           value={percentFormatter(kpis.clickRate)}
-          hint="Clics e-mail + push / envoyés"
+          hint={t("kpi.clickRateHint")}
         />
         <KpiCard
           icon={
@@ -324,9 +360,9 @@ function DashboardBody({
               }`}
             />
           }
-          label="Taux de rebond"
+          label={t("kpi.bounceRate")}
           value={percentFormatter(kpis.bounceRate)}
-          hint="Rebonds + plaintes / envoyés"
+          hint={t("kpi.bounceRateHint")}
           tone={highBounce ? "destructive" : "default"}
         />
       </div>
@@ -335,21 +371,28 @@ function DashboardBody({
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>Par canal</CardTitle>
+            <CardTitle>{t("panels.perChannel")}</CardTitle>
           </CardHeader>
           <CardContent>
-            <PerChannelBarChart data={data.perChannel} title="Succès par canal" />
+            <PerChannelBarChart
+              data={data.perChannel}
+              title={t("panels.perChannelTitle")}
+              emptyLabel={t("emptyChannel")}
+              labels={chartLabels}
+            />
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle>Suppressions</CardTitle>
+            <CardTitle>{t("panels.suppression")}</CardTitle>
           </CardHeader>
           <CardContent>
             <SuppressionDonut
               totals={data.totals.suppressed}
-              title="Motifs de suppression"
+              title={t("panels.suppressionTitle")}
+              emptyLabel={t("emptySuppression")}
+              labels={chartLabels}
             />
           </CardContent>
         </Card>
@@ -358,35 +401,35 @@ function DashboardBody({
       {/* Time-series spans full width */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between gap-2">
-          <CardTitle>Évolution temporelle</CardTitle>
+          <CardTitle>{t("panels.timeseries")}</CardTitle>
           <Badge variant="neutral" className="text-[10px]">
-            {granularity === "hour" ? "Granularité : heure" : "Granularité : jour"}
+            {granularity === "hour" ? t("granularity.hour") : t("granularity.day")}
           </Badge>
         </CardHeader>
         <CardContent>
           <DeliveryTimeseriesChart
             data={data.timeseries}
             granularity={granularity}
-            title="Volumes par bucket"
+            title={t("panels.timeseriesTitle")}
+            emptyLabel={t("emptyChart")}
+            labels={chartLabels}
           />
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <CardTitle>Focaliser sur une notification</CardTitle>
+          <CardTitle>{t("panels.focusOnKey")}</CardTitle>
         </CardHeader>
         <CardContent className="text-sm text-muted-foreground">
-          Ouvrez le{" "}
+          {t("focusBody.before")}
           <Link
             href="/admin/notifications"
             className="font-medium text-primary underline-offset-4 hover:underline"
           >
-            catalogue notifications
-          </Link>{" "}
-          et cliquez sur « Observabilité » pour la clé concernée pour
-          obtenir un entonnoir détaillé et les 20 dernières lignes du
-          journal de dispatch.
+            {t("focusBody.link")}
+          </Link>
+          {t("focusBody.after")}
         </CardContent>
       </Card>
     </>

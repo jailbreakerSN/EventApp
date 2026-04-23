@@ -15,12 +15,45 @@ import {
   DeliveryTimeseriesChart,
   PerChannelBarChart,
   SuppressionDonut,
+  type ChartLabelMap,
+  type FunnelStageLabels,
 } from "./delivery-charts";
 import type {
   AdminDeliveryDashboardBucket,
   AdminDeliveryDashboardPerChannel,
   AdminDeliveryDashboardTotals,
 } from "@/lib/api-client";
+
+// ─── Static labels ───────────────────────────────────────────────────────
+// French labels — the chart primitives are locale-agnostic, so stories use
+// a frozen French map to match the default admin-surface experience.
+
+const CHART_LABELS: ChartLabelMap = {
+  sent: "Envoyés",
+  delivered: "Livrés",
+  opened: "Ouverts",
+  clicked: "Cliqués",
+  pushDisplayed: "Push affichés",
+  pushClicked: "Push cliqués",
+  suppressed: "Supprimés",
+  admin_disabled: "Désactivée admin",
+  user_opted_out: "Désabonnement utilisateur",
+  on_suppression_list: "Liste de suppression",
+  no_recipient: "Pas de destinataire",
+  rate_limited: "Rate-limit",
+  deduplicated: "Dédupliqués",
+  bounced: "Rebond",
+  complained: "Plainte",
+  successRate: "Taux de succès",
+};
+
+const FUNNEL_STAGE_LABELS: FunnelStageLabels = {
+  sent: "Envoyés",
+  delivered: "Livrés",
+  opened: "Ouverts",
+  clicked: "Cliqués",
+  displayed: "Affichés",
+};
 
 // ─── Static fixtures ─────────────────────────────────────────────────────
 // Deterministic so the a11y + visual-regression snapshots stay stable.
@@ -107,6 +140,8 @@ export const TimeseriesDefault: StoryObj<typeof DeliveryTimeseriesChart> = {
     data: TIMESERIES_FIXTURE,
     granularity: "day",
     title: "Volumes par jour",
+    emptyLabel: "Aucune activité sur la fenêtre sélectionnée.",
+    labels: CHART_LABELS,
   },
 };
 
@@ -115,6 +150,8 @@ export const TimeseriesEmpty: StoryObj<typeof DeliveryTimeseriesChart> = {
     data: [],
     granularity: "day",
     title: "Volumes par jour",
+    emptyLabel: "Aucune activité sur la fenêtre sélectionnée.",
+    labels: CHART_LABELS,
   },
 };
 
@@ -125,6 +162,8 @@ export const PerChannelDefault: StoryObj<typeof PerChannelBarChart> = {
   args: {
     data: PER_CHANNEL_FIXTURE,
     title: "Succès par canal",
+    emptyLabel: "Aucun canal actif sur la fenêtre.",
+    labels: CHART_LABELS,
   },
 };
 
@@ -135,6 +174,8 @@ export const SuppressionDefault: StoryObj<typeof SuppressionDonut> = {
   args: {
     totals: TOTALS_FIXTURE.suppressed,
     title: "Motifs de suppression",
+    emptyLabel: "Aucune suppression sur la fenêtre.",
+    labels: CHART_LABELS,
   },
 };
 
@@ -146,6 +187,7 @@ export const FunnelEmail: StoryObj<typeof DeliveryFunnelChart> = {
     totals: TOTALS_FIXTURE,
     kind: "email",
     title: "Entonnoir e-mail",
+    stageLabels: FUNNEL_STAGE_LABELS,
   },
 };
 
@@ -155,5 +197,6 @@ export const FunnelPush: StoryObj<typeof DeliveryFunnelChart> = {
     totals: TOTALS_FIXTURE,
     kind: "push",
     title: "Entonnoir push",
+    stageLabels: FUNNEL_STAGE_LABELS,
   },
 };

@@ -13,6 +13,13 @@
 //     type into the shared package, which we don't do.
 //   - The palette still comes from the shared Tailwind preset (hsl vars
 //     below resolve to shared tokens in every theme).
+//
+// Localisation contract:
+//   - These primitives are locale-agnostic. Callers pass localised strings
+//     via `emptyLabel`, `labels` (chart legend/tooltip map) and
+//     `stageLabels` (funnel stage names). We deliberately don't call
+//     `useTranslations` here so the component stays storybook-friendly and
+//     reusable across future admin surfaces.
 
 import {
   Area,
@@ -50,6 +57,14 @@ export const CHART_COLORS = {
   dedup: "hsl(var(--teranga-clay, var(--muted-foreground)))",
 } as const;
 
+/**
+ * Map of chart data keys → localised display labels. Callers pass this in
+ * (sourced from `useTranslations("admin.notifications.delivery.chartLabels")`)
+ * so the chart primitive stays locale-agnostic. Unknown keys fall back to
+ * the raw key name.
+ */
+export type ChartLabelMap = Readonly<Record<string, string>>;
+
 // ─── Time-series stacked area ────────────────────────────────────────────
 
 export interface DeliveryTimeseriesChartProps {
@@ -57,6 +72,10 @@ export interface DeliveryTimeseriesChartProps {
   granularity: "hour" | "day";
   /** Controls label for screen-readers + container aria-label. */
   title: string;
+  /** Localised "no data" copy shown when `data` is empty. */
+  emptyLabel: string;
+  /** Localised legend/tooltip labels for each data key. */
+  labels: ChartLabelMap;
 }
 
 /**
@@ -70,14 +89,11 @@ export function DeliveryTimeseriesChart({
   data,
   granularity,
   title,
+  emptyLabel,
+  labels,
 }: DeliveryTimeseriesChartProps) {
   if (data.length === 0) {
-    return (
-      <EmptyChart
-        label="Aucune activité sur la fenêtre sélectionnée."
-        title={title}
-      />
-    );
+    return <EmptyChart label={emptyLabel} title={title} />;
   }
   return (
     <div role="img" aria-label={title} className="h-72 w-full">
@@ -96,12 +112,12 @@ export function DeliveryTimeseriesChart({
             allowDecimals={false}
           />
           <RTooltip
-            formatter={(value: number, name: string) => [value, labelFor(name)]}
+            formatter={(value: number, name: string) => [value, labelFor(name, labels)]}
             labelFormatter={(v: string) => formatBucketTick(v, granularity)}
           />
           <Legend
             formatter={(name: string) => (
-              <span className="text-xs text-muted-foreground">{labelFor(name)}</span>
+              <span className="text-xs text-muted-foreground">{labelFor(name, labels)}</span>
             )}
           />
           <Area
@@ -147,11 +163,15 @@ export function DeliveryTimeseriesChart({
 export interface PerChannelBarChartProps {
   data: AdminDeliveryDashboardPerChannel[];
   title: string;
+  /** Localised "no data" copy shown when `data` is empty. */
+  emptyLabel: string;
+  /** Localised legend/tooltip labels for each data key. */
+  labels: ChartLabelMap;
 }
 
-export function PerChannelBarChart({ data, title }: PerChannelBarChartProps) {
+export function PerChannelBarChart({ data, title, emptyLabel, labels }: PerChannelBarChartProps) {
   if (data.length === 0) {
-    return <EmptyChart label="Aucun canal actif sur la fenêtre." title={title} />;
+    return <EmptyChart label={emptyLabel} title={title} />;
   }
   return (
     <div role="img" aria-label={title} className="h-64 w-full">
@@ -173,11 +193,11 @@ export function PerChannelBarChart({ data, title }: PerChannelBarChartProps) {
             allowDecimals={false}
           />
           <RTooltip
-            formatter={(value: number, name: string) => [value, labelFor(name)]}
+            formatter={(value: number, name: string) => [value, labelFor(name, labels)]}
           />
           <Legend
             formatter={(name: string) => (
-              <span className="text-xs text-muted-foreground">{labelFor(name)}</span>
+              <span className="text-xs text-muted-foreground">{labelFor(name, labels)}</span>
             )}
           />
           <Bar dataKey="sent" stackId="channels" fill={CHART_COLORS.sent} />
@@ -193,6 +213,10 @@ export function PerChannelBarChart({ data, title }: PerChannelBarChartProps) {
 export interface SuppressionDonutProps {
   totals: AdminDeliveryDashboardTotals["suppressed"];
   title: string;
+  /** Localised "no data" copy shown when every reason count is zero. */
+  emptyLabel: string;
+  /** Localised legend/tooltip labels for each suppression reason. */
+  labels: ChartLabelMap;
 }
 
 const SUPPRESSION_PALETTE: Record<
@@ -209,13 +233,13 @@ const SUPPRESSION_PALETTE: Record<
   complained: CHART_COLORS.complained,
 };
 
-export function SuppressionDonut({ totals, title }: SuppressionDonutProps) {
+export function SuppressionDonut({ totals, title, emptyLabel, labels }: SuppressionDonutProps) {
   const entries = (Object.entries(totals) as Array<
     [keyof AdminDeliveryDashboardTotals["suppressed"], number]
   >).filter(([, v]) => v > 0);
 
   if (entries.length === 0) {
-    return <EmptyChart label="Aucune suppression sur la fenêtre." title={title} />;
+    return <EmptyChart label={emptyLabel} title={title} />;
   }
 
   return (
@@ -235,11 +259,11 @@ export function SuppressionDonut({ totals, title }: SuppressionDonutProps) {
             ))}
           </Pie>
           <RTooltip
-            formatter={(value: number, name: string) => [value, labelFor(name)]}
+            formatter={(value: number, name: string) => [value, labelFor(name, labels)]}
           />
           <Legend
             formatter={(name: string) => (
-              <span className="text-xs text-muted-foreground">{labelFor(name)}</span>
+              <span className="text-xs text-muted-foreground">{labelFor(name, labels)}</span>
             )}
           />
         </PieChart>
@@ -250,15 +274,30 @@ export function SuppressionDonut({ totals, title }: SuppressionDonutProps) {
 
 // ─── Funnel (per-key drill-down) ──────────────────────────────────────────
 
+/**
+ * Localised funnel stage labels. Callers sourced from
+ * `useTranslations("admin.notifications.delivery.funnelStages")` pass this
+ * map. All five keys must be provided.
+ */
+export interface FunnelStageLabels {
+  sent: string;
+  delivered: string;
+  opened: string;
+  clicked: string;
+  displayed: string;
+}
+
 export interface DeliveryFunnelChartProps {
   totals: AdminDeliveryDashboardTotals;
   /** "email" funnel: sent → delivered → opened → clicked.
    *  "push" funnel: sent → pushDisplayed → pushClicked. */
   kind: "email" | "push";
   title: string;
+  /** Localised funnel stage labels. */
+  stageLabels: FunnelStageLabels;
 }
 
-export function DeliveryFunnelChart({ totals, kind, title }: DeliveryFunnelChartProps) {
+export function DeliveryFunnelChart({ totals, kind, title, stageLabels }: DeliveryFunnelChartProps) {
   // Funnel rendered as horizontal bars with explicit magnitude labels.
   // Recharts has no first-class funnel chart; stacking horizontal bars is
   // the simplest accessible representation and matches how the ops team
@@ -266,15 +305,15 @@ export function DeliveryFunnelChart({ totals, kind, title }: DeliveryFunnelChart
   const stages =
     kind === "email"
       ? [
-          { label: "Envoyés", value: totals.sent + totals.delivered + totals.opened + totals.clicked, color: CHART_COLORS.sent },
-          { label: "Livrés", value: totals.delivered + totals.opened + totals.clicked, color: CHART_COLORS.delivered },
-          { label: "Ouverts", value: totals.opened + totals.clicked, color: CHART_COLORS.opened },
-          { label: "Cliqués", value: totals.clicked, color: CHART_COLORS.clicked },
+          { label: stageLabels.sent, value: totals.sent + totals.delivered + totals.opened + totals.clicked, color: CHART_COLORS.sent },
+          { label: stageLabels.delivered, value: totals.delivered + totals.opened + totals.clicked, color: CHART_COLORS.delivered },
+          { label: stageLabels.opened, value: totals.opened + totals.clicked, color: CHART_COLORS.opened },
+          { label: stageLabels.clicked, value: totals.clicked, color: CHART_COLORS.clicked },
         ]
       : [
-          { label: "Envoyés", value: totals.sent + totals.pushDisplayed, color: CHART_COLORS.sent },
-          { label: "Affichés", value: totals.pushDisplayed, color: CHART_COLORS.displayed },
-          { label: "Cliqués", value: totals.pushClicked, color: CHART_COLORS.clicked },
+          { label: stageLabels.sent, value: totals.sent + totals.pushDisplayed, color: CHART_COLORS.sent },
+          { label: stageLabels.displayed, value: totals.pushDisplayed, color: CHART_COLORS.displayed },
+          { label: stageLabels.clicked, value: totals.pushClicked, color: CHART_COLORS.clicked },
         ];
 
   const max = Math.max(1, ...stages.map((s) => s.value));
@@ -343,24 +382,6 @@ function formatBucketTick(iso: string, granularity: "hour" | "day"): string {
   }
 }
 
-function labelFor(key: string): string {
-  const map: Record<string, string> = {
-    sent: "Envoyés",
-    delivered: "Livrés",
-    opened: "Ouverts",
-    clicked: "Cliqués",
-    pushDisplayed: "Push affichés",
-    pushClicked: "Push cliqués",
-    suppressed: "Supprimés",
-    admin_disabled: "Désactivée admin",
-    user_opted_out: "Désabonnement utilisateur",
-    on_suppression_list: "Liste de suppression",
-    no_recipient: "Pas de destinataire",
-    rate_limited: "Rate-limit",
-    deduplicated: "Dédupliqués",
-    bounced: "Rebond",
-    complained: "Plainte",
-    successRate: "Taux de succès",
-  };
-  return map[key] ?? key;
+function labelFor(key: string, labels: ChartLabelMap): string {
+  return labels[key] ?? key;
 }

@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { config } from "@/config";
 import { db, COLLECTIONS } from "@/config/firebase";
 import { getRequestId } from "@/context/request-context";
 
@@ -108,8 +109,32 @@ function hashIdentifier(identifier: string): string {
 export async function rateLimit(opts: RateLimitOptions): Promise<RateLimitResult> {
   // Test/escape hatch. Checked BEFORE any Firestore work so unit tests
   // can assert zero Firestore calls occur in the disabled path.
-  if (process.env.RATE_LIMIT_DISABLED === "true") {
+  //
+  // Security: accepted only in non-production envs. A misconfigured or
+  // tampered production Cloud Run revision that sets this flag would
+  // silently remove every distributed rate-limit across every scope —
+  // exactly the kind of quiet-failure mode the limiter exists to
+  // prevent. Coerced via the same Zod-`.preprocess` boolean shape as
+  // NOTIFICATIONS_DISPATCHER_ENABLED / USE_IN_APP_ADAPTER so "1",
+  // "True" etc. all resolve consistently with other flags.
+  if (
+    config.RATE_LIMIT_DISABLED === true &&
+    config.NODE_ENV !== "production"
+  ) {
     return { allowed: true, count: 0, limit: opts.limit };
+  }
+  if (config.RATE_LIMIT_DISABLED === true && config.NODE_ENV === "production") {
+    // Loud stderr — any production deploy that somehow carries this
+    // flag must surface on the observability dashboard. We don't throw
+    // because a broken env var should not 5xx every request; instead
+    // the fail-open path below kicks in but with a visible audit.
+    process.stderr.write(
+      JSON.stringify({
+        level: "warn",
+        event: "rate_limit.disabled_in_production_ignored",
+        message: "RATE_LIMIT_DISABLED set in production — flag ignored.",
+      }) + "\n",
+    );
   }
 
   const hashedId = hashIdentifier(opts.identifier);

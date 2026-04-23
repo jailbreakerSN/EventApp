@@ -196,7 +196,7 @@ export function PushPermissionBanner({ trigger, className }: PushPermissionBanne
     }
     switch (result.reason) {
       case "permission_denied":
-        toast.error(t("denied_help"));
+        toast.error(t("permission_banner.denied_help"));
         setVisible(false);
         setShowDeniedHelp(true);
         break;
@@ -240,7 +240,7 @@ export function PushPermissionBanner({ trigger, className }: PushPermissionBanne
           .join(" ")}
       >
         <Bell className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" aria-hidden="true" />
-        <p>{t("denied_help")}</p>
+        <p>{t("permission_banner.denied_help")}</p>
       </div>
     );
   }

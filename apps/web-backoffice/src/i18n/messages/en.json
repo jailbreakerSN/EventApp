@@ -324,15 +324,22 @@
       },
       "delivery": {
         "breadcrumb": "Observability",
+        "breadcrumbHome": "Dashboard",
+        "breadcrumbAdmin": "Administration",
+        "breadcrumbNotifications": "Notifications",
+        "kicker": "— OBSERVABILITY",
         "title": "Notification observability",
         "subtitle": "Track delivery, opens and suppressions across the platform.",
         "window": "Window",
+        "windowAriaLabel": "Analysis window",
         "windowOptions": {
           "day": "24 h",
           "week": "7 d",
           "month": "30 d"
         },
         "export": "Export CSV",
+        "exportAriaLabel": "Export as CSV",
+        "errorKicker": "— Error",
         "kpi": {
           "totalSent": "Total sent",
           "totalSentHint": "Messages handed to the provider",
@@ -345,16 +352,66 @@
         },
         "panels": {
           "perChannel": "By channel",
+          "perChannelTitle": "Success by channel",
           "suppression": "Suppressions",
+          "suppressionTitle": "Suppression reasons",
           "timeseries": "Volume over time",
+          "timeseriesTitle": "Volumes per bucket",
+          "timeseriesSevenDays": "Volume over time (7 d)",
+          "timeseriesSevenDaysTitle": "Volumes per day",
           "focusOnKey": "Focus on one notification",
           "emailFunnel": "Email funnel",
-          "pushFunnel": "Push / in-app funnel"
+          "pushFunnel": "Push / in-app funnel",
+          "pushFunnelTitle": "Push funnel"
+        },
+        "granularity": {
+          "hour": "Granularity: hour",
+          "day": "Granularity: day"
+        },
+        "focusBody": {
+          "before": "Open the ",
+          "link": "notifications catalog",
+          "after": " and click 'Observability' on the relevant key to get a detailed funnel and the last 20 rows of the dispatch log."
         },
         "emptyChart": "No activity in the selected window.",
+        "emptyChannel": "No active channel in the window.",
+        "emptySuppression": "No suppressions in the window.",
         "errorTitle": "Unable to load the delivery dashboard",
         "errorDescription": "Try again in a few moments.",
-        "rowAction": "Observability"
+        "rowAction": "Observability",
+        "detail": {
+          "kicker": "— DRILL-DOWN",
+          "mandatoryBadge": "Mandatory",
+          "errorTitle": "Unable to load the data",
+          "notFoundKicker": "— Not found",
+          "notFoundTitle": "Unknown key",
+          "notFoundDescription": "No entry '{key}' in the catalog."
+        },
+        "chartLabels": {
+          "sent": "Sent",
+          "delivered": "Delivered",
+          "opened": "Opened",
+          "clicked": "Clicked",
+          "pushDisplayed": "Push displayed",
+          "pushClicked": "Push clicked",
+          "suppressed": "Suppressed",
+          "admin_disabled": "Admin-disabled",
+          "user_opted_out": "User opted out",
+          "on_suppression_list": "Suppression list",
+          "no_recipient": "No recipient",
+          "rate_limited": "Rate-limited",
+          "deduplicated": "Deduplicated",
+          "bounced": "Bounced",
+          "complained": "Complained",
+          "successRate": "Success rate"
+        },
+        "funnelStages": {
+          "sent": "Sent",
+          "delivered": "Delivered",
+          "opened": "Opened",
+          "clicked": "Clicked",
+          "displayed": "Displayed"
+        }
       }
     }
   },
