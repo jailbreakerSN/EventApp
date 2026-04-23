@@ -283,6 +283,11 @@ export const RESETTABLE_COLLECTIONS = [
   "badgeTemplates",
   "subscriptions",
   "counters",
+  // Phase 6 (admin overhaul) — platform feature flags. Stored as doc-per-
+  // flag under a dedicated collection. Resettable in staging so flag
+  // fixtures don't persist across seed runs; production deploys never
+  // invoke the reset script so prod flags are safe.
+  "featureFlags",
   // Identity last — deletes after everything that references users / orgs
   "users",
   "organizations",
