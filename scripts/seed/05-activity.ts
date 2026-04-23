@@ -487,10 +487,11 @@ async function writeBadges(db: Firestore): Promise<number> {
         .doc(b.id)
         .set({
           ...b,
-          templateId: null,
+          templateId: "badge-template-001",
           pdfURL: null,
           status: "generated",
           error: null,
+          downloadCount: 0,
           generatedAt: yesterday,
           createdAt: yesterday,
           updatedAt: yesterday,
@@ -1023,9 +1024,7 @@ async function writeBalanceTransactions(db: Firestore): Promise<number> {
     },
   ];
 
-  await Promise.all(
-    entries.map((e) => db.collection("balanceTransactions").doc(e.id).set(e)),
-  );
+  await Promise.all(entries.map((e) => db.collection("balanceTransactions").doc(e.id).set(e)));
   return entries.length;
 }
 
@@ -1078,24 +1077,21 @@ async function writePayouts(db: Firestore): Promise<number> {
   // pending — the payout-creation service flips it to `paid_out` on
   // completion.
   const payoutLedgerDocId = ledgerDocId("payout", payoutId);
-  await db
-    .collection("balanceTransactions")
-    .doc(payoutLedgerDocId)
-    .set({
-      id: payoutLedgerDocId,
-      organizationId: IDS.orgId,
-      eventId: IDS.paidEvent,
-      paymentId: null,
-      payoutId,
-      kind: "payout",
-      amount: -netAmount,
-      currency: "XOF",
-      status: "pending",
-      availableOn: scheduledFor,
-      description: "Versement planifié (seed)",
-      createdBy: "system:seed",
-      createdAt: yesterday,
-    });
+  await db.collection("balanceTransactions").doc(payoutLedgerDocId).set({
+    id: payoutLedgerDocId,
+    organizationId: IDS.orgId,
+    eventId: IDS.paidEvent,
+    paymentId: null,
+    payoutId,
+    kind: "payout",
+    amount: -netAmount,
+    currency: "XOF",
+    status: "pending",
+    availableOn: scheduledFor,
+    description: "Versement planifié (seed)",
+    createdBy: "system:seed",
+    createdAt: yesterday,
+  });
 
   return 1;
 }
@@ -1107,9 +1103,7 @@ async function writePayouts(db: Firestore): Promise<number> {
 // "free registration via promo" path.
 
 async function writePromoCodes(db: Firestore): Promise<number> {
-  const expiresInOneMonth = new Date(
-    Date.now() + 30 * 24 * 60 * 60 * 1000,
-  ).toISOString();
+  const expiresInOneMonth = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
   const expiredYesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
   const promos = [
@@ -1163,9 +1157,7 @@ async function writePromoCodes(db: Firestore): Promise<number> {
     },
   ];
 
-  await Promise.all(
-    promos.map((p) => db.collection("promoCodes").doc(p.id).set(p)),
-  );
+  await Promise.all(promos.map((p) => db.collection("promoCodes").doc(p.id).set(p)));
   return promos.length;
 }
 
@@ -1225,9 +1217,7 @@ async function writeBadgeTemplates(db: Firestore): Promise<number> {
     },
   ];
 
-  await Promise.all(
-    templates.map((t) => db.collection("badgeTemplates").doc(t.id).set(t)),
-  );
+  await Promise.all(templates.map((t) => db.collection("badgeTemplates").doc(t.id).set(t)));
   return templates.length;
 }
 

@@ -604,7 +604,7 @@ const EXPANSION_NOTIFICATIONS: SeedNotification[] = [
   {
     id: "notif-bo-001",
     userId: IDS.organizer,
-    type: "new_registration",
+    type: "registration_confirmed",
     title: "Nouvelle inscription",
     body: "Aminata Fall s'est inscrite au Dakar Tech Summit 2026.",
     data: { eventId: IDS.conference, deepLink: `/events/${IDS.conference}/registrations` },
@@ -615,7 +615,7 @@ const EXPANSION_NOTIFICATIONS: SeedNotification[] = [
   {
     id: "notif-bo-002",
     userId: IDS.organizer,
-    type: "payment_succeeded",
+    type: "payment_success",
     title: "Paiement reçu",
     body: "Paiement de 25 000 XOF reçu pour la Masterclass IA.",
     data: { eventId: IDS.paidEvent, deepLink: "/finance" },
@@ -626,7 +626,7 @@ const EXPANSION_NOTIFICATIONS: SeedNotification[] = [
   {
     id: "notif-bo-003",
     userId: IDS.organizer,
-    type: "plan_limit_warning",
+    type: "system",
     title: "Limite de votre plan approchée",
     body: "Vous avez utilisé 80% de votre quota de participants pour ce mois.",
     data: { organizationId: IDS.orgId, deepLink: "/organization/billing" },
@@ -648,7 +648,7 @@ const EXPANSION_NOTIFICATIONS: SeedNotification[] = [
   {
     id: "notif-bo-005",
     userId: IDS.starterOrganizer,
-    type: "member_added",
+    type: "system",
     title: "Nouveau membre ajouté",
     body: "Oumar Ba a ajouté Aïssatou Diallo comme co-organisatrice.",
     data: { organizationId: IDS.starterOrgId, deepLink: "/organization/members" },
@@ -784,7 +784,7 @@ const EXPANSION_BROADCASTS: SeedBroadcast[] = [
     title: "Fintech Ouest-Africaine — J-10, préparez votre venue",
     body: "Plus que 10 jours avant la Conférence Fintech Ouest-Africaine à Thiès ! Retrouvez le plan d'accès et les partenaires hôtels dans le lien inclus. À très vite 🙌",
     channels: ["email", "push"],
-    recipientFilter: "registered",
+    recipientFilter: "all",
     recipientCount: 4,
     sentCount: 4,
     failedCount: 0,
@@ -883,7 +883,7 @@ const LEGACY_AUDIT: AuditEntry[] = [
     details: { ticketType: "Standard" },
   },
   {
-    action: "registration.checked_in",
+    action: "checkin.completed",
     resourceType: "registration",
     resourceId: IDS.reg1,
     actorId: IDS.organizer,
@@ -1124,9 +1124,7 @@ async function writeNotificationSettings(db: Firestore): Promise<number> {
     },
   ];
   await Promise.all(
-    overrides.map((o) =>
-      db.collection("notificationSettings").doc(o.docId).set(o.body),
-    ),
+    overrides.map((o) => db.collection("notificationSettings").doc(o.docId).set(o.body)),
   );
   return overrides.length;
 }
@@ -1221,21 +1219,18 @@ async function writeNotificationSettingsHistory(db: Firestore): Promise<number> 
 
   await Promise.all(
     entries.map((e) =>
-      db
-        .collection("notificationSettingsHistory")
-        .doc(e.docId)
-        .set({
-          id: e.docId,
-          key: e.key,
-          organizationId: e.organizationId,
-          previousValue: e.previousValue,
-          newValue: e.newValue,
-          diff: e.diff,
-          actorId: e.actorId,
-          actorRole: e.actorRole,
-          reason: e.reason,
-          changedAt: e.changedAt,
-        }),
+      db.collection("notificationSettingsHistory").doc(e.docId).set({
+        id: e.docId,
+        key: e.key,
+        organizationId: e.organizationId,
+        previousValue: e.previousValue,
+        newValue: e.newValue,
+        diff: e.diff,
+        actorId: e.actorId,
+        actorRole: e.actorRole,
+        reason: e.reason,
+        changedAt: e.changedAt,
+      }),
     ),
   );
   return entries.length;
@@ -1250,16 +1245,13 @@ async function writeNotificationSettingsHistory(db: Firestore): Promise<number> 
 async function writeEmailSuppressions(db: Firestore): Promise<number> {
   const email = "hard-bounce@dev-suppressed.test";
   const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
-  await db
-    .collection("emailSuppressions")
-    .doc(email)
-    .set({
-      email,
-      reason: "bounced",
-      source: "resend.webhook",
-      sourceEmailId: "seed-resend-evt-0001",
-      createdAt: threeDaysAgo,
-    });
+  await db.collection("emailSuppressions").doc(email).set({
+    email,
+    reason: "bounced",
+    source: "resend.webhook",
+    sourceEmailId: "seed-resend-evt-0001",
+    createdAt: threeDaysAgo,
+  });
   return 1;
 }
 
