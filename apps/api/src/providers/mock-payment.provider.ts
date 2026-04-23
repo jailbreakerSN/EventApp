@@ -106,9 +106,10 @@ export class MockPaymentProvider implements PaymentProvider {
   /**
    * Mock-provider webhook verification — HMAC of raw body keyed by
    * PAYMENT_WEBHOOK_SECRET, passed as `X-Webhook-Signature`. This is
-   * what the dev-only mock-checkout page uses. Never enabled in
-   * production: the `getProvider("mock")` path throws in production
-   * before this is even called.
+   * what the mock-checkout page (dev + staging) uses. Never enabled
+   * in production: the `getProvider("mock")` / `getProviderForWebhook`
+   * paths both refuse the mock method in production before this is
+   * called.
    */
   verifyWebhook(params: VerifyWebhookParams): boolean {
     if (!WEBHOOK_SECRET) return false;
