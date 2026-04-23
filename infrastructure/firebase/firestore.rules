@@ -592,6 +592,18 @@ service cloud.firestore {
       allow create, update, delete: if false;
     }
 
+    // ─── Rate-limit Buckets (Phase D.4) ─────────────────────────────────────
+    // Distributed per-(scope, identifier, window) counters used by the
+    // Firestore-backed rate limiter. Server-only — the Admin SDK bypasses
+    // rules so the `rateLimit()` helper can still read/write, but no
+    // client (not even super_admin) should touch these docs. Identifiers
+    // are hashed before write, so leaking this collection would still
+    // not surface raw PII, but locking it down keeps the rules surface
+    // minimal and matches the precedent set by notificationDispatchLog.
+    match /rateLimitBuckets/{bucketId} {
+      allow read, write: if false;
+    }
+
     // ─── Plan Catalog ──────────────────────────────────────────────────────
     // Superadmin-managed catalog of subscription plans. Any authenticated
     // user can read published (public, non-archived) plans so the billing

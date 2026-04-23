@@ -83,8 +83,14 @@ env:
   NODE_VERSION: "22"
   # Region pinned to match every other workload in deploy-staging.yml.
   REGION: europe-west1
-  # Firestore collection group that carries `expiresAt` (Phase 2.5).
-  TTL_COLLECTION_GROUP: notificationDispatchLog
+  # Firestore collection groups that carry `expiresAt`. Space-separated
+  # list consumed by the firestore-ttl job. Kept as env vars so adding a
+  # new TTL-backed collection only touches one line.
+  #   - notificationDispatchLog (Phase 2.5) — 90 d normal / 365 d
+  #     bounced-or-complained compliance rows.
+  #   - rateLimitBuckets        (Phase D.4) — 2 × windowSec, typically
+  #     2 h for the test-send bucket.
+  TTL_COLLECTION_GROUPS: "notificationDispatchLog rateLimitBuckets"
   TTL_FIELD: expiresAt
   # Cloud Run service names — must match the ones created by
   # deploy-staging.yml. Staging uses -staging suffix; production uses
@@ -134,7 +140,7 @@ jobs:
             echo "## Actions"
             echo "| Step | Skipped? |"
             echo "| --- | --- |"
-            echo "| Firestore TTL on \`$TTL_COLLECTION_GROUP.$TTL_FIELD\` | ${{ inputs.skip_ttl }} |"
+            echo "| Firestore TTL on \`$TTL_FIELD\` for [$TTL_COLLECTION_GROUPS] | ${{ inputs.skip_ttl }} |"
             echo "| Cloud Monitoring alert policies (warn + critical) | ${{ inputs.skip_alert_policies }} |"
             echo "| Secret Manager \`INTERNAL_DISPATCH_SECRET\` + Cloud Run binding | ${{ inputs.skip_secret_provisioning }} |"
             echo "| Web Push VAPID key \`FIREBASE_VAPID_KEY\` (Secret Manager + Cloud Run binding) | ${{ inputs.skip_web_push_vapid }} |"
@@ -252,7 +258,7 @@ jobs:
 
   # ─── Firestore TTL activation ────────────────────────────────────────────
   firestore-ttl:
-    name: Enable Firestore TTL on notificationDispatchLog.expiresAt
+    name: Enable Firestore TTL on <TTL_COLLECTION_GROUPS>.expiresAt
     runs-on: ubuntu-latest
     needs: [plan, ensure-iam]
     if: ${{ inputs.skip_ttl == 'false' }}
@@ -274,47 +280,62 @@ jobs:
             --project="${{ needs.plan.outputs.project_id }}" \
             --quiet
 
-      - name: Inspect current TTL state
-        id: current
+      - name: Enable TTL on every TTL-backed collection group
+        env:
+          PROJECT_ID: ${{ needs.plan.outputs.project_id }}
+          DRY_RUN: ${{ inputs.dry_run }}
         run: |
           set -euo pipefail
-          # `gcloud firestore fields describe` returns the field config
-          # including TTL policy. Exits 0 even when no policy is set — we
-          # parse the output to decide whether to toggle.
-          STATE=$(gcloud firestore fields describe "$TTL_FIELD" \
-            --collection-group="$TTL_COLLECTION_GROUP" \
-            --project="${{ needs.plan.outputs.project_id }}" \
-            --database="(default)" \
-            --format='value(ttlConfig.state)' 2>/dev/null || echo "NOT_CONFIGURED")
-          echo "Current TTL state: $STATE"
-          echo "state=$STATE" >> "$GITHUB_OUTPUT"
+          # Loop over every collection group that carries `expiresAt`.
+          # The set is declared in the workflow-level `env.TTL_COLLECTION_GROUPS`
+          # so adding a new TTL-backed collection only touches one line.
+          #
+          # Each iteration:
+          #   1. Inspects current TTL state via `gcloud firestore fields describe`.
+          #   2. Skips when already ACTIVE or CREATING (idempotent re-runs).
+          #   3. Dry-runs print the intended change and exit 0.
+          #   4. Otherwise runs `gcloud firestore fields ttls update --async`.
+          FAILED=()
+          for CG in $TTL_COLLECTION_GROUPS; do
+            # `gcloud firestore fields describe` returns the field config
+            # including TTL policy. Exits 0 even when no policy is set.
+            STATE=$(gcloud firestore fields describe "$TTL_FIELD" \
+              --collection-group="$CG" \
+              --project="$PROJECT_ID" \
+              --database="(default)" \
+              --format='value(ttlConfig.state)' 2>/dev/null || echo "NOT_CONFIGURED")
+            echo "::notice::[$CG.$TTL_FIELD] current TTL state: $STATE"
 
-      - name: Enable TTL
-        if: ${{ inputs.dry_run == 'false' && steps.current.outputs.state != 'ACTIVE' && steps.current.outputs.state != 'CREATING' }}
-        run: |
-          set -euo pipefail
-          # `gcloud firestore fields ttls update` is the canonical async
-          # command — it returns an operation id we don't need to block on.
-          # TTL typically activates within a few minutes; until then, rows
-          # accumulate but nothing breaks.
-          gcloud firestore fields ttls update "$TTL_FIELD" \
-            --collection-group="$TTL_COLLECTION_GROUP" \
-            --project="${{ needs.plan.outputs.project_id }}" \
-            --database="(default)" \
-            --enable-ttl \
-            --async \
-            --quiet
-          echo "::notice::TTL activation requested. Check state with: gcloud firestore fields describe $TTL_FIELD --collection-group=$TTL_COLLECTION_GROUP"
+            if [ "$DRY_RUN" = "true" ]; then
+              echo "::notice::DRY-RUN — would enable TTL on $CG.$TTL_FIELD (current: $STATE)"
+              continue
+            fi
 
-      - name: Log dry-run decision
-        if: ${{ inputs.dry_run == 'true' }}
-        run: |
-          echo "::notice::DRY-RUN — would enable TTL on $TTL_COLLECTION_GROUP.$TTL_FIELD (current state: ${{ steps.current.outputs.state }})"
+            if [ "$STATE" = "ACTIVE" ] || [ "$STATE" = "CREATING" ]; then
+              echo "::notice::[$CG.$TTL_FIELD] already $STATE — no action taken."
+              continue
+            fi
 
-      - name: Log no-op when already active
-        if: ${{ inputs.dry_run == 'false' && (steps.current.outputs.state == 'ACTIVE' || steps.current.outputs.state == 'CREATING') }}
-        run: |
-          echo "::notice::TTL already ${{ steps.current.outputs.state }} — no action taken."
+            # Async is fine: TTL typically activates within a few minutes;
+            # until then, rows accumulate but nothing breaks.
+            if gcloud firestore fields ttls update "$TTL_FIELD" \
+                --collection-group="$CG" \
+                --project="$PROJECT_ID" \
+                --database="(default)" \
+                --enable-ttl \
+                --async \
+                --quiet; then
+              echo "::notice::[$CG.$TTL_FIELD] activation requested."
+            else
+              echo "::warning::[$CG.$TTL_FIELD] activation FAILED."
+              FAILED+=("$CG.$TTL_FIELD")
+            fi
+          done
+
+          if [ "${#FAILED[@]}" -gt 0 ]; then
+            echo "::error::Some TTL activations failed: ${FAILED[*]}"
+            exit 1
+          fi
 
   # ─── Cloud Monitoring alert policies ─────────────────────────────────────
   alert-policies:

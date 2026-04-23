@@ -111,4 +111,12 @@ export const COLLECTIONS = {
   // One entry per PUT (admin or organizer). TTL: 1 year target —
   // Firestore TTL config tracked as an infra follow-up.
   NOTIFICATION_SETTINGS_HISTORY: "notificationSettingsHistory",
+  // Distributed rate-limit buckets (Phase D.4). Doc id =
+  // `${scope}:${hashedIdentifier}:${windowStartBucket}` so concurrent
+  // callers in the same (scope, identifier, window) triple land on the
+  // same doc and a Firestore transaction gives us correct increments
+  // across Cloud Run pods. Server-only; never seeded. TTL policy on
+  // `expiresAt` auto-purges expired windows (see
+  // infrastructure/firebase/firestore.ttl.md).
+  RATE_LIMIT_BUCKETS: "rateLimitBuckets",
 } as const;

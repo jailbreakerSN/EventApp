@@ -21,6 +21,7 @@ import { notificationDispatchLogRepository } from "@/repositories/notification-d
 import { notificationSettingsRepository } from "@/repositories/notification-settings.repository";
 import { isChannelAllowedForUser } from "@/services/notifications/channel-preferences";
 import { notificationDispatcher } from "@/services/notification-dispatcher.service";
+import { rateLimit } from "@/services/rate-limit.service";
 import { eventBus } from "@/events/event-bus";
 import { getRequestId } from "@/context/request-context";
 
@@ -480,34 +481,14 @@ export const notificationRoutes: FastifyPluginAsync = async (fastify) => {
   //     in the UI — it's a footgun against phishing-awareness training
   //     and keeps the abuse surface small. Admins retain the ability via
   //     POST /v1/admin/notifications/:key/test-send.
-  //   - Rate limit: 5 / hour / user, enforced in-memory. Acceptable for
-  //     dev / staging; the production rollout will swap in a Firestore-
-  //     backed counter keyed by (userId, hourBucket) so clusters share
-  //     the budget. Tracked as a TODO on the ticket.
+  //   - Rate limit: 5 / hour / user, enforced via the Firestore-backed
+  //     `rateLimit()` helper so the budget is shared across every Cloud
+  //     Run pod. Phase D.4 replaced the previous in-memory bucket which
+  //     silently allowed N× the configured budget when there were N pods.
   //   - Dispatch runs with testMode=true so the send bypasses admin-
   //     disabled + user-opt-out + dedup (same semantics as the admin
   //     preview path, just self-targeted).
   const TestSendBody = z.object({ key: z.string().min(1) });
-
-  // In-memory rate-limit bucket. Key = userId, value = rolling list of
-  // ISO timestamps of the last attempts. Window + max kept next to the
-  // route for easy audit: 5 attempts per hour per user.
-  const TEST_SEND_WINDOW_MS = 60 * 60 * 1000; // 1h
-  const TEST_SEND_MAX = 5;
-  const testSendBucket = new Map<string, number[]>();
-
-  function allowTestSend(userId: string, now: number): boolean {
-    const windowStart = now - TEST_SEND_WINDOW_MS;
-    const existing = testSendBucket.get(userId) ?? [];
-    const trimmed = existing.filter((t) => t > windowStart);
-    if (trimmed.length >= TEST_SEND_MAX) {
-      testSendBucket.set(userId, trimmed);
-      return false;
-    }
-    trimmed.push(now);
-    testSendBucket.set(userId, trimmed);
-    return true;
-  }
 
   fastify.post(
     "/test-send",
@@ -545,12 +526,29 @@ export const notificationRoutes: FastifyPluginAsync = async (fastify) => {
       }
 
       const userId = request.user!.uid;
-      if (!allowTestSend(userId, Date.now())) {
+      // Phase D.4: distributed, Firestore-backed rate limit. The scope
+      // string namespaces the budget so an admin test-send (different
+      // scope) doesn't starve the self-serve test-send budget.
+      const limitRes = await rateLimit({
+        scope: "test-send:self",
+        identifier: userId,
+        limit: 5,
+        windowSec: 60 * 60, // 1 hour
+      });
+      if (!limitRes.allowed) {
+        if (limitRes.retryAfterSec !== undefined) {
+          // RFC 7231 Retry-After in seconds. Lets the UI show a concrete
+          // "try again in N minutes" without parsing the JSON body.
+          reply.header("Retry-After", String(limitRes.retryAfterSec));
+        }
         return reply.status(429).send({
           success: false,
           error: {
             code: "RATE_LIMITED",
             message: "Too many test sends. Please wait and try again later.",
+            ...(limitRes.retryAfterSec !== undefined
+              ? { details: { retryAfterSec: limitRes.retryAfterSec } }
+              : {}),
           },
         });
       }
