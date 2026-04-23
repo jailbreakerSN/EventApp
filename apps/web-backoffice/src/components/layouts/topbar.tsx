@@ -1,11 +1,13 @@
 "use client";
 
+import Link from "next/link";
 import { useAuth } from "@/hooks/use-auth";
+import { useAdminRole } from "@/hooks/use-admin-role";
 import { useTheme } from "next-themes";
 import { useRouter } from "next/navigation";
 import { ThemeToggle, NotificationBell, type NotificationBellRow } from "@teranga/shared-ui";
 import { LanguageSwitcher } from "@/components/language-switcher";
-import { Keyboard, LogOut, Menu, Search } from "lucide-react";
+import { Keyboard, LogOut, Menu, Search, Shield } from "lucide-react";
 import {
   useNotifications,
   useUnreadCount,
@@ -38,10 +40,22 @@ function formatRelative(iso: string): string {
 }
 
 const ROLE_LABELS: Record<string, { label: string; color: string }> = {
-  super_admin: { label: "Super Admin", color: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300" },
-  organizer: { label: "Organisateur", color: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300" },
-  co_organizer: { label: "Co-organisateur", color: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300" },
-  staff: { label: "Staff", color: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300" },
+  super_admin: {
+    label: "Super Admin",
+    color: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300",
+  },
+  organizer: {
+    label: "Organisateur",
+    color: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300",
+  },
+  co_organizer: {
+    label: "Co-organisateur",
+    color: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
+  },
+  staff: {
+    label: "Staff",
+    color: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300",
+  },
   participant: { label: "Participant", color: "bg-accent text-muted-foreground" },
 };
 
@@ -55,6 +69,11 @@ export function TopBar({ onShowShortcuts }: TopBarProps) {
   const { isOpen, toggle } = useSidebar();
   const router = useRouter();
 
+  // Bridge back to the admin shell — rendered only when the viewer holds
+  // an admin role. A pure organizer/co-organizer never sees this button,
+  // so there is no regression for the primary persona of this shell.
+  const adminRole = useAdminRole();
+
   const primaryRole = user?.roles?.[0] ?? "participant";
   const roleInfo = ROLE_LABELS[primaryRole] ?? ROLE_LABELS.participant;
 
@@ -62,8 +81,11 @@ export function TopBar({ onShowShortcuts }: TopBarProps) {
   // /account/notifications/history. We deliberately don't gate behind
   // `user` because the topbar only renders inside the authenticated
   // (dashboard) layout.
-  const { data: notifData, isLoading: notifLoading, error: notifError } =
-    useNotifications({ page: 1, limit: 10 });
+  const {
+    data: notifData,
+    isLoading: notifLoading,
+    error: notifError,
+  } = useNotifications({ page: 1, limit: 10 });
   const { data: unreadData } = useUnreadCount();
   const markAsRead = useMarkAsRead();
   const markAllAsRead = useMarkAllAsRead();
@@ -111,7 +133,7 @@ export function TopBar({ onShowShortcuts }: TopBarProps) {
         onClick={() => {
           // Dispatch a synthetic Ctrl+K event to let the CommandPalette's global listener handle it
           document.dispatchEvent(
-            new KeyboardEvent("keydown", { key: "k", ctrlKey: true, metaKey: true, bubbles: true })
+            new KeyboardEvent("keydown", { key: "k", ctrlKey: true, metaKey: true, bubbles: true }),
           );
         }}
         className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg border border-border bg-muted hover:bg-accent text-muted-foreground motion-safe:transition-colors text-xs"
@@ -127,6 +149,17 @@ export function TopBar({ onShowShortcuts }: TopBarProps) {
 
       {/* Right: actions */}
       <div className="flex items-center gap-3">
+        {adminRole && (
+          <Link
+            href="/admin/inbox"
+            className="hidden sm:inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-xs font-medium text-primary hover:bg-primary/10 motion-safe:transition-colors dark:border-teranga-gold/40 dark:bg-teranga-gold/10 dark:text-teranga-gold dark:hover:bg-teranga-gold/20"
+            aria-label="Accéder à la console d'administration"
+            title="Console d'administration"
+          >
+            <Shield className="h-3.5 w-3.5" aria-hidden="true" />
+            Administration
+          </Link>
+        )}
         <LanguageSwitcher />
         <ThemeToggle theme={theme} setTheme={setTheme} />
 
@@ -145,9 +178,7 @@ export function TopBar({ onShowShortcuts }: TopBarProps) {
           unreadCount={unreadCount}
           isLoading={notifLoading}
           errorMessage={
-            notifError
-              ? "Impossible de charger les notifications. Réessayez plus tard."
-              : undefined
+            notifError ? "Impossible de charger les notifications. Réessayez plus tard." : undefined
           }
           formatRelative={formatRelative}
           seeAllHref="/account/notifications/history"
@@ -184,7 +215,9 @@ export function TopBar({ onShowShortcuts }: TopBarProps) {
             <span className="text-sm text-foreground font-medium leading-tight">
               {user?.displayName}
             </span>
-            <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full w-fit ${roleInfo.color}`}>
+            <span
+              className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full w-fit ${roleInfo.color}`}
+            >
               {roleInfo.label}
             </span>
           </div>
