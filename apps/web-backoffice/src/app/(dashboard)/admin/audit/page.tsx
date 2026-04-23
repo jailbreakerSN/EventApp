@@ -1,7 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { CsvExportButton } from "@/components/admin/csv-export-button";
 import {
   Card,
   CardContent,
@@ -31,7 +33,10 @@ const ACTION_OPTIONS = [
   { value: "payment", label: "Paiements" },
 ] as const;
 
-const ACTION_GROUP_STYLES: Record<string, { variant: "default" | "secondary" | "destructive" | "success" | "warning" | "outline"; }> = {
+const ACTION_GROUP_STYLES: Record<
+  string,
+  { variant: "default" | "secondary" | "destructive" | "success" | "warning" | "outline" }
+> = {
   registration: { variant: "default" },
   event: { variant: "success" },
   organization: { variant: "secondary" },
@@ -53,22 +58,47 @@ function formatDate(timestamp: string) {
 }
 
 export default function AdminAuditPage() {
-  const tCommon = useTranslations("common"); void tCommon;
+  const tCommon = useTranslations("common");
+  void tCommon;
+
+  // Phase 7 — deep-link support. Inbox cards + detail pages route to
+  // this page with pre-filtered query strings (e.g. ?actorId=xyz,
+  // ?resourceType=organization, ?action=payment.failed). We initialise
+  // state from the URL so those links land in the filtered view.
+  const searchParams = useSearchParams();
   const [page, setPage] = useState(1);
-  const [actionFilter, setActionFilter] = useState("");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
+  const [actionFilter, setActionFilter] = useState(searchParams?.get("action") ?? "");
+  const [actorIdFilter, setActorIdFilter] = useState(searchParams?.get("actorId") ?? "");
+  const [resourceTypeFilter, setResourceTypeFilter] = useState(
+    searchParams?.get("resourceType") ?? "",
+  );
+  const [dateFrom, setDateFrom] = useState(searchParams?.get("dateFrom") ?? "");
+  const [dateTo, setDateTo] = useState(searchParams?.get("dateTo") ?? "");
 
   const { data, isLoading } = useAdminAuditLogs({
     page,
     limit: 20,
     ...(actionFilter ? { action: actionFilter } : {}),
+    ...(actorIdFilter ? { actorId: actorIdFilter } : {}),
+    ...(resourceTypeFilter ? { resourceType: resourceTypeFilter } : {}),
     ...(dateFrom ? { dateFrom } : {}),
     ...(dateTo ? { dateTo } : {}),
   });
 
   const logs = data?.data ?? [];
   const meta = data?.meta ?? { page: 1, limit: 20, total: 0, totalPages: 1 };
+
+  // Build the querystring passed to the CSV export so the exported file
+  // mirrors whatever the admin is currently looking at.
+  const exportFilters = useMemo(() => {
+    const params = new URLSearchParams();
+    if (actionFilter) params.set("action", actionFilter);
+    if (actorIdFilter) params.set("actorId", actorIdFilter);
+    if (resourceTypeFilter) params.set("resourceType", resourceTypeFilter);
+    if (dateFrom) params.set("dateFrom", dateFrom);
+    if (dateTo) params.set("dateTo", dateTo);
+    return params.toString();
+  }, [actionFilter, actorIdFilter, resourceTypeFilter, dateFrom, dateTo]);
 
   return (
     <div className="space-y-6">
@@ -93,8 +123,50 @@ export default function AdminAuditPage() {
         </BreadcrumbList>
       </Breadcrumb>
 
-      {/* Header */}
-      <h1 className="text-2xl font-bold text-foreground">Journal d&apos;audit</h1>
+      {/* Header + export action */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-2xl font-bold text-foreground">Journal d&apos;audit</h1>
+        <CsvExportButton resource="audit-logs" filters={exportFilters} />
+      </div>
+
+      {/* Active-filter breadcrumb pills (Phase 7 — visible state). */}
+      {(actorIdFilter || resourceTypeFilter) && (
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <span className="text-muted-foreground">Filtres :</span>
+          {actorIdFilter && (
+            <Badge variant="outline" className="gap-1.5 py-1">
+              actor = <code className="font-mono text-[10px]">{actorIdFilter.slice(0, 12)}…</code>
+              <button
+                type="button"
+                onClick={() => {
+                  setActorIdFilter("");
+                  setPage(1);
+                }}
+                aria-label="Retirer le filtre actor"
+                className="text-muted-foreground hover:text-foreground"
+              >
+                ×
+              </button>
+            </Badge>
+          )}
+          {resourceTypeFilter && (
+            <Badge variant="outline" className="gap-1.5 py-1">
+              type = {resourceTypeFilter}
+              <button
+                type="button"
+                onClick={() => {
+                  setResourceTypeFilter("");
+                  setPage(1);
+                }}
+                aria-label="Retirer le filtre type"
+                className="text-muted-foreground hover:text-foreground"
+              >
+                ×
+              </button>
+            </Badge>
+          )}
+        </div>
+      )}
 
       {/* Filters */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
