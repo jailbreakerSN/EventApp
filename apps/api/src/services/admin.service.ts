@@ -57,6 +57,78 @@ class AdminService extends BaseService {
     return adminRepository.getPlatformStats();
   }
 
+  // ── Cross-object search ───────────────────────────────────────────────
+  // Phase 1 — powers the admin command palette (⌘K). Fans out to 4
+  // paginated-list queries in parallel, filters each client-side by
+  // substring, and caps at 5 hits per type. Intentionally NOT hitting
+  // a dedicated search index — volumes are small enough that a few
+  // limit(20) reads + string contains gives acceptable latency at
+  // 1/100th the complexity of Algolia. See the route in admin.routes.ts
+  // for shape + caller contract.
+  async globalSearch(
+    user: AuthUser,
+    query: string,
+  ): Promise<{
+    users: Array<{ id: string; label: string; sublabel?: string }>;
+    organizations: Array<{ id: string; label: string; sublabel?: string }>;
+    events: Array<{ id: string; label: string; sublabel?: string }>;
+    venues: Array<{ id: string; label: string; sublabel?: string }>;
+  }> {
+    this.requirePermission(user, "platform:manage");
+    const q = query.trim().toLowerCase();
+    if (q.length < 2) {
+      return { users: [], organizations: [], events: [], venues: [] };
+    }
+
+    const matches = (...fields: Array<string | null | undefined>): boolean =>
+      fields.some((f) => f && f.toLowerCase().includes(q));
+
+    const [usersPage, orgsPage, eventsPage, venuesPage] = await Promise.all([
+      adminRepository.listAllUsers({}, { page: 1, limit: 50 }),
+      adminRepository.listAllOrganizations({}, { page: 1, limit: 50 }),
+      adminRepository.listAllEvents({}, { page: 1, limit: 50 }),
+      adminRepository.listAllVenues({}, { page: 1, limit: 50 }),
+    ]);
+
+    const users = usersPage.data
+      .filter((u) => matches(u.displayName, u.email))
+      .slice(0, 5)
+      .map((u) => ({
+        id: u.uid,
+        label: u.displayName ?? u.email,
+        sublabel: u.email !== u.displayName ? u.email : undefined,
+      }));
+
+    const organizations = orgsPage.data
+      .filter((o) => matches(o.name, o.slug))
+      .slice(0, 5)
+      .map((o) => ({
+        id: o.id,
+        label: o.name,
+        sublabel: o.slug,
+      }));
+
+    const events = eventsPage.data
+      .filter((e) => matches(e.title, e.slug))
+      .slice(0, 5)
+      .map((e) => ({
+        id: e.id,
+        label: e.title,
+        sublabel: e.slug,
+      }));
+
+    const venues = venuesPage.data
+      .filter((v) => matches(v.name, v.slug, v.address?.city))
+      .slice(0, 5)
+      .map((v) => ({
+        id: v.id,
+        label: v.name,
+        sublabel: v.address?.city ?? v.slug,
+      }));
+
+    return { users, organizations, events, venues };
+  }
+
   // ── User Management ───────────────────────────────────────────────────
 
   async listUsers(user: AuthUser, query: AdminUserQuery): Promise<PaginatedResult<AdminUserRow>> {

@@ -63,6 +63,41 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
     },
   );
 
+  // ── Cross-object search (Phase 1 — powers the ⌘K command palette) ──────
+  // Returns up to 5 hits per object type. Search is substring on the
+  // human-readable fields callers are most likely to type:
+  //   - users: displayName + email
+  //   - organizations: name + slug
+  //   - events: title + slug
+  //   - venues: name + slug + city
+  //
+  // Performance model: each call issues 4 parallel small Firestore reads
+  // (limit 5 per collection) + client-side substring filter. We deliberately
+  // keep it simple and skip Algolia/ElasticSearch — admin search doesn't
+  // justify a third-party dependency today.
+  fastify.get(
+    "/search",
+    {
+      preHandler: adminPreHandler,
+      schema: {
+        tags: ["Admin"],
+        summary: "Cross-object search for the admin command palette",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const q = String((request.query as { q?: unknown })?.q ?? "").trim();
+      if (q.length < 2) {
+        return reply.send({
+          success: true,
+          data: { users: [], organizations: [], events: [], venues: [] },
+        });
+      }
+      const data = await adminService.globalSearch(request.user!, q);
+      return reply.send({ success: true, data });
+    },
+  );
+
   // ── Users ───────────────────────────────────────────────────────────────
 
   fastify.get(

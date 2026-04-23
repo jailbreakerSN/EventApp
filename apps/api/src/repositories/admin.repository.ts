@@ -122,6 +122,23 @@ class AdminRepository {
     return this.paginatedQuery<Event>(COLLECTIONS.EVENTS, clauses, pagination);
   }
 
+  // ── Venues (Phase 1 — cross-object search uses this minimal lister) ──
+  // Admin venues page already has a richer filterable endpoint on its own
+  // route. This one exists so the command palette's globalSearch() can
+  // pull a small sample without coupling back to that route.
+  async listAllVenues(
+    filters: { status?: string },
+    pagination: PaginationParams,
+  ): Promise<
+    PaginatedResult<{ id: string; name: string; slug: string; address?: { city?: string } }>
+  > {
+    const clauses: WhereClause[] = [];
+    if (filters.status) {
+      clauses.push({ field: "status", op: "==", value: filters.status });
+    }
+    return this.paginatedQuery(COLLECTIONS.VENUES, clauses, pagination);
+  }
+
   // ── Audit Logs ──────────────────────────────────────────────────────────
 
   async listAuditLogs(
