@@ -252,6 +252,7 @@ async function main(): Promise<void> {
   const { seedEvents } = await import("./seed/04-events");
   const { seedActivity } = await import("./seed/05-activity");
   const { seedSocial } = await import("./seed/06-social");
+  const { seedInvites } = await import("./seed/07-invites");
   const { seedPlans } = await import("./seed-plans");
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -266,6 +267,8 @@ async function main(): Promise<void> {
   await seedActivity(fakeDb as any);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   await seedSocial(fakeDb as any);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  await seedInvites(fakeDb as any);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   await seedPlans(fakeDb as any);
 

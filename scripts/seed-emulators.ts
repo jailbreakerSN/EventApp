@@ -55,6 +55,7 @@ import { seedVenues } from "./seed/03-venues";
 import { seedEvents } from "./seed/04-events";
 import { seedActivity } from "./seed/05-activity";
 import { seedSocial } from "./seed/06-social";
+import { seedInvites } from "./seed/07-invites";
 
 const app = initializeApp({ projectId: PROJECT_ID });
 const auth = getAuth(app);
@@ -221,6 +222,21 @@ async function seed() {
   // Expansion social content (feed posts on LIVE events, welcome
   // notifications, audit entries on expansion events) lands in PR D stage 2
   // as pure additions to the named arrays inside the module.
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 5b. INVITES (org membership onboarding — pending / accepted / expired)
+  // ═══════════════════════════════════════════════════════════════════════════
+  //
+  // The `invites` collection was never seeded before the Phase 1 seed refresh.
+  // See scripts/seed/07-invites.ts — 10 invites across the 5 orgs, covering
+  // all four lifecycle states and the three non-owner roles. Written here
+  // after activity so the organisation + user references resolve.
+
+  console.log("\n📨 Creating organisation invites...");
+  {
+    const n = await seedInvites(db);
+    console.log(`  ✓ ${n} invites seeded (pending / accepted / declined / expired)`);
+  }
 
   console.log("\n💬 Creating social + subscription fixtures...");
   {
