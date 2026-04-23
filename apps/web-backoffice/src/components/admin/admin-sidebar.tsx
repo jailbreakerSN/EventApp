@@ -86,8 +86,8 @@ const NAV: NavSection[] = [
     label: "Billing",
     items: [
       { href: "/admin/plans", label: "Plans", icon: CreditCard },
-      { href: "/admin/subscriptions", label: "Abonnements", icon: Receipt, comingSoon: true },
-      { href: "/admin/revenue", label: "Revenus", icon: TrendingUp, comingSoon: true },
+      { href: "/admin/subscriptions", label: "Abonnements", icon: Receipt },
+      { href: "/admin/revenue", label: "Revenus", icon: TrendingUp },
     ],
   },
   {
