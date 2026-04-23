@@ -34,11 +34,14 @@ import type { AdminUserRow } from "@teranga/shared-types";
 import { adminApi } from "@/lib/api-client";
 import { EntityDetailLayout } from "@/components/admin/entity-detail-layout";
 import { useErrorHandler } from "@/hooks/use-error-handler";
+import { useAuth } from "@/hooks/use-auth";
+import { startImpersonation } from "@/hooks/use-impersonation";
 
 export default function AdminUserDetailPage() {
   const params = useParams<{ userId: string }>();
   const router = useRouter();
   const { resolve } = useErrorHandler();
+  const { user: currentUser } = useAuth();
 
   const [user, setUser] = useState<AdminUserRow | null>(null);
   const [loading, setLoading] = useState(true);
@@ -166,7 +169,27 @@ export default function AdminUserDetailPage() {
           id: "impersonate",
           label: "Se connecter en tant que",
           icon: <ShieldAlert className="h-4 w-4" aria-hidden="true" />,
-          disabledReason: "Disponible en Phase 4 — fonction d'impersonation",
+          disabledReason: user.roles.includes("super_admin")
+            ? "Impersonation désactivée : utilisateur super_admin"
+            : !currentUser?.roles.includes("super_admin")
+              ? "Réservé aux super_admin"
+              : undefined,
+          onClick: () => {
+            if (!currentUser) return;
+            // Confirm: clicking walks the operator into a NEW auth session.
+            const ok = window.confirm(
+              `⚠️ Démarrer une session en tant que ${user.displayName ?? user.email} ?\n\n` +
+                "La session actuelle sera fermée. Vous devrez vous reconnecter en admin après.",
+            );
+            if (!ok) return;
+            void startImpersonation({
+              actorUid: currentUser.uid,
+              actorDisplayName: currentUser.displayName,
+              targetUid: user.uid,
+            }).catch((err) => {
+              setError(resolve(err).description);
+            });
+          },
         },
       ]}
       tabs={[

@@ -321,6 +321,105 @@ class AdminService extends BaseService {
 
   // ── User Management ───────────────────────────────────────────────────
 
+  // ── Impersonation (Phase 4) ───────────────────────────────────────────
+  // Mint a short-lived Firebase custom token that lets the calling
+  // super-admin "log in as" another user. Security rails:
+  //   - super_admin only (hard-gated by platform:manage permission
+  //     + tighter sanity check here to protect against future role
+  //     downgrades).
+  //   - Cannot impersonate another super_admin (prevent privilege
+  //     escalation chains).
+  //   - Custom claims carry `impersonatedBy: <adminUid>` so every
+  //     downstream action traces back to the original actor even if
+  //     the impersonated session writes to Firestore.
+  //   - Audit log `user.impersonated` emitted synchronously for
+  //     compliance.
+  //   - Client must treat the returned token as single-use: it is
+  //     minted fresh on every call, and the legacy session MUST be
+  //     signed-out before exchanging the new token.
+  //
+  // The returned token is a Firebase custom token (not an ID token).
+  // The client exchanges it via signInWithCustomToken() which gives
+  // back a real ID token whose custom claims are stamped at exchange
+  // time.
+  async startImpersonation(
+    user: AuthUser,
+    targetUid: string,
+  ): Promise<{
+    customToken: string;
+    targetUid: string;
+    targetDisplayName: string | null;
+    targetEmail: string | null;
+    expiresAt: string;
+  }> {
+    this.requirePermission(user, "platform:manage");
+    if (!user.roles?.includes("super_admin")) {
+      throw new ForbiddenError("Only super_admin may impersonate other users.");
+    }
+    if (user.uid === targetUid) {
+      throw new ForbiddenError("Cannot impersonate yourself.");
+    }
+
+    const targetDoc = await db.collection(COLLECTIONS.USERS).doc(targetUid).get();
+    if (!targetDoc.exists) {
+      throw new NotFoundError("User", targetUid);
+    }
+    const targetProfile = targetDoc.data() as UserProfile;
+
+    // Never impersonate another super_admin — blocks privilege-escalation
+    // loops and forces audit-log trail on the HIGHEST-privilege admin.
+    if (targetProfile.roles?.includes("super_admin") && targetUid !== user.uid) {
+      throw new ForbiddenError("Cannot impersonate another super_admin.");
+    }
+
+    const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+    const customToken = await auth.createCustomToken(targetUid, {
+      // Stamp the original actor onto the minted token. The ID token
+      // exchanged client-side will carry these as custom claims.
+      impersonatedBy: user.uid,
+      impersonationExpiresAt: expiresAt,
+      // Carry the target's real roles so downstream RBAC works.
+      roles: targetProfile.roles ?? [],
+      organizationId: targetProfile.organizationId ?? null,
+      orgRole: targetProfile.orgRole ?? null,
+    });
+
+    // Audit log — synchronous so the trail is visible before the UI
+    // even gets the token. If the audit write fails, the impersonation
+    // doesn't proceed.
+    await db.collection(COLLECTIONS.AUDIT_LOGS).add({
+      action: "user.impersonated",
+      actorId: user.uid,
+      actorRole: "super_admin",
+      resourceType: "user",
+      resourceId: targetUid,
+      organizationId: targetProfile.organizationId ?? null,
+      details: {
+        targetDisplayName: targetProfile.displayName ?? null,
+        targetEmail: targetProfile.email ?? null,
+        expiresAt,
+      },
+      requestId: getRequestId(),
+      timestamp: new Date().toISOString(),
+    });
+
+    // Emit a domain event so downstream listeners (e.g. security alerts)
+    // can react to impersonation usage in near-real-time.
+    eventBus.emit("user.impersonated", {
+      actorUid: user.uid,
+      targetUid,
+      expiresAt,
+    });
+
+    return {
+      customToken,
+      targetUid,
+      targetDisplayName: targetProfile.displayName ?? null,
+      targetEmail: targetProfile.email ?? null,
+      expiresAt,
+    };
+  }
+
   async getUserById(user: AuthUser, targetUid: string): Promise<AdminUserRow> {
     this.requirePermission(user, "platform:manage");
     const doc = await db.collection(COLLECTIONS.USERS).doc(targetUid).get();

@@ -10,6 +10,7 @@ import { SidebarProvider } from "@/components/layouts/sidebar-context";
 import { BrandedLoader } from "@/components/branded-loader";
 import { CommandPalette } from "@/components/command-palette";
 import { KeyboardShortcutsDialog } from "@/components/keyboard-shortcuts-dialog";
+import { ImpersonationBanner } from "@/components/admin/impersonation-banner";
 import { useAuth } from "@/hooks/use-auth";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { useTranslations } from "next-intl";
@@ -18,13 +19,11 @@ const BACKOFFICE_ROLES = ["organizer", "co_organizer", "super_admin", "venue_man
 
 // Grace period before the email-verification hard gate kicks in. Configurable
 // via NEXT_PUBLIC_EMAIL_GRACE_DAYS; default 7. Set to 0 to gate immediately.
-const GRACE_DAYS = Number.parseInt(
-  process.env.NEXT_PUBLIC_EMAIL_GRACE_DAYS ?? "7",
-  10,
-);
-const GRACE_MS = Number.isFinite(GRACE_DAYS) && GRACE_DAYS >= 0
-  ? GRACE_DAYS * 24 * 60 * 60 * 1000
-  : 7 * 24 * 60 * 60 * 1000;
+const GRACE_DAYS = Number.parseInt(process.env.NEXT_PUBLIC_EMAIL_GRACE_DAYS ?? "7", 10);
+const GRACE_MS =
+  Number.isFinite(GRACE_DAYS) && GRACE_DAYS >= 0
+    ? GRACE_DAYS * 24 * 60 * 60 * 1000
+    : 7 * 24 * 60 * 60 * 1000;
 
 /**
  * Returns true when an unverified user has exceeded the grace period.
@@ -79,10 +78,13 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
       <CommandPalette />
 
       {/* Keyboard shortcuts help dialog — opens on "?" */}
-      <KeyboardShortcutsDialog
-        open={shortcutsOpen}
-        onClose={() => setShortcutsOpen(false)}
-      />
+      <KeyboardShortcutsDialog open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
+
+      {/* Phase 4 — Persistent banner whenever a super-admin is acting
+          as another user. Renders OUTSIDE the Sidebar/TopBar shell so
+          it stays visible regardless of which admin / dashboard page
+          the admin is on. */}
+      <ImpersonationBanner />
 
       <div className="flex h-screen bg-muted overflow-hidden">
         <Sidebar />
@@ -122,7 +124,8 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
 }
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const tCommon = useTranslations("common"); void tCommon;
+  const tCommon = useTranslations("common");
+  void tCommon;
   const { user, loading, hasRole } = useAuth();
   const router = useRouter();
 

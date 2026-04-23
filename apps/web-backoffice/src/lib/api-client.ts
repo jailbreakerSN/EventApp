@@ -708,6 +708,20 @@ export const adminApi = {
   getUser: (userId: string) =>
     api.get<ApiResponse<AdminUserRow>>(`/v1/admin/users/${encodeURIComponent(userId)}`),
 
+  // Phase 4 — start an impersonation session. The response includes a
+  // short-lived Firebase custom token the caller must exchange with
+  // signInWithCustomToken() after signing-out the current session.
+  impersonate: (userId: string) =>
+    api.post<
+      ApiResponse<{
+        customToken: string;
+        targetUid: string;
+        targetDisplayName: string | null;
+        targetEmail: string | null;
+        expiresAt: string;
+      }>
+    >(`/v1/admin/users/${encodeURIComponent(userId)}/impersonate`, {}),
+
   updateUserRoles: (userId: string, roles: string[]) =>
     api.patch<void>(`/v1/admin/users/${userId}/roles`, { roles }),
 

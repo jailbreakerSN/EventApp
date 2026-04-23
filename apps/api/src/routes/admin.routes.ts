@@ -142,6 +142,30 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
     },
   );
 
+  // Phase 4 — Super-admin impersonation.
+  // Returns a Firebase custom token + metadata. The client exchanges
+  // the token via signInWithCustomToken() on a fresh auth session,
+  // signing-out the caller first to avoid cross-session leaks. The
+  // admin-grade SaaS "Log in as user" pattern. Every call is audit-
+  // logged (user.impersonated) with the original actor uid stamped
+  // on the minted token's custom claims (`impersonatedBy`).
+  fastify.post(
+    "/users/:userId/impersonate",
+    {
+      preHandler: [...adminPreHandler, validate({ params: ParamsUserId })],
+      schema: {
+        tags: ["Admin"],
+        summary: "Mint a custom Firebase token to log in as the target user",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const { userId } = request.params as z.infer<typeof ParamsUserId>;
+      const data = await adminService.startImpersonation(request.user!, userId);
+      return reply.send({ success: true, data });
+    },
+  );
+
   // Phase 3 — fetch a single admin user row (Phase 1 already exposes
   // list; the detail page needs a targeted getter to avoid iterating).
   fastify.get(
