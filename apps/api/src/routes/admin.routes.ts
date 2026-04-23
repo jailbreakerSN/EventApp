@@ -425,6 +425,23 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
   // revoking the impersonated user's refresh tokens. Client-side signout
   // is mandatory but not enough: a stolen in-flight ID token would still
   // work until expiry without this call.
+  //
+  // INTENTIONAL PERMISSION EXCEPTION (closure I, post-review #3):
+  // This route deliberately does NOT use `adminPreHandler` /
+  // `requirePermission("platform:manage")`. The caller is CURRENTLY
+  // inside an impersonation session, so their JWT carries the
+  // impersonated user's roles — typically a non-admin participant who
+  // does not hold platform:manage. Requiring platform:manage here would
+  // make the session impossible to end server-side, forcing the admin
+  // to wait for the 30-minute token expiry.
+  //
+  // The authorization is instead enforced by the service layer
+  // (`adminService.endImpersonation`) which validates the signed
+  // `impersonatedBy` claim (baked into the custom token by
+  // startImpersonation) against the actorUid echoed by the client.
+  // Only a session minted by THIS server with a valid super-admin
+  // origin can reach the audit/revoke write — defence-in-depth via
+  // claim-matching rather than role-checking.
   const EndImpersonationBody = z.object({ actorUid: z.string().min(1) });
   fastify.post(
     "/impersonation/end",

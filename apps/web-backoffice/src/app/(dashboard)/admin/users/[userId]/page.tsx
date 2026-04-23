@@ -35,6 +35,7 @@ import { adminApi } from "@/lib/api-client";
 import { EntityDetailLayout } from "@/components/admin/entity-detail-layout";
 import { useErrorHandler } from "@/hooks/use-error-handler";
 import { useAuth } from "@/hooks/use-auth";
+import { useAdminRole } from "@/hooks/use-admin-role";
 import { startImpersonation } from "@/hooks/use-impersonation";
 
 export default function AdminUserDetailPage() {
@@ -42,6 +43,12 @@ export default function AdminUserDetailPage() {
   const router = useRouter();
   const { resolve } = useErrorHandler();
   const { user: currentUser } = useAuth();
+  // Closure I — use the shared admin-role hook so platform:super_admin
+  // is treated the same as legacy super_admin. Before this the button
+  // strictly checked `roles.includes("super_admin")`, making the new
+  // platform:super_admin role second-class on this page.
+  const adminRole = useAdminRole();
+  const canImpersonate = adminRole?.isSuperAdmin ?? false;
 
   const [user, setUser] = useState<AdminUserRow | null>(null);
   const [loading, setLoading] = useState(true);
@@ -169,11 +176,12 @@ export default function AdminUserDetailPage() {
           id: "impersonate",
           label: "Se connecter en tant que",
           icon: <ShieldAlert className="h-4 w-4" aria-hidden="true" />,
-          disabledReason: user.roles.includes("super_admin")
-            ? "Impersonation désactivée : utilisateur super_admin"
-            : !currentUser?.roles.includes("super_admin")
-              ? "Réservé aux super_admin"
-              : undefined,
+          disabledReason:
+            user.roles.includes("super_admin") || user.roles.includes("platform:super_admin")
+              ? "Impersonation désactivée : utilisateur super_admin"
+              : !canImpersonate
+                ? "Réservé aux super_admin"
+                : undefined,
           onClick: () => {
             if (!currentUser) return;
             // Confirm: clicking walks the operator into a NEW auth session.

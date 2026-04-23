@@ -51,6 +51,20 @@ function arraysEqualAsSet(a: string[], b: string[]): boolean {
   return true;
 }
 
+/**
+ * Closure I — resolve the caller's narrowest impersonation-privileged
+ * role. Impersonation is gated to `super_admin` and `platform:super_admin`
+ * only; other `platform:*` roles (support, finance, ops, security) are
+ * refused even though they hold `platform:manage`. Returning the narrow
+ * role lets the audit log distinguish a legacy super_admin from a
+ * granular platform:super_admin operator.
+ */
+function resolveImpersonationRole(user: AuthUser): "super_admin" | "platform:super_admin" {
+  if (user.roles.includes("platform:super_admin")) return "platform:super_admin";
+  if (user.roles.includes("super_admin")) return "super_admin";
+  throw new ForbiddenError("Only super_admin may impersonate other users.");
+}
+
 class AdminService extends BaseService {
   // ── Platform Stats ────────────────────────────────────────────────────
 
@@ -503,9 +517,13 @@ class AdminService extends BaseService {
     expiresAt: string;
   }> {
     this.requirePermission(user, "platform:manage");
-    if (!user.roles?.includes("super_admin")) {
-      throw new ForbiddenError("Only super_admin may impersonate other users.");
-    }
+    // Closure I — accept both legacy `super_admin` and the granular
+    // `platform:super_admin` role shipped in closure C. Other platform:*
+    // roles (support, finance, ops, security) MUST NOT be able to
+    // impersonate — this is the most sensitive action on the platform.
+    // The resolved label is also what we stamp on the audit row so the
+    // audit trail reflects who actually acted.
+    const actorRole = resolveImpersonationRole(user);
     if (user.uid === targetUid) {
       throw new ForbiddenError("Cannot impersonate yourself.");
     }
@@ -556,7 +574,7 @@ class AdminService extends BaseService {
     await db.collection(COLLECTIONS.AUDIT_LOGS).add({
       action: "user.impersonated",
       actorId: user.uid,
-      actorRole: "super_admin",
+      actorRole,
       resourceType: "user",
       resourceId: targetUid,
       organizationId: targetProfile.organizationId ?? null,
@@ -608,26 +626,66 @@ class AdminService extends BaseService {
     if (!user.impersonatedBy || user.impersonatedBy !== actorUid) {
       throw new ForbiddenError("Session d'impersonation non reconnue.");
     }
-    // Revoke BOTH the impersonated uid (the current session token) AND
-    // the actor uid (in case another admin device is holding an old
-    // token — tight cleanup). We swallow errors on the actor revoke
-    // because it's defensive, not load-bearing.
-    try {
-      await auth.revokeRefreshTokens(user.uid);
-    } catch {
-      /* best-effort */
-    }
+    // Revoke the impersonated uid's refresh tokens. If Firebase Auth
+    // rejects (network, quota, internal error) we MUST NOT write an
+    // audit claim of success — propagate the error to the route handler
+    // so the admin UI can surface it and retry. The audit trail must
+    // reflect reality. (Closure I, post-review #3.)
+    await auth.revokeRefreshTokens(user.uid);
+
+    // Stamp the admin's actual role (super_admin | platform:super_admin)
+    // on the audit record. `user.roles` at this point reflects the
+    // IMPERSONATED user, not the admin, so we look up the admin's doc
+    // by UID. If the doc can't be read we fall back to "super_admin"
+    // with a warning flag on the details blob — safer than blocking
+    // the session exit on a transient read failure.
+    const actorRole = await this.resolveActorRoleByUid(actorUid);
+
     await db.collection(COLLECTIONS.AUDIT_LOGS).add({
       action: "user.impersonation_ended",
       actorId: actorUid,
-      actorRole: "super_admin",
+      actorRole: actorRole.role,
       resourceType: "user",
       resourceId: user.uid,
       organizationId: null,
-      details: { ended: "manual" },
+      details: { ended: "manual", actorRoleLookup: actorRole.source },
       requestId: getRequestId(),
       timestamp: new Date().toISOString(),
     });
+
+    // Emit a domain event for convention parity with every other admin
+    // mutation — downstream listeners (security alerts, webhook relay)
+    // can react without having to subscribe to the audit collection.
+    eventBus.emit("user.impersonation_ended", {
+      actorUid,
+      targetUid: user.uid,
+    });
+  }
+
+  /**
+   * Closure I — look up the admin's narrowest super-admin role for
+   * accurate audit stamping on `endImpersonation`. Returns `source`
+   * so the audit record distinguishes a verified lookup from a
+   * fallback (useful when forensically reconstructing sessions where
+   * the admin doc was deleted mid-session).
+   */
+  private async resolveActorRoleByUid(actorUid: string): Promise<{
+    role: "super_admin" | "platform:super_admin";
+    source: "firestore" | "fallback";
+  }> {
+    try {
+      const doc = await db.collection(COLLECTIONS.USERS).doc(actorUid).get();
+      const roles = (doc.data() as { roles?: string[] } | undefined)?.roles ?? [];
+      if (roles.includes("platform:super_admin")) {
+        return { role: "platform:super_admin", source: "firestore" };
+      }
+      if (roles.includes("super_admin")) {
+        return { role: "super_admin", source: "firestore" };
+      }
+    } catch {
+      /* fall through to fallback */
+    }
+    return { role: "super_admin", source: "fallback" };
   }
 
   async getUserById(user: AuthUser, targetUid: string): Promise<AdminUserRow> {
