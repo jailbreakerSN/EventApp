@@ -428,6 +428,100 @@ function extractRawCollectionQueries(
 }
 
 // ───────────────────────────────────────────────────────────────────────────
+// `this.paginatedQuery(COLLECTIONS.X, ...)` detection (Phase 2 extension)
+// ───────────────────────────────────────────────────────────────────────────
+//
+// `admin.repository.ts` (and anywhere else that replicates the pattern)
+// defines a private `paginatedQuery` helper that:
+//   - takes the collection name as its FIRST argument
+//   - applies a default `.orderBy("createdAt", "desc")` unconditionally
+//   - accepts its where-clauses via a passed-in `WhereClause[]` array
+//
+// Before this extension the audit skipped these call-sites entirely because
+// the enclosing class doesn't extend `BaseRepository` (so Case 1 doesn't
+// match) and the query builder lives in a private helper that isn't a raw
+// `db.collection(COLLECTIONS.X).where(...)` chain (so Case 2 doesn't match
+// either). A missing index on `(roles CONTAINS, createdAt DESC)` caused
+// a staging 500 in April 2026 — this extension is the guardrail.
+
+/** One entry per `this.paginatedQuery(COLLECTIONS.X, ...)` / `this.findMany(...)` invocation. */
+type PaginatedQueryCall = {
+  /** Collection the query targets, resolved from the first argument. */
+  collection: string;
+  /**
+   * The first 400 chars of the 2nd and 3rd arguments — captured so
+   * subsequent where-clause / orderBy scans can walk them. This slice is
+   * heuristic: a regex-driven extractor can't fully bracket-balance the
+   * call, but the tail of the call-site is enough to pick up explicit
+   * `orderBy: "..."` / `orderDir: "..."` literals in the pagination arg.
+   */
+  callTail: string;
+};
+
+function extractPaginatedQueryCalls(
+  body: string,
+  collectionsMap: Record<string, string>,
+): PaginatedQueryCall[] {
+  const out: PaginatedQueryCall[] = [];
+  // Match `this.paginatedQuery(<generics?>(COLLECTIONS.X, <rest-of-call>)`.
+  // Generic type params (< ... >) are allowed between the method name and
+  // the opening paren because TS lets call sites specify them inline.
+  const re = /this\.paginatedQuery\s*(?:<[^>]*>)?\s*\(\s*COLLECTIONS\.(\w+)\s*,([\s\S]{0,400})/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(body)) !== null) {
+    const collectionKey = m[1];
+    const collectionName = collectionsMap[collectionKey];
+    if (!collectionName) continue;
+    out.push({ collection: collectionName, callTail: m[2] });
+  }
+  return out;
+}
+
+/**
+ * List helper methods a caller invokes via `this.<name>(...)`. Used to pull
+ * where-clause object literals out of helpers like `buildUserFilters` that
+ * live as sibling methods in the same repository class.
+ *
+ * Excludes a denylist of framework / inherited members that can't possibly
+ * contribute query fragments (paginatedQuery is the thing we're expanding
+ * from, findMany/findOne are already handled separately, etc).
+ */
+function extractHelperMethodNames(body: string): Set<string> {
+  const names = new Set<string>();
+  const re = /\bthis\.(\w+)\s*\(/g;
+  const deny = new Set([
+    "paginatedQuery",
+    "findMany",
+    "findOne",
+    "findById",
+    "findByIdOrThrow",
+    "create",
+    "update",
+    "delete",
+    "softDelete",
+    "collection",
+    "requirePermission",
+    "requireOrganizationAccess",
+  ]);
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(body)) !== null) {
+    if (!deny.has(m[1])) names.add(m[1]);
+  }
+  return names;
+}
+
+/**
+ * Look up the body of a sibling method by name within the same source file.
+ * Returns the first match — in practice repositories have unique method
+ * names per class, and scanning across classes inside the same file is fine
+ * because the audit is a linter, not a compiler.
+ */
+function findSiblingMethodBody(methods: MethodScope[], name: string): string | null {
+  const match = methods.find((m) => m.name === name);
+  return match?.body ?? null;
+}
+
+// ───────────────────────────────────────────────────────────────────────────
 // Compute required index from a single query shape
 // ───────────────────────────────────────────────────────────────────────────
 
@@ -724,6 +818,64 @@ function main(): void {
                 queryShape: `${humanReadable(shape.wheres, shape.orderBys, false)} [variant: ${shape.variantKey}]`,
                 severity: shape.severity,
               });
+            }
+          }
+        }
+
+        // Case 3: `this.paginatedQuery(COLLECTIONS.X, ...)` — helper that
+        // takes the collection as its first argument and unconditionally
+        // applies `.orderBy("createdAt", "desc")`. The where-clauses may
+        // live either directly in the method body (as object literals
+        // pushed onto a `clauses` array) or in a sibling helper method
+        // like `buildUserFilters(filters)`. Merge both sources before
+        // computing the required index so the linter sees the same
+        // query shape the runtime does.
+        const paginatedCalls = extractPaginatedQueryCalls(method.body, collectionsMap);
+        if (paginatedCalls.length > 0) {
+          // Gather where-clauses from every helper this method calls.
+          // Siblings in the same file count — in practice repository
+          // helpers live next to their callers.
+          const helperNames = extractHelperMethodNames(method.body);
+          const helperFragments: QueryFragment[] = [];
+          for (const helperName of helperNames) {
+            const helperBody = findSiblingMethodBody(methods, helperName);
+            if (helperBody) {
+              const helperFrag = extractQueryFragments(helperBody);
+              helperFragments.push(...helperFrag.wheres);
+            }
+          }
+          for (const call of paginatedCalls) {
+            // Pull any `orderBy: "..."` / `orderDir: "..."` from the
+            // pagination literal passed to paginatedQuery. If none,
+            // paginatedQuery's implementation defaults kick in.
+            const tailFrag = extractQueryFragments(call.callTail);
+            const mergedWheres = [...wheres, ...helperFragments];
+            const explicitOrderBys = [...orderBys, ...tailFrag.orderBys];
+            const hasDefaultOrderByP = explicitOrderBys.length === 0;
+
+            const optionalCountP = mergedWheres.filter((w) => w.isOptional).length;
+            if (optionalCountP > MAX_OPTIONAL) {
+              warnings.push({
+                source: source_,
+                message: `${optionalCountP} optional where-clauses exceeds MAX_OPTIONAL=${MAX_OPTIONAL}; only the maximal combination is checked.`,
+              });
+            }
+            for (const shape of enumerateQueryShapes(mergedWheres, explicitOrderBys)) {
+              const idxFields = computeRequiredIndex(
+                shape.wheres,
+                shape.orderBys,
+                hasDefaultOrderByP,
+              );
+              if (idxFields) {
+                required.push({
+                  collection: call.collection,
+                  fields: idxFields,
+                  source: source_,
+                  method: method.name,
+                  queryShape: `${humanReadable(shape.wheres, shape.orderBys, hasDefaultOrderByP)} [variant: ${shape.variantKey}] (via this.paginatedQuery)`,
+                  severity: shape.severity,
+                });
+              }
             }
           }
         }
