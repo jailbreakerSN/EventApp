@@ -11,8 +11,7 @@ import { LoginSchema, type LoginDto } from "@teranga/shared-types";
 import type { UserRole } from "@teranga/shared-types";
 import { useAuth } from "@/hooks/use-auth";
 import { firebaseAuth } from "@/lib/firebase";
-
-const BACKOFFICE_ROLES: UserRole[] = ["organizer", "co_organizer", "super_admin"];
+import { BACKOFFICE_ROLES, resolveLandingRoute } from "@/lib/access";
 
 export function LoginForm() {
   const { login } = useAuth();
@@ -30,18 +29,22 @@ export function LoginForm() {
     try {
       await login(data.email, data.password);
 
-      // Check roles from token claims before redirecting
+      // Check roles from token claims before redirecting. `BACKOFFICE_ROLES`
+      // is the shared allow-list (admin + organizer + venue). `resolveLandingRoute`
+      // sends admins to /admin/inbox and organizers to /dashboard — see
+      // apps/web-backoffice/src/lib/access.ts for the full matrix.
       const currentUser = firebaseAuth.currentUser;
-      if (currentUser) {
-        const tokenResult = await currentUser.getIdTokenResult(true);
-        const roles = (tokenResult.claims.roles as UserRole[]) ?? ["participant"];
-        if (!roles.some((r) => BACKOFFICE_ROLES.includes(r))) {
-          router.push("/unauthorized");
-          return;
-        }
+      if (!currentUser) {
+        router.push("/dashboard");
+        return;
       }
-
-      router.push("/dashboard");
+      const tokenResult = await currentUser.getIdTokenResult(true);
+      const roles = (tokenResult.claims.roles as UserRole[]) ?? ["participant"];
+      if (!roles.some((r) => BACKOFFICE_ROLES.includes(r))) {
+        router.push("/unauthorized");
+        return;
+      }
+      router.push(resolveLandingRoute(roles));
     } catch {
       setError("Email ou mot de passe incorrect.");
     }

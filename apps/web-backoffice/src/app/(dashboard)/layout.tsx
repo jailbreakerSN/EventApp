@@ -14,24 +14,12 @@ import { ImpersonationBanner } from "@/components/admin/impersonation-banner";
 import { useAuth } from "@/hooks/use-auth";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 import { useTranslations } from "next-intl";
-
-// Every role that is allowed to traverse the backoffice shell. The
-// `platform:*` roles landed in closure C and must be listed explicitly —
-// otherwise a user with (say) `platform:support` would be redirected to
-// /unauthorized before ever reaching /admin/**, making the granular
-// admin taxonomy dead-code. Keep in sync with `AdminRole` in
-// apps/web-backoffice/src/hooks/use-admin-role.ts.
-const BACKOFFICE_ROLES = [
-  "organizer",
-  "co_organizer",
-  "super_admin",
-  "venue_manager",
-  "platform:super_admin",
-  "platform:support",
-  "platform:finance",
-  "platform:ops",
-  "platform:security",
-] as const;
+// Shared access taxonomy — single source of truth for who may traverse
+// the backoffice shell. See apps/web-backoffice/src/lib/access.ts.
+// Admin roles (`super_admin`, `platform:*`) are included so a super-
+// admin who is ALSO an organizer can navigate to /dashboard manually;
+// pure admins are redirected to /admin/inbox at login by resolveLandingRoute.
+import { BACKOFFICE_ROLES } from "@/lib/access";
 
 // Grace period before the email-verification hard gate kicks in. Configurable
 // via NEXT_PUBLIC_EMAIL_GRACE_DAYS; default 7. Set to 0 to gate immediately.
