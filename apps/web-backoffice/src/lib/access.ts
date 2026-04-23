@@ -100,6 +100,18 @@ export function canViewOrganizerShell(userRoles: readonly UserRole[]): boolean {
  *  2. Organizer roles — `/dashboard`.
  *  3. Venue-only roles — `/venues`.
  *  4. Anything else — `/unauthorized`.
+ *
+ * TODO(permissions-tightening): today every `platform:*` subrole maps
+ * to `platform:manage` (see DEFAULT_ROLE_PERMISSIONS in
+ * packages/shared-types/src/permissions.types.ts around line 353).
+ * When the "narrowing per-route" follow-up shipped in closure C.1
+ * lands — e.g. `platform:finance` no longer holding `platform:manage`
+ * and instead holding only `subscription:*` — this function will send
+ * a finance admin to `/admin/inbox` where most sub-pages 403 them.
+ * Migrate to landing on a role-scoped home (e.g. `/admin/revenue` for
+ * finance, `/admin/audit` for security) at the same time you split
+ * the permission map. Tracked alongside closure C.1 — no action today,
+ * but the two MUST move together.
  */
 export function resolveLandingRoute(userRoles: readonly UserRole[]): string {
   if (isAdminRole(userRoles)) return "/admin/inbox";
