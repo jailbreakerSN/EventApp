@@ -600,11 +600,12 @@ class AdminService extends BaseService {
    * started by that admin.
    */
   async endImpersonation(user: AuthUser, actorUid: string): Promise<void> {
-    // The caller is CURRENTLY impersonating — their JWT should have
-    // `impersonatedBy` set. We check both the claim and the actorUid
-    // sent by the client to catch mismatches early.
-    const claimActor = (user as AuthUser & { impersonatedBy?: string }).impersonatedBy;
-    if (!claimActor || claimActor !== actorUid) {
+    // The caller is CURRENTLY impersonating — their JWT carries the
+    // signed `impersonatedBy` claim baked by `startImpersonation`,
+    // extracted into `AuthUser.impersonatedBy` by the auth middleware.
+    // We validate it matches the actorUid the client echoed back from
+    // its sessionStorage breadcrumb — both must agree.
+    if (!user.impersonatedBy || user.impersonatedBy !== actorUid) {
       throw new ForbiddenError("Session d'impersonation non reconnue.");
     }
     // Revoke BOTH the impersonated uid (the current session token) AND
