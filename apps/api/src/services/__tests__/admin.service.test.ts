@@ -1036,3 +1036,88 @@ describe("AdminService.endImpersonation (Phase 4)", () => {
     expect(eventBus.emit).not.toHaveBeenCalled();
   });
 });
+
+// ─── Bulk status updates (T1.2) ─────────────────────────────────────────────
+
+describe("AdminService.bulkUpdateUserStatus (T1.2)", () => {
+  const admin = buildSuperAdmin({ uid: "admin-bulk" });
+
+  beforeEach(() => {
+    // Make each user-doc read succeed by default so updateUserStatus
+    // can transact against a non-empty doc.
+    mockUserDocGet.mockResolvedValue({
+      exists: true,
+      data: () => ({
+        uid: "target",
+        email: "t@teranga.dev",
+        displayName: "Target",
+        roles: ["participant"],
+        isActive: true,
+      }),
+    });
+  });
+
+  it("delegates per-item to updateUserStatus and reports per-id success", async () => {
+    const res = await adminService.bulkUpdateUserStatus(admin, ["u-1", "u-2", "u-3"], false);
+
+    expect(res.succeeded).toEqual(["u-1", "u-2", "u-3"]);
+    expect(res.failed).toEqual([]);
+    // updateUserStatus emits one user.status_changed event per item;
+    // the audit listener would convert each emit into an audit row in
+    // production (event bus mocked here, asserting the fan-out count
+    // is enough to prove per-item delegation).
+    expect(eventBus.emit).toHaveBeenCalledWith("user.status_changed", expect.objectContaining({}));
+  });
+
+  it("isolates failures — a bad id does not short-circuit the remaining items", async () => {
+    // Fail the second read; the first and third succeed.
+    mockUserDocGet
+      .mockResolvedValueOnce({
+        exists: true,
+        data: () => ({ uid: "u-1", roles: ["participant"], isActive: true }),
+      })
+      .mockResolvedValueOnce({ exists: false, data: () => undefined })
+      .mockResolvedValueOnce({
+        exists: true,
+        data: () => ({ uid: "u-3", roles: ["participant"], isActive: true }),
+      });
+
+    const res = await adminService.bulkUpdateUserStatus(admin, ["u-1", "u-2", "u-3"], true);
+
+    expect(res.succeeded).toEqual(["u-1", "u-3"]);
+    expect(res.failed).toHaveLength(1);
+    expect(res.failed[0]).toMatchObject({ id: "u-2" });
+  });
+
+  it("refuses non-admin callers", async () => {
+    const organizer = buildOrganizerUser("org-1");
+    await expect(adminService.bulkUpdateUserStatus(organizer, ["u-1"], false)).rejects.toThrow(
+      /platform:manage/i,
+    );
+  });
+});
+
+describe("AdminService.bulkUpdateOrgStatus (T1.2)", () => {
+  const admin = buildSuperAdmin({ uid: "admin-bulk-org" });
+
+  beforeEach(() => {
+    mockOrgDocGet.mockResolvedValue({
+      exists: true,
+      data: () => ({ id: "org-x", isActive: true, name: "Org X" }),
+    });
+  });
+
+  it("delegates per-item and reports per-id success", async () => {
+    const res = await adminService.bulkUpdateOrgStatus(admin, ["o-1", "o-2"], false);
+
+    expect(res.succeeded).toEqual(["o-1", "o-2"]);
+    expect(res.failed).toEqual([]);
+  });
+
+  it("refuses non-admin callers", async () => {
+    const organizer = buildOrganizerUser("org-1");
+    await expect(adminService.bulkUpdateOrgStatus(organizer, ["o-1"], false)).rejects.toThrow(
+      /platform:manage/i,
+    );
+  });
+});

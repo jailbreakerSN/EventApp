@@ -12,6 +12,7 @@ import {
   AdminAuditQuerySchema,
   UpdateUserRolesSchema,
   UpdateUserStatusSchema,
+  BulkUpdateStatusSchema,
   AssignPlanSchema,
   NOTIFICATION_CATALOG,
   NotificationSettingSchema,
@@ -545,6 +546,27 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
     },
   );
 
+  // T1.2 — bulk suspend / reactivate. Capped at 100 ids per request by
+  // the Zod schema. Delegates per-item to updateUserStatus so every
+  // invariant (transactional write, audit emission, Auth-claim sync)
+  // fires once per id.
+  fastify.post(
+    "/users/bulk-update-status",
+    {
+      preHandler: [...adminPreHandler, validate({ body: BulkUpdateStatusSchema })],
+      schema: {
+        tags: ["Admin"],
+        summary: "Bulk suspend or activate users",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const { ids, isActive } = request.body as z.infer<typeof BulkUpdateStatusSchema>;
+      const result = await adminService.bulkUpdateUserStatus(request.user!, ids, isActive);
+      return reply.send({ success: true, data: result });
+    },
+  );
+
   // ── Organizations ───────────────────────────────────────────────────────
 
   fastify.get(
@@ -601,6 +623,26 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
       const { isActive } = request.body as z.infer<typeof UpdateUserStatusSchema>;
       await adminService.updateOrgStatus(request.user!, orgId, isActive);
       return reply.status(204).send();
+    },
+  );
+
+  // T1.2 — bulk org suspend / reactivate. Same discipline as
+  // /users/bulk-update-status: per-item delegation, audit per row,
+  // capped at 100 ids.
+  fastify.post(
+    "/organizations/bulk-update-status",
+    {
+      preHandler: [...adminPreHandler, validate({ body: BulkUpdateStatusSchema })],
+      schema: {
+        tags: ["Admin"],
+        summary: "Bulk suspend or activate organizations",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const { ids, isActive } = request.body as z.infer<typeof BulkUpdateStatusSchema>;
+      const result = await adminService.bulkUpdateOrgStatus(request.user!, ids, isActive);
+      return reply.send({ success: true, data: result });
     },
   );
 

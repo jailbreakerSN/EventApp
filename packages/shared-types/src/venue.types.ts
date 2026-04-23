@@ -268,6 +268,38 @@ export const UpdateUserStatusSchema = z.object({
 
 export type UpdateUserStatusDto = z.infer<typeof UpdateUserStatusSchema>;
 
+// ─── Bulk status update (T1.2 — admin bulk selection) ────────────────────────
+// Accepted by `POST /v1/admin/users/bulk-update-status` and
+// `POST /v1/admin/organizations/bulk-update-status`. Capped at 100 IDs
+// per request to keep audit-log fan-out bounded and keep the request
+// within Cloud Run's 1 MB body limit with generous margin.
+
+export const BulkUpdateStatusSchema = z.object({
+  ids: z.array(z.string().min(1)).min(1).max(100),
+  isActive: z.boolean(),
+});
+
+export type BulkUpdateStatusDto = z.infer<typeof BulkUpdateStatusSchema>;
+
+/**
+ * Response shape for bulk-status endpoints. Callers receive a per-item
+ * result so the UI can render a summary ("12 succeeded, 1 failed:
+ * <reason>"). Each failure carries the typed reason that came out of
+ * the service layer so copy can disambiguate permission / not-found /
+ * transactional conflict without re-fetching.
+ */
+export const BulkUpdateStatusResultSchema = z.object({
+  succeeded: z.array(z.string()),
+  failed: z.array(
+    z.object({
+      id: z.string(),
+      reason: z.string(),
+    }),
+  ),
+});
+
+export type BulkUpdateStatusResult = z.infer<typeof BulkUpdateStatusResultSchema>;
+
 // ─── Platform Stats ─────────────────────────────────────────────────────────
 
 export interface PlatformStats {

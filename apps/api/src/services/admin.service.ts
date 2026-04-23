@@ -1039,6 +1039,72 @@ class AdminService extends BaseService {
       now: new Date(),
     });
   }
+
+  // ── Bulk operations (T1.2 — admin bulk selection) ──────────────────────────
+  //
+  // The bulk endpoints intentionally delegate to the per-item methods
+  // rather than opening a batch Firestore write: the single-item paths
+  // already run the permission checks, the transactional read-write,
+  // the audit emission, AND the Firebase Auth claim sync. Duplicating
+  // that stack inside a batched write path would double the places where
+  // we must keep the invariants in lockstep.
+  //
+  // Sequential execution (not Promise.all) is deliberate:
+  //  - An errored item must NOT leak its Firestore write into the next
+  //    item's transaction. Sequential keeps failures isolated.
+  //  - Audit logs written out-of-order would confuse downstream consumers
+  //    that sort by timestamp. Sequential preserves natural ordering.
+  //  - Bounded to 100 ids per request (Zod-enforced at the edge) so the
+  //    worst case is 100× the single-item latency ≈ a few seconds. Well
+  //    within Cloud Run's 60s request budget.
+  //
+  // The response carries per-id success/failure — the UI renders a
+  // summary "12 succeeded, 1 failed: reason" so the operator can retry
+  // or investigate the failures without re-selecting from scratch.
+
+  async bulkUpdateUserStatus(
+    user: AuthUser,
+    userIds: string[],
+    isActive: boolean,
+  ): Promise<{ succeeded: string[]; failed: Array<{ id: string; reason: string }> }> {
+    this.requirePermission(user, "platform:manage");
+    const succeeded: string[] = [];
+    const failed: Array<{ id: string; reason: string }> = [];
+    for (const id of userIds) {
+      try {
+        await this.updateUserStatus(user, id, isActive);
+        succeeded.push(id);
+      } catch (err) {
+        failed.push({
+          id,
+          reason: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+    return { succeeded, failed };
+  }
+
+  async bulkUpdateOrgStatus(
+    user: AuthUser,
+    orgIds: string[],
+    isActive: boolean,
+  ): Promise<{ succeeded: string[]; failed: Array<{ id: string; reason: string }> }> {
+    this.requirePermission(user, "platform:manage");
+    const succeeded: string[] = [];
+    const failed: Array<{ id: string; reason: string }> = [];
+    for (const id of orgIds) {
+      try {
+        await this.updateOrgStatus(user, id, isActive);
+        succeeded.push(id);
+      } catch (err) {
+        failed.push({
+          id,
+          reason: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+    return { succeeded, failed };
+  }
 }
 
 export const adminService = new AdminService();

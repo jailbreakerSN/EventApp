@@ -7,7 +7,13 @@ import { EmptyState } from "./empty-state";
 
 export interface DataTableColumn<T> {
   key: string;
-  header: string;
+  /**
+   * Column header. Historically a string; now accepts a ReactNode too so
+   * callers can render a select-all checkbox, an info tooltip, or any
+   * inline control alongside the label. The mobile card layout continues
+   * to expect a displayable value — a plain string still works there.
+   */
+  header: React.ReactNode;
   render?: (item: T) => React.ReactNode;
   /** If true, this column is shown in the card header on mobile (default: first column) */
   primary?: boolean;
