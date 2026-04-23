@@ -933,8 +933,38 @@ jobs:
           # spirit of the old uptime alert but keeps it inside the deploy run.
           exit $FAIL
 
+      # ── Admin endpoint probe ──────────────────────────────────────────────
+      # Authenticates as the seeded super-admin and hits every filter combo
+      # on /admin/users, /admin/organizations, /admin/audit-logs, /admin/events.
+      # Catches the class of bug the static index audit can't see:
+      #   - single-filter "subset" queries that need a dedicated composite
+      #     index (the Firestore emulator doesn't enforce composites, so
+      #     these only show up in staging/prod).
+      #   - Zod validation contract mismatches between the backoffice UI
+      #     (e.g. date-only <input type="date">) and the API (full ISO
+      #     datetime).
+      # See the April 2026 /v1/admin/users?role=organizer incident for the
+      # concrete bug class this guards against.
+      - name: Probe admin endpoints
+        id: admin-probe
+        if: steps.probe.outputs.fail == '0'
+        env:
+          API_URL: ${{ needs.setup.outputs.api_url }}
+          FIREBASE_API_KEY: ${{ needs.setup.outputs.firebase_api_key }}
+          ADMIN_EMAIL: admin@teranga.dev
+          ADMIN_PASSWORD: password123
+        # Non-zero exit propagates failure up to the job, which triggers the
+        # existing "File incident issue on failure" step below. `continue-on-
+        # error` stays OFF so a 500 on an admin endpoint blocks the deploy
+        # from being declared healthy.
+        run: node scripts/smoke-probe-admin.mjs
+
       - name: File incident issue on failure
-        if: failure() && steps.probe.outputs.fail == '1'
+        # Triggers on EITHER the basic probe (health/ready/UIs) or the admin
+        # probe failing. Admin-probe failures don't populate steps.probe.outputs,
+        # so this relies on the `failure()` condition alone for that path —
+        # the report body notes the admin probe explicitly and points at logs.
+        if: failure() && (steps.probe.outputs.fail == '1' || steps.admin-probe.conclusion == 'failure')
         uses: actions/github-script@v7
         env:
           # Pass the probe report via an environment variable instead of
@@ -945,21 +975,32 @@ jobs:
           # evaluation time. Reading it from process.env inside the script
           # body keeps it as an opaque string.
           REPORT: ${{ steps.probe.outputs.report }}
+          ADMIN_PROBE_STATUS: ${{ steps.admin-probe.conclusion }}
         with:
           script: |
             const sha = context.sha;
-            const report = process.env.REPORT || "(no report produced)";
+            const basicReport = process.env.REPORT || "";
+            const adminStatus = process.env.ADMIN_PROBE_STATUS || "skipped";
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             const title = `[smoke-test] Post-deploy probe failed on ${sha.slice(0, 7)}`;
-            const body = [
+            const sections = [
               `Staging deploy of ${sha} completed, but the post-deploy smoke test found one or more endpoints unhealthy.`,
               "",
-              report,
-              "",
-              `Run: ${runUrl}`,
-              "",
-              "_Auto-filed by the smoke-test job in `deploy-staging.yml`. Close once the incident is resolved._",
-            ].join("\n");
+            ];
+            if (basicReport.trim()) {
+              sections.push("### Basic probes (health, readiness, UIs)", basicReport, "");
+            }
+            if (adminStatus === "failure") {
+              sections.push(
+                "### Admin probes",
+                "- The admin endpoint probe (scripts/smoke-probe-admin.mjs) failed.",
+                "- Typical root causes: missing Firestore composite index (500), Zod validation contract mismatch with the backoffice UI (400), or a broken seeded super-admin persona.",
+                "- Exact endpoints + HTTP codes are in the `Probe admin endpoints` step logs.",
+                "",
+              );
+            }
+            sections.push(`Run: ${runUrl}`, "", "_Auto-filed by the smoke-test job in `deploy-staging.yml`. Close once the incident is resolved._");
+            const body = sections.join("\n");
 
             // De-dupe: if an open incident issue already exists, comment on it instead.
             const existing = await github.rest.issues.listForRepo({
