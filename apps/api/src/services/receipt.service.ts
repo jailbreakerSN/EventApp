@@ -1,4 +1,4 @@
-import { type Receipt } from "@teranga/shared-types";
+import { type Receipt, isAdminSystemRole } from "@teranga/shared-types";
 import { receiptRepository } from "@/repositories/receipt.repository";
 import { paymentRepository } from "@/repositories/payment.repository";
 import { eventRepository } from "@/repositories/event.repository";
@@ -21,8 +21,9 @@ export class ReceiptService extends BaseService {
 
     const payment = await paymentRepository.findByIdOrThrow(paymentId);
 
-    // Only the payment owner or an organizer can generate a receipt
-    if (payment.userId !== user.uid && !user.roles.includes("super_admin")) {
+    // Only the payment owner, a platform admin, or an organizer with
+    // payment:read_all inside the owning org can generate a receipt.
+    if (payment.userId !== user.uid && !user.roles.some(isAdminSystemRole)) {
       this.requirePermission(user, "payment:read_all");
       this.requireOrganizationAccess(user, payment.organizationId);
     }
@@ -97,7 +98,7 @@ export class ReceiptService extends BaseService {
     this.requirePermission(user, "payment:read_own");
     const receipt = await receiptRepository.findByIdOrThrow(receiptId);
 
-    if (receipt.userId !== user.uid && !user.roles.includes("super_admin")) {
+    if (receipt.userId !== user.uid && !user.roles.some(isAdminSystemRole)) {
       this.requirePermission(user, "payment:read_all");
       this.requireOrganizationAccess(user, receipt.organizationId);
     }

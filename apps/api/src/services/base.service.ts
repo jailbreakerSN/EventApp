@@ -7,6 +7,7 @@ import {
   PLAN_LIMITS,
   PLAN_LIMIT_UNLIMITED,
   hasPermission,
+  isAdminSystemRole,
   resolvePermissions,
 } from "@teranga/shared-types";
 import { type AuthUser } from "@/middlewares/auth.middleware";
@@ -77,10 +78,19 @@ export abstract class BaseService {
 
   /**
    * Throw ForbiddenError if the user doesn't belong to the organization.
-   * super_admin bypasses this check.
+   *
+   * Every admin system role bypasses this check — super_admin plus the
+   * five `platform:*` subroles, all of which hold `platform:manage`
+   * today (see DEFAULT_ROLE_PERMISSIONS in shared-types). The exemption
+   * is sourced from the canonical `isAdminSystemRole` predicate so this
+   * gate cannot drift from the email-verification gate or the
+   * web-backoffice `(admin)` shell access list. When closure C.1
+   * narrows per-route permissions (e.g. platform:finance no longer
+   * implying platform:manage), migrate this bypass to a permission
+   * check (`hasPermission(user, "platform:manage")`) at the same time.
    */
   protected requireOrganizationAccess(user: AuthUser, organizationId: string): void {
-    if (user.roles.includes("super_admin")) return;
+    if (user.roles.some(isAdminSystemRole)) return;
     if (user.organizationId !== organizationId) {
       throw new ForbiddenError("Accès refusé aux ressources de cette organisation");
     }

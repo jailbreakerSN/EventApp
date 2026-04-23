@@ -24,24 +24,18 @@
 
 import { useMemo } from "react";
 import { useAuth } from "@/hooks/use-auth";
+import { ADMIN_ROLES } from "@/lib/access";
 
-/** Every role that gets routed through `/admin/*`. */
-export type AdminRole =
-  | "super_admin"
-  | "platform:super_admin"
-  | "platform:support"
-  | "platform:finance"
-  | "platform:ops"
-  | "platform:security";
+/**
+ * Every role routed through `/admin/*`. Derived from the shared
+ * `ADMIN_ROLES` list in `@/lib/access` so there is exactly ONE place
+ * to edit when a new admin subrole lands. Before closure F2 these
+ * were two independently-enumerated lists that were already shown to
+ * drift (same role set, two declaration sites).
+ */
+export type AdminRole = (typeof ADMIN_ROLES)[number];
 
-const ADMIN_ROLES = new Set<AdminRole>([
-  "super_admin",
-  "platform:super_admin",
-  "platform:support",
-  "platform:finance",
-  "platform:ops",
-  "platform:security",
-]);
+const ADMIN_ROLE_SET = new Set<AdminRole>(ADMIN_ROLES);
 
 const LABEL: Record<AdminRole, string> = {
   super_admin: "Super admin",
@@ -70,7 +64,7 @@ export function useAdminRole(): AdminRoleContext | null {
 
   return useMemo<AdminRoleContext | null>(() => {
     if (!user) return null;
-    const matching = user.roles.filter((r): r is AdminRole => ADMIN_ROLES.has(r as AdminRole));
+    const matching = user.roles.filter((r): r is AdminRole => ADMIN_ROLE_SET.has(r as AdminRole));
     if (matching.length === 0) return null;
 
     // Narrowest role = prefer platform:* over legacy super_admin so

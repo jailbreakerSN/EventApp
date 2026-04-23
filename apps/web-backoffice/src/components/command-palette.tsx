@@ -1,12 +1,6 @@
 "use client";
 
-import {
-  useState,
-  useEffect,
-  useRef,
-  useCallback,
-  type KeyboardEvent,
-} from "react";
+import { useState, useEffect, useRef, useCallback, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import {
@@ -22,9 +16,7 @@ import {
   Building2,
   Settings,
   LogOut,
-  Shield,
   MapPin,
-  FileText,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -47,37 +39,71 @@ interface CommandItem {
 // ─── Static command definitions ──────────────────────────────────────────────
 
 const PAGE_COMMANDS: Omit<CommandItem, "action">[] = [
-  { id: "dashboard",      label: "Tableau de bord",  category: "Pages",   icon: LayoutDashboard, href: "/dashboard" },
-  { id: "events",         label: "Événements",        category: "Pages",   icon: CalendarDays,    href: "/events" },
-  { id: "events-new",     label: "Nouvel événement",  category: "Pages",   icon: PlusCircle,      href: "/events/new" },
-  { id: "participants",   label: "Participants",       category: "Pages",   icon: Users,           href: "/participants" },
-  { id: "badges",         label: "Badges & QR",       category: "Pages",   icon: QrCode,          href: "/badges" },
-  { id: "analytics",      label: "Analytiques",       category: "Pages",   icon: BarChart3,       href: "/analytics" },
-  { id: "finance",        label: "Finances",          category: "Pages",   icon: Wallet,          href: "/finance" },
-  { id: "communications", label: "Communications",    category: "Pages",   icon: Megaphone,       href: "/communications" },
-  { id: "notifications",  label: "Notifications",     category: "Pages",   icon: Bell,            href: "/notifications" },
-  { id: "organization",   label: "Organisation",      category: "Pages",   icon: Building2,       href: "/organization" },
-  { id: "settings",       label: "Paramètres",        category: "Pages",   icon: Settings,        href: "/settings" },
+  {
+    id: "dashboard",
+    label: "Tableau de bord",
+    category: "Pages",
+    icon: LayoutDashboard,
+    href: "/dashboard",
+  },
+  { id: "events", label: "Événements", category: "Pages", icon: CalendarDays, href: "/events" },
+  {
+    id: "events-new",
+    label: "Nouvel événement",
+    category: "Pages",
+    icon: PlusCircle,
+    href: "/events/new",
+  },
+  {
+    id: "participants",
+    label: "Participants",
+    category: "Pages",
+    icon: Users,
+    href: "/participants",
+  },
+  { id: "badges", label: "Badges & QR", category: "Pages", icon: QrCode, href: "/badges" },
+  { id: "analytics", label: "Analytiques", category: "Pages", icon: BarChart3, href: "/analytics" },
+  { id: "finance", label: "Finances", category: "Pages", icon: Wallet, href: "/finance" },
+  {
+    id: "communications",
+    label: "Communications",
+    category: "Pages",
+    icon: Megaphone,
+    href: "/communications",
+  },
+  {
+    id: "notifications",
+    label: "Notifications",
+    category: "Pages",
+    icon: Bell,
+    href: "/notifications",
+  },
+  {
+    id: "organization",
+    label: "Organisation",
+    category: "Pages",
+    icon: Building2,
+    href: "/organization",
+  },
+  { id: "settings", label: "Paramètres", category: "Pages", icon: Settings, href: "/settings" },
   // Venue host pages
-  { id: "venues",         label: "Mes Lieux",         category: "Pages",   icon: MapPin,          href: "/venues" },
-  // Admin pages (visible to all in search, but access-gated by route layout)
-  { id: "admin",          label: "Admin Plateforme",  category: "Pages",   icon: Shield,          href: "/admin" },
-  { id: "admin-users",    label: "Admin Utilisateurs", category: "Pages",  icon: Users,           href: "/admin/users" },
-  { id: "admin-orgs",     label: "Admin Organisations", category: "Pages", icon: Building2,       href: "/admin/organizations" },
-  { id: "admin-events",   label: "Admin Événements",  category: "Pages",   icon: CalendarDays,    href: "/admin/events" },
-  { id: "admin-venues",   label: "Admin Lieux",       category: "Pages",   icon: MapPin,          href: "/admin/venues" },
-  { id: "admin-audit",    label: "Journal d'audit",   category: "Pages",   icon: FileText,        href: "/admin/audit" },
+  { id: "venues", label: "Mes Lieux", category: "Pages", icon: MapPin, href: "/venues" },
+  // NOTE: admin pages are NOT listed here — they live in the dedicated
+  // (admin) shell with its own command palette. An admin reaches them
+  // via the "Administration" pill in the top bar. Keeping admin routes
+  // out of this palette prevents cross-shell navigation noise for
+  // organizers (who would see them as un-navigable search hits anyway).
 ];
 
 // ─── Category badge colors ────────────────────────────────────────────────────
 
 const CATEGORY_STYLES: Record<CommandCategory, string> = {
-  Pages:   "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
+  Pages: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
   Actions: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
 };
 
 const CATEGORY_LABELS: Record<CommandCategory, string> = {
-  Pages:   "Page",
+  Pages: "Page",
   Actions: "Action",
 };
 
@@ -220,7 +246,9 @@ export function CommandPalette() {
           break;
         case "ArrowUp":
           e.preventDefault();
-          setActiveIndex((i) => (i - 1 + Math.max(flatItems.length, 1)) % Math.max(flatItems.length, 1));
+          setActiveIndex(
+            (i) => (i - 1 + Math.max(flatItems.length, 1)) % Math.max(flatItems.length, 1),
+          );
           break;
         case "Enter":
           e.preventDefault();
@@ -234,7 +262,7 @@ export function CommandPalette() {
           break;
       }
     },
-    [flatItems, activeIndex]
+    [flatItems, activeIndex],
   );
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -249,7 +277,7 @@ export function CommandPalette() {
       className={cn(
         "fixed inset-0 z-[200] flex items-start justify-center pt-[15vh] px-4",
         // Overlay
-        "motion-safe:animate-in motion-safe:fade-in motion-safe:duration-150"
+        "motion-safe:animate-in motion-safe:fade-in motion-safe:duration-150",
       )}
     >
       {/* Backdrop */}
@@ -266,7 +294,7 @@ export function CommandPalette() {
           "bg-card text-foreground",
           "rounded-xl border border-border shadow-2xl",
           "overflow-hidden",
-          "motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-95 motion-safe:duration-150"
+          "motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-95 motion-safe:duration-150",
         )}
       >
         {/* Search input */}
@@ -298,7 +326,7 @@ export function CommandPalette() {
             onKeyDown={handleKeyDown}
             className={cn(
               "flex-1 bg-transparent outline-none",
-              "text-sm text-foreground placeholder:text-muted-foreground"
+              "text-sm text-foreground placeholder:text-muted-foreground",
             )}
             autoComplete="off"
             spellCheck={false}
@@ -310,7 +338,14 @@ export function CommandPalette() {
               aria-label="Effacer la recherche"
               tabIndex={-1}
             >
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5} aria-hidden="true">
+              <svg
+                className="w-3.5 h-3.5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2.5}
+                aria-hidden="true"
+              >
                 <path d="M18 6L6 18M6 6l12 12" />
               </svg>
             </button>
@@ -367,7 +402,7 @@ export function CommandPalette() {
                             "motion-safe:transition-colors",
                             isActive
                               ? "bg-primary/10 text-primary"
-                              : "text-foreground hover:bg-muted"
+                              : "text-foreground hover:bg-muted",
                           )}
                         >
                           <Icon
@@ -375,16 +410,14 @@ export function CommandPalette() {
                             aria-hidden="true"
                             className={cn(
                               "shrink-0",
-                              isActive ? "text-primary" : "text-muted-foreground"
+                              isActive ? "text-primary" : "text-muted-foreground",
                             )}
                           />
-                          <span className="flex-1 text-sm font-medium truncate">
-                            {item.label}
-                          </span>
+                          <span className="flex-1 text-sm font-medium truncate">{item.label}</span>
                           <span
                             className={cn(
                               "text-[10px] font-semibold px-1.5 py-0.5 rounded-full shrink-0",
-                              CATEGORY_STYLES[item.category]
+                              CATEGORY_STYLES[item.category],
                             )}
                           >
                             {CATEGORY_LABELS[item.category]}

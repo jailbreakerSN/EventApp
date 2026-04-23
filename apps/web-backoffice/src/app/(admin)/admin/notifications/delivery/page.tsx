@@ -20,13 +20,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
-import {
-  AlertTriangle,
-  Download,
-  Gauge,
-  Send,
-  TrendingUp,
-} from "lucide-react";
+import { AlertTriangle, Download, Gauge, Send, TrendingUp } from "lucide-react";
 import {
   Badge,
   Breadcrumb,
@@ -46,11 +40,7 @@ import {
   Skeleton,
 } from "@teranga/shared-ui";
 import { useAdminDeliveryDashboard } from "@/hooks/use-admin-notifications";
-import {
-  DeliveryTimeseriesChart,
-  PerChannelBarChart,
-  SuppressionDonut,
-} from "./delivery-charts";
+import { DeliveryTimeseriesChart, PerChannelBarChart, SuppressionDonut } from "./delivery-charts";
 import type { AdminDeliveryDashboardResponse } from "@/lib/api-client";
 
 // ─── Constants ───────────────────────────────────────────────────────────
@@ -80,11 +70,7 @@ function computeKpis(data: AdminDeliveryDashboardResponse) {
   // baseline. Used as the denom for delivery & CTR so the numbers match
   // the per-channel bar chart.
   const reach =
-    totals.sent +
-    totals.delivered +
-    totals.opened +
-    totals.clicked +
-    totals.pushDisplayed;
+    totals.sent + totals.delivered + totals.opened + totals.clicked + totals.pushDisplayed;
 
   const deliveryRate = safeDivide(
     totals.delivered + totals.opened + totals.clicked + totals.pushDisplayed,
@@ -93,8 +79,7 @@ function computeKpis(data: AdminDeliveryDashboardResponse) {
 
   const clickRate = safeDivide(totals.clicked + totals.pushClicked, reach);
 
-  const bounceDenom =
-    reach + totals.suppressed.bounced + totals.suppressed.complained;
+  const bounceDenom = reach + totals.suppressed.bounced + totals.suppressed.complained;
   const bounceRate = safeDivide(
     totals.suppressed.bounced + totals.suppressed.complained,
     bounceDenom,
@@ -126,9 +111,7 @@ function buildCsv(data: AdminDeliveryDashboardResponse): string {
   rows.push("");
   rows.push("channel,sent,suppressed,successRate");
   for (const row of data.perChannel) {
-    rows.push(
-      `${row.channel},${row.sent},${row.suppressed},${row.successRate.toFixed(4)}`,
-    );
+    rows.push(`${row.channel},${row.sent},${row.suppressed},${row.successRate.toFixed(4)}`);
   }
   rows.push("");
   rows.push("bucket,sent,delivered,opened,clicked,pushDisplayed,pushClicked,suppressed");
@@ -191,9 +174,7 @@ export default function AdminNotificationsDeliveryPage() {
   const { fromIso, toIso, granularity } = useMemo(() => {
     const now = new Date();
     const to = now.toISOString();
-    const from = new Date(
-      now.getTime() - windowDays * 24 * 60 * 60 * 1000,
-    ).toISOString();
+    const from = new Date(now.getTime() - windowDays * 24 * 60 * 60 * 1000).toISOString();
     const gran: "hour" | "day" = windowDays <= 1 ? "hour" : "day";
     return { fromIso: from, toIso: to, granularity: gran };
   }, [windowDays]);
@@ -217,12 +198,6 @@ export default function AdminNotificationsDeliveryPage() {
     <div className="space-y-6">
       <Breadcrumb>
         <BreadcrumbList>
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <Link href="/dashboard">{t("breadcrumbHome")}</Link>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
           <BreadcrumbItem>
             <BreadcrumbLink asChild>
               <Link href="/admin">{t("breadcrumbAdmin")}</Link>
@@ -288,11 +263,7 @@ export default function AdminNotificationsDeliveryPage() {
           severity="destructive"
           kicker={t("errorKicker")}
           title={t("errorTitle")}
-          description={
-            query.error instanceof Error
-              ? query.error.message
-              : t("errorDescription")
-          }
+          description={query.error instanceof Error ? query.error.message : t("errorDescription")}
         />
       )}
 
@@ -355,9 +326,7 @@ function DashboardBody({
         <KpiCard
           icon={
             <AlertTriangle
-              className={`h-5 w-5 ${
-                highBounce ? "text-destructive" : "text-muted-foreground"
-              }`}
+              className={`h-5 w-5 ${highBounce ? "text-destructive" : "text-muted-foreground"}`}
             />
           }
           label={t("kpi.bounceRate")}
@@ -493,4 +462,3 @@ function KpiCard({
     </Card>
   );
 }
-

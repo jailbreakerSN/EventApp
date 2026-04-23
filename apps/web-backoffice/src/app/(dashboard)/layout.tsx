@@ -13,25 +13,13 @@ import { KeyboardShortcutsDialog } from "@/components/keyboard-shortcuts-dialog"
 import { ImpersonationBanner } from "@/components/admin/impersonation-banner";
 import { useAuth } from "@/hooks/use-auth";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
-import { useTranslations } from "next-intl";
-
-// Every role that is allowed to traverse the backoffice shell. The
-// `platform:*` roles landed in closure C and must be listed explicitly —
-// otherwise a user with (say) `platform:support` would be redirected to
-// /unauthorized before ever reaching /admin/**, making the granular
-// admin taxonomy dead-code. Keep in sync with `AdminRole` in
-// apps/web-backoffice/src/hooks/use-admin-role.ts.
-const BACKOFFICE_ROLES = [
-  "organizer",
-  "co_organizer",
-  "super_admin",
-  "venue_manager",
-  "platform:super_admin",
-  "platform:support",
-  "platform:finance",
-  "platform:ops",
-  "platform:security",
-] as const;
+// Shared access taxonomy — single source of truth for who may traverse
+// the backoffice shell. See apps/web-backoffice/src/lib/access.ts.
+// Admin roles (`super_admin`, `platform:*`) are included so a super-
+// admin who is ALSO an organizer can navigate to /dashboard manually;
+// pure admins are redirected to /admin/inbox at login by resolveLandingRoute.
+import { BACKOFFICE_ROLES, ADMIN_ROLES } from "@/lib/access";
+import type { UserRole } from "@teranga/shared-types";
 
 // Grace period before the email-verification hard gate kicks in. Configurable
 // via NEXT_PUBLIC_EMAIL_GRACE_DAYS; default 7. Set to 0 to gate immediately.
@@ -43,8 +31,14 @@ const GRACE_MS =
 
 /**
  * Returns true when an unverified user has exceeded the grace period.
- * Super-admins are always exempt so platform operators can triage without
- * locking themselves out.
+ *
+ * Every admin role (super_admin + 5 platform:* subroles) is exempt —
+ * platform operators must never be locked out by a verification race
+ * (CLAUDE.md §H6). The exemption reads from ADMIN_ROLES in lib/access.ts
+ * so adding a new admin subrole automatically inherits the exemption.
+ * Before this change the exemption was hardcoded to "super_admin" only,
+ * which made a platform:support admin clicking "Voir comme organisateur"
+ * end up on /verify-email — the opposite of the intended behaviour.
  */
 function shouldHardGateEmail(user: {
   emailVerified: boolean;
@@ -52,7 +46,9 @@ function shouldHardGateEmail(user: {
   roles: readonly string[];
 }): boolean {
   if (user.emailVerified) return false;
-  if (user.roles.includes("super_admin")) return false;
+  if (user.roles.some((r) => (ADMIN_ROLES as readonly string[]).includes(r as UserRole))) {
+    return false;
+  }
   if (!user.createdAt) return false;
   const age = Date.now() - new Date(user.createdAt).getTime();
   return age > GRACE_MS;
@@ -140,8 +136,6 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
 }
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const tCommon = useTranslations("common");
-  void tCommon;
   const { user, loading, hasRole } = useAuth();
   const router = useRouter();
 
