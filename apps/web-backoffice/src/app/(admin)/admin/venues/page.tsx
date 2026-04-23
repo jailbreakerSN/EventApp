@@ -73,7 +73,8 @@ const STATUS_LABELS: Record<string, string> = {
 // ─── Page ───────────────────────────────────────────────────────────────────
 
 export default function AdminVenuesPage() {
-  const tCommon = useTranslations("common"); void tCommon;
+  const tCommon = useTranslations("common");
+  void tCommon;
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
@@ -234,9 +235,7 @@ export default function AdminVenuesPage() {
                   key: "venueType",
                   header: "Type",
                   render: (venue) => (
-                    <Badge variant="info">
-                      {TYPE_LABELS[venue.venueType] ?? venue.venueType}
-                    </Badge>
+                    <Badge variant="info">{TYPE_LABELS[venue.venueType] ?? venue.venueType}</Badge>
                   ),
                 },
                 {

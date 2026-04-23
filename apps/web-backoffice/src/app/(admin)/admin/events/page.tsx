@@ -47,7 +47,8 @@ function formatDate(timestamp: string) {
 }
 
 export default function AdminEventsPage() {
-  const tCommon = useTranslations("common"); void tCommon;
+  const tCommon = useTranslations("common");
+  void tCommon;
   const [page, setPage] = useState(1);
   const [status, setStatus] = useState("");
 
@@ -211,7 +212,8 @@ export default function AdminEventsPage() {
       {!isLoading && meta.totalPages > 1 && (
         <div className="flex items-center justify-between text-sm text-muted-foreground">
           <span>
-            Page {meta.page} sur {meta.totalPages} ({meta.total} événement{meta.total > 1 ? "s" : ""})
+            Page {meta.page} sur {meta.totalPages} ({meta.total} événement
+            {meta.total > 1 ? "s" : ""})
           </span>
           <div className="flex items-center gap-2">
             <button

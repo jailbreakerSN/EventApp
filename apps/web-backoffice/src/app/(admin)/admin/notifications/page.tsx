@@ -395,9 +395,7 @@ export default function AdminNotificationsPage() {
                       onToggle={(next) => void handleToggle(row, next)}
                       onEdit={() => setEditing(row)}
                       onPreview={() => setPreviewing(row)}
-                      onHistory={() =>
-                        setHistoryKey((prev) => (prev === row.key ? null : row.key))
-                      }
+                      onHistory={() => setHistoryKey((prev) => (prev === row.key ? null : row.key))}
                     />
                   ))}
                 </tbody>
@@ -417,16 +415,11 @@ export default function AdminNotificationsPage() {
       )}
 
       {/* Phase 2.4 — Preview + Test-send dialog. */}
-      {previewing && (
-        <PreviewDialog row={previewing} onClose={() => setPreviewing(null)} />
-      )}
+      {previewing && <PreviewDialog row={previewing} onClose={() => setPreviewing(null)} />}
 
       {/* Phase 2.4 — Inline history panel (one open at a time). */}
       {historyKey && (
-        <HistoryPanel
-          notificationKey={historyKey}
-          onClose={() => setHistoryKey(null)}
-        />
+        <HistoryPanel notificationKey={historyKey} onClose={() => setHistoryKey(null)} />
       )}
     </div>
   );
@@ -564,12 +557,7 @@ function NotificationRow({
             className="inline-flex"
             aria-label={`Observabilité — ${row.displayName.fr}`}
           >
-            <Button
-              variant="ghost"
-              size="sm"
-              type="button"
-              tabIndex={-1}
-            >
+            <Button variant="ghost" size="sm" type="button" tabIndex={-1}>
               <Activity className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
               Observabilité
             </Button>
