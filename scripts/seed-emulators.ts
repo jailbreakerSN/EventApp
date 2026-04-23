@@ -206,6 +206,7 @@ async function seed() {
     console.log(
       `  ✓ activity seeded — ${c.registrations} registrations, ${c.badges} badges, ` +
         `${c.sessions} sessions, ${c.sessionBookmarks} session bookmarks, ` +
+        `${c.checkins} check-in forensic records, ` +
         `${c.speakers} speakers, ${c.sponsors} sponsors, ` +
         `${c.sponsorLeads} leads, ${c.payments} payments, ${c.receipts} receipts, ` +
         `${c.balanceTransactions} ledger entries, ${c.payouts} payouts, ` +

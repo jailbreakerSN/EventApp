@@ -28,6 +28,7 @@ import { EXPANSION_EVENT_DENORM, findTicketType } from "./04-events";
 const {
   now,
   oneHourAgo,
+  twoHoursAgo,
   yesterday,
   twoDaysAgo,
   oneWeekAgo,
@@ -1752,6 +1753,291 @@ async function writeBadgeTemplates(db: Firestore): Promise<number> {
   return templates.length;
 }
 
+// ─── Check-in forensic records ────────────────────────────────────────────
+// `checkins/` is the per-scan forensic log. Every accepted, duplicate, and
+// rejected scan writes one immutable row (enforced by
+// `apps/api/src/services/checkin-record.service.ts`). Before this seed phase
+// the collection was empty in staging, so the security dashboard, anomaly
+// detector, and rotation forensics surfaces had nothing to render.
+//
+// 10 records cover every interesting combination:
+//   - 3 `success` rows on accepted scans (live + offline_sync + v4 QR)
+//   - 2 `duplicate` rows with rejectCode="invalid_status"
+//   - 5 `rejected` rows exercising the full rejectCode enum:
+//     invalid_qr, not_found, cancelled, zone_full, expired, not_yet_valid
+//
+// Doc ids are deterministic so re-seeding is idempotent; real runtime rows
+// use server-generated auto-ids.
+
+async function writeCheckinRecords(db: Firestore): Promise<number> {
+  type Record = {
+    id: string;
+    registrationId: string;
+    eventId: string;
+    organizationId: string;
+    userId: string;
+    scannedAt: string;
+    clientScannedAt: string | null;
+    scannedBy: string;
+    scannerDeviceId: string | null;
+    scannerNonce: string | null;
+    accessZoneId: string | null;
+    status: "success" | "duplicate" | "rejected";
+    source: "live" | "offline_sync";
+    rejectCode:
+      | "invalid_qr"
+      | "not_found"
+      | "cancelled"
+      | "invalid_status"
+      | "zone_full"
+      | "expired"
+      | "not_yet_valid"
+      | null;
+    reason: string | null;
+    qrPayloadVersion: "v1" | "v2" | "v3" | "v4" | null;
+    qrKid: string | null;
+    requestId: string | null;
+    idempotencyKey: string | null;
+    createdAt: string;
+  };
+
+  const records: Record[] = [
+    // ── SUCCESS: live accepted scan on legacy conference ────────────────
+    {
+      id: "checkin-record-001",
+      registrationId: IDS.reg1,
+      eventId: IDS.conference,
+      organizationId: IDS.orgId,
+      userId: IDS.participant1,
+      scannedAt: oneHourAgo,
+      clientScannedAt: oneHourAgo,
+      scannedBy: IDS.organizer,
+      scannerDeviceId: "scanner-device-dakar-001",
+      scannerNonce: "nonce-live-001",
+      accessZoneId: null,
+      status: "success",
+      source: "live",
+      rejectCode: null,
+      reason: null,
+      qrPayloadVersion: "v3",
+      qrKid: null,
+      requestId: "seed-req-checkin-001",
+      idempotencyKey: null,
+      createdAt: oneHourAgo,
+    },
+    // ── SUCCESS: offline-synced scan from past event ────────────────────
+    {
+      id: "checkin-record-002",
+      registrationId: "reg-e05-01",
+      eventId: "event-005",
+      organizationId: IDS.enterpriseOrgId,
+      userId: EXPANSION_PARTICIPANTS[10].uid,
+      scannedAt: fortyFiveDaysAgo,
+      clientScannedAt: fortyFiveDaysAgo,
+      scannedBy: IDS.staffUser,
+      scannerDeviceId: "scanner-device-saly-002",
+      scannerNonce: "nonce-offline-002",
+      accessZoneId: null,
+      status: "success",
+      source: "offline_sync",
+      rejectCode: null,
+      reason: null,
+      qrPayloadVersion: "v3",
+      qrKid: null,
+      requestId: "seed-req-checkin-002",
+      idempotencyKey: "bulk-local-002",
+      createdAt: fortyFiveDaysAgo,
+    },
+    // ── SUCCESS: v4 QR with key rotation context ───────────────────────
+    {
+      id: "checkin-record-003",
+      registrationId: "reg-e06-02",
+      eventId: "event-006",
+      organizationId: IDS.enterpriseOrgId,
+      userId: EXPANSION_PARTICIPANTS[6].uid,
+      scannedAt: oneMonthAgo,
+      clientScannedAt: oneMonthAgo,
+      scannedBy: IDS.staffUser,
+      scannerDeviceId: "scanner-device-dakar-003",
+      scannerNonce: "nonce-v4-003",
+      accessZoneId: "access-zone-vip",
+      status: "success",
+      source: "live",
+      rejectCode: null,
+      reason: null,
+      qrPayloadVersion: "v4",
+      qrKid: "qr-kid-2026-03-15",
+      requestId: "seed-req-checkin-003",
+      idempotencyKey: null,
+      createdAt: oneMonthAgo,
+    },
+    // ── DUPLICATE: participant tried to scan a second time ─────────────
+    {
+      id: "checkin-record-004",
+      registrationId: IDS.reg1,
+      eventId: IDS.conference,
+      organizationId: IDS.orgId,
+      userId: IDS.participant1,
+      scannedAt: now,
+      clientScannedAt: now,
+      scannedBy: IDS.organizer,
+      scannerDeviceId: "scanner-device-dakar-001",
+      scannerNonce: "nonce-dup-004",
+      accessZoneId: null,
+      status: "duplicate",
+      source: "live",
+      rejectCode: "invalid_status",
+      reason: "Registration already checked in at oneHourAgo.",
+      qrPayloadVersion: "v3",
+      qrKid: null,
+      requestId: "seed-req-checkin-004",
+      idempotencyKey: null,
+      createdAt: now,
+    },
+    // ── DUPLICATE: offline-sync of a scan already persisted live ───────
+    {
+      id: "checkin-record-005",
+      registrationId: "reg-e07-01",
+      eventId: "event-007",
+      organizationId: IDS.freeOrgId,
+      userId: EXPANSION_PARTICIPANTS[3].uid,
+      scannedAt: twoHoursAgo,
+      clientScannedAt: twoHoursAgo,
+      scannedBy: IDS.staffUser,
+      scannerDeviceId: "scanner-device-dakar-004",
+      scannerNonce: "nonce-offline-dup-005",
+      accessZoneId: null,
+      status: "duplicate",
+      source: "offline_sync",
+      rejectCode: "invalid_status",
+      reason: "Live scan had already flipped status=checked_in before the buffer flushed.",
+      qrPayloadVersion: "v3",
+      qrKid: null,
+      requestId: "seed-req-checkin-005",
+      idempotencyKey: "bulk-local-005",
+      createdAt: twoHoursAgo,
+    },
+    // ── REJECTED: invalid QR signature ─────────────────────────────────
+    {
+      id: "checkin-record-006",
+      registrationId: "unknown-reg-stub",
+      eventId: IDS.conference,
+      organizationId: IDS.orgId,
+      userId: "unknown-user",
+      scannedAt: yesterday,
+      clientScannedAt: yesterday,
+      scannedBy: IDS.organizer,
+      scannerDeviceId: "scanner-device-dakar-001",
+      scannerNonce: "nonce-reject-006",
+      accessZoneId: null,
+      status: "rejected",
+      source: "live",
+      rejectCode: "invalid_qr",
+      reason: "HMAC signature mismatch — possible forged or legacy QR.",
+      qrPayloadVersion: null,
+      qrKid: null,
+      requestId: "seed-req-checkin-006",
+      idempotencyKey: null,
+      createdAt: yesterday,
+    },
+    // ── REJECTED: registration not found ───────────────────────────────
+    {
+      id: "checkin-record-007",
+      registrationId: "reg-deleted-stub",
+      eventId: IDS.conference,
+      organizationId: IDS.orgId,
+      userId: "unknown-user",
+      scannedAt: yesterday,
+      clientScannedAt: yesterday,
+      scannedBy: IDS.organizer,
+      scannerDeviceId: "scanner-device-dakar-001",
+      scannerNonce: "nonce-reject-007",
+      accessZoneId: null,
+      status: "rejected",
+      source: "live",
+      rejectCode: "not_found",
+      reason: "Registration document was deleted before scan.",
+      qrPayloadVersion: "v3",
+      qrKid: null,
+      requestId: "seed-req-checkin-007",
+      idempotencyKey: null,
+      createdAt: yesterday,
+    },
+    // ── REJECTED: cancelled registration scanned at entry ──────────────
+    {
+      id: "checkin-record-008",
+      registrationId: IDS.reg5,
+      eventId: IDS.paidEvent,
+      organizationId: IDS.orgId,
+      userId: IDS.participant1,
+      scannedAt: yesterday,
+      clientScannedAt: yesterday,
+      scannedBy: IDS.organizer,
+      scannerDeviceId: "scanner-device-dakar-005",
+      scannerNonce: "nonce-reject-008",
+      accessZoneId: null,
+      status: "rejected",
+      source: "live",
+      rejectCode: "cancelled",
+      reason: "Registration status is pending_payment — not confirmed.",
+      qrPayloadVersion: "v3",
+      qrKid: null,
+      requestId: "seed-req-checkin-008",
+      idempotencyKey: null,
+      createdAt: yesterday,
+    },
+    // ── REJECTED: scan outside the QR validity window (expired) ────────
+    {
+      id: "checkin-record-009",
+      registrationId: "reg-e05-02",
+      eventId: "event-005",
+      organizationId: IDS.enterpriseOrgId,
+      userId: EXPANSION_PARTICIPANTS[11].uid,
+      scannedAt: oneWeekAgo,
+      clientScannedAt: oneWeekAgo,
+      scannedBy: IDS.staffUser,
+      scannerDeviceId: "scanner-device-saly-002",
+      scannerNonce: "nonce-reject-009",
+      accessZoneId: null,
+      status: "rejected",
+      source: "live",
+      rejectCode: "expired",
+      reason: "QR notAfter window has elapsed (event ended fortyFiveDaysAgo + 6h grace).",
+      qrPayloadVersion: "v3",
+      qrKid: null,
+      requestId: "seed-req-checkin-009",
+      idempotencyKey: null,
+      createdAt: oneWeekAgo,
+    },
+    // ── REJECTED: access zone full ─────────────────────────────────────
+    {
+      id: "checkin-record-010",
+      registrationId: "reg-e09-02",
+      eventId: "event-009",
+      organizationId: IDS.enterpriseOrgId,
+      userId: EXPANSION_PARTICIPANTS[25].uid,
+      scannedAt: yesterday,
+      clientScannedAt: yesterday,
+      scannedBy: IDS.staffUser,
+      scannerDeviceId: "scanner-device-bamako-006",
+      scannerNonce: "nonce-reject-010",
+      accessZoneId: "access-zone-vip",
+      status: "rejected",
+      source: "live",
+      rejectCode: "zone_full",
+      reason: "VIP zone capacity reached — redirect to standard zone.",
+      qrPayloadVersion: "v3",
+      qrKid: null,
+      requestId: "seed-req-checkin-010",
+      idempotencyKey: null,
+      createdAt: yesterday,
+    },
+  ];
+
+  await Promise.all(records.map((r) => db.collection("checkins").doc(r.id).set(r)));
+  return records.length;
+}
+
 // ─── Session bookmarks ────────────────────────────────────────────────────
 // Participants can bookmark individual sessions from the schedule page. The
 // collection was never seeded, so the "My agenda" list on web-participant
@@ -1881,6 +2167,7 @@ export type ActivityCounts = {
   badges: number;
   sessions: number;
   sessionBookmarks: number;
+  checkins: number;
   speakers: number;
   sponsors: number;
   sponsorLeads: number;
@@ -1918,6 +2205,11 @@ export async function seedActivity(db: Firestore): Promise<ActivityCounts> {
   // Session bookmarks must come after sessions are written so the
   // `sessionId` foreign key is valid when the read-path resolves it.
   const sessionBookmarks = await writeSessionBookmarks(db);
+  // Check-in forensic records reference registrations — wait for regs to
+  // land. They don't reference sessions, so order-wise they could also run
+  // in parallel with writeSessionBookmarks, but sequencing them keeps the
+  // logs readable.
+  const checkins = await writeCheckinRecords(db);
   // Ledger entries depend on `writePayments` having landed so the paymentId
   // they reference exists; payouts in turn flip ledger rows, so they follow.
   const balanceTransactions = await writeBalanceTransactions(db);
@@ -1927,6 +2219,7 @@ export async function seedActivity(db: Firestore): Promise<ActivityCounts> {
     badges,
     sessions,
     sessionBookmarks,
+    checkins,
     speakers,
     sponsors,
     sponsorLeads,
