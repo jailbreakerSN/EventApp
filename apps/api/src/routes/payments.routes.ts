@@ -263,11 +263,10 @@ export const paymentRoutes: FastifyPluginAsync = async (fastify) => {
   );
 
   // ─── Webhook (legacy path — no provider specified) ───────────────────────
-  // Kept alive for the dev mock-checkout page that still POSTs to
-  // `/v1/payments/webhook`. Hard-coded to the mock provider so no
-  // unsigned path exists for real providers. Returns 400 in production
-  // if anything still hits it — real providers MUST post to
-  // `/webhook/:provider` going forward.
+  // Kept alive for the dev/staging mock-checkout page that still POSTs
+  // to `/v1/payments/webhook`. Hard-coded to the mock provider so no
+  // unsigned path exists for real providers. Returns 404 in production
+  // — real providers MUST post to `/webhook/:provider` going forward.
   fastify.post(
     "/webhook",
     {
@@ -281,7 +280,7 @@ export const paymentRoutes: FastifyPluginAsync = async (fastify) => {
       },
     },
     async (request, reply) => {
-      if (config.NODE_ENV !== "development") {
+      if (config.NODE_ENV === "production") {
         return reply.status(404).send({
           success: false,
           error: {
@@ -419,12 +418,24 @@ export const paymentRoutes: FastifyPluginAsync = async (fastify) => {
     },
   );
 
-  // ─── Mock Checkout Routes (dev-only) ──────────────────────────────────────
-  // Gated strictly to `development` — staging and production must never mount
-  // the mock checkout page (it embeds caller-supplied returnUrl + callbackUrl
-  // values into HTML/JS for the browser to execute, which is an open-redirect
-  // vector if the guard ever loosens).
-  if (config.NODE_ENV === "development") {
+  // ─── Mock Checkout Routes (non-production) ────────────────────────────────
+  // Mounted in dev AND staging, since the provider registry in
+  // `payment.service.ts` falls back to `mockPaymentProvider` whenever
+  // the real provider API keys (WAVE_API_KEY, ORANGE_MONEY_CLIENT_ID)
+  // aren't set — which is the normal staging posture. Without these
+  // routes mounted in staging, the `redirectUrl` returned by the mock
+  // provider would 404 at `/v1/payments/mock-checkout/:txId` and the
+  // paid-ticket flow would be untestable end-to-end.
+  //
+  // Production stays safe via two independent guards in payment.service:
+  // `getProvider()` and `getProviderForWebhook()` both refuse the mock
+  // method when NODE_ENV === "production", so no pending transaction can
+  // exist for MockPaymentProvider.getState() to return even if this
+  // route were somehow reached. `returnUrl` is also pre-validated by
+  // `assertAllowedReturnUrl()` against the owned-hosts allowlist before
+  // being stored, so the HTML/JS embedding below cannot be coerced into
+  // an open redirect off an attacker-supplied host.
+  if (config.NODE_ENV !== "production") {
     // ─── Mock Checkout Page (dev/test only) ───────────────────────────────────
     fastify.get(
       "/mock-checkout/:txId",
@@ -627,5 +638,5 @@ export const paymentRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.send({ success: true, data: { status: state.status } });
       },
     );
-  } // end if (config.NODE_ENV === "development")
+  } // end if (config.NODE_ENV !== "production")
 };
