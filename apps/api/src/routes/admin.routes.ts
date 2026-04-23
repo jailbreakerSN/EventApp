@@ -19,6 +19,9 @@ import {
   NotificationChannelSchema,
   type NotificationDefinition,
   type NotificationSetting,
+  FeatureFlagKeySchema,
+  UpsertFeatureFlagSchema,
+  type FeatureFlag,
 } from "@teranga/shared-types";
 import {
   notificationSettingsRepository,
@@ -91,19 +94,14 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
     },
   );
 
-  const FeatureFlagBodySchema = z.object({
-    enabled: z.boolean(),
-    description: z.string().max(200).optional(),
-    rolloutPercent: z.number().int().min(0).max(100).optional(),
-  });
-  const FeatureFlagParams = z.object({ key: z.string().regex(/^[a-z0-9-_.]+$/) });
+  const FeatureFlagParams = z.object({ key: FeatureFlagKeySchema });
 
   fastify.put<{ Params: z.infer<typeof FeatureFlagParams> }>(
     "/feature-flags/:key",
     {
       preHandler: [
         ...adminPreHandler,
-        validate({ params: FeatureFlagParams, body: FeatureFlagBodySchema }),
+        validate({ params: FeatureFlagParams, body: UpsertFeatureFlagSchema }),
       ],
       schema: {
         tags: ["Admin"],
@@ -113,27 +111,48 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
     },
     async (request, reply) => {
       const { key } = request.params;
-      const body = request.body as z.infer<typeof FeatureFlagBodySchema>;
-      const payload = {
+      const body = request.body as z.infer<typeof UpsertFeatureFlagSchema>;
+      const nowIso = new Date().toISOString();
+      const payload: FeatureFlag = {
         key,
         enabled: body.enabled,
         description: body.description ?? null,
         rolloutPercent: body.rolloutPercent ?? 100,
-        updatedAt: new Date().toISOString(),
+        updatedAt: nowIso,
         updatedBy: request.user!.uid,
       };
-      await db.collection(COLLECTIONS.FEATURE_FLAGS).doc(key).set(payload, { merge: true });
-      // Audit log — feature-flag flips are operationally significant.
-      await db.collection(COLLECTIONS.AUDIT_LOGS).add({
-        action: "admin.feature_flag_updated",
-        actorId: request.user!.uid,
-        actorRole: "super_admin",
-        resourceType: "feature_flag",
-        resourceId: key,
-        organizationId: null,
-        details: { enabled: body.enabled, rolloutPercent: body.rolloutPercent ?? 100 },
-        requestId: getRequestId(),
-        timestamp: new Date().toISOString(),
+
+      // Transactional upsert + audit log — per CLAUDE.md security-hardening
+      // checklist, any multi-write must be atomic. If the audit fails after
+      // the flag doc is written, the flag change silently escapes traceability
+      // and violates the "audit everything sensitive" principle.
+      const flagRef = db.collection(COLLECTIONS.FEATURE_FLAGS).doc(key);
+      const auditRef = db.collection(COLLECTIONS.AUDIT_LOGS).doc();
+      await db.runTransaction(async (tx) => {
+        // READ first — Firestore transactions require reads before writes.
+        // We fetch the prior state so the audit log captures the diff, not
+        // just the new value. This is the same pattern the notifications
+        // history log uses.
+        const prior = await tx.get(flagRef);
+        const previousValue = prior.exists ? (prior.data() as FeatureFlag) : null;
+        tx.set(flagRef, payload, { merge: true });
+        tx.set(auditRef, {
+          id: auditRef.id,
+          action: "admin.feature_flag_updated",
+          actorId: request.user!.uid,
+          actorRole: "super_admin",
+          resourceType: "feature_flag",
+          resourceId: key,
+          organizationId: null,
+          details: {
+            enabled: body.enabled,
+            rolloutPercent: body.rolloutPercent ?? 100,
+            previousEnabled: previousValue?.enabled ?? null,
+            previousRolloutPercent: previousValue?.rolloutPercent ?? null,
+          },
+          requestId: getRequestId(),
+          timestamp: nowIso,
+        });
       });
       return reply.send({ success: true, data: payload });
     },
@@ -250,6 +269,28 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
         request.query as z.infer<typeof AdminUserQuerySchema>,
       );
       return reply.send({ success: true, ...result });
+    },
+  );
+
+  // Phase 4 (Closure A5) — End an impersonation session server-side by
+  // revoking the impersonated user's refresh tokens. Client-side signout
+  // is mandatory but not enough: a stolen in-flight ID token would still
+  // work until expiry without this call.
+  const EndImpersonationBody = z.object({ actorUid: z.string().min(1) });
+  fastify.post(
+    "/impersonation/end",
+    {
+      preHandler: [authenticate, validate({ body: EndImpersonationBody })],
+      schema: {
+        tags: ["Admin"],
+        summary: "End an active impersonation session",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const { actorUid } = request.body as z.infer<typeof EndImpersonationBody>;
+      await adminService.endImpersonation(request.user!, actorUid);
+      return reply.status(204).send();
     },
   );
 

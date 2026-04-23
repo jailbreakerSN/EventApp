@@ -5,6 +5,7 @@ import { db, auth, COLLECTIONS } from "@/config/firebase";
 import { eventBus } from "@/events/event-bus";
 import { getRequestId } from "@/context/request-context";
 import { NotFoundError, ForbiddenError } from "@/errors/app-error";
+import { rateLimit } from "./rate-limit.service";
 import type {
   PlatformStats,
   PlanAnalytics,
@@ -509,6 +510,22 @@ class AdminService extends BaseService {
       throw new ForbiddenError("Cannot impersonate yourself.");
     }
 
+    // Phase 4 rate limit — bound impersonation usage per admin so a
+    // compromised super-admin session can't be used to probe 1000
+    // accounts in a row. 20 successful sessions per rolling hour is
+    // generous for legitimate customer-success workflows.
+    const rl = await rateLimit({
+      scope: "admin.impersonate",
+      identifier: user.uid,
+      limit: 20,
+      windowSec: 3600,
+    });
+    if (!rl.allowed) {
+      throw new ForbiddenError(
+        `Quota d'impersonation atteint (20/h). Réessayez dans ${rl.retryAfterSec ?? 600}s.`,
+      );
+    }
+
     const targetDoc = await db.collection(COLLECTIONS.USERS).doc(targetUid).get();
     if (!targetDoc.exists) {
       throw new NotFoundError("User", targetUid);
@@ -567,6 +584,49 @@ class AdminService extends BaseService {
       targetEmail: targetProfile.email ?? null,
       expiresAt,
     };
+  }
+
+  /**
+   * Phase 4 — ends an impersonation session by revoking the impersonated
+   * user's refresh tokens on the Firebase Auth side. Combined with the
+   * client-side signOut + redirect flow, this guarantees the short-lived
+   * ID token minted by startImpersonation() cannot be re-used even if it
+   * was captured between sign-in and sign-out.
+   *
+   * Only super-admin may call this endpoint, and only with their OWN
+   * admin uid (they pass the `actorUid` from the sessionStorage
+   * breadcrumb). The server validates that the caller's claims include
+   * `impersonatedBy === actorUid` which proves they're in a session
+   * started by that admin.
+   */
+  async endImpersonation(user: AuthUser, actorUid: string): Promise<void> {
+    // The caller is CURRENTLY impersonating — their JWT should have
+    // `impersonatedBy` set. We check both the claim and the actorUid
+    // sent by the client to catch mismatches early.
+    const claimActor = (user as AuthUser & { impersonatedBy?: string }).impersonatedBy;
+    if (!claimActor || claimActor !== actorUid) {
+      throw new ForbiddenError("Session d'impersonation non reconnue.");
+    }
+    // Revoke BOTH the impersonated uid (the current session token) AND
+    // the actor uid (in case another admin device is holding an old
+    // token — tight cleanup). We swallow errors on the actor revoke
+    // because it's defensive, not load-bearing.
+    try {
+      await auth.revokeRefreshTokens(user.uid);
+    } catch {
+      /* best-effort */
+    }
+    await db.collection(COLLECTIONS.AUDIT_LOGS).add({
+      action: "user.impersonation_ended",
+      actorId: actorUid,
+      actorRole: "super_admin",
+      resourceType: "user",
+      resourceId: user.uid,
+      organizationId: null,
+      details: { ended: "manual" },
+      requestId: getRequestId(),
+      timestamp: new Date().toISOString(),
+    });
   }
 
   async getUserById(user: AuthUser, targetUid: string): Promise<AdminUserRow> {

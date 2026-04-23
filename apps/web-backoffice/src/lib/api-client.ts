@@ -724,6 +724,12 @@ export const adminApi = {
       }>
     >(`/v1/admin/users/${encodeURIComponent(userId)}/impersonate`, {}),
 
+  // Phase 4 closure — server-side revocation of the impersonated session.
+  // Client calls this BEFORE signOut to ensure the short-lived ID token
+  // stops being accepted even if captured mid-flight.
+  endImpersonation: (actorUid: string) =>
+    api.post<void>(`/v1/admin/impersonation/end`, { actorUid }),
+
   updateUserRoles: (userId: string, roles: string[]) =>
     api.patch<void>(`/v1/admin/users/${userId}/roles`, { roles }),
 

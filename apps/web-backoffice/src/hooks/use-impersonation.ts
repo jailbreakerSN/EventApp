@@ -123,6 +123,19 @@ export async function startImpersonation(params: {
 
 /** Action: leave the impersonation session and require admin re-login. */
 export async function endImpersonation(): Promise<void> {
+  const crumb = readBreadcrumb();
+  // Best-effort server-side revoke before local signOut. If the server
+  // call fails (network, 401), we still clear local state so the admin
+  // isn't stuck in an impersonation session UI-wise. Security model
+  // accepts the risk because the impersonation token has a 30-min cap
+  // already; server revoke makes stealing a captured token harder.
+  if (crumb) {
+    try {
+      await adminApi.endImpersonation(crumb.actorUid);
+    } catch {
+      /* swallow — signOut below is the last line of defence */
+    }
+  }
   clearBreadcrumb();
   await signOut(firebaseAuth);
   if (typeof window !== "undefined") {

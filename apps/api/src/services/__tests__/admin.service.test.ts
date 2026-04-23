@@ -24,6 +24,8 @@ const mockUserDocGet = vi.fn();
 const mockUserDocUpdate = vi.fn();
 const mockOrgDocGet = vi.fn();
 const mockOrgDocUpdate = vi.fn();
+// Phase 4 — capture impersonation audit-log appends for assertions.
+export const mockAuditAdd = vi.fn().mockResolvedValue({ id: "audit-doc-fake" });
 
 vi.mock("@/config/firebase", () => ({
   db: {
@@ -37,6 +39,8 @@ vi.mock("@/config/firebase", () => ({
         }
         return { get: vi.fn(), update: vi.fn(), id };
       }),
+      // Admin impersonation appends a new audit doc; capture via spy.
+      add: name === "auditLogs" ? mockAuditAdd : vi.fn(),
     })),
     // Route tx.get / tx.update on user/org docs to the same spies as
     // non-tx writes so existing assertions keep working after the
@@ -45,8 +49,7 @@ vi.mock("@/config/firebase", () => ({
     runTransaction: vi.fn(async (cb: (tx: unknown) => unknown) => {
       const tx = {
         get: (ref: { get: () => unknown }) => ref.get(),
-        update: (ref: { update: (data: unknown) => unknown }, data: unknown) =>
-          ref.update(data),
+        update: (ref: { update: (data: unknown) => unknown }, data: unknown) => ref.update(data),
         set: vi.fn(),
       };
       return cb(tx);
@@ -56,6 +59,10 @@ vi.mock("@/config/firebase", () => ({
     setCustomUserClaims: vi.fn().mockResolvedValue(undefined),
     updateUser: vi.fn().mockResolvedValue(undefined),
     getUser: vi.fn().mockResolvedValue({ customClaims: {} }),
+    // Phase 4 — impersonation mints a custom token. The mock returns a
+    // stable string so tests can assert what flows to the UI.
+    createCustomToken: vi.fn().mockResolvedValue("mock-custom-token"),
+    revokeRefreshTokens: vi.fn().mockResolvedValue(undefined),
   },
   COLLECTIONS: {
     USERS: "users",
@@ -65,6 +72,9 @@ vi.mock("@/config/firebase", () => ({
     PAYMENTS: "payments",
     VENUES: "venues",
     AUDIT_LOGS: "auditLogs",
+    SUBSCRIPTIONS: "subscriptions",
+    INVITES: "invites",
+    FEATURE_FLAGS: "featureFlags",
   },
 }));
 
@@ -741,5 +751,104 @@ describe("AdminService — super_admin can access all methods", () => {
     });
 
     await expect(adminService.listAuditLogs(admin, { page: 1, limit: 20 })).resolves.toBeDefined();
+  });
+});
+
+// ─── Phase 4 — Impersonation ─────────────────────────────────────────────
+// Covers every permission rail on startImpersonation() since it is the
+// highest-privilege action in the admin surface:
+//  - happy path (super_admin → participant): mints a token, writes audit
+//    *before* returning, emits domain event.
+//  - non-super_admin callers are rejected.
+//  - self-impersonation is rejected.
+//  - impersonating another super_admin is rejected (privilege-escalation
+//    chain prevention).
+//  - missing target user surfaces a 404-shaped error.
+
+describe("AdminService.startImpersonation (Phase 4)", () => {
+  const admin = buildSuperAdmin();
+
+  const participantTarget = {
+    uid: "user-participant",
+    email: "alice@teranga.dev",
+    displayName: "Alice Dupont",
+    roles: ["participant"],
+    organizationId: "org-001",
+    orgRole: "member",
+  };
+
+  function mockTargetDoc(data: unknown, exists = true) {
+    mockUserDocGet.mockResolvedValueOnce({ exists, data: () => data });
+  }
+
+  it("mints a custom token, writes audit synchronously, emits domain event", async () => {
+    mockTargetDoc(participantTarget);
+
+    const res = await adminService.startImpersonation(admin, participantTarget.uid);
+
+    expect(res.customToken).toBe("mock-custom-token");
+    expect(res.targetUid).toBe(participantTarget.uid);
+    expect(res.targetDisplayName).toBe(participantTarget.displayName);
+    expect(res.expiresAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+
+    expect(auth.createCustomToken).toHaveBeenCalledWith(
+      participantTarget.uid,
+      expect.objectContaining({
+        impersonatedBy: admin.uid,
+        roles: participantTarget.roles,
+      }),
+    );
+
+    // Audit log must land BEFORE the token is returned.
+    expect(mockAuditAdd).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: "user.impersonated",
+        actorId: admin.uid,
+        resourceType: "user",
+        resourceId: participantTarget.uid,
+      }),
+    );
+
+    expect(eventBus.emit).toHaveBeenCalledWith(
+      "user.impersonated",
+      expect.objectContaining({ actorUid: admin.uid, targetUid: participantTarget.uid }),
+    );
+  });
+
+  it("rejects non-super_admin callers with a ForbiddenError", async () => {
+    const orgAdmin = buildAuthUser({ uid: "u-non-super", roles: ["organizer"] });
+    // No doc read is reached since the gate trips first.
+    await expect(
+      adminService.startImpersonation(orgAdmin, participantTarget.uid),
+    ).rejects.toThrow();
+    expect(auth.createCustomToken).not.toHaveBeenCalled();
+    expect(mockAuditAdd).not.toHaveBeenCalled();
+  });
+
+  it("refuses self-impersonation", async () => {
+    await expect(adminService.startImpersonation(admin, admin.uid)).rejects.toThrow(
+      /Cannot impersonate yourself/i,
+    );
+    expect(auth.createCustomToken).not.toHaveBeenCalled();
+  });
+
+  it("refuses impersonating another super_admin", async () => {
+    mockTargetDoc({
+      ...participantTarget,
+      uid: "another-super",
+      roles: ["super_admin"],
+    });
+    await expect(adminService.startImpersonation(admin, "another-super")).rejects.toThrow(
+      /another super_admin/i,
+    );
+    expect(auth.createCustomToken).not.toHaveBeenCalled();
+    // Audit MUST NOT be written because the precondition failed.
+    expect(mockAuditAdd).not.toHaveBeenCalled();
+  });
+
+  it("throws NotFoundError when the target user doc does not exist", async () => {
+    mockTargetDoc(undefined, false);
+    await expect(adminService.startImpersonation(admin, "ghost-user")).rejects.toThrow();
+    expect(auth.createCustomToken).not.toHaveBeenCalled();
   });
 });
