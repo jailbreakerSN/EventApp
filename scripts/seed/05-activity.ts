@@ -29,7 +29,10 @@ const {
   now,
   oneHourAgo,
   yesterday,
+  oneWeekAgo,
   twoWeeksAgo,
+  oneMonthAgo,
+  fortyFiveDaysAgo,
   inOneWeek,
   inOneWeekPlus1h,
   inOneWeekPlus2h,
@@ -874,6 +877,7 @@ async function writeSponsorLeads(db: Firestore): Promise<number> {
 // ─── Payments + Receipts ──────────────────────────────────────────────────
 
 async function writePayments(db: Firestore): Promise<number> {
+  // ── payment-001 — succeeded Premium ticket on Masterclass IA (legacy) ─
   await db
     .collection("payments")
     .doc(IDS.payment1)
@@ -899,6 +903,7 @@ async function writePayments(db: Firestore): Promise<number> {
       createdAt: yesterday,
       updatedAt: yesterday,
     });
+  // ── payment-002 — pending Early Bird ticket (legacy) ──────────────────
   await db.collection("payments").doc(IDS.payment2).set({
     id: IDS.payment2,
     registrationId: IDS.reg5,
@@ -921,7 +926,120 @@ async function writePayments(db: Firestore): Promise<number> {
     createdAt: now,
     updatedAt: now,
   });
-  return 2;
+  // ── payment-003 — FAILED Wave payment on event-009 formation IA ───────
+  // Demonstrates the "payment failure" state with a real provider reason.
+  // The registration stays in pending_payment until the user retries.
+  await db
+    .collection("payments")
+    .doc("payment-003")
+    .set({
+      id: "payment-003",
+      registrationId: "reg-e09-01",
+      eventId: "event-009",
+      organizationId: IDS.enterpriseOrgId,
+      userId: EXPANSION_PARTICIPANTS[24].uid,
+      amount: 75000,
+      currency: "XOF",
+      method: "wave",
+      providerTransactionId: "wave-tx-fail-003",
+      status: "failed",
+      redirectUrl: null,
+      callbackUrl: "http://localhost:3000/v1/payments/webhook",
+      returnUrl: null,
+      providerMetadata: { provider: "wave", errorCode: "INSUFFICIENT_FUNDS" },
+      failureReason: "Solde Wave insuffisant — veuillez recharger votre compte.",
+      refundedAmount: 0,
+      initiatedAt: twoWeeksAgo,
+      completedAt: twoWeeksAgo,
+      createdAt: twoWeeksAgo,
+      updatedAt: twoWeeksAgo,
+    });
+  // ── payment-004 — REFUNDED Orange Money on event-005 Festival (past) ──
+  // Participant requested refund after the festival; full amount returned.
+  // Shows the `refunded` state + refundedAmount > 0 on the finance dashboard.
+  await db
+    .collection("payments")
+    .doc("payment-004")
+    .set({
+      id: "payment-004",
+      registrationId: "reg-e05-03",
+      eventId: "event-005",
+      organizationId: IDS.enterpriseOrgId,
+      userId: EXPANSION_PARTICIPANTS[0].uid,
+      amount: 25000,
+      currency: "XOF",
+      method: "orange_money",
+      providerTransactionId: "om-tx-refund-004",
+      status: "refunded",
+      redirectUrl: null,
+      callbackUrl: "http://localhost:3000/v1/payments/webhook",
+      returnUrl: null,
+      providerMetadata: { provider: "orange_money" },
+      failureReason: null,
+      refundedAmount: 25000,
+      initiatedAt: fortyFiveDaysAgo,
+      completedAt: fortyFiveDaysAgo,
+      createdAt: fortyFiveDaysAgo,
+      updatedAt: oneWeekAgo,
+    });
+  // ── payment-005 — SUCCEEDED Orange Money on upcoming event-010 ────────
+  // Gives the starter-org finance dashboard real revenue (Thiès org had
+  // zero payments before). Funds are still in "pending" on the ledger
+  // until event-010 completes + 7 days release window.
+  await db
+    .collection("payments")
+    .doc("payment-005")
+    .set({
+      id: "payment-005",
+      registrationId: "reg-e10-01",
+      eventId: "event-010",
+      organizationId: IDS.starterOrgId,
+      userId: EXPANSION_PARTICIPANTS[13].uid,
+      amount: 35000,
+      currency: "XOF",
+      method: "orange_money",
+      providerTransactionId: "om-tx-005",
+      status: "succeeded",
+      redirectUrl: null,
+      callbackUrl: "http://localhost:3000/v1/payments/webhook",
+      returnUrl: null,
+      providerMetadata: { provider: "orange_money" },
+      failureReason: null,
+      refundedAmount: 0,
+      initiatedAt: yesterday,
+      completedAt: yesterday,
+      createdAt: yesterday,
+      updatedAt: yesterday,
+    });
+  // ── payment-006 — SUCCEEDED Wave payment on PAST event-006 Marathon ───
+  // Past event + funds released, so this drives the completed-payout story
+  // in writePayouts (payout-002).
+  await db
+    .collection("payments")
+    .doc("payment-006")
+    .set({
+      id: "payment-006",
+      registrationId: "reg-e06-01",
+      eventId: "event-006",
+      organizationId: IDS.enterpriseOrgId,
+      userId: EXPANSION_PARTICIPANTS[5].uid,
+      amount: 15000,
+      currency: "XOF",
+      method: "wave",
+      providerTransactionId: "wave-tx-006",
+      status: "succeeded",
+      redirectUrl: null,
+      callbackUrl: "http://localhost:3000/v1/payments/webhook",
+      returnUrl: null,
+      providerMetadata: { provider: "wave" },
+      failureReason: null,
+      refundedAmount: 0,
+      initiatedAt: oneMonthAgo,
+      completedAt: oneMonthAgo,
+      createdAt: oneMonthAgo,
+      updatedAt: oneMonthAgo,
+    });
+  return 6;
 }
 
 async function writeReceipts(db: Firestore): Promise<number> {
@@ -1024,8 +1142,155 @@ async function writeBalanceTransactions(db: Firestore): Promise<number> {
     },
   ];
 
+  // ── Expansion ledger entries (Phase 5) ────────────────────────────────
+  // Mirror `writePayments` additions: 4 new payments land in the ledger.
+  // payment-003 FAILED → no ledger entry (matches service-layer behaviour).
+  // payment-004 REFUNDED → original payment + fee entries + refund reversal.
+  // payment-005 SUCCEEDED (upcoming event) → pending availability.
+  // payment-006 SUCCEEDED (past + paid out) → status=paid_out, see payout-002.
+
+  const expansionEntries: Array<{
+    id: string;
+    organizationId: string;
+    eventId: string;
+    paymentId: string | null;
+    payoutId: string | null;
+    kind: "payment" | "platform_fee" | "payout" | "refund";
+    amount: number;
+    currency: "XOF";
+    status: "pending" | "available" | "paid_out";
+    availableOn: string;
+    description: string;
+    createdBy: string;
+    createdAt: string;
+  }> = [];
+
+  // payment-004 refunded — record the original credit + fee + refund debit
+  const p004Fee = Math.round(25000 * PLATFORM_FEE_RATE);
+  expansionEntries.push(
+    {
+      id: ledgerDocId("payment", "payment-004"),
+      organizationId: IDS.enterpriseOrgId,
+      eventId: "event-005",
+      paymentId: "payment-004",
+      payoutId: null,
+      kind: "payment",
+      amount: 25000,
+      currency: "XOF",
+      status: "available",
+      availableOn: Dates.oneMonthAgo,
+      description: "Billet festival Saly — remboursé",
+      createdBy: "system:seed",
+      createdAt: Dates.fortyFiveDaysAgo,
+    },
+    {
+      id: ledgerDocId("platform_fee", "payment-004"),
+      organizationId: IDS.enterpriseOrgId,
+      eventId: "event-005",
+      paymentId: "payment-004",
+      payoutId: null,
+      kind: "platform_fee",
+      amount: -p004Fee,
+      currency: "XOF",
+      status: "available",
+      availableOn: Dates.oneMonthAgo,
+      description: "Frais plateforme (annulé par remboursement)",
+      createdBy: "system:seed",
+      createdAt: Dates.fortyFiveDaysAgo,
+    },
+    {
+      id: ledgerDocId("refund", "payment-004"),
+      organizationId: IDS.enterpriseOrgId,
+      eventId: "event-005",
+      paymentId: "payment-004",
+      payoutId: null,
+      kind: "refund",
+      amount: -25000,
+      currency: "XOF",
+      status: "available",
+      availableOn: Dates.oneWeekAgo,
+      description: "Remboursement intégral Orange Money",
+      createdBy: "system:seed",
+      createdAt: Dates.oneWeekAgo,
+    },
+  );
+
+  // payment-005 succeeded on upcoming event-010 — still pending
+  const p005Fee = Math.round(35000 * PLATFORM_FEE_RATE);
+  const p005AvailableOn = computeAvailableOn(Dates.yesterday, Dates.inTenDays);
+  expansionEntries.push(
+    {
+      id: ledgerDocId("payment", "payment-005"),
+      organizationId: IDS.starterOrgId,
+      eventId: "event-010",
+      paymentId: "payment-005",
+      payoutId: null,
+      kind: "payment",
+      amount: 35000,
+      currency: "XOF",
+      status: "pending",
+      availableOn: p005AvailableOn,
+      description: "Billet Fintech Thiès (seed)",
+      createdBy: "system:seed",
+      createdAt: Dates.yesterday,
+    },
+    {
+      id: ledgerDocId("platform_fee", "payment-005"),
+      organizationId: IDS.starterOrgId,
+      eventId: "event-010",
+      paymentId: "payment-005",
+      payoutId: null,
+      kind: "platform_fee",
+      amount: -p005Fee,
+      currency: "XOF",
+      status: "pending",
+      availableOn: p005AvailableOn,
+      description: `Frais plateforme (seed, ${Math.round(PLATFORM_FEE_RATE * 100)}%)`,
+      createdBy: "system:seed",
+      createdAt: Dates.yesterday,
+    },
+  );
+
+  // payment-006 succeeded + paid out (past marathon event-006)
+  const p006Fee = Math.round(15000 * PLATFORM_FEE_RATE);
+  expansionEntries.push(
+    {
+      id: ledgerDocId("payment", "payment-006"),
+      organizationId: IDS.enterpriseOrgId,
+      eventId: "event-006",
+      paymentId: "payment-006",
+      payoutId: "payout-002",
+      kind: "payment",
+      amount: 15000,
+      currency: "XOF",
+      status: "paid_out",
+      availableOn: Dates.twoWeeksAgo,
+      description: "Billet marathon Dakar (seed)",
+      createdBy: "system:seed",
+      createdAt: Dates.oneMonthAgo,
+    },
+    {
+      id: ledgerDocId("platform_fee", "payment-006"),
+      organizationId: IDS.enterpriseOrgId,
+      eventId: "event-006",
+      paymentId: "payment-006",
+      payoutId: "payout-002",
+      kind: "platform_fee",
+      amount: -p006Fee,
+      currency: "XOF",
+      status: "paid_out",
+      availableOn: Dates.twoWeeksAgo,
+      description: `Frais plateforme (seed, ${Math.round(PLATFORM_FEE_RATE * 100)}%)`,
+      createdBy: "system:seed",
+      createdAt: Dates.oneMonthAgo,
+    },
+  );
+
   await Promise.all(entries.map((e) => db.collection("balanceTransactions").doc(e.id).set(e)));
-  return entries.length;
+  await Promise.all(
+    expansionEntries.map((e) => db.collection("balanceTransactions").doc(e.id).set(e)),
+  );
+  return entries.length + expansionEntries.length;
 }
 
 // ─── Payouts (with linked ledger entry) ───────────────────────────────────
@@ -1093,7 +1358,55 @@ async function writePayouts(db: Firestore): Promise<number> {
     createdAt: yesterday,
   });
 
-  return 1;
+  // ── payout-002 — COMPLETED payout on past event-006 (enterprise org) ──
+  // Paired with payment-006 (15 000 XOF Wave) in the ledger. Status is
+  // `completed` with a completedAt timestamp so the finance dashboard
+  // shows one historical payout alongside the pending one.
+  const p2Total = 15000;
+  const p2Fee = Math.round(p2Total * PLATFORM_FEE_RATE);
+  const p2Net = p2Total - p2Fee;
+  await db
+    .collection("payouts")
+    .doc("payout-002")
+    .set({
+      id: "payout-002",
+      organizationId: IDS.enterpriseOrgId,
+      eventId: "event-006",
+      totalAmount: p2Total,
+      platformFee: p2Fee,
+      platformFeeRate: PLATFORM_FEE_RATE,
+      netAmount: p2Net,
+      status: "completed",
+      paymentIds: ["payment-006"],
+      periodFrom: Dates.oneMonthAgo,
+      periodTo: Dates.twoWeeksAgo,
+      completedAt: Dates.twoWeeksAgo,
+      scheduledFor: Dates.twoWeeksAgo,
+      currency: "XOF",
+      amountMinor: p2Net,
+      createdAt: Dates.oneMonthAgo,
+      updatedAt: Dates.twoWeeksAgo,
+    });
+
+  // Matching completed payout ledger entry.
+  const p2LedgerDocId = ledgerDocId("payout", "payout-002");
+  await db.collection("balanceTransactions").doc(p2LedgerDocId).set({
+    id: p2LedgerDocId,
+    organizationId: IDS.enterpriseOrgId,
+    eventId: "event-006",
+    paymentId: null,
+    payoutId: "payout-002",
+    kind: "payout",
+    amount: -p2Net,
+    currency: "XOF",
+    status: "paid_out",
+    availableOn: Dates.twoWeeksAgo,
+    description: "Versement effectué (seed)",
+    createdBy: "system:seed",
+    createdAt: Dates.twoWeeksAgo,
+  });
+
+  return 2;
 }
 
 // ─── Promo codes ──────────────────────────────────────────────────────────
@@ -1404,7 +1717,10 @@ export async function seedActivity(db: Firestore): Promise<ActivityCounts> {
     sponsorLeads,
     payments,
     receipts,
-    balanceTransactions: balanceTransactions + 1, // +1 for the payout ledger entry
+    // +1 payout-001 ledger entry + 1 payout-002 ledger entry are written
+    // inside writePayouts but not counted by writeBalanceTransactions's
+    // return value. Sum them here for an accurate log line.
+    balanceTransactions: balanceTransactions + 2,
     payouts,
     promoCodes,
     badgeTemplates,
