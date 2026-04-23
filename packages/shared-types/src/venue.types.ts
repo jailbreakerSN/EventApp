@@ -203,12 +203,51 @@ export const AdminEventQuerySchema = z.object({
 
 export type AdminEventQuery = z.infer<typeof AdminEventQuerySchema>;
 
+// ─── Date-range coercer (Phase D — staging 400 hotfix) ─────────────────────
+// The admin audit-log filters UI sends `dateFrom` / `dateTo` as date-only
+// strings (`"2026-04-20"`) from a native <input type="date">. Zod's
+// `.datetime()` validator expects the full ISO 8601 shape with time
+// (`"2026-04-20T00:00:00.000Z"`), so the raw .datetime() check rejected
+// those values with a 400 at the route layer before the service ever ran.
+//
+// Accept both shapes:
+//   - full ISO datetime → passes through unchanged
+//   - date-only "YYYY-MM-DD" → normalize to start/end of the day in UTC
+//     (dateFrom → T00:00:00Z, dateTo → T23:59:59.999Z) before handing to
+//     the repository.
+// The coercion happens in `.transform()` so downstream consumers always see
+// a canonical full ISO datetime.
+
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
+const coerceAuditDate = (boundary: "start" | "end") =>
+  z
+    .string()
+    .optional()
+    .transform((raw, ctx) => {
+      if (!raw) return undefined;
+      if (DATE_ONLY.test(raw)) {
+        return boundary === "start" ? `${raw}T00:00:00.000Z` : `${raw}T23:59:59.999Z`;
+      }
+      // Defer to .datetime() — fail with the same error surface we used
+      // before so callers already sending ISO datetimes keep working.
+      const result = z.string().datetime().safeParse(raw);
+      if (!result.success) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "Expected ISO 8601 datetime or YYYY-MM-DD date.",
+        });
+        return z.NEVER;
+      }
+      return result.data;
+    });
+
 export const AdminAuditQuerySchema = z.object({
   action: z.string().optional(),
   actorId: z.string().optional(),
   resourceType: z.string().optional(),
-  dateFrom: z.string().datetime().optional(),
-  dateTo: z.string().datetime().optional(),
+  dateFrom: coerceAuditDate("start"),
+  dateTo: coerceAuditDate("end"),
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().positive().max(50).default(50),
 });
