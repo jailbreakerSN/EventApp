@@ -33,6 +33,22 @@ import { BaseRepository } from "./base.repository";
 // apps/api/src/config/firebase.ts → COLLECTIONS.NOTIFICATION_DISPATCH_LOG
 // and gated in infrastructure/firebase/firestore.rules (deny-all).
 //
+// Phase D review note (M-2) — client-SDK enumeration surface
+// --------------------------------------------------------------
+// The `(recipientRef ASC, attemptedAt DESC)` composite index below is
+// required by `listRecentForUser()` (the Phase 2.5 user-facing history
+// endpoint) and `backAnnotatePushEvent()` (the Phase D.2 tenant-scoped
+// back-annotation read). It does NOT open a client-SDK enumeration
+// surface: firestore.rules deny `read` on `notificationDispatchLog`
+// unconditionally (`allow read: if false`). A super-admin holding a
+// stolen ID token cannot query this collection via the client SDK —
+// every super-admin read must go through the audited API routes
+// (admin.routes.ts / notifications.routes.ts), which emit domain
+// events. If a future rule change ever relaxes client-side reads on
+// this collection, the composite index would become exploitable; the
+// rules file carries a matching cross-reference comment so reviewers
+// of that change are warned.
+//
 // TTL (Phase 2.5): every row carries an `expiresAt` ISO timestamp
 // populated at append time. Firestore's native TTL policy on
 // `notificationDispatchLog.expiresAt` auto-deletes rows past their

@@ -583,13 +583,35 @@ service cloud.firestore {
     }
 
     // ─── Notification Dispatch Log (Phase 5 — v2) ───────────────────────────
-    // Append-only send log written by the dispatcher once observability
-    // ships. Server-only; super_admin reads power the "recent sends"
-    // diagnostic drawer. Collection exists now so the rules surface is
-    // locked down ahead of the v2 writer.
+    // Append-only send log written by the dispatcher. Used by:
+    //   • /v1/notifications/history (per-user, tenant-scoped)
+    //   • /v1/admin/notifications/delivery (super-admin aggregate,
+    //     Phase D.3 observability dashboard)
+    //   • /v1/admin/notifications/stats (legacy per-key counters)
+    //   • The Resend webhook + the SW push-displayed / push-clicked
+    //     routes for delivery back-annotation (Phase 2.5 + D.2).
+    // Every caller above goes through the audited API — never through
+    // the client SDK — so the rule is `allow read: if false;`. The
+    // Admin SDK bypasses rules, so server-side service code continues
+    // to work. Super-admins doing ad-hoc debugging use the Firebase
+    // Console (auth at the Google-identity layer, separately audited).
+    //
+    // Phase D review (M-2): this was previously `allow read: if
+    // isSuperAdmin()`, which opened a client-SDK enumeration surface
+    // that bypassed the API's audit log. No web-app caller ever used
+    // that path (grep for `collection("notificationDispatchLog")` in
+    // apps/web-* returns zero hits). Tightening the rule closes the
+    // enumeration surface without breaking any caller; if a future
+    // super-admin tool needs client-SDK read access, add a
+    // dedicated, audit-logged API endpoint instead of re-opening the
+    // rule.
+    //
+    // Cross-reference: apps/api/src/repositories/notification-
+    // dispatch-log.repository.ts header carries a matching comment
+    // explaining why the composite indexes on this collection do
+    // NOT open an exploitation surface.
     match /notificationDispatchLog/{id} {
-      allow read: if isSuperAdmin();
-      allow create, update, delete: if false;
+      allow read, create, update, delete: if false;
     }
 
     // ─── Rate-limit Buckets (Phase D.4) ─────────────────────────────────────

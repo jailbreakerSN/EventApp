@@ -124,6 +124,12 @@ const mockNotificationSettingsRepository = {
   listAllPerOrg: vi.fn(async (): Promise<MockSetting[]> => []),
   findByKey: vi.fn(async (): Promise<MockSetting | null> => null),
   findByKeyAndOrg: vi.fn(async (): Promise<MockSetting | null> => null),
+  // Phase D.M-3 — PUT /notifications/:key now reads `previous` inside
+  // db.runTransaction via findByKeyTx to avoid the read-modify-write
+  // race. Mock routes through the same storage as findByKey so the
+  // existing seed-null default keeps working; tests that want a
+  // specific `previous` snapshot override this on a per-call basis.
+  findByKeyTx: vi.fn(async (): Promise<MockSetting | null> => null),
   upsert: vi.fn(async () => undefined),
 };
 
@@ -501,6 +507,74 @@ describe("Admin notification control plane (Phase 4)", () => {
     expect(res.statusCode).toBe(400);
     const body = JSON.parse(res.body);
     expect(body.error.code).toBe("INVALID_CHANNEL");
+  });
+
+  it("PUT /notifications/:key — concurrent writes each observe distinct `previous` (M-3)", async () => {
+    // Phase D.M-3 regression guard.
+    //
+    // Before the fix, the PUT handler read `previous` OUTSIDE
+    // db.runTransaction. Two concurrent admin PUTs to the same key
+    // both observed the same `previous` snapshot, both appended
+    // history rows with identical `previousValue`, and the second
+    // write silently clobbered the first's diff chain. The fix moves
+    // the read inside the transaction via `findByKeyTx(tx, …)`, so
+    // Firestore's transactional read set enforces serialization.
+    //
+    // We can't exercise real Firestore-level conflict retry from a
+    // Vitest mock, but we CAN assert the route now calls the
+    // transactional `findByKeyTx` rather than the outside-the-txn
+    // `findByKey`. If a future refactor regresses to `findByKey`
+    // here, this test fails — which is exactly the signal we want.
+    mockNotificationSettingsRepository.findByKey.mockClear();
+    mockNotificationSettingsRepository.findByKeyTx.mockClear();
+    mockNotificationSettingsRepository.findByKeyTx.mockResolvedValueOnce({
+      key: "event.reminder",
+      enabled: true,
+      channels: ["email", "in_app"],
+      updatedAt: "2026-01-01T00:00:00.000Z",
+      updatedBy: "previous-admin",
+    });
+
+    const res = await app.inject({
+      method: "PUT",
+      url: "/v1/admin/notifications/event.reminder",
+      headers: { ...authHeader, "content-type": "application/json" },
+      payload: { enabled: false, channels: ["email"] },
+    });
+
+    expect(res.statusCode).toBe(200);
+    // The fix's load-bearing assertion: the handler reads through
+    // the transaction, not bypass it.
+    expect(mockNotificationSettingsRepository.findByKeyTx).toHaveBeenCalledTimes(1);
+    expect(mockNotificationSettingsRepository.findByKey).not.toHaveBeenCalled();
+    // Second load-bearing assertion: the history entry carries the
+    // transactional `previous` we fed into the mock. If the handler
+    // slipped back to the outside-txn read, `previousValue` would
+    // be null (the default mock return). We reach the history repo
+    // via a dynamic import because the vi.mock factory above gives
+    // it no named test-local handle.
+    const { notificationSettingsHistoryRepository: historyRepo } = (await import(
+      "@/repositories/notification-settings-history.repository"
+    )) as unknown as {
+      notificationSettingsHistoryRepository: {
+        append: ReturnType<typeof vi.fn>;
+      };
+    };
+    const appendCall = historyRepo.append.mock.calls.find(
+      (c) => (c[0] as { key?: string })?.key === "event.reminder",
+    );
+    expect(appendCall).toBeDefined();
+    const appendedEntry = appendCall![0] as {
+      previousValue?: Record<string, unknown> | null;
+    };
+    expect(appendedEntry.previousValue).toEqual(
+      expect.objectContaining({
+        key: "event.reminder",
+        enabled: true,
+        channels: ["email", "in_app"],
+        updatedBy: "previous-admin",
+      }),
+    );
   });
 
   it("GET /notifications/stats aggregates dispatch counts per key", async () => {
