@@ -23,17 +23,24 @@
  *    contexts via the top-bar affordance.
  */
 
-import type { UserRole } from "@teranga/shared-types";
+import type { UserRole, AdminSystemRole } from "@teranga/shared-types";
+import { ADMIN_SYSTEM_ROLES } from "@teranga/shared-types";
 
-/** Every role that grants access to `/admin/*`. */
-export const ADMIN_ROLES: readonly UserRole[] = [
-  "super_admin",
-  "platform:super_admin",
-  "platform:support",
-  "platform:finance",
-  "platform:ops",
-  "platform:security",
-] as const;
+/**
+ * Every role that grants access to `/admin/*`.
+ *
+ * Sourced from `ADMIN_SYSTEM_ROLES` in `@teranga/shared-types` so the
+ * API `requireEmailVerified` middleware, the `useAdminRole()` hook,
+ * and this access module all read from ONE canonical list — a single
+ * rename/add here propagates everywhere. Before this unification
+ * (PR #163 review), the list was enumerated in three places and had
+ * already produced one production-relevant drift (see commit 1e3e832).
+ *
+ * The tuple type is preserved (not widened to `UserRole[]`) so
+ * consumers like `use-admin-role.ts` can derive the narrow
+ * `AdminRole` union via `(typeof ADMIN_ROLES)[number]`.
+ */
+export const ADMIN_ROLES: readonly AdminSystemRole[] = ADMIN_SYSTEM_ROLES;
 
 /** Every role that grants access to the organizer shell (`/dashboard`, `/events`, …). */
 export const ORGANIZER_ROLES: readonly UserRole[] = ["organizer", "co_organizer"] as const;

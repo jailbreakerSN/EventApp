@@ -1,6 +1,6 @@
 import { type FastifyRequest, type FastifyReply } from "fastify";
 import { auth } from "@/config/firebase";
-import { type UserRole } from "@teranga/shared-types";
+import { type UserRole, isAdminSystemRole } from "@teranga/shared-types";
 
 // ─── Augment Fastify Request ──────────────────────────────────────────────────
 
@@ -96,13 +96,18 @@ export async function optionalAuth(request: FastifyRequest, _reply: FastifyReply
 // Must run AFTER `authenticate` so `request.user` is populated.
 //
 // Exemptions:
-//   - `super_admin` role — platform operators must never be locked out by
-//     a verification race. Roles come from signed Firebase custom claims
-//     set by the API itself; a regular user cannot self-assign super_admin.
+//   - Every admin role in `ADMIN_SYSTEM_ROLES` (super_admin + the 5
+//     `platform:*` subroles). Platform operators must never be locked
+//     out by a verification race (CLAUDE.md §H6). The exemption set is
+//     imported from `@teranga/shared-types` so API + web-backoffice
+//     cannot drift — see PR #163 review which caught the previous
+//     `super_admin`-only check as a correctness gap: the web client
+//     was already using the full set, so a `platform:support` user
+//     would pass the client gate but fail this API gate.
 //
 // Behaviour:
 //   - If `request.user` is missing → 401 (authenticate must run first).
-//   - If user is super_admin → pass.
+//   - If user holds any admin system role → pass.
 //   - If user.emailVerified → pass.
 //   - Otherwise → 403 EMAIL_NOT_VERIFIED.
 //
@@ -119,8 +124,8 @@ export async function requireEmailVerified(request: FastifyRequest, reply: Fasti
     });
   }
 
-  // Super-admins bypass the gate (operational necessity).
-  if (request.user.roles.includes("super_admin")) return;
+  // Every admin system role bypasses the gate (operational necessity).
+  if (request.user.roles.some(isAdminSystemRole)) return;
 
   if (!request.user.emailVerified) {
     return reply.status(403).send({
