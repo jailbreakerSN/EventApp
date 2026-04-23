@@ -28,8 +28,13 @@ import { EXPANSION_EVENT_DENORM, findTicketType } from "./04-events";
 const {
   now,
   oneHourAgo,
+  twoHoursAgo,
   yesterday,
+  twoDaysAgo,
+  oneWeekAgo,
   twoWeeksAgo,
+  oneMonthAgo,
+  fortyFiveDaysAgo,
   inOneWeek,
   inOneWeekPlus1h,
   inOneWeekPlus2h,
@@ -487,10 +492,11 @@ async function writeBadges(db: Firestore): Promise<number> {
         .doc(b.id)
         .set({
           ...b,
-          templateId: null,
+          templateId: "badge-template-001",
           pdfURL: null,
           status: "generated",
           error: null,
+          downloadCount: 0,
           generatedAt: yesterday,
           createdAt: yesterday,
           updatedAt: yesterday,
@@ -838,6 +844,111 @@ async function writeSponsors(db: Firestore): Promise<number> {
       contactPhone: "+221770006666",
       isActive: true,
     },
+    // ── Phase 7 expansion — sponsor tier diversity ──────────────────────
+    // Adds platinum + bronze + partner tiers across upcoming events so
+    // the sponsor-portal grid exercises every SponsorTierSchema branch.
+    {
+      id: "sponsor-003",
+      userId: null,
+      eventId: "event-010", // Fintech Ouest-Africaine, starter/Thiès
+      organizationId: IDS.starterOrgId,
+      companyName: "Wave Money",
+      logoURL: null,
+      description:
+        "Le mobile money panafricain. Partenaire titre de la Conférence Fintech Ouest-Africaine.",
+      website: "https://wave.com",
+      tier: "platinum",
+      boothTitle: "Wave — La Next Gen du Mobile Money",
+      boothDescription:
+        "Rencontrez l'équipe produit et découvrez les nouvelles API entreprises. Démos non-stop.",
+      boothBannerURL: null,
+      ctaLabel: "Rejoindre Wave",
+      ctaUrl: "https://wave.com/careers",
+      contactName: "Cheikh Sow",
+      contactEmail: "cheikh.sow@wave.com",
+      contactPhone: "+221770011111",
+      isActive: true,
+    },
+    {
+      id: "sponsor-004",
+      userId: null,
+      eventId: "event-010",
+      organizationId: IDS.starterOrgId,
+      companyName: "Société Générale Sénégal",
+      logoURL: null,
+      description: "Banque partenaire de l'innovation fintech au Sénégal.",
+      website: "https://societegenerale.sn",
+      tier: "gold",
+      boothTitle: "SG Innovation — Programme Fintech",
+      boothDescription: "Rencontrez nos experts financement + innovation.",
+      boothBannerURL: null,
+      ctaLabel: "Candidater au programme",
+      ctaUrl: "https://societegenerale.sn/innovation",
+      contactName: "Aminata Diouf",
+      contactEmail: "aminata.diouf@sgsn.sn",
+      contactPhone: "+221770022222",
+      isActive: true,
+    },
+    {
+      id: "sponsor-005",
+      userId: null,
+      eventId: "event-017", // AfricaTech Online (enterprise)
+      organizationId: IDS.enterpriseOrgId,
+      companyName: "AWS Afrique",
+      logoURL: null,
+      description: "Partenaire cloud officiel d'AfricaTech Online.",
+      website: "https://aws.amazon.com/fr",
+      tier: "platinum",
+      boothTitle: "AWS — Cloud pour l'Afrique",
+      boothDescription: "Live demos, crédits startup et sessions 1-to-1 avec nos architectes.",
+      boothBannerURL: null,
+      ctaLabel: "Réserver une démo",
+      ctaUrl: "https://aws.amazon.com/fr/africa",
+      contactName: "Papa Demba Lo",
+      contactEmail: "pdlo@aws-africa.com",
+      contactPhone: "+221770033333",
+      isActive: true,
+    },
+    {
+      id: "sponsor-006",
+      userId: null,
+      eventId: "event-017",
+      organizationId: IDS.enterpriseOrgId,
+      companyName: "Jokkolabs",
+      logoURL: null,
+      description: "Écosystème d'innovation et de coworking au Sénégal.",
+      website: "https://jokkolabs.net",
+      tier: "bronze",
+      boothTitle: "Jokkolabs — Communauté tech Dakar",
+      boothDescription: "Rencontrez nos entrepreneurs et découvrez nos espaces.",
+      boothBannerURL: null,
+      ctaLabel: "Visiter nos espaces",
+      ctaUrl: "https://jokkolabs.net/dakar",
+      contactName: "Karim Sy",
+      contactEmail: "karim.sy@jokkolabs.net",
+      contactPhone: "+221770044444",
+      isActive: true,
+    },
+    {
+      id: "sponsor-007",
+      userId: null,
+      eventId: "event-017",
+      organizationId: IDS.enterpriseOrgId,
+      companyName: "École 42 Dakar",
+      logoURL: null,
+      description: "Partenaire éducation de l'événement.",
+      website: "https://42dakar.sn",
+      tier: "partner",
+      boothTitle: "42 Dakar — Recrutement piscine",
+      boothDescription: "Rencontrez la coordination et inscrivez-vous à la prochaine piscine.",
+      boothBannerURL: null,
+      ctaLabel: "S'inscrire à la piscine",
+      ctaUrl: "https://42dakar.sn/piscine",
+      contactName: "Awa Ndiaye",
+      contactEmail: "awa.ndiaye@42dakar.sn",
+      contactPhone: "+221770055555",
+      isActive: true,
+    },
   ];
   await Promise.all(
     sponsors.map((s) =>
@@ -851,10 +962,9 @@ async function writeSponsors(db: Firestore): Promise<number> {
 }
 
 async function writeSponsorLeads(db: Firestore): Promise<number> {
-  await db
-    .collection("sponsorLeads")
-    .doc("lead-001")
-    .set({
+  const leads = [
+    // Legacy lead-001 preserved byte-for-byte
+    {
       id: "lead-001",
       sponsorId: IDS.sponsor1,
       eventId: IDS.conference,
@@ -866,13 +976,124 @@ async function writeSponsorLeads(db: Firestore): Promise<number> {
       tags: ["startup", "cloud", "prospect-chaud"],
       scannedAt: oneHourAgo,
       scannedBy: IDS.sponsorUser,
-    });
-  return 1;
+    },
+    // ── Phase 7 — density on sponsor-003 Wave Money (event-010) ──────
+    // 5 leads captured by different staff to exercise analytics.
+    {
+      id: "lead-002",
+      sponsorId: "sponsor-003",
+      eventId: "event-010",
+      participantId: EXPANSION_PARTICIPANTS[13].uid,
+      participantName: EXPANSION_PARTICIPANTS[13].displayName,
+      participantEmail: EXPANSION_PARTICIPANTS[13].email,
+      participantPhone: "+221770066000",
+      notes: "Cherche API webhooks pour paiement récurrent.",
+      tags: ["api", "paiement-recurrent"],
+      scannedAt: yesterday,
+      scannedBy: IDS.staffUser,
+    },
+    {
+      id: "lead-003",
+      sponsorId: "sponsor-003",
+      eventId: "event-010",
+      participantId: EXPANSION_PARTICIPANTS[14].uid,
+      participantName: EXPANSION_PARTICIPANTS[14].displayName,
+      participantEmail: EXPANSION_PARTICIPANTS[14].email,
+      participantPhone: "+221770066001",
+      notes: "Démo demandée pour intégration e-commerce.",
+      tags: ["ecommerce", "demo"],
+      scannedAt: yesterday,
+      scannedBy: IDS.starterOrganizer,
+    },
+    {
+      id: "lead-004",
+      sponsorId: "sponsor-003",
+      eventId: "event-010",
+      participantId: EXPANSION_PARTICIPANTS[15].uid,
+      participantName: EXPANSION_PARTICIPANTS[15].displayName,
+      participantEmail: EXPANSION_PARTICIPANTS[15].email,
+      participantPhone: "+221770066002",
+      notes: "Lead froid — a juste récupéré un goodie.",
+      tags: ["froid", "goodie"],
+      scannedAt: yesterday,
+      scannedBy: IDS.staffUser,
+    },
+    // ── sponsor-004 Société Générale (event-010) — 2 leads ───────────
+    {
+      id: "lead-005",
+      sponsorId: "sponsor-004",
+      eventId: "event-010",
+      participantId: EXPANSION_PARTICIPANTS[0].uid,
+      participantName: EXPANSION_PARTICIPANTS[0].displayName,
+      participantEmail: EXPANSION_PARTICIPANTS[0].email,
+      participantPhone: "+221770077000",
+      notes: "Fondatrice startup fintech, cherche financement série A.",
+      tags: ["fintech", "serie-a", "prospect-chaud"],
+      scannedAt: yesterday,
+      scannedBy: IDS.staffUser,
+    },
+    {
+      id: "lead-006",
+      sponsorId: "sponsor-004",
+      eventId: "event-010",
+      participantId: EXPANSION_PARTICIPANTS[1].uid,
+      participantName: EXPANSION_PARTICIPANTS[1].displayName,
+      participantEmail: EXPANSION_PARTICIPANTS[1].email,
+      participantPhone: "+221770077001",
+      notes: "Étudiant M2 — veut stage innovation.",
+      tags: ["etudiant", "stage"],
+      scannedAt: twoDaysAgo,
+      scannedBy: IDS.starterOrganizer,
+    },
+    // ── sponsor-005 AWS Afrique (event-017) — 3 leads ────────────────
+    {
+      id: "lead-007",
+      sponsorId: "sponsor-005",
+      eventId: "event-017",
+      participantId: EXPANSION_PARTICIPANTS[2].uid,
+      participantName: EXPANSION_PARTICIPANTS[2].displayName,
+      participantEmail: EXPANSION_PARTICIPANTS[2].email,
+      participantPhone: "+221770088000",
+      notes: "CTO scale-up 50 personnes, migration cloud en cours.",
+      tags: ["cto", "cloud-migration", "prospect-chaud"],
+      scannedAt: twoDaysAgo,
+      scannedBy: IDS.staffUser,
+    },
+    {
+      id: "lead-008",
+      sponsorId: "sponsor-005",
+      eventId: "event-017",
+      participantId: EXPANSION_PARTICIPANTS[12].uid,
+      participantName: EXPANSION_PARTICIPANTS[12].displayName,
+      participantEmail: EXPANSION_PARTICIPANTS[12].email,
+      participantPhone: "+221770088001",
+      notes: "Intéressé par le programme AWS Activate pour startups.",
+      tags: ["startup", "credits", "activate"],
+      scannedAt: twoDaysAgo,
+      scannedBy: IDS.enterpriseOrganizer,
+    },
+    {
+      id: "lead-009",
+      sponsorId: "sponsor-005",
+      eventId: "event-017",
+      participantId: EXPANSION_PARTICIPANTS[8].uid,
+      participantName: EXPANSION_PARTICIPANTS[8].displayName,
+      participantEmail: EXPANSION_PARTICIPANTS[8].email,
+      participantPhone: "+221770088002",
+      notes: "Architecte data, cherche formation Redshift/EMR.",
+      tags: ["data", "formation"],
+      scannedAt: yesterday,
+      scannedBy: IDS.staffUser,
+    },
+  ];
+  await Promise.all(leads.map((l) => db.collection("sponsorLeads").doc(l.id).set(l)));
+  return leads.length;
 }
 
 // ─── Payments + Receipts ──────────────────────────────────────────────────
 
 async function writePayments(db: Firestore): Promise<number> {
+  // ── payment-001 — succeeded Premium ticket on Masterclass IA (legacy) ─
   await db
     .collection("payments")
     .doc(IDS.payment1)
@@ -898,6 +1119,7 @@ async function writePayments(db: Firestore): Promise<number> {
       createdAt: yesterday,
       updatedAt: yesterday,
     });
+  // ── payment-002 — pending Early Bird ticket (legacy) ──────────────────
   await db.collection("payments").doc(IDS.payment2).set({
     id: IDS.payment2,
     registrationId: IDS.reg5,
@@ -920,7 +1142,120 @@ async function writePayments(db: Firestore): Promise<number> {
     createdAt: now,
     updatedAt: now,
   });
-  return 2;
+  // ── payment-003 — FAILED Wave payment on event-009 formation IA ───────
+  // Demonstrates the "payment failure" state with a real provider reason.
+  // The registration stays in pending_payment until the user retries.
+  await db
+    .collection("payments")
+    .doc("payment-003")
+    .set({
+      id: "payment-003",
+      registrationId: "reg-e09-01",
+      eventId: "event-009",
+      organizationId: IDS.enterpriseOrgId,
+      userId: EXPANSION_PARTICIPANTS[24].uid,
+      amount: 75000,
+      currency: "XOF",
+      method: "wave",
+      providerTransactionId: "wave-tx-fail-003",
+      status: "failed",
+      redirectUrl: null,
+      callbackUrl: "http://localhost:3000/v1/payments/webhook",
+      returnUrl: null,
+      providerMetadata: { provider: "wave", errorCode: "INSUFFICIENT_FUNDS" },
+      failureReason: "Solde Wave insuffisant — veuillez recharger votre compte.",
+      refundedAmount: 0,
+      initiatedAt: twoWeeksAgo,
+      completedAt: twoWeeksAgo,
+      createdAt: twoWeeksAgo,
+      updatedAt: twoWeeksAgo,
+    });
+  // ── payment-004 — REFUNDED Orange Money on event-005 Festival (past) ──
+  // Participant requested refund after the festival; full amount returned.
+  // Shows the `refunded` state + refundedAmount > 0 on the finance dashboard.
+  await db
+    .collection("payments")
+    .doc("payment-004")
+    .set({
+      id: "payment-004",
+      registrationId: "reg-e05-03",
+      eventId: "event-005",
+      organizationId: IDS.enterpriseOrgId,
+      userId: EXPANSION_PARTICIPANTS[0].uid,
+      amount: 25000,
+      currency: "XOF",
+      method: "orange_money",
+      providerTransactionId: "om-tx-refund-004",
+      status: "refunded",
+      redirectUrl: null,
+      callbackUrl: "http://localhost:3000/v1/payments/webhook",
+      returnUrl: null,
+      providerMetadata: { provider: "orange_money" },
+      failureReason: null,
+      refundedAmount: 25000,
+      initiatedAt: fortyFiveDaysAgo,
+      completedAt: fortyFiveDaysAgo,
+      createdAt: fortyFiveDaysAgo,
+      updatedAt: oneWeekAgo,
+    });
+  // ── payment-005 — SUCCEEDED Orange Money on upcoming event-010 ────────
+  // Gives the starter-org finance dashboard real revenue (Thiès org had
+  // zero payments before). Funds are still in "pending" on the ledger
+  // until event-010 completes + 7 days release window.
+  await db
+    .collection("payments")
+    .doc("payment-005")
+    .set({
+      id: "payment-005",
+      registrationId: "reg-e10-01",
+      eventId: "event-010",
+      organizationId: IDS.starterOrgId,
+      userId: EXPANSION_PARTICIPANTS[13].uid,
+      amount: 35000,
+      currency: "XOF",
+      method: "orange_money",
+      providerTransactionId: "om-tx-005",
+      status: "succeeded",
+      redirectUrl: null,
+      callbackUrl: "http://localhost:3000/v1/payments/webhook",
+      returnUrl: null,
+      providerMetadata: { provider: "orange_money" },
+      failureReason: null,
+      refundedAmount: 0,
+      initiatedAt: yesterday,
+      completedAt: yesterday,
+      createdAt: yesterday,
+      updatedAt: yesterday,
+    });
+  // ── payment-006 — SUCCEEDED Wave payment on PAST event-006 Marathon ───
+  // Past event + funds released, so this drives the completed-payout story
+  // in writePayouts (payout-002).
+  await db
+    .collection("payments")
+    .doc("payment-006")
+    .set({
+      id: "payment-006",
+      registrationId: "reg-e06-01",
+      eventId: "event-006",
+      organizationId: IDS.enterpriseOrgId,
+      userId: EXPANSION_PARTICIPANTS[5].uid,
+      amount: 15000,
+      currency: "XOF",
+      method: "wave",
+      providerTransactionId: "wave-tx-006",
+      status: "succeeded",
+      redirectUrl: null,
+      callbackUrl: "http://localhost:3000/v1/payments/webhook",
+      returnUrl: null,
+      providerMetadata: { provider: "wave" },
+      failureReason: null,
+      refundedAmount: 0,
+      initiatedAt: oneMonthAgo,
+      completedAt: oneMonthAgo,
+      createdAt: oneMonthAgo,
+      updatedAt: oneMonthAgo,
+    });
+  return 6;
 }
 
 async function writeReceipts(db: Firestore): Promise<number> {
@@ -1023,10 +1358,155 @@ async function writeBalanceTransactions(db: Firestore): Promise<number> {
     },
   ];
 
-  await Promise.all(
-    entries.map((e) => db.collection("balanceTransactions").doc(e.id).set(e)),
+  // ── Expansion ledger entries (Phase 5) ────────────────────────────────
+  // Mirror `writePayments` additions: 4 new payments land in the ledger.
+  // payment-003 FAILED → no ledger entry (matches service-layer behaviour).
+  // payment-004 REFUNDED → original payment + fee entries + refund reversal.
+  // payment-005 SUCCEEDED (upcoming event) → pending availability.
+  // payment-006 SUCCEEDED (past + paid out) → status=paid_out, see payout-002.
+
+  const expansionEntries: Array<{
+    id: string;
+    organizationId: string;
+    eventId: string;
+    paymentId: string | null;
+    payoutId: string | null;
+    kind: "payment" | "platform_fee" | "payout" | "refund";
+    amount: number;
+    currency: "XOF";
+    status: "pending" | "available" | "paid_out";
+    availableOn: string;
+    description: string;
+    createdBy: string;
+    createdAt: string;
+  }> = [];
+
+  // payment-004 refunded — record the original credit + fee + refund debit
+  const p004Fee = Math.round(25000 * PLATFORM_FEE_RATE);
+  expansionEntries.push(
+    {
+      id: ledgerDocId("payment", "payment-004"),
+      organizationId: IDS.enterpriseOrgId,
+      eventId: "event-005",
+      paymentId: "payment-004",
+      payoutId: null,
+      kind: "payment",
+      amount: 25000,
+      currency: "XOF",
+      status: "available",
+      availableOn: Dates.oneMonthAgo,
+      description: "Billet festival Saly — remboursé",
+      createdBy: "system:seed",
+      createdAt: Dates.fortyFiveDaysAgo,
+    },
+    {
+      id: ledgerDocId("platform_fee", "payment-004"),
+      organizationId: IDS.enterpriseOrgId,
+      eventId: "event-005",
+      paymentId: "payment-004",
+      payoutId: null,
+      kind: "platform_fee",
+      amount: -p004Fee,
+      currency: "XOF",
+      status: "available",
+      availableOn: Dates.oneMonthAgo,
+      description: "Frais plateforme (annulé par remboursement)",
+      createdBy: "system:seed",
+      createdAt: Dates.fortyFiveDaysAgo,
+    },
+    {
+      id: ledgerDocId("refund", "payment-004"),
+      organizationId: IDS.enterpriseOrgId,
+      eventId: "event-005",
+      paymentId: "payment-004",
+      payoutId: null,
+      kind: "refund",
+      amount: -25000,
+      currency: "XOF",
+      status: "available",
+      availableOn: Dates.oneWeekAgo,
+      description: "Remboursement intégral Orange Money",
+      createdBy: "system:seed",
+      createdAt: Dates.oneWeekAgo,
+    },
   );
-  return entries.length;
+
+  // payment-005 succeeded on upcoming event-010 — still pending
+  const p005Fee = Math.round(35000 * PLATFORM_FEE_RATE);
+  const p005AvailableOn = computeAvailableOn(Dates.yesterday, Dates.inTenDays);
+  expansionEntries.push(
+    {
+      id: ledgerDocId("payment", "payment-005"),
+      organizationId: IDS.starterOrgId,
+      eventId: "event-010",
+      paymentId: "payment-005",
+      payoutId: null,
+      kind: "payment",
+      amount: 35000,
+      currency: "XOF",
+      status: "pending",
+      availableOn: p005AvailableOn,
+      description: "Billet Fintech Thiès (seed)",
+      createdBy: "system:seed",
+      createdAt: Dates.yesterday,
+    },
+    {
+      id: ledgerDocId("platform_fee", "payment-005"),
+      organizationId: IDS.starterOrgId,
+      eventId: "event-010",
+      paymentId: "payment-005",
+      payoutId: null,
+      kind: "platform_fee",
+      amount: -p005Fee,
+      currency: "XOF",
+      status: "pending",
+      availableOn: p005AvailableOn,
+      description: `Frais plateforme (seed, ${Math.round(PLATFORM_FEE_RATE * 100)}%)`,
+      createdBy: "system:seed",
+      createdAt: Dates.yesterday,
+    },
+  );
+
+  // payment-006 succeeded + paid out (past marathon event-006)
+  const p006Fee = Math.round(15000 * PLATFORM_FEE_RATE);
+  expansionEntries.push(
+    {
+      id: ledgerDocId("payment", "payment-006"),
+      organizationId: IDS.enterpriseOrgId,
+      eventId: "event-006",
+      paymentId: "payment-006",
+      payoutId: "payout-002",
+      kind: "payment",
+      amount: 15000,
+      currency: "XOF",
+      status: "paid_out",
+      availableOn: Dates.twoWeeksAgo,
+      description: "Billet marathon Dakar (seed)",
+      createdBy: "system:seed",
+      createdAt: Dates.oneMonthAgo,
+    },
+    {
+      id: ledgerDocId("platform_fee", "payment-006"),
+      organizationId: IDS.enterpriseOrgId,
+      eventId: "event-006",
+      paymentId: "payment-006",
+      payoutId: "payout-002",
+      kind: "platform_fee",
+      amount: -p006Fee,
+      currency: "XOF",
+      status: "paid_out",
+      availableOn: Dates.twoWeeksAgo,
+      description: `Frais plateforme (seed, ${Math.round(PLATFORM_FEE_RATE * 100)}%)`,
+      createdBy: "system:seed",
+      createdAt: Dates.oneMonthAgo,
+    },
+  );
+
+  await Promise.all(entries.map((e) => db.collection("balanceTransactions").doc(e.id).set(e)));
+  await Promise.all(
+    expansionEntries.map((e) => db.collection("balanceTransactions").doc(e.id).set(e)),
+  );
+  return entries.length + expansionEntries.length;
 }
 
 // ─── Payouts (with linked ledger entry) ───────────────────────────────────
@@ -1078,26 +1558,71 @@ async function writePayouts(db: Firestore): Promise<number> {
   // pending — the payout-creation service flips it to `paid_out` on
   // completion.
   const payoutLedgerDocId = ledgerDocId("payout", payoutId);
+  await db.collection("balanceTransactions").doc(payoutLedgerDocId).set({
+    id: payoutLedgerDocId,
+    organizationId: IDS.orgId,
+    eventId: IDS.paidEvent,
+    paymentId: null,
+    payoutId,
+    kind: "payout",
+    amount: -netAmount,
+    currency: "XOF",
+    status: "pending",
+    availableOn: scheduledFor,
+    description: "Versement planifié (seed)",
+    createdBy: "system:seed",
+    createdAt: yesterday,
+  });
+
+  // ── payout-002 — COMPLETED payout on past event-006 (enterprise org) ──
+  // Paired with payment-006 (15 000 XOF Wave) in the ledger. Status is
+  // `completed` with a completedAt timestamp so the finance dashboard
+  // shows one historical payout alongside the pending one.
+  const p2Total = 15000;
+  const p2Fee = Math.round(p2Total * PLATFORM_FEE_RATE);
+  const p2Net = p2Total - p2Fee;
   await db
-    .collection("balanceTransactions")
-    .doc(payoutLedgerDocId)
+    .collection("payouts")
+    .doc("payout-002")
     .set({
-      id: payoutLedgerDocId,
-      organizationId: IDS.orgId,
-      eventId: IDS.paidEvent,
-      paymentId: null,
-      payoutId,
-      kind: "payout",
-      amount: -netAmount,
+      id: "payout-002",
+      organizationId: IDS.enterpriseOrgId,
+      eventId: "event-006",
+      totalAmount: p2Total,
+      platformFee: p2Fee,
+      platformFeeRate: PLATFORM_FEE_RATE,
+      netAmount: p2Net,
+      status: "completed",
+      paymentIds: ["payment-006"],
+      periodFrom: Dates.oneMonthAgo,
+      periodTo: Dates.twoWeeksAgo,
+      completedAt: Dates.twoWeeksAgo,
+      scheduledFor: Dates.twoWeeksAgo,
       currency: "XOF",
-      status: "pending",
-      availableOn: scheduledFor,
-      description: "Versement planifié (seed)",
-      createdBy: "system:seed",
-      createdAt: yesterday,
+      amountMinor: p2Net,
+      createdAt: Dates.oneMonthAgo,
+      updatedAt: Dates.twoWeeksAgo,
     });
 
-  return 1;
+  // Matching completed payout ledger entry.
+  const p2LedgerDocId = ledgerDocId("payout", "payout-002");
+  await db.collection("balanceTransactions").doc(p2LedgerDocId).set({
+    id: p2LedgerDocId,
+    organizationId: IDS.enterpriseOrgId,
+    eventId: "event-006",
+    paymentId: null,
+    payoutId: "payout-002",
+    kind: "payout",
+    amount: -p2Net,
+    currency: "XOF",
+    status: "paid_out",
+    availableOn: Dates.twoWeeksAgo,
+    description: "Versement effectué (seed)",
+    createdBy: "system:seed",
+    createdAt: Dates.twoWeeksAgo,
+  });
+
+  return 2;
 }
 
 // ─── Promo codes ──────────────────────────────────────────────────────────
@@ -1107,9 +1632,7 @@ async function writePayouts(db: Firestore): Promise<number> {
 // "free registration via promo" path.
 
 async function writePromoCodes(db: Firestore): Promise<number> {
-  const expiresInOneMonth = new Date(
-    Date.now() + 30 * 24 * 60 * 60 * 1000,
-  ).toISOString();
+  const expiresInOneMonth = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
   const expiredYesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
   const promos = [
@@ -1121,7 +1644,9 @@ async function writePromoCodes(db: Firestore): Promise<number> {
       discountType: "percentage" as const,
       discountValue: 10,
       maxUses: null,
-      usedCount: 0,
+      // 5 participants have redeemed the 10% code on the Masterclass.
+      // `paymentRedemptions-001..005` on the finance dashboard carry this.
+      usedCount: 5,
       expiresAt: expiresInOneMonth,
       ticketTypeIds: [],
       isActive: true,
@@ -1153,7 +1678,8 @@ async function writePromoCodes(db: Firestore): Promise<number> {
       discountType: "percentage" as const,
       discountValue: 100,
       maxUses: 1,
-      usedCount: 0,
+      // Single-use code already redeemed; the UI should show "Épuisé".
+      usedCount: 1,
       expiresAt: expiresInOneMonth,
       ticketTypeIds: [],
       isActive: true,
@@ -1163,9 +1689,7 @@ async function writePromoCodes(db: Firestore): Promise<number> {
     },
   ];
 
-  await Promise.all(
-    promos.map((p) => db.collection("promoCodes").doc(p.id).set(p)),
-  );
+  await Promise.all(promos.map((p) => db.collection("promoCodes").doc(p.id).set(p)));
   return promos.length;
 }
 
@@ -1225,10 +1749,415 @@ async function writeBadgeTemplates(db: Firestore): Promise<number> {
     },
   ];
 
-  await Promise.all(
-    templates.map((t) => db.collection("badgeTemplates").doc(t.id).set(t)),
-  );
+  await Promise.all(templates.map((t) => db.collection("badgeTemplates").doc(t.id).set(t)));
   return templates.length;
+}
+
+// ─── Check-in forensic records ────────────────────────────────────────────
+// `checkins/` is the per-scan forensic log. Every accepted, duplicate, and
+// rejected scan writes one immutable row (enforced by
+// `apps/api/src/services/checkin-record.service.ts`). Before this seed phase
+// the collection was empty in staging, so the security dashboard, anomaly
+// detector, and rotation forensics surfaces had nothing to render.
+//
+// 10 records cover every interesting combination:
+//   - 3 `success` rows on accepted scans (live + offline_sync + v4 QR)
+//   - 2 `duplicate` rows with rejectCode="invalid_status"
+//   - 5 `rejected` rows exercising the full rejectCode enum:
+//     invalid_qr, not_found, cancelled, zone_full, expired, not_yet_valid
+//
+// Doc ids are deterministic so re-seeding is idempotent; real runtime rows
+// use server-generated auto-ids.
+
+async function writeCheckinRecords(db: Firestore): Promise<number> {
+  type Record = {
+    id: string;
+    registrationId: string;
+    eventId: string;
+    organizationId: string;
+    userId: string;
+    scannedAt: string;
+    clientScannedAt: string | null;
+    scannedBy: string;
+    scannerDeviceId: string | null;
+    scannerNonce: string | null;
+    accessZoneId: string | null;
+    status: "success" | "duplicate" | "rejected";
+    source: "live" | "offline_sync";
+    rejectCode:
+      | "invalid_qr"
+      | "not_found"
+      | "cancelled"
+      | "invalid_status"
+      | "zone_full"
+      | "expired"
+      | "not_yet_valid"
+      | null;
+    reason: string | null;
+    qrPayloadVersion: "v1" | "v2" | "v3" | "v4" | null;
+    qrKid: string | null;
+    requestId: string | null;
+    idempotencyKey: string | null;
+    createdAt: string;
+  };
+
+  const records: Record[] = [
+    // ── SUCCESS: live accepted scan on legacy conference ────────────────
+    {
+      id: "checkin-record-001",
+      registrationId: IDS.reg1,
+      eventId: IDS.conference,
+      organizationId: IDS.orgId,
+      userId: IDS.participant1,
+      scannedAt: oneHourAgo,
+      clientScannedAt: oneHourAgo,
+      scannedBy: IDS.organizer,
+      scannerDeviceId: "scanner-device-dakar-001",
+      scannerNonce: "nonce-live-001",
+      accessZoneId: null,
+      status: "success",
+      source: "live",
+      rejectCode: null,
+      reason: null,
+      qrPayloadVersion: "v3",
+      qrKid: null,
+      requestId: "seed-req-checkin-001",
+      idempotencyKey: null,
+      createdAt: oneHourAgo,
+    },
+    // ── SUCCESS: offline-synced scan from past event ────────────────────
+    {
+      id: "checkin-record-002",
+      registrationId: "reg-e05-01",
+      eventId: "event-005",
+      organizationId: IDS.enterpriseOrgId,
+      userId: EXPANSION_PARTICIPANTS[10].uid,
+      scannedAt: fortyFiveDaysAgo,
+      clientScannedAt: fortyFiveDaysAgo,
+      scannedBy: IDS.staffUser,
+      scannerDeviceId: "scanner-device-saly-002",
+      scannerNonce: "nonce-offline-002",
+      accessZoneId: null,
+      status: "success",
+      source: "offline_sync",
+      rejectCode: null,
+      reason: null,
+      qrPayloadVersion: "v3",
+      qrKid: null,
+      requestId: "seed-req-checkin-002",
+      idempotencyKey: "bulk-local-002",
+      createdAt: fortyFiveDaysAgo,
+    },
+    // ── SUCCESS: v4 QR with key rotation context ───────────────────────
+    {
+      id: "checkin-record-003",
+      registrationId: "reg-e06-02",
+      eventId: "event-006",
+      organizationId: IDS.enterpriseOrgId,
+      userId: EXPANSION_PARTICIPANTS[6].uid,
+      scannedAt: oneMonthAgo,
+      clientScannedAt: oneMonthAgo,
+      scannedBy: IDS.staffUser,
+      scannerDeviceId: "scanner-device-dakar-003",
+      scannerNonce: "nonce-v4-003",
+      accessZoneId: "access-zone-vip",
+      status: "success",
+      source: "live",
+      rejectCode: null,
+      reason: null,
+      qrPayloadVersion: "v4",
+      qrKid: "qr-kid-2026-03-15",
+      requestId: "seed-req-checkin-003",
+      idempotencyKey: null,
+      createdAt: oneMonthAgo,
+    },
+    // ── DUPLICATE: participant tried to scan a second time ─────────────
+    {
+      id: "checkin-record-004",
+      registrationId: IDS.reg1,
+      eventId: IDS.conference,
+      organizationId: IDS.orgId,
+      userId: IDS.participant1,
+      scannedAt: now,
+      clientScannedAt: now,
+      scannedBy: IDS.organizer,
+      scannerDeviceId: "scanner-device-dakar-001",
+      scannerNonce: "nonce-dup-004",
+      accessZoneId: null,
+      status: "duplicate",
+      source: "live",
+      rejectCode: "invalid_status",
+      reason: "Registration already checked in at oneHourAgo.",
+      qrPayloadVersion: "v3",
+      qrKid: null,
+      requestId: "seed-req-checkin-004",
+      idempotencyKey: null,
+      createdAt: now,
+    },
+    // ── DUPLICATE: offline-sync of a scan already persisted live ───────
+    {
+      id: "checkin-record-005",
+      registrationId: "reg-e07-01",
+      eventId: "event-007",
+      organizationId: IDS.freeOrgId,
+      userId: EXPANSION_PARTICIPANTS[3].uid,
+      scannedAt: twoHoursAgo,
+      clientScannedAt: twoHoursAgo,
+      scannedBy: IDS.staffUser,
+      scannerDeviceId: "scanner-device-dakar-004",
+      scannerNonce: "nonce-offline-dup-005",
+      accessZoneId: null,
+      status: "duplicate",
+      source: "offline_sync",
+      rejectCode: "invalid_status",
+      reason: "Live scan had already flipped status=checked_in before the buffer flushed.",
+      qrPayloadVersion: "v3",
+      qrKid: null,
+      requestId: "seed-req-checkin-005",
+      idempotencyKey: "bulk-local-005",
+      createdAt: twoHoursAgo,
+    },
+    // ── REJECTED: invalid QR signature ─────────────────────────────────
+    {
+      id: "checkin-record-006",
+      registrationId: "unknown-reg-stub",
+      eventId: IDS.conference,
+      organizationId: IDS.orgId,
+      userId: "unknown-user",
+      scannedAt: yesterday,
+      clientScannedAt: yesterday,
+      scannedBy: IDS.organizer,
+      scannerDeviceId: "scanner-device-dakar-001",
+      scannerNonce: "nonce-reject-006",
+      accessZoneId: null,
+      status: "rejected",
+      source: "live",
+      rejectCode: "invalid_qr",
+      reason: "HMAC signature mismatch — possible forged or legacy QR.",
+      qrPayloadVersion: null,
+      qrKid: null,
+      requestId: "seed-req-checkin-006",
+      idempotencyKey: null,
+      createdAt: yesterday,
+    },
+    // ── REJECTED: registration not found ───────────────────────────────
+    {
+      id: "checkin-record-007",
+      registrationId: "reg-deleted-stub",
+      eventId: IDS.conference,
+      organizationId: IDS.orgId,
+      userId: "unknown-user",
+      scannedAt: yesterday,
+      clientScannedAt: yesterday,
+      scannedBy: IDS.organizer,
+      scannerDeviceId: "scanner-device-dakar-001",
+      scannerNonce: "nonce-reject-007",
+      accessZoneId: null,
+      status: "rejected",
+      source: "live",
+      rejectCode: "not_found",
+      reason: "Registration document was deleted before scan.",
+      qrPayloadVersion: "v3",
+      qrKid: null,
+      requestId: "seed-req-checkin-007",
+      idempotencyKey: null,
+      createdAt: yesterday,
+    },
+    // ── REJECTED: cancelled registration scanned at entry ──────────────
+    {
+      id: "checkin-record-008",
+      registrationId: IDS.reg5,
+      eventId: IDS.paidEvent,
+      organizationId: IDS.orgId,
+      userId: IDS.participant1,
+      scannedAt: yesterday,
+      clientScannedAt: yesterday,
+      scannedBy: IDS.organizer,
+      scannerDeviceId: "scanner-device-dakar-005",
+      scannerNonce: "nonce-reject-008",
+      accessZoneId: null,
+      status: "rejected",
+      source: "live",
+      rejectCode: "cancelled",
+      reason: "Registration status is pending_payment — not confirmed.",
+      qrPayloadVersion: "v3",
+      qrKid: null,
+      requestId: "seed-req-checkin-008",
+      idempotencyKey: null,
+      createdAt: yesterday,
+    },
+    // ── REJECTED: scan outside the QR validity window (expired) ────────
+    {
+      id: "checkin-record-009",
+      registrationId: "reg-e05-02",
+      eventId: "event-005",
+      organizationId: IDS.enterpriseOrgId,
+      userId: EXPANSION_PARTICIPANTS[11].uid,
+      scannedAt: oneWeekAgo,
+      clientScannedAt: oneWeekAgo,
+      scannedBy: IDS.staffUser,
+      scannerDeviceId: "scanner-device-saly-002",
+      scannerNonce: "nonce-reject-009",
+      accessZoneId: null,
+      status: "rejected",
+      source: "live",
+      rejectCode: "expired",
+      reason: "QR notAfter window has elapsed (event ended fortyFiveDaysAgo + 6h grace).",
+      qrPayloadVersion: "v3",
+      qrKid: null,
+      requestId: "seed-req-checkin-009",
+      idempotencyKey: null,
+      createdAt: oneWeekAgo,
+    },
+    // ── REJECTED: access zone full ─────────────────────────────────────
+    {
+      id: "checkin-record-010",
+      registrationId: "reg-e09-02",
+      eventId: "event-009",
+      organizationId: IDS.enterpriseOrgId,
+      userId: EXPANSION_PARTICIPANTS[25].uid,
+      scannedAt: yesterday,
+      clientScannedAt: yesterday,
+      scannedBy: IDS.staffUser,
+      scannerDeviceId: "scanner-device-bamako-006",
+      scannerNonce: "nonce-reject-010",
+      accessZoneId: "access-zone-vip",
+      status: "rejected",
+      source: "live",
+      rejectCode: "zone_full",
+      reason: "VIP zone capacity reached — redirect to standard zone.",
+      qrPayloadVersion: "v3",
+      qrKid: null,
+      requestId: "seed-req-checkin-010",
+      idempotencyKey: null,
+      createdAt: yesterday,
+    },
+  ];
+
+  await Promise.all(records.map((r) => db.collection("checkins").doc(r.id).set(r)));
+  return records.length;
+}
+
+// ─── Session bookmarks ────────────────────────────────────────────────────
+// Participants can bookmark individual sessions from the schedule page. The
+// collection was never seeded, so the "My agenda" list on web-participant
+// was permanently empty. Seed ~15 bookmarks across the three events that
+// carry the bulk of sessions (event-010 Fintech, event-012 offline AI, and
+// event-017 AfricaTech Online). Targets pin events a realistic participant
+// would care about — keynote + one deep-dive + the networking session.
+
+async function writeSessionBookmarks(db: Firestore): Promise<number> {
+  const bookmarks: Array<{
+    id: string;
+    sessionId: string;
+    eventId: string;
+    userId: string;
+  }> = [
+    // event-010 Fintech Ouest-Africaine (Thiès, in 10 days)
+    {
+      id: "bookmark-001",
+      sessionId: "session-e10-01",
+      eventId: "event-010",
+      userId: IDS.participant1,
+    },
+    {
+      id: "bookmark-002",
+      sessionId: "session-e10-02",
+      eventId: "event-010",
+      userId: IDS.participant1,
+    },
+    {
+      id: "bookmark-003",
+      sessionId: "session-e10-01",
+      eventId: "event-010",
+      userId: IDS.participant2,
+    },
+    {
+      id: "bookmark-004",
+      sessionId: "session-e10-03",
+      eventId: "event-010",
+      userId: EXPANSION_PARTICIPANTS[0].uid,
+    },
+    {
+      id: "bookmark-005",
+      sessionId: "session-e10-01",
+      eventId: "event-010",
+      userId: EXPANSION_PARTICIPANTS[13].uid,
+    },
+    // event-012 Offline AI Workshop (Saint-Louis, in 2 weeks)
+    {
+      id: "bookmark-006",
+      sessionId: "session-e12-01",
+      eventId: "event-012",
+      userId: IDS.participant1,
+    },
+    {
+      id: "bookmark-007",
+      sessionId: "session-e12-02",
+      eventId: "event-012",
+      userId: IDS.participant2,
+    },
+    {
+      id: "bookmark-008",
+      sessionId: "session-e12-03",
+      eventId: "event-012",
+      userId: EXPANSION_PARTICIPANTS[16].uid,
+    },
+    // event-017 AfricaTech Online (hybrid enterprise)
+    {
+      id: "bookmark-009",
+      sessionId: "session-e17-01",
+      eventId: "event-017",
+      userId: IDS.participant1,
+    },
+    {
+      id: "bookmark-010",
+      sessionId: "session-e17-01",
+      eventId: "event-017",
+      userId: IDS.participant2,
+    },
+    {
+      id: "bookmark-011",
+      sessionId: "session-e17-02",
+      eventId: "event-017",
+      userId: IDS.organizer,
+    },
+    {
+      id: "bookmark-012",
+      sessionId: "session-e17-03",
+      eventId: "event-017",
+      userId: EXPANSION_PARTICIPANTS[2].uid,
+    },
+    {
+      id: "bookmark-013",
+      sessionId: "session-e17-04",
+      eventId: "event-017",
+      userId: EXPANSION_PARTICIPANTS[12].uid,
+    },
+    // Legacy conference — IDS.session1 (keynote)
+    {
+      id: "bookmark-014",
+      sessionId: IDS.session1,
+      eventId: IDS.conference,
+      userId: IDS.participant1,
+    },
+    {
+      id: "bookmark-015",
+      sessionId: IDS.session1,
+      eventId: IDS.conference,
+      userId: IDS.participant2,
+    },
+  ];
+
+  await Promise.all(
+    bookmarks.map((b) =>
+      db
+        .collection("sessionBookmarks")
+        .doc(b.id)
+        .set({ ...b, createdAt: yesterday }),
+    ),
+  );
+  return bookmarks.length;
 }
 
 // ─── Orchestrator ─────────────────────────────────────────────────────────
@@ -1237,6 +2166,8 @@ export type ActivityCounts = {
   registrations: number;
   badges: number;
   sessions: number;
+  sessionBookmarks: number;
+  checkins: number;
   speakers: number;
   sponsors: number;
   sponsorLeads: number;
@@ -1271,6 +2202,14 @@ export async function seedActivity(db: Firestore): Promise<ActivityCounts> {
     writePromoCodes(db),
     writeBadgeTemplates(db),
   ]);
+  // Session bookmarks must come after sessions are written so the
+  // `sessionId` foreign key is valid when the read-path resolves it.
+  const sessionBookmarks = await writeSessionBookmarks(db);
+  // Check-in forensic records reference registrations — wait for regs to
+  // land. They don't reference sessions, so order-wise they could also run
+  // in parallel with writeSessionBookmarks, but sequencing them keeps the
+  // logs readable.
+  const checkins = await writeCheckinRecords(db);
   // Ledger entries depend on `writePayments` having landed so the paymentId
   // they reference exists; payouts in turn flip ledger rows, so they follow.
   const balanceTransactions = await writeBalanceTransactions(db);
@@ -1279,12 +2218,17 @@ export async function seedActivity(db: Firestore): Promise<ActivityCounts> {
     registrations,
     badges,
     sessions,
+    sessionBookmarks,
+    checkins,
     speakers,
     sponsors,
     sponsorLeads,
     payments,
     receipts,
-    balanceTransactions: balanceTransactions + 1, // +1 for the payout ledger entry
+    // +1 payout-001 ledger entry + 1 payout-002 ledger entry are written
+    // inside writePayouts but not counted by writeBalanceTransactions's
+    // return value. Sum them here for an accurate log line.
+    balanceTransactions: balanceTransactions + 2,
     payouts,
     promoCodes,
     badgeTemplates,

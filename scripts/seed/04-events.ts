@@ -1362,11 +1362,116 @@ const FAR_FUTURE_EVENTS: SeedEvent[] = [
   },
 ];
 
+// Draft + cancellation variety (Phase 3) — exercises states under-represented
+// in the rest of the portfolio: starter-org draft workflow and a cancelled
+// event on a non-pro tier with a visible cancellation reason in description.
+const DRAFT_EVENTS: SeedEvent[] = [
+  // event-021 — starter tier draft. Gives the starter org (Thiès Tech
+  // Collective) a draft alongside its 4 published events so the /events
+  // "draft" filter returns something on that org.
+  {
+    id: "event-021",
+    organizationId: IDS.starterOrgId,
+    title: "Hackathon Étudiants Thiès 2026 [BROUILLON]",
+    slug: "hackathon-etudiants-thies-2026",
+    description:
+      "Brouillon — éditeur : Oumar Ba. Hackathon 48 h pour les étudiants en informatique de l'Université de Thiès. Budget, sponsors et programme à confirmer.",
+    shortDescription: "Hackathon étudiant 48 h, en préparation.",
+    coverImageURL: null,
+    bannerImageURL: null,
+    category: "workshop",
+    tags: ["hackathon", "etudiants", "thies", "formation"],
+    format: "in_person",
+    status: "draft",
+    location: {
+      name: "Palais des Congrès de Thiès",
+      address: "Avenue Léopold Sédar Senghor, Thiès",
+      city: "Thiès",
+      country: "SN",
+    },
+    startDate: inThreeMonths,
+    endDate: inThreeMonths,
+    timezone: "Africa/Dakar",
+    ticketTypes: [],
+    accessZones: [],
+    maxAttendees: 80,
+    registeredCount: 0,
+    checkedInCount: 0,
+    isPublic: false,
+    isFeatured: false,
+    venueId: "venue-008",
+    venueName: "Palais des Congrès de Thiès",
+    requiresApproval: true,
+    templateId: null,
+    createdBy: IDS.starterOrganizer,
+    updatedBy: IDS.starterOrganizer,
+    createdAt: yesterday,
+    updatedAt: yesterday,
+    publishedAt: null,
+  },
+  // event-022 — free tier cancelled event with a visible reason. The only
+  // cancelled event today (event-003) sits on the pro org — free-tier users
+  // never see the "cancelled" state on their own dashboard without this.
+  {
+    id: "event-022",
+    organizationId: IDS.freeOrgId,
+    title: "Meetup IA Dakar — Mars 2026 (annulé)",
+    slug: "meetup-ia-dakar-mars-2026",
+    description:
+      "Annulé — contretemps de dernière minute sur la salle. La prochaine édition est reprogrammée pour avril, le lien sera diffusé sur la liste de diffusion Startup Dakar.",
+    shortDescription: "Meetup IA Dakar — édition mars annulée.",
+    coverImageURL: null,
+    bannerImageURL: null,
+    category: "networking",
+    tags: ["ia", "meetup", "dakar", "annule"],
+    format: "in_person",
+    status: "cancelled",
+    location: {
+      name: "Jokkolabs Dakar",
+      address: "Sicap Liberté 6, Villa 7691",
+      city: "Dakar",
+      country: "SN",
+    },
+    startDate: twoWeeksAgo,
+    endDate: twoWeeksAgo,
+    timezone: "Africa/Dakar",
+    ticketTypes: [
+      {
+        id: "ticket-free-022",
+        name: "Entrée libre",
+        description: "Gratuit",
+        price: 0,
+        currency: "XOF",
+        totalQuantity: 60,
+        soldCount: 34,
+        accessZoneIds: [],
+        isVisible: false,
+      },
+    ],
+    accessZones: [],
+    maxAttendees: 60,
+    registeredCount: 34,
+    checkedInCount: 0,
+    isPublic: true,
+    isFeatured: false,
+    venueId: IDS.venue3,
+    venueName: "Jokkolabs Dakar",
+    requiresApproval: false,
+    templateId: null,
+    createdBy: IDS.freeOrganizer,
+    updatedBy: IDS.freeOrganizer,
+    createdAt: oneMonthAgo,
+    updatedAt: oneWeekAgo,
+    publishedAt: oneMonthAgo,
+  },
+];
+
 const EXPANSION_EVENTS: SeedEvent[] = [
   ...PAST_EVENTS,
   ...LIVE_EVENTS,
   ...NEAR_TERM_EVENTS,
   ...FAR_FUTURE_EVENTS,
+  ...DRAFT_EVENTS,
 ];
 
 // ─── Public surface consumed by 05-activity.ts and 06-social.ts ─────────
@@ -1386,22 +1491,25 @@ export type ExpansionEventDenorm = {
 };
 
 /**
- * Denormalised view of the 16 expansion events. Derived at module load so
- * the array stays in lockstep with `EXPANSION_EVENTS` above. Keeps only the
- * fields downstream modules actually consume — downstream doesn't need
- * `ticketTypes`, `coverImageURL`, venue wiring, etc.
+ * Denormalised view of the expansion events consumed by downstream activity /
+ * social modules. Derived at module load so the array stays in lockstep with
+ * `EXPANSION_EVENTS` above.
+ *
+ * Drafts and cancelled events are intentionally excluded from the fan-out —
+ * they shouldn't receive registrations, check-ins, feed posts, or audit
+ * rows. They exist in `EXPANSION_EVENTS` only for the events list itself.
  */
-export const EXPANSION_EVENT_DENORM: readonly ExpansionEventDenorm[] = EXPANSION_EVENTS.map(
-  (e) => ({
-    id: e.id,
-    title: e.title,
-    slug: e.slug,
-    startDate: e.startDate,
-    endDate: e.endDate,
-    organizationId: e.organizationId,
-    createdBy: e.createdBy,
-  }),
-);
+export const EXPANSION_EVENT_DENORM: readonly ExpansionEventDenorm[] = EXPANSION_EVENTS.filter(
+  (e) => e.status !== "draft" && e.status !== "cancelled",
+).map((e) => ({
+  id: e.id,
+  title: e.title,
+  slug: e.slug,
+  startDate: e.startDate,
+  endDate: e.endDate,
+  organizationId: e.organizationId,
+  createdBy: e.createdBy,
+}));
 
 /** Ticket-type lookup for the activity module's registration fan-out. */
 export function findTicketType(eventId: string, ticketTypeId: string): SeedTicketType | undefined {

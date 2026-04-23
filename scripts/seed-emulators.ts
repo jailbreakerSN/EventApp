@@ -55,6 +55,7 @@ import { seedVenues } from "./seed/03-venues";
 import { seedEvents } from "./seed/04-events";
 import { seedActivity } from "./seed/05-activity";
 import { seedSocial } from "./seed/06-social";
+import { seedInvites } from "./seed/07-invites";
 
 const app = initializeApp({ projectId: PROJECT_ID });
 const auth = getAuth(app);
@@ -204,7 +205,9 @@ async function seed() {
     const c = await seedActivity(db);
     console.log(
       `  ✓ activity seeded — ${c.registrations} registrations, ${c.badges} badges, ` +
-        `${c.sessions} sessions, ${c.speakers} speakers, ${c.sponsors} sponsors, ` +
+        `${c.sessions} sessions, ${c.sessionBookmarks} session bookmarks, ` +
+        `${c.checkins} check-in forensic records, ` +
+        `${c.speakers} speakers, ${c.sponsors} sponsors, ` +
         `${c.sponsorLeads} leads, ${c.payments} payments, ${c.receipts} receipts, ` +
         `${c.balanceTransactions} ledger entries, ${c.payouts} payouts, ` +
         `${c.promoCodes} promo codes, ${c.badgeTemplates} badge templates`,
@@ -222,6 +225,21 @@ async function seed() {
   // notifications, audit entries on expansion events) lands in PR D stage 2
   // as pure additions to the named arrays inside the module.
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 5b. INVITES (org membership onboarding — pending / accepted / expired)
+  // ═══════════════════════════════════════════════════════════════════════════
+  //
+  // The `invites` collection was never seeded before the Phase 1 seed refresh.
+  // See scripts/seed/07-invites.ts — 10 invites across the 5 orgs, covering
+  // all four lifecycle states and the three non-owner roles. Written here
+  // after activity so the organisation + user references resolve.
+
+  console.log("\n📨 Creating organisation invites...");
+  {
+    const n = await seedInvites(db);
+    console.log(`  ✓ ${n} invites seeded (pending / accepted / declined / expired)`);
+  }
+
   console.log("\n💬 Creating social + subscription fixtures...");
   {
     const s = await seedSocial(db);
@@ -231,6 +249,7 @@ async function seed() {
         `${s.notifications} notifications, ${s.notificationPreferences} prefs, ` +
         `${s.notificationSettings} admin settings overrides, ` +
         `${s.notificationSettingsHistory} settings-history entries, ` +
+        `${s.notificationDispatchLog} dispatch log entries, ` +
         `${s.broadcasts} broadcasts, ${s.checkinFeed} checkin feed, ` +
         `${s.auditLogs} audit logs, ${s.subscriptions} subscriptions, ` +
         `${s.emailSuppressions} email suppressions, ` +
