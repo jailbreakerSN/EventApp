@@ -153,6 +153,22 @@ const PROBES = [
   ],
   // /admin/events filter — covered by the maximal auditLogs + events indexes.
   ["admin/events status=published", "/v1/admin/events?status=published&page=1&limit=20"],
+
+  // ── Caller-controlled orderBy shapes ───────────────────────────────
+  // The admin venues page hits GET /v1/venues which runs
+  // venueRepository.findApproved with orderBy defaulted by
+  // VenueQuerySchema to "name" ASC. The static audit cannot resolve
+  // `orderBy: query.orderBy` (no literal fallback) so this endpoint
+  // is now checked at deploy-time. One probe per default case is
+  // enough — other orderBy values use indexes emitted by the same
+  // deploy's firestore.indexes.json and would fail the same way.
+  //
+  // Add a similar line whenever a new service introduces
+  // `orderBy: <var>.orderBy` — the audit warns at PR time, this probe
+  // catches it at deploy time.
+  ["public/venues default orderBy=name", "/v1/venues?page=1&limit=20"],
+  ["public/venues orderBy=createdAt desc", "/v1/venues?orderBy=createdAt&orderDir=desc&page=1&limit=20"],
+  ["public/venues orderBy=eventCount desc", "/v1/venues?orderBy=eventCount&orderDir=desc&page=1&limit=20"],
 ];
 
 // ── Run ────────────────────────────────────────────────────────────────────

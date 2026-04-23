@@ -887,6 +887,20 @@ jobs:
       contents: read
       issues: write # Required to file a failure issue
     steps:
+      # Every other job in this workflow checks out the repo; this job was
+      # missing it because the original "Probe endpoints" step was inline
+      # bash (no repo files). When the admin-probe step was added later
+      # (node scripts/smoke-probe-admin.mjs) the checkout was never
+      # back-filled, so the job failed with MODULE_NOT_FOUND on the
+      # script path on every run. Fix: check out the repo + install Node
+      # 20 at the top, exactly as the other deploy jobs do.
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
       - name: Probe endpoints
         id: probe
         env:

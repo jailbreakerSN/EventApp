@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import {
   useAdminOrganizations,
   useVerifyOrganization,
@@ -77,9 +78,18 @@ const PLAN_OPTIONS = [
 export default function AdminOrganizationsPage() {
   const tCommon = useTranslations("common");
   void tCommon;
+  // Hydrate the verified filter from the URL so the inbox deep-link
+  // `/admin/organizations?isVerified=false` (emitted by the
+  // "X organisation(s) non vérifiée(s)" signal in
+  // `admin.service.ts:getInboxSignals`) actually applies the filter.
+  // Accepts "true" / "false" strings; anything else falls back to the
+  // unfiltered "" empty state.
+  const searchParams = useSearchParams();
+  const rawVerified = searchParams?.get("isVerified");
+  const initialVerified = rawVerified === "true" || rawVerified === "false" ? rawVerified : "";
   const [search, setSearch] = useState("");
   const [planFilter, setPlanFilter] = useState("");
-  const [verifiedFilter, setVerifiedFilter] = useState("");
+  const [verifiedFilter, setVerifiedFilter] = useState(initialVerified);
   const [page, setPage] = useState(1);
   const limit = 20;
 
