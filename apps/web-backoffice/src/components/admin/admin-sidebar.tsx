@@ -104,7 +104,7 @@ const NAV: NavSection[] = [
   {
     label: "Settings",
     items: [
-      { href: "/admin/settings/team", label: "Équipe admin", icon: UserCog, comingSoon: true },
+      { href: "/admin/settings/team", label: "Équipe admin", icon: UserCog },
       {
         href: "/admin/settings/announcements",
         label: "Annonces",

@@ -120,6 +120,18 @@ export const SystemRoleSchema = z.enum([
   "staff", // QR scanner / access control
   "venue_manager", // venue host — manages venue profile & sees events
   "super_admin",
+  // ── Phase 4 (admin overhaul) — granular platform admin roles ──────────
+  // Introduced alongside `super_admin` with the same `platform:manage`
+  // permission so the existing route gates keep working. They exist
+  // today mainly as AUDIT signals (recorded in `actorRole`) so we can
+  // tag which admin did what without forcing a big-bang rewrite of
+  // every permission check. Future commits can progressively tighten
+  // per-route gates (e.g. `platform:finance` ← subscription:* only).
+  "platform:super_admin",
+  "platform:support",
+  "platform:finance",
+  "platform:ops",
+  "platform:security",
 ]);
 
 export type SystemRole = z.infer<typeof SystemRoleSchema>;
@@ -331,6 +343,18 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRole, readonly Permission[]>
   super_admin: [
     "platform:manage", // Implies ALL permissions
   ],
+
+  // ── Phase 4 — granular platform roles ─────────────────────────────────
+  // Each carries `platform:manage` today so existing `requirePermission
+  // ("platform:manage")` guards accept them. The `actorRole` stamp in
+  // audit logs makes it visible who did what. Tightening — moving
+  // specific routes to require e.g. `subscription:*` instead of
+  // `platform:manage` — is a follow-up commit tracked in the plan.
+  "platform:super_admin": ["platform:manage"],
+  "platform:support": ["platform:manage"],
+  "platform:finance": ["platform:manage"],
+  "platform:ops": ["platform:manage"],
+  "platform:security": ["platform:manage"],
 } as const;
 
 // ─── Resource-Scoped Role Assignment ──────────────────────────────────────────
