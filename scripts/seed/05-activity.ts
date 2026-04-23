@@ -1768,6 +1768,26 @@ async function writeBadgeTemplates(db: Firestore): Promise<number> {
 //
 // Doc ids are deterministic so re-seeding is idempotent; real runtime rows
 // use server-generated auto-ids.
+//
+// ╔══════════════════════════════════════════════════════════════════════╗
+// ║  INTENTIONAL SENTINEL FKs                                            ║
+// ║                                                                      ║
+// ║  Two `registrationId` values below DO NOT point to any seeded        ║
+// ║  registration and MUST NOT be resolved by downstream consumers:      ║
+// ║                                                                      ║
+// ║   • "unknown-reg-stub"  — used by checkin-record-006 (rejectCode =   ║
+// ║     invalid_qr). Models the real-world case where an HMAC mismatch   ║
+// ║     means the scanner literally never had a valid registrationId to  ║
+// ║     pin. The service records the forged payload as-is for forensics. ║
+// ║                                                                      ║
+// ║   • "reg-deleted-stub"  — used by checkin-record-007 (rejectCode =   ║
+// ║     not_found). Models a registration that was hard-deleted between  ║
+// ║     issue and scan. The forensic row outlives the registration doc.  ║
+// ║                                                                      ║
+// ║  Any read-side code that joins checkins → registrations MUST tolerate║
+// ║  these sentinels (handle the missing-doc case with a user-friendly   ║
+// ║  fallback, don't crash). Same for user joins on "unknown-user".      ║
+// ╚══════════════════════════════════════════════════════════════════════╝
 
 async function writeCheckinRecords(db: Firestore): Promise<number> {
   type Record = {
