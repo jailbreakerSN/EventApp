@@ -1,5 +1,24 @@
 {
   "common": {
+    "topbar": {
+      "menuOpen": "Open menu",
+      "menuClose": "Close menu",
+      "paletteAria": "Open command palette (Ctrl+K)",
+      "paletteTitle": "Command palette",
+      "paletteLabel": "Search…",
+      "shortcutsAria": "Keyboard shortcuts (?)",
+      "logoutAria": "Sign out",
+      "avatarAltNamed": "Profile photo of {name}",
+      "avatarAltGeneric": "Profile photo",
+      "notificationsError": "Unable to load notifications. Please try again later."
+    },
+    "roles": {
+      "super_admin": "Super Admin",
+      "organizer": "Organizer",
+      "co_organizer": "Co-organizer",
+      "staff": "Staff",
+      "participant": "Participant"
+    },
     "loading": "Loading...",
     "error": "An error occurred",
     "retry": "Retry",
@@ -248,7 +267,9 @@
       "loading": "Loading administration...",
       "skipToContent": "Skip to main content",
       "paletteHint": "Search · type, event, venue…",
+      "paletteAria": "Open command palette",
       "identityMenu": "Open user menu",
+      "identityMenuLabel": "Administration user menu",
       "viewAsOrganizer": "View as organizer",
       "signOut": "Sign out"
     },

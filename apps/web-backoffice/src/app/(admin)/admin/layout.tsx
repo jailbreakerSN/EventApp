@@ -172,7 +172,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 type="button"
                 onClick={() => setPaletteOpen(true)}
                 className="flex items-center gap-2 rounded-md border border-border bg-muted/30 px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                aria-label="Ouvrir la palette de commandes"
+                aria-label={t("paletteAria")}
               >
                 <svg
                   className="h-3.5 w-3.5"
@@ -221,7 +221,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 <div
                   id="admin-identity-menu"
                   role="menu"
-                  aria-label="Menu utilisateur administration"
+                  aria-label={t("identityMenuLabel")}
                   ref={menuRef}
                   className="absolute right-0 top-full z-50 mt-1 w-60 overflow-hidden rounded-md border border-border bg-background shadow-lg"
                 >

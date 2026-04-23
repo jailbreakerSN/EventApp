@@ -1,5 +1,24 @@
 {
   "common": {
+    "topbar": {
+      "menuOpen": "Ouvrir le menu",
+      "menuClose": "Fermer le menu",
+      "paletteAria": "Ouvrir la palette de commandes (Ctrl+K)",
+      "paletteTitle": "Palette de commandes",
+      "paletteLabel": "Rechercher…",
+      "shortcutsAria": "Raccourcis clavier (?)",
+      "logoutAria": "Déconnexion",
+      "avatarAltNamed": "Photo de profil de {name}",
+      "avatarAltGeneric": "Photo de profil",
+      "notificationsError": "Impossible de charger les notifications. Réessayez plus tard."
+    },
+    "roles": {
+      "super_admin": "Super Admin",
+      "organizer": "Organisateur",
+      "co_organizer": "Co-organisateur",
+      "staff": "Staff",
+      "participant": "Participant"
+    },
     "loading": "Chargement...",
     "error": "Une erreur est survenue",
     "retry": "Réessayer",
@@ -248,7 +267,9 @@
       "loading": "Chargement de l'administration...",
       "skipToContent": "Aller au contenu principal",
       "paletteHint": "Rechercher · saisir, event, lieu…",
+      "paletteAria": "Ouvrir la palette de commandes",
       "identityMenu": "Ouvrir le menu utilisateur",
+      "identityMenuLabel": "Menu utilisateur administration",
       "viewAsOrganizer": "Voir comme organisateur",
       "signOut": "Se déconnecter"
     },
