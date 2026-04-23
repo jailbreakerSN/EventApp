@@ -205,7 +205,8 @@ async function seed() {
     const c = await seedActivity(db);
     console.log(
       `  ✓ activity seeded — ${c.registrations} registrations, ${c.badges} badges, ` +
-        `${c.sessions} sessions, ${c.speakers} speakers, ${c.sponsors} sponsors, ` +
+        `${c.sessions} sessions, ${c.sessionBookmarks} session bookmarks, ` +
+        `${c.speakers} speakers, ${c.sponsors} sponsors, ` +
         `${c.sponsorLeads} leads, ${c.payments} payments, ${c.receipts} receipts, ` +
         `${c.balanceTransactions} ledger entries, ${c.payouts} payouts, ` +
         `${c.promoCodes} promo codes, ${c.badgeTemplates} badge templates`,

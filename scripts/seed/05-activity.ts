@@ -1115,7 +1115,9 @@ async function writePromoCodes(db: Firestore): Promise<number> {
       discountType: "percentage" as const,
       discountValue: 10,
       maxUses: null,
-      usedCount: 0,
+      // 5 participants have redeemed the 10% code on the Masterclass.
+      // `paymentRedemptions-001..005` on the finance dashboard carry this.
+      usedCount: 5,
       expiresAt: expiresInOneMonth,
       ticketTypeIds: [],
       isActive: true,
@@ -1147,7 +1149,8 @@ async function writePromoCodes(db: Firestore): Promise<number> {
       discountType: "percentage" as const,
       discountValue: 100,
       maxUses: 1,
-      usedCount: 0,
+      // Single-use code already redeemed; the UI should show "Épuisé".
+      usedCount: 1,
       expiresAt: expiresInOneMonth,
       ticketTypeIds: [],
       isActive: true,
@@ -1221,12 +1224,135 @@ async function writeBadgeTemplates(db: Firestore): Promise<number> {
   return templates.length;
 }
 
+// ─── Session bookmarks ────────────────────────────────────────────────────
+// Participants can bookmark individual sessions from the schedule page. The
+// collection was never seeded, so the "My agenda" list on web-participant
+// was permanently empty. Seed ~15 bookmarks across the three events that
+// carry the bulk of sessions (event-010 Fintech, event-012 offline AI, and
+// event-017 AfricaTech Online). Targets pin events a realistic participant
+// would care about — keynote + one deep-dive + the networking session.
+
+async function writeSessionBookmarks(db: Firestore): Promise<number> {
+  const bookmarks: Array<{
+    id: string;
+    sessionId: string;
+    eventId: string;
+    userId: string;
+  }> = [
+    // event-010 Fintech Ouest-Africaine (Thiès, in 10 days)
+    {
+      id: "bookmark-001",
+      sessionId: "session-e10-01",
+      eventId: "event-010",
+      userId: IDS.participant1,
+    },
+    {
+      id: "bookmark-002",
+      sessionId: "session-e10-02",
+      eventId: "event-010",
+      userId: IDS.participant1,
+    },
+    {
+      id: "bookmark-003",
+      sessionId: "session-e10-01",
+      eventId: "event-010",
+      userId: IDS.participant2,
+    },
+    {
+      id: "bookmark-004",
+      sessionId: "session-e10-03",
+      eventId: "event-010",
+      userId: EXPANSION_PARTICIPANTS[0].uid,
+    },
+    {
+      id: "bookmark-005",
+      sessionId: "session-e10-01",
+      eventId: "event-010",
+      userId: EXPANSION_PARTICIPANTS[13].uid,
+    },
+    // event-012 Offline AI Workshop (Saint-Louis, in 2 weeks)
+    {
+      id: "bookmark-006",
+      sessionId: "session-e12-01",
+      eventId: "event-012",
+      userId: IDS.participant1,
+    },
+    {
+      id: "bookmark-007",
+      sessionId: "session-e12-02",
+      eventId: "event-012",
+      userId: IDS.participant2,
+    },
+    {
+      id: "bookmark-008",
+      sessionId: "session-e12-03",
+      eventId: "event-012",
+      userId: EXPANSION_PARTICIPANTS[16].uid,
+    },
+    // event-017 AfricaTech Online (hybrid enterprise)
+    {
+      id: "bookmark-009",
+      sessionId: "session-e17-01",
+      eventId: "event-017",
+      userId: IDS.participant1,
+    },
+    {
+      id: "bookmark-010",
+      sessionId: "session-e17-01",
+      eventId: "event-017",
+      userId: IDS.participant2,
+    },
+    {
+      id: "bookmark-011",
+      sessionId: "session-e17-02",
+      eventId: "event-017",
+      userId: IDS.organizer,
+    },
+    {
+      id: "bookmark-012",
+      sessionId: "session-e17-03",
+      eventId: "event-017",
+      userId: EXPANSION_PARTICIPANTS[2].uid,
+    },
+    {
+      id: "bookmark-013",
+      sessionId: "session-e17-04",
+      eventId: "event-017",
+      userId: EXPANSION_PARTICIPANTS[12].uid,
+    },
+    // Legacy conference — IDS.session1 (keynote)
+    {
+      id: "bookmark-014",
+      sessionId: IDS.session1,
+      eventId: IDS.conference,
+      userId: IDS.participant1,
+    },
+    {
+      id: "bookmark-015",
+      sessionId: IDS.session1,
+      eventId: IDS.conference,
+      userId: IDS.participant2,
+    },
+  ];
+
+  await Promise.all(
+    bookmarks.map((b) =>
+      db
+        .collection("sessionBookmarks")
+        .doc(b.id)
+        .set({ ...b, createdAt: yesterday }),
+    ),
+  );
+  return bookmarks.length;
+}
+
 // ─── Orchestrator ─────────────────────────────────────────────────────────
 
 export type ActivityCounts = {
   registrations: number;
   badges: number;
   sessions: number;
+  sessionBookmarks: number;
   speakers: number;
   sponsors: number;
   sponsorLeads: number;
@@ -1261,6 +1387,9 @@ export async function seedActivity(db: Firestore): Promise<ActivityCounts> {
     writePromoCodes(db),
     writeBadgeTemplates(db),
   ]);
+  // Session bookmarks must come after sessions are written so the
+  // `sessionId` foreign key is valid when the read-path resolves it.
+  const sessionBookmarks = await writeSessionBookmarks(db);
   // Ledger entries depend on `writePayments` having landed so the paymentId
   // they reference exists; payouts in turn flip ledger rows, so they follow.
   const balanceTransactions = await writeBalanceTransactions(db);
@@ -1269,6 +1398,7 @@ export async function seedActivity(db: Firestore): Promise<ActivityCounts> {
     registrations,
     badges,
     sessions,
+    sessionBookmarks,
     speakers,
     sponsors,
     sponsorLeads,

@@ -48,6 +48,7 @@ import {
   SpeakerProfileSchema,
   SponsorProfileSchema,
   SponsorLeadSchema,
+  SessionBookmarkSchema,
   SubscriptionSchema,
   PlanSchema,
   NotificationSettingSchema,
@@ -239,7 +240,7 @@ const REGISTRY: Record<string, z.ZodTypeAny | null> = {
   notificationDispatchLog: null,
   alerts: null,
   rateLimitBuckets: null,
-  sessionBookmarks: null,
+  sessionBookmarks: SessionBookmarkSchema,
 };
 
 async function main(): Promise<void> {
