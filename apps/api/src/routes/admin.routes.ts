@@ -63,6 +63,41 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
     },
   );
 
+  // ── CSV export (Phase 5) ───────────────────────────────────────────────
+  // Streaming CSV dump of a resource list with the same filters the UI
+  // uses. Heavy responses are flushed row-by-row so a 50 000-row export
+  // doesn't blow the Cloud Run memory budget.
+  //
+  // Shape: GET /v1/admin/export/:resource.csv?<filters>
+  // Resources: users, organizations, events, audit-logs
+  //
+  // Filters are the same query schemas used by the list endpoints
+  // (AdminUserQuerySchema, AdminOrgQuerySchema, etc) so an admin can
+  // "save their current filtered view + export". Saved-view sharing
+  // works naturally via URL.
+  fastify.get(
+    "/export/:resource.csv",
+    {
+      preHandler: adminPreHandler,
+      schema: {
+        tags: ["Admin"],
+        summary: "Streaming CSV export of a filtered list",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const { resource } = request.params as { resource: string };
+      const query = (request.query ?? {}) as Record<string, string | undefined>;
+      reply.type("text/csv; charset=utf-8");
+      reply.header(
+        "Content-Disposition",
+        `attachment; filename="teranga-${resource}-${new Date().toISOString().slice(0, 10)}.csv"`,
+      );
+      const stream = adminService.exportCsv(request.user!, resource, query);
+      return reply.send(stream);
+    },
+  );
+
   // ── Inbox signals (Phase 2 — task-oriented admin landing) ──────────────
   // Returns the list of "things that need admin attention" — pending
   // moderation items, past-due billing, stale payments, expired invites.

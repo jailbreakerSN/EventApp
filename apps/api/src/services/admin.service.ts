@@ -24,6 +24,7 @@ import type {
 import type { PaginatedResult } from "@/repositories/base.repository";
 import { eventRepository } from "@/repositories/event.repository";
 import { computePlanAnalytics } from "./plan-analytics";
+import { Readable } from "node:stream";
 
 // ─── Admin Service ──────────────────────────────────────────────────────────
 // Platform-wide administration. Every method requires platform:manage permission.
@@ -55,6 +56,154 @@ class AdminService extends BaseService {
   async getStats(user: AuthUser): Promise<PlatformStats> {
     this.requirePermission(user, "platform:manage");
     return adminRepository.getPlatformStats();
+  }
+
+  // ── CSV export (Phase 5) ──────────────────────────────────────────────
+  // Streams a filtered list as CSV, one row at a time, so large exports
+  // don't blow the Cloud Run heap. The caller must pass `resource` in
+  // {users, organizations, events, audit-logs}. Filters are loose
+  // (string → string) because the route layer hasn't validated them
+  // against the Zod schemas yet — each export path does its own
+  // sanitization.
+  //
+  // CSV quoting rules (RFC 4180): any value containing `"`, `,`, `\n`,
+  // `\r` is wrapped in double-quotes, internal `"` doubled. Helper
+  // csvCell() centralises the escape.
+  exportCsv(
+    user: AuthUser,
+    resource: string,
+    filters: Record<string, string | undefined>,
+  ): Readable {
+    this.requirePermission(user, "platform:manage");
+
+    const csvCell = (v: unknown): string => {
+      if (v == null) return "";
+      const s = String(v);
+      return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    // PAGE_SIZE = 500 keeps each Firestore read small + caps max memory
+    // per chunk while still being efficient (max 100 reads for 50k rows).
+    const PAGE_SIZE = 500;
+
+    async function* rows(): AsyncGenerator<string> {
+      if (resource === "users") {
+        yield "uid,email,displayName,roles,organizationId,orgRole,isActive,createdAt\n";
+        let page = 1;
+        for (;;) {
+          const result = await adminRepository.listAllUsers({}, { page, limit: PAGE_SIZE });
+          if (result.data.length === 0) break;
+          for (const u of result.data) {
+            yield [
+              csvCell(u.uid),
+              csvCell(u.email),
+              csvCell(u.displayName),
+              csvCell((u.roles ?? []).join("|")),
+              csvCell(u.organizationId ?? ""),
+              csvCell(u.orgRole ?? ""),
+              csvCell(u.isActive),
+              csvCell(u.createdAt),
+            ].join(",") + "\n";
+          }
+          if (result.data.length < PAGE_SIZE) break;
+          page++;
+        }
+        return;
+      }
+
+      if (resource === "organizations") {
+        yield "id,name,slug,plan,city,country,isVerified,isActive,memberCount,createdAt\n";
+        let page = 1;
+        for (;;) {
+          const result = await adminRepository.listAllOrganizations({}, { page, limit: PAGE_SIZE });
+          if (result.data.length === 0) break;
+          for (const o of result.data) {
+            yield [
+              csvCell(o.id),
+              csvCell(o.name),
+              csvCell(o.slug),
+              csvCell(o.plan),
+              csvCell(o.city ?? ""),
+              csvCell(o.country),
+              csvCell(o.isVerified),
+              csvCell(o.isActive),
+              csvCell((o.memberIds ?? []).length),
+              csvCell(o.createdAt),
+            ].join(",") + "\n";
+          }
+          if (result.data.length < PAGE_SIZE) break;
+          page++;
+        }
+        return;
+      }
+
+      if (resource === "events") {
+        yield "id,title,slug,status,format,organizationId,startDate,endDate,registeredCount,createdAt\n";
+        const filterStatus = filters.status;
+        const filterOrg = filters.organizationId;
+        let page = 1;
+        for (;;) {
+          const result = await adminRepository.listAllEvents(
+            { status: filterStatus, organizationId: filterOrg },
+            { page, limit: PAGE_SIZE },
+          );
+          if (result.data.length === 0) break;
+          for (const e of result.data) {
+            yield [
+              csvCell(e.id),
+              csvCell(e.title),
+              csvCell(e.slug),
+              csvCell(e.status),
+              csvCell(e.format),
+              csvCell(e.organizationId),
+              csvCell(e.startDate),
+              csvCell(e.endDate),
+              csvCell((e as unknown as { registeredCount?: number }).registeredCount ?? 0),
+              csvCell(e.createdAt),
+            ].join(",") + "\n";
+          }
+          if (result.data.length < PAGE_SIZE) break;
+          page++;
+        }
+        return;
+      }
+
+      if (resource === "audit-logs") {
+        yield "timestamp,action,actorId,actorRole,resourceType,resourceId,organizationId\n";
+        let page = 1;
+        for (;;) {
+          const result = await adminRepository.listAuditLogs(
+            {
+              action: filters.action,
+              actorId: filters.actorId,
+              resourceType: filters.resourceType,
+              dateFrom: filters.dateFrom,
+              dateTo: filters.dateTo,
+            },
+            { page, limit: PAGE_SIZE },
+          );
+          if (result.data.length === 0) break;
+          for (const a of result.data) {
+            yield [
+              csvCell(a.timestamp),
+              csvCell(a.action),
+              csvCell(a.actorId),
+              csvCell((a as unknown as { actorRole?: string }).actorRole ?? ""),
+              csvCell(a.resourceType),
+              csvCell(a.resourceId),
+              csvCell(a.organizationId ?? ""),
+            ].join(",") + "\n";
+          }
+          if (result.data.length < PAGE_SIZE) break;
+          page++;
+        }
+        return;
+      }
+
+      // Unknown resource — emit a single-column CSV explaining the error.
+      yield `error\n"Unknown resource: ${resource}"\n`;
+    }
+
+    return Readable.from(rows(), { encoding: "utf8" });
   }
 
   // ── Admin inbox signals (Phase 2) ─────────────────────────────────────
