@@ -8,6 +8,10 @@ import { mapEventToEditorialCardProps } from "@/lib/editorial-card-props";
 import { intlLocale } from "@/lib/intl-locale";
 import { EditorialEventCard, formatCurrency, formatDate, SectionHeader } from "@teranga/shared-ui";
 import type { Event } from "@teranga/shared-types";
+// Phase D.5 — surface the Add-to-Home-Screen nudge at the primary landing
+// page. The banner self-gates (not a PWA yet, iOS/Android, >=3 visits,
+// cooldown), so mounting it unconditionally here is safe.
+import { AddToHomeScreenBanner } from "@/components/add-to-home-screen-banner";
 
 export default async function HomePage() {
   const [tHome, tCommon, tCategories, tEventsCard, locale] = await Promise.all([
@@ -175,6 +179,15 @@ export default async function HomePage() {
             </div>
           </div>
         </div>
+      </section>
+
+      {/* Phase D.5 — Add-to-Home-Screen nudge. Mounted between the hero and
+          the editorial sections so it reads as a contextual hint without
+          pushing the primary "Explorer" CTA down. The banner self-hides
+          for desktop, already-PWA users, and anyone under the visit /
+          cooldown gates in `useAddToHomeScreen`. */}
+      <section className="mx-auto max-w-7xl px-6 pt-8 lg:px-8">
+        <AddToHomeScreenBanner />
       </section>
 
       {/* ——— Featured editorial ——— */}

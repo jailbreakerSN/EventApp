@@ -1134,5 +1134,20 @@
       "verifyEmail": "Resend verification link",
       "dismiss": "Dismiss"
     }
+  },
+  "pwa": {
+    "addToHomeScreen": {
+      "bannerTitle": "Install Teranga on your home screen",
+      "bannerBody": "Get faster access to your events and unlock push notifications.",
+      "bannerCta": "Install",
+      "bannerDismiss": "Later",
+      "dialogTitle": "Add Teranga to your home screen",
+      "iosStep1": "Tap the Share button (square with an up arrow) in the Safari toolbar.",
+      "iosStep2": "Scroll and choose \"Add to Home Screen\".",
+      "iosStep3": "Tap \"Add\" in the top right corner.",
+      "androidInstructions": "Tap \"Install\" below to add Teranga to your home screen.",
+      "androidCta": "Install",
+      "closeDialog": "Close"
+    }
   }
 }

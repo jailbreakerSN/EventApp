@@ -1137,5 +1137,20 @@
       "verifyEmail": "Renvoyer le lien de vérification",
       "dismiss": "Fermer"
     }
+  },
+  "pwa": {
+    "addToHomeScreen": {
+      "bannerTitle": "Installez Teranga sur votre écran d'accueil",
+      "bannerBody": "Accédez plus vite à vos événements et activez les notifications push.",
+      "bannerCta": "Installer",
+      "bannerDismiss": "Plus tard",
+      "dialogTitle": "Ajouter Teranga à l'écran d'accueil",
+      "iosStep1": "Appuyez sur le bouton Partager (carré avec flèche) dans la barre de Safari.",
+      "iosStep2": "Faites défiler et choisissez « Sur l'écran d'accueil ».",
+      "iosStep3": "Appuyez sur « Ajouter » en haut à droite.",
+      "androidInstructions": "Appuyez sur « Installer » ci-dessous pour ajouter Teranga à votre écran d'accueil.",
+      "androidCta": "Installer",
+      "closeDialog": "Fermer"
+    }
   }
 }

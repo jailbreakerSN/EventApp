@@ -980,5 +980,20 @@
       "verifyEmail": "Yónneeti lien bi",
       "dismiss": "Tëj"
     }
+  },
+  "pwa": {
+    "addToHomeScreen": {
+      "bannerTitle": "Samp Teranga ci sa écran d'accueil",
+      "bannerBody": "Duggal gaaw ci say xew-xew te ubbi notifications yi.",
+      "bannerCta": "Samp",
+      "bannerDismiss": "Ba ba",
+      "dialogTitle": "Yokk Teranga ci écran d'accueil bi",
+      "iosStep1": "Teg buton Partage bi (kare ak fléche) ci barre Safari.",
+      "iosStep2": "Wër te tann « Sur l'écran d'accueil ».",
+      "iosStep3": "Teg « Ajouter » ca kaw di dexe.",
+      "androidInstructions": "Teg « Samp » ci suuf ngir yokk Teranga ci sa écran d'accueil.",
+      "androidCta": "Samp",
+      "closeDialog": "Tëj"
+    }
   }
 }
