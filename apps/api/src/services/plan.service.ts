@@ -3,6 +3,7 @@ import {
   type Plan,
   type CreatePlanDto,
   type UpdatePlanDto,
+  type EntitlementMap,
   type PreviewChangeResponse,
   type PreviewAffectedOrg,
   PLAN_LIMIT_UNLIMITED,
@@ -88,6 +89,13 @@ const VERSION_MATERIAL_KEYS: ReadonlySet<keyof UpdatePlanDto> = new Set([
   // it must mint a new version so annual subscribers keep the rate they
   // committed to — no silent mid-year price bumps on their renewal.
   "annualPriceXof",
+  // Phase 7+ item #2 — entitlements are more version-material than
+  // features / limits, not less: flipping `feature.paidTickets` via
+  // entitlements is exactly the same commercial change as flipping it
+  // via the legacy features map. Mint a new version so existing
+  // subscribers retain their committed capability set. Review
+  // blocker B4.
+  "entitlements",
 ]);
 
 function freshLineageId(): string {
@@ -279,6 +287,25 @@ export class PlanService extends BaseService {
       currency: existing.currency,
       limits: mergedLimits,
       features: mergedFeatures,
+      // Phase 7+ item #2 — carry entitlements into the new version.
+      // Resolve first, then conditionally SPREAD so the field is simply
+      // omitted when the effective value is "no entitlements" (legacy
+      // path). Firestore rejects explicit `undefined` values on
+      // `tx.set()`, so the omit-when-absent pattern is required. Review
+      // blocker B4.
+      //
+      // Semantics:
+      //   - versionPatch.entitlements populated → new version has it.
+      //   - versionPatch.entitlements === null → clear; omit on new doc.
+      //   - versionPatch.entitlements not in patch → inherit from
+      //     existing; omit when existing is null/undefined.
+      ...(() => {
+        const next: EntitlementMap | null | undefined =
+          "entitlements" in versionPatch
+            ? versionPatch.entitlements
+            : existing.entitlements;
+        return next ? { entitlements: next } : {};
+      })(),
       isSystem: existing.isSystem,
       isPublic: "isPublic" in patch ? (patch.isPublic ?? existing.isPublic) : existing.isPublic,
       isArchived: false,

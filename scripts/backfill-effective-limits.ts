@@ -32,7 +32,10 @@ import {
   type Organization,
   type Plan,
   type Subscription,
+  type EntitlementMap,
   PLAN_LIMIT_UNLIMITED,
+  LEGACY_FEATURE_ENTITLEMENT_KEYS,
+  LEGACY_QUOTA_ENTITLEMENT_KEYS,
 } from "@teranga/shared-types";
 
 const SEED_TARGET = process.env.SEED_TARGET ?? "emulator";
@@ -68,6 +71,10 @@ interface Resolved {
   limits: StoredLimits;
   features: Plan["features"];
   computedAt: string;
+  // Phase 7+ item #2 — denormalized entitlement map written alongside the
+  // legacy fields. Always populated (possibly as {}) so moving between
+  // unified plans and legacy plans doesn't leave stale keys.
+  entitlements: EntitlementMap;
 }
 
 function resolveFromPlan(
@@ -77,13 +84,47 @@ function resolveFromPlan(
 ): Resolved {
   const active = isOverrideActive(overrides, now);
 
-  // Limits: start from plan base, overlay overrides when active.
+  // Phase 7+ item #2 — merge order MUST match the production resolver
+  // in apps/api/src/services/effective-plan.ts. Order:
+  //   Step 1. Start from plan.features + plan.limits.
+  //   Step 2. If plan.entitlements is set, project it over the base.
+  //   Step 3. Apply legacy overrides (overrides.features/limits).
+  //   Step 4. Apply entitlement overrides — they win over legacy overrides
+  //           on the same key, by virtue of being applied last.
+  //
+  // Review blocker B3 closed: the previous order here was
+  //   base → legacy-overrides → plan.entitlements → override.entitlements
+  // which made plan entitlements clobber legacy overrides (exact opposite
+  // of the production resolver). Back-sync the merge so a backfill run
+  // never produces a denorm state that a live enforcement refresh
+  // would change.
+
+  // Step 1 — plan base
   const baseLimits = plan.limits;
   const limitsRuntime = {
     maxEvents: storedToRuntime(baseLimits.maxEvents),
     maxParticipantsPerEvent: storedToRuntime(baseLimits.maxParticipantsPerEvent),
     maxMembers: storedToRuntime(baseLimits.maxMembers),
   };
+  const features: Plan["features"] = { ...plan.features };
+
+  // Step 2 — plan entitlements project onto the legacy shape.
+  if (plan.entitlements) {
+    for (const [legacy, entKey] of Object.entries(LEGACY_FEATURE_ENTITLEMENT_KEYS)) {
+      const ent = plan.entitlements[entKey];
+      if (ent && ent.kind === "boolean") {
+        (features as Record<string, boolean>)[legacy] = ent.value;
+      }
+    }
+    for (const [legacy, entKey] of Object.entries(LEGACY_QUOTA_ENTITLEMENT_KEYS)) {
+      const ent = plan.entitlements[entKey];
+      if (ent && ent.kind === "quota") {
+        (limitsRuntime as Record<string, number>)[legacy] = storedToRuntime(ent.limit);
+      }
+    }
+  }
+
+  // Step 3 — legacy overrides.
   if (active && overrides?.limits) {
     if (overrides.limits.maxEvents !== undefined) {
       limitsRuntime.maxEvents = storedToRuntime(overrides.limits.maxEvents);
@@ -97,13 +138,36 @@ function resolveFromPlan(
       limitsRuntime.maxMembers = storedToRuntime(overrides.limits.maxMembers);
     }
   }
-
-  const features: Plan["features"] = { ...plan.features };
   if (active && overrides?.features) {
     for (const [k, v] of Object.entries(overrides.features)) {
       if (v !== undefined) {
         (features as Record<string, boolean>)[k] = v;
       }
+    }
+  }
+
+  // Step 4 — project legacy overrides into entitlement space so the
+  // merged map matches the legacy views (mirrors the production
+  // resolver's final sync). `SubscriptionOverrides.entitlements` is
+  // intentionally absent from this PR's schema (see plan.types.ts).
+  const mergedEntitlements: EntitlementMap = { ...(plan.entitlements ?? {}) };
+  if (active && overrides?.features) {
+    for (const [k, v] of Object.entries(overrides.features)) {
+      if (v === undefined) continue;
+      const entKey = (LEGACY_FEATURE_ENTITLEMENT_KEYS as Record<string, string>)[k];
+      if (entKey) mergedEntitlements[entKey] = { kind: "boolean", value: v };
+    }
+  }
+  if (active && overrides?.limits) {
+    const limitKeyMap: Record<string, string> = {
+      maxEvents: LEGACY_QUOTA_ENTITLEMENT_KEYS.maxEvents,
+      maxParticipantsPerEvent: LEGACY_QUOTA_ENTITLEMENT_KEYS.maxParticipantsPerEvent,
+      maxMembers: LEGACY_QUOTA_ENTITLEMENT_KEYS.maxMembers,
+    };
+    for (const [k, v] of Object.entries(overrides.limits)) {
+      if (v === undefined) continue;
+      const entKey = limitKeyMap[k];
+      if (entKey) mergedEntitlements[entKey] = { kind: "quota", limit: v, period: "cycle" };
     }
   }
 
@@ -117,6 +181,7 @@ function resolveFromPlan(
     },
     features,
     computedAt: now.toISOString(),
+    entitlements: mergedEntitlements,
   };
 }
 
@@ -171,6 +236,10 @@ export async function backfillEffectiveLimits(db: Firestore): Promise<{
       effectiveFeatures: resolved.features,
       effectivePlanKey: resolved.planKey,
       effectiveComputedAt: resolved.computedAt,
+      // Phase 7+ item #2 — always write the entitlement map (empty when
+      // the plan has none) so a later reassignment from unified → legacy
+      // can't leave stale keys behind.
+      effectiveEntitlements: resolved.entitlements,
       updatedAt: now.toISOString(),
     });
     updated++;

@@ -6,8 +6,10 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import {
   CreatePlanSchema,
+  EntitlementMapSchema,
   PLAN_LIMIT_UNLIMITED,
   type CreatePlanDto,
+  type EntitlementMap,
   type Plan,
   type PlanFeatures,
   type PreviewChangeResponse,
@@ -152,6 +154,78 @@ export function PlanForm({ mode, plan }: PlanFormProps) {
     reset(defaultValues);
   }, [defaultValues, reset]);
 
+  // ── Phase 7+ item #2 — entitlements editor (MVP) ───────────────────────
+  // Entitlements is a free-form `Record<string, Entitlement>` blob that
+  // doesn't fit cleanly into react-hook-form's per-field registration
+  // model. We keep it out of RHF, hold the JSON text as local state,
+  // validate against EntitlementMapSchema on every keystroke, and track
+  // a `dirty` flag so the server only sees the field when the admin
+  // actually edited it (review finding M1: without the dirty flag, an
+  // unrelated "Save" on a plan that gained entitlements between mount
+  // and submit would silently wipe them by PATCH-ing `entitlements: null`).
+  const serializePlanEntitlements = (p: Plan | undefined): string =>
+    p?.entitlements && Object.keys(p.entitlements).length > 0
+      ? JSON.stringify(p.entitlements, null, 2)
+      : "";
+  const [entitlementsJson, setEntitlementsJson] = useState<string>(
+    serializePlanEntitlements(plan),
+  );
+  const [entitlementsDirty, setEntitlementsDirty] = useState<boolean>(false);
+  const [entitlementsError, setEntitlementsError] = useState<string | null>(null);
+
+  // Re-seed when the plan prop changes (e.g. after a router navigation or
+  // a React Query refetch). Mirrors the `reset(defaultValues)` pattern the
+  // RHF fields use.
+  useEffect(() => {
+    setEntitlementsJson(serializePlanEntitlements(plan));
+    setEntitlementsDirty(false);
+  }, [plan]);
+  const parsedEntitlements = useMemo<{
+    value: EntitlementMap | undefined;
+    hasKeys: boolean;
+  }>(() => {
+    const trimmed = entitlementsJson.trim();
+    if (!trimmed) {
+      return { value: undefined, hasKeys: false };
+    }
+    try {
+      const parsed = JSON.parse(trimmed);
+      const result = EntitlementMapSchema.safeParse(parsed);
+      if (!result.success) {
+        return { value: undefined, hasKeys: true };
+      }
+      return { value: result.data, hasKeys: Object.keys(result.data).length > 0 };
+    } catch {
+      return { value: undefined, hasKeys: true };
+    }
+  }, [entitlementsJson]);
+
+  useEffect(() => {
+    const trimmed = entitlementsJson.trim();
+    if (!trimmed) {
+      setEntitlementsError(null);
+      return;
+    }
+    try {
+      const parsed = JSON.parse(trimmed);
+      const result = EntitlementMapSchema.safeParse(parsed);
+      if (!result.success) {
+        const first = result.error.errors[0];
+        setEntitlementsError(
+          first ? `${first.path.join(".")}: ${first.message}` : "JSON invalide",
+        );
+      } else {
+        setEntitlementsError(null);
+      }
+    } catch (err) {
+      setEntitlementsError(
+        `JSON malformé : ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }, [entitlementsJson]);
+
+  const entitlementsOverrideActive = parsedEntitlements.hasKeys && parsedEntitlements.value;
+
   // ── Phase 7+ item #6 — dry-run / impact preview ────────────────────────
   // Whenever the form becomes dirty on an existing plan, debounce a call
   // to the preview endpoint so the impact banner reflects the CURRENT
@@ -222,6 +296,14 @@ export function PlanForm({ mode, plan }: PlanFormProps) {
   ]);
 
   const onSubmit = async (data: PlanFormValues) => {
+    // Phase 7+ item #2 — block submit if the entitlements JSON is
+    // present but malformed. Empty textarea = undefined (legacy path,
+    // allowed).
+    if (entitlementsJson.trim() && entitlementsError) {
+      toast.error("Le JSON des entitlements est invalide");
+      return;
+    }
+
     try {
       // Normalize description: empty strings → null so the server doesn't get
       // a Zod min(1) violation on both fr/en.
@@ -244,12 +326,31 @@ export function PlanForm({ mode, plan }: PlanFormProps) {
           description,
           priceXof: normalizedPriceXof,
           annualPriceXof: normalizedAnnualPriceXof,
+          // Phase 7+ item #2 — optional on CreatePlanSchema; omit when
+          // empty so a blank create stays on the legacy path.
+          ...(parsedEntitlements.value ? { entitlements: parsedEntitlements.value } : {}),
         });
         toast.success("Plan créé");
         router.push("/admin/plans");
       } else if (plan) {
         // UpdatePlanSchema is partial — still send the full shape, the server
         // accepts any subset.
+        //
+        // Phase 7+ item #2 — entitlements is nullable on UpdatePlanSchema:
+        //   - populated map  → replace with this map
+        //   - null           → clear the map (revert to legacy path)
+        //   - undefined      → don't touch the existing field
+        //
+        // Send `entitlements` ONLY when the admin actually edited the
+        // textarea (dirty flag). Review finding M1: without the dirty
+        // guard, a Save click on a plan that received entitlements
+        // between mount and submit — e.g. another admin edited them in
+        // parallel and a React Query refetch brought them in — would
+        // PATCH `entitlements: null` and silently clear them.
+        const entitlementsPatch: Partial<{ entitlements: EntitlementMap | null }> =
+          entitlementsDirty
+            ? { entitlements: parsedEntitlements.value ?? null }
+            : {};
         await updatePlan.mutateAsync({
           planId: plan.id,
           dto: {
@@ -260,6 +361,7 @@ export function PlanForm({ mode, plan }: PlanFormProps) {
             annualPriceXof: normalizedAnnualPriceXof,
             limits: data.limits,
             features: data.features,
+            ...entitlementsPatch,
             isPublic: data.isPublic,
             sortOrder: data.sortOrder,
             trialDays: data.trialDays ?? null,
@@ -611,6 +713,68 @@ export function PlanForm({ mode, plan }: PlanFormProps) {
               </li>
             ))}
           </ul>
+        </CardContent>
+      </Card>
+
+      {/* Entitlements (Phase 7+ item #2) — MVP JSON editor.
+          Proper per-kind UI is a follow-up; for now super-admins can
+          express any entitlement shape (boolean / quota / tiered) via
+          raw JSON. The Features + Limits cards above stay authoritative
+          for plans that don't use entitlements; when this field IS set,
+          the resolver projects these cards' values from the entitlement
+          map on the server, making the cards a read-only preview for
+          unified plans. */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Entitlements (avancé)</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-xs text-muted-foreground">
+            Modèle unifié qui remplace les cartes «&nbsp;Fonctionnalités&nbsp;» et
+            «&nbsp;Limites&nbsp;» ci-dessus. Les clés suivent la convention{" "}
+            <code className="font-mono">feature.*</code>,{" "}
+            <code className="font-mono">quota.*</code> ou{" "}
+            <code className="font-mono">tiered.*</code>. Laisser vide pour rester sur le
+            modèle classique.
+          </p>
+
+          {entitlementsOverrideActive && (
+            <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
+              <Info className="h-4 w-4 shrink-0 mt-0.5" aria-hidden="true" />
+              <div>
+                Ce plan utilise le modèle entitlements. Pour chaque clé présente
+                ci-dessous, la valeur appliquée est celle du JSON&nbsp;; les cartes
+                «&nbsp;Fonctionnalités&nbsp;» et «&nbsp;Limites&nbsp;» restent utilisées
+                comme valeurs par défaut pour les clés non couvertes.
+              </div>
+            </div>
+          )}
+
+          <FormField label="Map JSON" htmlFor="entitlements-json">
+            <Textarea
+              id="entitlements-json"
+              value={entitlementsJson}
+              onChange={(e) => {
+                setEntitlementsJson(e.target.value);
+                setEntitlementsDirty(true);
+              }}
+              rows={12}
+              placeholder={`{\n  "feature.qrScanning": { "kind": "boolean", "value": true },\n  "quota.events": { "kind": "quota", "limit": 10, "period": "cycle" }\n}`}
+              className="font-mono text-xs"
+              aria-invalid={entitlementsError != null}
+              aria-describedby={entitlementsError ? "entitlements-json-error" : undefined}
+            />
+          </FormField>
+
+          {entitlementsError && (
+            <p
+              id="entitlements-json-error"
+              className="flex items-start gap-2 text-xs text-destructive"
+            >
+              <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" aria-hidden="true" />
+              <span>{entitlementsError}</span>
+            </p>
+          )}
         </CardContent>
       </Card>
 

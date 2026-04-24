@@ -3057,6 +3057,21 @@ exports[`shared-types contract snapshots > OrganizationSchema shape is stable 1`
         "kind": "optional",
       },
     },
+    "effectiveEntitlements": {
+      "required": false,
+      "shape": {
+        "inner": {
+          "key": {
+            "kind": "string",
+          },
+          "kind": "record",
+          "value": {
+            "kind": "unknown",
+          },
+        },
+        "kind": "optional",
+      },
+    },
     "effectiveFeatures": {
       "required": false,
       "shape": {

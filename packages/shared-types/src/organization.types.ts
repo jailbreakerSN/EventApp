@@ -57,6 +57,25 @@ export const OrganizationSchema = z.object({
     .optional(),
   effectivePlanKey: z.string().optional(),
   effectiveComputedAt: z.string().datetime().optional(),
+  // ── Unified entitlement model (Phase 7+ item #2) ──────────────────────────
+  // Denormalized entitlement map for hot-path reads by the new
+  // `requireEntitlement` / `checkQuota` helpers. Populated alongside
+  // effectiveLimits / effectiveFeatures when the underlying plan uses the
+  // unified model; absent for plans on the legacy (features + limits) path.
+  //
+  // Intentionally typed as a loose `Record<string, unknown>` instead of
+  // `EntitlementMapSchema`: this is a DENORM field — values were already
+  // validated at write-time on `PlanSchema.entitlements`. Keeping the
+  // read-side shape loose here (a) avoids the contract snapshot paying
+  // the cost of the full discriminated-union serialization on every
+  // read-path, and (b) keeps this file free of plan.types dependencies.
+  // The write path (`toStoredSnapshot` → `effectiveEntitlements: stored.entitlements`)
+  // is typed as `EntitlementMap` and carries the full validation.
+  //
+  // Legacy enforcement reads `effectiveLimits` / `effectiveFeatures`; new
+  // enforcement reads this field when present and falls back to the legacy
+  // fields otherwise. See docs/delivery-plan/entitlement-model-design.md.
+  effectiveEntitlements: z.record(z.string(), z.unknown()).optional(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 });

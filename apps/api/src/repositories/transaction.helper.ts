@@ -35,6 +35,14 @@ export function applyEffectivePlan(tx: Transaction, orgId: string, effective: Ef
     effectiveFeatures: stored.features,
     effectivePlanKey: stored.planKey,
     effectiveComputedAt: stored.computedAt,
+    // Phase 7+ item #2 — always write the entitlement map (empty when
+    // the plan has none) so any event-listener path that writes through
+    // this helper keeps the denorm invariant. Fix for review blocker B1:
+    // without this, the effective-plan.listener would re-write
+    // effectiveLimits/Features after a subscription.* event without
+    // updating effectiveEntitlements, leaving the unified readers out
+    // of sync with the legacy ones.
+    effectiveEntitlements: stored.entitlements ?? {},
     updatedAt: new Date().toISOString(),
   });
 }

@@ -4,8 +4,11 @@ import {
   type PlanFeature,
   type PlanFeatures,
   type RoleAssignment,
+  type Entitlement,
   PLAN_LIMITS,
   PLAN_LIMIT_UNLIMITED,
+  LEGACY_FEATURE_ENTITLEMENT_KEYS,
+  LEGACY_QUOTA_ENTITLEMENT_KEYS,
   hasAnyPermission,
   hasPermission,
   isAdminSystemRole,
@@ -148,6 +151,158 @@ export abstract class BaseService {
       current,
       limit,
     };
+  }
+
+  /**
+   * Throw PlanLimitError if the organization does not hold the given
+   * entitlement key as a `{ kind: "boolean", value: true }` entry.
+   *
+   * Back-compat: if the org has no `effectiveEntitlements` field (legacy
+   * plan, pre-backfill org, or a plan that hasn't opted into the unified
+   * model yet), we synthesise a lookup by mapping the entitlement key back
+   * to its legacy counterpart and delegating to `requirePlanFeature`. The
+   * 14 existing call sites that still use `requirePlanFeature` are
+   * unaffected; new callers (SMS packs, API access gated by the unified
+   * model) use this helper directly.
+   *
+   * Example:
+   *   this.requireEntitlement(org, "feature.smsNotifications");
+   *   this.requireEntitlement(org, "quota.sms.monthly");  // time-bounded, etc.
+   *
+   * Throws `PlanLimitError` if the entitlement is missing or disabled,
+   * including when a `quota` entitlement has been exhausted (limit === 0).
+   */
+  protected requireEntitlement(org: Organization, key: string): void {
+    const ent = this.readStoredEntitlement(org, key);
+
+    // Path 1 — the unified field is present and covers this key.
+    if (ent !== undefined) {
+      if (this.isEntitlementActive(ent)) return;
+      throw new PlanLimitError(
+        `La fonctionnalité « ${key} » n'est pas disponible sur le plan ${org.effectivePlanKey ?? org.plan}`,
+        { feature: key, plan: org.effectivePlanKey ?? org.plan },
+      );
+    }
+
+    // Path 2 — legacy fallback. If the key maps to one of the 11 known
+    // boolean features, delegate to `requirePlanFeature` so the org doc's
+    // pre-entitlement denormalization still drives the decision.
+    const legacyFeature = this.resolveLegacyFeatureKey(key);
+    if (legacyFeature) {
+      this.requirePlanFeature(org, legacyFeature);
+      return;
+    }
+
+    // Path 3 — unknown key, no legacy mapping, no entitlement present.
+    // Deny-by-default: a feature we know nothing about MUST NOT be granted
+    // silently. Callers can detect this via the thrown error code.
+    throw new PlanLimitError(
+      `La fonctionnalité « ${key} » n'est pas disponible sur le plan ${org.effectivePlanKey ?? org.plan}`,
+      { feature: key, plan: org.effectivePlanKey ?? org.plan },
+    );
+  }
+
+  /**
+   * Check a quota without throwing. Reads
+   * `org.effectiveEntitlements[key]` if it's a `{ kind: "quota" }` entry;
+   * falls back to `checkPlanLimit` for the three pre-defined resources
+   * (`quota.events` / `quota.participantsPerEvent` / `quota.members`).
+   * For any other key with no entitlement present, returns `allowed:
+   * false` with a limit of 0 — callers that want "unknown = unlimited"
+   * semantics should declare an explicit `{ kind: "quota", limit: -1 }`
+   * entitlement on the plan.
+   *
+   * Returned shape mirrors `checkPlanLimit` for drop-in compatibility at
+   * call sites that want to migrate incrementally.
+   */
+  protected checkQuota(
+    org: Organization,
+    key: string,
+    current: number,
+  ): { allowed: boolean; current: number; limit: number } {
+    const ent = this.readStoredEntitlement(org, key);
+
+    // Path 1 — a quota entitlement is present.
+    if (ent?.kind === "quota") {
+      const limit = storedToRuntime(ent.limit);
+      return { allowed: !isFinite(limit) || current < limit, current, limit };
+    }
+
+    // Path 2 — entitlement present but wrong kind. The plan declares this
+    // key as a boolean (or tiered); callers asking for a quota are
+    // misconfigured. Surface as "denied" so the bug shows up loudly in UI
+    // rather than silently passing a free-for-all.
+    if (ent) {
+      return { allowed: false, current, limit: 0 };
+    }
+
+    // Path 3 — legacy fallback for the three pre-defined resources.
+    const legacyResource = this.resolveLegacyQuotaKey(key);
+    if (legacyResource) {
+      return this.checkPlanLimit(org, legacyResource, current);
+    }
+
+    // Path 4 — unknown key. Deny-by-default.
+    return { allowed: false, current, limit: 0 };
+  }
+
+  /**
+   * Narrowing read of a denormalized entitlement. `Organization.effectiveEntitlements`
+   * is typed as `Record<string, unknown>` at the schema boundary (see
+   * organization.types.ts — denorm fields stay loose for contract-
+   * snapshot scope). The value was validated at write-time via
+   * `EntitlementMapSchema` on `PlanSchema.entitlements`, so this guard
+   * is a light shape-check that trusts the write path while surfacing
+   * malformed data as `undefined` (treated as "absent" by callers).
+   *
+   * Returns `undefined` for: missing key, missing map, value that
+   * doesn't look like a tagged-union Entitlement. Callers then route
+   * through the legacy fallback — deny-by-default holds.
+   */
+  private readStoredEntitlement(org: Organization, key: string): Entitlement | undefined {
+    const raw = org.effectiveEntitlements?.[key];
+    if (!raw || typeof raw !== "object") return undefined;
+    const candidate = raw as { kind?: unknown };
+    if (
+      candidate.kind === "boolean" ||
+      candidate.kind === "quota" ||
+      candidate.kind === "tiered"
+    ) {
+      return raw as Entitlement;
+    }
+    return undefined;
+  }
+
+  private isEntitlementActive(ent: Entitlement): boolean {
+    if (ent.kind === "boolean") return ent.value;
+    if (ent.kind === "quota") {
+      const runtime = storedToRuntime(ent.limit);
+      return !isFinite(runtime) || runtime > 0;
+    }
+    // `tiered` kind — schema-reserved for metered billing; the resolver
+    // that reads tier bands + a per-tenant counter ships with the first
+    // real metered plan (docs/delivery-plan/plan-management-phase-7-plus.md
+    // §8 unlocks list). Until then, DENY: granting a tiered entitlement
+    // without consulting the band schedule would silently hand out
+    // unlimited access (review blocker B5). The `checkQuota` wrong-kind
+    // path already denies, so this keeps both helpers symmetric.
+    return false;
+  }
+
+  private resolveLegacyFeatureKey(key: string): PlanFeature | undefined {
+    for (const [legacy, entitlementKey] of Object.entries(LEGACY_FEATURE_ENTITLEMENT_KEYS)) {
+      if (entitlementKey === key) return legacy as PlanFeature;
+    }
+    return undefined;
+  }
+
+  private resolveLegacyQuotaKey(key: string): LimitResource | undefined {
+    if (key === LEGACY_QUOTA_ENTITLEMENT_KEYS.maxEvents) return "events";
+    if (key === LEGACY_QUOTA_ENTITLEMENT_KEYS.maxMembers) return "members";
+    if (key === LEGACY_QUOTA_ENTITLEMENT_KEYS.maxParticipantsPerEvent) {
+      return "participantsPerEvent";
+    }
+    return undefined;
   }
 
   /**
