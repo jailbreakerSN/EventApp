@@ -132,3 +132,60 @@ lapsed or the limiter stopped being called (both worth investigating).
   off.
 - Server-only collection: never exposed to clients (see
   `firestore.rules` → `match /rateLimitBuckets/{bucketId}`).
+
+---
+
+## `impersonationCodes.expiresAt` (Auth-code impersonation)
+
+**What it does.** Auto-expires `impersonationCodes` rows 60 s after issue
+(`issuedAt + 60_000 ms`). Every unconsumed row holds admin audit
+metadata (actor uid, target uid, IPs, UAs) that should NOT linger once
+its short-lived window is over; TTL makes the cleanup automatic.
+
+**Retention policy.** Fixed 60-second TTL enforced in code at write time
+(`ImpersonationCodeService.issue()` sets `expiresAt = new Date(now +
+60_000)`). Consumed codes ALSO expire on the same deadline — the single-
+use guarantee comes from the `consumedAt` field, not from the doc
+disappearing. TTL is purely a storage hygiene concern.
+
+The field is populated by `ImpersonationCodeService.issue()` —
+see `apps/api/src/services/impersonation-code.service.ts`.
+
+### Provisioning
+
+Run once per environment (staging + production):
+
+```bash
+gcloud firestore fields ttls update expiresAt \
+  --collection-group=impersonationCodes \
+  --enable-ttl \
+  --project=<FIREBASE_PROJECT_ID>
+```
+
+Verify:
+
+```bash
+gcloud firestore fields ttls list --project=<FIREBASE_PROJECT_ID>
+```
+
+Look for a row keyed `impersonationCodes.expiresAt` with
+`ttlConfig.state: ACTIVE`.
+
+### Monitoring
+
+Same metric — `firestore.googleapis.com/document/ttl_deletion_count`
+in Cloud Monitoring. Expected daily rate matches admin impersonation
+volume (≤ 20/hour/admin × number of super-admins). If deletion falls
+to zero but issuances continue, TTL policy has lapsed; fall back to
+a scheduled cleanup or alert on `impersonationCodes` size.
+
+### Caveats
+
+- **Single-use is enforced by `consumedAt`, not TTL.** A malicious
+  replay hits the CONFLICT (409) branch regardless of TTL state. TTL
+  only bounds storage.
+- **Field naming.** The service writes `expiresAt` as a native JS
+  `Date` (Admin SDK Timestamp) AND `expiresAtIso` as a string for audit
+  readability. TTL evaluates `expiresAt` — keep the Date there.
+- **Server-only collection**: never exposed to clients (see
+  `firestore.rules` → `match /impersonationCodes/{codeHash}`).

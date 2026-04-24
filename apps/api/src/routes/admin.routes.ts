@@ -470,26 +470,37 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
     },
   );
 
-  // Phase 4 — Super-admin impersonation.
-  // Returns a Firebase custom token + metadata. The client exchanges
-  // the token via signInWithCustomToken() on a fresh auth session,
-  // signing-out the caller first to avoid cross-session leaks. The
-  // admin-grade SaaS "Log in as user" pattern. Every call is audit-
-  // logged (user.impersonated) with the original actor uid stamped
-  // on the minted token's custom claims (`impersonatedBy`).
+  // Phase 4 / OAuth-style auth-code flow — super-admin impersonation.
+  //
+  // Returns an opaque, single-use, short-lived CODE (not a Firebase
+  // custom token). The admin's browser opens `acceptUrl` in a NEW
+  // tab (`window.open` with `noopener,noreferrer`); the target app's
+  // `/impersonation/accept` route then POSTs the code to
+  // `/v1/impersonation/exchange`, which mints the custom token
+  // server-side and returns it over HTTPS. The raw Firebase token
+  // therefore never appears in a URL, fragment, history entry, or
+  // client-side log.
+  //
+  // See packages/shared-types/src/impersonation.types.ts for the
+  // full security rationale (OAuth authorization-code pattern,
+  // industry precedent: AWS federation, Auth0 impersonation, Stripe
+  // "view as", Okta SSU).
   fastify.post(
     "/users/:userId/impersonate",
     {
       preHandler: [...adminPreHandler, validate({ params: ParamsUserId })],
       schema: {
         tags: ["Admin"],
-        summary: "Mint a custom Firebase token to log in as the target user",
+        summary: "Issue a short-lived auth code to start an impersonation session",
         security: [{ BearerAuth: [] }],
       },
     },
     async (request, reply) => {
       const { userId } = request.params as z.infer<typeof ParamsUserId>;
-      const data = await adminService.startImpersonation(request.user!, userId);
+      const data = await adminService.startImpersonation(request.user!, userId, {
+        ip: request.ip ?? null,
+        ua: request.headers["user-agent"] ?? null,
+      });
       return reply.send({ success: true, data });
     },
   );

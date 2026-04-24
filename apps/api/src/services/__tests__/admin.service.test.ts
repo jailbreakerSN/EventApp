@@ -27,6 +27,11 @@ const mockOrgDocUpdate = vi.fn();
 // Phase 4 — capture impersonation audit-log appends for assertions.
 export const mockAuditAdd = vi.fn().mockResolvedValue({ id: "audit-doc-fake" });
 
+// The impersonation auth-code flow writes to a new collection
+// (`impersonationCodes`). Stub the writer so assertions can capture
+// what landed on the doc without bringing up an emulator.
+export const mockImpersonationCodeSet = vi.fn().mockResolvedValue(undefined);
+
 vi.mock("@/config/firebase", () => ({
   db: {
     collection: vi.fn((name: string) => ({
@@ -36,6 +41,9 @@ vi.mock("@/config/firebase", () => ({
         }
         if (name === "organizations") {
           return { get: mockOrgDocGet, update: mockOrgDocUpdate, id };
+        }
+        if (name === "impersonationCodes") {
+          return { set: mockImpersonationCodeSet, id };
         }
         return { get: vi.fn(), update: vi.fn(), id };
       }),
@@ -75,6 +83,7 @@ vi.mock("@/config/firebase", () => ({
     SUBSCRIPTIONS: "subscriptions",
     INVITES: "invites",
     FEATURE_FLAGS: "featureFlags",
+    IMPERSONATION_CODES: "impersonationCodes",
   },
 }));
 
@@ -95,6 +104,14 @@ import { auth } from "@/config/firebase";
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // `clearAllMocks` only wipes call history. The per-test
+  // `mockResolvedValueOnce` queue lives on the fn until it's
+  // explicitly reset — so if one test queues two values but the
+  // service short-circuits after the first, the second leaks into
+  // the next test. mockReset() drops both call history AND the
+  // .*Once queue, then we reinstate any baseline returns this file
+  // depends on for un-queued reads.
+  mockUserDocGet.mockReset();
 });
 
 // ── Permission denial ────────────────────────────────────────────────────
@@ -765,7 +782,7 @@ describe("AdminService — super_admin can access all methods", () => {
 //    chain prevention).
 //  - missing target user surfaces a 404-shaped error.
 
-describe("AdminService.startImpersonation (Phase 4)", () => {
+describe("AdminService.startImpersonation (OAuth-style auth-code flow)", () => {
   const admin = buildSuperAdmin();
 
   const participantTarget = {
@@ -777,35 +794,65 @@ describe("AdminService.startImpersonation (Phase 4)", () => {
     orgRole: "member",
   };
 
-  function mockTargetDoc(data: unknown, exists = true) {
-    mockUserDocGet.mockResolvedValueOnce({ exists, data: () => data });
+  // The service under test now reads TWO user docs per issue — the
+  // target (to validate + stamp audit metadata) and the admin (to
+  // surface their displayName to the accept-banner). Queue both in
+  // order via mockUserDocGet to keep the fixtures readable.
+  function mockIssueDocs(
+    targetData: unknown,
+    targetExists = true,
+    actorDisplayName = "Admin Tester",
+  ) {
+    mockUserDocGet.mockResolvedValueOnce({ exists: targetExists, data: () => targetData });
+    mockUserDocGet.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({ displayName: actorDisplayName }),
+    });
   }
 
-  it("mints a custom token, writes audit synchronously, emits domain event", async () => {
-    mockTargetDoc(participantTarget);
+  it("issues an auth code, writes the issue audit row, emits domain event, returns acceptUrl", async () => {
+    mockIssueDocs(participantTarget);
 
-    const res = await adminService.startImpersonation(admin, participantTarget.uid);
+    const res = await adminService.startImpersonation(admin, participantTarget.uid, {
+      ip: "203.0.113.7",
+      ua: "Jest/Tests",
+    });
 
-    expect(res.customToken).toBe("mock-custom-token");
+    // Response carries the opaque code + absolute acceptUrl — NOT a
+    // Firebase custom token. The token is minted at exchange time,
+    // server-side, and travels back over HTTPS body only.
+    expect(res).not.toHaveProperty("customToken");
+    expect(res.code).toHaveLength(43); // 32 bytes, base64url-encoded
+    expect(res.acceptUrl).toMatch(/\/impersonation\/accept\?code=/);
+    // The code appears in the URL but never in a custom Firebase token here.
+    expect(res.acceptUrl).toContain(`code=${encodeURIComponent(res.code)}`);
     expect(res.targetUid).toBe(participantTarget.uid);
     expect(res.targetDisplayName).toBe(participantTarget.displayName);
+    expect(res.targetOrigin).toMatch(/^https?:\/\//);
     expect(res.expiresAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
 
-    expect(auth.createCustomToken).toHaveBeenCalledWith(
-      participantTarget.uid,
-      expect.objectContaining({
-        impersonatedBy: admin.uid,
-        roles: participantTarget.roles,
-      }),
-    );
+    // Crucially: no token signing at issue time. signBlob IAM paths
+    // (and any Firebase costs) shift to the exchange step.
+    expect(auth.createCustomToken).not.toHaveBeenCalled();
 
-    // Audit log must land BEFORE the token is returned.
+    // Audit log is written SYNCHRONOUSLY and tagged with the new
+    // `flow: "auth_code"` discriminator so the timeline distinguishes
+    // OAuth-style issues from legacy direct-token rows. IP + UA are
+    // stamped on the row itself (not just the ephemeral code doc) so
+    // SOC-2 investigators reading only auditLogs have the admin's
+    // session fingerprint without cross-referencing the 60s-TTL
+    // impersonationCodes collection.
     expect(mockAuditAdd).toHaveBeenCalledWith(
       expect.objectContaining({
         action: "user.impersonated",
         actorId: admin.uid,
         resourceType: "user",
         resourceId: participantTarget.uid,
+        details: expect.objectContaining({
+          flow: "auth_code",
+          issueIp: "203.0.113.7",
+          issueUa: "Jest/Tests",
+        }),
       }),
     );
 
@@ -833,7 +880,7 @@ describe("AdminService.startImpersonation (Phase 4)", () => {
   });
 
   it("refuses impersonating another super_admin", async () => {
-    mockTargetDoc({
+    mockIssueDocs({
       ...participantTarget,
       uid: "another-super",
       roles: ["super_admin"],
@@ -851,7 +898,7 @@ describe("AdminService.startImpersonation (Phase 4)", () => {
     // platform:super_admin are top-tier. The target guard must reject
     // both classes symmetrically so the audit trail always ends on the
     // highest-privilege admin.
-    mockTargetDoc({
+    mockIssueDocs({
       ...participantTarget,
       uid: "another-top-admin",
       roles: ["platform:super_admin"],
@@ -864,75 +911,9 @@ describe("AdminService.startImpersonation (Phase 4)", () => {
   });
 
   it("throws NotFoundError when the target user doc does not exist", async () => {
-    mockTargetDoc(undefined, false);
+    mockIssueDocs(undefined, false);
     await expect(adminService.startImpersonation(admin, "ghost-user")).rejects.toThrow();
     expect(auth.createCustomToken).not.toHaveBeenCalled();
-  });
-
-  it("strips null-valued organizationId / orgRole from the custom-token claims", async () => {
-    // Target profile has no org assignment (e.g. a participant fixture).
-    // Previously the service would pass `{ organizationId: null, orgRole: null }`
-    // to auth.createCustomToken; under Workload Identity the signing API
-    // rejects that shape and 500s. The fix omits null-valued keys.
-    const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
-    mockTargetDoc({
-      ...participantTarget,
-      organizationId: undefined,
-      orgRole: undefined,
-    });
-
-    await adminService.startImpersonation(admin, participantTarget.uid);
-
-    expect(auth.createCustomToken).toHaveBeenCalledWith(
-      participantTarget.uid,
-      expect.objectContaining({
-        impersonatedBy: admin.uid,
-        roles: participantTarget.roles,
-      }),
-    );
-    const claimsArg = vi.mocked(auth.createCustomToken).mock.calls[0]?.[1] as Record<
-      string,
-      unknown
-    >;
-    expect(claimsArg).not.toHaveProperty("organizationId");
-    expect(claimsArg).not.toHaveProperty("orgRole");
-
-    stderrSpy.mockRestore();
-  });
-
-  it("wraps Firebase createCustomToken failures as IMPERSONATION_SIGNING_UNAVAILABLE (503)", async () => {
-    // Mimic the Cloud Run IAM failure: auth.createCustomToken rejects with
-    // a Firebase error carrying `code: 'app/credential-implementation-error'`
-    // (what you get when iamcredentials.signBlob denies). The service must
-    // convert it to a typed AppError so the route returns 503 with a
-    // human-readable message instead of a raw 500.
-    const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
-    mockTargetDoc(participantTarget);
-    const firebaseErr = new Error("Permission denied on signBlob");
-    (firebaseErr as unknown as { code: string }).code = "app/credential-implementation-error";
-    vi.mocked(auth.createCustomToken).mockRejectedValueOnce(firebaseErr);
-
-    await expect(
-      adminService.startImpersonation(admin, participantTarget.uid),
-    ).rejects.toMatchObject({
-      code: "IMPERSONATION_SIGNING_UNAVAILABLE",
-      statusCode: 503,
-    });
-
-    // Structured stderr log captures the Firebase error code so ops can
-    // act on it without diffing the stack trace.
-    expect(stderrSpy).toHaveBeenCalledWith(
-      expect.stringContaining("impersonation.custom_token_failed"),
-    );
-    expect(stderrSpy).toHaveBeenCalledWith(
-      expect.stringContaining("app/credential-implementation-error"),
-    );
-
-    // No audit row is written when signing failed — the trail must not
-    // record a session that never existed.
-    expect(mockAuditAdd).not.toHaveBeenCalled();
-
-    stderrSpy.mockRestore();
   });
 
   it("accepts a platform:super_admin caller and stamps that role on the audit row", async () => {
@@ -940,7 +921,7 @@ describe("AdminService.startImpersonation (Phase 4)", () => {
       uid: "u-platform-super",
       roles: ["platform:super_admin"],
     });
-    mockTargetDoc(participantTarget);
+    mockIssueDocs(participantTarget);
 
     await adminService.startImpersonation(platformSuper, participantTarget.uid);
 

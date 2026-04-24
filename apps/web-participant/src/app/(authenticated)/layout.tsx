@@ -3,6 +3,7 @@ import { Header } from "@/components/layouts/header";
 import { Footer } from "@/components/layouts/footer";
 import { AuthGuard } from "@/components/auth-guard";
 import { EmailVerificationBanner } from "@/components/email-verification-banner";
+import { ImpersonationBanner } from "@/components/impersonation-banner";
 // Phase D.5 — post-install push nudge. The component itself gates on iOS +
 // PWA + one-shot marker so it only ever renders in a very narrow slice of
 // sessions (iOS Safari, running as standalone PWA, first launch).
@@ -19,6 +20,7 @@ export default async function AuthenticatedLayout({ children }: { children: Reac
       >
         {tNav("skipToContent")}
       </a>
+      <ImpersonationBanner />
       <Header />
       <EmailVerificationBanner />
       {/* Deferred, self-gating push nudge: only renders on iOS 16.4+ inside

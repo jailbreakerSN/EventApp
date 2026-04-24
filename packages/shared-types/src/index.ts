@@ -23,3 +23,4 @@ export * from "./plan.types";
 export * from "./feature-flag.types";
 export * from "./notification-catalog";
 export * from "./notification-preferences.types";
+export * from "./impersonation.types";

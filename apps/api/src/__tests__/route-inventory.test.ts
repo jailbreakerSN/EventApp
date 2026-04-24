@@ -222,6 +222,14 @@ describe("route inventory", () => {
       // 20-char Firestore notificationId, which is infeasible.
       "POST /v1/notifications/:notificationId/push-displayed",
       "POST /v1/notifications/:notificationId/push-clicked",
+      // OAuth-style impersonation exchange — the whole point of the
+      // auth-code flow is that the caller has no existing Firebase
+      // session on this origin (the admin session lives on the BACK-
+      // OFFICE origin; the exchange runs on the target app's origin).
+      // Security is carried by the opaque 32-byte random code: single-
+      // use, ≤ 60 s TTL, Origin-bound, per-IP rate-limited 30/min.
+      // Requiring a bearer token would be circular.
+      "POST /v1/impersonation/exchange",
     ]);
 
     it("every mutating route authenticates (except the documented webhook list)", () => {

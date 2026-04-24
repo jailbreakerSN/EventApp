@@ -1109,8 +1109,17 @@ export interface DomainEventMap {
   "subscription.approaching_limit": SubscriptionApproachingLimitEvent;
   // Admin overhaul Phase 4 — impersonation audit signal. Listeners can
   // react (security alerting, rate limiting) when a super-admin starts
-  // a session on behalf of another user.
+  // a session on behalf of another user. Under the auth-code flow this
+  // is emitted at CODE-ISSUE time (before any token is minted). The
+  // matching `user.impersonation_exchanged` fires when the target app
+  // actually consumes the code; the pair gives reviewers a full view
+  // of whether issued codes were ever redeemed.
   "user.impersonated": UserImpersonatedEvent;
+  // OAuth-style exchange signal — the target app called
+  // /v1/impersonation/exchange and a Firebase custom token was minted.
+  // Paired with user.impersonated (same actor uid, same target uid)
+  // via the `requestId` field in the audit log.
+  "user.impersonation_exchanged": UserImpersonationExchangedEvent;
   // Closure I — matching exit signal. Fired synchronously by
   // endImpersonation() after the impersonated user's refresh tokens
   // have been revoked. Parity with `user.impersonated` so security
@@ -1130,6 +1139,20 @@ export interface UserImpersonatedEvent {
 export interface UserImpersonationEndedEvent {
   actorUid: string;
   targetUid: string;
+}
+
+/**
+ * OAuth-style exchange — emitted by ImpersonationCodeService.exchange()
+ * AFTER the code has been atomically marked consumed AND the Firebase
+ * custom token successfully minted. Consumed by security-alerting
+ * listeners to distinguish an issued-but-never-redeemed code (possible
+ * failed handoff) from a completed session.
+ */
+export interface UserImpersonationExchangedEvent {
+  actorUid: string;
+  targetUid: string;
+  /** Session token's expiration — matches the ISO returned to the client. */
+  expiresAt: string;
 }
 
 export type DomainEventName = keyof DomainEventMap;

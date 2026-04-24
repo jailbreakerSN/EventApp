@@ -147,6 +147,10 @@ export const SEED_COVERAGE_WAIVER: ReadonlyMap<string, string> = new Map<
     "rateLimitBuckets",
     "Runtime-written rate-limit buckets — transient; populated by rateLimit() only when endpoints fire.",
   ],
+  [
+    "impersonationCodes",
+    "Transient auth-code flow for super-admin impersonation — 60 s TTL, server-only writes via ImpersonationCodeService. Seed fixtures would be stale within a minute and have no QA value; security properties are exercised via integration tests, not seed data.",
+  ],
 ]);
 
 // ─── COLLECTIONS constant parsing ──────────────────────────────────────────

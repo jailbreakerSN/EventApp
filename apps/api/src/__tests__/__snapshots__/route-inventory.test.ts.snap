@@ -129,6 +129,7 @@ GET /v1/events/sponsors/:sponsorId/leads auth perms=[sponsor:view_leads]
 POST /v1/events/sponsors/:sponsorId/leads auth emailVerified perms=[sponsor:collect_leads]
 GET /v1/events/sponsors/:sponsorId/leads/export auth perms=[sponsor:view_leads]
 POST /v1/events/sponsors/:sponsorId/upload-url auth emailVerified perms=[sponsor:manage_booth]
+POST /v1/impersonation/exchange none
 POST /v1/invites/accept auth emailVerified
 POST /v1/invites/decline auth emailVerified
 DELETE /v1/me/fcm-tokens auth

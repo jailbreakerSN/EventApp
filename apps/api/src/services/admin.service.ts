@@ -6,8 +6,9 @@ import { planRepository } from "@/repositories/plan.repository";
 import { db, auth, COLLECTIONS } from "@/config/firebase";
 import { eventBus } from "@/events/event-bus";
 import { getRequestId } from "@/context/request-context";
-import { AppError, NotFoundError, ForbiddenError } from "@/errors/app-error";
+import { NotFoundError, ForbiddenError } from "@/errors/app-error";
 import { rateLimit } from "./rate-limit.service";
+import { impersonationCodeService } from "./impersonation-code.service";
 import type {
   PlatformStats,
   PlanAnalytics,
@@ -697,12 +698,28 @@ class AdminService extends BaseService {
   async startImpersonation(
     user: AuthUser,
     targetUid: string,
+    context: {
+      /** Raw caller IP as observed by Fastify (`request.ip`). */
+      ip?: string | null;
+      /** Caller User-Agent. */
+      ua?: string | null;
+    } = {},
   ): Promise<{
-    customToken: string;
+    /**
+     * Opaque, single-use, 60-second TTL authorization code. The caller's
+     * browser must open `acceptUrl` (new tab) and the target app's
+     * `/impersonation/accept` route will exchange this code for a
+     * Firebase custom token via `/v1/impersonation/exchange`. The raw
+     * custom token never travels through URLs, fragments, or history.
+     */
+    code: string;
+    acceptUrl: string;
+    targetOrigin: string;
+    expiresAt: string;
     targetUid: string;
     targetDisplayName: string | null;
     targetEmail: string | null;
-    expiresAt: string;
+    targetRoles: string[];
   }> {
     this.requirePermission(user, "platform:manage");
     // Closure I — accept both legacy `super_admin` and the granular
@@ -719,7 +736,9 @@ class AdminService extends BaseService {
     // Phase 4 rate limit — bound impersonation usage per admin so a
     // compromised super-admin session can't be used to probe 1000
     // accounts in a row. 20 successful sessions per rolling hour is
-    // generous for legitimate customer-success workflows.
+    // generous for legitimate customer-success workflows. Applies at
+    // the ISSUE step — a code that is issued but never consumed still
+    // counts against the quota (defence against recon-through-issue).
     const rl = await rateLimit({
       scope: "admin.impersonate",
       identifier: user.uid,
@@ -749,69 +768,44 @@ class AdminService extends BaseService {
       throw new ForbiddenError("Cannot impersonate another super_admin.");
     }
 
-    const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
-
-    // Build the developer-claims payload, stripping null-valued fields.
-    // Firebase Admin signs `createCustomToken` either locally (with a
-    // loaded private key) or remotely via the `iamcredentials.signBlob`
-    // API when running under Workload Identity (Cloud Run default
-    // Compute SA, no key file). In the Cloud Run path the signing API
-    // has been observed to reject payloads that carry explicit `null`
-    // values on custom claim keys — the simpler fix is to omit the
-    // key entirely when there is nothing to stamp. Omitted keys read
-    // back as `undefined` in the downstream JWT, which is exactly what
-    // callers already handle (see `request.user.organizationId`
-    // extraction in `auth.middleware.ts`).
-    const claims: Record<string, unknown> = {
-      impersonatedBy: user.uid,
-      impersonationExpiresAt: expiresAt,
-      roles: targetProfile.roles ?? [],
-    };
-    if (targetProfile.organizationId) {
-      claims.organizationId = targetProfile.organizationId;
-    }
-    if (targetProfile.orgRole) {
-      claims.orgRole = targetProfile.orgRole;
-    }
-
-    let customToken: string;
+    // Look up the admin's display name so the target app's banner can
+    // render "Impersonation par <admin>" without a second API round-trip.
+    // Best-effort — a missing doc is stamped as null rather than
+    // aborting the issue (the admin's session is live, so their profile
+    // must exist, but we don't want to fail closed on a transient read).
+    let actorDisplayName: string | null = null;
     try {
-      customToken = await auth.createCustomToken(targetUid, claims);
-    } catch (err) {
-      // `createCustomToken` typically fails for one reason on Cloud Run:
-      // the service account running the container lacks
-      // `roles/iam.serviceAccountTokenCreator` on ITSELF, so the
-      // `iamcredentials.signBlob` call returns PERMISSION_DENIED.
-      // Surface a typed AppError (503 vs raw 500) with the Firebase
-      // error code so the ops team can act without diffing stack traces.
-      const message = err instanceof Error ? err.message : String(err);
-      const code =
-        (err as { code?: string; errorInfo?: { code?: string } })?.code ??
-        (err as { errorInfo?: { code?: string } })?.errorInfo?.code ??
-        "unknown";
-      process.stderr.write(
-        JSON.stringify({
-          level: "error",
-          event: "impersonation.custom_token_failed",
-          targetUid,
-          actorId: user.uid,
-          firebaseCode: code,
-          message,
-          hint: "If code contains 'iamcredentials' or 'signBlob', grant roles/iam.serviceAccountTokenCreator on the Cloud Run runtime SA to itself. See deploy-staging.yml lines 148-157.",
-        }) + "\n",
-      );
-      throw new AppError({
-        code: "IMPERSONATION_SIGNING_UNAVAILABLE",
-        message:
-          "Service d'authentification indisponible : la génération du token d'impersonation a échoué. L'équipe technique a été notifiée dans les logs applicatifs.",
-        statusCode: 503,
-        details: { firebaseCode: code },
-      });
+      const actorDoc = await db.collection(COLLECTIONS.USERS).doc(user.uid).get();
+      if (actorDoc.exists) {
+        actorDisplayName = (actorDoc.data() as UserProfile).displayName ?? null;
+      }
+    } catch {
+      /* swallow — banner will fall back to "un·e super-administrateur·rice" */
     }
 
-    // Audit log — synchronous so the trail is visible before the UI
-    // even gets the token. If the audit write fails, the impersonation
-    // doesn't proceed.
+    // Delegate to the code service. It:
+    //   1. Generates the 32-byte random code + SHA-256 hash.
+    //   2. Persists the hash with the target uid, canonical target
+    //      origin, audit fingerprint, and 60 s expiresAt.
+    //   3. Returns the raw code + the accept URL the admin's browser
+    //      should open (new tab).
+    const issued = await impersonationCodeService.issue({
+      admin: user,
+      actorDisplayName,
+      actorRole,
+      target: { ...targetProfile, uid: targetUid },
+      issueIp: context.ip ?? null,
+      issueUa: context.ua ?? null,
+    });
+
+    // Audit log for the ISSUE step. Pair (requestId, actorId, targetUid)
+    // with the matching `user.impersonation_exchanged` row — a code
+    // that issues but never exchanges leaves only this row, which is
+    // exactly the signal security alerting wants (possible failed
+    // handoff or aborted admin action). Stamp the admin's IP + UA on
+    // the row itself (not just the ephemeral code doc, which TTL-
+    // purges in 60 s) so SOC-2 investigators reading only auditLogs
+    // can reconstruct the full session fingerprint.
     await db.collection(COLLECTIONS.AUDIT_LOGS).add({
       action: "user.impersonated",
       actorId: user.uid,
@@ -822,26 +816,31 @@ class AdminService extends BaseService {
       details: {
         targetDisplayName: targetProfile.displayName ?? null,
         targetEmail: targetProfile.email ?? null,
-        expiresAt,
+        targetOrigin: issued.targetOrigin,
+        codeExpiresAt: issued.expiresAt,
+        flow: "auth_code",
+        issueIp: context.ip ?? null,
+        issueUa: context.ua ?? null,
       },
       requestId: getRequestId(),
       timestamp: new Date().toISOString(),
     });
 
-    // Emit a domain event so downstream listeners (e.g. security alerts)
-    // can react to impersonation usage in near-real-time.
     eventBus.emit("user.impersonated", {
       actorUid: user.uid,
       targetUid,
-      expiresAt,
+      expiresAt: issued.expiresAt,
     });
 
     return {
-      customToken,
+      code: issued.code,
+      acceptUrl: issued.acceptUrl,
+      targetOrigin: issued.targetOrigin,
+      expiresAt: issued.expiresAt,
       targetUid,
       targetDisplayName: targetProfile.displayName ?? null,
       targetEmail: targetProfile.email ?? null,
-      expiresAt,
+      targetRoles,
     };
   }
 

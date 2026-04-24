@@ -626,6 +626,20 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // ─── Impersonation Codes (auth-code flow) ──────────────────────────────
+    // Short-lived, single-use codes issued by /v1/admin/users/:uid/impersonate
+    // and consumed by /v1/impersonation/exchange. Doc id = SHA-256 hex of
+    // the raw code (never the raw code itself). Body carries: adminUid,
+    // targetUid, targetOrigin, issuedAt, expiresAt, consumedAt, issueIp,
+    // issueUa, consumeIp, consumeUa. TTL on `expiresAt` auto-purges expired
+    // rows. ALL reads and writes go through the API (Admin SDK bypasses
+    // rules). Client-SDK access is denied — leaking this collection would
+    // expose timing metadata about admin sessions. Precedent:
+    // rateLimitBuckets, notificationDispatchLog.
+    match /impersonationCodes/{codeHash} {
+      allow read, write: if false;
+    }
+
     // ─── Plan Catalog ──────────────────────────────────────────────────────
     // Superadmin-managed catalog of subscription plans. Any authenticated
     // user can read published (public, non-archived) plans so the billing
