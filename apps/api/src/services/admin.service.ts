@@ -15,6 +15,7 @@ import type {
   AdminUserQuery,
   AdminOrgQuery,
   AdminEventQuery,
+  AdminVenueQuery,
   AdminAuditQuery,
   AdminUserRow,
   ClaimsMatch,
@@ -24,6 +25,7 @@ import type {
   AuditLogEntry,
   Plan,
   Subscription,
+  Venue,
 } from "@teranga/shared-types";
 import type { PaginatedResult } from "@/repositories/base.repository";
 import { eventRepository } from "@/repositories/event.repository";
@@ -1201,6 +1203,30 @@ class AdminService extends BaseService {
     return adminRepository.listAllEvents(
       { q: query.q, status: query.status, organizationId: query.organizationId },
       { page: query.page, limit: query.limit },
+    );
+  }
+
+  // ── Venue Oversight ───────────────────────────────────────────────────
+  // Powers /admin/venues. Unlike the public `venueService.listPublic`,
+  // this surface respects every status (`pending` / `approved` /
+  // `suspended` / `archived`) so the moderation inbox deep-link
+  // (/admin/venues?status=pending) actually shows pending venues.
+  async listVenues(user: AuthUser, query: AdminVenueQuery): Promise<PaginatedResult<Venue>> {
+    this.requirePermission(user, "platform:manage");
+    return adminRepository.listAllVenues(
+      {
+        status: query.status,
+        venueType: query.venueType,
+        city: query.city,
+        country: query.country,
+        isFeatured: query.isFeatured,
+      },
+      {
+        page: query.page,
+        limit: query.limit,
+        orderBy: query.orderBy,
+        orderDir: query.orderDir,
+      },
     );
   }
 

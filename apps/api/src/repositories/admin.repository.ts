@@ -6,6 +6,7 @@ import type {
   Event,
   AuditLogEntry,
   PlatformStats,
+  Venue,
 } from "@teranga/shared-types";
 import type { DocumentData, Query, WhereFilterOp } from "firebase-admin/firestore";
 
@@ -122,21 +123,41 @@ class AdminRepository {
     return this.paginatedQuery<Event>(COLLECTIONS.EVENTS, clauses, pagination);
   }
 
-  // ── Venues (Phase 1 — cross-object search uses this minimal lister) ──
-  // Admin venues page already has a richer filterable endpoint on its own
-  // route. This one exists so the command palette's globalSearch() can
-  // pull a small sample without coupling back to that route.
+  // ── Venues ──────────────────────────────────────────────────────────────
+  // Returns the full Venue document (not the projected `{id,name,slug,address.city}`
+  // shape the previous version returned for the command palette). The
+  // command-palette `globalSearch` only reads name/slug/address.city so
+  // promoting the return type is backwards-compatible, while the admin
+  // venues page now has a real moderation surface that includes
+  // `pending` / `suspended` rows the public `/v1/venues` endpoint
+  // deliberately hides.
   async listAllVenues(
-    filters: { status?: string },
+    filters: {
+      status?: string;
+      venueType?: string;
+      city?: string;
+      country?: string;
+      isFeatured?: boolean;
+    },
     pagination: PaginationParams,
-  ): Promise<
-    PaginatedResult<{ id: string; name: string; slug: string; address?: { city?: string } }>
-  > {
+  ): Promise<PaginatedResult<Venue>> {
     const clauses: WhereClause[] = [];
     if (filters.status) {
       clauses.push({ field: "status", op: "==", value: filters.status });
     }
-    return this.paginatedQuery(COLLECTIONS.VENUES, clauses, pagination);
+    if (filters.venueType) {
+      clauses.push({ field: "venueType", op: "==", value: filters.venueType });
+    }
+    if (filters.city) {
+      clauses.push({ field: "address.city", op: "==", value: filters.city });
+    }
+    if (filters.country) {
+      clauses.push({ field: "address.country", op: "==", value: filters.country });
+    }
+    if (filters.isFeatured !== undefined) {
+      clauses.push({ field: "isFeatured", op: "==", value: filters.isFeatured });
+    }
+    return this.paginatedQuery<Venue>(COLLECTIONS.VENUES, clauses, pagination);
   }
 
   // ── Audit Logs ──────────────────────────────────────────────────────────
