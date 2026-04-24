@@ -84,42 +84,31 @@ function resolveFromPlan(
 ): Resolved {
   const active = isOverrideActive(overrides, now);
 
-  // Limits: start from plan base, overlay overrides when active.
+  // Phase 7+ item #2 — merge order MUST match the production resolver
+  // in apps/api/src/services/effective-plan.ts. Order:
+  //   Step 1. Start from plan.features + plan.limits.
+  //   Step 2. If plan.entitlements is set, project it over the base.
+  //   Step 3. Apply legacy overrides (overrides.features/limits).
+  //   Step 4. Apply entitlement overrides — they win over legacy overrides
+  //           on the same key, by virtue of being applied last.
+  //
+  // Review blocker B3 closed: the previous order here was
+  //   base → legacy-overrides → plan.entitlements → override.entitlements
+  // which made plan entitlements clobber legacy overrides (exact opposite
+  // of the production resolver). Back-sync the merge so a backfill run
+  // never produces a denorm state that a live enforcement refresh
+  // would change.
+
+  // Step 1 — plan base
   const baseLimits = plan.limits;
   const limitsRuntime = {
     maxEvents: storedToRuntime(baseLimits.maxEvents),
     maxParticipantsPerEvent: storedToRuntime(baseLimits.maxParticipantsPerEvent),
     maxMembers: storedToRuntime(baseLimits.maxMembers),
   };
-  if (active && overrides?.limits) {
-    if (overrides.limits.maxEvents !== undefined) {
-      limitsRuntime.maxEvents = storedToRuntime(overrides.limits.maxEvents);
-    }
-    if (overrides.limits.maxParticipantsPerEvent !== undefined) {
-      limitsRuntime.maxParticipantsPerEvent = storedToRuntime(
-        overrides.limits.maxParticipantsPerEvent,
-      );
-    }
-    if (overrides.limits.maxMembers !== undefined) {
-      limitsRuntime.maxMembers = storedToRuntime(overrides.limits.maxMembers);
-    }
-  }
-
   const features: Plan["features"] = { ...plan.features };
-  if (active && overrides?.features) {
-    for (const [k, v] of Object.entries(overrides.features)) {
-      if (v !== undefined) {
-        (features as Record<string, boolean>)[k] = v;
-      }
-    }
-  }
 
-  // Phase 7+ item #2 — project entitlement maps onto the legacy shape
-  // and assemble the merged entitlement map that gets denormalized onto
-  // the org doc. Mirrors the production resolver in
-  // apps/api/src/services/effective-plan.ts; kept inline here because
-  // this script runs in a Node admin-SDK context where the API package
-  // isn't available. Contract test lives in the shared-types suite.
+  // Step 2 — plan entitlements project onto the legacy shape.
   if (plan.entitlements) {
     for (const [legacy, entKey] of Object.entries(LEGACY_FEATURE_ENTITLEMENT_KEYS)) {
       const ent = plan.entitlements[entKey];
@@ -135,6 +124,30 @@ function resolveFromPlan(
     }
   }
 
+  // Step 3 — legacy overrides.
+  if (active && overrides?.limits) {
+    if (overrides.limits.maxEvents !== undefined) {
+      limitsRuntime.maxEvents = storedToRuntime(overrides.limits.maxEvents);
+    }
+    if (overrides.limits.maxParticipantsPerEvent !== undefined) {
+      limitsRuntime.maxParticipantsPerEvent = storedToRuntime(
+        overrides.limits.maxParticipantsPerEvent,
+      );
+    }
+    if (overrides.limits.maxMembers !== undefined) {
+      limitsRuntime.maxMembers = storedToRuntime(overrides.limits.maxMembers);
+    }
+  }
+  if (active && overrides?.features) {
+    for (const [k, v] of Object.entries(overrides.features)) {
+      if (v !== undefined) {
+        (features as Record<string, boolean>)[k] = v;
+      }
+    }
+  }
+
+  // Step 4 — entitlement overrides (layered last, so they win over legacy
+  // overrides on the same key). Mirrors production resolver step 3.
   const activeOverrideEnt =
     active && overrides?.entitlements ? overrides.entitlements : undefined;
   if (activeOverrideEnt) {

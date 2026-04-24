@@ -226,6 +226,16 @@ export async function applyScheduledRollovers(
               storedToRuntime(limits.maxParticipantsPerEvent),
             );
             limits.maxMembers = runtimeToStored(storedToRuntime(limits.maxMembers));
+            // Phase 7+ item #2 — ALWAYS write the entitlement map (empty
+            // when the target plan has none) so a scheduled downgrade /
+            // cancel that crosses the unified/legacy boundary doesn't
+            // leave stale entitlement keys on the org doc. Review
+            // blocker B2. The rollover worker doesn't resolve overrides
+            // here — scheduled changes carry `toPlanOverrides` on the
+            // subscription, but the existing rollover already operates
+            // on `catalogPlan` fields only, so we mirror that: the
+            // target plan's entitlements go straight onto the org.
+            orgUpdate.effectiveEntitlements = catalogPlan?.entitlements ?? {};
           }
           tx.update(orgRef, orgUpdate);
         }

@@ -252,11 +252,14 @@ export abstract class BaseService {
       const runtime = storedToRuntime(ent.limit);
       return !isFinite(runtime) || runtime > 0;
     }
-    // `tiered` kind — schema-reserved for metered billing. Treat as
-    // active in the MVP (a plan that declares a tier schedule has opted
-    // in to the capability); the resolver-level enforcement against tier
-    // bands lands with the first real metered plan.
-    return true;
+    // `tiered` kind — schema-reserved for metered billing; the resolver
+    // that reads tier bands + a per-tenant counter ships with the first
+    // real metered plan (docs/delivery-plan/plan-management-phase-7-plus.md
+    // §8 unlocks list). Until then, DENY: granting a tiered entitlement
+    // without consulting the band schedule would silently hand out
+    // unlimited access (review blocker B5). The `checkQuota` wrong-kind
+    // path already denies, so this keeps both helpers symmetric.
+    return false;
   }
 
   private resolveLegacyFeatureKey(key: string): PlanFeature | undefined {

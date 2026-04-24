@@ -88,6 +88,13 @@ const VERSION_MATERIAL_KEYS: ReadonlySet<keyof UpdatePlanDto> = new Set([
   // it must mint a new version so annual subscribers keep the rate they
   // committed to — no silent mid-year price bumps on their renewal.
   "annualPriceXof",
+  // Phase 7+ item #2 — entitlements are more version-material than
+  // features / limits, not less: flipping `feature.paidTickets` via
+  // entitlements is exactly the same commercial change as flipping it
+  // via the legacy features map. Mint a new version so existing
+  // subscribers retain their committed capability set. Review
+  // blocker B4.
+  "entitlements",
 ]);
 
 function freshLineageId(): string {
@@ -279,6 +286,18 @@ export class PlanService extends BaseService {
       currency: existing.currency,
       limits: mergedLimits,
       features: mergedFeatures,
+      // Phase 7+ item #2 — carry entitlements into the new version.
+      // `versionPatch.entitlements` uses the `undefined = don't touch,
+      // null = clear, populated = replace` contract (UpdatePlanSchema is
+      // `.nullable().partial()`), so fall through to `existing.entitlements`
+      // on undefined and propagate null/populated values as-is. Without
+      // this carry, any version-material edit on a unified plan would
+      // silently revert the new version to the legacy path. Review
+      // blocker B4.
+      entitlements:
+        "entitlements" in versionPatch
+          ? (versionPatch.entitlements ?? undefined)
+          : existing.entitlements,
       isSystem: existing.isSystem,
       isPublic: "isPublic" in patch ? (patch.isPublic ?? existing.isPublic) : existing.isPublic,
       isArchived: false,

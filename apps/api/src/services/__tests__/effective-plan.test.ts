@@ -364,4 +364,50 @@ describe("resolveEffective — entitlement projection (Phase 7+ item #2)", () =>
     const runtime = fromStoredSnapshot(stored);
     expect(runtime.entitlements).toEqual(effective.entitlements);
   });
+
+  // Review finding (self + agent): when a legacy feature / limit
+  // override is layered on top of a plan with entitlements, the merged
+  // entitlement map must reflect the overridden value so that
+  // `requireEntitlement` agrees with the legacy `requirePlanFeature`
+  // helper on the same key. Previous behaviour left the merged map
+  // stale and the two helpers disagreed.
+  it("syncs merged entitlement map when legacy overrides are applied (M4 / Finding #1)", () => {
+    const plan = buildPlan({
+      entitlements: {
+        [LEGACY_FEATURE_ENTITLEMENT_KEYS.paidTickets]: { kind: "boolean", value: true },
+      },
+    });
+    const overrides: SubscriptionOverrides = {
+      features: { paidTickets: false },
+    };
+    const effective = resolveEffective(plan, overrides);
+    // Legacy view shows false (override applied).
+    expect(effective.features.paidTickets).toBe(false);
+    // Merged entitlement map MUST also show false — otherwise
+    // `requireEntitlement("feature.paidTickets")` reads `true` while
+    // `requirePlanFeature("paidTickets")` reads `false`.
+    expect(effective.entitlements?.[LEGACY_FEATURE_ENTITLEMENT_KEYS.paidTickets]).toEqual({
+      kind: "boolean",
+      value: false,
+    });
+  });
+
+  it("projects legacy limit overrides into the merged entitlement map", () => {
+    const plan = buildPlan({
+      entitlements: {
+        [LEGACY_QUOTA_ENTITLEMENT_KEYS.maxEvents]: {
+          kind: "quota",
+          limit: 10,
+          period: "cycle",
+        },
+      },
+    });
+    const overrides: SubscriptionOverrides = {
+      limits: { maxEvents: 99 },
+    };
+    const effective = resolveEffective(plan, overrides);
+    expect(effective.limits.maxEvents).toBe(99);
+    const ent = effective.entitlements?.[LEGACY_QUOTA_ENTITLEMENT_KEYS.maxEvents];
+    expect(ent).toEqual({ kind: "quota", limit: 99, period: "cycle" });
+  });
 });

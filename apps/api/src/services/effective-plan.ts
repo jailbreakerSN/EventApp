@@ -201,15 +201,63 @@ export function resolveEffective(
   // Merge price (informational; enforcement doesn't depend on it)
   const priceXof = active && overrides?.priceXof !== undefined ? overrides.priceXof : plan.priceXof;
 
-  // Merge entitlement map — plan's map is the base, override map layers on
-  // top per-key. Absent on both sides → undefined (keeps back-compat
-  // reads from stumbling over an empty record).
+  // Merge entitlement map — plan's map is the base, legacy feature/limit
+  // overrides are projected into entitlement space so the new helpers
+  // (`requireEntitlement` / `checkQuota`) stay consistent with the
+  // legacy ones (`requirePlanFeature` / `checkPlanLimit`) on the same
+  // key. Without this sync, an override like `{features: {x: false}}`
+  // would flip the legacy view while leaving the entitlement map with a
+  // stale `{x: true}` value — the two helpers would then disagree on
+  // the same org. Fix for review finding "resolver legacy override
+  // doesn't sync merged entitlements".
+  //
+  // The override entitlement map layers last so it still wins over
+  // legacy overrides for any key it explicitly covers (matches the
+  // precedence already enforced on the features/limits views at
+  // Step 3).
   let mergedEntitlements: EntitlementMap | undefined;
-  if (plan.entitlements || (active && overrides?.entitlements)) {
-    mergedEntitlements = {
-      ...(plan.entitlements ?? {}),
-      ...(active && overrides?.entitlements ? overrides.entitlements : {}),
-    };
+  if (plan.entitlements || (active && overrides?.entitlements) || (active && overrides?.features) || (active && overrides?.limits)) {
+    mergedEntitlements = { ...(plan.entitlements ?? {}) };
+
+    // Project legacy feature overrides into entitlement space.
+    if (active && overrides?.features) {
+      for (const [k, v] of Object.entries(overrides.features)) {
+        if (v === undefined) continue;
+        const entKey = (
+          LEGACY_FEATURE_ENTITLEMENT_KEYS as Record<string, string>
+        )[k];
+        if (entKey) {
+          mergedEntitlements[entKey] = { kind: "boolean", value: v };
+        }
+      }
+    }
+
+    // Project legacy limit overrides into entitlement space. We pick a
+    // default `period: "cycle"` — the legacy limits have always been
+    // per-billing-cycle in spirit; callers that need a different
+    // period must use the entitlement map directly.
+    if (active && overrides?.limits) {
+      const limitKeyMap: Record<string, string> = {
+        maxEvents: LEGACY_QUOTA_ENTITLEMENT_KEYS.maxEvents,
+        maxParticipantsPerEvent: LEGACY_QUOTA_ENTITLEMENT_KEYS.maxParticipantsPerEvent,
+        maxMembers: LEGACY_QUOTA_ENTITLEMENT_KEYS.maxMembers,
+      };
+      for (const [k, v] of Object.entries(overrides.limits)) {
+        if (v === undefined) continue;
+        const entKey = limitKeyMap[k];
+        if (entKey) {
+          mergedEntitlements[entKey] = { kind: "quota", limit: v, period: "cycle" };
+        }
+      }
+    }
+
+    // Entitlement overrides layer last — they win over legacy-override
+    // projections on the same key (matches Step 3's precedence).
+    if (active && overrides?.entitlements) {
+      for (const [k, v] of Object.entries(overrides.entitlements)) {
+        mergedEntitlements[k] = v;
+      }
+    }
   }
 
   return {

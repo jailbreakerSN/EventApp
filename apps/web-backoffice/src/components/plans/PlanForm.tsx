@@ -158,16 +158,28 @@ export function PlanForm({ mode, plan }: PlanFormProps) {
   // Entitlements is a free-form `Record<string, Entitlement>` blob that
   // doesn't fit cleanly into react-hook-form's per-field registration
   // model. We keep it out of RHF, hold the JSON text as local state,
-  // and validate against EntitlementMapSchema on every keystroke. A
-  // parsed snapshot flows to the server on submit. Empty textarea →
-  // undefined (plan stays on the legacy path).
-  const [entitlementsJson, setEntitlementsJson] = useState<string>(() => {
-    if (plan?.entitlements && Object.keys(plan.entitlements).length > 0) {
-      return JSON.stringify(plan.entitlements, null, 2);
-    }
-    return "";
-  });
+  // validate against EntitlementMapSchema on every keystroke, and track
+  // a `dirty` flag so the server only sees the field when the admin
+  // actually edited it (review finding M1: without the dirty flag, an
+  // unrelated "Save" on a plan that gained entitlements between mount
+  // and submit would silently wipe them by PATCH-ing `entitlements: null`).
+  const serializePlanEntitlements = (p: Plan | undefined): string =>
+    p?.entitlements && Object.keys(p.entitlements).length > 0
+      ? JSON.stringify(p.entitlements, null, 2)
+      : "";
+  const [entitlementsJson, setEntitlementsJson] = useState<string>(
+    serializePlanEntitlements(plan),
+  );
+  const [entitlementsDirty, setEntitlementsDirty] = useState<boolean>(false);
   const [entitlementsError, setEntitlementsError] = useState<string | null>(null);
+
+  // Re-seed when the plan prop changes (e.g. after a router navigation or
+  // a React Query refetch). Mirrors the `reset(defaultValues)` pattern the
+  // RHF fields use.
+  useEffect(() => {
+    setEntitlementsJson(serializePlanEntitlements(plan));
+    setEntitlementsDirty(false);
+  }, [plan]);
   const parsedEntitlements = useMemo<{
     value: EntitlementMap | undefined;
     hasKeys: boolean;
@@ -328,9 +340,17 @@ export function PlanForm({ mode, plan }: PlanFormProps) {
         //   - populated map  → replace with this map
         //   - null           → clear the map (revert to legacy path)
         //   - undefined      → don't touch the existing field
-        // The last case is NOT what we want on edit — if the textarea is
-        // empty, the admin deliberately cleared it, so we send `null`.
-        const entitlementsPayload: EntitlementMap | null = parsedEntitlements.value ?? null;
+        //
+        // Send `entitlements` ONLY when the admin actually edited the
+        // textarea (dirty flag). Review finding M1: without the dirty
+        // guard, a Save click on a plan that received entitlements
+        // between mount and submit — e.g. another admin edited them in
+        // parallel and a React Query refetch brought them in — would
+        // PATCH `entitlements: null` and silently clear them.
+        const entitlementsPatch: Partial<{ entitlements: EntitlementMap | null }> =
+          entitlementsDirty
+            ? { entitlements: parsedEntitlements.value ?? null }
+            : {};
         await updatePlan.mutateAsync({
           planId: plan.id,
           dto: {
@@ -341,7 +361,7 @@ export function PlanForm({ mode, plan }: PlanFormProps) {
             annualPriceXof: normalizedAnnualPriceXof,
             limits: data.limits,
             features: data.features,
-            entitlements: entitlementsPayload,
+            ...entitlementsPatch,
             isPublic: data.isPublic,
             sortOrder: data.sortOrder,
             trialDays: data.trialDays ?? null,
@@ -722,10 +742,10 @@ export function PlanForm({ mode, plan }: PlanFormProps) {
             <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
               <Info className="h-4 w-4 shrink-0 mt-0.5" aria-hidden="true" />
               <div>
-                Ce plan utilise le modèle entitlements. Les cartes
-                «&nbsp;Fonctionnalités&nbsp;» et «&nbsp;Limites&nbsp;» ci-dessus ne sont
-                plus authoritatives — les valeurs appliquées sont celles dérivées du JSON
-                ci-dessous.
+                Ce plan utilise le modèle entitlements. Pour chaque clé présente
+                ci-dessous, la valeur appliquée est celle du JSON&nbsp;; les cartes
+                «&nbsp;Fonctionnalités&nbsp;» et «&nbsp;Limites&nbsp;» restent utilisées
+                comme valeurs par défaut pour les clés non couvertes.
               </div>
             </div>
           )}
@@ -734,7 +754,10 @@ export function PlanForm({ mode, plan }: PlanFormProps) {
             <Textarea
               id="entitlements-json"
               value={entitlementsJson}
-              onChange={(e) => setEntitlementsJson(e.target.value)}
+              onChange={(e) => {
+                setEntitlementsJson(e.target.value);
+                setEntitlementsDirty(true);
+              }}
               rows={12}
               placeholder={`{\n  "feature.qrScanning": { "kind": "boolean", "value": true },\n  "quota.events": { "kind": "quota", "limit": 10, "period": "cycle" }\n}`}
               className="font-mono text-xs"

@@ -238,6 +238,42 @@ describe("BaseService.checkQuota — legacy fallback when entitlements absent", 
 
 // ─── Back-compat regression ─────────────────────────────────────────────────
 
+describe("BaseService — tiered entitlement denies until resolver lands (B5)", () => {
+  it("requireEntitlement on a tiered entitlement DENIES (band resolver not shipped yet)", () => {
+    // Review blocker B5: without this guard, a super-admin who typed
+    // `{"tiered.apiCalls":{kind:"tiered",tiers:[...]}}` in the plan
+    // JSON editor would grant unlimited access via requireEntitlement
+    // because isEntitlementActive used to return `true` for tiered
+    // kinds. The resolver that reads tier bands + per-tenant counters
+    // lands with the first real metered plan; until then, DENY.
+    const org = buildOrg({
+      effectiveEntitlements: {
+        "tiered.apiCalls": {
+          kind: "tiered",
+          tiers: [{ upTo: 100, unitPriceXof: 0 }],
+        },
+      },
+    });
+    expect(() => service.callRequireEntitlement(org, "tiered.apiCalls")).toThrow(
+      PlanLimitError,
+    );
+  });
+
+  it("checkQuota on a tiered entitlement also denies (symmetry with requireEntitlement)", () => {
+    const org = buildOrg({
+      effectiveEntitlements: {
+        "tiered.apiCalls": {
+          kind: "tiered",
+          tiers: [{ upTo: 100, unitPriceXof: 0 }],
+        },
+      },
+    });
+    const result = service.callCheckQuota(org, "tiered.apiCalls", 0);
+    expect(result.allowed).toBe(false);
+    expect(result.limit).toBe(0);
+  });
+});
+
 describe("BaseService — legacy helpers still work unchanged", () => {
   it("requirePlanFeature still reads effectiveFeatures regardless of the entitlement map", () => {
     // Adding effectiveEntitlements must NOT change the 14 existing call

@@ -211,9 +211,17 @@ export const PlanSchema = z.object({
   // When absent (the four system plans today), the legacy fields stay
   // authoritative and the resolver takes the pre-entitlement path.
   //
+  // `.nullable()` + `.optional()` tolerates three storage shapes:
+  //   - field absent    → legacy path
+  //   - field === null  → legacy path (Firestore may store null from a
+  //                        raw SDK write; review finding M3)
+  //   - field populated → unified path
+  // The resolver uses `if (plan.entitlements)` which evaluates null as
+  // falsy, so both "absent" and "null" routes are handled uniformly.
+  //
   // Design rationale + migration strategy:
   // docs/delivery-plan/entitlement-model-design.md
-  entitlements: EntitlementMapSchema.optional(),
+  entitlements: EntitlementMapSchema.nullable().optional(),
   isSystem: z.boolean().default(false),
   isPublic: z.boolean().default(true),
   isArchived: z.boolean().default(false),
