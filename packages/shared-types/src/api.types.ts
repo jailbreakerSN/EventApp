@@ -57,6 +57,11 @@ export const ERROR_CODES = {
   QR_NOT_YET_VALID: "QR_NOT_YET_VALID",
   ORGANIZATION_PLAN_LIMIT: "ORGANIZATION_PLAN_LIMIT",
   EMAIL_NOT_VERIFIED: "EMAIL_NOT_VERIFIED",
+  // Admin impersonation — upstream Firebase Auth / IAM signing failure.
+  // Returned when `auth.createCustomToken` throws on Cloud Run; the root
+  // cause is almost always a missing `roles/iam.serviceAccountTokenCreator`
+  // binding on the Cloud Run runtime service account.
+  IMPERSONATION_SIGNING_UNAVAILABLE: "IMPERSONATION_SIGNING_UNAVAILABLE",
 } as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];

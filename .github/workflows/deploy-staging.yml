@@ -144,17 +144,80 @@ jobs:
               echo "::warning::Failed to bind $role to $member (may already exist or SA lacks Project IAM Admin)"
           done
 
-          # Grant the Cloud Run runtime SA Token Creator on ITSELF so that
-          # Firebase Admin SDK's getSignedUrl() can call iamcredentials.signBlob
-          # when no private key is present in the environment (Workload
-          # Identity path). Without this, badge PDF downloads 500 with
-          # "Permission 'iam.serviceAccounts.signBlob' denied".
-          gcloud iam service-accounts add-iam-policy-binding "$COMPUTE_SA" \
-            --member="serviceAccount:${COMPUTE_SA}" \
-            --role="roles/iam.serviceAccountTokenCreator" \
-            --project="$PROJECT_ID" \
-            --condition=None --quiet >/dev/null || \
-            echo "::warning::Failed to grant Token Creator on ${COMPUTE_SA} (may already exist or SA lacks Service Account Admin)"
+          # Grant the Cloud Run runtime SA Token Creator on ITSELF so the
+          # Firebase Admin SDK can call `iamcredentials.signBlob` when no
+          # private key is present in the image (Workload Identity path —
+          # the default on Cloud Run). Two runtime paths require it:
+          #   (a) `getSignedUrl()` on storage — badge PDF downloads 500
+          #       with "Permission 'iam.serviceAccounts.signBlob' denied"
+          #       without it.
+          #   (b) `auth.createCustomToken()` on Firebase Auth — admin
+          #       impersonation (`/v1/admin/users/:uid/impersonate`) 500s
+          #       on the same IAM denial. See fix(admin): wrap
+          #       createCustomToken failures (`IMPERSONATION_SIGNING_UNAVAILABLE`).
+          #
+          # Strategy: check-first → apply → verify → fail-hard with a
+          # deterministic, ops-actionable message if the deploy SA lacks
+          # the meta-permission to write the binding.
+          TC_ROLE="roles/iam.serviceAccountTokenCreator"
+          TC_MEMBER="serviceAccount:${COMPUTE_SA}"
+
+          # Fast-path: if the binding already exists, skip the write.
+          # `--flatten` emits one row per (member, role) pair so the grep
+          # is unambiguous — no risk of matching a partial role name.
+          if gcloud iam service-accounts get-iam-policy "$COMPUTE_SA" \
+                --project="$PROJECT_ID" --format="value(bindings.role,bindings.members)" \
+                --flatten="bindings[].members" 2>/dev/null \
+                | grep -qE "^${TC_ROLE}\s+${TC_MEMBER}$"; then
+            echo "::notice::${TC_ROLE} already bound on ${COMPUTE_SA} (self). Skipping."
+          else
+            # Apply with bounded retry — IAM propagation on fresh projects
+            # can take a few seconds. Three attempts, 2s / 4s / 8s backoff.
+            TC_APPLIED=0
+            for attempt in 1 2 3; do
+              if gcloud iam service-accounts add-iam-policy-binding "$COMPUTE_SA" \
+                    --member="$TC_MEMBER" \
+                    --role="$TC_ROLE" \
+                    --project="$PROJECT_ID" \
+                    --condition=None --quiet >/dev/null 2>&1; then
+                TC_APPLIED=1
+                echo "::notice::${TC_ROLE} bound on ${COMPUTE_SA} (self) — attempt $attempt."
+                break
+              fi
+              sleep $((2 ** attempt))
+            done
+
+            if [ "$TC_APPLIED" -eq 0 ]; then
+              echo "::error::Failed to grant ${TC_ROLE} on ${COMPUTE_SA} (self) after 3 attempts."
+              echo "::error::Without this binding, Firebase Admin SDK signBlob calls will 500 at runtime:"
+              echo "::error::  - badge PDF downloads (storage.getSignedUrl)"
+              echo "::error::  - admin impersonation (auth.createCustomToken)"
+              echo "::error::The deploy service account needs 'roles/iam.serviceAccountAdmin' on"
+              echo "::error::${COMPUTE_SA} to apply this binding. Grant once (manually in the GCP"
+              echo "::error::console or via gcloud) and the next deploy will self-heal."
+              exit 1
+            fi
+
+            # Verify the write actually landed (belt-and-braces — some IAM
+            # propagation oddities on fresh projects let the add command
+            # succeed without the binding showing up immediately).
+            VERIFY_ATTEMPTS=5
+            for attempt in $(seq 1 "$VERIFY_ATTEMPTS"); do
+              if gcloud iam service-accounts get-iam-policy "$COMPUTE_SA" \
+                    --project="$PROJECT_ID" --format="value(bindings.role,bindings.members)" \
+                    --flatten="bindings[].members" 2>/dev/null \
+                    | grep -qE "^${TC_ROLE}\s+${TC_MEMBER}$"; then
+                echo "::notice::Verified ${TC_ROLE} on ${COMPUTE_SA} (self) — attempt $attempt."
+                break
+              fi
+              if [ "$attempt" -eq "$VERIFY_ATTEMPTS" ]; then
+                echo "::error::IAM binding applied but not visible after $VERIFY_ATTEMPTS read attempts."
+                echo "::error::This usually clears within a few minutes. Re-run the workflow if the next deploy still 500s on signBlob."
+                exit 1
+              fi
+              sleep 3
+            done
+          fi
         env:
           SA_KEY: ${{ secrets.GCP_SA_KEY }}
 

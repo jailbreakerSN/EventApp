@@ -4,7 +4,7 @@ import { adminRepository } from "@/repositories/admin.repository";
 import { db, auth, COLLECTIONS } from "@/config/firebase";
 import { eventBus } from "@/events/event-bus";
 import { getRequestId } from "@/context/request-context";
-import { NotFoundError, ForbiddenError } from "@/errors/app-error";
+import { AppError, NotFoundError, ForbiddenError } from "@/errors/app-error";
 import { rateLimit } from "./rate-limit.service";
 import type {
   PlatformStats,
@@ -566,16 +566,64 @@ class AdminService extends BaseService {
     }
 
     const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
-    const customToken = await auth.createCustomToken(targetUid, {
-      // Stamp the original actor onto the minted token. The ID token
-      // exchanged client-side will carry these as custom claims.
+
+    // Build the developer-claims payload, stripping null-valued fields.
+    // Firebase Admin signs `createCustomToken` either locally (with a
+    // loaded private key) or remotely via the `iamcredentials.signBlob`
+    // API when running under Workload Identity (Cloud Run default
+    // Compute SA, no key file). In the Cloud Run path the signing API
+    // has been observed to reject payloads that carry explicit `null`
+    // values on custom claim keys — the simpler fix is to omit the
+    // key entirely when there is nothing to stamp. Omitted keys read
+    // back as `undefined` in the downstream JWT, which is exactly what
+    // callers already handle (see `request.user.organizationId`
+    // extraction in `auth.middleware.ts`).
+    const claims: Record<string, unknown> = {
       impersonatedBy: user.uid,
       impersonationExpiresAt: expiresAt,
-      // Carry the target's real roles so downstream RBAC works.
       roles: targetProfile.roles ?? [],
-      organizationId: targetProfile.organizationId ?? null,
-      orgRole: targetProfile.orgRole ?? null,
-    });
+    };
+    if (targetProfile.organizationId) {
+      claims.organizationId = targetProfile.organizationId;
+    }
+    if (targetProfile.orgRole) {
+      claims.orgRole = targetProfile.orgRole;
+    }
+
+    let customToken: string;
+    try {
+      customToken = await auth.createCustomToken(targetUid, claims);
+    } catch (err) {
+      // `createCustomToken` typically fails for one reason on Cloud Run:
+      // the service account running the container lacks
+      // `roles/iam.serviceAccountTokenCreator` on ITSELF, so the
+      // `iamcredentials.signBlob` call returns PERMISSION_DENIED.
+      // Surface a typed AppError (503 vs raw 500) with the Firebase
+      // error code so the ops team can act without diffing stack traces.
+      const message = err instanceof Error ? err.message : String(err);
+      const code =
+        (err as { code?: string; errorInfo?: { code?: string } })?.code ??
+        (err as { errorInfo?: { code?: string } })?.errorInfo?.code ??
+        "unknown";
+      process.stderr.write(
+        JSON.stringify({
+          level: "error",
+          event: "impersonation.custom_token_failed",
+          targetUid,
+          actorId: user.uid,
+          firebaseCode: code,
+          message,
+          hint: "If code contains 'iamcredentials' or 'signBlob', grant roles/iam.serviceAccountTokenCreator on the Cloud Run runtime SA to itself. See deploy-staging.yml lines 148-157.",
+        }) + "\n",
+      );
+      throw new AppError({
+        code: "IMPERSONATION_SIGNING_UNAVAILABLE",
+        message:
+          "Service d'authentification indisponible : la génération du token d'impersonation a échoué. L'équipe technique a été notifiée dans les logs applicatifs.",
+        statusCode: 503,
+        details: { firebaseCode: code },
+      });
+    }
 
     // Audit log — synchronous so the trail is visible before the UI
     // even gets the token. If the audit write fails, the impersonation

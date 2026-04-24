@@ -869,6 +869,72 @@ describe("AdminService.startImpersonation (Phase 4)", () => {
     expect(auth.createCustomToken).not.toHaveBeenCalled();
   });
 
+  it("strips null-valued organizationId / orgRole from the custom-token claims", async () => {
+    // Target profile has no org assignment (e.g. a participant fixture).
+    // Previously the service would pass `{ organizationId: null, orgRole: null }`
+    // to auth.createCustomToken; under Workload Identity the signing API
+    // rejects that shape and 500s. The fix omits null-valued keys.
+    const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    mockTargetDoc({
+      ...participantTarget,
+      organizationId: undefined,
+      orgRole: undefined,
+    });
+
+    await adminService.startImpersonation(admin, participantTarget.uid);
+
+    expect(auth.createCustomToken).toHaveBeenCalledWith(
+      participantTarget.uid,
+      expect.objectContaining({
+        impersonatedBy: admin.uid,
+        roles: participantTarget.roles,
+      }),
+    );
+    const claimsArg = vi.mocked(auth.createCustomToken).mock.calls[0]?.[1] as Record<
+      string,
+      unknown
+    >;
+    expect(claimsArg).not.toHaveProperty("organizationId");
+    expect(claimsArg).not.toHaveProperty("orgRole");
+
+    stderrSpy.mockRestore();
+  });
+
+  it("wraps Firebase createCustomToken failures as IMPERSONATION_SIGNING_UNAVAILABLE (503)", async () => {
+    // Mimic the Cloud Run IAM failure: auth.createCustomToken rejects with
+    // a Firebase error carrying `code: 'app/credential-implementation-error'`
+    // (what you get when iamcredentials.signBlob denies). The service must
+    // convert it to a typed AppError so the route returns 503 with a
+    // human-readable message instead of a raw 500.
+    const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    mockTargetDoc(participantTarget);
+    const firebaseErr = new Error("Permission denied on signBlob");
+    (firebaseErr as unknown as { code: string }).code = "app/credential-implementation-error";
+    vi.mocked(auth.createCustomToken).mockRejectedValueOnce(firebaseErr);
+
+    await expect(
+      adminService.startImpersonation(admin, participantTarget.uid),
+    ).rejects.toMatchObject({
+      code: "IMPERSONATION_SIGNING_UNAVAILABLE",
+      statusCode: 503,
+    });
+
+    // Structured stderr log captures the Firebase error code so ops can
+    // act on it without diffing the stack trace.
+    expect(stderrSpy).toHaveBeenCalledWith(
+      expect.stringContaining("impersonation.custom_token_failed"),
+    );
+    expect(stderrSpy).toHaveBeenCalledWith(
+      expect.stringContaining("app/credential-implementation-error"),
+    );
+
+    // No audit row is written when signing failed — the trail must not
+    // record a session that never existed.
+    expect(mockAuditAdd).not.toHaveBeenCalled();
+
+    stderrSpy.mockRestore();
+  });
+
   it("accepts a platform:super_admin caller and stamps that role on the audit row", async () => {
     const platformSuper = buildAuthUser({
       uid: "u-platform-super",
