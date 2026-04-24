@@ -1,15 +1,19 @@
 "use client";
 
 import { useState } from "react";
-import { Check, ArrowRight, Loader2 } from "lucide-react";
+import { Check, ArrowRight, Loader2, Tag } from "lucide-react";
 import { ConfirmDialog } from "@teranga/shared-ui";
 import {
   type OrganizationPlan,
   type PlanFeature,
   type Plan,
   type PlanFeatures,
+  type ValidateCouponResponse,
 } from "@teranga/shared-types";
 import { usePlansCatalogMap, getPlanDisplay } from "@/hooks/use-plans-catalog";
+import { adminApi } from "@/lib/api-client";
+import { useAuth } from "@/hooks/use-auth";
+import { toast } from "sonner";
 
 const FEATURE_LABELS: Record<PlanFeature, string> = {
   qrScanning: "Scan QR / Check-in",
@@ -120,17 +124,21 @@ function isUpgradeDirection(current: string, target: string, catalog: Map<string
 export function UpgradePreview({
   currentPlan,
   targetPlan,
+  targetCycle,
   onConfirm,
   onCancel,
   isPending,
 }: {
   currentPlan: OrganizationPlan;
   targetPlan: OrganizationPlan;
-  onConfirm: () => void;
+  /** Billing cycle the user picked — needed to validate cycle-scoped coupons. */
+  targetCycle?: "monthly" | "annual";
+  onConfirm: (opts?: { couponCode?: string }) => void;
   onCancel: () => void;
   isPending: boolean;
 }) {
   const { map: catalog } = usePlansCatalogMap();
+  const { user } = useAuth();
   const currentDisplay = getPlanDisplay(currentPlan, catalog);
   const targetDisplay = getPlanDisplay(targetPlan, catalog);
   const currentFeatures: Partial<PlanFeatures> =
@@ -143,6 +151,54 @@ export function UpgradePreview({
   const lostFeatures = featureKeys.filter((f) => currentFeatures[f] && !targetFeatures[f]);
 
   const isUpgrade = isUpgradeDirection(currentPlan, targetPlan, catalog);
+
+  // ── Coupon preview state (upgrades only) ──────────────────────────────
+  // We never auto-validate — user types + clicks Valider, we show a preview.
+  // The preview is cleared when the code is cleared. The real apply path
+  // runs again inside the upgrade transaction (the preview is an optimistic
+  // UX layer only; server owns the truth).
+  const [couponCode, setCouponCode] = useState("");
+  const [validatingCoupon, setValidatingCoupon] = useState(false);
+  const [couponPreview, setCouponPreview] = useState<ValidateCouponResponse | null>(null);
+  const [couponError, setCouponError] = useState<string | null>(null);
+  const targetPlanDoc = catalog.get(targetPlan);
+
+  const validateCoupon = async () => {
+    const orgId = user?.organizationId;
+    if (!orgId || !targetPlanDoc || !couponCode.trim()) return;
+    setValidatingCoupon(true);
+    setCouponError(null);
+    try {
+      const res = await adminApi.validateCoupon(targetPlanDoc.id, orgId, {
+        code: couponCode.trim().toUpperCase(),
+        cycle: targetCycle,
+      });
+      setCouponPreview(res.data);
+    } catch (err: unknown) {
+      setCouponError(err instanceof Error ? err.message : "Coupon invalide");
+      setCouponPreview(null);
+    } finally {
+      setValidatingCoupon(false);
+    }
+  };
+
+  const clearCoupon = () => {
+    setCouponCode("");
+    setCouponPreview(null);
+    setCouponError(null);
+  };
+
+  const handleConfirmClick = () => {
+    // Pass the code only if the preview validated — a bad code would fail
+    // server-side anyway, but a clean pre-check avoids burning a round-trip.
+    if (couponPreview) {
+      onConfirm({ couponCode: couponPreview.code });
+    } else if (couponCode.trim()) {
+      toast.error("Veuillez valider le coupon avant de confirmer.");
+    } else {
+      onConfirm();
+    }
+  };
 
   return (
     <div className="bg-card rounded-xl border border-border p-6">
@@ -199,6 +255,69 @@ export function UpgradePreview({
         </div>
       )}
 
+      {/* Coupon input — upgrades only (downgrades never apply a discount). */}
+      {isUpgrade && (
+        <div className="mb-4 border border-border rounded-lg p-3">
+          <p className="text-xs font-semibold text-foreground mb-2 flex items-center gap-1">
+            <Tag className="h-3.5 w-3.5 text-primary" />
+            Code promo
+          </p>
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              value={couponCode}
+              onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+              placeholder="LAUNCH2026"
+              disabled={!!couponPreview}
+              className="flex-1 rounded-md border border-input bg-background px-3 py-1.5 text-sm font-mono disabled:opacity-60"
+              aria-label="Code promo"
+            />
+            {couponPreview ? (
+              <button
+                type="button"
+                onClick={clearCoupon}
+                className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+              >
+                Retirer
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={validateCoupon}
+                disabled={!couponCode.trim() || validatingCoupon}
+                className="inline-flex items-center gap-1 rounded-md border border-primary/40 bg-background px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/5 disabled:opacity-50 transition-colors"
+              >
+                {validatingCoupon && <Loader2 className="h-3 w-3 animate-spin" />}
+                Valider
+              </button>
+            )}
+          </div>
+          {couponError && (
+            <p className="mt-2 text-xs text-destructive">{couponError}</p>
+          )}
+          {couponPreview && (
+            <div className="mt-2 text-xs space-y-0.5">
+              <p className="text-green-700 dark:text-green-400 font-medium">
+                Coupon valide — remise appliquée à la confirmation.
+              </p>
+              <p className="text-muted-foreground">
+                Prix barré :{" "}
+                <span className="line-through">
+                  {couponPreview.originalPriceXof.toLocaleString("fr-FR")} XOF
+                </span>{" "}
+                · Prix final :{" "}
+                <span className="font-semibold text-foreground">
+                  {couponPreview.finalPriceXof.toLocaleString("fr-FR")} XOF
+                </span>{" "}
+                <span className="text-green-700 dark:text-green-400">
+                  (−{couponPreview.discountXof.toLocaleString("fr-FR")} XOF)
+                </span>
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* MVP notice */}
       <p className="text-xs text-muted-foreground mb-4 bg-muted/50 rounded-lg p-3">
         Pour le moment, le changement de plan est instantané et sans paiement. L&apos;intégration
@@ -208,7 +327,7 @@ export function UpgradePreview({
       {/* Actions */}
       <div className="flex items-center gap-3">
         <button
-          onClick={onConfirm}
+          onClick={handleConfirmClick}
           disabled={isPending}
           className={`inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors disabled:opacity-50 ${
             isUpgrade

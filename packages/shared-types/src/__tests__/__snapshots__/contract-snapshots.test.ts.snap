@@ -765,6 +765,9 @@ exports[`shared-types contract snapshots > AuditLogEntrySchema shape is stable 1
           "plan.archived",
           "plan.created",
           "plan.updated",
+          "plan_coupon.archived",
+          "plan_coupon.created",
+          "plan_coupon.updated",
           "push.clicked",
           "push.displayed",
           "receipt.generated",
@@ -3991,6 +3994,51 @@ exports[`shared-types contract snapshots > RegistrationStatusSchema shape is sta
 exports[`shared-types contract snapshots > SubscriptionSchema shape is stable 1`] = `
 {
   "fields": {
+    "appliedCoupon": {
+      "required": false,
+      "shape": {
+        "inner": {
+          "inner": {
+            "fields": {
+              "code": {
+                "required": true,
+                "shape": {
+                  "kind": "string",
+                },
+              },
+              "couponId": {
+                "required": true,
+                "shape": {
+                  "kind": "string",
+                },
+              },
+              "discountXof": {
+                "required": true,
+                "shape": {
+                  "checks": [
+                    "int",
+                    "min",
+                  ],
+                  "kind": "number",
+                },
+              },
+              "redeemedAt": {
+                "required": true,
+                "shape": {
+                  "checks": [
+                    "datetime",
+                  ],
+                  "kind": "string",
+                },
+              },
+            },
+            "kind": "object",
+          },
+          "kind": "nullable",
+        },
+        "kind": "optional",
+      },
+    },
     "assignedAt": {
       "required": false,
       "shape": {
@@ -4093,6 +4141,21 @@ exports[`shared-types contract snapshots > SubscriptionSchema shape is stable 1`
       "shape": {
         "inner": {
           "fields": {
+            "entitlements": {
+              "required": false,
+              "shape": {
+                "inner": {
+                  "key": {
+                    "kind": "string",
+                  },
+                  "kind": "record",
+                  "value": {
+                    "kind": "unknown",
+                  },
+                },
+                "kind": "optional",
+              },
+            },
             "features": {
               "required": false,
               "shape": {
@@ -4426,6 +4489,21 @@ exports[`shared-types contract snapshots > SubscriptionSchema shape is stable 1`
                 "shape": {
                   "inner": {
                     "fields": {
+                      "entitlements": {
+                        "required": false,
+                        "shape": {
+                          "inner": {
+                            "key": {
+                              "kind": "string",
+                            },
+                            "kind": "record",
+                            "value": {
+                              "kind": "unknown",
+                            },
+                          },
+                          "kind": "optional",
+                        },
+                      },
                       "features": {
                         "required": false,
                         "shape": {

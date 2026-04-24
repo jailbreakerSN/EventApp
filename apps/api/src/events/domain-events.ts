@@ -919,6 +919,22 @@ export interface SubscriptionUpgradedEvent extends BaseEventPayload {
   organizationId: string;
   previousPlan: string;
   newPlan: string;
+  /**
+   * Phase 7+ item #7 — snapshot of the plan coupon redeemed alongside
+   * the upgrade (null/absent when no coupon was applied). Carried on
+   * the event payload so downstream listeners (audit, future webhook
+   * + billing analytics) can distinguish coupon upgrades without
+   * re-reading the subscription doc. The canonical audit trail is the
+   * `couponRedemptions` collection + the `subscription.appliedCoupon`
+   * denorm field — this payload is a convenience echo for listeners
+   * that don't want to take a Firestore dependency.
+   */
+  appliedCoupon?: {
+    couponId: string;
+    code: string;
+    discountXof: number;
+    finalPriceXof: number;
+  } | null;
 }
 
 export interface SubscriptionDowngradedEvent extends BaseEventPayload {
@@ -1150,6 +1166,12 @@ export interface DomainEventMap {
   "api_key.revoked": ApiKeyRevokedEvent;
   "api_key.rotated": ApiKeyRotatedEvent;
   "api_key.verified": ApiKeyVerifiedEvent;
+  // Plan coupons (Phase 7+ item #7) — redemption itself is captured on
+  // the subscription doc + couponRedemptions collection; we only emit
+  // lifecycle signals here (create / update / archive).
+  "plan_coupon.created": PlanCouponCreatedEvent;
+  "plan_coupon.updated": PlanCouponUpdatedEvent;
+  "plan_coupon.archived": PlanCouponArchivedEvent;
 }
 
 /** Phase 4 — emitted by adminService.startImpersonation(). */
@@ -1216,6 +1238,31 @@ export interface AdminWebhookReplayedEvent {
   webhookEventId: string;
   provider: string;
   providerTransactionId: string;
+}
+
+// ─── Plan Coupons (Phase 7+ item #7) ─────────────────────────────────────
+
+/**
+ * Emitted by PlanCouponService.create() after the doc commits.
+ * Super-admin-only surface; audit listener maps to `plan_coupon.created`.
+ * Redemptions are audited via the CouponRedemption doc itself (one row
+ * per redeem inside the upgrade transaction), so there's no separate
+ * `plan_coupon.redeemed` event — the subscription.upgraded payload
+ * carries `appliedCoupon` instead.
+ */
+export interface PlanCouponCreatedEvent extends BaseEventPayload {
+  couponId: string;
+  code: string;
+}
+
+export interface PlanCouponUpdatedEvent extends BaseEventPayload {
+  couponId: string;
+  /** Whitelist of changed keys (never values — label/scope can be sensitive). */
+  changes: string[];
+}
+
+export interface PlanCouponArchivedEvent extends BaseEventPayload {
+  couponId: string;
 }
 
 // ─── API keys (T2.3) ─────────────────────────────────────────────────────

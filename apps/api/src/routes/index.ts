@@ -26,6 +26,7 @@ import { newsletterRoutes } from "./newsletter.routes";
 import { authEmailRoutes } from "./auth-email.routes";
 import { subscriptionRoutes } from "./subscriptions.routes";
 import { planRoutes, adminPlanRoutes } from "./plans.routes";
+import { adminCouponRoutes, publicCouponRoutes } from "./plan-coupons.routes";
 import { balanceRoutes } from "./balance.routes";
 import { meRoutes } from "./me.routes";
 import { apiKeysRoutes } from "./api-keys.routes";
@@ -58,7 +59,9 @@ export async function registerRoutes(app: FastifyInstance) {
   await app.register(adminRoutes, { prefix: "/v1/admin" });
   await app.register(impersonationRoutes, { prefix: "/v1/impersonation" });
   await app.register(adminPlanRoutes, { prefix: "/v1/admin/plans" });
+  await app.register(adminCouponRoutes, { prefix: "/v1/admin/coupons" });
   await app.register(planRoutes, { prefix: "/v1/plans" });
+  await app.register(publicCouponRoutes, { prefix: "/v1/plans" });
   await app.register(venueRoutes, { prefix: "/v1/venues" });
   await app.register(newsletterRoutes, { prefix: "/v1/newsletter" });
   await app.register(authEmailRoutes, { prefix: "/v1/auth" });

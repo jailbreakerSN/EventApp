@@ -12,6 +12,9 @@ import type {
   CreatePlanDto,
   UpdatePlanDto,
   AssignPlanDto,
+  AdminCouponQuery,
+  CreatePlanCouponDto,
+  UpdatePlanCouponDto,
 } from "@teranga/shared-types";
 
 // ─── Stats ──────────────────────────────────────────────────────────────────
@@ -235,6 +238,52 @@ export function useArchivePlan() {
   return useMutation({
     mutationFn: (planId: string) => adminApi.archivePlan(planId),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["admin", "plans"] }),
+  });
+}
+
+// ─── Plan Coupons (Phase 7+ item #7) ────────────────────────────────────────
+
+export function useAdminCoupons(params: Partial<AdminCouponQuery> = {}) {
+  return useQuery({
+    queryKey: ["admin", "coupons", params],
+    queryFn: () => adminApi.listCoupons(params),
+    staleTime: 30_000,
+  });
+}
+
+export function useAdminCoupon(couponId: string | undefined) {
+  return useQuery({
+    queryKey: ["admin", "coupons", "detail", couponId],
+    queryFn: () => adminApi.getCoupon(couponId!),
+    enabled: !!couponId,
+  });
+}
+
+export function useCreateCoupon() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (dto: CreatePlanCouponDto) => adminApi.createCoupon(dto),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin", "coupons"] }),
+  });
+}
+
+export function useUpdateCoupon() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ couponId, dto }: { couponId: string; dto: UpdatePlanCouponDto }) =>
+      adminApi.updateCoupon(couponId, dto),
+    onSuccess: (_data, variables) => {
+      qc.invalidateQueries({ queryKey: ["admin", "coupons"] });
+      qc.invalidateQueries({ queryKey: ["admin", "coupons", "detail", variables.couponId] });
+    },
+  });
+}
+
+export function useArchiveCoupon() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (couponId: string) => adminApi.archiveCoupon(couponId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin", "coupons"] }),
   });
 }
 

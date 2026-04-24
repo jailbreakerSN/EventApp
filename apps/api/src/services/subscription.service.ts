@@ -11,6 +11,7 @@ import {
   PLAN_LIMITS,
   PLAN_DISPLAY,
   PLAN_LIMIT_UNLIMITED,
+  EntitlementMapSchema,
 } from "@teranga/shared-types";
 import { subscriptionRepository } from "@/repositories/subscription.repository";
 import { organizationRepository } from "@/repositories/organization.repository";
@@ -23,6 +24,7 @@ import { eventBus } from "@/events/event-bus";
 import { getRequestId } from "@/context/request-context";
 import { db, COLLECTIONS } from "@/config/firebase";
 import { resolveEffective, toStoredSnapshot, type EffectivePlan } from "./effective-plan";
+import { planCouponService } from "./plan-coupon.service";
 
 // Valid upgrade paths: free -> starter/pro, starter -> pro
 const UPGRADE_PATHS: Record<string, OrganizationPlan[]> = {
@@ -197,8 +199,35 @@ export class SubscriptionService extends BaseService {
         }
       : null;
 
-    // Transactional: read org plan + validate + update + denormalize atomically
-    const previousPlan = await db.runTransaction(async (tx) => {
+    // ── Coupon application (Phase 7+ item #7) ──────────────────────────────
+    // We pre-allocate the subscription id BEFORE the transaction so the
+    // coupon redemption doc (written inside the tx) can reference the
+    // subscription that we'll create after the tx commits. This preserves
+    // the existing split (tx = org/coupon atomicity, post-tx = subscription
+    // write) while giving us a stable foreign key.
+    //
+    // Trials skip coupon application entirely — `priceXof` is already 0
+    // during a trial, so redeeming a coupon would burn the `maxUses`
+    // counter for zero customer benefit. Customers can still apply a
+    // coupon on the first NON-trial upgrade.
+    const subscriptionId =
+      existingSubscription?.id ?? db.collection(COLLECTIONS.SUBSCRIPTIONS).doc().id;
+
+    if (dto.couponCode && startsWithTrial) {
+      throw new ValidationError(
+        "Les coupons ne peuvent pas être appliqués pendant une période d'essai.",
+      );
+    }
+    if (dto.couponCode && !catalogPlan) {
+      throw new ValidationError(
+        "Coupon non applicable — ce plan n'est pas encore publié au catalogue.",
+      );
+    }
+
+    type CouponApplyResult = Awaited<ReturnType<typeof planCouponService.applyInTransaction>>;
+
+    // Transactional: read org plan + validate + (optionally) apply coupon + update + denormalize atomically
+    const txOutcome = await db.runTransaction(async (tx) => {
       const orgRef = db.collection(COLLECTIONS.ORGANIZATIONS).doc(orgId);
       const orgSnap = await tx.get(orgRef);
       if (!orgSnap.exists) throw new ValidationError("Organisation introuvable");
@@ -209,6 +238,22 @@ export class SubscriptionService extends BaseService {
         throw new ValidationError(
           `Impossible de passer du plan ${orgData.plan} au plan ${targetPlan}`,
         );
+      }
+
+      // Apply coupon FIRST — all reads must happen before any tx.update/set.
+      // Firestore transactions forbid reads after writes; the coupon service
+      // reads the coupon doc + (optionally) scans redemptions, so we run it
+      // before touching the org doc.
+      let couponInTx: CouponApplyResult | null = null;
+      if (dto.couponCode && catalogPlan) {
+        couponInTx = await planCouponService.applyInTransaction(tx, {
+          code: dto.couponCode,
+          plan: catalogPlan,
+          cycle,
+          organizationId: orgId,
+          subscriptionId,
+          actorId: user.uid,
+        });
       }
 
       const update: Record<string, unknown> = { plan: targetPlan };
@@ -226,8 +271,25 @@ export class SubscriptionService extends BaseService {
         update.effectiveEntitlements = stored.entitlements ?? {};
       }
       tx.update(orgRef, update);
-      return orgData.plan;
+      return { previousPlan: orgData.plan, couponResult: couponInTx };
     });
+
+    const previousPlan = txOutcome.previousPlan;
+    const couponResult = txOutcome.couponResult;
+
+    // ── Resolve final priceXof + appliedCoupon snapshot ──────────────────
+    // Trial flow: priceXof stays 0 (set earlier); appliedCoupon is null.
+    // Coupon flow: priceXof = finalPriceXof from the transactional apply.
+    // Fallback: priceXof from catalog/legacy table (unchanged behaviour).
+    const effectivePriceXof = couponResult ? couponResult.finalPriceXof : priceXof;
+    const appliedCoupon: Subscription["appliedCoupon"] = couponResult
+      ? {
+          couponId: couponResult.coupon.id,
+          code: couponResult.coupon.code,
+          discountXof: couponResult.discountXof,
+          redeemedAt: now,
+        }
+      : null;
 
     // Subscription doc update (outside transaction — not critical for atomicity).
     // Upgrading wipes any previously-queued scheduled downgrade — the user
@@ -243,15 +305,16 @@ export class SubscriptionService extends BaseService {
         status,
         currentPeriodStart: now,
         currentPeriodEnd: periodEndIso,
-        priceXof,
+        priceXof: effectivePriceXof,
         billingCycle: cycle,
         cancelledAt: null,
         scheduledChange,
+        appliedCoupon,
         updatedAt: now,
       } as Partial<Subscription>);
       subscription = await subscriptionRepository.findByIdOrThrow(existingSubscription.id);
     } else {
-      subscription = await subscriptionRepository.create({
+      subscription = await subscriptionRepository.createWithId(subscriptionId, {
         organizationId: orgId,
         plan: targetPlan,
         planId: effective?.planId,
@@ -260,9 +323,10 @@ export class SubscriptionService extends BaseService {
         currentPeriodEnd: periodEndIso,
         cancelledAt: null,
         paymentMethod: null,
-        priceXof,
+        priceXof: effectivePriceXof,
         billingCycle: cycle,
         scheduledChange,
+        appliedCoupon,
       } as Omit<Subscription, "id" | "createdAt" | "updatedAt">);
     }
 
@@ -273,6 +337,14 @@ export class SubscriptionService extends BaseService {
       actorId: user.uid,
       requestId: getRequestId(),
       timestamp: now,
+      appliedCoupon: couponResult
+        ? {
+            couponId: couponResult.coupon.id,
+            code: couponResult.coupon.code,
+            discountXof: couponResult.discountXof,
+            finalPriceXof: couponResult.finalPriceXof,
+          }
+        : null,
     });
 
     return subscription;
@@ -648,6 +720,24 @@ export class SubscriptionService extends BaseService {
     // Superadmin-only in practice (those two perms are bundled via platform:manage).
     // We don't call requireOrganizationAccess — this operation is explicitly
     // cross-tenant by design.
+
+    // ── A1 — strict-validate the override entitlement map here.
+    // `SubscriptionOverridesSchema.entitlements` is typed as
+    // `Record<string, unknown>` at the boundary to keep the shared-types
+    // contract snapshot narrow. The resolver shape-guards malformed
+    // entries, but we reject them LOUDLY here so a superadmin typo in
+    // the admin UI surfaces as a 400 instead of silently producing a
+    // partial override.
+    if (dto.overrides?.entitlements) {
+      const parsed = EntitlementMapSchema.safeParse(dto.overrides.entitlements);
+      if (!parsed.success) {
+        throw new ValidationError(
+          `Override entitlements invalide : ${parsed.error.issues
+            .map((i) => `${i.path.join(".") || "(root)"}: ${i.message}`)
+            .join("; ")}`,
+        );
+      }
+    }
 
     const now = new Date().toISOString();
     const periodEnd = new Date();

@@ -11,6 +11,7 @@ const mockSubRepo = {
   findByOrganization: vi.fn(),
   findByIdOrThrow: vi.fn(),
   create: vi.fn(),
+  createWithId: vi.fn(),
   update: vi.fn(),
 };
 
@@ -98,6 +99,22 @@ vi.mock("@/events/event-bus", () => ({
 
 vi.mock("@/context/request-context", () => ({
   getRequestId: () => "test-request-id",
+}));
+
+// Plan-coupon service mock. Default: applyInTransaction is unused (no couponCode
+// on the upgrade DTO). Tests that pass `couponCode` override the mock per-case
+// to assert discount application and subscription.appliedCoupon denormalization.
+const mockCouponService = {
+  applyInTransaction: vi.fn(),
+};
+
+vi.mock("../plan-coupon.service", () => ({
+  planCouponService: new Proxy(
+    {},
+    {
+      get: (_target, prop) => (mockCouponService as Record<string, unknown>)[prop as string],
+    },
+  ),
 }));
 
 // Import AFTER mocks
@@ -272,13 +289,14 @@ describe("SubscriptionService.upgrade", () => {
       plan: "starter",
       status: "active",
     };
-    mockSubRepo.create.mockResolvedValue(createdSub);
+    mockSubRepo.createWithId.mockResolvedValue(createdSub);
 
     const result = await service.upgrade("org-1", { plan: "starter" }, user);
 
     expect(result.plan).toBe("starter");
     expect(mockTxUpdate).toHaveBeenCalledWith(mockDocRef, { plan: "starter" });
-    expect(mockSubRepo.create).toHaveBeenCalledWith(
+    expect(mockSubRepo.createWithId).toHaveBeenCalledWith(
+      expect.any(String),
       expect.objectContaining({
         organizationId: "org-1",
         plan: "starter",
@@ -355,7 +373,7 @@ describe("SubscriptionService.upgrade", () => {
       data: () => ({ plan: "free", memberIds: [] }),
     });
     mockSubRepo.findByOrganization.mockResolvedValue(null);
-    mockSubRepo.create.mockResolvedValue({
+    mockSubRepo.createWithId.mockResolvedValue({
       id: "sub-1",
       organizationId: "org-1",
       plan: "starter",
@@ -373,6 +391,146 @@ describe("SubscriptionService.upgrade", () => {
         actorId: user.uid,
       }),
     );
+  });
+});
+
+// ── Phase 7+ item #7 — coupon-in-upgrade integration ─────────────────────
+// These tests assert that `upgrade()` wires the coupon service correctly:
+// the applyInTransaction call happens BEFORE org tx.update, the resolved
+// finalPriceXof flows to subscription.priceXof, and appliedCoupon is stamped.
+
+describe("SubscriptionService.upgrade — coupon integration", () => {
+  it("passes couponCode into planCouponService.applyInTransaction", async () => {
+    const user = buildOrganizerUser("org-1");
+    mockPlanRepo.findByKey.mockResolvedValue({
+      id: "plan-starter",
+      key: "starter",
+      priceXof: 9_900,
+      annualPriceXof: 99_000,
+      limits: { maxEvents: 10, maxParticipantsPerEvent: 200, maxMembers: 3 },
+      features: {
+        qrScanning: true,
+        paidTickets: false,
+        customBadges: true,
+        csvExport: true,
+        smsNotifications: false,
+        advancedAnalytics: false,
+        speakerPortal: false,
+        sponsorPortal: false,
+        apiAccess: false,
+        whiteLabel: false,
+        promoCodes: true,
+      },
+      entitlements: {},
+    });
+    mockPlanRepo.findById.mockResolvedValue({
+      id: "plan-starter",
+      key: "starter",
+      priceXof: 9_900,
+      annualPriceXof: 99_000,
+      trialDays: 0,
+    });
+
+    mockTxGet.mockResolvedValue({
+      exists: true,
+      data: () => ({ plan: "free", memberIds: [] }),
+    });
+    mockSubRepo.findByOrganization.mockResolvedValue(null);
+    mockSubRepo.createWithId.mockImplementation((_id: string, data: Record<string, unknown>) =>
+      Promise.resolve({ id: "sub-new", ...data }),
+    );
+
+    mockCouponService.applyInTransaction.mockResolvedValue({
+      coupon: { id: "TEST2026", code: "TEST2026" },
+      originalPriceXof: 9_900,
+      discountXof: 2_475,
+      finalPriceXof: 7_425,
+      redemptionRef: { id: "redeem-1" },
+    });
+
+    await service.upgrade("org-1", { plan: "starter", couponCode: "TEST2026" }, user);
+
+    expect(mockCouponService.applyInTransaction).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        code: "TEST2026",
+        organizationId: "org-1",
+        actorId: user.uid,
+      }),
+    );
+
+    // The subscription was written with the discounted price + appliedCoupon snapshot.
+    expect(mockSubRepo.createWithId).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        priceXof: 7_425,
+        appliedCoupon: expect.objectContaining({
+          couponId: "TEST2026",
+          code: "TEST2026",
+          discountXof: 2_475,
+        }),
+      }),
+    );
+  });
+
+  it("leaves priceXof + appliedCoupon untouched when no couponCode is provided", async () => {
+    const user = buildOrganizerUser("org-1");
+    mockPlanRepo.findByKey.mockResolvedValue(null);
+
+    mockTxGet.mockResolvedValue({
+      exists: true,
+      data: () => ({ plan: "free", memberIds: [] }),
+    });
+    mockSubRepo.findByOrganization.mockResolvedValue(null);
+    mockSubRepo.createWithId.mockImplementation((_id: string, data: Record<string, unknown>) =>
+      Promise.resolve({ id: "sub-new", ...data }),
+    );
+
+    await service.upgrade("org-1", { plan: "starter" }, user);
+
+    expect(mockCouponService.applyInTransaction).not.toHaveBeenCalled();
+    expect(mockSubRepo.createWithId).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ appliedCoupon: null }),
+    );
+  });
+
+  it("rejects couponCode during a trial enrolment", async () => {
+    const user = buildOrganizerUser("org-1");
+    mockPlanRepo.findByKey.mockResolvedValue({
+      id: "plan-pro",
+      key: "pro",
+      priceXof: 29_900,
+      limits: { maxEvents: -1, maxParticipantsPerEvent: 2000, maxMembers: 50 },
+      features: {
+        qrScanning: true,
+        paidTickets: true,
+        customBadges: true,
+        csvExport: true,
+        smsNotifications: true,
+        advancedAnalytics: true,
+        speakerPortal: true,
+        sponsorPortal: true,
+        apiAccess: false,
+        whiteLabel: false,
+        promoCodes: true,
+      },
+      entitlements: {},
+    });
+    // Catalog plan with trialDays > 0 triggers the trial branch.
+    mockPlanRepo.findById.mockResolvedValue({
+      id: "plan-pro",
+      key: "pro",
+      priceXof: 29_900,
+      trialDays: 14,
+    });
+    mockSubRepo.findByOrganization.mockResolvedValue(null);
+
+    await expect(
+      service.upgrade("org-1", { plan: "pro", couponCode: "TEST2026" }, user),
+    ).rejects.toThrow(/période d'essai/);
+
+    expect(mockCouponService.applyInTransaction).not.toHaveBeenCalled();
   });
 });
 
@@ -660,7 +818,7 @@ describe("SubscriptionService — super_admin bypass", () => {
       data: () => ({ plan: "free", memberIds: [] }),
     });
     mockSubRepo.findByOrganization.mockResolvedValue(null);
-    mockSubRepo.create.mockResolvedValue({
+    mockSubRepo.createWithId.mockResolvedValue({
       id: "sub-new",
       organizationId: "any-org",
       plan: "pro",
@@ -809,7 +967,11 @@ describe("SubscriptionService — Phase 2 denormalization", () => {
       data: () => ({ plan: "free", memberIds: [] }),
     });
     mockSubRepo.findByOrganization.mockResolvedValue(null);
-    mockSubRepo.create.mockResolvedValue({ id: "sub-x", plan: "starter", status: "active" });
+    mockSubRepo.createWithId.mockResolvedValue({
+      id: "sub-x",
+      plan: "starter",
+      status: "active",
+    });
 
     await service.upgrade("org-1", { plan: "starter" }, user);
 

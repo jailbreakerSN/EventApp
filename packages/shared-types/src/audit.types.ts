@@ -84,6 +84,14 @@ export const AuditActionSchema = z.enum([
   "plan.created",
   "plan.updated",
   "plan.archived",
+  // ── Plan Coupons (Phase 7+ item #7) ───────────────────────────────────────
+  // Super-admin CRUD on the promo-campaign primitive. Redemptions are
+  // captured separately on the subscription + couponRedemptions doc, so
+  // there's no `plan_coupon.redeemed` action here — the redemption event
+  // is the subscription.upgraded with appliedCoupon set.
+  "plan_coupon.created",
+  "plan_coupon.updated",
+  "plan_coupon.archived",
   // ── Subscription lifecycle (Phase 4c) ─────────────────────────────────────
   "subscription.upgraded",
   "subscription.downgraded",

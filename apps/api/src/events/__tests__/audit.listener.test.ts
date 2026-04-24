@@ -609,7 +609,11 @@ describe("Audit Listener", () => {
       // handlers for the org-scoped API-key issuance console (+3).
       // T2.3 senior-review remediation added `api_key.verified` (+1)
       // for throttled per-request leak-detection audit rows.
-      const EXPECTED_HANDLER_COUNT = 88;
+      // Phase 7+ item #7 added three plan-coupon lifecycle handlers
+      // (`plan_coupon.created` / `.updated` / `.archived`) — redemption
+      // itself is captured on subscription.upgraded + the
+      // couponRedemptions collection, not as a dedicated audit action.
+      const EXPECTED_HANDLER_COUNT = 91;
 
       expect(registered).toHaveLength(EXPECTED_HANDLER_COUNT);
       // Each registered event name should be unique — a double

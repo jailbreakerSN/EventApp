@@ -194,41 +194,50 @@ export function resolveEffective(
   // Merge price (informational; enforcement doesn't depend on it)
   const priceXof = active && overrides?.priceXof !== undefined ? overrides.priceXof : plan.priceXof;
 
-  // Merge entitlement map — plan's map is the base, and legacy
-  // feature/limit overrides are projected into entitlement space so
-  // the new helpers (`requireEntitlement` / `checkQuota`) stay
-  // consistent with the legacy ones (`requirePlanFeature` /
-  // `checkPlanLimit`) on the same key. Without this sync, an override
-  // like `{features: {x: false}}` would flip the legacy view while
-  // leaving the entitlement map with a stale `{x: true}` value — the
-  // two helpers would then disagree on the same org.
+  // Merge entitlement map — plan's map is the base, legacy
+  // feature/limit overrides are projected into entitlement space, and
+  // explicit per-key entitlement overrides win last. The whole map
+  // keeps the new helpers (`requireEntitlement` / `checkQuota`) in
+  // sync with the legacy ones (`requirePlanFeature` / `checkPlanLimit`)
+  // so both reads of the same key return the same answer.
   //
-  // `SubscriptionOverrides.entitlements` is intentionally NOT on the
-  // schema in this PR (see plan.types.ts for rationale — contract
-  // snapshot scope cut). Legacy overrides are projected into the
-  // map; per-key entitlement overrides land with the follow-up PR
-  // that introduces a real metered-override use case.
+  // Precedence (earliest-wins, so later wins):
+  //   1. plan.entitlements
+  //   2. overrides.features + overrides.limits (projected)
+  //   3. overrides.entitlements (explicit per-key override — A1)
+  //
+  // A1 pre-process: the override schema types `entitlements` as
+  // `Record<string, unknown>` to keep the contract snapshot narrow. The
+  // service layer (`subscription.service.ts`) strict-validates the map
+  // against `EntitlementMapSchema` BEFORE it reaches this resolver —
+  // see the `assignPlan` / `upgrade` paths. If a malformed entry ever
+  // reaches this function we surface it by narrowing via
+  // `readOverrideEntitlement` below (shape-guard, deny on malformed).
   let mergedEntitlements: EntitlementMap | undefined;
-  if (plan.entitlements || (active && overrides?.features) || (active && overrides?.limits)) {
+  const hasOverrideEntitlements =
+    active &&
+    overrides?.entitlements &&
+    Object.keys(overrides.entitlements).length > 0;
+  if (
+    plan.entitlements ||
+    (active && overrides?.features) ||
+    (active && overrides?.limits) ||
+    hasOverrideEntitlements
+  ) {
     mergedEntitlements = { ...(plan.entitlements ?? {}) };
 
-    // Project legacy feature overrides into entitlement space.
+    // Step 2 — legacy feature overrides → boolean entitlement entries.
     if (active && overrides?.features) {
       for (const [k, v] of Object.entries(overrides.features)) {
         if (v === undefined) continue;
-        const entKey = (
-          LEGACY_FEATURE_ENTITLEMENT_KEYS as Record<string, string>
-        )[k];
+        const entKey = (LEGACY_FEATURE_ENTITLEMENT_KEYS as Record<string, string>)[k];
         if (entKey) {
           mergedEntitlements[entKey] = { kind: "boolean", value: v };
         }
       }
     }
 
-    // Project legacy limit overrides into entitlement space. We pick a
-    // default `period: "cycle"` — the legacy limits have always been
-    // per-billing-cycle in spirit; callers that need a different
-    // period must use the entitlement map directly.
+    // Step 2 — legacy limit overrides → quota entitlement entries.
     if (active && overrides?.limits) {
       const limitKeyMap: Record<string, string> = {
         maxEvents: LEGACY_QUOTA_ENTITLEMENT_KEYS.maxEvents,
@@ -243,6 +252,38 @@ export function resolveEffective(
         }
       }
     }
+
+    // Step 3 — explicit per-key entitlement overrides (A1). Applied
+    // last so they win on any key the legacy overrides already touched.
+    if (hasOverrideEntitlements) {
+      for (const [k, raw] of Object.entries(overrides.entitlements!)) {
+        const ent = readOverrideEntitlement(raw);
+        if (ent) mergedEntitlements[k] = ent;
+      }
+    }
+
+    // Also project the FINAL entitlement map back onto the legacy
+    // `features` + `limits` views so readers of
+    // `EffectivePlan.features[x]` see the same answer the entitlement
+    // map carries for `feature.x`. Without this, an entitlement
+    // override like `{"feature.smsNotifications": {kind:"boolean",
+    // value:true}}` would update the map but leave `features.smsNotifications`
+    // stale — breaking the sync invariant requireEntitlement ↔
+    // requirePlanFeature.
+    if (hasOverrideEntitlements) {
+      for (const [legacyKey, entKey] of Object.entries(LEGACY_FEATURE_ENTITLEMENT_KEYS)) {
+        const ent = mergedEntitlements[entKey];
+        if (ent && ent.kind === "boolean") {
+          (features as unknown as Record<string, boolean>)[legacyKey] = ent.value;
+        }
+      }
+      for (const [legacyKey, entKey] of Object.entries(LEGACY_QUOTA_ENTITLEMENT_KEYS)) {
+        const ent = mergedEntitlements[entKey];
+        if (ent && ent.kind === "quota") {
+          (limits as unknown as Record<string, number>)[legacyKey] = storedToRuntime(ent.limit);
+        }
+      }
+    }
   }
 
   return {
@@ -254,6 +295,28 @@ export function resolveEffective(
     computedAt: now.toISOString(),
     ...(mergedEntitlements ? { entitlements: mergedEntitlements } : {}),
   };
+}
+
+/**
+ * Narrowing read of an override entitlement value. Returns the Entitlement
+ * when the raw value matches the tagged-union shape; `undefined` on any
+ * malformed input (unknown kind, missing discriminant, wrong inner types).
+ *
+ * Denial-by-default: malformed entries are dropped, legacy fallback
+ * kicks in, enforcement stays safe. Strict validation on the WRITE path
+ * (service / UI) keeps this from firing in production.
+ */
+function readOverrideEntitlement(raw: unknown): Entitlement | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const candidate = raw as { kind?: unknown };
+  if (
+    candidate.kind === "boolean" ||
+    candidate.kind === "quota" ||
+    candidate.kind === "tiered"
+  ) {
+    return raw as Entitlement;
+  }
+  return undefined;
 }
 
 /**

@@ -372,3 +372,125 @@ describe("resolveEffective — entitlement projection (Phase 7+ item #2)", () =>
     expect(ent).toEqual({ kind: "quota", limit: 99, period: "cycle" });
   });
 });
+
+// ─── A1 — explicit per-key entitlement overrides ──────────────────────────
+//
+// The per-org override surface. These tests pin the A1 precedence
+// contract (plan entitlements → legacy projections → entitlement
+// overrides WIN on key collisions) and the sync invariant (the legacy
+// `features`/`limits` projected views must reflect entitlement
+// overrides, not just the plan/legacy-override state).
+
+describe("resolveEffective — A1 explicit entitlement overrides", () => {
+  it("explicit entitlement override wins over plan entitlement on the same key", () => {
+    const plan = buildPlan({
+      entitlements: {
+        [LEGACY_FEATURE_ENTITLEMENT_KEYS.apiAccess]: { kind: "boolean", value: false },
+      },
+    });
+    const overrides: SubscriptionOverrides = {
+      entitlements: {
+        [LEGACY_FEATURE_ENTITLEMENT_KEYS.apiAccess]: { kind: "boolean", value: true },
+      },
+    };
+    const effective = resolveEffective(plan, overrides);
+    expect(effective.features.apiAccess).toBe(true);
+    expect(effective.entitlements?.[LEGACY_FEATURE_ENTITLEMENT_KEYS.apiAccess]).toEqual({
+      kind: "boolean",
+      value: true,
+    });
+  });
+
+  it("explicit entitlement override wins over a legacy feature override on the same key", () => {
+    // Precedence: legacy override applies first, then entitlement
+    // override lands ON TOP. The legacy view MUST reflect the
+    // entitlement override's final value.
+    const plan = buildPlan({
+      entitlements: {
+        [LEGACY_FEATURE_ENTITLEMENT_KEYS.customBadges]: { kind: "boolean", value: false },
+      },
+    });
+    const overrides: SubscriptionOverrides = {
+      features: { customBadges: false },
+      entitlements: {
+        [LEGACY_FEATURE_ENTITLEMENT_KEYS.customBadges]: { kind: "boolean", value: true },
+      },
+    };
+    const effective = resolveEffective(plan, overrides);
+    expect(effective.features.customBadges).toBe(true);
+    expect(effective.entitlements?.[LEGACY_FEATURE_ENTITLEMENT_KEYS.customBadges]).toEqual({
+      kind: "boolean",
+      value: true,
+    });
+  });
+
+  it("explicit quota override lifts the legacy limits view", () => {
+    const plan = buildPlan({
+      limits: { maxEvents: 10, maxParticipantsPerEvent: 100, maxMembers: 3 },
+    });
+    const overrides: SubscriptionOverrides = {
+      entitlements: {
+        [LEGACY_QUOTA_ENTITLEMENT_KEYS.maxEvents]: {
+          kind: "quota",
+          limit: 500,
+          period: "cycle",
+        },
+      },
+    };
+    const effective = resolveEffective(plan, overrides);
+    expect(effective.limits.maxEvents).toBe(500);
+  });
+
+  it("non-legacy entitlement keys flow into the merged map (e.g. quota.sms.monthly)", () => {
+    // The override surface is the only way to grant a NEW entitlement
+    // without editing the plan doc. Make sure the merged map carries
+    // arbitrary keys, not just the 14 legacy ones.
+    const plan = buildPlan();
+    const overrides: SubscriptionOverrides = {
+      entitlements: {
+        "quota.sms.monthly": { kind: "quota", limit: 500, period: "month" },
+      },
+    };
+    const effective = resolveEffective(plan, overrides);
+    expect(effective.entitlements?.["quota.sms.monthly"]).toEqual({
+      kind: "quota",
+      limit: 500,
+      period: "month",
+    });
+  });
+
+  it("expired overrides.entitlements are ignored (validUntil in the past)", () => {
+    const plan = buildPlan({
+      entitlements: {
+        [LEGACY_FEATURE_ENTITLEMENT_KEYS.whiteLabel]: { kind: "boolean", value: false },
+      },
+    });
+    const overrides: SubscriptionOverrides = {
+      entitlements: {
+        [LEGACY_FEATURE_ENTITLEMENT_KEYS.whiteLabel]: { kind: "boolean", value: true },
+      },
+      validUntil: "2020-01-01T00:00:00.000Z",
+    };
+    const effective = resolveEffective(plan, overrides, new Date("2026-04-24"));
+    expect(effective.features.whiteLabel).toBe(false);
+  });
+
+  it("malformed override values (unknown kind) are dropped — deny-by-default", () => {
+    // The schema accepts `Record<string, unknown>`; the resolver
+    // shape-guards each value. Anything that doesn't look like a
+    // tagged Entitlement falls through to the legacy / plan state.
+    const plan = buildPlan({
+      entitlements: {
+        [LEGACY_FEATURE_ENTITLEMENT_KEYS.apiAccess]: { kind: "boolean", value: false },
+      },
+    });
+    const overrides: SubscriptionOverrides = {
+      entitlements: {
+        [LEGACY_FEATURE_ENTITLEMENT_KEYS.apiAccess]: { kind: "garbage" } as unknown as never,
+      },
+    };
+    const effective = resolveEffective(plan, overrides);
+    // Malformed override is silently dropped — plan value prevails.
+    expect(effective.features.apiAccess).toBe(false);
+  });
+});

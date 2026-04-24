@@ -102,6 +102,12 @@ import type {
   CreateApiKeyResponse,
   RotateApiKeyRequest,
   RotateApiKeyResponse,
+  PlanCoupon,
+  CreatePlanCouponDto,
+  UpdatePlanCouponDto,
+  AdminCouponQuery,
+  ValidateCouponRequest,
+  ValidateCouponResponse,
 } from "@teranga/shared-types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
@@ -369,10 +375,19 @@ export const organizationsApi = {
   getUsage: (orgId: string) =>
     api.get<ApiResponse<PlanUsage>>(`/v1/organizations/${orgId}/usage`),
 
-  upgradePlan: (orgId: string, plan: string, cycle?: "monthly" | "annual") =>
+  upgradePlan: (
+    orgId: string,
+    plan: string,
+    cycle?: "monthly" | "annual",
+    couponCode?: string,
+  ) =>
     api.post<ApiResponse<Subscription>>(
       `/v1/organizations/${orgId}/subscription/upgrade`,
-      cycle ? { plan, cycle } : { plan },
+      {
+        plan,
+        ...(cycle ? { cycle } : {}),
+        ...(couponCode ? { couponCode } : {}),
+      },
     ),
 
   downgradePlan: (orgId: string, plan: string, options: { immediate?: boolean } = {}) =>
@@ -836,6 +851,27 @@ export const adminApi = {
     api.patch<ApiResponse<Plan>>(`/v1/admin/plans/${planId}`, dto),
 
   archivePlan: (planId: string) => api.delete(`/v1/admin/plans/${planId}`),
+
+  // ── Plan Coupons (Phase 7+ item #7) ─────────────────────────────────────
+  listCoupons: (query: Partial<AdminCouponQuery> = {}) =>
+    api.get<PaginatedResponse<PlanCoupon>>(`/v1/admin/coupons${buildQuery(query)}`),
+  getCoupon: (couponId: string) =>
+    api.get<ApiResponse<PlanCoupon>>(`/v1/admin/coupons/${couponId}`),
+  createCoupon: (dto: CreatePlanCouponDto) =>
+    api.post<ApiResponse<PlanCoupon>>("/v1/admin/coupons", dto),
+  updateCoupon: (couponId: string, dto: UpdatePlanCouponDto) =>
+    api.patch<ApiResponse<PlanCoupon>>(`/v1/admin/coupons/${couponId}`, dto),
+  archiveCoupon: (couponId: string) =>
+    api.delete(`/v1/admin/coupons/${couponId}`),
+  validateCoupon: (
+    planId: string,
+    organizationId: string,
+    dto: ValidateCouponRequest,
+  ) =>
+    api.post<ApiResponse<ValidateCouponResponse>>(
+      `/v1/plans/${planId}/validate-coupon?organizationId=${encodeURIComponent(organizationId)}`,
+      dto,
+    ),
 
   // Phase 7+ item #5: MRR / cohort dashboard snapshot.
   getPlanAnalytics: () =>

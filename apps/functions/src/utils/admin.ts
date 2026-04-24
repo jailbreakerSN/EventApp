@@ -56,4 +56,8 @@ export const COLLECTIONS = {
   // service; the Resend webhook trigger backfills delivery status here
   // (bounced / complained → status="suppressed", reason="bounced").
   NOTIFICATION_DISPATCH_LOG: "notificationDispatchLog",
+  // Plan-level coupons + redemptions — mirror of the API constants so
+  // scheduled jobs (if any) can read them without cross-repo imports.
+  PLAN_COUPONS: "planCoupons",
+  COUPON_REDEMPTIONS: "couponRedemptions",
 } as const;
