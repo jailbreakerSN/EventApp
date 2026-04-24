@@ -62,6 +62,25 @@ export const ERROR_CODES = {
   // cause is almost always a missing `roles/iam.serviceAccountTokenCreator`
   // binding on the Cloud Run runtime service account.
   IMPERSONATION_SIGNING_UNAVAILABLE: "IMPERSONATION_SIGNING_UNAVAILABLE",
+  // Impersonation authorization-code flow — the code presented at
+  // /v1/impersonation/exchange does not match any live row. Either the
+  // code is malformed, was never issued, or was TTL-purged after its
+  // 60-second window. 404-shape; surfaced to the user as a generic
+  // "session expirée, recommencez" — we never echo the supplied code.
+  IMPERSONATION_CODE_INVALID: "IMPERSONATION_CODE_INVALID",
+  // The code exists but its `expiresAt` is in the past. Separate from
+  // INVALID so ops can distinguish client clock skew from raw forgery
+  // in metrics. 410 Gone.
+  IMPERSONATION_CODE_EXPIRED: "IMPERSONATION_CODE_EXPIRED",
+  // Single-use guarantee: the code was already redeemed. Either a
+  // double-click (harmless — the first exchange will have signed in)
+  // or a replay attempt (malicious). 409 Conflict.
+  IMPERSONATION_CODE_CONSUMED: "IMPERSONATION_CODE_CONSUMED",
+  // Code was issued for a different target app (backoffice vs participant).
+  // The browser's Origin header on the exchange request does not match
+  // the stored targetOrigin. 403 Forbidden — almost always an attempt
+  // to consume a code on a foreign origin (CSRF / open-redirect variant).
+  IMPERSONATION_ORIGIN_MISMATCH: "IMPERSONATION_ORIGIN_MISMATCH",
 } as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];

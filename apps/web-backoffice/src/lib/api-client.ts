@@ -711,17 +711,24 @@ export const adminApi = {
   getUser: (userId: string) =>
     api.get<ApiResponse<AdminUserRow>>(`/v1/admin/users/${encodeURIComponent(userId)}`),
 
-  // Phase 4 — start an impersonation session. The response includes a
-  // short-lived Firebase custom token the caller must exchange with
-  // signInWithCustomToken() after signing-out the current session.
+  // OAuth-style impersonation auth-code flow. The response carries an
+  // opaque short-lived CODE + absolute `acceptUrl` the browser must
+  // open in a new tab. The target app's `/impersonation/accept` route
+  // POSTs the code to `/v1/impersonation/exchange`, which returns the
+  // Firebase custom token server-side (never via URL). See
+  // packages/shared-types/src/impersonation.types.ts for the full
+  // security rationale.
   impersonate: (userId: string) =>
     api.post<
       ApiResponse<{
-        customToken: string;
+        code: string;
+        acceptUrl: string;
+        targetOrigin: string;
+        expiresAt: string;
         targetUid: string;
         targetDisplayName: string | null;
         targetEmail: string | null;
-        expiresAt: string;
+        targetRoles: string[];
       }>
     >(`/v1/admin/users/${encodeURIComponent(userId)}/impersonate`, {}),
 

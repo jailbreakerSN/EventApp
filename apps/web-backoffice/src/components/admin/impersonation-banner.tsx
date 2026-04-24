@@ -1,52 +1,56 @@
 "use client";
 
 /**
- * Phase 4 — Persistent impersonation banner.
+ * Impersonation banner — target-tab side.
  *
- * Renders across every dashboard page when the session is flagged as an
- * impersonation (via sessionStorage breadcrumb). Super-admins must see
- * this banner continuously — if they forget they're impersonating, a
- * mutation applied "as the user" could look like user behaviour to
- * downstream observers. The banner:
+ * Renders at the top of every backoffice page WHEN the current tab's
+ * Firebase ID token carries an `impersonatedBy` claim (server-signed
+ * by `createCustomToken` at exchange time). Zero configuration needed:
+ * the hook detects the session from the token itself, not from
+ * sessionStorage.
  *
- *   - Shows the target user's identity (display name + email).
- *   - Shows a countdown to expiration (30 min by default).
- *   - Provides a "Quitter" button that signs-out + redirects to the
- *     login page with a reason flag so onboarding copy can explain.
+ * The banner:
+ *   - Shows the target user's identity (display name / email / uid).
+ *   - Shows a countdown to expiry (30-minute session cap).
+ *   - Exposes a "Quitter" button that server-revokes + signs out +
+ *     closes the tab (or falls back to /login redirect).
  *
- * Color choice (amber + red text): stands out without looking like a
- * hard error. Matches the admin-grade SaaS convention (Stripe, Intercom,
- * Salesforce all use amber banners for "acting as another user").
+ * Why amber (not red): the operator IS doing something legitimate —
+ * the banner is a reminder, not an error. Stripe, Intercom and
+ * Salesforce all use the same amber-gold palette for "acting as".
  */
 
 import { useEffect, useState } from "react";
 import { AlertTriangle, LogOut } from "lucide-react";
-import { useImpersonationState, endImpersonation } from "@/hooks/use-impersonation";
+import {
+  useImpersonationSession,
+  endImpersonation,
+  type ImpersonationSession,
+} from "@/hooks/use-impersonation";
+
+function formatRemaining(session: ImpersonationSession): string {
+  const ms = new Date(session.expiresAt).getTime() - Date.now();
+  if (ms <= 0) return "expirée";
+  const mins = Math.floor(ms / 60_000);
+  const secs = Math.floor((ms % 60_000) / 1000);
+  return `${mins}m ${String(secs).padStart(2, "0")}s`;
+}
 
 export function ImpersonationBanner() {
-  const state = useImpersonationState();
+  const session = useImpersonationSession();
   const [remaining, setRemaining] = useState<string>("");
 
   useEffect(() => {
-    if (!state) return;
-    const update = () => {
-      const ms = new Date(state.expiresAt).getTime() - Date.now();
-      if (ms <= 0) {
-        setRemaining("expirée");
-        return;
-      }
-      const mins = Math.floor(ms / 60_000);
-      const secs = Math.floor((ms % 60_000) / 1000);
-      setRemaining(`${mins}m ${String(secs).padStart(2, "0")}s`);
-    };
+    if (!session) return;
+    const update = () => setRemaining(formatRemaining(session));
     update();
     const id = setInterval(update, 1000);
     return () => clearInterval(id);
-  }, [state]);
+  }, [session]);
 
-  if (!state) return null;
+  if (!session) return null;
 
-  const targetLabel = state.targetDisplayName ?? state.targetEmail ?? state.targetUid;
+  const targetLabel = session.targetDisplayName ?? session.targetEmail ?? session.targetUid;
 
   return (
     <div

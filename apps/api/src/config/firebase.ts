@@ -132,4 +132,11 @@ export const COLLECTIONS = {
   // Phase D — manual job-runs triggered from /admin/jobs. Each doc
   // records the triggering admin + status + timing for observability.
   ADMIN_JOB_RUNS: "adminJobRuns",
+  // Impersonation auth-code flow (OAuth-style short-lived codes).
+  // Doc id = SHA-256 hex of the raw code. Body carries the target
+  // uid + adminUid + targetOrigin + issuedAt + expiresAt + consumedAt
+  // + audit metadata (IPs, UAs). TTL policy auto-purges on `expiresAt`;
+  // see infrastructure/firebase/firestore.ttl.md. Server-only at the
+  // rules layer — the Admin SDK reads/writes, clients are denied.
+  IMPERSONATION_CODES: "impersonationCodes",
 } as const;

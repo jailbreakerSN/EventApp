@@ -20,6 +20,7 @@ import { speakerRoutes } from "./speakers.routes";
 import { sponsorRoutes } from "./sponsors.routes";
 import { promoCodeRoutes } from "./promo-codes.routes";
 import { adminRoutes } from "./admin.routes";
+import { impersonationRoutes } from "./impersonation.routes";
 import { venueRoutes } from "./venues.routes";
 import { newsletterRoutes } from "./newsletter.routes";
 import { authEmailRoutes } from "./auth-email.routes";
@@ -53,6 +54,7 @@ export async function registerRoutes(app: FastifyInstance) {
   await app.register(sponsorRoutes, { prefix: "/v1/events" });
   await app.register(promoCodeRoutes, { prefix: "/v1/events" });
   await app.register(adminRoutes, { prefix: "/v1/admin" });
+  await app.register(impersonationRoutes, { prefix: "/v1/impersonation" });
   await app.register(adminPlanRoutes, { prefix: "/v1/admin/plans" });
   await app.register(planRoutes, { prefix: "/v1/plans" });
   await app.register(venueRoutes, { prefix: "/v1/venues" });

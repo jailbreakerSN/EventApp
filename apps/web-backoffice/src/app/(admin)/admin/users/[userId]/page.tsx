@@ -184,17 +184,16 @@ export default function AdminUserDetailPage() {
                 : undefined,
           onClick: () => {
             if (!currentUser) return;
-            // Confirm: clicking walks the operator into a NEW auth session.
+            // OAuth-style auth-code flow: a new tab opens on the
+            // target app's origin and consumes the server-minted
+            // code. The admin's session on THIS tab is untouched —
+            // no sign-out, no reconciliation, no "reconnect after".
             const ok = window.confirm(
-              `⚠️ Démarrer une session en tant que ${user.displayName ?? user.email} ?\n\n` +
-                "La session actuelle sera fermée. Vous devrez vous reconnecter en admin après.",
+              `Démarrer une session en tant que ${user.displayName ?? user.email} ?\n\n` +
+                "Un nouvel onglet s'ouvrira sur l'application correspondante. Votre session admin reste active dans cet onglet.",
             );
             if (!ok) return;
-            void startImpersonation({
-              actorUid: currentUser.uid,
-              actorDisplayName: currentUser.displayName,
-              targetUid: user.uid,
-            }).catch((err) => {
+            void startImpersonation({ targetUid: user.uid }).catch((err) => {
               setError(resolve(err).description);
             });
           },
