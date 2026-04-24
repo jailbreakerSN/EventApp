@@ -39,6 +39,24 @@ export function AuthShell({
     <div className="min-h-screen bg-muted/40 dark:bg-background lg:grid lg:grid-cols-[minmax(380px,_5fr)_7fr]">
       {/* Hero column — navy editorial panel */}
       <div className="relative flex min-h-[280px] flex-col lg:min-h-screen">
+        {/* Mobile brand strip — inline, shares the navy hero bg so the
+            two render as one continuous pane. Reserves its own vertical
+            space, so the giant serif title below can never tuck under
+            the pill (the bug the absolute-only variant caused on <lg
+            viewports, see review 2026-04-24). Swapped for the pinned
+            desktop pill at `lg+` where the hero is full-height. */}
+        <div className="flex shrink-0 items-center gap-3 bg-teranga-navy px-6 pt-6 lg:hidden">
+          <div className="rounded-full bg-white/95 px-3 py-1.5 shadow-sm">
+            <Image
+              src="/logo-color.svg"
+              alt="Teranga Event"
+              width={120}
+              height={56}
+              className="h-7 w-auto"
+              priority
+            />
+          </div>
+        </div>
         <EditorialHero
           variant="navy"
           kicker={heroKicker}
@@ -46,13 +64,11 @@ export function AuthShell({
           lead={heroLead}
           className="min-h-[280px] flex-1 sm:min-h-[320px] lg:min-h-full lg:h-full"
         />
-        {/* Brand mark pinned top-left of the navy pane — sits above the
-            hero texture so it is legible regardless of copy length.
-            Hidden below `lg` because the mobile hero only stacks to ~280px
-            and the giant serif title collides with a pinned pill there.
-            The kicker ("✦ Teranga Events · Organisateur") already carries
-            brand identity on the mobile layout, so no brand signal is lost. */}
-        <div className="pointer-events-none absolute left-6 top-6 z-20 hidden items-center gap-3 lg:left-8 lg:top-8 lg:flex">
+        {/* Desktop brand mark — pinned top-left of the navy pane, sits
+            above the hero texture so it stays legible regardless of
+            copy length. Hidden on <lg where the inline strip above
+            takes over. */}
+        <div className="pointer-events-none absolute left-8 top-8 z-20 hidden items-center gap-3 lg:flex">
           {/* White pill contrasts with the always-navy hero in both themes,
               so we pin the coloured logo regardless of the page theme —
               ThemeLogo would swap to the white mark and disappear here. */}
