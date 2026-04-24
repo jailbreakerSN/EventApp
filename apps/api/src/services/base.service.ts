@@ -173,7 +173,7 @@ export abstract class BaseService {
    * including when a `quota` entitlement has been exhausted (limit === 0).
    */
   protected requireEntitlement(org: Organization, key: string): void {
-    const ent = org.effectiveEntitlements?.[key];
+    const ent = this.readStoredEntitlement(org, key);
 
     // Path 1 — the unified field is present and covers this key.
     if (ent !== undefined) {
@@ -220,7 +220,7 @@ export abstract class BaseService {
     key: string,
     current: number,
   ): { allowed: boolean; current: number; limit: number } {
-    const ent = org.effectiveEntitlements?.[key];
+    const ent = this.readStoredEntitlement(org, key);
 
     // Path 1 — a quota entitlement is present.
     if (ent?.kind === "quota") {
@@ -244,6 +244,33 @@ export abstract class BaseService {
 
     // Path 4 — unknown key. Deny-by-default.
     return { allowed: false, current, limit: 0 };
+  }
+
+  /**
+   * Narrowing read of a denormalized entitlement. `Organization.effectiveEntitlements`
+   * is typed as `Record<string, unknown>` at the schema boundary (see
+   * organization.types.ts — denorm fields stay loose for contract-
+   * snapshot scope). The value was validated at write-time via
+   * `EntitlementMapSchema` on `PlanSchema.entitlements`, so this guard
+   * is a light shape-check that trusts the write path while surfacing
+   * malformed data as `undefined` (treated as "absent" by callers).
+   *
+   * Returns `undefined` for: missing key, missing map, value that
+   * doesn't look like a tagged-union Entitlement. Callers then route
+   * through the legacy fallback — deny-by-default holds.
+   */
+  private readStoredEntitlement(org: Organization, key: string): Entitlement | undefined {
+    const raw = org.effectiveEntitlements?.[key];
+    if (!raw || typeof raw !== "object") return undefined;
+    const candidate = raw as { kind?: unknown };
+    if (
+      candidate.kind === "boolean" ||
+      candidate.kind === "quota" ||
+      candidate.kind === "tiered"
+    ) {
+      return raw as Entitlement;
+    }
+    return undefined;
   }
 
   private isEntitlementActive(ent: Entitlement): boolean {
