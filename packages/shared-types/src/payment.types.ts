@@ -105,6 +105,26 @@ export const PaymentQuerySchema = z.object({
 
 export type PaymentQuery = z.infer<typeof PaymentQuerySchema>;
 
+/**
+ * Admin payment listing. Behind `platform:manage`, reads across every
+ * organisation. Powers `/admin/payments?status=failed` (inbox
+ * deep-link) and the finance ops review surface. Note: the public
+ * `PaymentQuerySchema` is event-scoped (`listByEvent`) while this
+ * schema is cross-org.
+ */
+export const AdminPaymentQuerySchema = z.object({
+  status: PaymentStatusSchema.optional(),
+  method: PaymentMethodSchema.optional(),
+  organizationId: z.string().optional(),
+  eventId: z.string().optional(),
+  page: z.coerce.number().int().positive().default(1),
+  limit: z.coerce.number().int().positive().max(100).default(20),
+  orderBy: z.enum(["initiatedAt", "amount", "updatedAt"]).default("initiatedAt"),
+  orderDir: z.enum(["asc", "desc"]).default("desc"),
+});
+
+export type AdminPaymentQuery = z.infer<typeof AdminPaymentQuerySchema>;
+
 // ─── Receipt ────────────────────────────────────────────────────────────────
 
 export const ReceiptSchema = z.object({

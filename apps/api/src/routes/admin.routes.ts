@@ -12,6 +12,8 @@ import {
   AdminOrgQuerySchema,
   AdminEventQuerySchema,
   AdminVenueQuerySchema,
+  AdminPaymentQuerySchema,
+  AdminSubscriptionQuerySchema,
   AdminAuditQuerySchema,
   UpdateUserRolesSchema,
   UpdateUserStatusSchema,
@@ -855,6 +857,54 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
       const result = await adminService.listVenues(
         request.user!,
         request.query as z.infer<typeof AdminVenueQuerySchema>,
+      );
+      return reply.send({ success: true, ...result });
+    },
+  );
+
+  // ── Payments ────────────────────────────────────────────────────────────
+  // Admin cross-org payments list. Used by the "X paiement(s) échoué(s)"
+  // inbox card, which previously linked to the audit log — that showed
+  // an empty list whenever the audit entries lagged behind the
+  // payments collection (e.g. backfilled / seeded rows).
+  fastify.get(
+    "/payments",
+    {
+      preHandler: [...adminPreHandler, validate({ query: AdminPaymentQuerySchema })],
+      schema: {
+        tags: ["Admin"],
+        summary: "List payments across every organisation (finance ops view)",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const result = await adminService.listPayments(
+        request.user!,
+        request.query as z.infer<typeof AdminPaymentQuerySchema>,
+      );
+      return reply.send({ success: true, ...result });
+    },
+  );
+
+  // ── Subscriptions ───────────────────────────────────────────────────────
+  // Admin cross-org subscriptions list. Used by /admin/subscriptions
+  // (+ the "X abonnement(s) en impayé" inbox deep-link) so operators
+  // can see which orgs are `past_due` without hunting through the org
+  // list.
+  fastify.get(
+    "/subscriptions",
+    {
+      preHandler: [...adminPreHandler, validate({ query: AdminSubscriptionQuerySchema })],
+      schema: {
+        tags: ["Admin"],
+        summary: "List subscriptions across every organisation",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const result = await adminService.listSubscriptions(
+        request.user!,
+        request.query as z.infer<typeof AdminSubscriptionQuerySchema>,
       );
       return reply.send({ success: true, ...result });
     },

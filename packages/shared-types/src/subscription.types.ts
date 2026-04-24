@@ -63,6 +63,24 @@ export const SubscriptionSchema = z.object({
 
 export type Subscription = z.infer<typeof SubscriptionSchema>;
 
+// ─── Admin Subscription Query ──────────────────────────────────────────────
+/**
+ * Admin subscription listing. Behind `platform:manage`, reads across
+ * every organisation. Powers `/admin/subscriptions?status=past_due`
+ * (inbox deep-link) so operators can see the impacted orgs / amounts
+ * without hunting through `/admin/organizations`.
+ */
+export const AdminSubscriptionQuerySchema = z.object({
+  status: SubscriptionStatusSchema.optional(),
+  plan: OrganizationPlanSchema.optional(),
+  page: z.coerce.number().int().positive().default(1),
+  limit: z.coerce.number().int().positive().max(100).default(20),
+  orderBy: z.enum(["updatedAt", "currentPeriodEnd", "priceXof"]).default("updatedAt"),
+  orderDir: z.enum(["asc", "desc"]).default("desc"),
+});
+
+export type AdminSubscriptionQuery = z.infer<typeof AdminSubscriptionQuerySchema>;
+
 // ─── Plan Usage ─────────────────────────────────────────────────────────────
 // Computed on-demand, not stored. Returned by the usage endpoint.
 

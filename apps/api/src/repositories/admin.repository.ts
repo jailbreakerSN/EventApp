@@ -7,6 +7,8 @@ import type {
   AuditLogEntry,
   PlatformStats,
   Venue,
+  Payment,
+  Subscription,
 } from "@teranga/shared-types";
 import type { DocumentData, Query, WhereFilterOp } from "firebase-admin/firestore";
 
@@ -158,6 +160,55 @@ class AdminRepository {
       clauses.push({ field: "isFeatured", op: "==", value: filters.isFeatured });
     }
     return this.paginatedQuery<Venue>(COLLECTIONS.VENUES, clauses, pagination);
+  }
+
+  // ── Payments ────────────────────────────────────────────────────────────
+  // Cross-org payment listing behind `platform:manage`. Lets the
+  // `payments.failed` inbox deep-link land on a concrete list of
+  // failed payments instead of the audit log — which may not carry
+  // historical entries for payments written before the audit listener
+  // was wired up.
+  async listAllPayments(
+    filters: {
+      status?: string;
+      method?: string;
+      organizationId?: string;
+      eventId?: string;
+    },
+    pagination: PaginationParams,
+  ): Promise<PaginatedResult<Payment>> {
+    const clauses: WhereClause[] = [];
+    if (filters.status) {
+      clauses.push({ field: "status", op: "==", value: filters.status });
+    }
+    if (filters.method) {
+      clauses.push({ field: "method", op: "==", value: filters.method });
+    }
+    if (filters.organizationId) {
+      clauses.push({ field: "organizationId", op: "==", value: filters.organizationId });
+    }
+    if (filters.eventId) {
+      clauses.push({ field: "eventId", op: "==", value: filters.eventId });
+    }
+    return this.paginatedQuery<Payment>(COLLECTIONS.PAYMENTS, clauses, pagination);
+  }
+
+  // ── Subscriptions ───────────────────────────────────────────────────────
+  // Cross-org subscription listing. Powers the `past_due` deep-link
+  // on /admin/subscriptions — previously the inbox card landed on a
+  // summary-only page with no way to see which orgs were in arrears.
+  async listAllSubscriptions(
+    filters: { status?: string; plan?: string },
+    pagination: PaginationParams,
+  ): Promise<PaginatedResult<Subscription>> {
+    const clauses: WhereClause[] = [];
+    if (filters.status) {
+      clauses.push({ field: "status", op: "==", value: filters.status });
+    }
+    if (filters.plan) {
+      clauses.push({ field: "plan", op: "==", value: filters.plan });
+    }
+    return this.paginatedQuery<Subscription>(COLLECTIONS.SUBSCRIPTIONS, clauses, pagination);
   }
 
   // ── Audit Logs ──────────────────────────────────────────────────────────
