@@ -44,6 +44,23 @@ RUN npm run build --workspace=apps/api
 FROM node:22-alpine@sha256:4d64b49e6c891c8fc821007cb1cdc6c0db7773110ac2c34bf2e6960adef62ed3 AS runner
 WORKDIR /app
 
+# Patch OS-level CVEs on top of the pinned base digest.
+#
+# The digest lock keeps every build reproducible, but it also freezes
+# the apk package manifest at image-build time. Between base-image
+# releases, Alpine publishes patched libssl3 / libcrypto3 / etc. that
+# fix CVEs (most recently CVE-2026-31789, openssl heap overflow on
+# 32-bit). Trivy scans the final image against the current CVE feed
+# and blocks any CRITICAL — so we MUST layer the latest apk-level
+# security patches on top of the pinned base, otherwise every new
+# upstream CVE breaks the deploy pipeline until someone rebases the
+# digest manually.
+#
+# `apk upgrade --no-cache` pulls the newest version of every installed
+# package from the Alpine repo, then cleans the index. Adds a few MB
+# to the final layer — acceptable cost for automatic CVE remediation.
+RUN apk upgrade --no-cache
+
 ENV NODE_ENV=production
 ENV HUSKY=0
 

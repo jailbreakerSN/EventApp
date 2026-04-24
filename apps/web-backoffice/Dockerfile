@@ -70,6 +70,15 @@ RUN npm run build --workspace=apps/web-backoffice
 FROM node:22-alpine@sha256:4d64b49e6c891c8fc821007cb1cdc6c0db7773110ac2c34bf2e6960adef62ed3 AS runner
 WORKDIR /app
 
+# Patch OS-level CVEs on top of the pinned base digest — see
+# apps/api/Dockerfile for the full rationale. Short version: the
+# digest lock freezes the apk manifest, Alpine ships point releases
+# (e.g. openssl 3.5.5 → 3.5.6 for CVE-2026-31789) without a new
+# base digest, and Trivy blocks CRITICAL findings. Layering
+# `apk upgrade` keeps deploys unblocked without sacrificing the
+# reproducibility of a digest-pinned base.
+RUN apk upgrade --no-cache
+
 ENV NODE_ENV=production
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
