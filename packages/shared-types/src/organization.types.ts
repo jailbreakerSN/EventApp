@@ -132,6 +132,28 @@ export const CreateInviteSchema = z.object({
 
 export type CreateInviteDto = z.infer<typeof CreateInviteSchema>;
 
+// ─── Admin Invite Query ────────────────────────────────────────────────────
+//
+// Cross-org invite listing behind `platform:manage`. Drives `/admin/invites`
+// and the "X invitations expirées" inbox deep-link. The public invites
+// routes are org-scoped (see `invites.routes.ts`); this schema widens the
+// read surface to every org for platform-ops cleanup / relance flows.
+//
+// `orderBy` is deliberately not exposed: the repository's paginated helper
+// defaults to `createdAt DESC`, which matches the static-analysis audit in
+// `scripts/audit-firestore-indexes.ts`. Same rationale as the admin
+// payments / subscriptions schemas.
+
+export const AdminInviteQuerySchema = z.object({
+  status: InviteStatusSchema.optional(),
+  organizationId: z.string().optional(),
+  role: OrgMemberRoleSchema.optional(),
+  page: z.coerce.number().int().positive().default(1),
+  limit: z.coerce.number().int().positive().max(100).default(20),
+});
+
+export type AdminInviteQuery = z.infer<typeof AdminInviteQuerySchema>;
+
 // ─── Analytics ──────────────────────────────────────────────────────────────
 
 export const AnalyticsTimeframeSchema = z.enum(["7d", "30d", "90d", "12m", "all"]);

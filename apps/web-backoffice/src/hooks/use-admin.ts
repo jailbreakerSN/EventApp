@@ -7,6 +7,7 @@ import type {
   AdminVenueQuery,
   AdminPaymentQuery,
   AdminSubscriptionQuery,
+  AdminInviteQuery,
   AdminAuditQuery,
   CreatePlanDto,
   UpdatePlanDto,
@@ -137,6 +138,18 @@ export function useAdminSubscriptions(params: Partial<AdminSubscriptionQuery> = 
   return useQuery({
     queryKey: ["admin", "subscriptions", params],
     queryFn: () => adminApi.listSubscriptions(params),
+  });
+}
+
+// ─── Invites (admin cross-org surface) ─────────────────────────────────────
+// Powers /admin/invites and the inbox `invites.expired` deep-link.
+// The per-org invites endpoint stays scoped to its org for the
+// organization billing page; this hook is platform-wide ops.
+
+export function useAdminInvites(params: Partial<AdminInviteQuery> = {}) {
+  return useQuery({
+    queryKey: ["admin", "invites", params],
+    queryFn: () => adminApi.listInvites(params),
   });
 }
 

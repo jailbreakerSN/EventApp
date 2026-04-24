@@ -33,6 +33,7 @@ import {
   Building2,
   CalendarDays,
   MapPin,
+  Mail,
   CreditCard,
   Receipt,
   Coins,
@@ -81,6 +82,7 @@ const NAV: NavSection[] = [
       { href: "/admin/organizations", label: "Organisations", icon: Building2 },
       { href: "/admin/events", label: "Événements", icon: CalendarDays },
       { href: "/admin/venues", label: "Lieux", icon: MapPin },
+      { href: "/admin/invites", label: "Invitations", icon: Mail },
     ],
   },
   {

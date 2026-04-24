@@ -9,6 +9,7 @@ import type {
   Venue,
   Payment,
   Subscription,
+  OrganizationInvite,
 } from "@teranga/shared-types";
 import type { DocumentData, Query, WhereFilterOp } from "firebase-admin/firestore";
 
@@ -209,6 +210,28 @@ class AdminRepository {
       clauses.push({ field: "plan", op: "==", value: filters.plan });
     }
     return this.paginatedQuery<Subscription>(COLLECTIONS.SUBSCRIPTIONS, clauses, pagination);
+  }
+
+  // ── Invites ─────────────────────────────────────────────────────────────
+  // Cross-org invitation listing. Powers the `/admin/invites` surface and
+  // the "X invitations expirées" inbox deep-link. Previously that card
+  // landed on the unfiltered `/admin/organizations` list — operators had
+  // no way to action expired invites without drilling into each org.
+  async listAllInvites(
+    filters: { status?: string; organizationId?: string; role?: string },
+    pagination: PaginationParams,
+  ): Promise<PaginatedResult<OrganizationInvite>> {
+    const clauses: WhereClause[] = [];
+    if (filters.status) {
+      clauses.push({ field: "status", op: "==", value: filters.status });
+    }
+    if (filters.organizationId) {
+      clauses.push({ field: "organizationId", op: "==", value: filters.organizationId });
+    }
+    if (filters.role) {
+      clauses.push({ field: "role", op: "==", value: filters.role });
+    }
+    return this.paginatedQuery<OrganizationInvite>(COLLECTIONS.INVITES, clauses, pagination);
   }
 
   // ── Audit Logs ──────────────────────────────────────────────────────────

@@ -162,6 +162,16 @@ describe("AdminService — permission denial", () => {
     );
   });
 
+  it("rejects listInvites for organizer", async () => {
+    // Regression for PR #182-follow-up: the admin-invites endpoint
+    // must stay `platform:manage` even though organizers hold the
+    // per-org `organization:read` permission. Cross-tenant invite
+    // discovery is a platform-only concern (PII + cleanup workflow).
+    await expect(adminService.listInvites(organizer, { page: 1, limit: 20 })).rejects.toThrow(
+      "Permission manquante : platform:manage",
+    );
+  });
+
   it("rejects listAuditLogs for organizer", async () => {
     // T5.2 — audit-logs gated on `platform:audit_read` OR
     // `platform:manage`. Organizer holds neither.
