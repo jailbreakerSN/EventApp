@@ -641,6 +641,64 @@ jobs:
             --project ${{ needs.setup.outputs.project_id }} \
             --force --non-interactive
 
+      - name: Provision Firestore TTL policies
+        # Every deploy re-asserts TTL on the collections listed below.
+        # Idempotent: already-ACTIVE policies are a no-op; already-CREATING
+        # policies are skipped (next deploy picks them up once transitioned).
+        # Adding a new TTL-backed collection = add to the list in ONE place.
+        #
+        # Same list as `notification-ops-prereqs.yml → TTL_COLLECTION_GROUPS`
+        # — that workflow remains the break-glass tool for provisioning
+        # production outside a deploy, this step covers routine staging pushes.
+        #
+        # Requires the deploy SA to have `roles/datastore.owner` OR
+        # `roles/firestore.fieldsAdmin`. If this fails with PERMISSION_DENIED,
+        # grant that role once via GCP IAM and re-run the workflow.
+        #
+        # Async activation is intentional — TTL takes 2-5 min to land
+        # ACTIVE and we don't want to block every deploy on that. Until the
+        # policy activates, rows accumulate but nothing breaks.
+        env:
+          PROJECT_ID: ${{ needs.setup.outputs.project_id }}
+          # MUST stay in sync with .github/workflows/notification-ops-prereqs.yml
+          # → env.TTL_COLLECTION_GROUPS. Both reference the same canonical set.
+          TTL_COLLECTION_GROUPS: "notificationDispatchLog rateLimitBuckets impersonationCodes webhookEvents"
+          TTL_FIELD: expiresAt
+        run: |
+          set -euo pipefail
+          FAILED=()
+          for CG in $TTL_COLLECTION_GROUPS; do
+            STATE=$(gcloud firestore fields describe "$TTL_FIELD" \
+              --collection-group="$CG" \
+              --project="$PROJECT_ID" \
+              --database="(default)" \
+              --format='value(ttlConfig.state)' 2>/dev/null || echo "NOT_CONFIGURED")
+            echo "[$CG.$TTL_FIELD] current TTL state: $STATE"
+
+            if [ "$STATE" = "ACTIVE" ] || [ "$STATE" = "CREATING" ]; then
+              echo "[$CG.$TTL_FIELD] already $STATE — no action taken."
+              continue
+            fi
+
+            if gcloud firestore fields ttls update "$TTL_FIELD" \
+                --collection-group="$CG" \
+                --project="$PROJECT_ID" \
+                --database="(default)" \
+                --enable-ttl \
+                --async \
+                --quiet; then
+              echo "::notice::[$CG.$TTL_FIELD] activation requested."
+            else
+              echo "::warning::[$CG.$TTL_FIELD] activation FAILED."
+              FAILED+=("$CG.$TTL_FIELD")
+            fi
+          done
+
+          if [ "${#FAILED[@]}" -gt 0 ]; then
+            echo "::error::Some TTL activations failed: ${FAILED[*]}"
+            exit 1
+          fi
+
       - name: Deploy Storage rules
         run: |
           npx firebase-tools deploy \

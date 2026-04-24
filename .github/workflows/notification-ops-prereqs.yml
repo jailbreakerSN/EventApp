@@ -84,13 +84,18 @@ env:
   # Region pinned to match every other workload in deploy-staging.yml.
   REGION: europe-west1
   # Firestore collection groups that carry `expiresAt`. Space-separated
-  # list consumed by the firestore-ttl job. Kept as env vars so adding a
-  # new TTL-backed collection only touches one line.
+  # list consumed by the firestore-ttl job AND by the auto-provisioning
+  # step in deploy-staging.yml — keep them in sync. Adding a new TTL-
+  # backed collection only touches this one line.
   #   - notificationDispatchLog (Phase 2.5) — 90 d normal / 365 d
   #     bounced-or-complained compliance rows.
   #   - rateLimitBuckets        (Phase D.4) — 2 × windowSec, typically
   #     2 h for the test-send bucket.
-  TTL_COLLECTION_GROUPS: "notificationDispatchLog rateLimitBuckets"
+  #   - impersonationCodes      (impersonation auth-code flow) — 60 s
+  #     for unconsumed codes. See infrastructure/firebase/firestore.ttl.md.
+  #   - webhookEvents           (T2.1 payment webhook replay) — 90 d
+  #     from first receipt, bounded operational log.
+  TTL_COLLECTION_GROUPS: "notificationDispatchLog rateLimitBuckets impersonationCodes webhookEvents"
   TTL_FIELD: expiresAt
   # Cloud Run service names — must match the ones created by
   # deploy-staging.yml. Staging uses -staging suffix; production uses

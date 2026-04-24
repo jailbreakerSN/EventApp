@@ -7,8 +7,29 @@ provisioned via `gcloud` (or the GCP console) — it cannot be declared in
 case deletion latency per Firestore docs.
 
 This file is the operator runbook for every TTL policy the platform relies
-on. When adding a new one, append a section here and commit alongside the
-code that starts writing the TTL field.
+on. When adding a new one:
+
+1. Add the `expiresAt`-writing code.
+2. Add the collection group to the **canonical list** in
+   `.github/workflows/notification-ops-prereqs.yml → env.TTL_COLLECTION_GROUPS`
+   AND the mirror in `.github/workflows/deploy-staging.yml → env.TTL_COLLECTION_GROUPS`
+   (both files point at the same set — keep them in sync).
+3. Append a section below documenting retention + rationale.
+
+## How TTL gets provisioned
+
+Three entry points, in decreasing order of preference:
+
+1. **Automatic (recommended)** — `deploy-staging.yml` runs the
+   "Provision Firestore TTL policies" step on every push to `develop`.
+   Idempotent: already-ACTIVE / already-CREATING policies are a no-op.
+   Requires the deploy SA to have `roles/datastore.owner` or
+   `roles/firestore.fieldsAdmin` (grant once per environment).
+2. **Manual break-glass** — `notification-ops-prereqs.yml` workflow
+   (`workflow_dispatch`), useful for provisioning production outside
+   a deploy or for ad-hoc backfills.
+3. **Raw gcloud** — the sections below show the one-liner for each
+   policy, for emergencies where both workflows are unavailable.
 
 ---
 
