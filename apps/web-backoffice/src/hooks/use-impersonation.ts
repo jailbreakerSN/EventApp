@@ -25,12 +25,40 @@
  *     impersonating" accidents.
  */
 
-import { signOut, signInWithCustomToken } from "firebase/auth";
+import { signOut, signInWithCustomToken, onAuthStateChanged } from "firebase/auth";
 import { useEffect, useState } from "react";
 import { firebaseAuth } from "@/lib/firebase";
 import { adminApi } from "@/lib/api-client";
 
 const STORAGE_KEY = "teranga:impersonation:breadcrumb";
+
+// Roles that belong to the backoffice (organizer / venue / admin shells).
+// Any other role class — most notably `participant` + `speaker` +
+// `sponsor` + `staff` — must land on the PARTICIPANT web app after
+// impersonation, because they have no home in the backoffice and
+// `(dashboard)/layout.tsx` redirects them to /unauthorized on entry.
+// Kept local (not imported from `@/lib/access`) to avoid pulling a
+// Next-only dependency into a hook that runs before the session
+// context mounts.
+const BACKOFFICE_ROLE_SET = new Set<string>([
+  "organizer",
+  "co_organizer",
+  "venue_manager",
+  "super_admin",
+  "platform:super_admin",
+  "platform:support",
+  "platform:finance",
+  "platform:ops",
+  "platform:security",
+]);
+
+// Resolved from `NEXT_PUBLIC_PARTICIPANT_URL` at build time. Set in the
+// staging deploy workflow; defaults to "/" locally so `npm run dev`
+// doesn't blow up. When absent the post-impersonation redirect falls
+// back to reloading the current origin — the user sees whatever the
+// participant webapp at that origin renders (typically the public
+// landing page, which works for all locally-reachable seeds).
+const PARTICIPANT_URL = process.env.NEXT_PUBLIC_PARTICIPANT_URL ?? "";
 
 export interface ImpersonationBreadcrumb {
   /** The UID of the super-admin who initiated the session. */
@@ -81,15 +109,65 @@ export function useImpersonationState(): ImpersonationBreadcrumb | null {
   const [state, setState] = useState<ImpersonationBreadcrumb | null>(null);
 
   useEffect(() => {
-    setState(readBreadcrumb());
-    const id = setInterval(() => {
-      // Auto-expire the breadcrumb on deadline.
-      setState(readBreadcrumb());
-    }, 15_000);
-    return () => clearInterval(id);
+    // Reconcile the breadcrumb against the current Firebase auth user.
+    // sessionStorage survives tab reloads and manual logout + re-login
+    // by another user — when that happens, the stored `targetUid` no
+    // longer matches the active session and the banner would otherwise
+    // keep telling the admin they are impersonating when they are not.
+    // Clear the stale breadcrumb on mismatch (or on sign-out) so every
+    // session-identity transition naturally drops the banner.
+    const reconcile = () => {
+      const crumb = readBreadcrumb();
+      if (!crumb) {
+        setState(null);
+        return;
+      }
+      const currentUid = firebaseAuth.currentUser?.uid ?? null;
+      if (currentUid && currentUid !== crumb.targetUid) {
+        // Auth user is someone else (admin re-login, or identity swap)
+        // — the breadcrumb refers to a session that no longer exists.
+        clearBreadcrumb();
+        setState(null);
+        return;
+      }
+      setState(crumb);
+    };
+
+    reconcile();
+    // Drive reconcile() from every auth state change so the banner
+    // disappears the instant the admin signs back in.
+    const unsub = onAuthStateChanged(firebaseAuth, () => reconcile());
+    // Keep the interval as a safety net for the expiry deadline
+    // (auth state doesn't change when the token just runs out).
+    const id = setInterval(reconcile, 15_000);
+    return () => {
+      unsub();
+      clearInterval(id);
+    };
   }, []);
 
   return state;
+}
+
+/**
+ * Resolve the post-impersonation landing URL based on the roles stamped
+ * on the freshly-minted token. Participants / speakers / sponsors land
+ * on the PARTICIPANT web app (nothing useful for them in the backoffice);
+ * organizers / venue managers / super-admins land on the backoffice
+ * `/dashboard`. Pure admin targets are already blocked server-side
+ * (`AdminService.startImpersonation` refuses top-tier admin targets).
+ *
+ * When `NEXT_PUBLIC_PARTICIPANT_URL` is not configured (local dev), we
+ * fall back to the backoffice `/dashboard` — the organizer shell will
+ * catch non-backoffice roles via the `(dashboard)/layout.tsx` gate
+ * and redirect to `/unauthorized` with a clear message, which is
+ * strictly better than a blank page.
+ */
+function resolveTargetLandingUrl(targetRoles: readonly string[]): string {
+  const hasBackofficeRole = targetRoles.some((r) => BACKOFFICE_ROLE_SET.has(r));
+  if (hasBackofficeRole) return "/dashboard";
+  if (PARTICIPANT_URL) return PARTICIPANT_URL;
+  return "/dashboard";
 }
 
 /** Action: start an impersonation session on behalf of target uid. */
@@ -104,7 +182,22 @@ export async function startImpersonation(params: {
   // Sign the current session out FIRST so the ID token refresh on
   // exchange doesn't race with the stale admin token.
   await signOut(firebaseAuth);
-  await signInWithCustomToken(firebaseAuth, customToken);
+  const cred = await signInWithCustomToken(firebaseAuth, customToken);
+
+  // Read the roles stamped on the freshly-minted token so we can route
+  // the admin to the right app. The custom token baked `roles:
+  // targetProfile.roles` into the payload (see
+  // AdminService.startImpersonation); one getIdTokenResult() call
+  // surfaces them without a Firestore round-trip.
+  let targetRoles: string[] = [];
+  try {
+    const tokenResult = await cred.user.getIdTokenResult();
+    const raw = tokenResult.claims.roles;
+    if (Array.isArray(raw)) targetRoles = raw.map(String);
+  } catch {
+    // Fall-through: resolver treats an empty role list as participant
+    // and routes to the participant app. Conservative default.
+  }
 
   writeBreadcrumb({
     actorUid: params.actorUid,
@@ -116,8 +209,10 @@ export async function startImpersonation(params: {
   });
 
   // Hard reload so every tab rebuilds against the impersonated session.
+  // Route based on the target's roles — a participant lands on the
+  // participant webapp, an organizer on the backoffice, etc.
   if (typeof window !== "undefined") {
-    window.location.assign("/dashboard");
+    window.location.assign(resolveTargetLandingUrl(targetRoles));
   }
 }
 

@@ -384,6 +384,7 @@ jobs:
             NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=${{ needs.setup.outputs.firebase_measurement_id }}
             NEXT_PUBLIC_FIREBASE_VAPID_KEY=${{ secrets.FIREBASE_VAPID_KEY }}
             NEXT_PUBLIC_API_URL=${{ needs.setup.outputs.api_url }}
+            NEXT_PUBLIC_PARTICIPANT_URL=${{ needs.setup.outputs.participant_url }}
           cache-from: type=gha,scope=backoffice
           cache-to: type=gha,mode=max,scope=backoffice
       - name: Scan Backoffice image for HIGH vulnerabilities (warn-only)
