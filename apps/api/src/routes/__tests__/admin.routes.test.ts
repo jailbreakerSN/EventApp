@@ -85,6 +85,7 @@ const mockAdminService = {
   verifyOrganization: vi.fn(),
   updateOrgStatus: vi.fn(),
   listEvents: vi.fn(),
+  listVenues: vi.fn(),
   listAuditLogs: vi.fn(),
 };
 
@@ -275,6 +276,7 @@ const ORGANIZER_DENIED_MATRIX: Array<{
   { method: "PATCH", url: "/v1/admin/organizations/org-1/verify", body: {} },
   { method: "PATCH", url: "/v1/admin/organizations/org-1/status", body: { isActive: false } },
   { method: "GET", url: "/v1/admin/events" },
+  { method: "GET", url: "/v1/admin/venues" },
   { method: "GET", url: "/v1/admin/audit-logs" },
   {
     method: "POST",
@@ -402,6 +404,30 @@ describe("Admin routes — super_admin happy paths", () => {
       { planId: "plan-pro" },
       expect.any(Object),
     );
+  });
+
+  it("GET /venues?status=pending → 200 forwards the status filter", async () => {
+    // Regression for review 2026-04-24: the inbox deep-link
+    // /admin/venues?status=pending used to land on the public endpoint
+    // which silently dropped the status filter and showed only approved
+    // venues. The admin endpoint must surface every status.
+    mockAdminService.listVenues.mockResolvedValue({
+      data: [{ id: "v-pending-1", name: "Salle X", status: "pending" }],
+      meta: { page: 1, limit: 20, total: 1 },
+    });
+
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/admin/venues?status=pending",
+      headers: authHeader,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(mockAdminService.listVenues).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({ status: "pending" }),
+    );
+    const body = JSON.parse(res.body);
+    expect(body.data[0].status).toBe("pending");
   });
 
   it("GET /audit-logs → 200 forwards the query", async () => {

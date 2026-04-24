@@ -65,6 +65,7 @@ import type {
   AdminUserQuery,
   AdminOrgQuery,
   AdminEventQuery,
+  AdminVenueQuery,
   AdminAuditQuery,
   Venue,
   VenueQuery,
@@ -782,6 +783,14 @@ export const adminApi = {
 
   listEvents: (query: Partial<AdminEventQuery> = {}) =>
     api.get<PaginatedResponse<Event>>(`/v1/admin/events${buildQuery(query)}`),
+
+  // Admin venue moderation surface — surfaces every status (pending /
+  // approved / suspended / archived). The public `venuesApi.listPublic`
+  // is approved-only by design and silently drops the `status` filter,
+  // so the admin /admin/venues page MUST hit this endpoint to honour
+  // the inbox deep-link `/admin/venues?status=pending`.
+  listVenues: (query: Partial<AdminVenueQuery> = {}) =>
+    api.get<PaginatedResponse<Venue>>(`/v1/admin/venues${buildQuery(query)}`),
 
   listAuditLogs: (query: Partial<AdminAuditQuery> = {}) =>
     api.get<PaginatedResponse<AuditLogEntry>>(`/v1/admin/audit-logs${buildQuery(query)}`),
