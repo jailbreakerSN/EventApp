@@ -57,6 +57,114 @@ export const PlanLimitsValueSchema = z.object({
   maxMembers: PlanLimitValueSchema,
 });
 
+// ─── Unified Entitlement Model (Phase 7+ item #2) ──────────────────────────
+//
+// Single primitive for every plan capability. Unifies the legacy
+// `features` (boolean map) + `limits` (numeric map) under one shape that
+// also covers metered quotas, time-bounded access, and (schema-reserved)
+// tiered pricing.
+//
+// Three kinds:
+//
+//  - "boolean":  on/off. Replaces the 11 PlanFeatures booleans — each
+//                legacy key maps to a `feature.<name>` entitlement.
+//  - "quota":    numeric limit with a reset period + optional overage
+//                rate. Replaces PlanLimits — `quota.events` etc. — and
+//                enables new quotas like `quota.sms.monthly`.
+//                `limit === -1` means unlimited (same convention as
+//                PlanLimitValueSchema; keeps storage consistent).
+//  - "tiered":   tiered pricing (schema-only in this PR; resolver
+//                support lands with the first metered-billing PR).
+//
+// Keys are namespaced by family: `feature.*`, `quota.*`, `tiered.*`.
+// The prefix avoids collisions and lets the resolver route by family
+// without carrying a manifest.
+//
+// Design doc: docs/delivery-plan/entitlement-model-design.md
+
+export const EntitlementQuotaPeriodSchema = z.enum(["month", "cycle", "lifetime"]);
+export type EntitlementQuotaPeriod = z.infer<typeof EntitlementQuotaPeriodSchema>;
+
+export const BooleanEntitlementSchema = z.object({
+  kind: z.literal("boolean"),
+  value: z.boolean(),
+});
+
+export const QuotaEntitlementSchema = z.object({
+  kind: z.literal("quota"),
+  // -1 means unlimited — same convention as PlanLimitValueSchema so the
+  // two storage shapes round-trip cleanly and the existing
+  // storedToRuntime / runtimeToStored helpers keep working verbatim.
+  limit: PlanLimitValueSchema,
+  period: EntitlementQuotaPeriodSchema,
+  // Optional — reserved for Wave 6 metered billing. MVP never reads it
+  // at the resolver/enforcement layer; it's stored as-is on the plan.
+  overageRateXof: z.number().int().min(0).optional(),
+});
+
+export const TieredEntitlementSchema = z.object({
+  kind: z.literal("tiered"),
+  tiers: z
+    .array(
+      z.object({
+        upTo: z.union([z.number().int().positive(), z.literal("unlimited")]),
+        unitPriceXof: z.number().int().min(0),
+      }),
+    )
+    .min(1),
+});
+
+export const EntitlementSchema = z.discriminatedUnion("kind", [
+  BooleanEntitlementSchema,
+  QuotaEntitlementSchema,
+  TieredEntitlementSchema,
+]);
+
+export type BooleanEntitlement = z.infer<typeof BooleanEntitlementSchema>;
+export type QuotaEntitlement = z.infer<typeof QuotaEntitlementSchema>;
+export type TieredEntitlement = z.infer<typeof TieredEntitlementSchema>;
+export type Entitlement = z.infer<typeof EntitlementSchema>;
+
+// Map of entitlement-key → entitlement. Key shape is validated as a
+// namespaced identifier at the schema boundary so callers can't push
+// arbitrary strings that would break the resolver's family routing.
+export const EntitlementKeySchema = z
+  .string()
+  .min(3)
+  .max(100)
+  .regex(
+    /^(feature|quota|tiered)\.[a-zA-Z][a-zA-Z0-9_.]*$/,
+    "La clé doit être de la forme `feature.<name>`, `quota.<name>` ou `tiered.<name>`",
+  );
+
+export const EntitlementMapSchema = z.record(EntitlementKeySchema, EntitlementSchema);
+export type EntitlementMap = z.infer<typeof EntitlementMapSchema>;
+
+// Frozen catalog of the 11 boolean feature keys projected into the
+// entitlement namespace. Used by the resolver's projection helper + the
+// parity tests — the source of truth for the legacy → entitlement map.
+export const LEGACY_FEATURE_ENTITLEMENT_KEYS = {
+  qrScanning: "feature.qrScanning",
+  paidTickets: "feature.paidTickets",
+  customBadges: "feature.customBadges",
+  csvExport: "feature.csvExport",
+  smsNotifications: "feature.smsNotifications",
+  advancedAnalytics: "feature.advancedAnalytics",
+  speakerPortal: "feature.speakerPortal",
+  sponsorPortal: "feature.sponsorPortal",
+  apiAccess: "feature.apiAccess",
+  whiteLabel: "feature.whiteLabel",
+  promoCodes: "feature.promoCodes",
+} as const;
+
+// Frozen catalog of the 3 quota keys projected into the entitlement
+// namespace. Mirrors `PlanLimitsValueSchema` verbatim.
+export const LEGACY_QUOTA_ENTITLEMENT_KEYS = {
+  maxEvents: "quota.events",
+  maxParticipantsPerEvent: "quota.participantsPerEvent",
+  maxMembers: "quota.members",
+} as const;
+
 // ─── Pricing model ──────────────────────────────────────────────────────────
 // Disambiguates the meaning of `priceXof: 0`. Without this, a free plan and
 // an enterprise "contact sales" plan both render as "Gratuit" in the UI.
@@ -97,6 +205,15 @@ export const PlanSchema = z.object({
   currency: z.literal("XOF").default("XOF"),
   limits: PlanLimitsValueSchema,
   features: PlanFeaturesSchema,
+  // ── Unified entitlement model (Phase 7+ item #2) ──────────────────────────
+  // Opt-in per plan. When present, the resolver reads entitlements first and
+  // projects the legacy `features` + `limits` views for back-compat readers.
+  // When absent (the four system plans today), the legacy fields stay
+  // authoritative and the resolver takes the pre-entitlement path.
+  //
+  // Design rationale + migration strategy:
+  // docs/delivery-plan/entitlement-model-design.md
+  entitlements: EntitlementMapSchema.optional(),
   isSystem: z.boolean().default(false),
   isPublic: z.boolean().default(true),
   isArchived: z.boolean().default(false),
@@ -143,6 +260,9 @@ export const CreatePlanSchema = z
     annualPriceXof: z.number().int().min(0).nullable().optional(),
     limits: PlanLimitsValueSchema,
     features: PlanFeaturesSchema,
+    // Phase 7+ item #2 — opt-in per plan. When omitted, the resolver
+    // stays on the legacy `features`+`limits` path.
+    entitlements: EntitlementMapSchema.optional(),
     isPublic: z.boolean().default(true),
     sortOrder: z.number().int().default(0),
     trialDays: z.number().int().min(0).max(365).nullable().optional(),
@@ -168,6 +288,11 @@ export const UpdatePlanSchema = z
     annualPriceXof: z.number().int().min(0).nullable(),
     limits: PlanLimitsValueSchema,
     features: PlanFeaturesSchema,
+    // Phase 7+ item #2 — nullable so an admin can clear the map and
+    // fall back to the legacy path without deleting the field from
+    // the Firestore doc. Omitted (undefined) = "don't touch", null =
+    // "clear the map", populated = "replace with this map".
+    entitlements: EntitlementMapSchema.nullable(),
     isPublic: z.boolean(),
     isArchived: z.boolean(),
     sortOrder: z.number().int(),
@@ -182,6 +307,12 @@ export type UpdatePlanDto = z.infer<typeof UpdatePlanSchema>;
 export const SubscriptionOverridesSchema = z.object({
   limits: PlanLimitsValueSchema.partial().optional(),
   features: PlanFeaturesSchema.partial().optional(),
+  // Per-org entitlement override map (Phase 7+ item #2). Overlaid on top of
+  // the plan's own entitlements, per-key. When set, this wins over the
+  // legacy `limits` / `features` overrides for the keys it covers; the
+  // legacy overrides still apply for any key the entitlement map doesn't
+  // touch, so admins upgrading from the old override flow lose nothing.
+  entitlements: EntitlementMapSchema.optional(),
   priceXof: z.number().int().min(0).optional(),
   notes: z.string().max(500).optional(),
   validUntil: z.string().datetime().nullable().optional(),

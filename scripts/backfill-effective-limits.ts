@@ -32,7 +32,10 @@ import {
   type Organization,
   type Plan,
   type Subscription,
+  type EntitlementMap,
   PLAN_LIMIT_UNLIMITED,
+  LEGACY_FEATURE_ENTITLEMENT_KEYS,
+  LEGACY_QUOTA_ENTITLEMENT_KEYS,
 } from "@teranga/shared-types";
 
 const SEED_TARGET = process.env.SEED_TARGET ?? "emulator";
@@ -68,6 +71,10 @@ interface Resolved {
   limits: StoredLimits;
   features: Plan["features"];
   computedAt: string;
+  // Phase 7+ item #2 — denormalized entitlement map written alongside the
+  // legacy fields. Always populated (possibly as {}) so moving between
+  // unified plans and legacy plans doesn't leave stale keys.
+  entitlements: EntitlementMap;
 }
 
 function resolveFromPlan(
@@ -107,6 +114,49 @@ function resolveFromPlan(
     }
   }
 
+  // Phase 7+ item #2 — project entitlement maps onto the legacy shape
+  // and assemble the merged entitlement map that gets denormalized onto
+  // the org doc. Mirrors the production resolver in
+  // apps/api/src/services/effective-plan.ts; kept inline here because
+  // this script runs in a Node admin-SDK context where the API package
+  // isn't available. Contract test lives in the shared-types suite.
+  if (plan.entitlements) {
+    for (const [legacy, entKey] of Object.entries(LEGACY_FEATURE_ENTITLEMENT_KEYS)) {
+      const ent = plan.entitlements[entKey];
+      if (ent && ent.kind === "boolean") {
+        (features as Record<string, boolean>)[legacy] = ent.value;
+      }
+    }
+    for (const [legacy, entKey] of Object.entries(LEGACY_QUOTA_ENTITLEMENT_KEYS)) {
+      const ent = plan.entitlements[entKey];
+      if (ent && ent.kind === "quota") {
+        (limitsRuntime as Record<string, number>)[legacy] = storedToRuntime(ent.limit);
+      }
+    }
+  }
+
+  const activeOverrideEnt =
+    active && overrides?.entitlements ? overrides.entitlements : undefined;
+  if (activeOverrideEnt) {
+    for (const [legacy, entKey] of Object.entries(LEGACY_FEATURE_ENTITLEMENT_KEYS)) {
+      const ent = activeOverrideEnt[entKey];
+      if (ent && ent.kind === "boolean") {
+        (features as Record<string, boolean>)[legacy] = ent.value;
+      }
+    }
+    for (const [legacy, entKey] of Object.entries(LEGACY_QUOTA_ENTITLEMENT_KEYS)) {
+      const ent = activeOverrideEnt[entKey];
+      if (ent && ent.kind === "quota") {
+        (limitsRuntime as Record<string, number>)[legacy] = storedToRuntime(ent.limit);
+      }
+    }
+  }
+
+  const mergedEntitlements: EntitlementMap = {
+    ...(plan.entitlements ?? {}),
+    ...(activeOverrideEnt ?? {}),
+  };
+
   return {
     planKey: plan.key,
     planId: plan.id,
@@ -117,6 +167,7 @@ function resolveFromPlan(
     },
     features,
     computedAt: now.toISOString(),
+    entitlements: mergedEntitlements,
   };
 }
 
@@ -171,6 +222,10 @@ export async function backfillEffectiveLimits(db: Firestore): Promise<{
       effectiveFeatures: resolved.features,
       effectivePlanKey: resolved.planKey,
       effectiveComputedAt: resolved.computedAt,
+      // Phase 7+ item #2 — always write the entitlement map (empty when
+      // the plan has none) so a later reassignment from unified → legacy
+      // can't leave stale keys behind.
+      effectiveEntitlements: resolved.entitlements,
       updatedAt: now.toISOString(),
     });
     updated++;

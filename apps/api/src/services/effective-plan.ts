@@ -2,7 +2,11 @@ import {
   type Plan,
   type PlanFeatures,
   type SubscriptionOverrides,
+  type Entitlement,
+  type EntitlementMap,
   PLAN_LIMIT_UNLIMITED,
+  LEGACY_FEATURE_ENTITLEMENT_KEYS,
+  LEGACY_QUOTA_ENTITLEMENT_KEYS,
 } from "@teranga/shared-types";
 
 // ─── Effective Plan Resolver ─────────────────────────────────────────────────
@@ -22,6 +26,16 @@ import {
 //    or the scheduled job in Phase 5) will rewrite the org fields.
 //  - Partial overrides are supported: a missing field falls back to the base
 //    plan's value.
+//
+// ── Unified entitlement model (Phase 7+ item #2) ─────────────────────────
+// When `plan.entitlements` is present, the resolver reads the entitlement
+// map as the source of truth and projects `features` + `limits` views for
+// every downstream reader (the 14 legacy enforcement sites see no change).
+// When absent, the resolver takes the pre-entitlement path verbatim. The
+// opt-in is per-plan — the four system plans stay on the legacy path until
+// a super-admin explicitly converts them.
+//
+// Design doc: docs/delivery-plan/entitlement-model-design.md
 
 export interface EffectivePlan {
   planKey: string;
@@ -34,6 +48,14 @@ export interface EffectivePlan {
   features: PlanFeatures;
   priceXof: number;
   computedAt: string;
+  /**
+   * The resolved entitlement map, populated when the source plan uses the
+   * unified model OR when overrides.entitlements was layered on top. Opaque
+   * to legacy readers — they consume the projected `features` + `limits`
+   * views above, which stay authoritative and identical for entitlement
+   * plans and legacy plans alike.
+   */
+  entitlements?: EntitlementMap;
 }
 
 export interface EffectivePlanStored {
@@ -46,6 +68,8 @@ export interface EffectivePlanStored {
   };
   features: PlanFeatures;
   computedAt: string;
+  /** See EffectivePlan.entitlements. Not stringified — stored as-is. */
+  entitlements?: EntitlementMap;
 }
 
 const LIMIT_KEYS = ["maxEvents", "maxParticipantsPerEvent", "maxMembers"] as const;
@@ -65,6 +89,52 @@ function isOverrideActive(overrides: SubscriptionOverrides | undefined, now: Dat
   return new Date(overrides.validUntil).getTime() > now.getTime();
 }
 
+// ─── Entitlement projection ──────────────────────────────────────────────
+//
+// Converts an entitlement map into the legacy `PlanFeatures` + limits
+// shape so the 14 existing enforcement sites keep working without a
+// refactor. Missing keys fall back to a sensible default:
+//  - boolean features default to `false` (deny-by-default — matches the
+//    free-plan baseline, which is correctness-safe).
+//  - quota limits default to `0` (deny-by-default for quotas not mentioned
+//    by the plan; callers can always push the limit to -1 / unlimited
+//    explicitly if they mean "no cap").
+//
+// The entitlement map is authoritative for the 14 keys below; any
+// additional entries (e.g. `quota.sms.monthly` on a future metered plan)
+// are preserved on the resolver output but don't project into legacy views.
+//
+// Pure function — no Firestore, no date. Unit-testable in shared-types if
+// we want stricter parity checks; kept here for now to stay close to the
+// resolver that consumes it.
+
+function projectFromEntitlements(
+  entitlements: EntitlementMap,
+  fallbackFeatures: PlanFeatures,
+  fallbackLimits: { maxEvents: number; maxParticipantsPerEvent: number; maxMembers: number },
+): {
+  features: PlanFeatures;
+  limits: { maxEvents: number; maxParticipantsPerEvent: number; maxMembers: number };
+} {
+  const features = { ...fallbackFeatures };
+  for (const [legacyKey, entitlementKey] of Object.entries(LEGACY_FEATURE_ENTITLEMENT_KEYS)) {
+    const ent = entitlements[entitlementKey];
+    if (ent && ent.kind === "boolean") {
+      (features as unknown as Record<string, boolean>)[legacyKey] = ent.value;
+    }
+  }
+
+  const limits = { ...fallbackLimits };
+  for (const [legacyKey, entitlementKey] of Object.entries(LEGACY_QUOTA_ENTITLEMENT_KEYS)) {
+    const ent = entitlements[entitlementKey];
+    if (ent && ent.kind === "quota") {
+      (limits as unknown as Record<string, number>)[legacyKey] = storedToRuntime(ent.limit);
+    }
+  }
+
+  return { features, limits };
+}
+
 /**
  * Resolve the effective plan snapshot for an organization.
  *
@@ -79,13 +149,29 @@ export function resolveEffective(
 ): EffectivePlan {
   const active = isOverrideActive(overrides, now);
 
-  // Merge limits
-  const limits = {
+  // Base legacy-shape values (always present on every plan today).
+  const baseFeatures: PlanFeatures = { ...plan.features };
+  const baseLimits = {
     maxEvents: storedToRuntime(plan.limits.maxEvents),
     maxParticipantsPerEvent: storedToRuntime(plan.limits.maxParticipantsPerEvent),
     maxMembers: storedToRuntime(plan.limits.maxMembers),
   };
 
+  // Step 1 — if the plan uses entitlements, project them onto the legacy
+  // shape. The legacy `plan.features` / `plan.limits` fields act as the
+  // fallback for any key the entitlement map doesn't cover, preserving
+  // the back-compat invariant: every Plan doc always has a complete
+  // legacy shape regardless of entitlement coverage.
+  let features = baseFeatures;
+  let limits = baseLimits;
+  if (plan.entitlements) {
+    const projected = projectFromEntitlements(plan.entitlements, baseFeatures, baseLimits);
+    features = projected.features;
+    limits = projected.limits;
+  }
+
+  // Step 2 — overlay legacy `overrides.limits` / `overrides.features`
+  // per-field. Pre-existing behaviour, preserved verbatim.
   if (active && overrides?.limits) {
     for (const key of LIMIT_KEYS) {
       const override = overrides.limits[key as LimitKey];
@@ -94,9 +180,6 @@ export function resolveEffective(
       }
     }
   }
-
-  // Merge features
-  const features: PlanFeatures = { ...plan.features };
   if (active && overrides?.features) {
     for (const [k, v] of Object.entries(overrides.features)) {
       if (v !== undefined) {
@@ -105,8 +188,29 @@ export function resolveEffective(
     }
   }
 
+  // Step 3 — overlay `overrides.entitlements`. Wins over legacy overrides
+  // for the keys it covers (a boolean entitlement override wipes any
+  // legacy feature override on the same key). This is the intended
+  // precedence: entitlement overrides are the forward-looking surface.
+  if (active && overrides?.entitlements) {
+    const projected = projectFromEntitlements(overrides.entitlements, features, limits);
+    features = projected.features;
+    limits = projected.limits;
+  }
+
   // Merge price (informational; enforcement doesn't depend on it)
   const priceXof = active && overrides?.priceXof !== undefined ? overrides.priceXof : plan.priceXof;
+
+  // Merge entitlement map — plan's map is the base, override map layers on
+  // top per-key. Absent on both sides → undefined (keeps back-compat
+  // reads from stumbling over an empty record).
+  let mergedEntitlements: EntitlementMap | undefined;
+  if (plan.entitlements || (active && overrides?.entitlements)) {
+    mergedEntitlements = {
+      ...(plan.entitlements ?? {}),
+      ...(active && overrides?.entitlements ? overrides.entitlements : {}),
+    };
+  }
 
   return {
     planKey: plan.key,
@@ -115,12 +219,15 @@ export function resolveEffective(
     features,
     priceXof,
     computedAt: now.toISOString(),
+    ...(mergedEntitlements ? { entitlements: mergedEntitlements } : {}),
   };
 }
 
 /**
  * Convert a runtime `EffectivePlan` into the Firestore-storable shape used on
- * the organization document. Infinity → -1 for each limit.
+ * the organization document. Infinity → -1 for each limit. Quota entitlements
+ * follow the same convention — their `limit` field is already stored with the
+ * -1-means-unlimited invariant, so they pass through unchanged.
  */
 export function toStoredSnapshot(effective: EffectivePlan): EffectivePlanStored {
   return {
@@ -133,6 +240,7 @@ export function toStoredSnapshot(effective: EffectivePlan): EffectivePlanStored 
     },
     features: effective.features,
     computedAt: effective.computedAt,
+    ...(effective.entitlements ? { entitlements: effective.entitlements } : {}),
   };
 }
 
@@ -152,5 +260,19 @@ export function fromStoredSnapshot(stored: EffectivePlanStored): EffectivePlan {
     features: stored.features,
     priceXof: 0, // price is not stored on the org doc
     computedAt: stored.computedAt,
+    ...(stored.entitlements ? { entitlements: stored.entitlements } : {}),
   };
+}
+
+/**
+ * Read a single entitlement by key. Returns the entitlement object if the
+ * map covers that key, `undefined` otherwise. Pure lookup — no projection,
+ * no legacy fallback. Callers that want legacy-fallback semantics use
+ * `BaseService.requireEntitlement` / `checkQuota`.
+ */
+export function readEntitlement(
+  entitlements: EntitlementMap | undefined,
+  key: string,
+): Entitlement | undefined {
+  return entitlements?.[key];
 }

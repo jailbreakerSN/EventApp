@@ -4,7 +4,10 @@ import {
   type Plan,
   type PlanFeatures,
   type SubscriptionOverrides,
+  type EntitlementMap,
   PLAN_LIMIT_UNLIMITED,
+  LEGACY_FEATURE_ENTITLEMENT_KEYS,
+  LEGACY_QUOTA_ENTITLEMENT_KEYS,
 } from "@teranga/shared-types";
 
 // ─── Test builders ─────────────────────────────────────────────────────────
@@ -187,5 +190,178 @@ describe("toStoredSnapshot / fromStoredSnapshot round-trip", () => {
     expect(runtime.limits.maxEvents).toBe(Infinity);
     expect(runtime.limits.maxParticipantsPerEvent).toBe(500);
     expect(runtime.planKey).toBe("starter");
+  });
+});
+
+// ─── resolveEffective: unified entitlement model (Phase 7+ item #2) ───────
+//
+// The additive contract in docs/delivery-plan/entitlement-model-design.md
+// says: plans with `entitlements` must produce the same `EffectivePlan`
+// shape as equivalent legacy plans, and plans WITHOUT entitlements must
+// resolve verbatim as before. These are the parity anchors.
+
+describe("resolveEffective — entitlement projection (Phase 7+ item #2)", () => {
+  it("plan without `entitlements` takes the legacy path unchanged", () => {
+    const plan = buildPlan();
+    const effective = resolveEffective(plan);
+    expect(effective.entitlements).toBeUndefined();
+    expect(effective.features.qrScanning).toBe(true);
+    expect(effective.limits.maxEvents).toBe(10);
+  });
+
+  it("projects boolean entitlements onto legacy PlanFeatures keys", () => {
+    const plan = buildPlan({
+      features: features({ qrScanning: false, paidTickets: false }),
+      entitlements: {
+        // Flip both features via entitlements — projected features must
+        // reflect the entitlement value, NOT the legacy fallback on the
+        // plan itself.
+        [LEGACY_FEATURE_ENTITLEMENT_KEYS.qrScanning]: { kind: "boolean", value: true },
+        [LEGACY_FEATURE_ENTITLEMENT_KEYS.paidTickets]: { kind: "boolean", value: true },
+      },
+    });
+    const effective = resolveEffective(plan);
+    expect(effective.features.qrScanning).toBe(true);
+    expect(effective.features.paidTickets).toBe(true);
+    // Keys not covered by the entitlement map must still surface the
+    // legacy value — that's the fallback contract.
+    expect(effective.features.csvExport).toBe(true);
+    // The entitlement map is passed through unchanged for new readers.
+    expect(effective.entitlements).toBeDefined();
+  });
+
+  it("projects quota entitlements onto legacy limit fields, keeping -1 → Infinity", () => {
+    const plan = buildPlan({
+      limits: { maxEvents: 1, maxParticipantsPerEvent: 1, maxMembers: 1 },
+      entitlements: {
+        [LEGACY_QUOTA_ENTITLEMENT_KEYS.maxEvents]: {
+          kind: "quota",
+          limit: PLAN_LIMIT_UNLIMITED,
+          period: "cycle",
+        },
+        [LEGACY_QUOTA_ENTITLEMENT_KEYS.maxParticipantsPerEvent]: {
+          kind: "quota",
+          limit: 500,
+          period: "cycle",
+        },
+      },
+    });
+    const effective = resolveEffective(plan);
+    expect(effective.limits.maxEvents).toBe(Infinity);
+    expect(effective.limits.maxParticipantsPerEvent).toBe(500);
+    // maxMembers not in the entitlement map → falls back to plan.limits.
+    expect(effective.limits.maxMembers).toBe(1);
+  });
+
+  it("parity: a plan with entitlements produces the same shape as an equivalent legacy plan", () => {
+    // Two plans that describe the same capability tier, expressed two
+    // different ways. Their EffectivePlan `features` + `limits` MUST
+    // match — this is the back-compat invariant the 14 enforcement
+    // sites depend on.
+    const legacy = buildPlan({
+      features: features({ qrScanning: true, smsNotifications: true }),
+      limits: { maxEvents: 50, maxParticipantsPerEvent: 1000, maxMembers: 10 },
+    });
+    const entitlementKeys: EntitlementMap = {};
+    for (const [legacyKey, entKey] of Object.entries(LEGACY_FEATURE_ENTITLEMENT_KEYS)) {
+      entitlementKeys[entKey] = {
+        kind: "boolean",
+        value: (legacy.features as Record<string, boolean>)[legacyKey],
+      };
+    }
+    entitlementKeys[LEGACY_QUOTA_ENTITLEMENT_KEYS.maxEvents] = {
+      kind: "quota",
+      limit: 50,
+      period: "cycle",
+    };
+    entitlementKeys[LEGACY_QUOTA_ENTITLEMENT_KEYS.maxParticipantsPerEvent] = {
+      kind: "quota",
+      limit: 1000,
+      period: "cycle",
+    };
+    entitlementKeys[LEGACY_QUOTA_ENTITLEMENT_KEYS.maxMembers] = {
+      kind: "quota",
+      limit: 10,
+      period: "cycle",
+    };
+    const unified = buildPlan({
+      features: features(), // whatever — will be overridden by entitlements
+      limits: { maxEvents: 1, maxParticipantsPerEvent: 1, maxMembers: 1 },
+      entitlements: entitlementKeys,
+    });
+
+    const left = resolveEffective(legacy);
+    const right = resolveEffective(unified);
+
+    expect(right.features).toEqual(left.features);
+    expect(right.limits).toEqual(left.limits);
+  });
+
+  it("overrides.entitlements overlay the plan's entitlements per-key", () => {
+    const plan = buildPlan({
+      entitlements: {
+        [LEGACY_FEATURE_ENTITLEMENT_KEYS.apiAccess]: { kind: "boolean", value: false },
+      },
+    });
+    const overrides: SubscriptionOverrides = {
+      entitlements: {
+        [LEGACY_FEATURE_ENTITLEMENT_KEYS.apiAccess]: { kind: "boolean", value: true },
+      },
+    };
+    const effective = resolveEffective(plan, overrides);
+    expect(effective.features.apiAccess).toBe(true);
+    expect(effective.entitlements?.[LEGACY_FEATURE_ENTITLEMENT_KEYS.apiAccess]).toEqual({
+      kind: "boolean",
+      value: true,
+    });
+  });
+
+  it("overrides.entitlements win over legacy overrides.features on the same key", () => {
+    const plan = buildPlan({
+      entitlements: {
+        [LEGACY_FEATURE_ENTITLEMENT_KEYS.customBadges]: { kind: "boolean", value: false },
+      },
+    });
+    const overrides: SubscriptionOverrides = {
+      features: { customBadges: false }, // legacy says OFF
+      entitlements: {
+        [LEGACY_FEATURE_ENTITLEMENT_KEYS.customBadges]: { kind: "boolean", value: true },
+      },
+    };
+    const effective = resolveEffective(plan, overrides);
+    // Entitlement override wins — they layer on AFTER legacy overrides
+    // in the resolver pipeline, which is the intended precedence.
+    expect(effective.features.customBadges).toBe(true);
+  });
+
+  it("expired overrides.entitlements are ignored just like expired legacy overrides", () => {
+    const plan = buildPlan({
+      entitlements: {
+        [LEGACY_FEATURE_ENTITLEMENT_KEYS.whiteLabel]: { kind: "boolean", value: false },
+      },
+    });
+    const overrides: SubscriptionOverrides = {
+      entitlements: {
+        [LEGACY_FEATURE_ENTITLEMENT_KEYS.whiteLabel]: { kind: "boolean", value: true },
+      },
+      validUntil: "2020-01-01T00:00:00.000Z", // way in the past
+    };
+    const effective = resolveEffective(plan, overrides, new Date("2026-04-24"));
+    expect(effective.features.whiteLabel).toBe(false);
+  });
+
+  it("round-trips the entitlement map through toStoredSnapshot + fromStoredSnapshot", () => {
+    const plan = buildPlan({
+      entitlements: {
+        [LEGACY_FEATURE_ENTITLEMENT_KEYS.qrScanning]: { kind: "boolean", value: true },
+        "quota.sms.monthly": { kind: "quota", limit: 500, period: "month" },
+      },
+    });
+    const effective = resolveEffective(plan);
+    const stored = toStoredSnapshot(effective);
+    expect(stored.entitlements).toEqual(effective.entitlements);
+
+    const runtime = fromStoredSnapshot(stored);
+    expect(runtime.entitlements).toEqual(effective.entitlements);
   });
 });

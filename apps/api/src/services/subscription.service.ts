@@ -218,6 +218,12 @@ export class SubscriptionService extends BaseService {
         update.effectiveFeatures = stored.features;
         update.effectivePlanKey = stored.planKey;
         update.effectiveComputedAt = stored.computedAt;
+        // Phase 7+ item #2 — ALWAYS write the entitlements field (empty
+        // map when the plan has none) so upgrading/downgrading between
+        // a unified plan and a legacy plan doesn't leave stale keys
+        // on the org doc. Empty map → lookup returns undefined →
+        // legacy-fallback branch in BaseService takes over.
+        update.effectiveEntitlements = stored.entitlements ?? {};
       }
       tx.update(orgRef, update);
       return orgData.plan;
@@ -443,6 +449,12 @@ export class SubscriptionService extends BaseService {
         update.effectiveFeatures = stored.features;
         update.effectivePlanKey = stored.planKey;
         update.effectiveComputedAt = stored.computedAt;
+        // Phase 7+ item #2 — ALWAYS write the entitlements field (empty
+        // map when the plan has none) so upgrading/downgrading between
+        // a unified plan and a legacy plan doesn't leave stale keys
+        // on the org doc. Empty map → lookup returns undefined →
+        // legacy-fallback branch in BaseService takes over.
+        update.effectiveEntitlements = stored.entitlements ?? {};
       }
       tx.update(orgRef, update);
       return orgData.plan;
@@ -668,6 +680,14 @@ export class SubscriptionService extends BaseService {
         effectiveFeatures: stored.features,
         effectivePlanKey: stored.planKey,
         effectiveComputedAt: stored.computedAt,
+        // Phase 7+ item #2 — denormalize entitlements. ALWAYS write the
+        // field (empty map when the target plan has no entitlements) so
+        // moving between a unified plan and a legacy plan doesn't leave
+        // stale keys that would mislead `requireEntitlement` /
+        // `checkQuota` readers. An empty map returns `undefined` on any
+        // lookup, which routes cleanly through the legacy fallback in
+        // BaseService.
+        effectiveEntitlements: stored.entitlements ?? {},
         updatedAt: now,
       });
       return orgData.plan;
