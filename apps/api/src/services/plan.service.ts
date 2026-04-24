@@ -3,6 +3,7 @@ import {
   type Plan,
   type CreatePlanDto,
   type UpdatePlanDto,
+  type EntitlementMap,
   type PreviewChangeResponse,
   type PreviewAffectedOrg,
   PLAN_LIMIT_UNLIMITED,
@@ -287,17 +288,24 @@ export class PlanService extends BaseService {
       limits: mergedLimits,
       features: mergedFeatures,
       // Phase 7+ item #2 — carry entitlements into the new version.
-      // `versionPatch.entitlements` uses the `undefined = don't touch,
-      // null = clear, populated = replace` contract (UpdatePlanSchema is
-      // `.nullable().partial()`), so fall through to `existing.entitlements`
-      // on undefined and propagate null/populated values as-is. Without
-      // this carry, any version-material edit on a unified plan would
-      // silently revert the new version to the legacy path. Review
+      // Resolve first, then conditionally SPREAD so the field is simply
+      // omitted when the effective value is "no entitlements" (legacy
+      // path). Firestore rejects explicit `undefined` values on
+      // `tx.set()`, so the omit-when-absent pattern is required. Review
       // blocker B4.
-      entitlements:
-        "entitlements" in versionPatch
-          ? (versionPatch.entitlements ?? undefined)
-          : existing.entitlements,
+      //
+      // Semantics:
+      //   - versionPatch.entitlements populated → new version has it.
+      //   - versionPatch.entitlements === null → clear; omit on new doc.
+      //   - versionPatch.entitlements not in patch → inherit from
+      //     existing; omit when existing is null/undefined.
+      ...(() => {
+        const next: EntitlementMap | null | undefined =
+          "entitlements" in versionPatch
+            ? versionPatch.entitlements
+            : existing.entitlements;
+        return next ? { entitlements: next } : {};
+      })(),
       isSystem: existing.isSystem,
       isPublic: "isPublic" in patch ? (patch.isPublic ?? existing.isPublic) : existing.isPublic,
       isArchived: false,
