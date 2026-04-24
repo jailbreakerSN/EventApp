@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   Card,
   CardContent,
@@ -49,6 +50,7 @@ function formatDate(timestamp: string) {
 export default function AdminEventsPage() {
   const tCommon = useTranslations("common");
   void tCommon;
+  const router = useRouter();
   const [page, setPage] = useState(1);
   const [status, setStatus] = useState("");
 
@@ -123,6 +125,10 @@ export default function AdminEventsPage() {
             responsiveCards
             loading={isLoading}
             data={events as Record<string, unknown>[]}
+            // Whole-row click → admin event detail (organizer surface,
+            // not the public /events/:id participant page — admins need
+            // the organizer tools: edit, cancel, audit).
+            onRowClick={(e) => router.push(`/admin/events/${encodeURIComponent(e.id as string)}`)}
             columns={
               [
                 {
@@ -130,7 +136,13 @@ export default function AdminEventsPage() {
                   header: "Titre",
                   primary: true,
                   render: (event) => (
-                    <span className="font-medium text-foreground">{event.title as string}</span>
+                    <Link
+                      href={`/admin/events/${encodeURIComponent(event.id as string)}`}
+                      onClick={(e) => e.stopPropagation()}
+                      className="font-medium text-foreground hover:text-primary hover:underline"
+                    >
+                      {event.title as string}
+                    </Link>
                   ),
                 },
                 {
@@ -185,14 +197,22 @@ export default function AdminEventsPage() {
                 {
                   key: "actions",
                   header: "Actions",
+                  // Secondary affordance — opens the public participant
+                  // view of the event for super-admins cross-checking
+                  // what end-users see. Row-click takes operators to
+                  // the admin shell; this button is the escape hatch.
+                  stopRowNavigation: true,
                   render: (event) => (
                     <Link
                       href={`/events/${event.id as string}`}
+                      target="_blank"
+                      rel="noopener"
+                      onClick={(e) => e.stopPropagation()}
                       className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
-                      aria-label={`Voir ${event.title as string}`}
+                      aria-label={`Voir la page publique de ${event.title as string}`}
                     >
                       <Eye className="h-4 w-4" />
-                      <span className="hidden sm:inline">Voir</span>
+                      <span className="hidden sm:inline">Page publique</span>
                     </Link>
                   ),
                 },

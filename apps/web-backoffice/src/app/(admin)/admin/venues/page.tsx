@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import {
   Card,
   CardContent,
@@ -77,6 +77,7 @@ const STATUS_LABELS: Record<string, string> = {
 export default function AdminVenuesPage() {
   const tCommon = useTranslations("common");
   void tCommon;
+  const router = useRouter();
   // Hydrate the status filter from the URL so deep-links from the admin
   // inbox (e.g. `/admin/venues?status=pending` from the "X lieux en
   // attente de modération" signal in `admin.service.ts:getInboxSignals`)
@@ -224,6 +225,9 @@ export default function AdminVenuesPage() {
             responsiveCards
             loading={isLoading}
             data={venues as (Venue & Record<string, unknown>)[]}
+            // Whole-row click → venue detail. Middle-click on the name
+            // Link opens in a new tab.
+            onRowClick={(v) => router.push(`/admin/venues/${encodeURIComponent(v.id)}`)}
             columns={
               [
                 {
@@ -232,7 +236,13 @@ export default function AdminVenuesPage() {
                   primary: true,
                   render: (venue) => (
                     <div>
-                      <p className="font-medium text-foreground">{venue.name}</p>
+                      <Link
+                        href={`/admin/venues/${encodeURIComponent(venue.id)}`}
+                        onClick={(e) => e.stopPropagation()}
+                        className="font-medium text-foreground hover:text-primary hover:underline"
+                      >
+                        {venue.name}
+                      </Link>
                       {venue.slug && (
                         <p className="text-xs text-muted-foreground font-mono">{venue.slug}</p>
                       )}
@@ -283,6 +293,9 @@ export default function AdminVenuesPage() {
                 {
                   key: "actions",
                   header: "Actions",
+                  // Approve / suspend buttons own their clicks — don't
+                  // navigate to the detail page on top of them.
+                  stopRowNavigation: true,
                   render: (venue) => (
                     <div className="flex items-center justify-end gap-2">
                       {venue.status === "pending" && (

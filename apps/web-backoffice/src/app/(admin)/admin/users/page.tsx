@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   useAdminUsers,
   useBulkUpdateUserStatus,
@@ -207,6 +208,7 @@ function RoleEditor({
 export default function AdminUsersPage() {
   const tCommon = useTranslations("common");
   void tCommon;
+  const router = useRouter();
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("");
   const [page, setPage] = useState(1);
@@ -357,6 +359,9 @@ export default function AdminUsersPage() {
             responsiveCards
             loading={isLoading}
             data={users as (AdminUserRow & Record<string, unknown>)[]}
+            // Whole-row click → user detail. Middle-click on the primary
+            // column (displayName Link below) opens in a new tab.
+            onRowClick={(u) => router.push(`/admin/users/${encodeURIComponent(u.uid)}`)}
             columns={
               [
                 {
@@ -387,6 +392,9 @@ export default function AdminUsersPage() {
                       className="h-4 w-4 cursor-pointer rounded border-border"
                     />
                   ),
+                  // Checkbox clicks MUST NOT navigate to the detail page —
+                  // bulk-selection is a separate gesture.
+                  stopRowNavigation: true,
                 },
                 {
                   key: "displayName",
@@ -395,7 +403,19 @@ export default function AdminUsersPage() {
                   render: (user) => (
                     <div className="flex items-start gap-2">
                       <div>
-                        <p className="font-medium text-foreground">{user.displayName}</p>
+                        <Link
+                          href={`/admin/users/${encodeURIComponent(user.uid)}`}
+                          // The row-level click handler covers the primary
+                          // navigation gesture; this Link exists so middle-
+                          // click / cmd-click / "Open in new tab" all work
+                          // naturally. Stop propagation so we don't
+                          // double-navigate (Link's click handler +
+                          // parent row onClick).
+                          onClick={(e) => e.stopPropagation()}
+                          className="font-medium text-foreground hover:text-primary hover:underline"
+                        >
+                          {user.displayName}
+                        </Link>
                         <p className="text-xs text-muted-foreground">{user.email}</p>
                       </div>
                       {hasClaimsDrift(user) && (
@@ -444,6 +464,10 @@ export default function AdminUsersPage() {
                 {
                   key: "actions",
                   header: "Actions",
+                  // Action buttons (Suspend / Role editor) have their
+                  // own semantics; row-click navigation must not fire
+                  // when the operator hits one of them.
+                  stopRowNavigation: true,
                   render: (user) => (
                     <div className="flex items-center justify-end gap-2">
                       <Button

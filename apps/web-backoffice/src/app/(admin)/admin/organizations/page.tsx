@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import {
   useAdminOrganizations,
   useBulkUpdateOrgStatus,
@@ -82,6 +82,7 @@ const PLAN_OPTIONS = [
 export default function AdminOrganizationsPage() {
   const tCommon = useTranslations("common");
   void tCommon;
+  const router = useRouter();
   // Hydrate the verified filter from the URL so the inbox deep-link
   // `/admin/organizations?isVerified=false` (emitted by the
   // "X organisation(s) non vérifiée(s)" signal in
@@ -273,6 +274,9 @@ export default function AdminOrganizationsPage() {
             responsiveCards
             loading={isLoading}
             data={organizations as (Organization & Record<string, unknown>)[]}
+            // Whole-row click → org detail. Middle-click on the name
+            // Link opens in a new tab (see primary column below).
+            onRowClick={(o) => router.push(`/admin/organizations/${encodeURIComponent(o.id)}`)}
             columns={
               [
                 {
@@ -290,6 +294,9 @@ export default function AdminOrganizationsPage() {
                     />
                   ),
                   hideOnMobile: true,
+                  // Checkbox is a bulk-selection gesture, not row
+                  // navigation — gate it from the row onClick.
+                  stopRowNavigation: true,
                   render: (org) => (
                     <input
                       type="checkbox"
@@ -306,7 +313,13 @@ export default function AdminOrganizationsPage() {
                   primary: true,
                   render: (org) => (
                     <div>
-                      <p className="font-medium text-foreground">{org.name}</p>
+                      <Link
+                        href={`/admin/organizations/${encodeURIComponent(org.id)}`}
+                        onClick={(e) => e.stopPropagation()}
+                        className="font-medium text-foreground hover:text-primary hover:underline"
+                      >
+                        {org.name}
+                      </Link>
                       {org.city && (
                         <p className="text-xs text-muted-foreground">
                           {org.city}, {org.country}
@@ -355,6 +368,9 @@ export default function AdminOrganizationsPage() {
                 {
                   key: "actions",
                   header: "Actions",
+                  // Action buttons own their click semantics; row-click
+                  // navigation must not fire on top of them.
+                  stopRowNavigation: true,
                   render: (org) => (
                     <div className="flex items-center justify-end gap-2 flex-wrap">
                       {!org.isVerified && (

@@ -19,6 +19,14 @@ export interface DataTableColumn<T> {
   primary?: boolean;
   /** If true, hide this column in mobile card mode */
   hideOnMobile?: boolean;
+  /**
+   * When the table has `onRowClick` set, clicks that originate INSIDE
+   * this column do NOT trigger the row handler. Use for "Actions"
+   * columns with their own buttons (Edit / Suspend / Delete) so
+   * pressing the action doesn't also navigate to the detail page.
+   * Industry precedent: Stripe Dashboard, Linear, Notion.
+   */
+  stopRowNavigation?: boolean;
 }
 
 export interface DataTableProps<T> extends React.HTMLAttributes<HTMLDivElement> {
@@ -30,6 +38,29 @@ export interface DataTableProps<T> extends React.HTMLAttributes<HTMLDivElement> 
   "aria-label"?: string;
   /** Enable responsive card layout on small screens (default: false) */
   responsiveCards?: boolean;
+  /**
+   * Row-level click handler — the canonical admin-list pattern.
+   *
+   * When set, each row becomes an interactive region:
+   *   - Mouse click anywhere in the row invokes the handler, EXCEPT
+   *     inside cells belonging to a column flagged
+   *     `stopRowNavigation: true` (action buttons, kebabs, inline
+   *     controls that have their own meaning).
+   *   - Keyboard: the row is focusable (`tabIndex=0`) and Enter or
+   *     Space triggers the handler.
+   *   - ARIA: the row announces as a button so assistive tech
+   *     exposes the activation semantics.
+   *
+   * Callers should USUALLY pair this with a `<Link href=…>` wrapping
+   * the primary column's content so middle-click / cmd-click open
+   * the detail page in a new tab — the row click covers mouse +
+   * keyboard, the Link covers the "open in new tab" admin workflow.
+   * Both point at the same URL; Next.js deduplicates the navigation.
+   *
+   * Returning early inside the handler is fine when you want to
+   * disable navigation for a specific row (e.g. archived rows).
+   */
+  onRowClick?: (row: T) => void;
 }
 
 function DataTable<T extends Record<string, unknown>>({
@@ -40,6 +71,7 @@ function DataTable<T extends Record<string, unknown>>({
   className,
   "aria-label": ariaLabel,
   responsiveCards = false,
+  onRowClick,
   ...props
 }: DataTableProps<T>) {
   const primaryCol = columns.find((c) => c.primary) ?? columns[0];
@@ -49,6 +81,40 @@ function DataTable<T extends Record<string, unknown>>({
 
   const renderCellValue = (col: DataTableColumn<T>, item: T) =>
     col.render ? col.render(item) : ((item[col.key] as React.ReactNode) ?? "");
+
+  // Row-level interaction props. `onRowClick` drives all three inputs
+  // (mouse, keyboard, ARIA). Shared between the desktop `<tr>` and the
+  // mobile card so both layouts offer the same affordance.
+  const rowInteractionProps = (item: T) =>
+    onRowClick
+      ? {
+          role: "button" as const,
+          tabIndex: 0,
+          onClick: () => onRowClick(item),
+          onKeyDown: (e: React.KeyboardEvent<HTMLElement>) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              onRowClick(item);
+            }
+          },
+          // Hand cursor + visible focus ring so the affordance is
+          // discoverable without hover tooling. `cursor-pointer` is
+          // deliberately additive to the existing hover:bg-muted/50.
+          className: cn(
+            "cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          ),
+        }
+      : {};
+
+  // Cell click-guard — absorbs clicks inside columns flagged
+  // `stopRowNavigation` so the row-level handler doesn't also fire
+  // when the operator hits an action button. Keyboard events from
+  // focusable children (buttons, links) don't bubble to the row by
+  // default, so mouse is the only vector we need to gate.
+  const cellClickGuard = (col: DataTableColumn<T>) =>
+    onRowClick && col.stopRowNavigation
+      ? { onClick: (e: React.MouseEvent) => e.stopPropagation() }
+      : {};
 
   return (
     <div
@@ -90,18 +156,29 @@ function DataTable<T extends Record<string, unknown>>({
                 ))
               : data.length === 0
                 ? null
-                : data.map((item, rowIdx) => (
-                    <tr
-                      key={rowIdx}
-                      className="border-t border-border transition-colors hover:bg-muted/50"
-                    >
-                      {columns.map((col) => (
-                        <td key={col.key} className="px-4 py-3 text-foreground align-middle">
-                          {renderCellValue(col, item)}
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
+                : data.map((item, rowIdx) => {
+                    const interaction = rowInteractionProps(item);
+                    return (
+                      <tr
+                        key={rowIdx}
+                        {...interaction}
+                        className={cn(
+                          "border-t border-border transition-colors hover:bg-muted/50",
+                          interaction.className,
+                        )}
+                      >
+                        {columns.map((col) => (
+                          <td
+                            key={col.key}
+                            className="px-4 py-3 text-foreground align-middle"
+                            {...cellClickGuard(col)}
+                          >
+                            {renderCellValue(col, item)}
+                          </td>
+                        ))}
+                      </tr>
+                    );
+                  })}
           </tbody>
         </table>
       </div>
@@ -119,21 +196,32 @@ function DataTable<T extends Record<string, unknown>>({
               ))
             : data.length === 0
               ? null
-              : data.map((item, rowIdx) => (
-                  <div key={rowIdx} className="p-4 space-y-1.5">
-                    <div className="font-medium text-foreground">
-                      {renderCellValue(primaryCol, item)}
-                    </div>
-                    {detailCols.map((col) => (
-                      <div key={col.key} className="flex items-center justify-between text-sm">
-                        <span className="text-muted-foreground">{col.header}</span>
-                        <span className="text-foreground text-right max-w-[60%] truncate">
-                          {renderCellValue(col, item)}
-                        </span>
+              : data.map((item, rowIdx) => {
+                  const interaction = rowInteractionProps(item);
+                  return (
+                    <div
+                      key={rowIdx}
+                      {...interaction}
+                      className={cn("p-4 space-y-1.5", interaction.className)}
+                    >
+                      <div className="font-medium text-foreground">
+                        {renderCellValue(primaryCol, item)}
                       </div>
-                    ))}
-                  </div>
-                ))}
+                      {detailCols.map((col) => (
+                        <div
+                          key={col.key}
+                          className="flex items-center justify-between text-sm"
+                          {...cellClickGuard(col)}
+                        >
+                          <span className="text-muted-foreground">{col.header}</span>
+                          <span className="text-foreground text-right max-w-[60%] truncate">
+                            {renderCellValue(col, item)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })}
         </div>
       )}
 
