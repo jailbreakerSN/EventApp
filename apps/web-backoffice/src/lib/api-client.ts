@@ -69,7 +69,6 @@ import type {
   AdminPaymentQuery,
   AdminSubscriptionQuery,
   AdminInviteQuery,
-  OrganizationInvite,
   AdminAuditQuery,
   Venue,
   VenueQuery,
