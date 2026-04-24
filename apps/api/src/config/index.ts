@@ -30,9 +30,7 @@ const envSchema = z.object({
   // require a reachable postal address on anything that isn't a strict
   // security send. Default is the Teranga Events office in Dakar; set
   // an environment-specific override in staging / production.
-  RESEND_POSTAL_ADDRESS: z
-    .string()
-    .default("Teranga Events, Almadies, BP 45678 Dakar, Sénégal"),
+  RESEND_POSTAL_ADDRESS: z.string().default("Teranga Events, Almadies, BP 45678 Dakar, Sénégal"),
 
   // Legacy single-sender fallback — kept so existing environments stay green.
   // New code should resolve senders via the EmailCategory registry; this value
@@ -199,6 +197,21 @@ const envSchema = z.object({
     .string()
     .min(32, "INTERNAL_DISPATCH_SECRET must be at least 32 characters")
     .default("dev-internal-dispatch-secret-change-in-prod-000000"),
+
+  // ─── API keys (T2.3) ─────────────────────────────────────────────────────
+  // HMAC secret used to derive the 4-char checksum stamped on every
+  // plaintext API key (`terk_<env>_<body>_<checksum>`). The checksum
+  // lets the server reject corrupted / typo'd keys BEFORE a Firestore
+  // lookup — the actual authentication still compares SHA-256(key)
+  // against the stored hash. Rotating this secret invalidates the
+  // checksum of every outstanding key, which revokes them all at once
+  // — treat as a compliance + support event. Separate from QR_SECRET
+  // so a compromise of one cryptographic domain does not leak the
+  // other.
+  API_KEY_CHECKSUM_SECRET: z
+    .string()
+    .min(32, "API_KEY_CHECKSUM_SECRET must be at least 32 characters")
+    .default("dev-apikey-checksum-secret-change-in-prod-00000000"),
 });
 
 const parsed = envSchema.safeParse(process.env);

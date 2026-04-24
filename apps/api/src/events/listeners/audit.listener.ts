@@ -1444,6 +1444,63 @@ export function registerAuditListeners(): void {
     });
   });
 
+  // ── API keys (T2.3) ────────────────────────────────────────────────────
+  // Every create/revoke/rotate is a revenue-adjacent event (enterprise
+  // tier only) — the audit trail is the mandatory compliance story.
+  // Details never carry plaintext; only the non-secret metadata.
+  // resourceType = "api_key", resourceId = hashPrefix (== doc id).
+
+  eventBus.on("api_key.created", async (payload) => {
+    await auditService.log({
+      action: "api_key.created",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "api_key",
+      resourceId: payload.apiKeyId,
+      eventId: null,
+      organizationId: payload.organizationId,
+      details: {
+        name: payload.name,
+        scopes: payload.scopes,
+        environment: payload.environment,
+      },
+    });
+  });
+
+  eventBus.on("api_key.revoked", async (payload) => {
+    await auditService.log({
+      action: "api_key.revoked",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "api_key",
+      resourceId: payload.apiKeyId,
+      eventId: null,
+      organizationId: payload.organizationId,
+      details: {
+        reason: payload.reason,
+      },
+    });
+  });
+
+  eventBus.on("api_key.rotated", async (payload) => {
+    await auditService.log({
+      action: "api_key.rotated",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "api_key",
+      resourceId: payload.newApiKeyId,
+      eventId: null,
+      organizationId: payload.organizationId,
+      details: {
+        previousApiKeyId: payload.previousApiKeyId,
+        newApiKeyId: payload.newApiKeyId,
+      },
+    });
+  });
+
   // ── Subscription Override (Phase 5 — admin per-org assign) ─────────────
 
   eventBus.on("subscription.overridden", async (payload) => {

@@ -146,6 +146,19 @@ class AdminRepository {
       action?: string;
       actorId?: string;
       resourceType?: string;
+      resourceId?: string;
+      organizationId?: string;
+      /**
+       * T2.6 — free-text search term (lowercased, trimmed upstream).
+       * Implementation: fetch up to 10x the requested page from
+       * Firestore (server-side filtered by the structured fields),
+       * then substring-match the projection in memory. Firestore has
+       * no native text search; this is the idiomatic tradeoff for
+       * admin observability — acceptable for a collection bounded by
+       * retention policies (~ low six-figure row count) without
+       * introducing an external search backend.
+       */
+      search?: string;
       dateFrom?: string;
       dateTo?: string;
     },
@@ -161,17 +174,84 @@ class AdminRepository {
     if (filters.resourceType) {
       clauses.push({ field: "resourceType", op: "==", value: filters.resourceType });
     }
+    if (filters.resourceId) {
+      clauses.push({ field: "resourceId", op: "==", value: filters.resourceId });
+    }
+    if (filters.organizationId) {
+      clauses.push({ field: "organizationId", op: "==", value: filters.organizationId });
+    }
     if (filters.dateFrom) {
       clauses.push({ field: "timestamp", op: ">=", value: filters.dateFrom });
     }
     if (filters.dateTo) {
       clauses.push({ field: "timestamp", op: "<=", value: filters.dateTo });
     }
-    return this.paginatedQuery<AuditLogEntry>(COLLECTIONS.AUDIT_LOGS, clauses, {
-      ...pagination,
-      orderBy: pagination.orderBy ?? "timestamp",
-      orderDir: pagination.orderDir ?? "desc",
+
+    // T2.6 fast path — no search term means the server-side page is
+    // already the answer. Keeps the common case at the same cost it
+    // was before this PR.
+    if (!filters.search) {
+      return this.paginatedQuery<AuditLogEntry>(COLLECTIONS.AUDIT_LOGS, clauses, {
+        ...pagination,
+        orderBy: pagination.orderBy ?? "timestamp",
+        orderDir: pagination.orderDir ?? "desc",
+      });
+    }
+
+    // T2.6 search path — fetch a 10x candidate window + filter in-mem.
+    // The multiplier caps worst-case "search term never matches" at
+    // 10 × limit rows scanned per page navigation, well under the 500
+    // read budget we target for admin queries. If an operator hits
+    // this ceiling consistently they should narrow by resourceType /
+    // date range first; the UI hints that explicitly.
+    const scanCap = Math.min(500, pagination.limit ? pagination.limit * 10 : 500);
+    const search = filters.search.toLowerCase();
+    const { page = 1, limit = 50 } = pagination;
+
+    let query: Query<DocumentData> = db.collection(COLLECTIONS.AUDIT_LOGS);
+    for (const clause of clauses) {
+      query = query.where(clause.field, clause.op as WhereFilterOp, clause.value);
+    }
+    query = query.orderBy("timestamp", "desc").limit(scanCap);
+    const snap = await query.get();
+    const candidates = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as AuditLogEntry);
+
+    const matched = candidates.filter((row) => {
+      // Project the row into a searchable haystack. action + actorId
+      // + resourceType + resourceId + organizationId are already
+      // structured filters; search adds free-text on everything else
+      // that matters in practice (details JSON, actor metadata).
+      const haystacks: string[] = [
+        row.action ?? "",
+        row.actorId ?? "",
+        row.resourceType ?? "",
+        row.resourceId ?? "",
+        row.organizationId ?? "",
+      ];
+      if (row.details) {
+        try {
+          haystacks.push(JSON.stringify(row.details).toLowerCase());
+        } catch {
+          // Ignore unserialisable details — shouldn't happen, but we
+          // never want a bad row to break the whole search.
+        }
+      }
+      return haystacks.some((h) => h.toLowerCase().includes(search));
     });
+
+    const total = matched.length;
+    const start = (page - 1) * limit;
+    const data = matched.slice(start, start + limit);
+
+    return {
+      data,
+      meta: {
+        page,
+        limit,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / limit)),
+      },
+    };
   }
 
   // ── Shared paginated query helper ───────────────────────────────────────

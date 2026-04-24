@@ -148,6 +148,15 @@ export const AuditActionSchema = z.enum([
   "email.complained",
   "email.resend_unsubscribed",
   "email.resend_contact_deleted",
+  // ── API keys (T2.3) ───────────────────────────────────────────────────
+  // Issued / revoked / rotated by organization admins via
+  // /v1/organizations/:orgId/api-keys. actorId = the user who clicked,
+  // resourceType = "api_key", resourceId = the key's hashPrefix (doc id).
+  // Details never carry plaintext — only the non-secret metadata
+  // (scopes, environment, name, revocation reason).
+  "api_key.created",
+  "api_key.revoked",
+  "api_key.rotated",
 ]);
 
 export type AuditAction = z.infer<typeof AuditActionSchema>;

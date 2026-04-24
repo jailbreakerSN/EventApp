@@ -93,6 +93,11 @@ import type {
   AdminJobRunsQuery,
   AdminWebhookEventsQuery,
   WebhookEventLog,
+  ApiKey,
+  CreateApiKeyRequest,
+  CreateApiKeyResponse,
+  RotateApiKeyRequest,
+  RotateApiKeyResponse,
 } from "@teranga/shared-types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
@@ -847,6 +852,41 @@ export const adminApi = {
     api.post<ApiResponse<WebhookEventLog>>(
       `/v1/admin/webhooks/${encodeURIComponent(webhookId)}/replay`,
       {},
+    ),
+};
+
+// ─── API Keys (T2.3) ────────────────────────────────────────────────────────
+// Organization-scoped bearer credentials. Issuance returns the plaintext
+// once; subsequent GETs only expose the hashPrefix. All mutations gated
+// behind `organization:manage_billing`.
+
+export const apiKeysApi = {
+  list: (orgId: string, query: { page?: number; limit?: number } = {}) =>
+    api.get<PaginatedResponse<ApiKey>>(
+      `/v1/organizations/${encodeURIComponent(orgId)}/api-keys${buildQuery(query)}`,
+    ),
+
+  get: (orgId: string, apiKeyId: string) =>
+    api.get<ApiResponse<ApiKey>>(
+      `/v1/organizations/${encodeURIComponent(orgId)}/api-keys/${encodeURIComponent(apiKeyId)}`,
+    ),
+
+  create: (orgId: string, dto: CreateApiKeyRequest) =>
+    api.post<ApiResponse<CreateApiKeyResponse>>(
+      `/v1/organizations/${encodeURIComponent(orgId)}/api-keys`,
+      dto,
+    ),
+
+  revoke: (orgId: string, apiKeyId: string, reason?: string) =>
+    api.post<ApiResponse<ApiKey>>(
+      `/v1/organizations/${encodeURIComponent(orgId)}/api-keys/${encodeURIComponent(apiKeyId)}/revoke`,
+      { reason },
+    ),
+
+  rotate: (orgId: string, apiKeyId: string, dto: RotateApiKeyRequest = {}) =>
+    api.post<ApiResponse<RotateApiKeyResponse>>(
+      `/v1/organizations/${encodeURIComponent(orgId)}/api-keys/${encodeURIComponent(apiKeyId)}/rotate`,
+      dto,
     ),
 };
 

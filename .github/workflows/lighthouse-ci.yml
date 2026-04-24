@@ -1,0 +1,69 @@
+name: Lighthouse CI
+
+# T4.4 — Formal Lighthouse pass for the back-office + participant apps.
+#
+# Runs on pull requests that touch either web app plus a weekly cron so
+# regressions from dependency bumps / Next.js upgrades are caught even
+# without an explicit UI PR. Uses @lhci/cli with a config that asserts
+# on the three dimensions we care about:
+#
+#   - Accessibility ≥ 95 (fail hard — every AA regression is a bug)
+#   - Performance ≥ 85 on desktop profile (fail hard — African network
+#     reality makes this the real customer-facing metric)
+#   - Best Practices ≥ 90 (fail hard — flags HTTPS, console errors, etc.)
+#
+# SEO is tracked but not asserted because the backoffice is a
+# logged-in surface where SEO matters less than the public
+# participant marketing pages.
+#
+# Run manually via Actions UI or with:
+#   gh workflow run lighthouse-ci.yml
+
+on:
+  pull_request:
+    paths:
+      - "apps/web-backoffice/**"
+      - "apps/web-participant/**"
+      - "packages/shared-ui/**"
+      - ".github/workflows/lighthouse-ci.yml"
+  schedule:
+    # Monday 06:00 Africa/Dakar = 06:00 UTC (Dakar = UTC±0)
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lighthouse:
+    name: Lighthouse audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Build shared-types + shared-ui
+        run: npm run types:build
+
+      # Build both apps in parallel so the audit step doesn't wait twice.
+      # Skip the participant app if only the backoffice changed, and vice
+      # versa — `npm run build` at the repo root is fast enough that the
+      # simpler "build everything" is still the right call today.
+      - name: Build web apps
+        run: |
+          npm run build --workspace=apps/web-backoffice
+          npm run build --workspace=apps/web-participant
+
+      - name: Run Lighthouse CI
+        run: npx --yes @lhci/cli@0.14.x autorun --config=.lighthouserc.json
+        env:
+          # LHCI_GITHUB_APP_TOKEN is optional — with it enabled the
+          # workflow posts a status check with per-page scores. Without
+          # it the workflow still runs, just without the annotation.
+          LHCI_GITHUB_APP_TOKEN: ${{ secrets.LHCI_GITHUB_APP_TOKEN }}

@@ -1142,6 +1142,13 @@ export interface DomainEventMap {
   // Fires at replay start (before the handler runs) so security
   // listeners see the attempt even if the handler hangs.
   "admin.webhook_replayed": AdminWebhookReplayedEvent;
+  // T2.3 — API key lifecycle. Created / revoked fire as singletons;
+  // rotated fires in addition to the revoked+created pair so the audit
+  // stream can distinguish "leaked → rotated" from two unrelated
+  // create+revoke events.
+  "api_key.created": ApiKeyCreatedEvent;
+  "api_key.revoked": ApiKeyRevokedEvent;
+  "api_key.rotated": ApiKeyRotatedEvent;
 }
 
 /** Phase 4 — emitted by adminService.startImpersonation(). */
@@ -1208,6 +1215,39 @@ export interface AdminWebhookReplayedEvent {
   webhookEventId: string;
   provider: string;
   providerTransactionId: string;
+}
+
+// ─── API keys (T2.3) ─────────────────────────────────────────────────────
+
+/**
+ * T2.3 — emitted by ApiKeysService.issue() after the row commits.
+ * Audit listener maps to `api_key.created` in auditLogs. Payload never
+ * carries the plaintext key — only the non-secret metadata.
+ */
+export interface ApiKeyCreatedEvent extends BaseEventPayload {
+  apiKeyId: string;
+  organizationId: string;
+  scopes: string[];
+  environment: "live" | "test";
+  name: string;
+}
+
+/** T2.3 — emitted on status: active → revoked transition. */
+export interface ApiKeyRevokedEvent extends BaseEventPayload {
+  apiKeyId: string;
+  organizationId: string;
+  reason: string;
+}
+
+/**
+ * T2.3 — emitted AFTER the atomic revoke-old + issue-new transaction
+ * commits. Paired with api_key.revoked (for the old id) and
+ * api_key.created (for the new id) via `requestId` in the audit log.
+ */
+export interface ApiKeyRotatedEvent extends BaseEventPayload {
+  previousApiKeyId: string;
+  newApiKeyId: string;
+  organizationId: string;
 }
 
 export type DomainEventName = keyof DomainEventMap;

@@ -153,4 +153,10 @@ export const COLLECTIONS = {
   // see infrastructure/firebase/firestore.ttl.md. Server-only at the
   // rules layer — the Admin SDK reads/writes, clients are denied.
   IMPERSONATION_CODES: "impersonationCodes",
+  // T2.3 — organization-scoped API keys. Doc id = `hashPrefix` (first
+  // 10 chars of the plaintext `terk_*` key) so auth checks can resolve
+  // in a single Firestore read. Body carries SHA-256(key) + metadata;
+  // we NEVER store plaintext. Rules deny-all — Admin SDK writes only,
+  // no client access path.
+  API_KEYS: "apiKeys",
 } as const;

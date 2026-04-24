@@ -159,6 +159,10 @@ export const SEED_COVERAGE_WAIVER: ReadonlyMap<string, string> = new Map<
     "webhookEvents",
     "Runtime-received payment-provider webhooks (T2.1). Populated only when a provider actually calls /v1/payments/webhook/:provider. Seeding synthetic rows would either look like real deliveries in the admin console (misleading operators) or trigger replay attempts against non-existent payments (noise in the audit trail). Purely operational log.",
   ],
+  [
+    "apiKeys",
+    "T2.3 — organization-scoped API keys. Stored as SHA-256 hashes only; plaintext returned exactly once at issuance and never persisted. Seeding would write hashes whose plaintexts nobody holds, producing 'valid-looking but unusable' rows forever — confusing for QA and pointless for integration tests (which mint keys through the service API anyway).",
+  ],
 ]);
 
 // ─── COLLECTIONS constant parsing ──────────────────────────────────────────

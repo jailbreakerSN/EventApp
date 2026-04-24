@@ -10,6 +10,7 @@ import { SidebarProvider } from "@/components/layouts/sidebar-context";
 import { BrandedLoader } from "@/components/branded-loader";
 import { CommandPalette } from "@/components/command-palette";
 import { KeyboardShortcutsDialog } from "@/components/keyboard-shortcuts-dialog";
+import { AnnouncementBanner } from "@/components/announcement-banner";
 import { useAuth } from "@/hooks/use-auth";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 // Shared access taxonomy — single source of truth for who may traverse
@@ -99,6 +100,12 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
         <Sidebar />
         <div className="flex-1 flex flex-col min-w-0">
           <TopBar onShowShortcuts={() => setShortcutsOpen(true)} />
+          {/* T2.4 — Platform announcement banner. Mounted above the
+              email-verification banner so a critical platform message
+              takes visual priority over the per-user verification
+              reminder. Both can appear simultaneously; the component
+              self-hides when there are no active announcements. */}
+          <AnnouncementBanner />
           {showVerificationBanner && (
             <div
               role="alert"
