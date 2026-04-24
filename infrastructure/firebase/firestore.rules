@@ -626,6 +626,29 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // ─── Admin Job Runs (T2.2 — observability + run history) ──────────────
+    // One doc per job invocation, written/updated exclusively by the
+    // admin-jobs service. Denied at the client SDK (deny-all default
+    // covers it, but we name it explicitly to defend against a future
+    // rules refactor that accidentally reorders the wildcard match).
+    // Server-only — Admin SDK reads/writes for the list + detail
+    // endpoints. Precedent: checkinLocks, rateLimitBuckets,
+    // impersonationCodes, adminJobLocks.
+    match /adminJobRuns/{runId} {
+      allow read, write: if false;
+    }
+
+    // ─── Admin Job Locks (T2.2 — single-flight for the job runner) ─────────
+    // One doc per registered jobKey. Written transactionally by the admin-
+    // jobs service before a handler starts + deleted in finally. Stale
+    // locks (> 5 min) are auto-reclaimable so a crashed handler doesn't
+    // wedge the job indefinitely. Server-only — the Admin SDK writes; no
+    // client (not even super_admin) reads or mutates directly. Precedent:
+    // refundLocks, checkinLocks, rateLimitBuckets.
+    match /adminJobLocks/{jobKey} {
+      allow read, write: if false;
+    }
+
     // ─── Impersonation Codes (auth-code flow) ──────────────────────────────
     // Short-lived, single-use codes issued by /v1/admin/users/:uid/impersonate
     // and consumed by /v1/impersonation/exchange. Doc id = SHA-256 hex of

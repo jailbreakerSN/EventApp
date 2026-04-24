@@ -81,6 +81,20 @@ export const ERROR_CODES = {
   // the stored targetOrigin. 403 Forbidden — almost always an attempt
   // to consume a code on a foreign origin (CSRF / open-redirect variant).
   IMPERSONATION_ORIGIN_MISMATCH: "IMPERSONATION_ORIGIN_MISMATCH",
+  // Admin job runner (T2.2) — jobKey in the POST path does not match
+  // any registered handler. 404 Not Found.
+  ADMIN_JOB_NOT_FOUND: "ADMIN_JOB_NOT_FOUND",
+  // Single-flight lock is held by a still-running (< 5 min) instance
+  // of the same job. Operator should wait or force-unlock from the
+  // job-detail view (follow-up PR). 409 Conflict.
+  ADMIN_JOB_ALREADY_RUNNING: "ADMIN_JOB_ALREADY_RUNNING",
+  // POST body did not match the handler's Zod input schema. Detail
+  // carries the Zod flatten output so the UI can highlight the
+  // offending field. 400 Bad Request.
+  ADMIN_JOB_INVALID_INPUT: "ADMIN_JOB_INVALID_INPUT",
+  // Handler exceeded the 5-minute execution budget and was aborted.
+  // The run row lands as `status: "failed"` with this code. 504.
+  ADMIN_JOB_TIMEOUT: "ADMIN_JOB_TIMEOUT",
 } as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];

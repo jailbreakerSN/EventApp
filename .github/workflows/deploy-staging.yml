@@ -412,7 +412,16 @@ jobs:
             --max-instances 2 \
             --concurrency 80 \
             --no-cpu-boost \
+            --timeout 360 \
             --set-env-vars "^@^NODE_ENV=staging@FIREBASE_PROJECT_ID=${{ needs.setup.outputs.project_id }}@FIREBASE_STORAGE_BUCKET=${{ needs.setup.outputs.firebase_storage_bucket }}@QR_SECRET=${{ secrets.QR_SECRET }}@WEBHOOK_SECRET=${{ secrets.WEBHOOK_SECRET }}@RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}@SENTRY_DSN=${{ secrets.SENTRY_DSN }}@CORS_ORIGINS=${{ needs.setup.outputs.cors_origins }}@API_BASE_URL=${{ needs.setup.outputs.api_url }}@PARTICIPANT_WEB_URL=${{ needs.setup.outputs.participant_url }}@WEB_BACKOFFICE_URL=${{ needs.setup.outputs.backoffice_url }}@RATE_LIMIT_MAX=100@RATE_LIMIT_WINDOW_MS=60000@LOG_LEVEL=info"
+          # --timeout 360 covers the admin-jobs runner's 5-minute
+          # MAX_RUN_MS + ~1 min of headroom. Without this, a long
+          # handler would land as a client-side 504 while Cloud Run
+          # kept the instance running past our service-level
+          # timeout, leaving the run row stranded in `running`
+          # status. Bumping Cloud Run's timeout to 6 min lets the
+          # service's own AbortSignal fire first and the `finally`
+          # block release the lock + write the terminal row.
 
   # ─── Deploy Web Backoffice to Cloud Run ───────────────────────────────────
   deploy-web-backoffice:

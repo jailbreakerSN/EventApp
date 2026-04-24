@@ -4,6 +4,7 @@ import { authenticate } from "@/middlewares/auth.middleware";
 import { validate } from "@/middlewares/validate.middleware";
 import { requirePermission } from "@/middlewares/permission.middleware";
 import { adminService } from "@/services/admin.service";
+import { adminJobsService } from "@/services/admin-jobs.service";
 import { subscriptionService } from "@/services/subscription.service";
 import {
   AdminUserQuerySchema,
@@ -23,6 +24,8 @@ import {
   FeatureFlagKeySchema,
   UpsertFeatureFlagSchema,
   type FeatureFlag,
+  AdminJobRunsQuerySchema,
+  RunAdminJobRequestSchema,
 } from "@teranga/shared-types";
 import {
   notificationSettingsRepository,
@@ -285,26 +288,104 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
     },
   );
 
-  // ── Admin job runs (Phase D closure — observable script triggers) ─────
-  // Read-only list of past/ongoing manual triggers. Actual trigger
-  // endpoints are intentionally whitelisted (no arbitrary shell
-  // execution) — for now this is a read-only observability surface.
+  // ── Admin job runner (T2.2) ────────────────────────────────────────────
+  // Named-handler pattern: every job is registered in
+  // `apps/api/src/jobs/registry.ts` with a Zod input schema and a
+  // descriptor (title, description, danger note). The shape avoids
+  // arbitrary shell execution — operators can only trigger jobs the
+  // engineering team has explicitly whitelisted. See
+  // `packages/shared-types/src/admin-jobs.types.ts` for the full
+  // architectural rationale.
+
+  // List registered handlers (the "Run a job" grid in the UI).
   fastify.get(
     "/jobs",
     {
       preHandler: adminPreHandler,
-      schema: { tags: ["Admin"], summary: "List admin job runs", security: [{ BearerAuth: [] }] },
+      schema: {
+        tags: ["Admin"],
+        summary: "List registered admin job handlers",
+        security: [{ BearerAuth: [] }],
+      },
     },
-    async (_request, reply) => {
-      const snap = await db
-        .collection(COLLECTIONS.ADMIN_JOB_RUNS)
-        .orderBy("startedAt", "desc")
-        .limit(50)
-        .get();
-      return reply.send({
-        success: true,
-        data: snap.docs.map((d) => ({ id: d.id, ...d.data() })),
-      });
+    async (request, reply) => {
+      const data = adminJobsService.listRegisteredJobs(request.user!);
+      return reply.send({ success: true, data });
+    },
+  );
+
+  // Paginated run history (the "Recent runs" table in the UI).
+  fastify.get(
+    "/jobs/runs",
+    {
+      preHandler: [...adminPreHandler, validate({ query: AdminJobRunsQuerySchema })],
+      schema: {
+        tags: ["Admin"],
+        summary: "List admin job runs (history)",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const query = request.query as z.infer<typeof AdminJobRunsQuerySchema>;
+      const result = await adminJobsService.listRuns(request.user!, query);
+      return reply.send({ success: true, data: result.data, meta: result.meta });
+    },
+  );
+
+  // Single run detail (modal in the UI).
+  const ParamsRunId = z.object({ runId: z.string().min(1) });
+  fastify.get(
+    "/jobs/runs/:runId",
+    {
+      preHandler: [...adminPreHandler, validate({ params: ParamsRunId })],
+      schema: {
+        tags: ["Admin"],
+        summary: "Get a single admin job run",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const { runId } = request.params as z.infer<typeof ParamsRunId>;
+      const run = await adminJobsService.getRun(request.user!, runId);
+      return reply.send({ success: true, data: run });
+    },
+  );
+
+  // Trigger a registered job. Body is the handler's Zod input; the
+  // service validates against the registered schema server-side.
+  // Execution is synchronous — the response lands when the handler
+  // returns or the 5-minute timeout fires.
+  const ParamsJobKey = z.object({ jobKey: z.string().min(1).max(80) });
+  fastify.post(
+    "/jobs/:jobKey/run",
+    {
+      preHandler: [
+        ...adminPreHandler,
+        validate({ params: ParamsJobKey, body: RunAdminJobRequestSchema }),
+      ],
+      schema: {
+        tags: ["Admin"],
+        summary: "Trigger a registered admin job",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const { jobKey } = request.params as z.infer<typeof ParamsJobKey>;
+      const body = request.body as z.infer<typeof RunAdminJobRequestSchema>;
+      // Look up the admin's displayName so the run row + banner can
+      // render "Triggered by Alice D." without a second round-trip
+      // from the UI. Best-effort — missing doc stamps null, no fatal.
+      let displayName: string | null = null;
+      try {
+        const doc = await db.collection(COLLECTIONS.USERS).doc(request.user!.uid).get();
+        if (doc.exists) {
+          displayName = (doc.data() as { displayName?: string }).displayName ?? null;
+        }
+      } catch {
+        /* fall through */
+      }
+      const run = await adminJobsService.runJob(request.user!, jobKey, body.input, displayName);
+      return reply.send({ success: true, data: run });
     },
   );
 

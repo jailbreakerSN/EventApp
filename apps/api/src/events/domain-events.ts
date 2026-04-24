@@ -1125,6 +1125,19 @@ export interface DomainEventMap {
   // have been revoked. Parity with `user.impersonated` so security
   // listeners see both halves of a session.
   "user.impersonation_ended": UserImpersonationEndedEvent;
+  // T2.2 — admin job runner. Triggered fires at handler start, before
+  // any side-effect; completed fires after the handler returns or
+  // throws (see `status`). Pair via `runId`. Downstream listeners:
+  // security alerting (high-volume job triggers), observability
+  // dashboards.
+  "admin.job_triggered": AdminJobTriggeredEvent;
+  "admin.job_completed": AdminJobCompletedEvent;
+  // T2.2 — emitted per batch commit by the prune-expired-invites
+  // handler. One event per ≤ 400-row commit, carries the count +
+  // runId so the audit trail has a fine-grained record of bulk
+  // mutations beyond the coarse `admin.job_completed` summary.
+  // Precedent: `checkin.bulk_synced`.
+  "invite.bulk_expired": InviteBulkExpiredEvent;
 }
 
 /** Phase 4 — emitted by adminService.startImpersonation(). */
@@ -1153,6 +1166,36 @@ export interface UserImpersonationExchangedEvent {
   targetUid: string;
   /** Session token's expiration — matches the ISO returned to the client. */
   expiresAt: string;
+}
+
+/** T2.2 — emitted at handler start by AdminJobsService.runJob(). */
+export interface AdminJobTriggeredEvent {
+  actorUid: string;
+  jobKey: string;
+  runId: string;
+}
+
+/** T2.2 — emitted on terminal status (succeeded / failed). */
+export interface AdminJobCompletedEvent {
+  actorUid: string;
+  jobKey: string;
+  runId: string;
+  status: "succeeded" | "failed" | "cancelled";
+  durationMs: number;
+}
+
+/**
+ * T2.2 — emitted by the `prune-expired-invites` handler on each
+ * ≤ 400-row batch commit. Carries the actor + run context so the
+ * audit trail can attribute the bulk mutation to a specific job
+ * invocation.
+ */
+export interface InviteBulkExpiredEvent {
+  actorUid: string;
+  jobKey: string;
+  runId: string;
+  count: number;
+  processedAt: string;
 }
 
 export type DomainEventName = keyof DomainEventMap;
