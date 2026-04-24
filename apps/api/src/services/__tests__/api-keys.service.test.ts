@@ -80,6 +80,7 @@ vi.mock("@/config/firebase", () => ({
 vi.mock("@/config", () => ({
   config: {
     API_KEY_CHECKSUM_SECRET: "test-checksum-secret-for-unit-tests-aaaa",
+    API_KEY_AUTH_DISABLED: false,
     NODE_ENV: "test",
   },
 }));
@@ -425,5 +426,214 @@ describe("ApiKeysService.expandScopes", () => {
 
   it("produces an empty set for an empty scope list", () => {
     expect(apiKeysService.expandScopes([])).toEqual([]);
+  });
+});
+
+// ─── Collision retry (senior-review #2) ──────────────────────────────────
+
+describe("ApiKeysService.issue — prefix collision retry", () => {
+  it("retries on ALREADY_EXISTS + returns the plaintext whose hash was actually stored", async () => {
+    const admin = buildAuthUser({
+      uid: "admin-1",
+      organizationId: "org-1",
+      roles: ["organizer"],
+    });
+    hoisted.mockOrgFindByIdOrThrow.mockResolvedValue(
+      buildOrgWithPlan("enterprise", { id: "org-1" }),
+    );
+
+    // First create() call throws ALREADY_EXISTS, second succeeds.
+    // The plaintext returned MUST match the keyHash we persisted on
+    // the SECOND attempt, not the first one that collided.
+    const collisionErr = Object.assign(new Error("ALREADY_EXISTS"), {
+      code: 6, // gRPC ALREADY_EXISTS
+    });
+    let callCount = 0;
+    hoisted.mockDocCreate.mockImplementation(() => {
+      callCount++;
+      if (callCount === 1) return Promise.reject(collisionErr);
+      return Promise.resolve(undefined);
+    });
+
+    const result = await apiKeysService.issue(admin, "org-1", {
+      name: "test",
+      scopes: ["event:read"],
+      environment: "live",
+    });
+
+    // At least two create attempts.
+    expect(hoisted.mockDocCreate).toHaveBeenCalledTimes(2);
+
+    // The plaintext returned must hash (SHA-256) to the stored keyHash.
+    const crypto = await import("node:crypto");
+    const hash = crypto.createHash("sha256").update(result.plaintext).digest("hex");
+    expect(hash).toBe(result.apiKey.keyHash);
+  });
+
+  it("gives up after MAX_PREFIX_COLLISION_RETRIES and throws INTERNAL_ERROR", async () => {
+    const admin = buildAuthUser({
+      uid: "admin-1",
+      organizationId: "org-1",
+      roles: ["organizer"],
+    });
+    hoisted.mockOrgFindByIdOrThrow.mockResolvedValue(
+      buildOrgWithPlan("enterprise", { id: "org-1" }),
+    );
+    // Every attempt collides — should exhaust the retry budget.
+    hoisted.mockDocCreate.mockRejectedValue(new Error("ALREADY_EXISTS"));
+
+    await expect(
+      apiKeysService.issue(admin, "org-1", {
+        name: "test",
+        scopes: ["event:read"],
+        environment: "live",
+      }),
+    ).rejects.toThrow();
+    // 3 attempts total (initial + 2 retries).
+    expect(hoisted.mockDocCreate).toHaveBeenCalledTimes(3);
+  });
+});
+
+// ─── verify() — throttled api_key.verified emit ──────────────────────────
+
+describe("ApiKeysService.verify — api_key.verified throttled emit", () => {
+  it("emits once on first verification from a given (ip, ua) pair", async () => {
+    hoisted.mockOrgFindByIdOrThrow.mockResolvedValue(
+      buildOrgWithPlan("enterprise", { id: "org-1" }),
+    );
+    const admin = buildAuthUser({
+      uid: "admin-1",
+      organizationId: "org-1",
+      roles: ["organizer"],
+    });
+    const issued = await apiKeysService.issue(admin, "org-1", {
+      name: "t",
+      scopes: ["event:read"],
+      environment: "live",
+    });
+    hoisted.mockFindById.mockResolvedValue(issued.apiKey);
+
+    // Clear the emit list so we only count the verify emit.
+    hoisted.mockBusEmit.mockClear();
+
+    await apiKeysService.verify(issued.plaintext, "10.0.0.1", "Mozilla/5.0 Test");
+
+    const verifiedEmits = hoisted.mockBusEmit.mock.calls.filter((c) => c[0] === "api_key.verified");
+    expect(verifiedEmits).toHaveLength(1);
+    expect(verifiedEmits[0][1]).toMatchObject({
+      apiKeyId: issued.apiKey.id,
+      organizationId: "org-1",
+    });
+    // ipHash + uaHash are 16-hex chars each, not plaintext.
+    expect(verifiedEmits[0][1].ipHash).toMatch(/^[a-f0-9]{16}$/);
+    expect(verifiedEmits[0][1].uaHash).toMatch(/^[a-f0-9]{16}$/);
+  });
+
+  it("does not re-emit within the throttle window for the same (key, ip, ua)", async () => {
+    hoisted.mockOrgFindByIdOrThrow.mockResolvedValue(
+      buildOrgWithPlan("enterprise", { id: "org-1" }),
+    );
+    const admin = buildAuthUser({
+      uid: "admin-1",
+      organizationId: "org-1",
+      roles: ["organizer"],
+    });
+    const issued = await apiKeysService.issue(admin, "org-1", {
+      name: "t",
+      scopes: ["event:read"],
+      environment: "live",
+    });
+    hoisted.mockFindById.mockResolvedValue(issued.apiKey);
+
+    hoisted.mockBusEmit.mockClear();
+
+    // Two back-to-back verifies from the same (ip, ua).
+    await apiKeysService.verify(issued.plaintext, "10.0.0.1", "UA-A");
+    await apiKeysService.verify(issued.plaintext, "10.0.0.1", "UA-A");
+
+    const verifiedEmits = hoisted.mockBusEmit.mock.calls.filter((c) => c[0] === "api_key.verified");
+    expect(verifiedEmits).toHaveLength(1);
+  });
+
+  it("emits again for a different IP — the 'new IP' signal SOC cares about", async () => {
+    hoisted.mockOrgFindByIdOrThrow.mockResolvedValue(
+      buildOrgWithPlan("enterprise", { id: "org-1" }),
+    );
+    const admin = buildAuthUser({
+      uid: "admin-1",
+      organizationId: "org-1",
+      roles: ["organizer"],
+    });
+    const issued = await apiKeysService.issue(admin, "org-1", {
+      name: "t",
+      scopes: ["event:read"],
+      environment: "live",
+    });
+    hoisted.mockFindById.mockResolvedValue(issued.apiKey);
+
+    hoisted.mockBusEmit.mockClear();
+
+    await apiKeysService.verify(issued.plaintext, "10.0.0.1", "UA-A");
+    await apiKeysService.verify(issued.plaintext, "10.0.0.99", "UA-A");
+
+    const verifiedEmits = hoisted.mockBusEmit.mock.calls.filter((c) => c[0] === "api_key.verified");
+    expect(verifiedEmits).toHaveLength(2);
+  });
+});
+
+// ─── Kill-switch ──────────────────────────────────────────────────────────
+
+describe("ApiKeysService.verify — kill-switch", () => {
+  it("short-circuits to null when API_KEY_AUTH_DISABLED is true", async () => {
+    // Patch the mocked config module — vi.mock('@/config') was set up
+    // earlier; here we reach into the mock registry to flip the flag.
+    const configModule = await import("@/config");
+    const originalFlag = configModule.config.API_KEY_AUTH_DISABLED;
+    (configModule.config as unknown as { API_KEY_AUTH_DISABLED: boolean }).API_KEY_AUTH_DISABLED =
+      true;
+    try {
+      const result = await apiKeysService.verify(
+        "terk_live_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa_xxxx",
+        "10.0.0.1",
+        "UA",
+      );
+      expect(result).toBeNull();
+      // Should not have hit Firestore at all.
+      expect(hoisted.mockFindById).not.toHaveBeenCalled();
+    } finally {
+      (configModule.config as unknown as { API_KEY_AUTH_DISABLED: boolean }).API_KEY_AUTH_DISABLED =
+        originalFlag;
+    }
+  });
+});
+
+// ─── rotate() — concurrent revoke ─────────────────────────────────────────
+
+describe("ApiKeysService.rotate — concurrent revoke conflict", () => {
+  it("throws CONFLICT when the key was revoked between the read and the transaction", async () => {
+    const admin = buildAuthUser({
+      uid: "admin-1",
+      organizationId: "org-1",
+      roles: ["organizer"],
+    });
+    hoisted.mockOrgFindByIdOrThrow.mockResolvedValue(
+      buildOrgWithPlan("enterprise", { id: "org-1" }),
+    );
+
+    // Inside-transaction read sees the key as already revoked.
+    hoisted.mockTxGet.mockResolvedValue({
+      exists: true,
+      data: () => ({
+        id: "abcdef1234",
+        organizationId: "org-1",
+        status: "revoked",
+        environment: "live",
+        scopes: ["event:read"],
+      }),
+    });
+
+    await expect(
+      apiKeysService.rotate(admin, "org-1", "abcdef1234", { reason: "leaked" }),
+    ).rejects.toThrow(/révoquée/i);
   });
 });

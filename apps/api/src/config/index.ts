@@ -212,6 +212,18 @@ const envSchema = z.object({
     .string()
     .min(32, "API_KEY_CHECKSUM_SECRET must be at least 32 characters")
     .default("dev-apikey-checksum-secret-change-in-prod-00000000"),
+
+  // Senior-review remediation — rollback kill-switch. When `true` the
+  // auth middleware's `terk_*` branch short-circuits to 401 for every
+  // request, effectively disabling API-key auth platform-wide without
+  // a code deploy. Flip this via Cloud Run env-var edit if the
+  // `apiKeys` collection degrades or an incident requires an
+  // emergency freeze. Default false — kept boolean-preprocessed so
+  // "true" / "1" / "TRUE" all resolve identically.
+  API_KEY_AUTH_DISABLED: z.preprocess(
+    (v) => (typeof v === "string" ? v.toLowerCase() === "true" || v === "1" : v),
+    z.boolean().default(false),
+  ),
 });
 
 const parsed = envSchema.safeParse(process.env);

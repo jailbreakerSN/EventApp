@@ -1501,6 +1501,27 @@ export function registerAuditListeners(): void {
     });
   });
 
+  eventBus.on("api_key.verified", async (payload) => {
+    // Throttled (one emit per key per hour per ipHash, enforced in
+    // the service). We still audit every admitted call-pattern so
+    // "key used from new IP" alerting can fire. `actorId` is the
+    // synthesised `apikey:<hashPrefix>` uid — the key IS the actor.
+    await auditService.log({
+      action: "api_key.verified",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "api_key",
+      resourceId: payload.apiKeyId,
+      eventId: null,
+      organizationId: payload.organizationId,
+      details: {
+        ipHash: payload.ipHash,
+        uaHash: payload.uaHash,
+      },
+    });
+  });
+
   // ── Subscription Override (Phase 5 — admin per-org assign) ─────────────
 
   eventBus.on("subscription.overridden", async (payload) => {

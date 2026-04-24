@@ -70,7 +70,10 @@ function getResourceUrl(type: string, id: string): string | null {
 }
 
 function formatDate(timestamp: string) {
-  return new Date(timestamp).toLocaleString("fr-FR", {
+  // Senegal locale — consistent with the rest of the audit page +
+  // all other admin surfaces. Audit findings showed this one helper
+  // was the single drift from fr-SN; l10n-auditor T2.6 fix.
+  return new Date(timestamp).toLocaleString("fr-SN", {
     dateStyle: "medium",
     timeStyle: "short",
   });
@@ -131,23 +134,40 @@ export default function AdminAuditPage() {
   // doesn't need to change.
   const filteredLogs = logs;
 
-  // T2.6 — timeline view: group rows by the local calendar day.
-  // Firestore orders by timestamp desc so the groups are already
-  // sorted; we just bucket them.
+  // T2.6 — timeline view: group rows by the Dakar calendar day.
+  // Using Africa/Dakar (not the browser's local timezone) is the
+  // product contract — operators anywhere on the globe should see
+  // the same day-boundaries as the events actually occurred in
+  // Senegal. Senior-review remediation (#11).
+  //
+  // We use a stable ISO-date key (YYYY-MM-DD in Dakar time) for the
+  // React `key` and Map lookups, then derive the display string
+  // separately. Avoids collisions if the locale ever changes mid-
+  // render and keeps keys stable across SSR/CSR boundaries.
   const timelineGroups = useMemo(() => {
     if (viewMode !== "timeline") return null;
-    const groups = new Map<string, typeof filteredLogs>();
+    const groups = new Map<string, { display: string; entries: typeof filteredLogs }>();
+    const isoKeyFmt = new Intl.DateTimeFormat("fr-CA", {
+      timeZone: "Africa/Dakar",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    });
+    const displayFmt = new Intl.DateTimeFormat("fr-SN", {
+      timeZone: "Africa/Dakar",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
     for (const log of filteredLogs) {
       const ts = (log as { timestamp?: string }).timestamp ?? "";
       if (!ts) continue;
-      const day = new Date(ts).toLocaleDateString("fr-SN", {
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-      });
-      const bucket = groups.get(day);
-      if (bucket) bucket.push(log);
-      else groups.set(day, [log]);
+      const d = new Date(ts);
+      const isoKey = isoKeyFmt.format(d); // e.g. "2026-04-24"
+      const display = displayFmt.format(d); // e.g. "24 avril 2026"
+      const bucket = groups.get(isoKey);
+      if (bucket) bucket.entries.push(log);
+      else groups.set(isoKey, { display, entries: [log] });
     }
     return Array.from(groups.entries());
   }, [filteredLogs, viewMode]);
@@ -334,20 +354,34 @@ export default function AdminAuditPage() {
 
       {viewMode === "timeline" && timelineGroups ? (
         <div className="space-y-6">
-          {timelineGroups.length === 0 ? (
+          {isLoading ? (
+            <Card>
+              <CardContent className="p-6">
+                <div className="space-y-3">
+                  {[1, 2, 3].map((i) => (
+                    <div key={i} className="flex items-center gap-3">
+                      <div className="h-5 w-16 rounded bg-muted animate-pulse" />
+                      <div className="h-4 flex-1 rounded bg-muted animate-pulse" />
+                      <div className="h-3 w-14 rounded bg-muted animate-pulse" />
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          ) : timelineGroups.length === 0 ? (
             <Card>
               <CardContent className="p-6 text-center text-sm text-muted-foreground">
                 Aucune entrée sur cette période.
               </CardContent>
             </Card>
           ) : (
-            timelineGroups.map(([day, entries]) => (
-              <section key={day} aria-labelledby={`tl-${day}`}>
+            timelineGroups.map(([isoKey, { display, entries }]) => (
+              <section key={isoKey} aria-labelledby={`tl-${isoKey}`}>
                 <h2
-                  id={`tl-${day}`}
+                  id={`tl-${isoKey}`}
                   className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
                 >
-                  {day}
+                  {display}
                 </h2>
                 <Card>
                   <CardContent className="p-0 divide-y divide-border">
@@ -395,6 +429,7 @@ export default function AdminAuditPage() {
                             className="text-xs text-muted-foreground whitespace-nowrap"
                           >
                             {new Date(log.timestamp as string).toLocaleTimeString("fr-SN", {
+                              timeZone: "Africa/Dakar",
                               hour: "2-digit",
                               minute: "2-digit",
                             })}

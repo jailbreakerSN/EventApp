@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import {
   useApiKeys,
@@ -9,6 +9,7 @@ import {
   useRotateApiKey,
 } from "@/hooks/use-api-keys";
 import { usePlanGating } from "@/hooks/use-plan-gating";
+import { useErrorHandler, type ResolvedError } from "@/hooks/use-error-handler";
 import {
   Button,
   Badge,
@@ -75,6 +76,7 @@ export default function ApiKeysPage() {
   const orgId = user?.organizationId ?? "";
   const { canUse } = usePlanGating();
   const hasApiAccess = canUse("apiAccess");
+  const { resolve: resolveError } = useErrorHandler();
 
   const { data, isLoading, error, refetch } = useApiKeys(orgId, { page: 1, limit: 50 });
   const createMut = useCreateApiKey(orgId);
@@ -85,6 +87,14 @@ export default function ApiKeysPage() {
   const [plaintext, setPlaintext] = useState<string | null>(null);
   const [plaintextDismissed, setPlaintextDismissed] = useState(false);
   const [confirmRevoke, setConfirmRevoke] = useState<ApiKey | null>(null);
+  // Senior-review / frontend-review remediation: mutation failures use
+  // useErrorHandler → InlineErrorBanner inside the relevant surface
+  // (create dialog, revoke dialog, row). Never a bare `toast.error()`
+  // for blocking submit failures — matches docs/design-system/
+  // error-handling.md.
+  const [createError, setCreateError] = useState<ResolvedError | null>(null);
+  const [revokeError, setRevokeError] = useState<ResolvedError | null>(null);
+  const [rotateErrorByKeyId, setRotateErrorByKeyId] = useState<Record<string, ResolvedError>>({});
 
   const keys = data?.data ?? [];
   const activeCount = useMemo(() => keys.filter((k) => k.status === "active").length, [keys]);
@@ -185,14 +195,33 @@ export default function ApiKeysPage() {
               key={k.id}
               apiKey={k}
               allowRotate={hasApiAccess}
-              onRevoke={() => setConfirmRevoke(k)}
+              rotateError={rotateErrorByKeyId[k.id] ?? null}
+              onDismissRotateError={() =>
+                setRotateErrorByKeyId((prev) => {
+                  const next = { ...prev };
+                  delete next[k.id];
+                  return next;
+                })
+              }
+              onRevoke={() => {
+                setRevokeError(null);
+                setConfirmRevoke(k);
+              }}
               onRotate={async () => {
+                setRotateErrorByKeyId((prev) => {
+                  const next = { ...prev };
+                  delete next[k.id];
+                  return next;
+                });
                 try {
                   const result = await rotateMut.mutateAsync({ apiKeyId: k.id });
                   setPlaintext(result.data.plaintext);
                   setPlaintextDismissed(false);
-                } catch {
-                  toast.error("Rotation échouée — réessayez.");
+                } catch (err) {
+                  setRotateErrorByKeyId((prev) => ({
+                    ...prev,
+                    [k.id]: resolveError(err),
+                  }));
                 }
               }}
             />
@@ -203,15 +232,21 @@ export default function ApiKeysPage() {
       {/* Create dialog */}
       <CreateApiKeyDialog
         open={createOpen}
-        onOpenChange={setCreateOpen}
+        onOpenChange={(open) => {
+          setCreateOpen(open);
+          if (!open) setCreateError(null);
+        }}
+        error={createError}
+        onDismissError={() => setCreateError(null)}
         onCreate={async (dto) => {
+          setCreateError(null);
           try {
             const result = await createMut.mutateAsync(dto);
             setCreateOpen(false);
             setPlaintext(result.data.plaintext);
             setPlaintextDismissed(false);
-          } catch {
-            toast.error("Création échouée — réessayez.");
+          } catch (err) {
+            setCreateError(resolveError(err));
           }
         }}
         isPending={createMut.isPending}
@@ -232,7 +267,15 @@ export default function ApiKeysPage() {
 
       {/* Revoke confirm */}
       {confirmRevoke && (
-        <Dialog open onOpenChange={(open) => !open && setConfirmRevoke(null)}>
+        <Dialog
+          open
+          onOpenChange={(open) => {
+            if (!open) {
+              setConfirmRevoke(null);
+              setRevokeError(null);
+            }
+          }}
+        >
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Révoquer cette clé ?</DialogTitle>
@@ -241,13 +284,29 @@ export default function ApiKeysPage() {
                 est irréversible — vous devrez émettre une nouvelle clé.
               </DialogDescription>
             </DialogHeader>
+            {revokeError && (
+              <InlineErrorBanner
+                title={revokeError.title}
+                description={revokeError.description}
+                severity={revokeError.severity === "info" ? "info" : "destructive"}
+                onDismiss={() => setRevokeError(null)}
+                dismissLabel="Fermer le message d'erreur"
+              />
+            )}
             <DialogFooter>
-              <Button variant="outline" onClick={() => setConfirmRevoke(null)}>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setConfirmRevoke(null);
+                  setRevokeError(null);
+                }}
+              >
                 Annuler
               </Button>
               <Button
                 variant="destructive"
                 onClick={async () => {
+                  setRevokeError(null);
                   try {
                     await revokeMut.mutateAsync({
                       apiKeyId: confirmRevoke.id,
@@ -255,8 +314,8 @@ export default function ApiKeysPage() {
                     });
                     toast.success("Clé révoquée.");
                     setConfirmRevoke(null);
-                  } catch {
-                    toast.error("Révocation échouée — réessayez.");
+                  } catch (err) {
+                    setRevokeError(resolveError(err));
                   }
                 }}
                 disabled={revokeMut.isPending}
@@ -276,25 +335,29 @@ export default function ApiKeysPage() {
 function ApiKeyRow({
   apiKey,
   allowRotate,
+  rotateError,
   onRevoke,
   onRotate,
+  onDismissRotateError,
 }: {
   apiKey: ApiKey;
   allowRotate: boolean;
+  rotateError: ResolvedError | null;
   onRevoke: () => void;
   onRotate: () => void;
+  onDismissRotateError: () => void;
 }) {
   return (
-    <div className="p-4 flex items-center gap-4">
+    <div className="p-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <span className="font-semibold truncate">{apiKey.name}</span>
           <Badge variant={apiKey.status === "active" ? "success" : "neutral"}>
             {apiKey.status === "active" ? "Active" : "Révoquée"}
           </Badge>
           <Badge variant="info">{apiKey.environment}</Badge>
         </div>
-        <div className="text-xs font-mono text-muted-foreground mt-1">
+        <div className="text-xs font-mono text-muted-foreground mt-1 break-all">
           terk_{apiKey.environment}_{apiKey.hashPrefix}…
         </div>
         <div className="text-xs text-muted-foreground mt-1">
@@ -303,9 +366,20 @@ function ApiKeyRow({
             ? ` utilisée ${new Date(apiKey.lastUsedAt).toLocaleString("fr-SN")}`
             : " jamais utilisée"}
         </div>
+        {rotateError && (
+          <div className="mt-2">
+            <InlineErrorBanner
+              title={rotateError.title}
+              description={rotateError.description}
+              severity={rotateError.severity === "info" ? "info" : "destructive"}
+              onDismiss={onDismissRotateError}
+              dismissLabel="Fermer le message d'erreur"
+            />
+          </div>
+        )}
       </div>
       {apiKey.status === "active" ? (
-        <>
+        <div className="flex gap-2 sm:flex-row flex-wrap">
           {allowRotate && (
             <Button
               variant="outline"
@@ -324,7 +398,7 @@ function ApiKeyRow({
           >
             <Ban className="h-4 w-4 mr-2" /> Révoquer
           </Button>
-        </>
+        </div>
       ) : (
         <span className="text-xs text-muted-foreground">
           {apiKey.revokedAt
@@ -343,22 +417,43 @@ function CreateApiKeyDialog({
   onOpenChange,
   onCreate,
   isPending,
+  error,
+  onDismissError,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onCreate: (dto: { name: string; scopes: ApiKeyScope[]; environment: "live" | "test" }) => void;
   isPending: boolean;
+  error: ResolvedError | null;
+  onDismissError: () => void;
 }) {
   const [name, setName] = useState("");
   const [scopes, setScopes] = useState<Set<ApiKeyScope>>(new Set());
   const [environment, setEnvironment] = useState<"live" | "test">("live");
+  // Frontend-review remediation: only show the "select at least one
+  // scope" validation after the user attempts to submit. Showing it
+  // on first render would greet a brand-new user with a red banner
+  // for no reason.
+  const [submitted, setSubmitted] = useState(false);
 
   const canSubmit = name.trim().length > 0 && scopes.size > 0 && !isPending;
+  const showScopeError = submitted && scopes.size === 0;
 
   const reset = () => {
     setName("");
     setScopes(new Set());
     setEnvironment("live");
+    setSubmitted(false);
+  };
+
+  const submit = () => {
+    setSubmitted(true);
+    if (!canSubmit) return;
+    onCreate({
+      name: name.trim(),
+      scopes: Array.from(scopes),
+      environment,
+    });
   };
 
   return (
@@ -378,7 +473,27 @@ function CreateApiKeyDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
+        {/* Frontend-review remediation: wrap the form in a real <form>
+            so pressing Enter in the Nom field submits. Previously the
+            Enter key did nothing — a usability defect. */}
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            submit();
+          }}
+          className="space-y-4"
+          noValidate
+        >
+          {error && (
+            <InlineErrorBanner
+              title={error.title}
+              description={error.description}
+              severity={error.severity === "info" ? "info" : "destructive"}
+              onDismiss={onDismissError}
+              dismissLabel="Fermer le message d'erreur"
+            />
+          )}
+
           <div>
             <label className="text-sm font-medium" htmlFor="api-key-name">
               Nom
@@ -389,12 +504,16 @@ function CreateApiKeyDialog({
               value={name}
               onChange={(e) => setName(e.target.value)}
               maxLength={100}
+              required
+              autoComplete="off"
             />
           </div>
 
           <div>
-            <p className="text-sm font-medium">Environnement</p>
-            <div className="flex gap-2 mt-1" role="radiogroup" aria-label="Environnement">
+            <p className="text-sm font-medium" id="api-key-env-label">
+              Environnement
+            </p>
+            <div className="flex gap-2 mt-1" role="radiogroup" aria-labelledby="api-key-env-label">
               {(["live", "test"] as const).map((env) => (
                 <button
                   key={env}
@@ -415,8 +534,14 @@ function CreateApiKeyDialog({
           </div>
 
           <div>
-            <p className="text-sm font-medium">Scopes</p>
-            <div className="space-y-2 mt-1">
+            <p className="text-sm font-medium" id="api-key-scopes-label">
+              Scopes
+            </p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Sélectionnez le minimum nécessaire — le principe du moindre privilège limite le rayon
+              d&apos;exposition en cas de fuite.
+            </p>
+            <div className="space-y-2 mt-1" role="group" aria-labelledby="api-key-scopes-label">
               {ALL_SCOPES.map((scope) => {
                 const selected = scopes.has(scope.key);
                 return (
@@ -446,28 +571,22 @@ function CreateApiKeyDialog({
                 );
               })}
             </div>
+            {showScopeError && (
+              <p className="text-xs text-destructive mt-2" role="alert">
+                Sélectionnez au moins un scope.
+              </p>
+            )}
           </div>
 
-          {scopes.size === 0 && <InlineErrorBanner title="Sélectionnez au moins un scope." />}
-        </div>
-
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Annuler
-          </Button>
-          <Button
-            disabled={!canSubmit}
-            onClick={() => {
-              onCreate({
-                name: name.trim(),
-                scopes: Array.from(scopes),
-                environment,
-              });
-            }}
-          >
-            {isPending ? "Création…" : "Créer la clé"}
-          </Button>
-        </DialogFooter>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+              Annuler
+            </Button>
+            <Button type="submit" disabled={!canSubmit}>
+              {isPending ? "Création…" : "Créer la clé"}
+            </Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   );
@@ -487,6 +606,7 @@ function PlaintextModal({
   onClose: () => void;
 }) {
   const [copied, setCopied] = useState(false);
+  const codeRef = useRef<HTMLElement>(null);
 
   async function copyToClipboard() {
     if (!plaintext) return;
@@ -496,7 +616,20 @@ function PlaintextModal({
       toast.success("Clé copiée dans le presse-papiers.");
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      toast.error("Impossible de copier — sélectionnez-la manuellement.");
+      // Safari private-mode / no-clipboard-permission fallback.
+      // Select-all the <code> so the user can Cmd+C / Ctrl+C.
+      try {
+        const range = document.createRange();
+        range.selectNodeContents(codeRef.current!);
+        const sel = window.getSelection();
+        sel?.removeAllRanges();
+        sel?.addRange(range);
+        toast.info(
+          "Impossible de copier automatiquement. La clé est sélectionnée — appuyez sur Cmd/Ctrl+C.",
+        );
+      } catch {
+        toast.error("Impossible de copier — sélectionnez-la manuellement.");
+      }
     }
   }
 
@@ -509,14 +642,17 @@ function PlaintextModal({
             Copiez votre clé maintenant
           </DialogTitle>
           <DialogDescription>
-            Cette clé ne sera plus jamais affichée. Stockez-la dans votre gestionnaire de secrets
-            immédiatement.
+            Cette clé ne sera plus jamais affichée. Stockez-la immédiatement dans un gestionnaire de
+            secrets — 1Password, Bitwarden, Vault, ou AWS Secrets Manager — puis intégrez-la à votre
+            service via variable d&apos;environnement. Ne la pastez JAMAIS dans Slack, Git, ou un
+            document partagé.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
           <div className="flex gap-2 items-center bg-gray-50 border rounded p-3">
             <code
+              ref={codeRef}
               className="flex-1 font-mono text-xs break-all select-all"
               aria-label="Clé API plaintext"
             >
@@ -540,8 +676,8 @@ function PlaintextModal({
               className="mt-0.5"
             />
             <span>
-              J'ai copié la clé et je l'ai stockée en lieu sûr. Je comprends que je ne pourrai plus
-              la récupérer.
+              J&apos;ai copié la clé et je l&apos;ai stockée dans un gestionnaire de secrets. Je
+              comprends que je ne pourrai plus la récupérer.
             </span>
           </label>
         </div>

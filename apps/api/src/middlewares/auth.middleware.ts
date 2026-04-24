@@ -135,7 +135,9 @@ export async function authenticate(request: FastifyRequest, reply: FastifyReply)
 async function authenticateApiKey(plaintext: string, request: FastifyRequest, reply: FastifyReply) {
   const { apiKeysService } = await import("@/services/api-keys.service");
   const requestIp = extractClientIp(request);
-  const verified = await apiKeysService.verify(plaintext, requestIp);
+  const userAgent =
+    typeof request.headers["user-agent"] === "string" ? request.headers["user-agent"] : null;
+  const verified = await apiKeysService.verify(plaintext, requestIp, userAgent);
   if (!verified) {
     return reply.status(401).send({
       success: false,
@@ -143,7 +145,7 @@ async function authenticateApiKey(plaintext: string, request: FastifyRequest, re
     });
   }
 
-  const permissions = apiKeysService.expandScopes(verified.scopes) as Permission[];
+  const permissions: Permission[] = apiKeysService.expandScopes(verified.scopes);
   request.user = {
     uid: `apikey:${verified.apiKey.id}`,
     email: "",

@@ -6,6 +6,7 @@ import {
   type ApiKeyScope,
   type CreateApiKeyRequest,
   type Organization,
+  type Permission,
   ERROR_CODES,
   SCOPE_TO_PERMISSIONS,
 } from "@teranga/shared-types";
@@ -54,6 +55,32 @@ const BASE62 = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
  * AND document in CLAUDE.md § Freemium plan table.
  */
 const MAX_ACTIVE_KEYS_PER_ORG = 20;
+
+/**
+ * Senior-review remediation — throttle the `api_key.verified` emit
+ * to at most one per (key, ipHash, uaHash) per hour. Prevents
+ * auditLogs from flooding under a normal request rate while still
+ * surfacing the "new IP / UA" signal SOC alerting cares about.
+ * Per-pod in-memory state; see the comment in `verify()` for why
+ * distributed throttling is unnecessary.
+ */
+const VERIFY_THROTTLE_MS = 60 * 60 * 1000; // 1 hour
+const VERIFY_THROTTLE_MAX_ENTRIES = 10_000;
+const verifyThrottle = new Map<string, number>();
+
+function trimThrottle(nowMs: number): void {
+  // Drop entries older than 2× the window — they'll never suppress
+  // another emit (the next attempt is past the window anyway).
+  const cutoff = nowMs - 2 * VERIFY_THROTTLE_MS;
+  for (const [key, ts] of verifyThrottle) {
+    if (ts < cutoff) verifyThrottle.delete(key);
+  }
+}
+
+/** SHA-256 of the input, truncated to 16 hex chars — linkable, not PII. */
+function hashShort(input: string): string {
+  return crypto.createHash("sha256").update(input).digest("hex").slice(0, 16);
+}
 
 function randomBase62(length: number): string {
   const out = new Array<string>(length);
@@ -210,27 +237,39 @@ export class ApiKeysService extends BaseService {
 
     // Write via createWithId — fails if the prefix collides (1 in 62^10
     // ≈ 1 in 8e17, but we handle the error gracefully anyway).
-    try {
-      await db.collection(COLLECTIONS.API_KEYS).doc(doc.id).create(doc);
-    } catch (err) {
-      // ALREADY_EXISTS — retry once with a fresh prefix.
-      const material2 = generateKeyMaterial(request.environment);
-      doc.id = material2.hashPrefix;
-      doc.hashPrefix = material2.hashPrefix;
-      doc.keyHash = material2.keyHash;
-      material.plaintext = material2.plaintext;
-      material.hashPrefix = material2.hashPrefix;
-      material.keyHash = material2.keyHash;
+    //
+    // SENIOR-REVIEW FIX — the `plaintext` we hand back MUST match the
+    // `keyHash` we persist. The previous implementation mutated the
+    // outer `material` object on retry, which was correct but fragile
+    // (a future refactor renaming `material` to `const` would silently
+    // brick the key). We now track the "winning" material in a mutable
+    // local and swap it atomically with the doc fields on each retry.
+    let persisted = material;
+    const MAX_PREFIX_COLLISION_RETRIES = 2;
+    let lastErr: unknown = undefined;
+    for (let attempt = 0; attempt <= MAX_PREFIX_COLLISION_RETRIES; attempt++) {
       try {
         await db.collection(COLLECTIONS.API_KEYS).doc(doc.id).create(doc);
-      } catch {
-        throw new AppError({
-          message: "Impossible de générer une clé unique — réessayez.",
-          code: ERROR_CODES.INTERNAL_ERROR,
-          statusCode: 500,
-          cause: err instanceof Error ? err : undefined,
-        });
+        lastErr = undefined;
+        break;
+      } catch (err) {
+        lastErr = err;
+        if (attempt === MAX_PREFIX_COLLISION_RETRIES) break;
+        // Mint fresh material; keep `doc` and `persisted` in lockstep.
+        const fresh = generateKeyMaterial(request.environment);
+        doc.id = fresh.hashPrefix;
+        doc.hashPrefix = fresh.hashPrefix;
+        doc.keyHash = fresh.keyHash;
+        persisted = fresh;
       }
+    }
+    if (lastErr !== undefined) {
+      throw new AppError({
+        message: "Impossible de générer une clé unique — réessayez.",
+        code: ERROR_CODES.INTERNAL_ERROR,
+        statusCode: 500,
+        cause: lastErr instanceof Error ? lastErr : undefined,
+      });
     }
 
     const ctx = getRequestContext();
@@ -245,7 +284,7 @@ export class ApiKeysService extends BaseService {
       name: doc.name,
     });
 
-    return { apiKey: doc, plaintext: material.plaintext };
+    return { apiKey: doc, plaintext: persisted.plaintext };
   }
 
   async list(
@@ -457,7 +496,16 @@ export class ApiKeysService extends BaseService {
   async verify(
     plaintext: string,
     requestIp: string | null,
+    userAgent: string | null = null,
   ): Promise<{ apiKey: ApiKey; scopes: ApiKeyScope[] } | null> {
+    // Kill-switch: an operator can disable API-key auth entirely via
+    // `API_KEY_AUTH_DISABLED=true` without a code redeploy. Useful if
+    // the `apiKeys` collection degrades and we need to steer the
+    // platform back to Firebase-only auth in one flip. Configured
+    // here (not in the middleware) so the switch is enforced
+    // regardless of who calls verify().
+    if (config.API_KEY_AUTH_DISABLED) return null;
+
     const parsed = parseApiKey(plaintext);
     if (!parsed) return null;
 
@@ -487,17 +535,54 @@ export class ApiKeysService extends BaseService {
       );
     });
 
+    // Throttled `api_key.verified` emit. The audit trail needs a
+    // stream of "key used from X" events so SOC alerting can fire on
+    // "used from new IP / UA". Raw emit-per-request would flood
+    // auditLogs under a normal request rate; we throttle to one emit
+    // per (key, ipHash, uaHash) per hour using an in-memory map.
+    // Distributed throttling across Cloud Run pods is unnecessary —
+    // the signal is "new IP/UA" not "exact count" and per-pod hits
+    // are strictly more accurate than ignoring repeats would be.
+    const ipHash = hashShort(requestIp ?? "");
+    const uaHash = hashShort(userAgent ?? "");
+    const throttleKey = `${row.id}:${ipHash}:${uaHash}`;
+    const nowMs = Date.now();
+    const last = verifyThrottle.get(throttleKey) ?? 0;
+    if (nowMs - last >= VERIFY_THROTTLE_MS) {
+      verifyThrottle.set(throttleKey, nowMs);
+      // Periodically trim the map so a long-running pod doesn't
+      // leak memory on every distinct IP it's ever seen.
+      if (verifyThrottle.size > VERIFY_THROTTLE_MAX_ENTRIES) {
+        trimThrottle(nowMs);
+      }
+      const ctx = getRequestContext();
+      eventBus.emit("api_key.verified", {
+        actorId: `apikey:${row.id}`,
+        requestId: ctx?.requestId ?? "unknown",
+        timestamp: new Date(nowMs).toISOString(),
+        apiKeyId: row.id,
+        organizationId: row.organizationId,
+        ipHash,
+        uaHash,
+      });
+    }
+
     return { apiKey: row, scopes: row.scopes };
   }
 
   /**
    * Expand a set of scopes into the permission union the middleware
    * injects onto the synthetic AuthUser. Stable + deterministic.
+   *
+   * Return type is `Permission[]` (not `string[]`) — the middleware
+   * cast to `Permission[]` was silently papering over a potential
+   * drift if a scope was added to `ApiKeyScopeSchema` without a
+   * matching `SCOPE_TO_PERMISSIONS` entry. Senior-review remediation.
    */
-  expandScopes(scopes: ApiKeyScope[]): string[] {
-    const seen = new Set<string>();
+  expandScopes(scopes: ApiKeyScope[]): Permission[] {
+    const seen = new Set<Permission>();
     for (const s of scopes) {
-      for (const p of SCOPE_TO_PERMISSIONS[s]) seen.add(p);
+      for (const p of SCOPE_TO_PERMISSIONS[s]) seen.add(p as Permission);
     }
     return Array.from(seen);
   }

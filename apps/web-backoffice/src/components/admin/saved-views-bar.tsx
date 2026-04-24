@@ -96,6 +96,13 @@ export function SavedViewsBar({ surfaceKey }: { surfaceKey: string }) {
             type="text"
             value={pendingName}
             onChange={(e) => setPendingName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                e.preventDefault();
+                setShowSavePrompt(false);
+                setPendingName("");
+              }
+            }}
             placeholder="Nom de la vue"
             maxLength={40}
             className="rounded border border-border px-2 py-1 text-xs"

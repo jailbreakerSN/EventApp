@@ -228,11 +228,29 @@ Other packages import from `@teranga/shared-types` and depend on the compiled ou
 
 ### Authentication Flow
 
+Two bearer-token branches share the single `authenticate` middleware
+(`apps/api/src/middlewares/auth.middleware.ts`). The middleware
+dispatches on the token prefix; a malformed prefix is a 401 before
+any verification cost.
+
+**User session (Firebase ID token):**
+
 1. Client authenticates via Firebase Auth SDK (email/password, Google, etc.)
 2. Client gets Firebase ID token (JWT) with custom claims (roles, organizationId)
 3. Client sends `Authorization: Bearer <idToken>` to API
 4. API verifies token via `firebase-admin.auth().verifyIdToken()`
 5. API middleware populates `request.user` with uid, email, roles, organizationId
+
+**Organization API key (T2.3 — `terk_*`):**
+
+6. Client sends `Authorization: Bearer terk_<env>_<40 chars base62>_<4-char checksum>`
+7. Middleware parses + checksum-validates the format (rejects typos before a Firestore read)
+8. `apiKeysService.verify()` looks up `apiKeys/<hashPrefix>` (O(1)), constant-time compares `SHA-256(plaintext)` against the stored hash, rejects on revoke
+9. Middleware synthesises `request.user` with `uid: "apikey:<hashPrefix>"`, `isApiKey: true`, `apiKeyScopes`, `apiKeyPermissions` (expanded from scopes)
+10. `/v1/me/whoami` is the zero-side-effect integrator probe to validate a key + inspect its permission set
+11. Kill-switch: `API_KEY_AUTH_DISABLED=true` short-circuits the `terk_*` branch to 401 platform-wide without a code deploy
+
+Full operator + integrator guide: `docs/api-keys.md`.
 
 ### QR Badge Security
 
@@ -663,6 +681,10 @@ These security patterns were established during the Wave 1 review and MUST be ma
 | Token refresh on 401     | Single retry with `getIdToken(true)` on authentication failure              | Web API client                |
 | Signed QR codes          | HMAC-SHA256 with `timingSafeEqual`, never truncated                         | QR service                    |
 | No hard deletes          | Soft-delete only (`status: "archived"` or `"cancelled"`)                    | All services                  |
+| API key storage          | SHA-256 hash only, plaintext returned once, constant-time compare on auth   | `api-keys.service.ts` + rules |
+| API key checksum gate    | 4-char HMAC checksum rejects typos before any Firestore read                | `parseApiKey()`               |
+| Trust proxy              | `trustProxy: true` on Fastify so `req.ip` is the real client, not the proxy | `apps/api/src/app.ts`         |
+| Auth middleware safety   | `authenticateApiKey` wrapped in try/catch so Firestore outage can't crash   | `auth.middleware.ts`          |
 
 ---
 

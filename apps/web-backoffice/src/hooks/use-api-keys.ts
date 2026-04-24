@@ -20,11 +20,19 @@ const listKey = (orgId: string, query: { page?: number; limit?: number } = {}) =
 const detailKey = (orgId: string, apiKeyId: string) =>
   ["api-keys", "detail", orgId, apiKeyId] as const;
 
+// Cache-tuning rationale: keys rarely change. Every tab-focus re-fetch
+// is noise — set a generous staleTime (30 s) and disable the
+// refetch-on-focus default. Mutations invalidate the cache explicitly
+// so a freshly-rotated key shows up immediately without polling.
+const API_KEY_STALE_MS = 30_000;
+
 export function useApiKeys(orgId: string, query: { page?: number; limit?: number } = {}) {
   return useQuery({
     queryKey: listKey(orgId, query),
     queryFn: () => apiKeysApi.list(orgId, query),
     enabled: !!orgId,
+    staleTime: API_KEY_STALE_MS,
+    refetchOnWindowFocus: false,
   });
 }
 
@@ -33,6 +41,8 @@ export function useApiKey(orgId: string, apiKeyId: string | null) {
     queryKey: apiKeyId ? detailKey(orgId, apiKeyId) : ["api-keys", "detail", orgId, null],
     queryFn: () => apiKeysApi.get(orgId, apiKeyId!),
     enabled: !!orgId && !!apiKeyId,
+    staleTime: API_KEY_STALE_MS,
+    refetchOnWindowFocus: false,
   });
 }
 

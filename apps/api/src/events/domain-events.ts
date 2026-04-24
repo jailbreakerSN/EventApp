@@ -1149,6 +1149,7 @@ export interface DomainEventMap {
   "api_key.created": ApiKeyCreatedEvent;
   "api_key.revoked": ApiKeyRevokedEvent;
   "api_key.rotated": ApiKeyRotatedEvent;
+  "api_key.verified": ApiKeyVerifiedEvent;
 }
 
 /** Phase 4 — emitted by adminService.startImpersonation(). */
@@ -1248,6 +1249,25 @@ export interface ApiKeyRotatedEvent extends BaseEventPayload {
   previousApiKeyId: string;
   newApiKeyId: string;
   organizationId: string;
+}
+
+/**
+ * T2.3 (remediation) — throttled emission on each successful
+ * authentication. Fires at most once per key per (hour × ipHash) so
+ * SOC alerting can key on "key used from new IP / UA" without the
+ * audit log exploding under a normal request rate. The throttle
+ * state is kept in-memory per-pod (acceptable because a distributed
+ * leak detector doesn't need perfect exactly-once — the key is
+ * used from multiple pods and the aggregate signal is strictly
+ * more accurate than a single-pod view).
+ */
+export interface ApiKeyVerifiedEvent extends BaseEventPayload {
+  apiKeyId: string;
+  organizationId: string;
+  /** SHA-256 of the client IP, truncated to 16 hex chars — forensic-linkable, not personally identifying. */
+  ipHash: string;
+  /** SHA-256 of the user-agent, truncated to 16 hex chars. */
+  uaHash: string;
 }
 
 export type DomainEventName = keyof DomainEventMap;

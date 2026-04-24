@@ -155,22 +155,22 @@ coche :
 
 ## Follow-ups traçés (pour futures PRs)
 
-| ID         | Description                                                                   | Effort estimé |
-| ---------- | ----------------------------------------------------------------------------- | ------------- |
-| P2.1       | Events-live signal + webhook-failure signal dans l'inbox                      | 1 JP          |
-| P3.1       | Refactor `/admin/plans/[id]` vers `<EntityDetailLayout>` + onglet Overrides   | 1 JP          |
-| P4.1 (C.1) | Per-route permission tightening (platform:finance ne lit que subscription:\*) | 2-3 JP        |
-| P5.1 (E.1) | Wire `useBulkSelection` dans `/admin/users`, `/admin/orgs`                    | 2 JP          |
-| P5.2 (E.2) | Saved views localStorage + keyboard row-nav j/k/Enter                         | 2 JP          |
-| P6.1       | Jobs trigger endpoints (whitelisted, gated)                                   | 3 JP          |
-| P6.2       | Webhooks replay console                                                       | 3 JP          |
-| P6.3       | API keys issuance console (enterprise)                                        | 4 JP          |
-| P7.1       | Announcement banner lecture côté dashboards                                   | 1 JP          |
-| P7.2       | Anomaly widgets (signups, checkins)                                           | 3 JP          |
-| P7.3       | Audit log full-text search + timeline view                                    | 3 JP          |
-| P7.4       | Lighthouse pass formel A11y + Perf                                            | 1 JP          |
+| ID         | Description                                                                   | Effort estimé | État                                                                                                                     |
+| ---------- | ----------------------------------------------------------------------------- | ------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| P2.1       | Inbox webhook-failure signal (events-live signal reste ouvert)                | 1 JP          | ✅ Shipped (PR #180, T2.5) — webhook-failure signal live                                                                 |
+| P3.1       | Refactor `/admin/plans/[id]` vers `<EntityDetailLayout>` + onglet Overrides   | 1 JP          | ✅ Shipped (PR #180, T4.3)                                                                                               |
+| P4.1 (C.1) | Per-route permission tightening (platform:finance ne lit que subscription:\*) | 2-3 JP        | ✅ Shipped partiel (PR #180, T4.1) — capability catalogue posée, safety-net `platform:manage` conservé pendant migration |
+| P5.1 (E.1) | Wire `useBulkSelection` dans `/admin/users`, `/admin/orgs`                    | 2 JP          | ✅ Shipped (vérifié dans PR #180, T3.1)                                                                                  |
+| P5.2 (E.2) | Saved views localStorage + keyboard row-nav j/k/Enter                         | 2 JP          | ✅ Shipped (PR #180, T3.2) — `useSavedViews` + `SavedViewsBar` + `useRowKeyboardNav`                                     |
+| P6.1       | Jobs trigger endpoints (whitelisted, gated)                                   | 3 JP          | ✅ Shipped (PR #175, T2.2)                                                                                               |
+| P6.2       | Webhooks replay console                                                       | 3 JP          | ✅ Shipped (PR #177, T2.1)                                                                                               |
+| P6.3       | API keys issuance console (enterprise)                                        | 4 JP          | ✅ Shipped (PR #180, T2.3) — `docs/api-keys.md` runbook                                                                  |
+| P7.1       | Announcement banner lecture côté dashboards                                   | 1 JP          | ✅ Shipped (PR #180, T2.4)                                                                                               |
+| P7.2       | Anomaly widgets (signups, checkins)                                           | 3 JP          | ✅ Shipped (PR #180, T4.2) — signup-by-IP + multi-device scan                                                            |
+| P7.3       | Audit log full-text search + timeline view                                    | 3 JP          | ✅ Shipped (PR #180, T2.6) — search 500-row scan + Chronologie TZ-safe                                                   |
+| P7.4       | Lighthouse pass formel A11y + Perf                                            | 1 JP          | ✅ Shipped (PR #180, T4.4) — `.lighthouserc.json` + CI workflow                                                          |
 
-**Total effort follow-up** : ~25 JP répartis en 12 PRs indépendantes.
+**Total effort follow-up** : 12 PRs indépendantes, **toutes shipped**. Les seuls items encore ouverts sont des itérations techniques (events-live signal, migration per-route réelle au-delà du capability catalogue) tracées comme follow-ups de follow-ups.
 
 ## Qualité globale
 

@@ -708,6 +708,7 @@ exports[`shared-types contract snapshots > AuditLogEntrySchema shape is stable 1
           "api_key.created",
           "api_key.revoked",
           "api_key.rotated",
+          "api_key.verified",
           "badge.bulk_generated",
           "badge.generated",
           "broadcast.sent",

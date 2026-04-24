@@ -65,29 +65,58 @@ function setDismissed(id: string): void {
   }
 }
 
+const POLL_INTERVAL_MS = 5 * 60 * 1000;
+const STALE_MS = 4 * 60 * 1000; // below poll interval so each poll is a real refetch
+// Senior-review remediation — backoff on repeated failures so a broken
+// endpoint can't slam us every 5min × every open tab.
+const MAX_CONSECUTIVE_FAILURES = 2;
+
 export function AnnouncementBanner() {
+  const [failureCount, setFailureCount] = useState(0);
+  const shouldPoll = failureCount < MAX_CONSECUTIVE_FAILURES;
+
   const { data } = useQuery<AnnouncementsResponse>({
     queryKey: ["announcements", "active"],
     queryFn: () => api.get<AnnouncementsResponse>("/v1/announcements"),
-    // Poll every 5 minutes — we don't need instant propagation but
-    // a new critical banner SHOULD land without a page refresh.
-    refetchInterval: 5 * 60 * 1000,
+    // Poll every 5 minutes. Short-circuits after 2 consecutive errors
+    // to avoid hammering a broken endpoint.
+    refetchInterval: shouldPoll ? POLL_INTERVAL_MS : false,
+    refetchIntervalInBackground: false,
+    refetchOnWindowFocus: false,
+    staleTime: STALE_MS,
     // Swallow errors silently — banner is non-critical; a 404/500
     // should never break the dashboard.
-    retry: 1,
+    retry: 0,
   });
+
+  // Track consecutive failures / successes via React Query's
+  // queryCache would be more idiomatic, but for a single-query
+  // backoff the inline approach stays under 20 lines.
+  const { isError, isSuccess, dataUpdatedAt } = useQuery<AnnouncementsResponse>({
+    queryKey: ["announcements", "active"],
+    queryFn: () => api.get<AnnouncementsResponse>("/v1/announcements"),
+    enabled: false, // reuses cache; we only care about state
+  });
+  useEffect(() => {
+    if (isError) setFailureCount((n) => n + 1);
+    else if (isSuccess) setFailureCount(0);
+  }, [isError, isSuccess, dataUpdatedAt]);
 
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
 
   // Hydrate dismissed set from localStorage once mounted so SSR
-  // mismatches don't flash a banner then hide it.
+  // mismatches don't flash a banner then hide it. Merge (not
+  // replace) so in-session dismissals on announcements still in the
+  // API response don't resurface on the next poll.
   useEffect(() => {
     const announcements = data?.data ?? [];
-    const dismissed = new Set<string>();
-    for (const a of announcements) {
-      if (isDismissed(a.id)) dismissed.add(a.id);
-    }
-    setDismissedIds(dismissed);
+    setDismissedIds((prev) => {
+      const next = new Set(prev);
+      for (const a of announcements) {
+        if (isDismissed(a.id)) next.add(a.id);
+      }
+      return next;
+    });
   }, [data]);
 
   const announcements = data?.data ?? [];
@@ -102,7 +131,12 @@ export function AnnouncementBanner() {
         return b.publishedAt.localeCompare(a.publishedAt);
       })[0] ?? null;
 
-  if (!visible) return null;
+  // Always-mounted live-region so screen readers announce banners
+  // that arrive after first render. Without this, NVDA/JAWS miss
+  // dynamically-mounted status/alert regions.
+  if (!visible) {
+    return <div role="status" aria-live="polite" className="sr-only" />;
+  }
 
   const styles = {
     info: {
