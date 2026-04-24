@@ -125,12 +125,34 @@ const PROBES = [
     "admin/users role+isActive",
     "/v1/admin/users?role=organizer&isActive=true&page=1&limit=20",
   ],
-  // /admin/organizations filters — 4-field maximal is declared now.
+  // /admin/organizations filters — every single-filter subset + two-filter
+  // pairs + the 3-way combo. AdminOrgQuerySchema exposes three optional
+  // booleans/enums (plan, isVerified, isActive) all ANDed with the default
+  // orderBy (createdAt DESC). Each unique (filter-set, orderBy) pair needs
+  // a dedicated composite index; probing every combo here blocks a deploy
+  // where the catalog drifts from the schema.
   ["admin/organizations (no filter)", "/v1/admin/organizations?page=1&limit=20"],
   ["admin/organizations plan=pro", "/v1/admin/organizations?plan=pro&page=1&limit=20"],
   [
     "admin/organizations isVerified=true",
     "/v1/admin/organizations?isVerified=true&page=1&limit=20",
+  ],
+  ["admin/organizations isActive=true", "/v1/admin/organizations?isActive=true&page=1&limit=20"],
+  [
+    "admin/organizations plan+isVerified",
+    "/v1/admin/organizations?plan=pro&isVerified=true&page=1&limit=20",
+  ],
+  [
+    "admin/organizations plan+isActive",
+    "/v1/admin/organizations?plan=pro&isActive=true&page=1&limit=20",
+  ],
+  [
+    "admin/organizations isVerified+isActive",
+    "/v1/admin/organizations?isVerified=true&isActive=true&page=1&limit=20",
+  ],
+  [
+    "admin/organizations plan+isVerified+isActive",
+    "/v1/admin/organizations?plan=pro&isVerified=true&isActive=true&page=1&limit=20",
   ],
   // /admin/audit-logs filters — include the single-action subset and the
   // date-range coercion path that both 500'd / 400'd yesterday.
@@ -151,8 +173,15 @@ const PROBES = [
     "admin/audit-logs dateFrom+dateTo (date-only)",
     "/v1/admin/audit-logs?dateFrom=2026-04-20&dateTo=2026-04-24&page=1&limit=20",
   ],
-  // /admin/events filter — covered by the maximal auditLogs + events indexes.
+  // /admin/events filters — AdminEventQuerySchema accepts `status` +
+  // `organizationId` as optional. Each combo probed separately to catch
+  // a missing composite at deploy time.
+  ["admin/events (no filter)", "/v1/admin/events?page=1&limit=20"],
   ["admin/events status=published", "/v1/admin/events?status=published&page=1&limit=20"],
+  [
+    "admin/events status+organizationId",
+    "/v1/admin/events?status=published&organizationId=org-001&page=1&limit=20",
+  ],
 
   // ── Caller-controlled orderBy shapes ───────────────────────────────
   // The admin venues page hits GET /v1/venues which runs
