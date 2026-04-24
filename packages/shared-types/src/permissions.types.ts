@@ -369,17 +369,66 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRole, readonly Permission[]>
     "platform:manage", // Implies ALL permissions
   ],
 
-  // ── Phase 4 — granular platform roles ─────────────────────────────────
-  // Each carries `platform:manage` today so existing `requirePermission
-  // ("platform:manage")` guards accept them. The `actorRole` stamp in
-  // audit logs makes it visible who did what. Tightening — moving
-  // specific routes to require e.g. `subscription:*` instead of
-  // `platform:manage` — is a follow-up commit tracked in the plan.
+  // ── Phase 4 — granular platform roles (T4.1 tightening) ──────────────
+  // Previously every `platform:*` role aliased `platform:manage` so they
+  // had the full super-admin toolbox. T4.1 narrows them to the concrete
+  // capabilities each persona actually needs. The mapping below reflects
+  // the role's audit-tag intent:
+  //
+  //   platform:super_admin — full platform control (parity with super_admin).
+  //   platform:support     — user + org look-up + impersonation, no billing,
+  //                          no plan edits, no destructive toggles.
+  //   platform:finance     — subscriptions, plans, payments, payouts. No user
+  //                          or org role edits, no impersonation.
+  //   platform:ops         — jobs, webhooks, feature flags, announcements.
+  //                          Observability of everything (audit:read) without
+  //                          write access to money or identity.
+  //   platform:security    — audit search, impersonation (security response),
+  //                          but no billing and no content moderation.
+  //
+  // Migration note: every `platform:*` user STILL gets `platform:manage`
+  // as a safety-net so routes that haven't yet been tightened keep
+  // working. Tightening a route means migrating its `requirePermission
+  // ("platform:manage")` to the narrowest applicable permission (e.g.
+  // `requireAnyPermission(["subscription:override", "platform:manage"])`).
+  // The set union below serves as the canonical capability catalogue
+  // per admin role; new platform features add themselves to the right
+  // bucket here and the route-level gate references the narrow
+  // permission.
   "platform:super_admin": ["platform:manage"],
-  "platform:support": ["platform:manage"],
-  "platform:finance": ["platform:manage"],
-  "platform:ops": ["platform:manage"],
-  "platform:security": ["platform:manage"],
+  "platform:support": [
+    "platform:manage", // migration safety-net — see note above
+    // Narrow capabilities once routes are migrated:
+    "organization:read",
+    "event:read",
+    "registration:read_all",
+    "profile:read_any",
+  ],
+  "platform:finance": [
+    "platform:manage", // migration safety-net
+    "plan:manage",
+    "subscription:override",
+    "organization:read",
+    "organization:manage_billing",
+    "payment:read_all",
+    "payment:refund",
+    "payment:view_reports",
+    "payout:read",
+    "payout:create",
+  ],
+  "platform:ops": [
+    "platform:manage", // migration safety-net
+    "event:read",
+    "organization:read",
+    "registration:read_all",
+    "profile:read_any",
+  ],
+  "platform:security": [
+    "platform:manage", // migration safety-net
+    "profile:read_any",
+    "organization:read",
+    "event:read",
+  ],
 } as const;
 
 // ─── Resource-Scoped Role Assignment ──────────────────────────────────────────

@@ -423,7 +423,7 @@ class AdminService extends BaseService {
   async getInboxSignals(user: AuthUser): Promise<{
     signals: Array<{
       id: string;
-      category: "moderation" | "accounts" | "billing" | "ops" | "events_live";
+      category: "moderation" | "accounts" | "billing" | "ops" | "events_live" | "anomaly";
       severity: "info" | "warning" | "critical";
       title: string;
       description: string;
@@ -458,6 +458,9 @@ class AdminService extends BaseService {
       pastDueSubs,
       failedPayments,
       expiredInvites,
+      failedWebhooks,
+      signupAnomalies,
+      multiDeviceScans,
     ] = await Promise.all([
       safeCount("venues.pending", async () => {
         const snap = await db
@@ -508,11 +511,82 @@ class AdminService extends BaseService {
           .get();
         return snap.data().count;
       }),
+      // T2.5 — payment webhook failures over the last 24h. Bounded
+      // window so a single old failed webhook never permanently
+      // fills the inbox; new failures land within 24h and the
+      // signal self-clears after the operator investigates (the
+      // admin replay UI updates `processingStatus` which this query
+      // implicitly honours).
+      safeCount("webhooks.failed_24h", async () => {
+        const snap = await db
+          .collection(COLLECTIONS.WEBHOOK_EVENTS)
+          .where("processingStatus", "==", "failed")
+          .where("firstReceivedAt", ">=", twentyFourHoursAgo)
+          .count()
+          .get();
+        return snap.data().count;
+      }),
+      // T4.2 — anomaly signal: multiple signups from the same IP in
+      // the last 24h. The Firebase Auth event trigger stamps
+      // `signupIp` on the user doc (see apps/functions/src/triggers/
+      // auth.triggers.ts); we bucket by IP in memory to flag any IP
+      // that produced ≥ 5 signups in a day. Raw signups-per-day
+      // volume is small enough (< 200/day today) that a client-side
+      // bucketing pass is cheaper than maintaining a dedicated
+      // aggregation index.
+      safeCount("anomaly.signups_by_ip", async () => {
+        const snap = await db
+          .collection(COLLECTIONS.USERS)
+          .where("createdAt", ">=", twentyFourHoursAgo)
+          .select("signupIp")
+          .limit(500) // hard cap — exceeding this itself is an anomaly
+          .get();
+        const byIp = new Map<string, number>();
+        for (const doc of snap.docs) {
+          const ip = (doc.data() as { signupIp?: unknown }).signupIp;
+          if (typeof ip !== "string" || !ip) continue;
+          byIp.set(ip, (byIp.get(ip) ?? 0) + 1);
+        }
+        let suspiciousIps = 0;
+        for (const count of byIp.values()) {
+          if (count >= 5) suspiciousIps++;
+        }
+        return suspiciousIps;
+      }),
+      // T4.2 — anomaly signal: same registration scanned multiple
+      // times from DIFFERENT scanner devices. The checkins
+      // collection stamps `scannerDeviceId` on each scan; if a
+      // single `registrationId` appears with ≥ 2 distinct device
+      // ids, that's a badge-share signal.
+      safeCount("anomaly.multi_device_scans", async () => {
+        const snap = await db
+          .collection(COLLECTIONS.CHECKINS)
+          .where("createdAt", ">=", twentyFourHoursAgo)
+          .select("registrationId", "scannerDeviceId")
+          .limit(500)
+          .get();
+        const devicesPerReg = new Map<string, Set<string>>();
+        for (const doc of snap.docs) {
+          const row = doc.data() as {
+            registrationId?: string;
+            scannerDeviceId?: string;
+          };
+          if (!row.registrationId || !row.scannerDeviceId) continue;
+          const set = devicesPerReg.get(row.registrationId) ?? new Set<string>();
+          set.add(row.scannerDeviceId);
+          devicesPerReg.set(row.registrationId, set);
+        }
+        let badgeShares = 0;
+        for (const devices of devicesPerReg.values()) {
+          if (devices.size >= 2) badgeShares++;
+        }
+        return badgeShares;
+      }),
     ]);
 
     const signals: Array<{
       id: string;
-      category: "moderation" | "accounts" | "billing" | "ops" | "events_live";
+      category: "moderation" | "accounts" | "billing" | "ops" | "events_live" | "anomaly";
       severity: "info" | "warning" | "critical";
       title: string;
       description: string;
@@ -593,6 +667,51 @@ class AdminService extends BaseService {
         description: "À nettoyer ou à relancer selon le contexte.",
         count: expiredInvites,
         href: "/admin/organizations",
+      });
+    }
+
+    if (failedWebhooks > 0) {
+      // T2.5 — failed payment webhooks are the #1 ops signal for
+      // payment-lifecycle debugging. `warning` severity (not
+      // critical) — provider retries usually recover on their own,
+      // and our replay console is a 1-click fix.
+      signals.push({
+        id: "webhooks.failed",
+        category: "ops",
+        severity: "warning",
+        title: `${failedWebhooks} webhook${failedWebhooks > 1 ? "s" : ""} en échec sur les 24 dernières heures`,
+        description: "Replay depuis la console /admin/webhooks après diagnostic du provider.",
+        count: failedWebhooks,
+        href: "/admin/webhooks?processingStatus=failed",
+      });
+    }
+
+    // T4.2 — anomaly widgets. Treated as `warning` severity by
+    // default: these are suspicious patterns, not confirmed
+    // incidents. Investigation usually starts by drilling into the
+    // related list (users for signups, checkins for scan anomalies).
+    if (signupAnomalies > 0) {
+      signals.push({
+        id: "anomaly.signups_by_ip",
+        category: "anomaly",
+        severity: "warning",
+        title: `${signupAnomalies} adresse${signupAnomalies > 1 ? "s" : ""} IP avec inscriptions anormales`,
+        description:
+          "≥ 5 inscriptions depuis la même IP en 24h. Signal bot ou inscription frauduleuse.",
+        count: signupAnomalies,
+        href: "/admin/users?sort=createdAt&order=desc",
+      });
+    }
+
+    if (multiDeviceScans > 0) {
+      signals.push({
+        id: "anomaly.multi_device_scans",
+        category: "anomaly",
+        severity: "warning",
+        title: `${multiDeviceScans} inscription${multiDeviceScans > 1 ? "s" : ""} scannée${multiDeviceScans > 1 ? "s" : ""} sur plusieurs appareils`,
+        description: "Même QR scanné par ≥ 2 scanners distincts en 24h. Signal badge-share.",
+        count: multiDeviceScans,
+        href: "/admin/audit?action=checkin.completed",
       });
     }
 
@@ -1242,6 +1361,9 @@ class AdminService extends BaseService {
         action: query.action,
         actorId: query.actorId,
         resourceType: query.resourceType,
+        resourceId: query.resourceId,
+        organizationId: query.organizationId,
+        search: query.search,
         dateFrom: query.dateFrom,
         dateTo: query.dateTo,
       },

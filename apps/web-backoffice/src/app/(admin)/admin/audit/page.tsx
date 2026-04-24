@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { CsvExportButton } from "@/components/admin/csv-export-button";
+import { SavedViewsBar } from "@/components/admin/saved-views-bar";
 import {
   Card,
   CardContent,
@@ -69,7 +70,10 @@ function getResourceUrl(type: string, id: string): string | null {
 }
 
 function formatDate(timestamp: string) {
-  return new Date(timestamp).toLocaleString("fr-FR", {
+  // Senegal locale — consistent with the rest of the audit page +
+  // all other admin surfaces. Audit findings showed this one helper
+  // was the single drift from fr-SN; l10n-auditor T2.6 fix.
+  return new Date(timestamp).toLocaleString("fr-SN", {
     dateStyle: "medium",
     timeStyle: "short",
   });
@@ -87,19 +91,28 @@ export default function AdminAuditPage() {
   const [page, setPage] = useState(1);
   const [actionFilter, setActionFilter] = useState(searchParams?.get("action") ?? "");
   const [actorIdFilter, setActorIdFilter] = useState(searchParams?.get("actorId") ?? "");
-  // Client-side free-text filter that matches against action,
-  // actorDisplayName, actorId, and resourceId. Deliberately client-
-  // side: the server query stays index-covered (action/actorId/etc),
-  // and the text filter acts on the current page. For historical
-  // full-text search we'll either pipe to a search index (Typesense /
-  // ElasticSearch) or a Firestore full-text field — tracked as a
-  // follow-up.
-  const [textFilter, setTextFilter] = useState("");
+  // T2.6 — server-side free-text search over `details` JSON + action +
+  // actor + resource ids. The input is debounced via a local mirror
+  // (`searchInput`) so each keystroke doesn't refire the query; 300ms
+  // is the sweet spot between "feels live" and "doesn't spam Firestore".
+  const [searchInput, setSearchInput] = useState(searchParams?.get("search") ?? "");
+  const [debouncedSearch, setDebouncedSearch] = useState(searchInput);
   const [resourceTypeFilter, setResourceTypeFilter] = useState(
     searchParams?.get("resourceType") ?? "",
   );
   const [dateFrom, setDateFrom] = useState(searchParams?.get("dateFrom") ?? "");
   const [dateTo, setDateTo] = useState(searchParams?.get("dateTo") ?? "");
+  // T2.6 — UI viewport: "table" = flat paginated list (default);
+  // "timeline" = grouped by day with a chronological ruler.
+  const [viewMode, setViewMode] = useState<"table" | "timeline">(
+    searchParams?.get("view") === "timeline" ? "timeline" : "table",
+  );
+
+  // Debounce the search input → query value.
+  useEffect(() => {
+    const handle = window.setTimeout(() => setDebouncedSearch(searchInput), 300);
+    return () => window.clearTimeout(handle);
+  }, [searchInput]);
 
   const { data, isLoading } = useAdminAuditLogs({
     page,
@@ -107,6 +120,7 @@ export default function AdminAuditPage() {
     ...(actionFilter ? { action: actionFilter } : {}),
     ...(actorIdFilter ? { actorId: actorIdFilter } : {}),
     ...(resourceTypeFilter ? { resourceType: resourceTypeFilter } : {}),
+    ...(debouncedSearch.trim().length >= 2 ? { search: debouncedSearch.trim() } : {}),
     ...(dateFrom ? { dateFrom } : {}),
     ...(dateTo ? { dateTo } : {}),
   });
@@ -114,28 +128,49 @@ export default function AdminAuditPage() {
   const logs = data?.data ?? [];
   const meta = data?.meta ?? { page: 1, limit: 20, total: 0, totalPages: 1 };
 
-  // Client-side text filter applied on the current page. Case-insensitive,
-  // matches against action / actorDisplayName / actorId / resourceId so an
-  // operator can type "fatou" or "event-abc" and narrow the visible rows
-  // without re-querying.
-  const filteredLogs = useMemo(() => {
-    const q = textFilter.trim().toLowerCase();
-    if (!q) return logs;
-    return logs.filter((log) => {
-      const row = log as {
-        action?: string;
-        actorDisplayName?: string | null;
-        actorId?: string;
-        resourceId?: string;
-      };
-      return (
-        (row.action ?? "").toLowerCase().includes(q) ||
-        (row.actorDisplayName ?? "").toLowerCase().includes(q) ||
-        (row.actorId ?? "").toLowerCase().includes(q) ||
-        (row.resourceId ?? "").toLowerCase().includes(q)
-      );
+  // T2.6 — search is now server-side; rows arriving here are already
+  // the final filtered set for the current page. The local
+  // `filteredLogs` alias is preserved so the table render code below
+  // doesn't need to change.
+  const filteredLogs = logs;
+
+  // T2.6 — timeline view: group rows by the Dakar calendar day.
+  // Using Africa/Dakar (not the browser's local timezone) is the
+  // product contract — operators anywhere on the globe should see
+  // the same day-boundaries as the events actually occurred in
+  // Senegal. Senior-review remediation (#11).
+  //
+  // We use a stable ISO-date key (YYYY-MM-DD in Dakar time) for the
+  // React `key` and Map lookups, then derive the display string
+  // separately. Avoids collisions if the locale ever changes mid-
+  // render and keeps keys stable across SSR/CSR boundaries.
+  const timelineGroups = useMemo(() => {
+    if (viewMode !== "timeline") return null;
+    const groups = new Map<string, { display: string; entries: typeof filteredLogs }>();
+    const isoKeyFmt = new Intl.DateTimeFormat("fr-CA", {
+      timeZone: "Africa/Dakar",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
     });
-  }, [logs, textFilter]);
+    const displayFmt = new Intl.DateTimeFormat("fr-SN", {
+      timeZone: "Africa/Dakar",
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
+    for (const log of filteredLogs) {
+      const ts = (log as { timestamp?: string }).timestamp ?? "";
+      if (!ts) continue;
+      const d = new Date(ts);
+      const isoKey = isoKeyFmt.format(d); // e.g. "2026-04-24"
+      const display = displayFmt.format(d); // e.g. "24 avril 2026"
+      const bucket = groups.get(isoKey);
+      if (bucket) bucket.entries.push(log);
+      else groups.set(isoKey, { display, entries: [log] });
+    }
+    return Array.from(groups.entries());
+  }, [filteredLogs, viewMode]);
 
   // Build the querystring passed to the CSV export so the exported file
   // mirrors whatever the admin is currently looking at.
@@ -166,11 +201,42 @@ export default function AdminAuditPage() {
         </BreadcrumbList>
       </Breadcrumb>
 
-      {/* Header + export action */}
+      {/* Header + export action + view toggle (T2.6) */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-bold text-foreground">Journal d&apos;audit</h1>
-        <CsvExportButton resource="audit-logs" filters={exportFilters} />
+        <div className="flex items-center gap-2">
+          <div
+            role="tablist"
+            aria-label="Type d'affichage"
+            className="inline-flex rounded-md border border-border bg-background p-0.5 text-xs"
+          >
+            <button
+              role="tab"
+              aria-selected={viewMode === "table"}
+              onClick={() => setViewMode("table")}
+              className={`px-3 py-1 rounded ${
+                viewMode === "table" ? "bg-teranga-navy text-white" : "text-muted-foreground"
+              }`}
+            >
+              Tableau
+            </button>
+            <button
+              role="tab"
+              aria-selected={viewMode === "timeline"}
+              onClick={() => setViewMode("timeline")}
+              className={`px-3 py-1 rounded ${
+                viewMode === "timeline" ? "bg-teranga-navy text-white" : "text-muted-foreground"
+              }`}
+            >
+              Chronologie
+            </button>
+          </div>
+          <CsvExportButton resource="audit-logs" filters={exportFilters} />
+        </div>
       </div>
+
+      {/* T3.2 — Saved views chip bar. */}
+      <SavedViewsBar surfaceKey="admin-audit" />
 
       {/* Active-filter breadcrumb pills (Phase 7 — visible state). */}
       {(actorIdFilter || resourceTypeFilter) && (
@@ -223,11 +289,19 @@ export default function AdminAuditPage() {
           <Input
             id="audit-text-filter"
             type="search"
-            placeholder="Acteur, ID, action…"
-            value={textFilter}
-            onChange={(e) => setTextFilter(e.target.value)}
-            aria-label="Rechercher dans la page actuelle (acteur, ID ressource, action)"
+            placeholder="Acteur, ID ressource, ou contenu JSON…"
+            value={searchInput}
+            onChange={(e) => {
+              setSearchInput(e.target.value);
+              setPage(1);
+            }}
+            aria-label="Rechercher dans l'ensemble du journal d'audit (acteur, ressource, contenu du détail JSON)"
+            aria-describedby="audit-search-hint"
           />
+          <p id="audit-search-hint" className="mt-1 text-[11px] text-muted-foreground">
+            Recherche serveur sur tous les champs structurés + le JSON <code>details</code>. Minimum
+            2 caractères.
+          </p>
         </div>
         <div className="w-full sm:w-56">
           <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
@@ -278,103 +352,198 @@ export default function AdminAuditPage() {
         </div>
       </div>
 
-      {/* Table */}
-      <Card>
-        <CardContent className="p-0">
-          <DataTable<Record<string, unknown>>
-            aria-label="Journal d'audit"
-            emptyMessage="Aucune entrée trouvée"
-            responsiveCards
-            loading={isLoading}
-            data={filteredLogs as Record<string, unknown>[]}
-            columns={
-              [
-                {
-                  key: "action",
-                  header: "Action",
-                  primary: true,
-                  render: (log) => (
-                    <Badge variant={getActionStyle(log.action as string).variant}>
-                      {log.action as string}
-                    </Badge>
-                  ),
-                },
-                {
-                  key: "actor",
-                  header: "Acteur",
-                  render: (log) => {
-                    // Prefer the denormalized actorDisplayName (T1.1); fall
-                    // back to the truncated actorId for historical rows
-                    // written before the denorm landed. Render the actorId
-                    // underneath in a muted font when both are present so
-                    // operators can still copy the raw UID from the UI.
-                    const displayName = log.actorDisplayName as string | null | undefined;
-                    const actorId = (log.actorId as string) ?? "";
-                    if (displayName) {
+      {viewMode === "timeline" && timelineGroups ? (
+        <div className="space-y-6">
+          {isLoading ? (
+            <Card>
+              <CardContent className="p-6">
+                <div className="space-y-3">
+                  {[1, 2, 3].map((i) => (
+                    <div key={i} className="flex items-center gap-3">
+                      <div className="h-5 w-16 rounded bg-muted animate-pulse" />
+                      <div className="h-4 flex-1 rounded bg-muted animate-pulse" />
+                      <div className="h-3 w-14 rounded bg-muted animate-pulse" />
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          ) : timelineGroups.length === 0 ? (
+            <Card>
+              <CardContent className="p-6 text-center text-sm text-muted-foreground">
+                Aucune entrée sur cette période.
+              </CardContent>
+            </Card>
+          ) : (
+            timelineGroups.map(([isoKey, { display, entries }]) => (
+              <section key={isoKey} aria-labelledby={`tl-${isoKey}`}>
+                <h2
+                  id={`tl-${isoKey}`}
+                  className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+                >
+                  {display}
+                </h2>
+                <Card>
+                  <CardContent className="p-0 divide-y divide-border">
+                    {entries.map((raw) => {
+                      const log = raw as Record<string, unknown>;
+                      const action = (log.action as string) ?? "";
+                      const actor =
+                        (log.actorDisplayName as string | null | undefined) ??
+                        (log.actorId as string | undefined) ??
+                        "";
+                      const resourceType = (log.resourceType as string) ?? "";
+                      const resourceId = (log.resourceId as string) ?? "";
+                      const url = getResourceUrl(resourceType, resourceId);
                       return (
-                        <div className="flex flex-col">
-                          <span className="text-sm font-medium text-foreground">{displayName}</span>
-                          <code className="font-mono text-[10px] text-muted-foreground">
-                            {actorId.slice(0, 12)}
-                            {actorId.length > 12 ? "…" : ""}
-                          </code>
+                        <div
+                          key={(log.id as string) ?? `${action}-${log.timestamp}`}
+                          className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 text-sm"
+                        >
+                          <div className="flex items-center gap-2">
+                            <Badge variant={getActionStyle(action).variant}>{action}</Badge>
+                            <span className="text-muted-foreground">
+                              par{" "}
+                              <span className="text-foreground font-medium">{actor || "—"}</span>
+                            </span>
+                            {resourceType && (
+                              <span className="text-muted-foreground">
+                                sur{" "}
+                                {url ? (
+                                  <Link
+                                    href={url}
+                                    className="text-foreground font-medium hover:underline"
+                                  >
+                                    {resourceType} {resourceId.slice(0, 8)}
+                                  </Link>
+                                ) : (
+                                  <span className="text-foreground font-medium">
+                                    {resourceType} {resourceId.slice(0, 8)}
+                                  </span>
+                                )}
+                              </span>
+                            )}
+                          </div>
+                          <time
+                            dateTime={log.timestamp as string}
+                            className="text-xs text-muted-foreground whitespace-nowrap"
+                          >
+                            {new Date(log.timestamp as string).toLocaleTimeString("fr-SN", {
+                              timeZone: "Africa/Dakar",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
+                          </time>
                         </div>
                       );
-                    }
-                    return (
-                      <span className="font-mono text-xs text-muted-foreground">
-                        {actorId.slice(0, 12)}
-                        {actorId.length > 12 ? "…" : ""}
-                      </span>
-                    );
+                    })}
+                  </CardContent>
+                </Card>
+              </section>
+            ))
+          )}
+        </div>
+      ) : (
+        /* Table */
+        <Card>
+          <CardContent className="p-0">
+            <DataTable<Record<string, unknown>>
+              aria-label="Journal d'audit"
+              emptyMessage="Aucune entrée trouvée"
+              responsiveCards
+              loading={isLoading}
+              data={filteredLogs as Record<string, unknown>[]}
+              columns={
+                [
+                  {
+                    key: "action",
+                    header: "Action",
+                    primary: true,
+                    render: (log) => (
+                      <Badge variant={getActionStyle(log.action as string).variant}>
+                        {log.action as string}
+                      </Badge>
+                    ),
                   },
-                },
-                {
-                  key: "resource",
-                  header: "Ressource",
-                  hideOnMobile: true,
-                  render: (log) => {
-                    const type = (log.resourceType as string) ?? "";
-                    const id = (log.resourceId as string) ?? "";
-                    const url = getResourceUrl(type, id);
-                    const label = (
-                      <span className="text-muted-foreground">
-                        <span className="font-medium text-foreground">{type}</span>
-                        {id ? (
-                          <span className="ml-1 font-mono text-xs">
-                            {id.slice(0, 12)}
-                            {id.length > 12 ? "…" : ""}
-                          </span>
-                        ) : null}
-                      </span>
-                    );
-                    return url ? (
-                      <Link
-                        href={url}
-                        className="hover:underline hover:text-teranga-gold"
-                        title={`Ouvrir ${type} ${id}`}
-                      >
-                        {label}
-                      </Link>
-                    ) : (
-                      label
-                    );
+                  {
+                    key: "actor",
+                    header: "Acteur",
+                    render: (log) => {
+                      // Prefer the denormalized actorDisplayName (T1.1); fall
+                      // back to the truncated actorId for historical rows
+                      // written before the denorm landed. Render the actorId
+                      // underneath in a muted font when both are present so
+                      // operators can still copy the raw UID from the UI.
+                      const displayName = log.actorDisplayName as string | null | undefined;
+                      const actorId = (log.actorId as string) ?? "";
+                      if (displayName) {
+                        return (
+                          <div className="flex flex-col">
+                            <span className="text-sm font-medium text-foreground">
+                              {displayName}
+                            </span>
+                            <code className="font-mono text-[10px] text-muted-foreground">
+                              {actorId.slice(0, 12)}
+                              {actorId.length > 12 ? "…" : ""}
+                            </code>
+                          </div>
+                        );
+                      }
+                      return (
+                        <span className="font-mono text-xs text-muted-foreground">
+                          {actorId.slice(0, 12)}
+                          {actorId.length > 12 ? "…" : ""}
+                        </span>
+                      );
+                    },
                   },
-                },
-                {
-                  key: "timestamp",
-                  header: "Date",
-                  render: (log) => (
-                    <span className="text-muted-foreground whitespace-nowrap">
-                      {log.timestamp ? formatDate(log.timestamp as string) : "-"}
-                    </span>
-                  ),
-                },
-              ] as DataTableColumn<Record<string, unknown>>[]
-            }
-          />
-        </CardContent>
-      </Card>
+                  {
+                    key: "resource",
+                    header: "Ressource",
+                    hideOnMobile: true,
+                    render: (log) => {
+                      const type = (log.resourceType as string) ?? "";
+                      const id = (log.resourceId as string) ?? "";
+                      const url = getResourceUrl(type, id);
+                      const label = (
+                        <span className="text-muted-foreground">
+                          <span className="font-medium text-foreground">{type}</span>
+                          {id ? (
+                            <span className="ml-1 font-mono text-xs">
+                              {id.slice(0, 12)}
+                              {id.length > 12 ? "…" : ""}
+                            </span>
+                          ) : null}
+                        </span>
+                      );
+                      return url ? (
+                        <Link
+                          href={url}
+                          className="hover:underline hover:text-teranga-gold"
+                          title={`Ouvrir ${type} ${id}`}
+                        >
+                          {label}
+                        </Link>
+                      ) : (
+                        label
+                      );
+                    },
+                  },
+                  {
+                    key: "timestamp",
+                    header: "Date",
+                    render: (log) => (
+                      <span className="text-muted-foreground whitespace-nowrap">
+                        {log.timestamp ? formatDate(log.timestamp as string) : "-"}
+                      </span>
+                    ),
+                  },
+                ] as DataTableColumn<Record<string, unknown>>[]
+              }
+            />
+          </CardContent>
+        </Card>
+      )}
 
       {/* Pagination */}
       {!isLoading && meta.totalPages > 1 && (

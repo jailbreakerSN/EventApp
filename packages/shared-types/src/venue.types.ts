@@ -269,6 +269,29 @@ export const AdminAuditQuerySchema = z.object({
   action: z.string().optional(),
   actorId: z.string().optional(),
   resourceType: z.string().optional(),
+  /**
+   * T2.6 — free-text search over the audit-log details JSON.
+   * The implementation fetches a wider candidate page then filters
+   * in-memory by substring against a deterministic projection of the
+   * row. Accepts a maximum of 100 chars — longer queries are almost
+   * certainly typos and bounding the input prevents pathological
+   * CPU-time scans.
+   */
+  search: z.string().trim().min(1).max(100).optional(),
+  /**
+   * T2.6 — optional resourceId filter so clicking a row in a detail
+   * page can deep-link into "all audit events for X" without extra
+   * parsing. Required-if-resourceType for UX clarity (the API itself
+   * accepts either alone).
+   */
+  resourceId: z.string().optional(),
+  /**
+   * T2.6 — organizationId filter. Complements resourceType=org so
+   * platform admins can scope audit queries to a single tenant (e.g.
+   * "everything that happened in org-123"). Applies regardless of
+   * resourceType; the repository ANDs the filter in.
+   */
+  organizationId: z.string().optional(),
   dateFrom: coerceAuditDate("start"),
   dateTo: coerceAuditDate("end"),
   page: z.coerce.number().int().positive().default(1),

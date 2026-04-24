@@ -49,6 +49,7 @@ GET /v1/admin/venues auth perms=[platform:manage]
 GET /v1/admin/webhooks auth perms=[platform:manage]
 GET /v1/admin/webhooks/:webhookId auth perms=[platform:manage]
 POST /v1/admin/webhooks/:webhookId/replay auth perms=[platform:manage]
+GET /v1/announcements auth
 POST /v1/auth/send-password-reset-email none
 POST /v1/auth/send-verification-email auth
 GET /v1/badge-templates auth
@@ -142,6 +143,7 @@ POST /v1/invites/decline auth emailVerified
 DELETE /v1/me/fcm-tokens auth
 POST /v1/me/fcm-tokens auth
 DELETE /v1/me/fcm-tokens/:tokenFingerprint auth
+GET /v1/me/whoami auth
 GET /v1/newsletter/confirm none
 POST /v1/newsletter/send auth perms=[platform:manage]
 POST /v1/newsletter/subscribe none
@@ -163,6 +165,11 @@ POST /v1/organizations auth emailVerified perms=[organization:create]
 GET /v1/organizations/:orgId auth perms=[organization:read]
 PATCH /v1/organizations/:orgId auth emailVerified perms=[organization:update]
 GET /v1/organizations/:orgId/analytics auth perms=[event:read]
+GET /v1/organizations/:orgId/api-keys auth perms=[organization:read]
+POST /v1/organizations/:orgId/api-keys auth emailVerified perms=[organization:manage_billing]
+GET /v1/organizations/:orgId/api-keys/:apiKeyId auth perms=[organization:read]
+POST /v1/organizations/:orgId/api-keys/:apiKeyId/revoke auth emailVerified perms=[organization:manage_billing]
+POST /v1/organizations/:orgId/api-keys/:apiKeyId/rotate auth emailVerified perms=[organization:manage_billing]
 GET /v1/organizations/:orgId/balance auth perms=[payment:view_reports]
 GET /v1/organizations/:orgId/balance-transactions auth perms=[payment:view_reports]
 GET /v1/organizations/:orgId/invites auth perms=[organization:read]

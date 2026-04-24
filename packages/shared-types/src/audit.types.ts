@@ -148,6 +148,22 @@ export const AuditActionSchema = z.enum([
   "email.complained",
   "email.resend_unsubscribed",
   "email.resend_contact_deleted",
+  // ── API keys (T2.3) ───────────────────────────────────────────────────
+  // Issued / revoked / rotated by organization admins via
+  // /v1/organizations/:orgId/api-keys. actorId = the user who clicked,
+  // resourceType = "api_key", resourceId = the key's hashPrefix (doc id).
+  // Details never carry plaintext — only the non-secret metadata
+  // (scopes, environment, name, revocation reason).
+  "api_key.created",
+  "api_key.revoked",
+  "api_key.rotated",
+  // T2.3 (remediation) — emitted by the auth middleware on successful
+  // verification, throttled to at most one entry per key per hour per
+  // IP (see ApiKeysService.verify()). Audits the "key was used from X"
+  // signal so SOC alerting can fire on "key used from an IP never
+  // seen before". Details carry `hashPrefix` + redacted IP + UA
+  // hash, never the plaintext key.
+  "api_key.verified",
 ]);
 
 export type AuditAction = z.infer<typeof AuditActionSchema>;

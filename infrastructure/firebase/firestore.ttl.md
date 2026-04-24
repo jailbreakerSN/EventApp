@@ -249,3 +249,52 @@ policy lapsed or no webhook traffic has landed in the last 90 days
   body never explodes a Firestore doc.
 - **Server-only collection**: never exposed to clients (see
   `firestore.rules` → `match /webhookEvents/{eventId}`).
+
+---
+
+## Collections intentionally without TTL
+
+Some collections this file doesn't cover are credential-bearing or
+long-lived by product design. Listed here so a future operator
+reading the file doesn't assume the absence is a gap.
+
+### `apiKeys` (T2.3)
+
+Organization-scoped API keys are long-lived by contract — customers
+integrate them into CI / scanner firmware / CRM sync jobs and expect
+them to keep working until the operator explicitly revokes them.
+
+TTL would auto-break every enterprise integration N days after
+issuance with no operator action. Instead:
+
+- Revocation is a status flip (`status: active → revoked` transactionally).
+- Revoked rows are retained indefinitely for forensics — the audit
+  console at `/admin/audit` can reconstruct "who created key X, who
+  revoked it, why, when" years after the fact.
+- Rotation is atomic (revoke-old + create-new in one transaction) —
+  the security-rotation-response pattern, not a retention pattern.
+
+If operator workflow ever shifts to "keys expire after N days unless
+the customer re-issues", the follow-up is:
+
+1. Add `expiresAt` to `ApiKeySchema` in
+   `packages/shared-types/src/api-keys.types.ts`.
+2. Add a TTL policy here + wire the collection group to
+   `deploy-staging.yml`'s `TTL_COLLECTION_GROUPS` env.
+3. Refuse `verify()` when `expiresAt <= now` BEFORE checking the
+   hash (same ordering as the revoked-status check).
+
+### `announcements` (T2.4)
+
+Platform-wide banners are auto-expiring via an `expiresAt` field
+the super-admin sets at publish time, filtered **in-query** by
+`announcementsService.listActiveForUser()`. We deliberately don't
+TTL-delete expired rows:
+
+- Expired announcements stay in `/admin/announcements` so operators
+  can audit "what did we tell users last quarter".
+- Deletion volume would be trivial (low double-digits per year) —
+  not worth provisioning a TTL policy.
+
+If the admin UI ever adds a "Hard-delete archived announcements"
+action, drive it from a scheduled Cloud Function, not a TTL.

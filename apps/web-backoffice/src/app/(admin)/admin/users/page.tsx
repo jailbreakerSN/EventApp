@@ -11,6 +11,7 @@ import {
 } from "@/hooks/use-admin";
 import { useBulkSelection } from "@/hooks/use-bulk-selection";
 import { BulkActionBar } from "@/components/admin/bulk-action-bar";
+import { SavedViewsBar } from "@/components/admin/saved-views-bar";
 import { toast } from "sonner";
 import {
   Card,
@@ -312,6 +313,9 @@ export default function AdminUsersPage() {
         <Users className="h-7 w-7 text-primary" />
         <h1 className="text-2xl font-bold text-foreground">Gestion des utilisateurs</h1>
       </div>
+
+      {/* T3.2 — Saved views chip bar. */}
+      <SavedViewsBar surfaceKey="admin-users" />
 
       {/* Search + Filters */}
       <div className="space-y-4">

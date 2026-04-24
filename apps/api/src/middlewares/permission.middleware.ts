@@ -25,6 +25,15 @@ import { type AuthUser } from "./auth.middleware";
 // ─── Resolve user permissions from JWT claims ────────────────────────────────
 
 function resolveUserPermissions(user: AuthUser): Set<Permission> {
+  // API-key auth pre-computes its permission set at token-verification
+  // time — expand the scope list into concrete permissions. Roles are
+  // empty for API-key callers so the role-based branch below would
+  // resolve to `participant`-default; we short-circuit to the scope
+  // set instead.
+  if (user.isApiKey && user.apiKeyPermissions) {
+    return new Set(user.apiKeyPermissions);
+  }
+
   const assignments: RoleAssignment[] = user.roles.map((role) => ({
     id: `inline-${role}`,
     userId: user.uid,

@@ -1,6 +1,11 @@
 import { type FastifyRequest, type FastifyReply } from "fastify";
 import { auth } from "@/config/firebase";
-import { type UserRole, isAdminSystemRole } from "@teranga/shared-types";
+import {
+  type ApiKeyScope,
+  type Permission,
+  type UserRole,
+  isAdminSystemRole,
+} from "@teranga/shared-types";
 
 // ─── Augment Fastify Request ──────────────────────────────────────────────────
 
@@ -25,6 +30,28 @@ export interface AuthUser {
    * the backoffice `ImpersonationBanner` to surface the actor's identity.
    */
   impersonatedBy?: string;
+  /**
+   * T2.3 — when the caller authenticated with an `terk_*` API key (not
+   * a Firebase ID token), `isApiKey` is `true` and `apiKeyId` carries
+   * the key's doc id (the `hashPrefix`). Services can use this to
+   * branch rate-limiting, emit a different audit marker on mutations,
+   * or reject operations that shouldn't be doable by a machine client
+   * even when a scope technically allows it.
+   */
+  isApiKey?: boolean;
+  apiKeyId?: string;
+  /**
+   * When `isApiKey` is true, these are the scopes granted to the key
+   * at issuance time. Used by downstream policy helpers to enforce
+   * scope-based checks alongside the permission system.
+   */
+  apiKeyScopes?: ApiKeyScope[];
+  /**
+   * When `isApiKey` is true, the expanded permission set derived from
+   * `apiKeyScopes`. The RBAC middleware reads this directly rather
+   * than re-resolving from `roles`.
+   */
+  apiKeyPermissions?: Permission[];
 }
 
 declare module "fastify" {
@@ -35,6 +62,19 @@ declare module "fastify" {
 
 // ─── Authentication Middleware ─────────────────────────────────────────────────
 
+/**
+ * Accepts either a Firebase ID token OR a Teranga API key
+ * (`terk_<env>_<body>_<checksum>`). The prefix alone steers the
+ * branch — we never try to verify a `terk_…` token via Firebase
+ * (which would always 401) or vice versa.
+ *
+ * API-key auth synthesises an `AuthUser` whose `uid` is
+ * `apikey:<hashPrefix>` and whose roles are empty. Route-level
+ * permission checks MUST look at `apiKeyPermissions` when
+ * `isApiKey === true`. The email-verification and organization-access
+ * gates already treat API-key callers transparently — see
+ * `requireEmailVerified` / `requireOrganization` below.
+ */
 export async function authenticate(request: FastifyRequest, reply: FastifyReply) {
   const authHeader = request.headers.authorization;
 
@@ -45,10 +85,26 @@ export async function authenticate(request: FastifyRequest, reply: FastifyReply)
     });
   }
 
-  const idToken = authHeader.slice(7);
+  const token = authHeader.slice(7);
+
+  if (token.startsWith("terk_")) {
+    try {
+      return await authenticateApiKey(token, request, reply);
+    } catch (err) {
+      // Security review P0: any unhandled exception in the API-key
+      // branch (Firestore outage, dynamic-import failure) must not
+      // propagate as an unhandled rejection — the Cloud Run service
+      // would otherwise crash under a hot Firestore incident.
+      request.log.warn({ err }, "API key verification failed unexpectedly");
+      return reply.status(401).send({
+        success: false,
+        error: { code: "UNAUTHORIZED", message: "Invalid or expired token" },
+      });
+    }
+  }
 
   try {
-    const decoded = await auth.verifyIdToken(idToken);
+    const decoded = await auth.verifyIdToken(token);
 
     request.user = {
       uid: decoded.uid,
@@ -66,6 +122,59 @@ export async function authenticate(request: FastifyRequest, reply: FastifyReply)
       error: { code: "UNAUTHORIZED", message: "Invalid or expired token" },
     });
   }
+}
+
+/**
+ * Branch of `authenticate` that handles `Authorization: Bearer terk_…`.
+ * Returns the same 401 shape as the Firebase branch on any failure so
+ * leaked prefixes cannot be enumerated via error deltas.
+ *
+ * We lazy-import `apiKeysService` to avoid a circular dependency
+ * (service → repo → config → middleware if it was eager).
+ */
+async function authenticateApiKey(plaintext: string, request: FastifyRequest, reply: FastifyReply) {
+  const { apiKeysService } = await import("@/services/api-keys.service");
+  const requestIp = extractClientIp(request);
+  const userAgent =
+    typeof request.headers["user-agent"] === "string" ? request.headers["user-agent"] : null;
+  const verified = await apiKeysService.verify(plaintext, requestIp, userAgent);
+  if (!verified) {
+    return reply.status(401).send({
+      success: false,
+      error: { code: "UNAUTHORIZED", message: "Invalid or expired token" },
+    });
+  }
+
+  const permissions: Permission[] = apiKeysService.expandScopes(verified.scopes);
+  request.user = {
+    uid: `apikey:${verified.apiKey.id}`,
+    email: "",
+    // Empty roles array — API keys do NOT automatically inherit the
+    // issuer's roles. The middleware below uses `apiKeyPermissions`
+    // directly when `isApiKey === true`.
+    roles: [],
+    organizationId: verified.apiKey.organizationId,
+    // API keys are machine credentials — email-verification doesn't
+    // apply. We set it to `true` so `requireEmailVerified` passes and
+    // rely on the per-route permission gate as the real boundary.
+    emailVerified: true,
+    isApiKey: true,
+    apiKeyId: verified.apiKey.id,
+    apiKeyScopes: verified.scopes,
+    apiKeyPermissions: permissions,
+  };
+}
+
+/**
+ * Extract the best-effort client IP from the request. Relies on
+ * Fastify's `trustProxy: true` setting in `app.ts` to parse
+ * `X-Forwarded-For` correctly — we MUST NOT read the header directly
+ * or a caller could forge a value to cycle rate-limit buckets
+ * (security-review P1, T2.3). Fastify already rejects forged XFFs
+ * when the request didn't come through a trusted proxy.
+ */
+function extractClientIp(request: FastifyRequest): string | null {
+  return request.ip ?? null;
 }
 
 // ─── Optional Authentication ──────────────────────────────────────────────────

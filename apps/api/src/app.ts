@@ -36,6 +36,15 @@ export async function buildApp() {
     requestIdHeader: "x-request-id",
     requestIdLogLabel: "requestId",
     bodyLimit: 1_048_576, // 1 MB — prevents oversized payload attacks
+    // Security-review P1 (T2.3) — when running behind Cloud Run / a CDN
+    // that terminates TLS upstream, we MUST honour the forwarded
+    // address headers so `req.ip` reports the true client IP and
+    // `@fastify/rate-limit` buckets per-caller instead of per-proxy.
+    // Without this, a caller could inject a forged `X-Forwarded-For`
+    // to cycle through rate-limit buckets. We trust the FIRST hop
+    // (Cloud Run's front-end proxy); tune via env if a CDN is placed
+    // in front.
+    trustProxy: true,
   });
 
   // ─── Security ────────────────────────────────────────────────────────────

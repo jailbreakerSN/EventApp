@@ -11,6 +11,7 @@ import {
 } from "@/hooks/use-admin";
 import { useBulkSelection } from "@/hooks/use-bulk-selection";
 import { BulkActionBar } from "@/components/admin/bulk-action-bar";
+import { SavedViewsBar } from "@/components/admin/saved-views-bar";
 import { toast } from "sonner";
 import {
   Card,
@@ -197,6 +198,9 @@ export default function AdminOrganizationsPage() {
         size="hero"
         as="h1"
       />
+
+      {/* T3.2 — Saved views chip bar. */}
+      <SavedViewsBar surfaceKey="admin-organizations" />
 
       {/* Filters */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end">

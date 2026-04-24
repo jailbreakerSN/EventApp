@@ -99,6 +99,21 @@ export const ERROR_CODES = {
   // exist in `webhookEvents` (either never received or TTL-purged
   // after the 90-day retention window). 404.
   WEBHOOK_EVENT_NOT_FOUND: "WEBHOOK_EVENT_NOT_FOUND",
+  // T2.3 — API key path errors.
+  // Presented bearer doesn't resolve to a live key (bad prefix,
+  // checksum fail, or doc not found). 401 — indistinguishable from
+  // bad-ID-token on purpose so leaked prefixes can't be enumerated.
+  API_KEY_INVALID: "API_KEY_INVALID",
+  // Presented key exists but `status === "revoked"`. Split from INVALID
+  // for metrics only; same 401 on the wire so callers can't distinguish
+  // "revoked" from "never existed".
+  API_KEY_REVOKED: "API_KEY_REVOKED",
+  // CRUD target doesn't exist. 404 Not Found.
+  API_KEY_NOT_FOUND: "API_KEY_NOT_FOUND",
+  // Org's plan doesn't include the `apiAccess` feature. 402/403-shape
+  // depending on reading — we map to PlanLimitError (403) for
+  // consistency with the rest of the plan gates.
+  API_KEY_PLAN_LIMIT: "API_KEY_PLAN_LIMIT",
 } as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];

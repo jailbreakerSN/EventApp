@@ -89,4 +89,39 @@ export const meRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.status(204).send();
     },
   );
+
+  // ─── Whoami (T2.3 — integrator self-probe) ────────────────────────────
+  // Returns a safe summary of the authenticated caller — NO secret
+  // fields, no plaintext tokens, no PII beyond what the user's JWT
+  // already carried. Enterprise integrators building against the API-
+  // key bearer branch need a zero-side-effect endpoint to validate
+  // that their key works + to inspect the expanded permission set.
+  // Hitting a data route would risk side-effects (audit rows, rate-
+  // limit counters) just to answer "is my key valid?".
+  fastify.get(
+    "/whoami",
+    {
+      preHandler: [authenticate],
+      schema: {
+        tags: ["Me"],
+        summary: "Return a safe summary of the current caller (API-key integrator probe)",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const user = request.user!;
+      return reply.send({
+        success: true,
+        data: {
+          uid: user.uid,
+          organizationId: user.organizationId ?? null,
+          roles: user.roles,
+          isApiKey: user.isApiKey === true,
+          apiKeyScopes: user.apiKeyScopes ?? null,
+          apiKeyPermissions: user.apiKeyPermissions ?? null,
+          impersonatedBy: user.impersonatedBy ?? null,
+        },
+      });
+    },
+  );
 };

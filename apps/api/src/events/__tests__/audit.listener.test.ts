@@ -604,8 +604,12 @@ describe("Audit Listener", () => {
       // `push.displayed` / `push.clicked` back-annotation handlers
       // written by the service worker (+2). Phase D.3 added the
       // `admin.delivery_dashboard_viewed` handler emitted by the super-
-      // admin observability dashboard route (+1).
-      const EXPECTED_HANDLER_COUNT = 84;
+      // admin observability dashboard route (+1). T2.3 added the
+      // `api_key.created` / `api_key.revoked` / `api_key.rotated`
+      // handlers for the org-scoped API-key issuance console (+3).
+      // T2.3 senior-review remediation added `api_key.verified` (+1)
+      // for throttled per-request leak-detection audit rows.
+      const EXPECTED_HANDLER_COUNT = 88;
 
       expect(registered).toHaveLength(EXPECTED_HANDLER_COUNT);
       // Each registered event name should be unique — a double

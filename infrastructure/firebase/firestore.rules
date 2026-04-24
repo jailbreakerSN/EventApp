@@ -675,6 +675,30 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // ─── Platform Announcements (Phase D closure + T2.4 read) ────────────
+    // Super-admins publish short-lived banners visible across both web
+    // apps. Write path is admin-only, goes through the API; client-SDK
+    // writes are blocked for audit trail + validation. Reads go through
+    // the authenticated `/v1/announcements` API (T2.4), never the
+    // client SDK — announcements carry operational context (maintenance
+    // notices etc.) that anonymous clients have no business seeing.
+    match /announcements/{announcementId} {
+      allow read, write: if false;
+    }
+
+    // ─── API Keys (T2.3 — organization-scoped bearer credentials) ─────────
+    // Doc id = first 10 chars of the plaintext key's entropy-bearing
+    // body (hashPrefix). Stored: SHA-256(key) + metadata. Plaintext is
+    // NEVER persisted. Server-only at the rules layer — the issuance UI
+    // talks exclusively to /v1/organizations/:orgId/api-keys which
+    // reads + writes via the Admin SDK. Exposing these docs to the
+    // client SDK would leak enough data to correlate a leaked prefix
+    // with its org + scopes, lowering the bar for targeted misuse.
+    // Precedent: impersonationCodes, webhookEvents, refundLocks.
+    match /apiKeys/{apiKeyId} {
+      allow read, write: if false;
+    }
+
     // ─── Plan Catalog ──────────────────────────────────────────────────────
     // Superadmin-managed catalog of subscription plans. Any authenticated
     // user can read published (public, non-archived) plans so the billing
