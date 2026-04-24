@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { zStringBoolean } from "./utils/zod";
 
 // ─── Venue Enums ────────────────────────────────────────────────────────────
 
@@ -113,8 +114,8 @@ export const VenueQuerySchema = z.object({
   country: z.string().length(2).optional(),
   venueType: VenueTypeSchema.optional(),
   status: VenueStatusSchema.optional(),
-  isFeatured: z.coerce.boolean().optional(),
-  mine: z.coerce.boolean().optional(), // filter to host's own venues
+  isFeatured: zStringBoolean().optional(),
+  mine: zStringBoolean().optional(), // filter to host's own venues
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().positive().max(100).default(20),
   orderBy: z.enum(["name", "createdAt", "eventCount"]).default("name"),
@@ -128,7 +129,7 @@ export type VenueQuery = z.infer<typeof VenueQuerySchema>;
 export const AdminUserQuerySchema = z.object({
   q: z.string().max(200).optional(),
   role: z.string().optional(),
-  isActive: z.coerce.boolean().optional(),
+  isActive: zStringBoolean().optional(),
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().positive().max(100).default(20),
 });
@@ -185,13 +186,35 @@ export type AdminUserRow = z.infer<typeof AdminUserRowSchema>;
 export const AdminOrgQuerySchema = z.object({
   q: z.string().max(200).optional(),
   plan: z.string().optional(),
-  isVerified: z.coerce.boolean().optional(),
-  isActive: z.coerce.boolean().optional(),
+  isVerified: zStringBoolean().optional(),
+  isActive: zStringBoolean().optional(),
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().positive().max(100).default(20),
 });
 
 export type AdminOrgQuery = z.infer<typeof AdminOrgQuerySchema>;
+
+/**
+ * Admin venue listing — mirrors `VenueQuerySchema` but lives behind
+ * the `platform:manage` gate, so it can surface every status (including
+ * `pending`, `suspended`, `archived`) without leaking moderation state
+ * to public callers. The public `/v1/venues` endpoint stays
+ * approved-only by design.
+ */
+export const AdminVenueQuerySchema = z.object({
+  q: z.string().max(200).optional(),
+  city: z.string().optional(),
+  country: z.string().length(2).optional(),
+  venueType: VenueTypeSchema.optional(),
+  status: VenueStatusSchema.optional(),
+  isFeatured: zStringBoolean().optional(),
+  page: z.coerce.number().int().positive().default(1),
+  limit: z.coerce.number().int().positive().max(100).default(20),
+  orderBy: z.enum(["name", "createdAt", "eventCount"]).default("createdAt"),
+  orderDir: z.enum(["asc", "desc"]).default("desc"),
+});
+
+export type AdminVenueQuery = z.infer<typeof AdminVenueQuerySchema>;
 
 export const AdminEventQuerySchema = z.object({
   q: z.string().max(200).optional(),

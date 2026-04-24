@@ -11,6 +11,7 @@ import {
   AdminUserQuerySchema,
   AdminOrgQuerySchema,
   AdminEventQuerySchema,
+  AdminVenueQuerySchema,
   AdminAuditQuerySchema,
   UpdateUserRolesSchema,
   UpdateUserStatusSchema,
@@ -830,6 +831,30 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
       const result = await adminService.listEvents(
         request.user!,
         request.query as z.infer<typeof AdminEventQuerySchema>,
+      );
+      return reply.send({ success: true, ...result });
+    },
+  );
+
+  // ── Venues ──────────────────────────────────────────────────────────────
+  // Moderation surface for /admin/venues. Unlike public `/v1/venues`,
+  // this endpoint surfaces every status (pending / approved / suspended
+  // / archived) so the inbox deep-link `/admin/venues?status=pending`
+  // actually shows the rows the moderation count promised.
+  fastify.get(
+    "/venues",
+    {
+      preHandler: [...adminPreHandler, validate({ query: AdminVenueQuerySchema })],
+      schema: {
+        tags: ["Admin"],
+        summary: "List venues across every status (admin moderation view)",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const result = await adminService.listVenues(
+        request.user!,
+        request.query as z.infer<typeof AdminVenueQuerySchema>,
       );
       return reply.send({ success: true, ...result });
     },

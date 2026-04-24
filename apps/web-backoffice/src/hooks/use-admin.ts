@@ -4,6 +4,7 @@ import type {
   AdminUserQuery,
   AdminOrgQuery,
   AdminEventQuery,
+  AdminVenueQuery,
   AdminAuditQuery,
   CreatePlanDto,
   UpdatePlanDto,
@@ -97,6 +98,19 @@ export function useAdminEvents(params: Partial<AdminEventQuery> = {}) {
   return useQuery({
     queryKey: ["admin", "events", params],
     queryFn: () => adminApi.listEvents(params),
+  });
+}
+
+// ─── Venues (admin moderation surface) ──────────────────────────────────────
+// Use this hook on /admin/venues, NOT `useVenues()`. The latter calls the
+// public endpoint which is hardcoded to approved-only and silently drops
+// the `status` filter — the bug behind the "le tableau n'est pas filtré"
+// report when arriving from the inbox `/admin/venues?status=pending` link.
+
+export function useAdminVenues(params: Partial<AdminVenueQuery> = {}) {
+  return useQuery({
+    queryKey: ["admin", "venues", params],
+    queryFn: () => adminApi.listVenues(params),
   });
 }
 
