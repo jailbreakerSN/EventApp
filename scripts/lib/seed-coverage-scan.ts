@@ -151,6 +151,10 @@ export const SEED_COVERAGE_WAIVER: ReadonlyMap<string, string> = new Map<
     "impersonationCodes",
     "Transient auth-code flow for super-admin impersonation — 60 s TTL, server-only writes via ImpersonationCodeService. Seed fixtures would be stale within a minute and have no QA value; security properties are exercised via integration tests, not seed data.",
   ],
+  [
+    "adminJobLocks",
+    "Single-flight locks for the admin job runner (T2.2). One doc per jobKey, held only while a handler is running (≤ 5 min) and deleted on completion. Transient operational state — seeding would either block the first real trigger or fill the collection with zombie locks. Reset behaviour is implicit (any run deletes its own lock; stale locks self-reclaim).",
+  ],
 ]);
 
 // ─── COLLECTIONS constant parsing ──────────────────────────────────────────
