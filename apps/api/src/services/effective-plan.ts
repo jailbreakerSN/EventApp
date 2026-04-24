@@ -49,11 +49,14 @@ export interface EffectivePlan {
   priceXof: number;
   computedAt: string;
   /**
-   * The resolved entitlement map, populated when the source plan uses the
-   * unified model OR when overrides.entitlements was layered on top. Opaque
-   * to legacy readers — they consume the projected `features` + `limits`
-   * views above, which stay authoritative and identical for entitlement
-   * plans and legacy plans alike.
+   * The resolved entitlement map, populated when the source plan uses
+   * the unified model. Legacy `overrides.features` / `overrides.limits`
+   * are projected into entitlement space so the map stays consistent
+   * with the `features` / `limits` views for callers of the new
+   * enforcement helpers. Opaque to legacy readers — they consume the
+   * projected `features` + `limits` views above, which stay
+   * authoritative and identical for entitlement plans and legacy
+   * plans alike.
    */
   entitlements?: EntitlementMap;
 }
@@ -188,35 +191,25 @@ export function resolveEffective(
     }
   }
 
-  // Step 3 — overlay `overrides.entitlements`. Wins over legacy overrides
-  // for the keys it covers (a boolean entitlement override wipes any
-  // legacy feature override on the same key). This is the intended
-  // precedence: entitlement overrides are the forward-looking surface.
-  if (active && overrides?.entitlements) {
-    const projected = projectFromEntitlements(overrides.entitlements, features, limits);
-    features = projected.features;
-    limits = projected.limits;
-  }
-
   // Merge price (informational; enforcement doesn't depend on it)
   const priceXof = active && overrides?.priceXof !== undefined ? overrides.priceXof : plan.priceXof;
 
-  // Merge entitlement map — plan's map is the base, legacy feature/limit
-  // overrides are projected into entitlement space so the new helpers
-  // (`requireEntitlement` / `checkQuota`) stay consistent with the
-  // legacy ones (`requirePlanFeature` / `checkPlanLimit`) on the same
-  // key. Without this sync, an override like `{features: {x: false}}`
-  // would flip the legacy view while leaving the entitlement map with a
-  // stale `{x: true}` value — the two helpers would then disagree on
-  // the same org. Fix for review finding "resolver legacy override
-  // doesn't sync merged entitlements".
+  // Merge entitlement map — plan's map is the base, and legacy
+  // feature/limit overrides are projected into entitlement space so
+  // the new helpers (`requireEntitlement` / `checkQuota`) stay
+  // consistent with the legacy ones (`requirePlanFeature` /
+  // `checkPlanLimit`) on the same key. Without this sync, an override
+  // like `{features: {x: false}}` would flip the legacy view while
+  // leaving the entitlement map with a stale `{x: true}` value — the
+  // two helpers would then disagree on the same org.
   //
-  // The override entitlement map layers last so it still wins over
-  // legacy overrides for any key it explicitly covers (matches the
-  // precedence already enforced on the features/limits views at
-  // Step 3).
+  // `SubscriptionOverrides.entitlements` is intentionally NOT on the
+  // schema in this PR (see plan.types.ts for rationale — contract
+  // snapshot scope cut). Legacy overrides are projected into the
+  // map; per-key entitlement overrides land with the follow-up PR
+  // that introduces a real metered-override use case.
   let mergedEntitlements: EntitlementMap | undefined;
-  if (plan.entitlements || (active && overrides?.entitlements) || (active && overrides?.features) || (active && overrides?.limits)) {
+  if (plan.entitlements || (active && overrides?.features) || (active && overrides?.limits)) {
     mergedEntitlements = { ...(plan.entitlements ?? {}) };
 
     // Project legacy feature overrides into entitlement space.
@@ -248,14 +241,6 @@ export function resolveEffective(
         if (entKey) {
           mergedEntitlements[entKey] = { kind: "quota", limit: v, period: "cycle" };
         }
-      }
-    }
-
-    // Entitlement overrides layer last — they win over legacy-override
-    // projections on the same key (matches Step 3's precedence).
-    if (active && overrides?.entitlements) {
-      for (const [k, v] of Object.entries(overrides.entitlements)) {
-        mergedEntitlements[k] = v;
       }
     }
   }

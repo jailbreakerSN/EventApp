@@ -146,29 +146,30 @@ function resolveFromPlan(
     }
   }
 
-  // Step 4 — entitlement overrides (layered last, so they win over legacy
-  // overrides on the same key). Mirrors production resolver step 3.
-  const activeOverrideEnt =
-    active && overrides?.entitlements ? overrides.entitlements : undefined;
-  if (activeOverrideEnt) {
-    for (const [legacy, entKey] of Object.entries(LEGACY_FEATURE_ENTITLEMENT_KEYS)) {
-      const ent = activeOverrideEnt[entKey];
-      if (ent && ent.kind === "boolean") {
-        (features as Record<string, boolean>)[legacy] = ent.value;
-      }
-    }
-    for (const [legacy, entKey] of Object.entries(LEGACY_QUOTA_ENTITLEMENT_KEYS)) {
-      const ent = activeOverrideEnt[entKey];
-      if (ent && ent.kind === "quota") {
-        (limitsRuntime as Record<string, number>)[legacy] = storedToRuntime(ent.limit);
-      }
+  // Step 4 — project legacy overrides into entitlement space so the
+  // merged map matches the legacy views (mirrors the production
+  // resolver's final sync). `SubscriptionOverrides.entitlements` is
+  // intentionally absent from this PR's schema (see plan.types.ts).
+  const mergedEntitlements: EntitlementMap = { ...(plan.entitlements ?? {}) };
+  if (active && overrides?.features) {
+    for (const [k, v] of Object.entries(overrides.features)) {
+      if (v === undefined) continue;
+      const entKey = (LEGACY_FEATURE_ENTITLEMENT_KEYS as Record<string, string>)[k];
+      if (entKey) mergedEntitlements[entKey] = { kind: "boolean", value: v };
     }
   }
-
-  const mergedEntitlements: EntitlementMap = {
-    ...(plan.entitlements ?? {}),
-    ...(activeOverrideEnt ?? {}),
-  };
+  if (active && overrides?.limits) {
+    const limitKeyMap: Record<string, string> = {
+      maxEvents: LEGACY_QUOTA_ENTITLEMENT_KEYS.maxEvents,
+      maxParticipantsPerEvent: LEGACY_QUOTA_ENTITLEMENT_KEYS.maxParticipantsPerEvent,
+      maxMembers: LEGACY_QUOTA_ENTITLEMENT_KEYS.maxMembers,
+    };
+    for (const [k, v] of Object.entries(overrides.limits)) {
+      if (v === undefined) continue;
+      const entKey = limitKeyMap[k];
+      if (entKey) mergedEntitlements[entKey] = { kind: "quota", limit: v, period: "cycle" };
+    }
+  }
 
   return {
     planKey: plan.key,

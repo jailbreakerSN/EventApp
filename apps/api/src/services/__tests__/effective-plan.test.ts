@@ -297,53 +297,14 @@ describe("resolveEffective — entitlement projection (Phase 7+ item #2)", () =>
     expect(right.limits).toEqual(left.limits);
   });
 
-  it("overrides.entitlements overlay the plan's entitlements per-key", () => {
-    const plan = buildPlan({
-      entitlements: {
-        [LEGACY_FEATURE_ENTITLEMENT_KEYS.apiAccess]: { kind: "boolean", value: false },
-      },
-    });
-    const overrides: SubscriptionOverrides = {
-      entitlements: {
-        [LEGACY_FEATURE_ENTITLEMENT_KEYS.apiAccess]: { kind: "boolean", value: true },
-      },
-    };
-    const effective = resolveEffective(plan, overrides);
-    expect(effective.features.apiAccess).toBe(true);
-    expect(effective.entitlements?.[LEGACY_FEATURE_ENTITLEMENT_KEYS.apiAccess]).toEqual({
-      kind: "boolean",
-      value: true,
-    });
-  });
-
-  it("overrides.entitlements win over legacy overrides.features on the same key", () => {
-    const plan = buildPlan({
-      entitlements: {
-        [LEGACY_FEATURE_ENTITLEMENT_KEYS.customBadges]: { kind: "boolean", value: false },
-      },
-    });
-    const overrides: SubscriptionOverrides = {
-      features: { customBadges: false }, // legacy says OFF
-      entitlements: {
-        [LEGACY_FEATURE_ENTITLEMENT_KEYS.customBadges]: { kind: "boolean", value: true },
-      },
-    };
-    const effective = resolveEffective(plan, overrides);
-    // Entitlement override wins — they layer on AFTER legacy overrides
-    // in the resolver pipeline, which is the intended precedence.
-    expect(effective.features.customBadges).toBe(true);
-  });
-
-  it("expired overrides.entitlements are ignored just like expired legacy overrides", () => {
+  it("expired legacy overrides on an entitlement plan revert to plan values", () => {
     const plan = buildPlan({
       entitlements: {
         [LEGACY_FEATURE_ENTITLEMENT_KEYS.whiteLabel]: { kind: "boolean", value: false },
       },
     });
     const overrides: SubscriptionOverrides = {
-      entitlements: {
-        [LEGACY_FEATURE_ENTITLEMENT_KEYS.whiteLabel]: { kind: "boolean", value: true },
-      },
+      features: { whiteLabel: true },
       validUntil: "2020-01-01T00:00:00.000Z", // way in the past
     };
     const effective = resolveEffective(plan, overrides, new Date("2026-04-24"));

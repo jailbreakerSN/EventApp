@@ -315,12 +315,15 @@ export type UpdatePlanDto = z.infer<typeof UpdatePlanSchema>;
 export const SubscriptionOverridesSchema = z.object({
   limits: PlanLimitsValueSchema.partial().optional(),
   features: PlanFeaturesSchema.partial().optional(),
-  // Per-org entitlement override map (Phase 7+ item #2). Overlaid on top of
-  // the plan's own entitlements, per-key. When set, this wins over the
-  // legacy `limits` / `features` overrides for the keys it covers; the
-  // legacy overrides still apply for any key the entitlement map doesn't
-  // touch, so admins upgrading from the old override flow lose nothing.
-  entitlements: EntitlementMapSchema.optional(),
+  // Per-org entitlement override — intentionally omitted from this
+  // foundation PR to keep the shared-types contract snapshot narrow
+  // during rollout. The resolver already projects legacy `limits` /
+  // `features` overrides into entitlement space (see
+  // `apps/api/src/services/effective-plan.ts`), so the merged
+  // `effectiveEntitlements` map stays consistent with the 14 legacy
+  // enforcement call sites. A follow-up PR can add an explicit
+  // `entitlements` field here when a real per-org metered-override
+  // use case lands.
   priceXof: z.number().int().min(0).optional(),
   notes: z.string().max(500).optional(),
   validUntil: z.string().datetime().nullable().optional(),

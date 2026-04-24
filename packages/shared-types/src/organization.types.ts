@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { EntitlementMapSchema } from "./plan.types";
 
 export const OrganizationPlanSchema = z.enum([
   "free", // up to 2 events/month, 100 participants
@@ -64,10 +63,19 @@ export const OrganizationSchema = z.object({
   // effectiveLimits / effectiveFeatures when the underlying plan uses the
   // unified model; absent for plans on the legacy (features + limits) path.
   //
+  // Intentionally typed as a loose `Record<string, unknown>` instead of
+  // `EntitlementMapSchema`: this is a DENORM field — values were already
+  // validated at write-time on `PlanSchema.entitlements`. Keeping the
+  // read-side shape loose here (a) avoids the contract snapshot paying
+  // the cost of the full discriminated-union serialization on every
+  // read-path, and (b) keeps this file free of plan.types dependencies.
+  // The write path (`toStoredSnapshot` → `effectiveEntitlements: stored.entitlements`)
+  // is typed as `EntitlementMap` and carries the full validation.
+  //
   // Legacy enforcement reads `effectiveLimits` / `effectiveFeatures`; new
   // enforcement reads this field when present and falls back to the legacy
   // fields otherwise. See docs/delivery-plan/entitlement-model-design.md.
-  effectiveEntitlements: EntitlementMapSchema.optional(),
+  effectiveEntitlements: z.record(z.string(), z.unknown()).optional(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 });
