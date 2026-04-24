@@ -25,6 +25,7 @@ export function useEvents(
     category?: EventCategory | "";
     status?: EventStatus | "";
   } = {},
+  options: { enabled?: boolean } = {},
 ) {
   const { user } = useAuth();
   const orgId = user?.organizationId;
@@ -39,7 +40,11 @@ export function useEvents(
       }
       return eventsApi.listByOrg(orgId, params);
     },
-    enabled: !!user && !!orgId,
+    // Compose caller's `enabled` flag with the baseline guards so a
+    // permission-denied caller (e.g. a venue_manager on the dashboard
+    // home) can suppress the query entirely rather than fire it and
+    // watch a 403 storm appear in the console.
+    enabled: !!user && !!orgId && (options.enabled ?? true),
   });
 }
 
