@@ -4,17 +4,12 @@ name: Lighthouse CI
 #
 # Runs on pull requests that touch either web app plus a weekly cron so
 # regressions from dependency bumps / Next.js upgrades are caught even
-# without an explicit UI PR. Uses @lhci/cli with a config that asserts
-# on the three dimensions we care about:
-#
-#   - Accessibility ≥ 95 (fail hard — every AA regression is a bug)
-#   - Performance ≥ 85 on desktop profile (fail hard — African network
-#     reality makes this the real customer-facing metric)
-#   - Best Practices ≥ 90 (fail hard — flags HTTPS, console errors, etc.)
-#
-# SEO is tracked but not asserted because the backoffice is a
-# logged-in surface where SEO matters less than the public
-# participant marketing pages.
+# without an explicit UI PR. Scores are ADVISORY on first introduction
+# (`continue-on-error: true`) so this workflow lets us collect real-
+# world baselines from CI hardware before tightening the thresholds.
+# Once a week or two of data is in, flip the assertions to `error` and
+# drop `continue-on-error` — at that point Lighthouse becomes a real
+# gate.
 #
 # Run manually via Actions UI or with:
 #   gh workflow run lighthouse-ci.yml
@@ -26,6 +21,7 @@ on:
       - "apps/web-participant/**"
       - "packages/shared-ui/**"
       - ".github/workflows/lighthouse-ci.yml"
+      - ".lighthouserc.json"
   schedule:
     # Monday 06:00 Africa/Dakar = 06:00 UTC (Dakar = UTC±0)
     - cron: "0 6 * * 1"
@@ -38,6 +34,9 @@ jobs:
   lighthouse:
     name: Lighthouse audit
     runs-on: ubuntu-latest
+    # Advisory during bring-up. Flip to `false` once baselines are
+    # tuned from real CI data.
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -48,17 +47,56 @@ jobs:
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
 
-      - name: Build shared-types + shared-ui
+      - name: Build shared-types
         run: npm run types:build
 
-      # Build both apps in parallel so the audit step doesn't wait twice.
-      # Skip the participant app if only the backoffice changed, and vice
-      # versa — `npm run build` at the repo root is fast enough that the
-      # simpler "build everything" is still the right call today.
-      - name: Build web apps
+      # Next.js 15 needs at least stub values for any `NEXT_PUBLIC_*`
+      # env vars the app imports at build time — missing values don't
+      # crash the build but unset ones produce console errors Lighthouse
+      # picks up and penalizes as Best Practices violations. We bake
+      # localhost defaults so the build + subsequent start succeed
+      # without secrets.
+      - name: Build back-office
+        run: npm run build --workspace=apps/web-backoffice
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:3000
+          NEXT_PUBLIC_FIREBASE_API_KEY: lhci-stub
+          NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: example.com
+          NEXT_PUBLIC_FIREBASE_PROJECT_ID: lhci-stub
+          NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: lhci-stub
+          NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: "0"
+          NEXT_PUBLIC_FIREBASE_APP_ID: lhci-stub
+
+      - name: Build participant
+        run: npm run build --workspace=apps/web-participant
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:3000
+          NEXT_PUBLIC_FIREBASE_API_KEY: lhci-stub
+          NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: example.com
+          NEXT_PUBLIC_FIREBASE_PROJECT_ID: lhci-stub
+          NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: lhci-stub
+          NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: "0"
+          NEXT_PUBLIC_FIREBASE_APP_ID: lhci-stub
+
+      # Start servers as background processes in separate steps.
+      # LHCI's `startServerCommand` only supports a single process;
+      # launching both servers inline works around that limitation and
+      # gives us clearer failure attribution (which server didn't come
+      # up) in the workflow log.
+      - name: Start back-office (background)
         run: |
-          npm run build --workspace=apps/web-backoffice
-          npm run build --workspace=apps/web-participant
+          npm run start --workspace=apps/web-backoffice -- --port 3001 \
+            > /tmp/lhci-backoffice.log 2>&1 &
+          echo "$!" > /tmp/lhci-backoffice.pid
+
+      - name: Start participant (background)
+        run: |
+          npm run start --workspace=apps/web-participant -- --port 3002 \
+            > /tmp/lhci-participant.log 2>&1 &
+          echo "$!" > /tmp/lhci-participant.pid
+
+      - name: Wait for servers
+        run: npx --yes wait-on@7 http://localhost:3001/login http://localhost:3002/ --timeout 60000
 
       - name: Run Lighthouse CI
         run: npx --yes @lhci/cli@0.14.x autorun --config=.lighthouserc.json
@@ -67,3 +105,13 @@ jobs:
           # workflow posts a status check with per-page scores. Without
           # it the workflow still runs, just without the annotation.
           LHCI_GITHUB_APP_TOKEN: ${{ secrets.LHCI_GITHUB_APP_TOKEN }}
+
+      - name: Upload server logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lighthouse-server-logs
+          path: |
+            /tmp/lhci-backoffice.log
+            /tmp/lhci-participant.log
+          retention-days: 7
