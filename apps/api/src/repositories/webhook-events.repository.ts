@@ -15,14 +15,21 @@ import type { PaginatedResult } from "./base.repository";
 
 /**
  * Compose the idempotent doc id for a (provider, transactionId, status)
- * triple. Three separators so providers that happen to use `__` in
- * their transaction ids don't collide.
+ * triple.
+ *
+ * Format: `{provider}__{safeTxId}__{providerStatus}`. Collision
+ * resistance derives from the NARROW ENUMS on either side of the
+ * transaction id (Zod-validated at the call site):
+ *   - `provider` is `wave | orange_money | free_money | mock`
+ *   - `providerStatus` is `succeeded | failed`
+ * A malicious provider tx id containing `__succeeded` still maps to a
+ * distinct row because the provider prefix + status suffix positions
+ * are fixed. The `__` separator is a layout aid, NOT the security
+ * boundary.
  *
  * The shape is encoded so Firestore document-id constraints (no `/`,
- * no `.`, ≤ 1500 bytes) never fire in practice:
- *   - provider is a narrow enum (wave / orange_money / free_money / mock)
- *   - providerTransactionId is upstream-generated, UUID-like
- *   - status is "succeeded" | "failed"
+ * no `.`, ≤ 1500 bytes) never fire in practice: `providerTransactionId`
+ * is upstream-generated (UUID-like) and we defensively strip `/` below.
  */
 export function webhookEventDocId(
   provider: WebhookProvider,

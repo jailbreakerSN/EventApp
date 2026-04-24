@@ -72,6 +72,32 @@ function filterHeaders(raw: Record<string, string | string[] | undefined>): Reco
   return out;
 }
 
+// Defensive scrub for error messages we persist to Firestore +
+// surface in the admin UI. Current handler throws only safe typed
+// errors, but future providers may include customer PII in a
+// machine-readable field that bubbles into an exception message
+// (security review H-2). Two mitigations:
+//   1. Hard-truncate to 500 chars so no long payload dump leaks.
+//   2. Mask anything that looks like a Senegalese mobile phone (our
+//      primary PII risk via Wave / Orange Money metadata) or a
+//      credit-card-length digit run. Both transforms are best-effort
+//      — they don't replace a dedicated redaction pass, but they
+//      prevent the obvious footguns from landing in the admin modal.
+const PHONE_LIKE = /(?:\+?221\s?)?\b[\d\s]{9,14}\b/g;
+const LONG_DIGIT_RUN = /\d{13,19}/g;
+
+function sanitizeErrorMessage(raw: string): string {
+  const truncated = raw.length <= 500 ? raw : raw.slice(0, 500) + "…";
+  return truncated.replace(LONG_DIGIT_RUN, "[REDACTED_CARD]").replace(PHONE_LIKE, (match) => {
+    // Only mask if the digit count fits phone-number range (9-12
+    // digits after stripping spaces/plus). Avoids eating things like
+    // ISO timestamps or unrelated digit runs.
+    const digitsOnly = match.replace(/\D/g, "");
+    if (digitsOnly.length < 9 || digitsOnly.length > 12) return match;
+    return "[REDACTED_PHONE]";
+  });
+}
+
 export interface RecordParams {
   provider: WebhookProvider;
   providerTransactionId: string;
@@ -98,6 +124,12 @@ class WebhookEventsService extends BaseService {
    * Persist a received webhook BEFORE invoking the handler. Idempotent
    * on the composite doc id — a retry from the provider with the same
    * payload is a no-op except for the `attempts` counter increment.
+   *
+   * Read-then-write runs inside `db.runTransaction()` so that two
+   * concurrent provider retries (common with Wave's aggressive retry
+   * policy) produce exactly one row with `attempts: 2`, not two rows
+   * or one row with `attempts: 1` (lost update). Matches the
+   * transactional-hardening rule in CLAUDE.md §Security Hardening.
    */
   async record(params: RecordParams): Promise<string> {
     const id = webhookEventDocId(
@@ -106,21 +138,7 @@ class WebhookEventsService extends BaseService {
       params.providerStatus,
     );
     const nowIso = new Date().toISOString();
-
-    const existing = await webhookEventsRepository.findById(id);
-
-    if (existing) {
-      // Retry — don't overwrite immutable fields (firstReceivedAt,
-      // rawBody). Bump attempt metadata so the timeline shows the
-      // provider re-sent us the same event.
-      await webhookEventsRepository.update(id, {
-        attempts: existing.attempts + 1,
-        lastAttemptedAt: nowIso,
-        requestId: getRequestId(),
-      });
-      return id;
-    }
-
+    const ref = db.collection(COLLECTIONS.WEBHOOK_EVENTS).doc(id);
     // Retention: 90 days from first receipt. Long enough for ops
     // replay workflows (most deliveries are debugged within days of
     // the incident), short enough that storage stays bounded. Stored
@@ -129,33 +147,49 @@ class WebhookEventsService extends BaseService {
     const ninetyDaysMs = 90 * 24 * 60 * 60 * 1000;
     const expiresAtIso = new Date(Date.now() + ninetyDaysMs).toISOString();
 
-    const event: WebhookEventLog = {
-      id,
-      provider: params.provider,
-      providerTransactionId: params.providerTransactionId,
-      providerStatus: params.providerStatus,
-      eventType: params.eventType,
-      // Defensive cap — Firestore doc max is 1 MiB but webhook bodies
-      // really shouldn't be > 64 KB. Truncate visibly so ops know.
-      rawBody:
-        params.rawBody.length <= 64 * 1024
-          ? params.rawBody
-          : params.rawBody.slice(0, 64 * 1024) +
-            `… [truncated, original length ${params.rawBody.length}]`,
-      rawHeaders: filterHeaders(params.rawHeaders),
-      metadata: params.metadata,
-      processingStatus: "received",
-      attempts: 1,
-      paymentId: null,
-      organizationId: null,
-      firstReceivedAt: nowIso,
-      lastAttemptedAt: nowIso,
-      expiresAt: expiresAtIso,
-      lastError: null,
-      requestId: getRequestId(),
-    };
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (snap.exists) {
+        const existing = snap.data() as WebhookEventLog;
+        // Retry — don't overwrite immutable fields (firstReceivedAt,
+        // rawBody). Bump attempt metadata so the timeline shows the
+        // provider re-sent us the same event.
+        tx.update(ref, {
+          attempts: existing.attempts + 1,
+          lastAttemptedAt: nowIso,
+          requestId: getRequestId(),
+        });
+        return;
+      }
 
-    await webhookEventsRepository.upsert(event);
+      const event: WebhookEventLog = {
+        id,
+        provider: params.provider,
+        providerTransactionId: params.providerTransactionId,
+        providerStatus: params.providerStatus,
+        eventType: params.eventType,
+        // Defensive cap — Firestore doc max is 1 MiB but webhook
+        // bodies really shouldn't be > 64 KB. Truncate visibly so
+        // ops know.
+        rawBody:
+          params.rawBody.length <= 64 * 1024
+            ? params.rawBody
+            : params.rawBody.slice(0, 64 * 1024) +
+              `… [truncated, original length ${params.rawBody.length}]`,
+        rawHeaders: filterHeaders(params.rawHeaders),
+        metadata: params.metadata,
+        processingStatus: "received",
+        attempts: 1,
+        paymentId: null,
+        organizationId: null,
+        firstReceivedAt: nowIso,
+        lastAttemptedAt: nowIso,
+        expiresAt: expiresAtIso,
+        lastError: null,
+        requestId: getRequestId(),
+      };
+      tx.set(ref, event);
+    });
     return id;
   }
 
@@ -197,21 +231,32 @@ class WebhookEventsService extends BaseService {
   /**
    * Re-invoke the payment handler with the stored payload. Idempotent
    * via `paymentService.handleWebhook`'s own payment-status guard.
+   *
+   * Operational contract (explicit per security review H-1):
+   *   1. Permission + role + rate-limit checks run BEFORE any
+   *      Firestore touch — a denied attempt produces zero writes.
+   *   2. The attempt-counter bump and the audit row are written
+   *      atomically in one transaction. If the audit write fails,
+   *      the attempt counter is NOT incremented either — we NEVER
+   *      replay without a matching audit row. This is a deliberate
+   *      design: a stuck audit backend should halt privileged
+   *      actions rather than silently continue without traceability.
+   *      (Overrides the generic "audit is fire-and-forget" rule in
+   *      CLAUDE.md for this specific high-risk path.)
+   *   3. `paymentService.handleWebhook` runs outside the transaction
+   *      (it has its own inner transaction on the payment doc).
+   *   4. `markOutcome` reflects the handler's result.
    */
-  async replay(
-    user: AuthUser,
-    id: string,
-    actorDisplayName: string | null,
-  ): Promise<WebhookEventLog> {
+  async replay(user: AuthUser, id: string): Promise<WebhookEventLog> {
+    // Permission + role checks — cheap, run first.
     this.requirePermission(user, "platform:manage");
-    // Scope-narrow role check — every `platform:*` subrole holds
-    // `platform:manage` today, but only super-admins + support should
-    // replay webhooks in production. Keeping this loose matches the
-    // job runner; tighten here when we split the role matrix.
     if (!user.roles.some((r) => r === "super_admin" || r.startsWith("platform:"))) {
       throw new ForbiddenError("Seuls les super-administrateurs peuvent rejouer un webhook.");
     }
 
+    // Rate limit BEFORE any DB read — a denied attempt must leave
+    // zero trace in Firestore. Moved ahead of the user-doc lookup
+    // for displayName (security review FAIL-3).
     const rl = await rateLimit({
       scope: "admin.webhook_replay",
       identifier: user.uid,
@@ -224,48 +269,74 @@ class WebhookEventsService extends BaseService {
       );
     }
 
+    // Best-effort displayName lookup post-rate-limit — its failure
+    // must not abort the replay. Used only to enrich the audit row.
+    let actorDisplayName: string | null = null;
+    try {
+      const doc = await db.collection(COLLECTIONS.USERS).doc(user.uid).get();
+      if (doc.exists) {
+        actorDisplayName = (doc.data() as { displayName?: string }).displayName ?? null;
+      }
+    } catch {
+      /* fall through */
+    }
+
     const event = await webhookEventsRepository.findById(id);
     if (!event) {
       throw new NotFoundError("Webhook event", id);
     }
 
-    // Increment attempts BEFORE invoking the handler — the attempt
-    // counter should reflect that we tried even if the handler throws
-    // immediately. Rolling it back on exception would hide the failure.
+    // Transactionally bump attempts + write audit. Either both land
+    // or neither does — no ticked-counter-without-audit state
+    // (security review FAIL-2).
     const attemptAt = new Date().toISOString();
-    await webhookEventsRepository.update(id, {
-      attempts: event.attempts + 1,
-      lastAttemptedAt: attemptAt,
-      requestId: getRequestId(),
+    const actorRole =
+      user.roles.find((r) => r === "super_admin" || r.startsWith("platform:")) ?? "super_admin";
+    const eventRef = db.collection(COLLECTIONS.WEBHOOK_EVENTS).doc(id);
+    const auditRef = db.collection(COLLECTIONS.AUDIT_LOGS).doc();
+    await db.runTransaction(async (tx) => {
+      // Re-read inside the tx for true idempotency — attempts may have
+      // been bumped by a concurrent retry since our non-tx findById.
+      const snap = await tx.get(eventRef);
+      if (!snap.exists) {
+        // Vanished between findById and the transaction — extremely
+        // rare, but treat as 404 rather than silently continuing.
+        throw new NotFoundError("Webhook event", id);
+      }
+      const fresh = snap.data() as WebhookEventLog;
+      tx.update(eventRef, {
+        attempts: fresh.attempts + 1,
+        lastAttemptedAt: attemptAt,
+        requestId: getRequestId(),
+      });
+      tx.set(auditRef, {
+        id: auditRef.id,
+        action: "admin.webhook_replayed",
+        actorId: user.uid,
+        actorRole,
+        actorDisplayName,
+        resourceType: "webhook_event",
+        resourceId: id,
+        organizationId: event.organizationId,
+        details: {
+          provider: event.provider,
+          providerTransactionId: event.providerTransactionId,
+          providerStatus: event.providerStatus,
+          attempt: fresh.attempts + 1,
+        },
+        requestId: getRequestId(),
+        timestamp: attemptAt,
+      });
     });
 
-    // Emit the trigger event before the work so downstream listeners
-    // (security alerting) see the replay attempt even if the handler
-    // hangs or times out upstream.
+    // Event-bus emission outside the tx — listeners are advisory
+    // (security alerting, observability). A failed emit must not
+    // roll back the attempt + audit pair.
     eventBus.emit("admin.webhook_replayed", {
       actorUid: user.uid,
       webhookEventId: id,
       provider: event.provider,
       providerTransactionId: event.providerTransactionId,
-    });
-
-    await db.collection(COLLECTIONS.AUDIT_LOGS).add({
-      action: "admin.webhook_replayed",
-      actorId: user.uid,
-      actorRole:
-        user.roles.find((r) => r === "super_admin" || r.startsWith("platform:")) ?? "super_admin",
-      actorDisplayName,
-      resourceType: "webhook_event",
-      resourceId: id,
-      organizationId: event.organizationId,
-      details: {
-        provider: event.provider,
-        providerTransactionId: event.providerTransactionId,
-        providerStatus: event.providerStatus,
-        attempt: event.attempts + 1,
-      },
-      requestId: getRequestId(),
-      timestamp: attemptAt,
     });
 
     try {
@@ -285,12 +356,12 @@ class WebhookEventsService extends BaseService {
         lastError: null,
       });
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+      const rawMessage = err instanceof Error ? err.message : String(err);
       const code = (err as { code?: string })?.code ?? "HANDLER_ERROR";
       await this.markOutcome({
         id,
         processingStatus: "failed",
-        lastError: { code, message },
+        lastError: { code, message: sanitizeErrorMessage(rawMessage) },
       });
       throw err;
     }

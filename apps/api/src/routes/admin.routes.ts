@@ -448,18 +448,10 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
     },
     async (request, reply) => {
       const { webhookId } = request.params as z.infer<typeof ParamsWebhookId>;
-      // Look up the admin's displayName so the audit row + replay
-      // banner can render "Replayed by Alice D.". Best-effort.
-      let displayName: string | null = null;
-      try {
-        const doc = await db.collection(COLLECTIONS.USERS).doc(request.user!.uid).get();
-        if (doc.exists) {
-          displayName = (doc.data() as { displayName?: string }).displayName ?? null;
-        }
-      } catch {
-        /* fall through */
-      }
-      const event = await webhookEventsService.replay(request.user!, webhookId, displayName);
+      // Note: displayName resolution happens INSIDE the service,
+      // after the rate-limit check, so denied attempts don't spend
+      // a user-doc read (security review FAIL-3).
+      const event = await webhookEventsService.replay(request.user!, webhookId);
       return reply.send({ success: true, data: event });
     },
   );
