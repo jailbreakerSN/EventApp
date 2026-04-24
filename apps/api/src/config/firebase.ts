@@ -132,6 +132,13 @@ export const COLLECTIONS = {
   // Phase D — manual job-runs triggered from /admin/jobs. Each doc
   // records the triggering admin + status + timing for observability.
   ADMIN_JOB_RUNS: "adminJobRuns",
+  // T2.2 — single-flight locks for the admin job runner. Doc id =
+  // the jobKey itself (one lock per named handler). Transactional
+  // `.create()` before the run starts; transactional delete in
+  // finally. Stale locks (expiresAt < now) are auto-reclaimable so
+  // a crashed handler can't wedge the job forever. Server-only at
+  // the rules layer — Admin SDK writes exclusively.
+  ADMIN_JOB_LOCKS: "adminJobLocks",
   // Impersonation auth-code flow (OAuth-style short-lived codes).
   // Doc id = SHA-256 hex of the raw code. Body carries the target
   // uid + adminUid + targetOrigin + issuedAt + expiresAt + consumedAt

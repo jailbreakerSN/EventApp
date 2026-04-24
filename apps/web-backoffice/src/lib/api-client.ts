@@ -88,6 +88,9 @@ import type {
   OrganizationBalance,
   AdminUserRow,
   BulkUpdateStatusResult,
+  AdminJobDescriptor,
+  AdminJobRun,
+  AdminJobRunsQuery,
 } from "@teranga/shared-types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
@@ -811,6 +814,24 @@ export const adminApi = {
 
   getOrgSubscription: (orgId: string) =>
     api.get<ApiResponse<Subscription | null>>(`/v1/organizations/${orgId}/subscription`),
+
+  // ── Admin job runner (T2.2) ─────────────────────────────────────────────
+  // Registry-driven trigger + history surface. See
+  // `packages/shared-types/src/admin-jobs.types.ts` for the full contract.
+  listJobs: () =>
+    api.get<ApiResponse<AdminJobDescriptor[]>>("/v1/admin/jobs"),
+
+  listJobRuns: (query: Partial<AdminJobRunsQuery> = {}) =>
+    api.get<PaginatedResponse<AdminJobRun>>(`/v1/admin/jobs/runs${buildQuery(query)}`),
+
+  getJobRun: (runId: string) =>
+    api.get<ApiResponse<AdminJobRun>>(`/v1/admin/jobs/runs/${encodeURIComponent(runId)}`),
+
+  runJob: (jobKey: string, input?: Record<string, unknown>) =>
+    api.post<ApiResponse<AdminJobRun>>(
+      `/v1/admin/jobs/${encodeURIComponent(jobKey)}/run`,
+      input ? { input } : {},
+    ),
 };
 
 // ─── Public Plan Catalog (Phase 6) ──────────────────────────────────────────
