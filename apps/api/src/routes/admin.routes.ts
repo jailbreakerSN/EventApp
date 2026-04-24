@@ -5,6 +5,7 @@ import { validate } from "@/middlewares/validate.middleware";
 import { requirePermission } from "@/middlewares/permission.middleware";
 import { adminService } from "@/services/admin.service";
 import { adminJobsService } from "@/services/admin-jobs.service";
+import { webhookEventsService } from "@/services/webhook-events.service";
 import { subscriptionService } from "@/services/subscription.service";
 import {
   AdminUserQuerySchema,
@@ -26,6 +27,7 @@ import {
   type FeatureFlag,
   AdminJobRunsQuerySchema,
   RunAdminJobRequestSchema,
+  AdminWebhookEventsQuerySchema,
 } from "@teranga/shared-types";
 import {
   notificationSettingsRepository,
@@ -386,6 +388,71 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
       }
       const run = await adminJobsService.runJob(request.user!, jobKey, body.input, displayName);
       return reply.send({ success: true, data: run });
+    },
+  );
+
+  // ── Webhook events (T2.1) ──────────────────────────────────────────────
+  // Stripe-style replay console. Every received payment-provider
+  // webhook is persisted by the payments route in `webhookEvents`;
+  // this surface lists them, shows the detail of one, and lets the
+  // operator re-invoke the handler on a failed delivery.
+  //
+  // Replay is idempotent — `paymentService.handleWebhook` already
+  // guards against double-processing, so replaying a "processed"
+  // event is safe (attempt counter ticks, no side effect lands).
+
+  fastify.get(
+    "/webhooks",
+    {
+      preHandler: [...adminPreHandler, validate({ query: AdminWebhookEventsQuerySchema })],
+      schema: {
+        tags: ["Admin"],
+        summary: "List webhook events (paginated, filterable)",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const query = request.query as z.infer<typeof AdminWebhookEventsQuerySchema>;
+      const result = await webhookEventsService.list(request.user!, query);
+      return reply.send({ success: true, data: result.data, meta: result.meta });
+    },
+  );
+
+  const ParamsWebhookId = z.object({ webhookId: z.string().min(1) });
+  fastify.get(
+    "/webhooks/:webhookId",
+    {
+      preHandler: [...adminPreHandler, validate({ params: ParamsWebhookId })],
+      schema: {
+        tags: ["Admin"],
+        summary: "Get a single webhook event",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const { webhookId } = request.params as z.infer<typeof ParamsWebhookId>;
+      const event = await webhookEventsService.get(request.user!, webhookId);
+      return reply.send({ success: true, data: event });
+    },
+  );
+
+  fastify.post(
+    "/webhooks/:webhookId/replay",
+    {
+      preHandler: [...adminPreHandler, validate({ params: ParamsWebhookId })],
+      schema: {
+        tags: ["Admin"],
+        summary: "Replay a stored webhook event",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const { webhookId } = request.params as z.infer<typeof ParamsWebhookId>;
+      // Note: displayName resolution happens INSIDE the service,
+      // after the rate-limit check, so denied attempts don't spend
+      // a user-doc read (security review FAIL-3).
+      const event = await webhookEventsService.replay(request.user!, webhookId);
+      return reply.send({ success: true, data: event });
     },
   );
 

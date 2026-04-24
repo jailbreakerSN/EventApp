@@ -8,6 +8,7 @@ import {
   signWebhookPayload,
   getProviderForWebhook,
 } from "@/services/payment.service";
+import { webhookEventsService } from "@/services/webhook-events.service";
 import { MockPaymentProvider } from "@/providers/mock-payment.provider";
 import { config } from "@/config";
 import {
@@ -16,6 +17,7 @@ import {
   PaymentMethodSchema,
   RefundPaymentSchema,
   PaymentQuerySchema,
+  type WebhookProvider,
 } from "@teranga/shared-types";
 
 const ParamsWithPaymentId = z.object({ paymentId: z.string() });
@@ -247,11 +249,40 @@ export const paymentRoutes: FastifyPluginAsync = async (fastify) => {
         typeof PaymentWebhookSchema
       >;
 
+      // T2.1 — persist the receipt BEFORE invoking the handler so a
+      // crash mid-processing still leaves a replayable row. Idempotent
+      // on (provider, tx, status): a retry from the provider bumps
+      // `attempts` without duplicating the row.
+      const logId = await webhookEventsService.record({
+        provider: providerName as WebhookProvider,
+        providerTransactionId,
+        providerStatus: status,
+        eventType: `payment.${status}`,
+        rawBody,
+        rawHeaders: request.headers as Record<string, string | string[] | undefined>,
+        metadata: metadata ?? null,
+      });
+
       try {
         await paymentService.handleWebhook(providerTransactionId, status, metadata);
+        // Mark processed AFTER the handler returns so a failure lands
+        // as `failed` even if markOutcome itself throws — the handler
+        // wrote no partial state, so an un-marked row at worst looks
+        // "stuck in received" which is investigable.
+        await webhookEventsService.markOutcome({ id: logId, processingStatus: "processed" });
         return reply.send({ success: true });
       } catch (err: unknown) {
-        if (err && typeof err === "object" && "name" in err && err.name === "NotFoundError") {
+        const isNotFound =
+          err && typeof err === "object" && "name" in err && err.name === "NotFoundError";
+        await webhookEventsService.markOutcome({
+          id: logId,
+          processingStatus: "failed",
+          lastError: {
+            code: isNotFound ? "NOT_FOUND" : "HANDLER_ERROR",
+            message: err instanceof Error ? err.message : String(err),
+          },
+        });
+        if (isNotFound) {
           return reply.status(404).send({
             success: false,
             error: { code: "NOT_FOUND", message: "Transaction inconnue" },
@@ -307,11 +338,35 @@ export const paymentRoutes: FastifyPluginAsync = async (fastify) => {
       const { providerTransactionId, status, metadata } = request.body as z.infer<
         typeof PaymentWebhookSchema
       >;
+      // T2.1 — same log-first pattern as /webhook/:provider. The
+      // legacy /webhook endpoint is mock-only in dev/staging, but
+      // it's the path the mock-checkout page exercises so its
+      // receipts need to show up in /admin/webhooks too.
+      const logId = await webhookEventsService.record({
+        provider: "mock",
+        providerTransactionId,
+        providerStatus: status,
+        eventType: `payment.${status}`,
+        rawBody,
+        rawHeaders: request.headers as Record<string, string | string[] | undefined>,
+        metadata: metadata ?? null,
+      });
       try {
         await paymentService.handleWebhook(providerTransactionId, status, metadata);
+        await webhookEventsService.markOutcome({ id: logId, processingStatus: "processed" });
         return reply.send({ success: true });
       } catch (err: unknown) {
-        if (err && typeof err === "object" && "name" in err && err.name === "NotFoundError") {
+        const isNotFound =
+          err && typeof err === "object" && "name" in err && err.name === "NotFoundError";
+        await webhookEventsService.markOutcome({
+          id: logId,
+          processingStatus: "failed",
+          lastError: {
+            code: isNotFound ? "NOT_FOUND" : "HANDLER_ERROR",
+            message: err instanceof Error ? err.message : String(err),
+          },
+        });
+        if (isNotFound) {
           return reply.status(404).send({
             success: false,
             error: { code: "NOT_FOUND", message: "Transaction inconnue" },

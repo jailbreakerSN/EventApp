@@ -95,6 +95,10 @@ export const ERROR_CODES = {
   // Handler exceeded the 5-minute execution budget and was aborted.
   // The run row lands as `status: "failed"` with this code. 504.
   ADMIN_JOB_TIMEOUT: "ADMIN_JOB_TIMEOUT",
+  // T2.1 — admin tried to replay / fetch a webhook event that doesn't
+  // exist in `webhookEvents` (either never received or TTL-purged
+  // after the 90-day retention window). 404.
+  WEBHOOK_EVENT_NOT_FOUND: "WEBHOOK_EVENT_NOT_FOUND",
 } as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];

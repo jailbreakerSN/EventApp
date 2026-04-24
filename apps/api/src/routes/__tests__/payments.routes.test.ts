@@ -72,6 +72,17 @@ vi.mock("@/providers/mock-payment.provider", () => ({
   },
 }));
 
+// T2.1 — webhook events log + replay service. Payment webhook route
+// now calls `.record()` before handling + `.markOutcome()` after. We
+// mock both so the existing route test exercises only the payments
+// surface; the webhook-events service has its own dedicated test file.
+vi.mock("@/services/webhook-events.service", () => ({
+  webhookEventsService: {
+    record: vi.fn().mockResolvedValue("wave__mock-tx__succeeded"),
+    markOutcome: vi.fn().mockResolvedValue(undefined),
+  },
+}));
+
 let app: FastifyInstance;
 
 beforeAll(async () => {

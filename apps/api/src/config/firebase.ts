@@ -139,6 +139,13 @@ export const COLLECTIONS = {
   // a crashed handler can't wedge the job forever. Server-only at
   // the rules layer — Admin SDK writes exclusively.
   ADMIN_JOB_LOCKS: "adminJobLocks",
+  // T2.1 — Payment webhook events log. One doc per received
+  // (provider × transaction × status) triple. Persisted at receipt
+  // time so operators can replay failed deliveries from
+  // `/admin/webhooks`. Raw body kept for debugging / signature
+  // re-verification; TTL 90 days via `firestoreTtlAt`. Server-only
+  // writes — rules deny all client access.
+  WEBHOOK_EVENTS: "webhookEvents",
   // Impersonation auth-code flow (OAuth-style short-lived codes).
   // Doc id = SHA-256 hex of the raw code. Body carries the target
   // uid + adminUid + targetOrigin + issuedAt + expiresAt + consumedAt
