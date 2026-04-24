@@ -47,8 +47,12 @@ export function AuthShell({
           className="min-h-[280px] flex-1 sm:min-h-[320px] lg:min-h-full lg:h-full"
         />
         {/* Brand mark pinned top-left of the navy pane — sits above the
-            hero texture so it is legible regardless of copy length. */}
-        <div className="pointer-events-none absolute left-6 top-6 z-20 flex items-center gap-3 lg:left-8 lg:top-8">
+            hero texture so it is legible regardless of copy length.
+            Hidden below `lg` because the mobile hero only stacks to ~280px
+            and the giant serif title collides with a pinned pill there.
+            The kicker ("✦ Teranga Events · Organisateur") already carries
+            brand identity on the mobile layout, so no brand signal is lost. */}
+        <div className="pointer-events-none absolute left-6 top-6 z-20 hidden items-center gap-3 lg:left-8 lg:top-8 lg:flex">
           {/* White pill contrasts with the always-navy hero in both themes,
               so we pin the coloured logo regardless of the page theme —
               ThemeLogo would swap to the white mark and disappear here. */}
