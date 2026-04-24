@@ -13,6 +13,7 @@ import {
   type NotificationChannel,
   type NotificationDefinition,
   type NotificationPreferenceValue,
+  zStringBoolean,
 } from "@teranga/shared-types";
 import { verifyUnsubscribeToken } from "@/services/notifications/unsubscribe-token";
 import { unsubscribeCategory } from "@/services/notifications/unsubscribe.service";
@@ -30,7 +31,7 @@ const ParamsWithNotificationId = z.object({ notificationId: z.string() });
 const NotificationQuery = z.object({
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().positive().max(100).default(20),
-  unreadOnly: z.coerce.boolean().optional(),
+  unreadOnly: zStringBoolean().optional(),
 });
 
 // Signed unsubscribe tokens are ~200 chars in the current scheme

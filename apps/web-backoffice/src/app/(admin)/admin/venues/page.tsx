@@ -21,12 +21,8 @@ import {
   BreadcrumbSeparator,
 } from "@teranga/shared-ui";
 import { MapPin, Search, ShieldCheck, Ban, CheckCircle } from "lucide-react";
-import {
-  useVenues,
-  useApproveVenue,
-  useSuspendVenue,
-  useReactivateVenue,
-} from "@/hooks/use-venues";
+import { useApproveVenue, useSuspendVenue, useReactivateVenue } from "@/hooks/use-venues";
+import { useAdminVenues } from "@/hooks/use-admin";
 import type { Venue, VenueType, VenueStatus } from "@teranga/shared-types";
 import { useTranslations } from "next-intl";
 import { CsvExportButton } from "@/components/admin/csv-export-button";
@@ -90,7 +86,12 @@ export default function AdminVenuesPage() {
   const [page, setPage] = useState(1);
   const limit = 20;
 
-  const { data, isLoading } = useVenues({
+  // Hits /v1/admin/venues — surfaces every status (pending / approved /
+  // suspended / archived). The previous implementation called the public
+  // `useVenues()` hook which hits /v1/venues (approved-only, silently
+  // drops `status`), so deep-links from the inbox like
+  // `/admin/venues?status=pending` rendered approved venues only.
+  const { data, isLoading } = useAdminVenues({
     q: search || undefined,
     venueType: (typeFilter || undefined) as VenueType | undefined,
     status: (statusFilter || undefined) as VenueStatus | undefined,

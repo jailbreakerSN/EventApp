@@ -6,10 +6,14 @@ async function fetchWithAuth(url: string, options?: RequestInit) {
   const { getAuth } = await import("firebase/auth");
   const auth = getAuth();
   const token = await auth.currentUser?.getIdToken();
+  // Don't advertise JSON when there's no body — Fastify's default JSON
+  // parser rejects empty payloads with 400 (FST_ERR_CTP_EMPTY_JSON_BODY)
+  // when the header is set. Matches the guard in src/lib/api-client.ts.
+  const hasBody = options?.body !== undefined && options?.body !== null;
   const res = await fetch(url, {
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      ...(hasBody ? { "Content-Type": "application/json" } : {}),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...options?.headers,
     },

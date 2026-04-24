@@ -160,9 +160,14 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         <AdminSidebar />
 
         <div className="flex flex-1 flex-col overflow-hidden">
-          {/* Top bar with palette trigger + role pill + identity */}
-          <header className="flex h-12 shrink-0 items-center justify-between border-b border-border bg-background px-4">
-            <div className="flex items-center gap-2">
+          {/* Top bar with palette trigger + role pill + identity.
+              Responsive rules (see review 2026-04-24): narrow viewports
+              used to overflow, pushing the identity dropdown past the
+              right edge with no way to sign out. Non-essential chrome
+              (palette hint text, role badge) now collapses below `md`
+              so the identity trigger stays flush-right on every size. */}
+          <header className="flex h-12 shrink-0 items-center justify-between gap-2 border-b border-border bg-background px-3 sm:px-4">
+            <div className="flex min-w-0 items-center gap-2">
               <button
                 type="button"
                 onClick={() => setPaletteOpen(true)}
@@ -170,7 +175,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 aria-label={t("paletteAria")}
               >
                 <svg
-                  className="h-3.5 w-3.5"
+                  className="h-3.5 w-3.5 shrink-0"
                   viewBox="0 0 24 24"
                   fill="none"
                   stroke="currentColor"
@@ -180,14 +185,14 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                   <circle cx="11" cy="11" r="8" />
                   <path d="M21 21l-4.35-4.35" />
                 </svg>
-                {t("paletteHint")}
-                <kbd className="ml-2 rounded border border-border bg-background px-1 py-0.5 font-mono text-[9px]">
+                <span className="hidden md:inline">{t("paletteHint")}</span>
+                <kbd className="ml-2 hidden rounded border border-border bg-background px-1 py-0.5 font-mono text-[9px] md:inline">
                   ⌘K
                 </kbd>
               </button>
             </div>
 
-            <div className="relative flex items-center gap-3" ref={identityRef}>
+            <div className="relative flex shrink-0 items-center gap-2 sm:gap-3" ref={identityRef}>
               {/* Shell-level controls — parity with the organizer topbar
                   (see components/layouts/topbar.tsx) so operators do not
                   lose theme / locale preferences when crossing between
@@ -196,20 +201,22 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                   their own dedicated surface. */}
               <LanguageSwitcher />
               <ThemeToggle theme={theme} setTheme={setTheme} />
-              <Badge variant="outline" className="text-[10px]">
+              <Badge variant="outline" className="hidden text-[10px] md:inline-flex">
                 {roleLabel}
               </Badge>
               <button
                 ref={triggerRef}
                 type="button"
                 onClick={() => setIdentityOpen((prev) => !prev)}
-                className="flex min-h-[44px] items-center gap-1 rounded-md px-2 py-2 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                className="flex min-h-[44px] shrink-0 items-center gap-1 rounded-md px-2 py-2 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                 aria-haspopup="menu"
                 aria-expanded={identityOpen}
                 aria-controls="admin-identity-menu"
                 aria-label={t("identityMenu")}
               >
-                <span className="max-w-[160px] truncate">{user.displayName ?? user.email}</span>
+                <span className="hidden max-w-[160px] truncate sm:inline">
+                  {user.displayName ?? user.email}
+                </span>
                 <ChevronDown className="h-3 w-3 shrink-0" aria-hidden="true" />
               </button>
               {identityOpen && (

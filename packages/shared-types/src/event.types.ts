@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { zStringBoolean } from "./utils/zod";
 
 // ─── Enums ────────────────────────────────────────────────────────────────────
 
@@ -307,7 +308,7 @@ export const EventSearchQuerySchema = z.object({
   dateFrom: z.string().datetime().optional(), // events starting on or after
   dateTo: z.string().datetime().optional(), // events starting on or before
   organizationId: z.string().optional(),
-  isFeatured: z.coerce.boolean().optional(),
+  isFeatured: zStringBoolean().optional(),
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().positive().max(100).default(20),
   orderBy: z.enum(["startDate", "createdAt", "title"]).default("startDate"),

@@ -68,8 +68,14 @@ async function request<T>(
   auth = true,
   _isRetry = false,
 ): Promise<T> {
+  // Only advertise JSON content-type when there's a body. Fastify's
+  // default JSON parser returns 400 (FST_ERR_CTP_EMPTY_JSON_BODY) if
+  // the header is set but the payload is empty — a pitfall for any
+  // body-less DELETE we might add (e.g. `DELETE /v1/me/fcm-tokens`).
   const headers: Record<string, string> = {
-    "Content-Type": "application/json",
+    ...(options.body !== undefined && options.body !== null
+      ? { "Content-Type": "application/json" }
+      : {}),
     ...(options.headers as Record<string, string>),
   };
 
