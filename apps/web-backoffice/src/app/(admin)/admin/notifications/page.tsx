@@ -61,6 +61,7 @@ import {
   type AdminNotificationUpdateDto,
 } from "@/lib/api-client";
 import { useErrorHandler, type ResolvedError } from "@/hooks/use-error-handler";
+import { CsvExportButton } from "@/components/admin/csv-export-button";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -291,6 +292,7 @@ export default function AdminNotificationsPage() {
         subtitle={t("subtitle")}
         size="hero"
         as="h1"
+        action={<CsvExportButton resource="notifications" />}
       />
 
       {/* Mutation/toggle banner — blocking errors land here per the error-handling contract */}

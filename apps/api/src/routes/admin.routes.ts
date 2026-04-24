@@ -314,12 +314,21 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
   // doesn't blow the Cloud Run memory budget.
   //
   // Shape: GET /v1/admin/export/:resource.csv?<filters>
-  // Resources: users, organizations, events, audit-logs
+  // Resources (T1.3 widened the list): users, organizations, events,
+  // audit-logs, venues, plans, subscriptions, notifications.
   //
   // Filters are the same query schemas used by the list endpoints
   // (AdminUserQuerySchema, AdminOrgQuerySchema, etc) so an admin can
   // "save their current filtered view + export". Saved-view sharing
   // works naturally via URL.
+  //
+  // For the T1.3 resources:
+  //  - venues: ?status= (pending / approved / suspended / archived)
+  //  - plans:  ?includeHistory=true, ?includeArchived=true, ?includePrivate=true
+  //  - subscriptions: ?status= (past_due / active / cancelled / trialing)
+  //  - notifications: ?dateFrom=, ?dateTo=, ?channel=, ?result= — scan is
+  //    clamped to the last 30 days when no dateFrom is provided, so a
+  //    careless export never tries to stream the entire collection.
   fastify.get(
     "/export/:resource.csv",
     {

@@ -1,6 +1,8 @@
 import { BaseService } from "./base.service";
 import { type AuthUser } from "@/middlewares/auth.middleware";
 import { adminRepository } from "@/repositories/admin.repository";
+import { venueRepository } from "@/repositories/venue.repository";
+import { planRepository } from "@/repositories/plan.repository";
 import { db, auth, COLLECTIONS } from "@/config/firebase";
 import { eventBus } from "@/events/event-bus";
 import { getRequestId } from "@/context/request-context";
@@ -210,6 +212,188 @@ class AdminService extends BaseService {
           }
           if (result.data.length < PAGE_SIZE) break;
           page++;
+        }
+        return;
+      }
+
+      // ── Venues (T1.3) ────────────────────────────────────────────────
+      // Paginated via venueRepository.findAll so the max-subset index
+      // (status, city, country, venueType, isFeatured) takes effect.
+      // Optional filter: `status` — admins typically export only the
+      // pending queue for moderation follow-up.
+      if (resource === "venues") {
+        yield "id,name,slug,venueType,status,city,country,hostOrganizationId,contactEmail,contactPhone,isFeatured,rating,eventCount,createdAt\n";
+        const filterStatus = filters.status as
+          | "pending"
+          | "approved"
+          | "suspended"
+          | "archived"
+          | undefined;
+        let page = 1;
+        for (;;) {
+          const result = await venueRepository.findAll(
+            { status: filterStatus },
+            { page, limit: PAGE_SIZE },
+          );
+          if (result.data.length === 0) break;
+          for (const v of result.data) {
+            yield [
+              csvCell(v.id),
+              csvCell(v.name),
+              csvCell(v.slug),
+              csvCell(v.venueType),
+              csvCell(v.status),
+              csvCell(v.address?.city ?? ""),
+              csvCell(v.address?.country ?? ""),
+              csvCell(v.hostOrganizationId ?? ""),
+              csvCell(v.contactEmail),
+              csvCell(v.contactPhone ?? ""),
+              csvCell(v.isFeatured),
+              csvCell(v.rating ?? ""),
+              csvCell(v.eventCount),
+              csvCell(v.createdAt),
+            ].join(",") + "\n";
+          }
+          if (result.data.length < PAGE_SIZE) break;
+          page++;
+        }
+        return;
+      }
+
+      // ── Plans (T1.3) ─────────────────────────────────────────────────
+      // The plan catalog is low-cardinality (tens of rows even with
+      // version history), so we pull the entire set in one shot.
+      // Filters:
+      //   - includeHistory=true → every version of every lineage
+      //   - includeArchived=true → include archived plans
+      //   - includePrivate=true → include non-public plans
+      // Defaults match the public catalog view (latest + public only).
+      if (resource === "plans") {
+        yield "id,key,version,isLatest,lineageId,nameFr,nameEn,priceXof,billingCycle,sortOrder,isPublic,isArchived,createdAt\n";
+        const plans = await planRepository.listCatalog({
+          includeHistory: filters.includeHistory === "true",
+          includeArchived: filters.includeArchived === "true",
+          includePrivate: filters.includePrivate === "true",
+        });
+        for (const p of plans) {
+          yield [
+            csvCell(p.id),
+            csvCell(p.key),
+            csvCell((p as unknown as { version?: number }).version ?? ""),
+            csvCell(p.isLatest ?? true),
+            csvCell((p as unknown as { lineageId?: string }).lineageId ?? ""),
+            csvCell((p as unknown as { name?: { fr?: string } }).name?.fr ?? ""),
+            csvCell((p as unknown as { name?: { en?: string } }).name?.en ?? ""),
+            csvCell((p as unknown as { priceXof?: number }).priceXof ?? 0),
+            csvCell((p as unknown as { billingCycle?: string }).billingCycle ?? ""),
+            csvCell((p as unknown as { sortOrder?: number }).sortOrder ?? 0),
+            csvCell(p.isPublic ?? false),
+            csvCell(p.isArchived ?? false),
+            csvCell((p as unknown as { createdAt?: string }).createdAt ?? ""),
+          ].join(",") + "\n";
+        }
+        return;
+      }
+
+      // ── Subscriptions (T1.3) ─────────────────────────────────────────
+      // Direct Firestore cursor-paginated scan (subscription repo has no
+      // admin list method). `status` filter optional — the common case
+      // is "export past_due for churn follow-up".
+      if (resource === "subscriptions") {
+        yield "id,organizationId,plan,status,billingCycle,priceXof,startDate,endDate,trialEndsAt,createdAt\n";
+        const filterStatus = filters.status;
+        type SubRow = {
+          id: string;
+          organizationId?: string;
+          plan?: string;
+          status?: string;
+          billingCycle?: string;
+          priceXof?: number;
+          startDate?: string;
+          endDate?: string;
+          trialEndsAt?: string;
+          createdAt?: string;
+        };
+        let lastDoc: FirebaseFirestore.QueryDocumentSnapshot | null = null;
+        for (;;) {
+          let q = db
+            .collection(COLLECTIONS.SUBSCRIPTIONS)
+            .orderBy("createdAt", "desc")
+            .limit(PAGE_SIZE);
+          if (filterStatus) q = q.where("status", "==", filterStatus) as typeof q;
+          if (lastDoc) q = q.startAfter(lastDoc);
+          const snap = await q.get();
+          if (snap.empty) break;
+          for (const doc of snap.docs) {
+            const s = { id: doc.id, ...doc.data() } as SubRow;
+            yield [
+              csvCell(s.id),
+              csvCell(s.organizationId ?? ""),
+              csvCell(s.plan ?? ""),
+              csvCell(s.status ?? ""),
+              csvCell(s.billingCycle ?? ""),
+              csvCell(s.priceXof ?? 0),
+              csvCell(s.startDate ?? ""),
+              csvCell(s.endDate ?? ""),
+              csvCell(s.trialEndsAt ?? ""),
+              csvCell(s.createdAt ?? ""),
+            ].join(",") + "\n";
+          }
+          if (snap.docs.length < PAGE_SIZE) break;
+          lastDoc = snap.docs[snap.docs.length - 1] ?? null;
+          if (!lastDoc) break;
+        }
+        return;
+      }
+
+      // ── Notifications (T1.3) ─────────────────────────────────────────
+      // Dispatch log over a bounded window. Defaults to the last 30 days
+      // to cap export size; admins can override via `dateFrom`/`dateTo`.
+      // Optional `channel` / `result` filters narrow scope further.
+      if (resource === "notifications") {
+        yield "attemptedAt,notificationKey,channel,recipientRef,result,suppressionReason,providerMessageId\n";
+        const defaultFrom = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+        const dateFrom = filters.dateFrom ?? defaultFrom;
+        const dateTo = filters.dateTo;
+        const channel = filters.channel;
+        const result = filters.result;
+        type DispatchRow = {
+          attemptedAt?: string;
+          notificationKey?: string;
+          channel?: string;
+          recipientRef?: string;
+          result?: string;
+          suppressionReason?: string | null;
+          providerMessageId?: string | null;
+        };
+        let lastDoc: FirebaseFirestore.QueryDocumentSnapshot | null = null;
+        for (;;) {
+          let q = db
+            .collection(COLLECTIONS.NOTIFICATION_DISPATCH_LOG)
+            .where("attemptedAt", ">=", dateFrom)
+            .orderBy("attemptedAt", "desc")
+            .limit(PAGE_SIZE);
+          if (dateTo) q = q.where("attemptedAt", "<=", dateTo) as typeof q;
+          if (channel) q = q.where("channel", "==", channel) as typeof q;
+          if (result) q = q.where("result", "==", result) as typeof q;
+          if (lastDoc) q = q.startAfter(lastDoc);
+          const snap = await q.get();
+          if (snap.empty) break;
+          for (const doc of snap.docs) {
+            const d = doc.data() as DispatchRow;
+            yield [
+              csvCell(d.attemptedAt ?? ""),
+              csvCell(d.notificationKey ?? ""),
+              csvCell(d.channel ?? ""),
+              csvCell(d.recipientRef ?? ""),
+              csvCell(d.result ?? ""),
+              csvCell(d.suppressionReason ?? ""),
+              csvCell(d.providerMessageId ?? ""),
+            ].join(",") + "\n";
+          }
+          if (snap.docs.length < PAGE_SIZE) break;
+          lastDoc = snap.docs[snap.docs.length - 1] ?? null;
+          if (!lastDoc) break;
         }
         return;
       }

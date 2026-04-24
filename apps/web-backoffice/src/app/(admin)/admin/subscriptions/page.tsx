@@ -25,6 +25,7 @@ import {
 } from "@teranga/shared-ui";
 import { Receipt, ArrowRight } from "lucide-react";
 import { api } from "@/lib/api-client";
+import { CsvExportButton } from "@/components/admin/csv-export-button";
 
 interface RevenueSnapshot {
   activeSubscriptions: number;
@@ -61,6 +62,7 @@ export default function AdminSubscriptionsPage() {
         kicker="— Billing"
         title="Abonnements"
         subtitle="Vue d'ensemble des abonnements actifs par plan."
+        action={<CsvExportButton resource="subscriptions" />}
       />
 
       {data && (

@@ -32,8 +32,18 @@ import { cn } from "@/lib/utils";
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
 
 interface CsvExportButtonProps {
-  /** Resource segment of the URL: users, organizations, events, audit-logs. */
-  resource: "users" | "organizations" | "events" | "audit-logs";
+  /** Resource segment of the URL. T1.3 widened the type union to cover
+   *  every admin list surface: venues, plans, subscriptions, notifications
+   *  join the original four (users, organizations, events, audit-logs). */
+  resource:
+    | "users"
+    | "organizations"
+    | "events"
+    | "audit-logs"
+    | "venues"
+    | "plans"
+    | "subscriptions"
+    | "notifications";
   /** Current filter querystring (without leading ?). */
   filters?: string;
   /** Human label; default based on resource. */
@@ -46,6 +56,10 @@ const DEFAULT_LABEL: Record<CsvExportButtonProps["resource"], string> = {
   organizations: "Exporter organisations",
   events: "Exporter événements",
   "audit-logs": "Exporter audit",
+  venues: "Exporter lieux",
+  plans: "Exporter plans",
+  subscriptions: "Exporter abonnements",
+  notifications: "Exporter notifications",
 };
 
 export function CsvExportButton({
