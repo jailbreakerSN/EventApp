@@ -68,6 +68,8 @@ import type {
   AdminVenueQuery,
   AdminPaymentQuery,
   AdminSubscriptionQuery,
+  AdminInviteQuery,
+  OrganizationInvite,
   AdminAuditQuery,
   Venue,
   VenueQuery,
@@ -810,6 +812,13 @@ export const adminApi = {
   // deep-link).
   listSubscriptions: (query: Partial<AdminSubscriptionQuery> = {}) =>
     api.get<PaginatedResponse<Subscription>>(`/v1/admin/subscriptions${buildQuery(query)}`),
+
+  // Admin invites list — cross-org, powers /admin/invites (+ the
+  // `invites.expired` inbox deep-link). The per-org endpoint
+  // (GET /v1/organizations/:orgId/invites) stays scoped to its org;
+  // this one widens the read surface for platform ops cleanup.
+  listInvites: (query: Partial<AdminInviteQuery> = {}) =>
+    api.get<PaginatedResponse<OrganizationInvite>>(`/v1/admin/invites${buildQuery(query)}`),
 
   listAuditLogs: (query: Partial<AdminAuditQuery> = {}) =>
     api.get<PaginatedResponse<AuditLogEntry>>(`/v1/admin/audit-logs${buildQuery(query)}`),

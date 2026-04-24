@@ -18,6 +18,8 @@ import type {
   AdminVenueQuery,
   AdminPaymentQuery,
   AdminSubscriptionQuery,
+  AdminInviteQuery,
+  OrganizationInvite,
   AdminAuditQuery,
   AdminUserRow,
   ClaimsMatch,
@@ -709,7 +711,12 @@ class AdminService extends BaseService {
         title: `${expiredInvites} invitation${expiredInvites > 1 ? "s" : ""} expirée${expiredInvites > 1 ? "s" : ""}`,
         description: "À nettoyer ou à relancer selon le contexte.",
         count: expiredInvites,
-        href: "/admin/organizations",
+        // Points at the new /admin/invites surface (review 2026-04-24
+        // follow-up). Previously landed on unfiltered /admin/organizations
+        // — operators had no list of invites to action, only orgs to
+        // drill into one by one. `status=expired` hydrates the filter
+        // dropdown on the invites page.
+        href: "/admin/invites?status=expired",
       });
     }
 
@@ -1443,6 +1450,25 @@ class AdminService extends BaseService {
     return adminRepository.listAllSubscriptions(
       { status: query.status, plan: query.plan },
       // Default orderBy (`createdAt DESC`) — same rationale as listPayments.
+      { page: query.page, limit: query.limit },
+    );
+  }
+
+  // ── Invite Oversight ──────────────────────────────────────────────────
+  // Cross-org invitation list for `/admin/invites`. Used by the
+  // "X invitation(s) expirée(s)" inbox card, which previously linked to
+  // the unfiltered org list — operators had no way to see which invites
+  // to relance or purge without drilling into each org manually.
+  //
+  // Default orderBy is inherited from `paginatedQuery` (`createdAt DESC`)
+  // so audit + runtime agree on the required composite index shape.
+  async listInvites(
+    user: AuthUser,
+    query: AdminInviteQuery,
+  ): Promise<PaginatedResult<OrganizationInvite>> {
+    this.requirePermission(user, "platform:manage");
+    return adminRepository.listAllInvites(
+      { status: query.status, organizationId: query.organizationId, role: query.role },
       { page: query.page, limit: query.limit },
     );
   }

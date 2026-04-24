@@ -14,6 +14,7 @@ import {
   AdminVenueQuerySchema,
   AdminPaymentQuerySchema,
   AdminSubscriptionQuerySchema,
+  AdminInviteQuerySchema,
   AdminAuditQuerySchema,
   UpdateUserRolesSchema,
   UpdateUserStatusSchema,
@@ -935,6 +936,31 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
       const result = await adminService.listSubscriptions(
         request.user!,
         request.query as z.infer<typeof AdminSubscriptionQuerySchema>,
+      );
+      return reply.send({ success: true, ...result });
+    },
+  );
+
+  // ── Invites ─────────────────────────────────────────────────────────────
+  // Admin cross-org invitation list. Used by /admin/invites and the
+  // "X invitation(s) expirée(s)" inbox card. The previous deep-link on
+  // that card pointed at /admin/organizations (unfiltered) — operators
+  // had no surface to bulk-cleanup or relance expired invites without
+  // drilling into each org manually.
+  fastify.get(
+    "/invites",
+    {
+      preHandler: [...adminPreHandler, validate({ query: AdminInviteQuerySchema })],
+      schema: {
+        tags: ["Admin"],
+        summary: "List organisation invites across every org (admin platform view)",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const result = await adminService.listInvites(
+        request.user!,
+        request.query as z.infer<typeof AdminInviteQuerySchema>,
       );
       return reply.send({ success: true, ...result });
     },

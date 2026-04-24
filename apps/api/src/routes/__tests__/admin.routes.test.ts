@@ -88,6 +88,7 @@ const mockAdminService = {
   listVenues: vi.fn(),
   listPayments: vi.fn(),
   listSubscriptions: vi.fn(),
+  listInvites: vi.fn(),
   listAuditLogs: vi.fn(),
 };
 
@@ -281,6 +282,7 @@ const ORGANIZER_DENIED_MATRIX: Array<{
   { method: "GET", url: "/v1/admin/venues" },
   { method: "GET", url: "/v1/admin/payments" },
   { method: "GET", url: "/v1/admin/subscriptions" },
+  { method: "GET", url: "/v1/admin/invites" },
   { method: "GET", url: "/v1/admin/audit-logs" },
   {
     method: "POST",
@@ -456,6 +458,52 @@ describe("Admin routes — super_admin happy paths", () => {
     );
     const body = JSON.parse(res.body);
     expect(body.data[0].status).toBe("past_due");
+  });
+
+  it("GET /invites?status=expired → 200 forwards the status filter (inbox parity)", async () => {
+    // Regression pin for the `invites.expired` inbox card. Previously
+    // that card linked to the unfiltered /admin/organizations page —
+    // operators had no list of expired invites to action. The admin
+    // endpoint must surface the full status enum so the hydrated
+    // `?status=expired` filter actually reaches the service.
+    mockAdminService.listInvites.mockResolvedValue({
+      data: [
+        {
+          id: "inv-expired-1",
+          status: "expired",
+          email: "old@example.com",
+          role: "member",
+          organizationId: "org-1",
+        },
+      ],
+      meta: { page: 1, limit: 20, total: 1 },
+    });
+
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/admin/invites?status=expired",
+      headers: authHeader,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(mockAdminService.listInvites).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({ status: "expired" }),
+    );
+    const body = JSON.parse(res.body);
+    expect(body.data[0].status).toBe("expired");
+  });
+
+  it("GET /invites → 400 rejects an unknown status enum value", async () => {
+    // Belt-and-braces — the Zod enum rejects typos at the route
+    // boundary so we never silently fall back to "show everything"
+    // when a stale bookmark carries `status=ex`.
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/admin/invites?status=ex",
+      headers: authHeader,
+    });
+    expect(res.statusCode).toBe(400);
+    expect(mockAdminService.listInvites).not.toHaveBeenCalled();
   });
 
   it("GET /venues?status=pending → 200 forwards the status filter", async () => {
