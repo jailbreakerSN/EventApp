@@ -464,6 +464,7 @@ class AdminService extends BaseService {
       failedWebhooks,
       signupAnomalies,
       multiDeviceScans,
+      eventsLive,
     ] = await Promise.all([
       safeCount("venues.pending", async () => {
         const snap = await db
@@ -584,6 +585,40 @@ class AdminService extends BaseService {
           if (devices.size >= 2) badgeShares++;
         }
         return badgeShares;
+      }),
+      // T5.1 / closes P2.1 — events currently in-progress across the
+      // platform. "Live" = status: "published" AND startDate <= now
+      // AND endDate >= now. Surfaced so ops has at-a-glance awareness
+      // of concurrent production events (spikes correlate with
+      // webhook volume, check-in load, support contact rate).
+      //
+      // Firestore single-index limitation: we can only range-filter
+      // on one field per query. We filter server-side on startDate,
+      // then check `endDate >= now` in memory — bounded by the 500-
+      // row hard cap and startDate-range already cuts to events that
+      // began recently. In practice the live-event window is tiny
+      // (most events are ≤ 3 days), so the memory filter runs against
+      // at most a few dozen rows.
+      safeCount("events_live", async () => {
+        const nowIso = new Date().toISOString();
+        // Pull events whose startDate is in the past, ordered
+        // desc. Any event that STARTED before now but hasn't yet
+        // ENDED is a candidate.
+        const snap = await db
+          .collection(COLLECTIONS.EVENTS)
+          .where("status", "==", "published")
+          .where("startDate", "<=", nowIso)
+          .orderBy("startDate", "desc")
+          .select("endDate")
+          .limit(500)
+          .get();
+        let live = 0;
+        for (const doc of snap.docs) {
+          const row = doc.data() as { endDate?: string };
+          if (!row.endDate) continue;
+          if (row.endDate >= nowIso) live++;
+        }
+        return live;
       }),
     ]);
 
@@ -720,6 +755,25 @@ class AdminService extends BaseService {
         description: "Même QR scanné par ≥ 2 scanners distincts en 24h. Signal badge-share.",
         count: multiDeviceScans,
         href: "/admin/audit?action=checkin.completed",
+      });
+    }
+
+    // T5.1 — events currently live on the platform. Info severity:
+    // "N events running right now" is situational awareness, not an
+    // alert. Category `events_live` (already defined in the signal
+    // type union) routes to the inbox's dedicated "events live"
+    // section and deep-links to the events page filtered by
+    // status: published.
+    if (eventsLive > 0) {
+      signals.push({
+        id: "events.live",
+        category: "events_live",
+        severity: "info",
+        title: `${eventsLive} événement${eventsLive > 1 ? "s" : ""} en cours`,
+        description:
+          "Événements publiés dont la plage horaire est en cours. Surveiller la charge webhook + check-in.",
+        count: eventsLive,
+        href: "/admin/events?status=published",
       });
     }
 
@@ -1399,7 +1453,13 @@ class AdminService extends BaseService {
     user: AuthUser,
     query: AdminAuditQuery,
   ): Promise<PaginatedResult<AuditLogEntry>> {
-    this.requirePermission(user, "platform:manage");
+    // T5.2 — defense-in-depth for the route-level narrowing. Every
+    // platform:* role holds `platform:audit_read`; super_admin still
+    // passes the `platform:manage` branch via the hasPermission()
+    // all-pass rule. `profile:read_any` (held by organizer too) is
+    // DELIBERATELY not in this allowlist — cross-tenant audit access
+    // must stay platform-only.
+    this.requireAnyPermission(user, ["platform:audit_read", "platform:manage"]);
     return adminRepository.listAuditLogs(
       {
         action: query.action,

@@ -225,6 +225,7 @@
       "countLabel": "{count, plural, one {# event} other {# events}}"
     },
     "promises": {
+      "sectionHeading": "What we promise you",
       "one": {
         "num": "01",
         "title": "Register in 45 seconds",

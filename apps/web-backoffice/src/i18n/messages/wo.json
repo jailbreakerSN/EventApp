@@ -196,6 +196,92 @@
     }
   },
   "admin": {
+    "apiKeys": {
+      "heading": "Clés API",
+      "countActive": "{count, plural, =0 {Amul ndax bu mëngoo} one {# ndax bu mëngoo} other {# ndax yu mëngoo}}",
+      "plaintextOnceNote": "Plaintext dana wone benn yoon rekk ci bindug bi.",
+      "newKey": "Bindug ndax bu bees",
+      "noOrgTitle": "Amul organisation",
+      "noOrgDescription": "Tasaruwante ak organizer pour yombal ndax API yi.",
+      "planRequiredTitle": "Plan Enterprise laa soxla ngir bind ndax bu bees",
+      "planRequiredActive": "Ndax yi nga am léegi dañu jàppoo ci. Mën nga leen faagal léegi.",
+      "planRequiredUpgrade": "Jëflaat sa abonnement ngir boole Teranga ak sa ay jumtukaay.",
+      "upgradeCta": "Jàlle ci plan Enterprise",
+      "emptyTitle": "Amul ndax bu nga bind",
+      "emptyDescription": "Bindul sa ndax bu jëkk ngir boole Teranga ak sa ay jumtukaay.",
+      "emptyCta": "Bindul benn ndax",
+      "rotateFailed": "Rotation faloon — jëflat.",
+      "createFailed": "Bindug bi faloon — jëflat.",
+      "revokeFailed": "Faagal bi faloon — jëflat.",
+      "revokeSuccess": "Ndax faagaloo na.",
+      "confirmRevokeTitle": "Faagal ndax bii ?",
+      "confirmRevokeDescription": "Appels yi jëfëndikoo bii ndax dañu taxaw léegi. Dafa dëgër — dangaa war bind ndax bu bees.",
+      "revoke": "Faagal",
+      "revoking": "Ñu ngi faagal…",
+      "cancel": "Ñàkk",
+      "scopeCount": "{count, plural, =0 {0 scope} one {# scope} other {# scopes}}",
+      "lastUsed": "jëfëndikoo na ci {when}",
+      "neverUsed": "jamais jëfandikoo",
+      "rotateAria": "Rotate ndax {name}",
+      "revokeAria": "Faagal ndax {name}",
+      "rotateLabel": "Rotation",
+      "revokedOn": "Faagaloo na {date}",
+      "revoked": "Faagaloo",
+      "active": "Bu mëngoo",
+      "createTitle": "Bindul benn ndax API",
+      "createDescription": "Tann tur bu leer ak scopes yi la soxla. Plaintext dana wone benn yoon rekk.",
+      "nameLabel": "Tur",
+      "namePlaceholder": "Misal : Scanner iPad #3",
+      "environmentLabel": "Environnement",
+      "environmentProd": "Production",
+      "environmentTest": "Test",
+      "scopesLabel": "Scopes",
+      "scopesHint": "Tann sa soxla rekk — moindre privilège dafay wàññi lu mën di mbugal bu ndax dagg.",
+      "scopeRequired": "Tann ñaari scope bu nekk.",
+      "creating": "Ñu ngi bind…",
+      "create": "Bindul ndax",
+      "revealTitle": "Copy sa ndax léegi",
+      "revealDescription": "Ndax bii du meloo benn yoon. Denc ko léegi ci gestionnaire de secrets — 1Password, Bitwarden, Vault, wala AWS Secrets Manager — ci kanam, xaar ko ci sa service ci environnement variable. Bul ko dugg ci Slack, Git, wala document bu ñu bokk.",
+      "copied": "Ndax copy-oo na ci presse-papier.",
+      "copyFallbackSelected": "Automatic copy faloon. Ndax bi tànnu na — bës Cmd/Ctrl+C.",
+      "copyFailed": "Copy faloon — tànn ko ak sa loxo.",
+      "copyAria": "Copy ndax",
+      "plaintextAria": "Ndax API plaintext",
+      "acknowledgement": "Copy naa ndax bi ak denc ko ci gestionnaire de secrets. Dëgg naa ne du ma ko manoo génn ba beneen.",
+      "dismissErrorAria": "Tëj message bu bon",
+      "close": "Tëj",
+      "scopes": {
+        "eventRead": {
+          "label": "Jàng events",
+          "hint": "Gis events yi (liste, détail, agenda, statut)"
+        },
+        "registrationReadAll": {
+          "label": "Jàng inscriptions",
+          "hint": "Export participants (sync CRM, reporting)"
+        },
+        "badgeGenerate": {
+          "label": "Generate badges",
+          "hint": "Taxawal generation PDF badge ci volume"
+        },
+        "checkinScan": {
+          "label": "Check-in / scan",
+          "hint": "Boole scanner ak portillon"
+        }
+      }
+    },
+    "savedViews": {
+      "label": "Views :",
+      "applyAria": "Jëfëndikoo view « {name} »",
+      "removeAria": "Rot view « {name} »",
+      "savePrompt": "Denc view bii",
+      "nameLabel": "Tur view bu bees",
+      "namePlaceholder": "Tur view",
+      "confirm": "OK",
+      "cancelAria": "Ñàkk"
+    },
+    "announcementBanner": {
+      "dismissAria": "Tëj yëgle « {title} »"
+    },
     "shell": {
       "loading": "Ñu ngi yeeg administration...",
       "skipToContent": "Dem ci barab bu gën a njariñ",

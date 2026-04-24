@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { X, Info, AlertTriangle, AlertOctagon } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { api } from "@/lib/api-client";
 
 /**
@@ -72,6 +73,7 @@ const STALE_MS = 4 * 60 * 1000; // below poll interval so each poll is a real re
 const MAX_CONSECUTIVE_FAILURES = 2;
 
 export function AnnouncementBanner() {
+  const t = useTranslations("admin.announcementBanner");
   const [failureCount, setFailureCount] = useState(0);
   const shouldPoll = failureCount < MAX_CONSECUTIVE_FAILURES;
 
@@ -176,7 +178,7 @@ export function AnnouncementBanner() {
             setDismissedIds((prev) => new Set(prev).add(visible.id));
           }}
           className="p-0.5 opacity-70 hover:opacity-100"
-          aria-label={`Fermer l'annonce « ${visible.title} »`}
+          aria-label={t("dismissAria", { title: visible.title })}
         >
           <X className="h-4 w-4" />
         </button>

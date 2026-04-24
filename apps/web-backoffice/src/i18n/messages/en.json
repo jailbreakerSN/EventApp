@@ -271,6 +271,92 @@
     "currentPlan": "Current plan"
   },
   "admin": {
+    "apiKeys": {
+      "heading": "API Keys",
+      "countActive": "{count, plural, =0 {No active keys} one {# active key} other {# active keys}}",
+      "plaintextOnceNote": "Plaintext shown exactly once at creation.",
+      "newKey": "New key",
+      "noOrgTitle": "No organization selected",
+      "noOrgDescription": "Sign in with an organizer account to manage API keys.",
+      "planRequiredTitle": "Enterprise plan required to issue new keys",
+      "planRequiredActive": "Your existing keys still work. You can revoke them below at any time.",
+      "planRequiredUpgrade": "Upgrade your plan to integrate Teranga with your internal tools.",
+      "upgradeCta": "Upgrade to Enterprise",
+      "emptyTitle": "No keys issued",
+      "emptyDescription": "Create your first key to integrate Teranga with your tools.",
+      "emptyCta": "Create a key",
+      "rotateFailed": "Rotation failed — please retry.",
+      "createFailed": "Creation failed — please retry.",
+      "revokeFailed": "Revocation failed — please retry.",
+      "revokeSuccess": "Key revoked.",
+      "confirmRevokeTitle": "Revoke this key?",
+      "confirmRevokeDescription": "Calls using this key will stop working immediately. This action is irreversible — you'll need to issue a new key.",
+      "revoke": "Revoke",
+      "revoking": "Revoking…",
+      "cancel": "Cancel",
+      "scopeCount": "{count, plural, =0 {0 scopes} one {# scope} other {# scopes}}",
+      "lastUsed": "used {when}",
+      "neverUsed": "never used",
+      "rotateAria": "Rotate key {name}",
+      "revokeAria": "Revoke key {name}",
+      "rotateLabel": "Rotate",
+      "revokedOn": "Revoked {date}",
+      "revoked": "Revoked",
+      "active": "Active",
+      "createTitle": "Create an API key",
+      "createDescription": "Pick a descriptive name and the minimum scopes you need. The plaintext will be shown ONCE.",
+      "nameLabel": "Name",
+      "namePlaceholder": "e.g. Scanner iPad #3",
+      "environmentLabel": "Environment",
+      "environmentProd": "Production",
+      "environmentTest": "Test",
+      "scopesLabel": "Scopes",
+      "scopesHint": "Pick the minimum you need — least-privilege limits blast radius on a leak.",
+      "scopeRequired": "Pick at least one scope.",
+      "creating": "Creating…",
+      "create": "Create key",
+      "revealTitle": "Copy your key now",
+      "revealDescription": "This key will never be shown again. Store it now in a secrets manager — 1Password, Bitwarden, Vault, or AWS Secrets Manager — and wire it into your service via an environment variable. NEVER paste it into Slack, Git, or a shared document.",
+      "copied": "Key copied to clipboard.",
+      "copyFallbackSelected": "Auto-copy failed. The key is selected — press Cmd/Ctrl+C.",
+      "copyFailed": "Copy failed — please select the text manually.",
+      "copyAria": "Copy key",
+      "plaintextAria": "API key plaintext",
+      "acknowledgement": "I've copied the key and stored it in a secrets manager. I understand I can't retrieve it again.",
+      "dismissErrorAria": "Dismiss error",
+      "close": "Close",
+      "scopes": {
+        "eventRead": {
+          "label": "Read events",
+          "hint": "View your org's events (list, detail, agenda, status)"
+        },
+        "registrationReadAll": {
+          "label": "Read registrations",
+          "hint": "Export participant lists (CRM sync, reporting)"
+        },
+        "badgeGenerate": {
+          "label": "Generate badges",
+          "hint": "Trigger bulk badge PDF generation"
+        },
+        "checkinScan": {
+          "label": "Check-in / scan",
+          "hint": "Integrate a hardware scanner or turnstile"
+        }
+      }
+    },
+    "savedViews": {
+      "label": "Views:",
+      "applyAria": "Apply view « {name} »",
+      "removeAria": "Remove view « {name} »",
+      "savePrompt": "Save this view",
+      "nameLabel": "Name of the new view",
+      "namePlaceholder": "View name",
+      "confirm": "OK",
+      "cancelAria": "Cancel"
+    },
+    "announcementBanner": {
+      "dismissAria": "Dismiss announcement « {title} »"
+    },
     "shell": {
       "loading": "Loading administration...",
       "skipToContent": "Skip to main content",

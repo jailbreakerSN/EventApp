@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useRef } from "react";
+import { useTranslations } from "next-intl";
 import { useAuth } from "@/hooks/use-auth";
 import {
   useApiKeys,
@@ -48,30 +49,18 @@ import { toast } from "sonner";
  *     appears in the same one-time modal.
  */
 
-const ALL_SCOPES: { key: ApiKeyScope; label: string; hint: string }[] = [
-  {
-    key: "event:read",
-    label: "Lecture événements",
-    hint: "Voir les événements et leurs détails (liste, agenda, statut)",
-  },
-  {
-    key: "registration:read_all",
-    label: "Lecture inscriptions",
-    hint: "Exporter la liste des participants (sync CRM, reporting)",
-  },
-  {
-    key: "badge:generate",
-    label: "Génération de badges",
-    hint: "Déclencher la génération PDF de badges en volume",
-  },
-  {
-    key: "checkin:scan",
-    label: "Check-in / scan",
-    hint: "Intégrer un scanner matériel ou un portillon d'accès",
-  },
+// i18n key-table — maps the ApiKeyScope enum value to the
+// `admin.apiKeys.scopes.<slug>` message key. Kept as a pure mapping so
+// scope ordering in the UI stays stable across locales.
+const SCOPE_I18N_KEYS: { key: ApiKeyScope; i18nKey: string }[] = [
+  { key: "event:read", i18nKey: "eventRead" },
+  { key: "registration:read_all", i18nKey: "registrationReadAll" },
+  { key: "badge:generate", i18nKey: "badgeGenerate" },
+  { key: "checkin:scan", i18nKey: "checkinScan" },
 ];
 
 export default function ApiKeysPage() {
+  const t = useTranslations("admin.apiKeys");
   const { user } = useAuth();
   const orgId = user?.organizationId ?? "";
   const { canUse } = usePlanGating();
@@ -102,11 +91,7 @@ export default function ApiKeysPage() {
   if (!orgId) {
     return (
       <div className="p-6">
-        <EmptyState
-          icon={Key}
-          title="Aucune organisation sélectionnée"
-          description="Connectez-vous avec un compte organisateur pour gérer vos clés API."
-        />
+        <EmptyState icon={Key} title={t("noOrgTitle")} description={t("noOrgDescription")} />
       </div>
     );
   }
@@ -123,16 +108,16 @@ export default function ApiKeysPage() {
       <header className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold flex items-center gap-2">
-            <Key className="h-6 w-6" /> Clés API
+            <Key className="h-6 w-6" /> {t("heading")}
           </h1>
           <p className="text-muted-foreground mt-1">
-            {activeCount} {activeCount === 1 ? "clé active" : "clés actives"} ·
-            <span className="ml-1">Plaintext affiché une seule fois à la création.</span>
+            {t("countActive", { count: activeCount })} ·{" "}
+            <span className="ml-1">{t("plaintextOnceNote")}</span>
           </p>
         </div>
         {hasApiAccess && (
           <Button onClick={() => setCreateOpen(true)}>
-            <Plus className="h-4 w-4 mr-2" /> Nouvelle clé
+            <Plus className="h-4 w-4 mr-2" /> {t("newKey")}
           </Button>
         )}
       </header>
@@ -146,20 +131,16 @@ export default function ApiKeysPage() {
           <div className="flex items-start gap-3">
             <Lock className="h-5 w-5 text-amber-700 mt-0.5" aria-hidden />
             <div className="flex-1">
-              <h2 className="font-semibold text-amber-900">
-                Plan Enterprise requis pour émettre de nouvelles clés
-              </h2>
+              <h2 className="font-semibold text-amber-900">{t("planRequiredTitle")}</h2>
               <p className="text-sm text-amber-800 mt-1">
-                {hasExistingKeys
-                  ? "Vos clés existantes restent fonctionnelles. Vous pouvez les révoquer ci-dessous à tout moment."
-                  : "Mettez à niveau votre abonnement pour intégrer Teranga à vos outils internes."}
+                {hasExistingKeys ? t("planRequiredActive") : t("planRequiredUpgrade")}
               </p>
               <Button
                 size="sm"
                 className="mt-3"
                 onClick={() => (window.location.href = "/organization/billing")}
               >
-                Passer au plan Enterprise
+                {t("upgradeCta")}
               </Button>
             </div>
           </div>
@@ -180,11 +161,11 @@ export default function ApiKeysPage() {
       ) : keys.length === 0 ? (
         <EmptyState
           icon={Key}
-          title="Aucune clé émise"
-          description="Créez votre première clé pour intégrer Teranga à vos outils."
+          title={t("emptyTitle")}
+          description={t("emptyDescription")}
           action={
             <Button onClick={() => setCreateOpen(true)}>
-              <Plus className="h-4 w-4 mr-2" /> Créer une clé
+              <Plus className="h-4 w-4 mr-2" /> {t("emptyCta")}
             </Button>
           }
         />
@@ -222,6 +203,7 @@ export default function ApiKeysPage() {
                     ...prev,
                     [k.id]: resolveError(err),
                   }));
+                  toast.error(t("rotateFailed"));
                 }
               }}
             />
@@ -247,6 +229,7 @@ export default function ApiKeysPage() {
             setPlaintextDismissed(false);
           } catch (err) {
             setCreateError(resolveError(err));
+            toast.error(t("createFailed"));
           }
         }}
         isPending={createMut.isPending}
@@ -278,11 +261,8 @@ export default function ApiKeysPage() {
         >
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Révoquer cette clé ?</DialogTitle>
-              <DialogDescription>
-                Les appels utilisant cette clé cesseront de fonctionner immédiatement. Cette action
-                est irréversible — vous devrez émettre une nouvelle clé.
-              </DialogDescription>
+              <DialogTitle>{t("confirmRevokeTitle")}</DialogTitle>
+              <DialogDescription>{t("confirmRevokeDescription")}</DialogDescription>
             </DialogHeader>
             {revokeError && (
               <InlineErrorBanner
@@ -290,7 +270,7 @@ export default function ApiKeysPage() {
                 description={revokeError.description}
                 severity={revokeError.severity === "info" ? "info" : "destructive"}
                 onDismiss={() => setRevokeError(null)}
-                dismissLabel="Fermer le message d'erreur"
+                dismissLabel={t("dismissErrorAria")}
               />
             )}
             <DialogFooter>
@@ -301,7 +281,7 @@ export default function ApiKeysPage() {
                   setRevokeError(null);
                 }}
               >
-                Annuler
+                {t("cancel")}
               </Button>
               <Button
                 variant="destructive"
@@ -312,15 +292,16 @@ export default function ApiKeysPage() {
                       apiKeyId: confirmRevoke.id,
                       reason: "manual",
                     });
-                    toast.success("Clé révoquée.");
+                    toast.success(t("revokeSuccess"));
                     setConfirmRevoke(null);
                   } catch (err) {
                     setRevokeError(resolveError(err));
+                    toast.error(t("revokeFailed"));
                   }
                 }}
                 disabled={revokeMut.isPending}
               >
-                {revokeMut.isPending ? "Révocation…" : "Révoquer"}
+                {revokeMut.isPending ? t("revoking") : t("revoke")}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -347,13 +328,14 @@ function ApiKeyRow({
   onRotate: () => void;
   onDismissRotateError: () => void;
 }) {
+  const t = useTranslations("admin.apiKeys");
   return (
     <div className="p-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
       <div className="flex-1 min-w-0">
         <div className="flex flex-wrap items-center gap-2">
           <span className="font-semibold truncate">{apiKey.name}</span>
           <Badge variant={apiKey.status === "active" ? "success" : "neutral"}>
-            {apiKey.status === "active" ? "Active" : "Révoquée"}
+            {apiKey.status === "active" ? t("active") : t("revoked")}
           </Badge>
           <Badge variant="info">{apiKey.environment}</Badge>
         </div>
@@ -361,10 +343,10 @@ function ApiKeyRow({
           terk_{apiKey.environment}_{apiKey.hashPrefix}…
         </div>
         <div className="text-xs text-muted-foreground mt-1">
-          {apiKey.scopes.length} scope{apiKey.scopes.length !== 1 ? "s" : ""} ·
+          {t("scopeCount", { count: apiKey.scopes.length })} ·{" "}
           {apiKey.lastUsedAt
-            ? ` utilisée ${new Date(apiKey.lastUsedAt).toLocaleString("fr-SN")}`
-            : " jamais utilisée"}
+            ? t("lastUsed", { when: new Date(apiKey.lastUsedAt).toLocaleString("fr-SN") })
+            : t("neverUsed")}
         </div>
         {rotateError && (
           <div className="mt-2">
@@ -373,7 +355,7 @@ function ApiKeyRow({
               description={rotateError.description}
               severity={rotateError.severity === "info" ? "info" : "destructive"}
               onDismiss={onDismissRotateError}
-              dismissLabel="Fermer le message d'erreur"
+              dismissLabel={t("dismissErrorAria")}
             />
           </div>
         )}
@@ -385,25 +367,25 @@ function ApiKeyRow({
               variant="outline"
               size="sm"
               onClick={onRotate}
-              aria-label={`Faire tourner la clé ${apiKey.name}`}
+              aria-label={t("rotateAria", { name: apiKey.name })}
             >
-              <RefreshCw className="h-4 w-4 mr-2" /> Rotation
+              <RefreshCw className="h-4 w-4 mr-2" /> {t("rotateLabel")}
             </Button>
           )}
           <Button
             variant="destructive"
             size="sm"
             onClick={onRevoke}
-            aria-label={`Révoquer la clé ${apiKey.name}`}
+            aria-label={t("revokeAria", { name: apiKey.name })}
           >
-            <Ban className="h-4 w-4 mr-2" /> Révoquer
+            <Ban className="h-4 w-4 mr-2" /> {t("revoke")}
           </Button>
         </div>
       ) : (
         <span className="text-xs text-muted-foreground">
           {apiKey.revokedAt
-            ? `Révoquée ${new Date(apiKey.revokedAt).toLocaleDateString("fr-SN")}`
-            : "Révoquée"}
+            ? t("revokedOn", { date: new Date(apiKey.revokedAt).toLocaleDateString("fr-SN") })
+            : t("revoked")}
         </span>
       )}
     </div>
@@ -427,6 +409,8 @@ function CreateApiKeyDialog({
   error: ResolvedError | null;
   onDismissError: () => void;
 }) {
+  const t = useTranslations("admin.apiKeys");
+  const tScopes = useTranslations("admin.apiKeys.scopes");
   const [name, setName] = useState("");
   const [scopes, setScopes] = useState<Set<ApiKeyScope>>(new Set());
   const [environment, setEnvironment] = useState<"live" | "test">("live");
@@ -466,11 +450,8 @@ function CreateApiKeyDialog({
     >
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Créer une clé API</DialogTitle>
-          <DialogDescription>
-            Choisissez un nom descriptif et les scopes minimum nécessaires. Le plaintext sera
-            affiché UNE SEULE fois.
-          </DialogDescription>
+          <DialogTitle>{t("createTitle")}</DialogTitle>
+          <DialogDescription>{t("createDescription")}</DialogDescription>
         </DialogHeader>
 
         {/* Frontend-review remediation: wrap the form in a real <form>
@@ -490,17 +471,17 @@ function CreateApiKeyDialog({
               description={error.description}
               severity={error.severity === "info" ? "info" : "destructive"}
               onDismiss={onDismissError}
-              dismissLabel="Fermer le message d'erreur"
+              dismissLabel={t("dismissErrorAria")}
             />
           )}
 
           <div>
             <label className="text-sm font-medium" htmlFor="api-key-name">
-              Nom
+              {t("nameLabel")}
             </label>
             <Input
               id="api-key-name"
-              placeholder="Ex : Scanner iPad #3"
+              placeholder={t("namePlaceholder")}
               value={name}
               onChange={(e) => setName(e.target.value)}
               maxLength={100}
@@ -511,7 +492,7 @@ function CreateApiKeyDialog({
 
           <div>
             <p className="text-sm font-medium" id="api-key-env-label">
-              Environnement
+              {t("environmentLabel")}
             </p>
             <div className="flex gap-2 mt-1" role="radiogroup" aria-labelledby="api-key-env-label">
               {(["live", "test"] as const).map((env) => (
@@ -527,7 +508,7 @@ function CreateApiKeyDialog({
                       : "border-gray-300"
                   }`}
                 >
-                  {env === "live" ? "Production" : "Test"}
+                  {env === "live" ? t("environmentProd") : t("environmentTest")}
                 </button>
               ))}
             </div>
@@ -535,18 +516,15 @@ function CreateApiKeyDialog({
 
           <div>
             <p className="text-sm font-medium" id="api-key-scopes-label">
-              Scopes
+              {t("scopesLabel")}
             </p>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Sélectionnez le minimum nécessaire — le principe du moindre privilège limite le rayon
-              d&apos;exposition en cas de fuite.
-            </p>
+            <p className="text-xs text-muted-foreground mt-0.5">{t("scopesHint")}</p>
             <div className="space-y-2 mt-1" role="group" aria-labelledby="api-key-scopes-label">
-              {ALL_SCOPES.map((scope) => {
-                const selected = scopes.has(scope.key);
+              {SCOPE_I18N_KEYS.map(({ key, i18nKey }) => {
+                const selected = scopes.has(key);
                 return (
                   <label
-                    key={scope.key}
+                    key={key}
                     className="flex items-start gap-2 p-2 rounded hover:bg-gray-50 cursor-pointer"
                   >
                     <input
@@ -554,17 +532,17 @@ function CreateApiKeyDialog({
                       checked={selected}
                       onChange={(e) => {
                         const next = new Set(scopes);
-                        if (e.target.checked) next.add(scope.key);
-                        else next.delete(scope.key);
+                        if (e.target.checked) next.add(key);
+                        else next.delete(key);
                         setScopes(next);
                       }}
-                      aria-describedby={`scope-hint-${scope.key}`}
+                      aria-describedby={`scope-hint-${key}`}
                       className="mt-0.5"
                     />
                     <div>
-                      <div className="font-medium text-sm">{scope.label}</div>
-                      <div className="text-xs text-muted-foreground" id={`scope-hint-${scope.key}`}>
-                        {scope.hint}
+                      <div className="font-medium text-sm">{tScopes(`${i18nKey}.label`)}</div>
+                      <div className="text-xs text-muted-foreground" id={`scope-hint-${key}`}>
+                        {tScopes(`${i18nKey}.hint`)}
                       </div>
                     </div>
                   </label>
@@ -573,17 +551,17 @@ function CreateApiKeyDialog({
             </div>
             {showScopeError && (
               <p className="text-xs text-destructive mt-2" role="alert">
-                Sélectionnez au moins un scope.
+                {t("scopeRequired")}
               </p>
             )}
           </div>
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Annuler
+              {t("cancel")}
             </Button>
             <Button type="submit" disabled={!canSubmit}>
-              {isPending ? "Création…" : "Créer la clé"}
+              {isPending ? t("creating") : t("create")}
             </Button>
           </DialogFooter>
         </form>
@@ -605,6 +583,7 @@ function PlaintextModal({
   onAcknowledge: () => void;
   onClose: () => void;
 }) {
+  const t = useTranslations("admin.apiKeys");
   const [copied, setCopied] = useState(false);
   const codeRef = useRef<HTMLElement>(null);
 
@@ -613,7 +592,7 @@ function PlaintextModal({
     try {
       await navigator.clipboard.writeText(plaintext);
       setCopied(true);
-      toast.success("Clé copiée dans le presse-papiers.");
+      toast.success(t("copied"));
       setTimeout(() => setCopied(false), 2000);
     } catch {
       // Safari private-mode / no-clipboard-permission fallback.
@@ -624,11 +603,9 @@ function PlaintextModal({
         const sel = window.getSelection();
         sel?.removeAllRanges();
         sel?.addRange(range);
-        toast.info(
-          "Impossible de copier automatiquement. La clé est sélectionnée — appuyez sur Cmd/Ctrl+C.",
-        );
+        toast.info(t("copyFallbackSelected"));
       } catch {
-        toast.error("Impossible de copier — sélectionnez-la manuellement.");
+        toast.error(t("copyFailed"));
       }
     }
   }
@@ -639,14 +616,9 @@ function PlaintextModal({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <AlertTriangle className="h-5 w-5 text-amber-500" />
-            Copiez votre clé maintenant
+            {t("revealTitle")}
           </DialogTitle>
-          <DialogDescription>
-            Cette clé ne sera plus jamais affichée. Stockez-la immédiatement dans un gestionnaire de
-            secrets — 1Password, Bitwarden, Vault, ou AWS Secrets Manager — puis intégrez-la à votre
-            service via variable d&apos;environnement. Ne la pastez JAMAIS dans Slack, Git, ou un
-            document partagé.
-          </DialogDescription>
+          <DialogDescription>{t("revealDescription")}</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4">
@@ -654,7 +626,7 @@ function PlaintextModal({
             <code
               ref={codeRef}
               className="flex-1 font-mono text-xs break-all select-all"
-              aria-label="Clé API plaintext"
+              aria-label={t("plaintextAria")}
             >
               {plaintext}
             </code>
@@ -662,7 +634,7 @@ function PlaintextModal({
               size="sm"
               variant="outline"
               onClick={copyToClipboard}
-              aria-label="Copier la clé"
+              aria-label={t("copyAria")}
             >
               {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
             </Button>
@@ -675,16 +647,13 @@ function PlaintextModal({
               onChange={(e) => e.target.checked && onAcknowledge()}
               className="mt-0.5"
             />
-            <span>
-              J&apos;ai copié la clé et je l&apos;ai stockée dans un gestionnaire de secrets. Je
-              comprends que je ne pourrai plus la récupérer.
-            </span>
+            <span>{t("acknowledgement")}</span>
           </label>
         </div>
 
         <DialogFooter>
           <Button onClick={onClose} disabled={!acknowledged}>
-            Fermer
+            {t("close")}
           </Button>
         </DialogFooter>
       </DialogContent>
