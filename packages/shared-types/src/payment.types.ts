@@ -105,6 +105,30 @@ export const PaymentQuerySchema = z.object({
 
 export type PaymentQuery = z.infer<typeof PaymentQuerySchema>;
 
+/**
+ * Admin payment listing. Behind `platform:manage`, reads across every
+ * organisation. Powers `/admin/payments?status=failed` (inbox
+ * deep-link) and the finance ops review surface. Note: the public
+ * `PaymentQuerySchema` is event-scoped (`listByEvent`) while this
+ * schema is cross-org.
+ */
+export const AdminPaymentQuerySchema = z.object({
+  status: PaymentStatusSchema.optional(),
+  method: PaymentMethodSchema.optional(),
+  organizationId: z.string().optional(),
+  eventId: z.string().optional(),
+  page: z.coerce.number().int().positive().default(1),
+  limit: z.coerce.number().int().positive().max(100).default(20),
+  // orderBy is deliberately not exposed: the repository's paginated
+  // helper defaults to `createdAt DESC`, which matches the static-
+  // analysis audit in `scripts/audit-firestore-indexes.ts`. Exposing
+  // `initiatedAt` / `updatedAt` would multiply the required index
+  // set without adding UI value — payments are rendered chronologically
+  // from the receipt's creation timestamp already.
+});
+
+export type AdminPaymentQuery = z.infer<typeof AdminPaymentQuerySchema>;
+
 // ─── Receipt ────────────────────────────────────────────────────────────────
 
 export const ReceiptSchema = z.object({

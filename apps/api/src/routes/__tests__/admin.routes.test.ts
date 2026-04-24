@@ -86,6 +86,8 @@ const mockAdminService = {
   updateOrgStatus: vi.fn(),
   listEvents: vi.fn(),
   listVenues: vi.fn(),
+  listPayments: vi.fn(),
+  listSubscriptions: vi.fn(),
   listAuditLogs: vi.fn(),
 };
 
@@ -277,6 +279,8 @@ const ORGANIZER_DENIED_MATRIX: Array<{
   { method: "PATCH", url: "/v1/admin/organizations/org-1/status", body: { isActive: false } },
   { method: "GET", url: "/v1/admin/events" },
   { method: "GET", url: "/v1/admin/venues" },
+  { method: "GET", url: "/v1/admin/payments" },
+  { method: "GET", url: "/v1/admin/subscriptions" },
   { method: "GET", url: "/v1/admin/audit-logs" },
   {
     method: "POST",
@@ -404,6 +408,54 @@ describe("Admin routes — super_admin happy paths", () => {
       { planId: "plan-pro" },
       expect.any(Object),
     );
+  });
+
+  it("GET /payments?status=failed → 200 forwards the status filter (inbox parity)", async () => {
+    // Regression for review 2026-04-24 follow-up: the
+    // `payments.failed` inbox card used to link to the audit log,
+    // which showed an empty list when audit entries lagged behind
+    // the payments collection. It now points at /admin/payments
+    // and the API must honour the status filter.
+    mockAdminService.listPayments.mockResolvedValue({
+      data: [{ id: "pay-failed-1", status: "failed", amount: 75000, method: "wave" }],
+      meta: { page: 1, limit: 20, total: 1 },
+    });
+
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/admin/payments?status=failed",
+      headers: authHeader,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(mockAdminService.listPayments).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({ status: "failed" }),
+    );
+    const body = JSON.parse(res.body);
+    expect(body.data[0].status).toBe("failed");
+  });
+
+  it("GET /subscriptions?status=past_due → 200 forwards the status filter (inbox parity)", async () => {
+    // Same pattern for the `subscriptions.past_due` card — the
+    // subscriptions page now hydrates from ?status=past_due and
+    // renders the impacted orgs inline.
+    mockAdminService.listSubscriptions.mockResolvedValue({
+      data: [{ id: "sub-past-due-1", status: "past_due", plan: "pro", priceXof: 29900 }],
+      meta: { page: 1, limit: 20, total: 1 },
+    });
+
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/admin/subscriptions?status=past_due",
+      headers: authHeader,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(mockAdminService.listSubscriptions).toHaveBeenCalledWith(
+      expect.any(Object),
+      expect.objectContaining({ status: "past_due" }),
+    );
+    const body = JSON.parse(res.body);
+    expect(body.data[0].status).toBe("past_due");
   });
 
   it("GET /venues?status=pending → 200 forwards the status filter", async () => {

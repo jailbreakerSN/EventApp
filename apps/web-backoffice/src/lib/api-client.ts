@@ -66,6 +66,8 @@ import type {
   AdminOrgQuery,
   AdminEventQuery,
   AdminVenueQuery,
+  AdminPaymentQuery,
+  AdminSubscriptionQuery,
   AdminAuditQuery,
   Venue,
   VenueQuery,
@@ -796,6 +798,18 @@ export const adminApi = {
   // the inbox deep-link `/admin/venues?status=pending`.
   listVenues: (query: Partial<AdminVenueQuery> = {}) =>
     api.get<PaginatedResponse<Venue>>(`/v1/admin/venues${buildQuery(query)}`),
+
+  // Admin payments list — cross-org, powers /admin/payments (+ the
+  // `payments.failed` inbox deep-link). The public `paymentsApi` is
+  // event-scoped; this one is not.
+  listPayments: (query: Partial<AdminPaymentQuery> = {}) =>
+    api.get<PaginatedResponse<Payment>>(`/v1/admin/payments${buildQuery(query)}`),
+
+  // Admin subscriptions list — cross-org, powers the past_due section
+  // on /admin/subscriptions (+ the `subscriptions.past_due` inbox
+  // deep-link).
+  listSubscriptions: (query: Partial<AdminSubscriptionQuery> = {}) =>
+    api.get<PaginatedResponse<Subscription>>(`/v1/admin/subscriptions${buildQuery(query)}`),
 
   listAuditLogs: (query: Partial<AdminAuditQuery> = {}) =>
     api.get<PaginatedResponse<AuditLogEntry>>(`/v1/admin/audit-logs${buildQuery(query)}`),

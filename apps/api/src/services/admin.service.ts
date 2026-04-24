@@ -16,6 +16,8 @@ import type {
   AdminOrgQuery,
   AdminEventQuery,
   AdminVenueQuery,
+  AdminPaymentQuery,
+  AdminSubscriptionQuery,
   AdminAuditQuery,
   AdminUserRow,
   ClaimsMatch,
@@ -23,6 +25,7 @@ import type {
   Organization,
   Event,
   AuditLogEntry,
+  Payment,
   Plan,
   Subscription,
   Venue,
@@ -638,11 +641,11 @@ class AdminService extends BaseService {
         title: `${pastDueSubs} abonnement${pastDueSubs > 1 ? "s" : ""} en impayé`,
         description: "Relance en cours — accompagner avant churn.",
         count: pastDueSubs,
-        // `/admin/subscriptions` is the canonical subscriptions surface
-        // (closure F). Previously the href went to `/admin/organizations`
-        // without any filter — the admin would land on the full org list
-        // with no link between the signal count and what they saw.
-        href: "/admin/subscriptions",
+        // Points at the filtered subscriptions list (review 2026-04-24
+        // follow-up). Previously landed on the summary-only page with
+        // no way to see the impacted orgs — operators had to open
+        // /admin/organizations and eyeball each plan badge.
+        href: "/admin/subscriptions?status=past_due",
       });
     }
 
@@ -654,7 +657,12 @@ class AdminService extends BaseService {
         title: `${failedPayments} paiement${failedPayments > 1 ? "s" : ""} échoué${failedPayments > 1 ? "s" : ""}`,
         description: "Historique des échecs — relancer ou contacter.",
         count: failedPayments,
-        href: "/admin/audit?action=payment.failed",
+        // Points at the new /admin/payments surface (review 2026-04-24
+        // follow-up). The previous target `/admin/audit?action=payment.failed`
+        // queried the audit log but the count probe reads the payments
+        // collection directly — so any failed payment without a
+        // matching audit row landed the operator on an empty list.
+        href: "/admin/payments?status=failed",
       });
     }
 
@@ -1346,6 +1354,42 @@ class AdminService extends BaseService {
         orderBy: query.orderBy,
         orderDir: query.orderDir,
       },
+    );
+  }
+
+  // ── Payment Oversight ─────────────────────────────────────────────────
+  // Cross-org payments list for /admin/payments. Used by the
+  // "X paiement(s) échoué(s)" inbox card, which previously linked to
+  // the audit log and showed an empty list whenever audit entries
+  // lagged behind the payments collection.
+  async listPayments(user: AuthUser, query: AdminPaymentQuery): Promise<PaginatedResult<Payment>> {
+    this.requirePermission(user, "platform:manage");
+    return adminRepository.listAllPayments(
+      {
+        status: query.status,
+        method: query.method,
+        organizationId: query.organizationId,
+        eventId: query.eventId,
+      },
+      // Use the repository's default orderBy (`createdAt DESC`) so the
+      // declared indexes cover every realistic query shape.
+      { page: query.page, limit: query.limit },
+    );
+  }
+
+  // ── Subscription Oversight ────────────────────────────────────────────
+  // Cross-org subscriptions list for /admin/subscriptions. Lets the
+  // "X abonnement(s) en impayé" inbox card land on the concrete
+  // past-due list instead of the summary-by-plan view.
+  async listSubscriptions(
+    user: AuthUser,
+    query: AdminSubscriptionQuery,
+  ): Promise<PaginatedResult<Subscription>> {
+    this.requirePermission(user, "platform:manage");
+    return adminRepository.listAllSubscriptions(
+      { status: query.status, plan: query.plan },
+      // Default orderBy (`createdAt DESC`) — same rationale as listPayments.
+      { page: query.page, limit: query.limit },
     );
   }
 

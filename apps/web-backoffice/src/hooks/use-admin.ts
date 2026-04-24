@@ -5,6 +5,8 @@ import type {
   AdminOrgQuery,
   AdminEventQuery,
   AdminVenueQuery,
+  AdminPaymentQuery,
+  AdminSubscriptionQuery,
   AdminAuditQuery,
   CreatePlanDto,
   UpdatePlanDto,
@@ -111,6 +113,30 @@ export function useAdminVenues(params: Partial<AdminVenueQuery> = {}) {
   return useQuery({
     queryKey: ["admin", "venues", params],
     queryFn: () => adminApi.listVenues(params),
+  });
+}
+
+// ─── Payments (admin finance-ops surface) ───────────────────────────────────
+// Use this on /admin/payments (and the inbox deep-link for
+// `payments.failed`). The public `paymentsApi` hooks are event-scoped
+// and won't carry the failed row unless the operator already knows
+// which event to drill into.
+
+export function useAdminPayments(params: Partial<AdminPaymentQuery> = {}) {
+  return useQuery({
+    queryKey: ["admin", "payments", params],
+    queryFn: () => adminApi.listPayments(params),
+  });
+}
+
+// ─── Subscriptions (admin billing-ops surface) ─────────────────────────────
+// Powers the past_due section of /admin/subscriptions (+ the inbox
+// `subscriptions.past_due` deep-link).
+
+export function useAdminSubscriptions(params: Partial<AdminSubscriptionQuery> = {}) {
+  return useQuery({
+    queryKey: ["admin", "subscriptions", params],
+    queryFn: () => adminApi.listSubscriptions(params),
   });
 }
 
