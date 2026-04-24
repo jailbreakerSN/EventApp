@@ -189,3 +189,63 @@ a scheduled cleanup or alert on `impersonationCodes` size.
   readability. TTL evaluates `expiresAt` — keep the Date there.
 - **Server-only collection**: never exposed to clients (see
   `firestore.rules` → `match /impersonationCodes/{codeHash}`).
+
+---
+
+## `webhookEvents.expiresAt` (T2.1 — webhook replay log)
+
+**What it does.** Auto-expires `webhookEvents` rows 90 days after the
+provider first delivered the webhook. Persists long enough for a real
+ops replay workflow (Wave / Orange Money incidents are usually debugged
+within days, rarely weeks) but bounded so the log never becomes
+unbounded storage cost.
+
+**Retention policy.** Fixed 90-day TTL enforced in code at receipt time
+(`WebhookEventsService.record()` sets `expiresAt = firstReceivedAt +
+90 days`). Replay attempts do NOT extend the TTL — once a webhook is
+90 days old, its retention clock does not reset, even if an admin
+replays it. This keeps retention predictable for audit + storage
+forecasting.
+
+The field is populated by `WebhookEventsService.record()` — see
+`apps/api/src/services/webhook-events.service.ts`.
+
+### Provisioning
+
+Run once per environment (staging + production):
+
+```bash
+gcloud firestore fields ttls update expiresAt \
+  --collection-group=webhookEvents \
+  --enable-ttl \
+  --project=<FIREBASE_PROJECT_ID>
+```
+
+Verify:
+
+```bash
+gcloud firestore fields ttls list --project=<FIREBASE_PROJECT_ID>
+```
+
+Look for a row keyed `webhookEvents.expiresAt` with
+`ttlConfig.state: ACTIVE`.
+
+### Monitoring
+
+Same metric — `firestore.googleapis.com/document/ttl_deletion_count`
+in Cloud Monitoring. Expected daily deletion rate roughly matches the
+webhook volume from 90 days prior. Sustained zero means either the TTL
+policy lapsed or no webhook traffic has landed in the last 90 days
+(both worth investigating in different directions).
+
+### Caveats
+
+- **Payment compliance is NOT served by this log.** Payment records
+  (`payments` collection) carry their own retention (indefinite today,
+  multi-year per WAEMU rules) — the webhook log is strictly for
+  operational replay / debugging.
+- **Raw body can hit 64 KB.** Bounded via truncation in the service
+  (see comment on `record()`), so a rogue provider sending a 10 MB
+  body never explodes a Firestore doc.
+- **Server-only collection**: never exposed to clients (see
+  `firestore.rules` → `match /webhookEvents/{eventId}`).

@@ -155,6 +155,10 @@ export const SEED_COVERAGE_WAIVER: ReadonlyMap<string, string> = new Map<
     "adminJobLocks",
     "Single-flight locks for the admin job runner (T2.2). One doc per jobKey, held only while a handler is running (≤ 5 min) and deleted on completion. Transient operational state — seeding would either block the first real trigger or fill the collection with zombie locks. Reset behaviour is implicit (any run deletes its own lock; stale locks self-reclaim).",
   ],
+  [
+    "webhookEvents",
+    "Runtime-received payment-provider webhooks (T2.1). Populated only when a provider actually calls /v1/payments/webhook/:provider. Seeding synthetic rows would either look like real deliveries in the admin console (misleading operators) or trigger replay attempts against non-existent payments (noise in the audit trail). Purely operational log.",
+  ],
 ]);
 
 // ─── COLLECTIONS constant parsing ──────────────────────────────────────────

@@ -638,6 +638,18 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // ─── Webhook Events log (T2.1 — payment-provider replay console) ──────
+    // Persisted record of every payment-provider webhook we receive.
+    // Doc id = `${provider}__${providerTransactionId}__${providerStatus}`
+    // so a retry from Wave / Orange Money converges on the same row.
+    // Raw body kept for debugging + future signature re-verification;
+    // Admin replay re-invokes the handler idempotently from this log.
+    // Server-only — no client ever touches it directly. Precedent:
+    // rateLimitBuckets, refundLocks, impersonationCodes.
+    match /webhookEvents/{eventId} {
+      allow read, write: if false;
+    }
+
     // ─── Admin Job Locks (T2.2 — single-flight for the job runner) ─────────
     // One doc per registered jobKey. Written transactionally by the admin-
     // jobs service before a handler starts + deleted in finally. Stale

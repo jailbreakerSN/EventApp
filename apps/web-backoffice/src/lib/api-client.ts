@@ -91,6 +91,8 @@ import type {
   AdminJobDescriptor,
   AdminJobRun,
   AdminJobRunsQuery,
+  AdminWebhookEventsQuery,
+  WebhookEventLog,
 } from "@teranga/shared-types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
@@ -831,6 +833,20 @@ export const adminApi = {
     api.post<ApiResponse<AdminJobRun>>(
       `/v1/admin/jobs/${encodeURIComponent(jobKey)}/run`,
       input ? { input } : {},
+    ),
+
+  // ── Payment webhook events log + replay (T2.1) ──────────────────────────
+  // See packages/shared-types/src/webhook-events.types.ts for the shape.
+  listWebhookEvents: (query: Partial<AdminWebhookEventsQuery> = {}) =>
+    api.get<PaginatedResponse<WebhookEventLog>>(`/v1/admin/webhooks${buildQuery(query)}`),
+
+  getWebhookEvent: (webhookId: string) =>
+    api.get<ApiResponse<WebhookEventLog>>(`/v1/admin/webhooks/${encodeURIComponent(webhookId)}`),
+
+  replayWebhookEvent: (webhookId: string) =>
+    api.post<ApiResponse<WebhookEventLog>>(
+      `/v1/admin/webhooks/${encodeURIComponent(webhookId)}/replay`,
+      {},
     ),
 };
 

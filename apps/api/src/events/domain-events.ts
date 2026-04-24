@@ -1138,6 +1138,10 @@ export interface DomainEventMap {
   // mutations beyond the coarse `admin.job_completed` summary.
   // Precedent: `checkin.bulk_synced`.
   "invite.bulk_expired": InviteBulkExpiredEvent;
+  // T2.1 — admin replayed a stored webhook event from /admin/webhooks.
+  // Fires at replay start (before the handler runs) so security
+  // listeners see the attempt even if the handler hangs.
+  "admin.webhook_replayed": AdminWebhookReplayedEvent;
 }
 
 /** Phase 4 — emitted by adminService.startImpersonation(). */
@@ -1196,6 +1200,14 @@ export interface InviteBulkExpiredEvent {
   runId: string;
   count: number;
   processedAt: string;
+}
+
+/** T2.1 — emitted by WebhookEventsService.replay() at attempt start. */
+export interface AdminWebhookReplayedEvent {
+  actorUid: string;
+  webhookEventId: string;
+  provider: string;
+  providerTransactionId: string;
 }
 
 export type DomainEventName = keyof DomainEventMap;
