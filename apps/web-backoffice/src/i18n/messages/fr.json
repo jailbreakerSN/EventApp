@@ -14,9 +14,17 @@
     },
     "roles": {
       "super_admin": "Super Admin",
+      "platform:super_admin": "Super Admin",
+      "platform:support": "Admin Support",
+      "platform:finance": "Admin Finance",
+      "platform:ops": "Admin Ops",
+      "platform:security": "Admin Sécurité",
       "organizer": "Organisateur",
       "co_organizer": "Co-organisateur",
+      "venue_manager": "Gestionnaire de lieux",
       "staff": "Staff",
+      "speaker": "Intervenant",
+      "sponsor": "Sponsor",
       "participant": "Participant"
     },
     "loading": "Chargement...",

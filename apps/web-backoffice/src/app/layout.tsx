@@ -5,6 +5,7 @@ import { getLocale, getMessages } from "next-intl/server";
 import "./globals.css";
 import { Providers } from "./providers";
 import { Toaster, OfflineBanner } from "@teranga/shared-ui";
+import { ImpersonationBanner } from "@/components/admin/impersonation-banner";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -76,6 +77,17 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       <body className={inter.className}>
         <NextIntlClientProvider locale={locale} messages={messages}>
           <OfflineBanner />
+          {/*
+            Impersonation banner at the ROOT layout so it's visible on
+            every route group — (auth), (admin), (dashboard), and any
+            root-level page like /unauthorized or /impersonation/accept.
+            The banner self-gates on the `impersonatedBy` token claim,
+            so non-impersonated sessions render nothing (no flash).
+            Previously duplicated across (dashboard) and (admin)
+            layouts — those mounts have been removed so there's a
+            single source of truth.
+          */}
+          <ImpersonationBanner />
           <Providers>{children}</Providers>
           <Toaster />
         </NextIntlClientProvider>

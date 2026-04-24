@@ -20,10 +20,18 @@
     },
     "roles": {
       "super_admin": "Super Admin",
+      "platform:super_admin": "Super Admin",
+      "platform:support": "Admin Support",
+      "platform:finance": "Admin Finance",
+      "platform:ops": "Admin Ops",
+      "platform:security": "Admin Sécurité",
       "organizer": "Organisateur",
       "co_organizer": "Co-organisateur",
+      "venue_manager": "Mbay barab",
       "staff": "Staff",
-      "participant": "Participant"
+      "speaker": "Waxkat",
+      "sponsor": "Sponsor",
+      "participant": "Nit ñi bokk"
     },
     "loading": "Di yëngu...",
     "error": "Bënn mbir bu bon am na",

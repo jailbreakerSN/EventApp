@@ -10,7 +10,6 @@ import { SidebarProvider } from "@/components/layouts/sidebar-context";
 import { BrandedLoader } from "@/components/branded-loader";
 import { CommandPalette } from "@/components/command-palette";
 import { KeyboardShortcutsDialog } from "@/components/keyboard-shortcuts-dialog";
-import { ImpersonationBanner } from "@/components/admin/impersonation-banner";
 import { useAuth } from "@/hooks/use-auth";
 import { useKeyboardShortcuts } from "@/hooks/use-keyboard-shortcuts";
 // Shared access taxonomy — single source of truth for who may traverse
@@ -92,11 +91,9 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
       {/* Keyboard shortcuts help dialog — opens on "?" */}
       <KeyboardShortcutsDialog open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
 
-      {/* Phase 4 — Persistent banner whenever a super-admin is acting
-          as another user. Renders OUTSIDE the Sidebar/TopBar shell so
-          it stays visible regardless of which admin / dashboard page
-          the admin is on. */}
-      <ImpersonationBanner />
+      {/* Impersonation banner now mounted at the root layout — see
+          apps/web-backoffice/src/app/layout.tsx. One source of truth
+          across every route group (auth, admin, dashboard, root). */}
 
       <div className="flex h-screen bg-muted overflow-hidden">
         <Sidebar />

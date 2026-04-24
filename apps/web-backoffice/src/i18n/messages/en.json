@@ -14,9 +14,17 @@
     },
     "roles": {
       "super_admin": "Super Admin",
+      "platform:super_admin": "Super Admin",
+      "platform:support": "Support Admin",
+      "platform:finance": "Finance Admin",
+      "platform:ops": "Ops Admin",
+      "platform:security": "Security Admin",
       "organizer": "Organizer",
       "co_organizer": "Co-organizer",
+      "venue_manager": "Venue Manager",
       "staff": "Staff",
+      "speaker": "Speaker",
+      "sponsor": "Sponsor",
       "participant": "Participant"
     },
     "loading": "Loading...",

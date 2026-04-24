@@ -23,6 +23,7 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
 import { useSidebar } from "./sidebar-context";
 import { usePlanGating } from "@/hooks/use-plan-gating";
+import { usePermissions } from "@/hooks/use-permissions";
 import { UsageMeter } from "@/components/plan/UsageMeter";
 import type { UserRole } from "@teranga/shared-types";
 import { usePlansCatalogMap, getPlanDisplay } from "@/hooks/use-plans-catalog";
@@ -224,8 +225,14 @@ export function Sidebar() {
             in the top bar. See lib/access.ts + components/layouts/topbar.tsx. */}
       </nav>
 
-      {/* Plan widget */}
-      <SidebarPlanWidget />
+      {/* Plan widget — only for callers who can actually read the
+          organization (`organization:read`). Venue managers hold
+          venue:* permissions but no org-read, and the plan widget
+          fires `/organizations/:id` + `/organizations/:id/usage` under
+          the hood — unconditional mounting produces a 403 storm in
+          their console. Hiding the widget is the honest signal: they
+          don't own the billing relationship. */}
+      <SidebarPlanWidgetGate />
     </>
   );
 
@@ -266,6 +273,16 @@ export function Sidebar() {
       </aside>
     </>
   );
+}
+
+// Permission-gated wrapper: cheap check runs every render so the
+// expensive plan-gating hook (two network calls) only mounts for
+// callers who can actually read the org. Venue managers + staff fall
+// through to null and the sidebar ends without a plan box.
+function SidebarPlanWidgetGate() {
+  const { can } = usePermissions();
+  if (!can("organization:read")) return null;
+  return <SidebarPlanWidget />;
 }
 
 function SidebarPlanWidget() {
