@@ -7,6 +7,16 @@ import { z } from "zod";
 export const PermissionSchema = z.enum([
   // ── Platform ──────────────────────────────────────────────────────────────
   "platform:manage", // super admin — full platform control
+  /**
+   * T5.2 — narrow audit-read capability. Every `platform:*` operator
+   * role holds this so they can read the cross-tenant audit log, but
+   * non-platform roles (organizer, co_organizer, etc.) do NOT — even
+   * if they hold `profile:read_any` for their own org context. The
+   * audit route gates on
+   * `requireAnyPermission(["platform:audit_read", "platform:manage"])`
+   * so super_admin still passes via the safety-net.
+   */
+  "platform:audit_read",
 
   // ── Organization ──────────────────────────────────────────────────────────
   "organization:create",
@@ -395,9 +405,10 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRole, readonly Permission[]>
   // per admin role; new platform features add themselves to the right
   // bucket here and the route-level gate references the narrow
   // permission.
-  "platform:super_admin": ["platform:manage"],
+  "platform:super_admin": ["platform:manage", "platform:audit_read"],
   "platform:support": [
     "platform:manage", // migration safety-net — see note above
+    "platform:audit_read",
     // Narrow capabilities once routes are migrated:
     "organization:read",
     "event:read",
@@ -406,6 +417,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRole, readonly Permission[]>
   ],
   "platform:finance": [
     "platform:manage", // migration safety-net
+    "platform:audit_read",
     "plan:manage",
     "subscription:override",
     "organization:read",
@@ -418,6 +430,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRole, readonly Permission[]>
   ],
   "platform:ops": [
     "platform:manage", // migration safety-net
+    "platform:audit_read",
     "event:read",
     "organization:read",
     "registration:read_all",
@@ -425,6 +438,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRole, readonly Permission[]>
   ],
   "platform:security": [
     "platform:manage", // migration safety-net
+    "platform:audit_read",
     "profile:read_any",
     "organization:read",
     "event:read",

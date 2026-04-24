@@ -6,6 +6,7 @@ import {
   type RoleAssignment,
   PLAN_LIMITS,
   PLAN_LIMIT_UNLIMITED,
+  hasAnyPermission,
   hasPermission,
   isAdminSystemRole,
   resolvePermissions,
@@ -74,6 +75,23 @@ export abstract class BaseService {
   protected hasPermission(user: AuthUser, permission: Permission): boolean {
     const perms = this.resolveUserPermissions(user);
     return hasPermission(perms, permission);
+  }
+
+  /**
+   * T5.2 — throw ForbiddenError unless the user holds AT LEAST ONE of
+   * the provided permissions. Used by the per-route permission
+   * tightening: a route gated on `["subscription:override",
+   * "platform:manage"]` accepts either the narrow capability OR the
+   * super-admin safety-net, so narrow `platform:*` roles can reach it
+   * without giving them the full `platform:manage` scope.
+   */
+  protected requireAnyPermission(user: AuthUser, permissions: Permission[]): void {
+    const perms = this.resolveUserPermissions(user);
+    if (!hasAnyPermission(perms, permissions)) {
+      throw new ForbiddenError(
+        `Permissions manquantes (au moins une requise) : ${permissions.join(", ")}`,
+      );
+    }
   }
 
   /**

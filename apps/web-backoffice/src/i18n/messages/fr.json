@@ -271,6 +271,92 @@
     "currentPlan": "Plan actuel"
   },
   "admin": {
+    "apiKeys": {
+      "heading": "Clés API",
+      "countActive": "{count, plural, =0 {Aucune clé active} one {# clé active} other {# clés actives}}",
+      "plaintextOnceNote": "Plaintext affiché une seule fois à la création.",
+      "newKey": "Nouvelle clé",
+      "noOrgTitle": "Aucune organisation sélectionnée",
+      "noOrgDescription": "Connectez-vous avec un compte organisateur pour gérer vos clés API.",
+      "planRequiredTitle": "Plan Enterprise requis pour émettre de nouvelles clés",
+      "planRequiredActive": "Vos clés existantes restent fonctionnelles. Vous pouvez les révoquer ci-dessous à tout moment.",
+      "planRequiredUpgrade": "Mettez à niveau votre abonnement pour intégrer Teranga à vos outils internes.",
+      "upgradeCta": "Passer au plan Enterprise",
+      "emptyTitle": "Aucune clé émise",
+      "emptyDescription": "Créez votre première clé pour intégrer Teranga à vos outils.",
+      "emptyCta": "Créer une clé",
+      "rotateFailed": "Rotation échouée — réessayez.",
+      "createFailed": "Création échouée — réessayez.",
+      "revokeFailed": "Révocation échouée — réessayez.",
+      "revokeSuccess": "Clé révoquée.",
+      "confirmRevokeTitle": "Révoquer cette clé ?",
+      "confirmRevokeDescription": "Les appels utilisant cette clé cesseront de fonctionner immédiatement. Cette action est irréversible — vous devrez émettre une nouvelle clé.",
+      "revoke": "Révoquer",
+      "revoking": "Révocation…",
+      "cancel": "Annuler",
+      "scopeCount": "{count, plural, =0 {0 scope} one {# scope} other {# scopes}}",
+      "lastUsed": "utilisée {when}",
+      "neverUsed": "jamais utilisée",
+      "rotateAria": "Faire tourner la clé {name}",
+      "revokeAria": "Révoquer la clé {name}",
+      "rotateLabel": "Rotation",
+      "revokedOn": "Révoquée {date}",
+      "revoked": "Révoquée",
+      "active": "Active",
+      "createTitle": "Créer une clé API",
+      "createDescription": "Choisissez un nom descriptif et les scopes minimum nécessaires. Le plaintext sera affiché UNE SEULE fois.",
+      "nameLabel": "Nom",
+      "namePlaceholder": "Ex : Scanner iPad #3",
+      "environmentLabel": "Environnement",
+      "environmentProd": "Production",
+      "environmentTest": "Test",
+      "scopesLabel": "Scopes",
+      "scopesHint": "Sélectionnez le minimum nécessaire — le principe du moindre privilège limite le rayon d'exposition en cas de fuite.",
+      "scopeRequired": "Sélectionnez au moins un scope.",
+      "creating": "Création…",
+      "create": "Créer la clé",
+      "revealTitle": "Copiez votre clé maintenant",
+      "revealDescription": "Cette clé ne sera plus jamais affichée. Stockez-la immédiatement dans un gestionnaire de secrets — 1Password, Bitwarden, Vault, ou AWS Secrets Manager — puis intégrez-la à votre service via variable d'environnement. Ne la pastez JAMAIS dans Slack, Git, ou un document partagé.",
+      "copied": "Clé copiée dans le presse-papiers.",
+      "copyFallbackSelected": "Impossible de copier automatiquement. La clé est sélectionnée — appuyez sur Cmd/Ctrl+C.",
+      "copyFailed": "Impossible de copier — sélectionnez-la manuellement.",
+      "copyAria": "Copier la clé",
+      "plaintextAria": "Clé API plaintext",
+      "acknowledgement": "J'ai copié la clé et je l'ai stockée dans un gestionnaire de secrets. Je comprends que je ne pourrai plus la récupérer.",
+      "dismissErrorAria": "Fermer le message d'erreur",
+      "close": "Fermer",
+      "scopes": {
+        "eventRead": {
+          "label": "Lecture événements",
+          "hint": "Voir les événements et leurs détails (liste, agenda, statut)"
+        },
+        "registrationReadAll": {
+          "label": "Lecture inscriptions",
+          "hint": "Exporter la liste des participants (sync CRM, reporting)"
+        },
+        "badgeGenerate": {
+          "label": "Génération de badges",
+          "hint": "Déclencher la génération PDF de badges en volume"
+        },
+        "checkinScan": {
+          "label": "Check-in / scan",
+          "hint": "Intégrer un scanner matériel ou un portillon d'accès"
+        }
+      }
+    },
+    "savedViews": {
+      "label": "Vues :",
+      "applyAria": "Appliquer la vue « {name} »",
+      "removeAria": "Supprimer la vue « {name} »",
+      "savePrompt": "Sauvegarder cette vue",
+      "nameLabel": "Nom de la nouvelle vue",
+      "namePlaceholder": "Nom de la vue",
+      "confirm": "OK",
+      "cancelAria": "Annuler"
+    },
+    "announcementBanner": {
+      "dismissAria": "Fermer l'annonce « {title} »"
+    },
     "shell": {
       "loading": "Chargement de l'administration...",
       "skipToContent": "Aller au contenu principal",

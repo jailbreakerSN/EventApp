@@ -2,7 +2,7 @@ import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import { authenticate } from "@/middlewares/auth.middleware";
 import { validate } from "@/middlewares/validate.middleware";
-import { requirePermission } from "@/middlewares/permission.middleware";
+import { requireAnyPermission, requirePermission } from "@/middlewares/permission.middleware";
 import { adminService } from "@/services/admin.service";
 import { adminJobsService } from "@/services/admin-jobs.service";
 import { webhookEventsService } from "@/services/webhook-events.service";
@@ -52,10 +52,40 @@ const ParamsUserId = z.object({ userId: z.string() });
 const ParamsOrgId = z.object({ orgId: z.string() });
 
 // ─── Admin Routes ───────────────────────────────────────────────────────────
-// All endpoints require platform:manage permission (super_admin only).
+// Each endpoint picks the narrowest applicable gate:
+//
+//   - `adminPreHandler`          → `platform:manage`
+//     Reserved for routes whose effect crosses every operator surface
+//     (users lifecycle, org lifecycle, moderation, feature flags,
+//     impersonation, broad config). No narrow equivalent in the
+//     capability catalogue today.
+//
+//   - `financeAdminPreHandler`   → `subscription:override` OR `platform:manage`
+//     Plan assignment + per-org subscription overrides. Accessible by
+//     `platform:finance` alongside `super_admin` / `platform:super_admin`.
+//
+//   - `auditReadAdminPreHandler` → `profile:read_any` OR `platform:manage`
+//     Audit log READ endpoint. Every `platform:*` role the capability
+//     catalogue grants `profile:read_any` to (support, ops, security,
+//     finance) can read the log — they ALL need post-hoc visibility.
+//     Writes to `auditLogs` never reach a public route.
+//
+// This is the T4.1 tightening made real: `platform:manage` is still the
+// safety net, but finance-critical + audit surfaces now accept the
+// narrow permissions too. Further migrations (e.g. `platform:ops` on
+// jobs/webhooks) require ops-design review first — tracked as a
+// follow-up.
 
 export const adminRoutes: FastifyPluginAsync = async (fastify) => {
   const adminPreHandler = [authenticate, requirePermission("platform:manage")];
+  const financeAdminPreHandler = [
+    authenticate,
+    requireAnyPermission(["subscription:override", "platform:manage"]),
+  ];
+  const auditReadAdminPreHandler = [
+    authenticate,
+    requireAnyPermission(["platform:audit_read", "platform:manage"]),
+  ];
 
   // ── Platform Stats ──────────────────────────────────────────────────────
 
@@ -912,10 +942,14 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
 
   // ── Audit Logs ──────────────────────────────────────────────────────────
 
+  // T5.2 — audit-logs READ is accessible to every `platform:*` role via
+  // `profile:read_any`. `platform:manage` (super_admin) still passes
+  // through the safety-net branch. The service-layer guard enforces
+  // the same permission so this narrowing is consistent.
   fastify.get(
     "/audit-logs",
     {
-      preHandler: [...adminPreHandler, validate({ query: AdminAuditQuerySchema })],
+      preHandler: [...auditReadAdminPreHandler, validate({ query: AdminAuditQuerySchema })],
       schema: {
         tags: ["Admin"],
         summary: "Query audit logs",
@@ -933,14 +967,19 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
 
   // ── Subscription override (Phase 5) ─────────────────────────────────────
   // Assigns a catalog plan + optional overrides to a specific organization.
-  // Requires platform:manage (already on adminPreHandler) + subscription:override
-  // (enforced inside the service). Cross-tenant by design — this is the
-  // endpoint the "custom plan for a specific org" UI drawer calls.
+  // T5.2 — narrowed to `subscription:override` OR `platform:manage`.
+  // `platform:finance` holds the narrow permission and can now run this
+  // endpoint without needing broad super-admin privileges. The service-
+  // layer check (`subscription.service.assignPlan`) also enforces the
+  // permission for defense-in-depth.
 
   fastify.post(
     "/organizations/:orgId/subscription/assign",
     {
-      preHandler: [...adminPreHandler, validate({ params: ParamsOrgId, body: AssignPlanSchema })],
+      preHandler: [
+        ...financeAdminPreHandler,
+        validate({ params: ParamsOrgId, body: AssignPlanSchema }),
+      ],
       schema: {
         tags: ["Admin", "Subscriptions"],
         summary: "Assign a catalog plan (with optional overrides) to an organization",

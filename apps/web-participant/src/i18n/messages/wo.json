@@ -229,6 +229,7 @@
       "countLabel": "{count, plural, one {# xew-xew} other {# xew-xew}}"
     },
     "promises": {
+      "sectionHeading": "Li ñu wax la ci",
       "one": {
         "num": "01",
         "title": "Bind ci 45 saãu",

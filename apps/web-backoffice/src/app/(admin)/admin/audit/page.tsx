@@ -23,6 +23,7 @@ import {
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useAdminAuditLogs } from "@/hooks/use-admin";
 import { useTranslations } from "next-intl";
+import { groupAuditRowsByDakarDay, type TimelineLog } from "@/lib/audit-timeline";
 
 const ACTION_OPTIONS = [
   { value: "", label: "Toutes les actions" },
@@ -135,41 +136,13 @@ export default function AdminAuditPage() {
   const filteredLogs = logs;
 
   // T2.6 — timeline view: group rows by the Dakar calendar day.
-  // Using Africa/Dakar (not the browser's local timezone) is the
-  // product contract — operators anywhere on the globe should see
-  // the same day-boundaries as the events actually occurred in
-  // Senegal. Senior-review remediation (#11).
-  //
-  // We use a stable ISO-date key (YYYY-MM-DD in Dakar time) for the
-  // React `key` and Map lookups, then derive the display string
-  // separately. Avoids collisions if the locale ever changes mid-
-  // render and keeps keys stable across SSR/CSR boundaries.
+  // Extracted to `@/lib/audit-timeline` for pure-unit testability
+  // (T5.3). The util keeps the Africa/Dakar timezone contract so
+  // operators anywhere on the globe see the same day boundaries as
+  // the events actually occurred in Senegal.
   const timelineGroups = useMemo(() => {
     if (viewMode !== "timeline") return null;
-    const groups = new Map<string, { display: string; entries: typeof filteredLogs }>();
-    const isoKeyFmt = new Intl.DateTimeFormat("fr-CA", {
-      timeZone: "Africa/Dakar",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    });
-    const displayFmt = new Intl.DateTimeFormat("fr-SN", {
-      timeZone: "Africa/Dakar",
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    });
-    for (const log of filteredLogs) {
-      const ts = (log as { timestamp?: string }).timestamp ?? "";
-      if (!ts) continue;
-      const d = new Date(ts);
-      const isoKey = isoKeyFmt.format(d); // e.g. "2026-04-24"
-      const display = displayFmt.format(d); // e.g. "24 avril 2026"
-      const bucket = groups.get(isoKey);
-      if (bucket) bucket.entries.push(log);
-      else groups.set(isoKey, { display, entries: [log] });
-    }
-    return Array.from(groups.entries());
+    return groupAuditRowsByDakarDay(filteredLogs as TimelineLog[]);
   }, [filteredLogs, viewMode]);
 
   // Build the querystring passed to the CSV export so the exported file

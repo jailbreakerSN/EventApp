@@ -293,7 +293,14 @@ export default async function HomePage() {
       </section>
 
       {/* ——— Value prop band ——— */}
-      <section className="mx-auto mt-24 max-w-7xl px-6 lg:px-8">
+      {/* T5.5 — a11y: add a landmark-scoped h2 so the three promise
+          sub-headings (rendered as h3) don't skip a level. The heading
+          is visually hidden but consumed by screen readers and
+          counted by Lighthouse's heading-order audit. */}
+      <section className="mx-auto mt-24 max-w-7xl px-6 lg:px-8" aria-labelledby="promises-heading">
+        <h2 id="promises-heading" className="sr-only">
+          {tHome("promises.sectionHeading")}
+        </h2>
         <div className="grid border-y md:grid-cols-3">
           {[tHome.raw("promises.one"), tHome.raw("promises.two"), tHome.raw("promises.three")].map(
             (p: { num: string; title: string; description: string }, i) => (

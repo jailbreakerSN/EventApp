@@ -163,8 +163,10 @@ describe("AdminService — permission denial", () => {
   });
 
   it("rejects listAuditLogs for organizer", async () => {
+    // T5.2 — audit-logs gated on `platform:audit_read` OR
+    // `platform:manage`. Organizer holds neither.
     await expect(adminService.listAuditLogs(organizer, { page: 1, limit: 20 })).rejects.toThrow(
-      "Permission manquante : platform:manage",
+      /platform:audit_read|platform:manage/,
     );
   });
 });
