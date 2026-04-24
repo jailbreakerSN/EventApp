@@ -71,17 +71,26 @@ vi.mock("@/config/index", () => ({
 // Import AFTER mocks
 import { impersonationCodeService } from "../impersonation-code.service";
 import { buildSuperAdmin } from "@/__tests__/factories";
+import type { UserProfile } from "@teranga/shared-types";
 
 const TARGET_UID = "target-alice";
 const ADMIN_UID = "admin-1";
 
-const targetProfileBase = {
+// Explicit `UserProfile` typing so issue() / exchange() accept the
+// fixture — CI type-check is stricter than the local run and refuses
+// partial shapes.
+const targetProfileBase: UserProfile = {
   uid: TARGET_UID,
   email: "alice@example.com",
   displayName: "Alice D.",
   roles: ["participant"],
   organizationId: "org-001",
   orgRole: "member",
+  preferredLanguage: "fr",
+  isActive: true,
+  isEmailVerified: true,
+  createdAt: "2026-01-01T00:00:00.000Z",
+  updatedAt: "2026-01-01T00:00:00.000Z",
 };
 
 function codeDocData(overrides: Record<string, unknown> = {}) {
@@ -153,7 +162,10 @@ describe("ImpersonationCodeService.issue", () => {
 
   it("routes backoffice-role targets to the backoffice origin", async () => {
     const admin = buildSuperAdmin({ uid: ADMIN_UID });
-    const organizerTarget = { ...targetProfileBase, roles: ["organizer"] };
+    const organizerTarget: UserProfile = {
+      ...targetProfileBase,
+      roles: ["organizer"],
+    };
 
     const res = await impersonationCodeService.issue({
       admin,
