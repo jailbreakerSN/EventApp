@@ -119,8 +119,12 @@ export const AdminPaymentQuerySchema = z.object({
   eventId: z.string().optional(),
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().positive().max(100).default(20),
-  orderBy: z.enum(["initiatedAt", "amount", "updatedAt"]).default("initiatedAt"),
-  orderDir: z.enum(["asc", "desc"]).default("desc"),
+  // orderBy is deliberately not exposed: the repository's paginated
+  // helper defaults to `createdAt DESC`, which matches the static-
+  // analysis audit in `scripts/audit-firestore-indexes.ts`. Exposing
+  // `initiatedAt` / `updatedAt` would multiply the required index
+  // set without adding UI value — payments are rendered chronologically
+  // from the receipt's creation timestamp already.
 });
 
 export type AdminPaymentQuery = z.infer<typeof AdminPaymentQuerySchema>;

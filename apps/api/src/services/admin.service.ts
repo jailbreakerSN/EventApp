@@ -1371,12 +1371,9 @@ class AdminService extends BaseService {
         organizationId: query.organizationId,
         eventId: query.eventId,
       },
-      {
-        page: query.page,
-        limit: query.limit,
-        orderBy: query.orderBy,
-        orderDir: query.orderDir,
-      },
+      // Use the repository's default orderBy (`createdAt DESC`) so the
+      // declared indexes cover every realistic query shape.
+      { page: query.page, limit: query.limit },
     );
   }
 
@@ -1391,12 +1388,8 @@ class AdminService extends BaseService {
     this.requirePermission(user, "platform:manage");
     return adminRepository.listAllSubscriptions(
       { status: query.status, plan: query.plan },
-      {
-        page: query.page,
-        limit: query.limit,
-        orderBy: query.orderBy,
-        orderDir: query.orderDir,
-      },
+      // Default orderBy (`createdAt DESC`) — same rationale as listPayments.
+      { page: query.page, limit: query.limit },
     );
   }
 

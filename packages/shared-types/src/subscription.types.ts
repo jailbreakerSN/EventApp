@@ -75,8 +75,10 @@ export const AdminSubscriptionQuerySchema = z.object({
   plan: OrganizationPlanSchema.optional(),
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().positive().max(100).default(20),
-  orderBy: z.enum(["updatedAt", "currentPeriodEnd", "priceXof"]).default("updatedAt"),
-  orderDir: z.enum(["asc", "desc"]).default("desc"),
+  // orderBy is deliberately not exposed — same rationale as
+  // AdminPaymentQuerySchema: fall back to paginatedQuery's
+  // `createdAt DESC` default so the static-analysis audit and
+  // runtime agree on the required index shapes.
 });
 
 export type AdminSubscriptionQuery = z.infer<typeof AdminSubscriptionQuerySchema>;
