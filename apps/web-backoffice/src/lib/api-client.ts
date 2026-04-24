@@ -275,6 +275,13 @@ export const eventsApi = {
   publish: (id: string) =>
     api.post<ApiResponse<{ id: string; status: string }>>(`/v1/events/${id}/publish`, {}),
 
+  // Phase 7+ item #B1 — publish an entire recurring series.
+  publishSeries: (id: string) =>
+    api.post<ApiResponse<{ parentEventId: string; publishedCount: number }>>(
+      `/v1/events/${id}/publish-series`,
+      {},
+    ),
+
   unpublish: (id: string) =>
     api.post<ApiResponse<{ id: string; status: string }>>(`/v1/events/${id}/unpublish`, {}),
 

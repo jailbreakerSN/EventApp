@@ -94,6 +94,7 @@ POST /v1/events/:eventId/feed/upload-url perm=feed:create_post allow=[co_organiz
 GET /v1/events/:eventId/promo-codes perm=event:read allow=[co_organizer,organizer,speaker,sponsor,staff,super_admin]
 POST /v1/events/:eventId/promo-codes perm=event:update allow=[co_organizer,organizer,super_admin]
 POST /v1/events/:eventId/publish perm=event:publish allow=[co_organizer,organizer,super_admin]
+POST /v1/events/:eventId/publish-series perm=event:publish allow=[co_organizer,organizer,super_admin]
 POST /v1/events/:eventId/qr-key/rotate perm=event:update allow=[co_organizer,organizer,super_admin]
 POST /v1/events/:eventId/scan-policy perm=event:update allow=[co_organizer,organizer,super_admin]
 POST /v1/events/:eventId/sessions perm=event:create allow=[organizer,super_admin]

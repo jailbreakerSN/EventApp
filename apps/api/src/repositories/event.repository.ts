@@ -60,7 +60,19 @@ export class EventRepository extends BaseRepository<Event> {
       whereFilters.push({ field: "isFeatured", op: "==" as const, value: filters.isFeatured });
     }
 
-    return this.findMany(whereFilters, { ...pagination, orderBy: "startDate", orderDir: "asc" });
+    const result = await this.findMany(whereFilters, {
+      ...pagination,
+      orderBy: "startDate",
+      orderDir: "asc",
+    });
+    // Defense-in-depth post-filter: parents should never be `published`
+    // in the first place (see EventService.publishSeries), but if a
+    // pre-B1 event or a data-repair script leaves one in that state,
+    // make sure it can't leak onto participant discovery.
+    return {
+      ...result,
+      data: result.data.filter((e) => !e.isRecurringParent),
+    };
   }
 
   async findByOrganization(
@@ -162,11 +174,22 @@ export class EventRepository extends BaseRepository<Event> {
       });
     }
 
-    return this.findMany(whereFilters, {
+    const result = await this.findMany(whereFilters, {
       ...pagination,
       orderBy: pagination.orderBy ?? "startDate",
       orderDir: pagination.orderDir ?? "asc",
     });
+    // Phase 7+ item #B1 — defense-in-depth filter. Recurring-series
+    // parents (`isRecurringParent: true`) are organizational anchors, not
+    // registerable events. They should never reach a participant search
+    // surface; `publishSeries` already keeps them as `status: "draft"` so
+    // the where-clause above normally excludes them, but this post-filter
+    // catches any legacy or data-repair path that leaves one published.
+    // Same rationale + same filter as `findPublished()`.
+    return {
+      ...result,
+      data: result.data.filter((e) => !e.isRecurringParent),
+    };
   }
 }
 

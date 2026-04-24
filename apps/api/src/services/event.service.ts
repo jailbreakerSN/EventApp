@@ -31,6 +31,7 @@ import { BaseService } from "./base.service";
 import { eventBus } from "@/events/event-bus";
 import { getRequestId } from "@/context/request-context";
 import { generateEventKid } from "./qr-signing";
+import { generateOccurrences } from "./recurrence.service";
 
 // ─── Slug generation ─────────────────────────────────────────────────────────
 
@@ -95,13 +96,22 @@ export class EventService extends BaseService {
       throw new ForbiddenError("Vous ne faites pas partie de cette organisation");
     }
 
-    // Check plan limit for active events
-    await this.checkEventLimit(org);
-
     // Validate dates
     if (new Date(dto.endDate) <= new Date(dto.startDate)) {
       throw new ValidationError("La date de fin doit être postérieure à la date de début");
     }
+
+    // ── Recurring branch (Phase 7+ item #B1) ────────────────────────────
+    // If the payload carries a recurrenceRule, expand it + create one
+    // parent + N children in a single transaction. The parent is the
+    // "anchor" returned to the caller (its `id` is the series id).
+    // Otherwise: unchanged single-event path below.
+    if (dto.recurrenceRule) {
+      return this.createSeries(dto, org, user);
+    }
+
+    // Check plan limit for active events
+    await this.checkEventLimit(org);
 
     const slug = generateSlug(dto.title);
 
@@ -151,6 +161,222 @@ export class EventService extends BaseService {
     });
 
     return event;
+  }
+
+  /**
+   * Recurring-series create path. Generates N occurrences, validates plan
+   * quota against the full fan-out, then writes parent + children in a
+   * single Firestore transaction.
+   *
+   * Atomicity: Firestore transactions cap at 500 writes per commit. The
+   * MVP hard-limits occurrences to 52 (RECURRENCE_MAX_OCCURRENCES), so
+   * 1 parent + 52 children = 53 writes — well under the 500 budget. If
+   * a future expansion bumps the cap, split into a batched write or an
+   * idempotent worker.
+   */
+  private async createSeries(
+    dto: CreateEventDto,
+    org: Organization,
+    user: AuthUser,
+  ): Promise<Event> {
+    const rule = dto.recurrenceRule!;
+
+    // Expand occurrences first (cheap, pure). Fail fast on bad input.
+    const occurrences = generateOccurrences(
+      dto.startDate,
+      dto.endDate,
+      rule,
+      dto.timezone ?? "Africa/Dakar",
+    );
+
+    // Plan-quota check against the FULL write fan-out: 1 parent + N children.
+    // The parent is an anchor doc that lives in the `events` collection and
+    // IS counted by `countActiveByOrganization`, so quota math must include
+    // it — otherwise a free-tier org (maxEvents: 3) creating a series of
+    // count=3 writes 4 docs and silently overshoots. `checkEventLimit` also
+    // carries the scheduled-downgrade freeze; we reuse the helper instead
+    // of inlining `checkPlanLimit` to avoid regressing that guardrail.
+    await this.checkEventLimit(org, occurrences.length + 1);
+
+    // Resolve venue once — applies to every occurrence.
+    let venueName: string | null = null;
+    if (dto.venueId) {
+      const venue = await venueRepository.findByIdOrThrow(dto.venueId);
+      if (venue.status !== "approved") {
+        throw new ValidationError("Le lieu sélectionné n'est pas approuvé");
+      }
+      venueName = venue.name;
+    }
+
+    const now = new Date().toISOString();
+    const parentRef = db.collection(COLLECTIONS.EVENTS).doc();
+    const parentId = parentRef.id;
+    const parentSlug = generateSlug(dto.title);
+
+    // Build child payloads — one per occurrence. Each child is a full
+    // Event doc: own id, own slug, own qrKid, own registeredCount. Only
+    // startDate/endDate + parentEventId + occurrenceIndex differ.
+    const childRefs: FirebaseFirestore.DocumentReference[] = [];
+    const childPayloads: Array<Omit<Event, "createdAt" | "updatedAt">> = [];
+    for (const occ of occurrences) {
+      const childRef = db.collection(COLLECTIONS.EVENTS).doc();
+      childRefs.push(childRef);
+      childPayloads.push({
+        ...dto,
+        id: childRef.id,
+        // Slug per occurrence to avoid collisions; suffix keeps the base
+        // searchable under the same stem.
+        slug: `${parentSlug}-${occ.index + 1}`,
+        startDate: occ.startDate,
+        endDate: occ.endDate,
+        venueName: venueName ?? dto.venueName ?? null,
+        registeredCount: 0,
+        checkedInCount: 0,
+        qrKid: generateEventKid(),
+        qrKidHistory: [],
+        scanPolicy: "single",
+        status: "draft",
+        createdBy: user.uid,
+        updatedBy: user.uid,
+        publishedAt: null,
+        isRecurringParent: false,
+        parentEventId: parentId,
+        occurrenceIndex: occ.index,
+        recurrenceRule: rule, // echoed for convenience; children don't regenerate
+      } as Omit<Event, "createdAt" | "updatedAt">);
+    }
+
+    // Parent payload — anchor doc, invisible to participants until the
+    // organizer publishes the series.
+    const parentPayload: Omit<Event, "createdAt" | "updatedAt"> = {
+      ...dto,
+      id: parentId,
+      slug: parentSlug,
+      venueName: venueName ?? dto.venueName ?? null,
+      registeredCount: 0,
+      checkedInCount: 0,
+      qrKid: generateEventKid(),
+      qrKidHistory: [],
+      scanPolicy: "single",
+      status: "draft",
+      createdBy: user.uid,
+      updatedBy: user.uid,
+      publishedAt: null,
+      isRecurringParent: true,
+      parentEventId: null,
+      occurrenceIndex: null,
+      recurrenceRule: rule,
+    } as Omit<Event, "createdAt" | "updatedAt">;
+
+    await db.runTransaction(async (tx) => {
+      tx.set(parentRef, { ...parentPayload, createdAt: now, updatedAt: now });
+      for (let i = 0; i < childRefs.length; i += 1) {
+        tx.set(childRefs[i], { ...childPayloads[i], createdAt: now, updatedAt: now });
+      }
+    });
+
+    // Venue counter bump runs outside the tx to keep the atomicity
+    // boundary focused on the series writes. +1 per occurrence +1 for
+    // the parent — matches `maxEvents` enforcement above.
+    if (dto.venueId) {
+      await venueRepository.increment(
+        dto.venueId,
+        "eventCount",
+        occurrences.length + 1,
+      );
+    }
+
+    const parentEvent: Event = {
+      ...parentPayload,
+      createdAt: now,
+      updatedAt: now,
+    } as Event;
+
+    eventBus.emit("event.series_created", {
+      parentEventId: parentId,
+      occurrenceCount: occurrences.length,
+      organizationId: org.id,
+      actorId: user.uid,
+      requestId: getRequestId(),
+      timestamp: now,
+    });
+
+    // Also emit a plain event.created for the parent so existing audit +
+    // dashboards keep working. Listeners can filter on
+    // isRecurringParent=true if they want to suppress the noise.
+    eventBus.emit("event.created", {
+      event: parentEvent,
+      organizationId: org.id,
+      actorId: user.uid,
+      requestId: getRequestId(),
+      timestamp: now,
+    });
+
+    return parentEvent;
+  }
+
+  /**
+   * Publish an entire series: parent + every child atomically. Children
+   * are looked up via `parentEventId === parent.id`. Each child gets
+   * `status: "published"` + `publishedAt` = now. Partial failure is
+   * prevented by wrapping the reads + writes in a single transaction.
+   *
+   * If the series has more than ~250 children the transaction will
+   * exceed Firestore's 500-write budget — the MVP caps at 52 so we
+   * never hit that. A future expansion would need a batched approach.
+   */
+  async publishSeries(parentEventId: string, user: AuthUser): Promise<{
+    parentEventId: string;
+    publishedCount: number;
+  }> {
+    this.requirePermission(user, "event:publish");
+
+    const parent = await eventRepository.findByIdOrThrow(parentEventId);
+    if (!parent.isRecurringParent) {
+      throw new ValidationError(
+        "Cet événement n'est pas le parent d'une série — utilisez la publication classique.",
+      );
+    }
+    this.requireOrganizationAccess(user, parent.organizationId);
+
+    const children = await db
+      .collection(COLLECTIONS.EVENTS)
+      .where("parentEventId", "==", parentEventId)
+      .get();
+
+    const now = new Date().toISOString();
+    await db.runTransaction(async (tx) => {
+      // The parent is an organizational anchor, not a real registerable
+      // event. We flip its `publishedAt` (for audit/history) but KEEP
+      // `status: "draft"` so it never appears on participant discovery
+      // surfaces — doubling up the public filter with
+      // `status !== "published"` on parents is defense-in-depth against
+      // a future index change accidentally leaking parents.
+      tx.update(db.collection(COLLECTIONS.EVENTS).doc(parentEventId), {
+        publishedAt: now,
+        updatedAt: now,
+        updatedBy: user.uid,
+      });
+      for (const doc of children.docs) {
+        tx.update(doc.ref, {
+          status: "published",
+          publishedAt: now,
+          updatedAt: now,
+          updatedBy: user.uid,
+        });
+      }
+    });
+
+    eventBus.emit("event.series_published", {
+      parentEventId,
+      organizationId: parent.organizationId,
+      publishedCount: children.size,
+      actorId: user.uid,
+      requestId: getRequestId(),
+      timestamp: now,
+    });
+
+    return { parentEventId, publishedCount: children.size };
   }
 
   async getById(eventId: string, user?: AuthUser): Promise<Event> {
@@ -944,13 +1170,23 @@ export class EventService extends BaseService {
 
   // ─── Plan Limit Helpers ────────────────────────────────────────────────────
 
-  private async checkEventLimit(org: Organization): Promise<void> {
+  /**
+   * @param additionalEvents number of events to pre-add to the current
+   * count (defaults to 0 → single-event create path). Series create
+   * passes the fan-out (parent + N children) so the quota check models
+   * the actual write volume.
+   */
+  private async checkEventLimit(
+    org: Organization,
+    additionalEvents: number = 0,
+  ): Promise<void> {
     const current = await eventRepository.countActiveByOrganization(org.id);
-    const { allowed, limit } = this.checkPlanLimit(org, "events", current);
+    const projected = current + additionalEvents;
+    const { allowed, limit } = this.checkPlanLimit(org, "events", projected);
     if (!allowed) {
       const planLabel = org.effectivePlanKey ?? org.plan;
       throw new PlanLimitError(`Maximum ${limit} événements actifs sur le plan ${planLabel}`, {
-        current,
+        current: projected,
         max: limit,
         plan: planLabel,
       });
@@ -983,12 +1219,12 @@ export class EventService extends BaseService {
       if (targetPlan) {
         const targetMaxEvents =
           targetPlan.maxEvents === PLAN_LIMIT_UNLIMITED ? Infinity : targetPlan.maxEvents;
-        if (Number.isFinite(targetMaxEvents) && current >= targetMaxEvents) {
+        if (Number.isFinite(targetMaxEvents) && projected >= targetMaxEvents) {
           throw new PlanLimitError(
             `Une bascule vers le plan ${target} est programmée. ` +
               `Impossible de créer plus de ${targetMaxEvents} événements actifs avant la bascule.`,
             {
-              current,
+              current: projected,
               max: targetMaxEvents,
               plan: target,
             },

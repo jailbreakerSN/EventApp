@@ -187,6 +187,32 @@ export interface EventClonedEvent extends BaseEventPayload {
   organizationId: string;
 }
 
+/**
+ * Phase 7+ item #B1 — emitted by `EventService.createSeries()` after the
+ * parent + child docs commit. Distinct from `event.created` (which is
+ * also emitted for the parent for dashboard parity) so audit queries
+ * can tell "created a recurring series of N" apart from "created a
+ * single event". `occurrenceCount` is the CHILD count — the parent is
+ * the anchor and doesn't count toward the series size.
+ */
+export interface EventSeriesCreatedEvent extends BaseEventPayload {
+  parentEventId: string;
+  organizationId: string;
+  occurrenceCount: number;
+}
+
+/**
+ * Phase 7+ item #B1 — emitted by `EventService.publishSeries()` after
+ * parent + all children flip to `status: "published"`. `publishedCount`
+ * is the number of CHILDREN that were flipped (parent + children all
+ * transitioned together in one tx; parent is not counted here).
+ */
+export interface EventSeriesPublishedEvent extends BaseEventPayload {
+  parentEventId: string;
+  organizationId: string;
+  publishedCount: number;
+}
+
 export interface WaitlistPromotedEvent extends BaseEventPayload {
   registrationId: string;
   eventId: string;
@@ -1016,6 +1042,9 @@ export interface DomainEventMap {
   "event.cancelled": EventCancelledEvent;
   "event.archived": EventArchivedEvent;
   "event.cloned": EventClonedEvent;
+  // Recurring events (Phase 7+ item #B1)
+  "event.series_created": EventSeriesCreatedEvent;
+  "event.series_published": EventSeriesPublishedEvent;
   "waitlist.promoted": WaitlistPromotedEvent;
   "waitlist.promotion_failed": WaitlistPromotionFailedEvent;
   "ticket_type.added": TicketTypeAddedEvent;

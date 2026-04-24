@@ -260,6 +260,36 @@ export function registerAuditListeners(): void {
     });
   });
 
+  // ── Recurring events (Phase 7+ item #B1) ────────────────────────────────
+
+  eventBus.on("event.series_created", async (payload) => {
+    await auditService.log({
+      action: "event.series_created",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "event",
+      resourceId: payload.parentEventId,
+      eventId: payload.parentEventId,
+      organizationId: payload.organizationId,
+      details: { occurrenceCount: payload.occurrenceCount },
+    });
+  });
+
+  eventBus.on("event.series_published", async (payload) => {
+    await auditService.log({
+      action: "event.series_published",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "event",
+      resourceId: payload.parentEventId,
+      eventId: payload.parentEventId,
+      organizationId: payload.organizationId,
+      details: { publishedCount: payload.publishedCount },
+    });
+  });
+
   // ── Organization Events ─────────────────────────────────────────────────
 
   eventBus.on("organization.created", async (payload) => {

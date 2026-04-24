@@ -108,6 +108,7 @@ GET /v1/events/:eventId/promo-codes auth perms=[event:read]
 POST /v1/events/:eventId/promo-codes auth emailVerified perms=[event:update]
 POST /v1/events/:eventId/promo-codes/validate none
 POST /v1/events/:eventId/publish auth emailVerified perms=[event:publish]
+POST /v1/events/:eventId/publish-series auth emailVerified perms=[event:publish]
 POST /v1/events/:eventId/qr-key/rotate auth emailVerified perms=[event:update]
 POST /v1/events/:eventId/scan-policy auth emailVerified perms=[event:update]
 GET /v1/events/:eventId/sessions auth

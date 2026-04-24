@@ -87,16 +87,32 @@ vi.mock("@/context/request-context", () => ({
 // Mock db for transactional ticket type operations
 const mockTxUpdate = vi.fn();
 const mockTxGet = vi.fn();
+const mockTxSet = vi.fn();
 const mockDocRef = { id: "mock-doc" };
+// Counter so each .doc() call inside createSeries gets a fresh id —
+// avoids accidental dedup in test assertions that rely on unique child refs.
+let docCallCount = 0;
+const mockChildrenGet = vi.fn();
 
 vi.mock("@/config/firebase", () => ({
   db: {
     runTransaction: vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => {
-      const tx = { get: mockTxGet, update: mockTxUpdate };
+      const tx = { get: mockTxGet, update: mockTxUpdate, set: mockTxSet };
       return fn(tx);
     }),
     collection: vi.fn(() => ({
-      doc: vi.fn(() => mockDocRef),
+      // Pre-existing ticket-type tests assert `{ id: "mock-doc" }`, so we
+      // preserve the old behaviour (ignore the id arg) on explicit-id calls.
+      // Auto-id calls (createSeries) get fresh ids so child refs don't dedup.
+      doc: vi.fn((id?: string) => {
+        if (id === undefined) {
+          docCallCount += 1;
+          return { id: `mock-doc-${docCallCount}` };
+        }
+        return mockDocRef;
+      }),
+      where: vi.fn().mockReturnThis(),
+      get: mockChildrenGet,
     })),
   },
   COLLECTIONS: { EVENTS: "events" },

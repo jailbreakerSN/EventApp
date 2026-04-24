@@ -106,6 +106,18 @@ export default function NewEventPage() {
   const [requiresApproval, setRequiresApproval] = useState(false);
   const [maxAttendees, setMaxAttendees] = useState("");
 
+  // Step 4 (extension) — Recurring series (Phase 7+ item #B1)
+  // When enabled, submitting creates a parent + N child events inside a
+  // single transaction. Series are capped at 52 occurrences server-side;
+  // the UI caps `count` at the same value to keep error messages helpful.
+  const [isRecurring, setIsRecurring] = useState(false);
+  const [recurrenceFreq, setRecurrenceFreq] = useState<"daily" | "weekly" | "monthly">(
+    "weekly",
+  );
+  const [recurrenceInterval, setRecurrenceInterval] = useState(1);
+  const [recurrenceCount, setRecurrenceCount] = useState(4);
+  const [recurrenceByDay, setRecurrenceByDay] = useState<string[]>([]);
+
   function updateTicket(index: number, field: keyof TicketDraft, value: unknown) {
     setTickets((prev) => prev.map((t, i) => (i === index ? { ...t, [field]: value } : t)));
   }
@@ -310,6 +322,20 @@ export default function NewEventPage() {
       isPublic,
       requiresApproval,
       maxAttendees: maxAttendees ? parseInt(maxAttendees, 10) : undefined,
+      // Phase 7+ item #B1 — forward the recurrence rule only when the
+      // organizer explicitly opted in. Absent = single-event create path.
+      ...(isRecurring
+        ? {
+            recurrenceRule: {
+              freq: recurrenceFreq,
+              interval: Math.max(1, recurrenceInterval),
+              count: Math.min(52, Math.max(2, recurrenceCount)),
+              ...(recurrenceByDay.length > 0
+                ? { byDay: recurrenceByDay as Array<"MO" | "TU" | "WE" | "TH" | "FR" | "SA" | "SU"> }
+                : {}),
+            },
+          }
+        : {}),
     };
 
     setSubmitting(true);
@@ -915,6 +941,142 @@ export default function NewEventPage() {
                 placeholder="Illimité"
                 className="w-full px-4 py-2.5 rounded-lg border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
               />
+            </div>
+
+            {/* Recurring series (Phase 7+ item #B1) */}
+            <div className="border border-border rounded-lg p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-foreground">
+                    Événement récurrent
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Générer plusieurs occurrences en une seule fois (52 max).
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsRecurring(!isRecurring)}
+                  role="switch"
+                  aria-checked={isRecurring}
+                  aria-label="Activer la récurrence"
+                  className={`relative w-11 h-6 rounded-full transition-colors ${
+                    isRecurring ? "bg-primary" : "bg-muted"
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform ${
+                      isRecurring ? "translate-x-5" : ""
+                    }`}
+                  />
+                </button>
+              </div>
+              {isRecurring && (
+                <div className="space-y-3 pt-2 border-t border-border">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label
+                        htmlFor="recurrence-freq"
+                        className="block text-xs font-medium text-foreground mb-1"
+                      >
+                        Fréquence
+                      </label>
+                      <select
+                        id="recurrence-freq"
+                        value={recurrenceFreq}
+                        onChange={(e) =>
+                          setRecurrenceFreq(
+                            e.target.value as "daily" | "weekly" | "monthly",
+                          )
+                        }
+                        className="w-full px-3 py-2 rounded-lg border border-border text-sm"
+                      >
+                        <option value="daily">Quotidienne</option>
+                        <option value="weekly">Hebdomadaire</option>
+                        <option value="monthly">Mensuelle</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label
+                        htmlFor="recurrence-count"
+                        className="block text-xs font-medium text-foreground mb-1"
+                      >
+                        Nombre d&apos;occurrences (2-52)
+                      </label>
+                      <input
+                        id="recurrence-count"
+                        type="number"
+                        min={2}
+                        max={52}
+                        value={recurrenceCount}
+                        onChange={(e) => setRecurrenceCount(Number(e.target.value))}
+                        className="w-full px-3 py-2 rounded-lg border border-border text-sm"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label
+                      htmlFor="recurrence-interval"
+                      className="block text-xs font-medium text-foreground mb-1"
+                    >
+                      Intervalle (ex : 2 = toutes les 2 semaines)
+                    </label>
+                    <input
+                      id="recurrence-interval"
+                      type="number"
+                      min={1}
+                      value={recurrenceInterval}
+                      onChange={(e) => setRecurrenceInterval(Number(e.target.value))}
+                      className="w-full px-3 py-2 rounded-lg border border-border text-sm"
+                    />
+                  </div>
+                  {recurrenceFreq === "weekly" && (
+                    <div>
+                      <p className="text-xs font-medium text-foreground mb-2">
+                        Jours de la semaine (optionnel)
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {[
+                          { v: "MO", l: "Lun" },
+                          { v: "TU", l: "Mar" },
+                          { v: "WE", l: "Mer" },
+                          { v: "TH", l: "Jeu" },
+                          { v: "FR", l: "Ven" },
+                          { v: "SA", l: "Sam" },
+                          { v: "SU", l: "Dim" },
+                        ].map(({ v, l }) => {
+                          const checked = recurrenceByDay.includes(v);
+                          return (
+                            <button
+                              key={v}
+                              type="button"
+                              onClick={() =>
+                                setRecurrenceByDay((prev) =>
+                                  prev.includes(v)
+                                    ? prev.filter((d) => d !== v)
+                                    : [...prev, v],
+                                )
+                              }
+                              className={`px-3 py-1 rounded-md border text-xs transition-colors ${
+                                checked
+                                  ? "border-primary bg-primary/10 text-primary"
+                                  : "border-border text-muted-foreground hover:bg-accent"
+                              }`}
+                            >
+                              {l}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                  <p className="text-xs text-muted-foreground bg-muted/50 rounded-md p-2">
+                    La date de début doit correspondre à l&apos;un des jours
+                    sélectionnés. La série consommera {recurrenceCount} places dans
+                    votre quota « Événements actifs ».
+                  </p>
+                </div>
+              )}
             </div>
 
             {/* Review summary */}

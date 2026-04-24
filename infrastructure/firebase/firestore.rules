@@ -108,7 +108,21 @@ service cloud.firestore {
                     // matching HKDF key, and mint forged valid v4 QRs.
                     // Rotation must flow exclusively through
                     // `POST /v1/events/:eventId/qr-key/rotate` (Admin SDK).
-                    && immutableOnUpdate(['createdBy', 'organizationId', 'qrKid', 'qrKidHistory']);
+                    // Phase 7+ item #B1 — series-anchor fields (`isRecurringParent`,
+                    // `parentEventId`, `occurrenceIndex`) are server-stamped at create
+                    // time and MUST stay immutable. Otherwise a compromised client
+                    // could flip a parent's `isRecurringParent: false` to leak the
+                    // anchor onto participant discovery, or set `parentEventId` on
+                    // an unrelated event to attach it to a foreign series.
+                    && immutableOnUpdate([
+                      'createdBy',
+                      'organizationId',
+                      'qrKid',
+                      'qrKidHistory',
+                      'isRecurringParent',
+                      'parentEventId',
+                      'occurrenceIndex',
+                    ]);
 
       // Soft-delete only — set status to 'archived'
       allow delete: if false;

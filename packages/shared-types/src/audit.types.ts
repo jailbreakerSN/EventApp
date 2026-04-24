@@ -29,6 +29,9 @@ export const AuditActionSchema = z.enum([
   "ticket_type.updated",
   "ticket_type.removed",
   "event.cloned",
+  // Recurring events (Phase 7+ item #B1)
+  "event.series_created",
+  "event.series_published",
   "invite.created",
   "invite.accepted",
   "invite.declined",
