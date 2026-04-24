@@ -88,14 +88,21 @@ export function useUpdateMemberRole() {
   });
 }
 
-export function useOrgAnalytics(query: Partial<AnalyticsQuery> = {}) {
+export function useOrgAnalytics(
+  query: Partial<AnalyticsQuery> = {},
+  options: { enabled?: boolean } = {},
+) {
   const { user } = useAuth();
   const orgId = user?.organizationId;
 
   return useQuery({
     queryKey: ["analytics", orgId, query],
     queryFn: () => organizationsApi.getAnalytics(orgId!, query),
-    enabled: !!orgId,
+    // Compose caller's `enabled` flag with the orgId guard so a
+    // permission-denied caller (e.g. a venue_manager landing on the
+    // dashboard) can suppress the query rather than fire it and
+    // collect a 403.
+    enabled: !!orgId && (options.enabled ?? true),
   });
 }
 

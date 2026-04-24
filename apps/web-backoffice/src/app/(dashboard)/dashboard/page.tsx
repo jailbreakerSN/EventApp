@@ -1,11 +1,16 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { useEvents } from "@/hooks/use-events";
 import { useOrgAnalytics } from "@/hooks/use-organization";
+import { usePermissions } from "@/hooks/use-permissions";
+import { useAuth } from "@/hooks/use-auth";
+import { resolveLandingRoute } from "@/lib/access";
 import { formatDate } from "@/lib/utils";
 import { getEventStatusLabel } from "@/lib/event-status";
-import { Calendar, Users, Ticket, TrendingUp, ArrowRight, Banknote } from "lucide-react";
+import { Calendar, Users, Ticket, TrendingUp, ArrowRight, Banknote, MapPin } from "lucide-react";
 import {
   Skeleton,
   Badge,
@@ -16,9 +21,39 @@ import {
 } from "@teranga/shared-ui";
 
 export default function DashboardPage() {
+  const router = useRouter();
+  const { user } = useAuth();
+  const { can } = usePermissions();
+
+  // Permission gates mirror the API's `requirePermission(...)` calls:
+  //   - `GET /v1/events/org/:id`             → event:read
+  //   - `GET /v1/organizations/:id/analytics` → event:read
+  // Venue managers hold `venue:view_events` and `venue:analytics`
+  // but NOT `event:read` — firing either query for them returns a
+  // 403 storm, which is exactly what this page guards against.
+  const canReadOrgEvents = can("event:read");
+  const canReadOrgAnalytics = can("event:read");
+
+  // Venue-only users have no meaningful widget to render here. Route
+  // them to their canonical home. The dashboard layout already runs
+  // the BACKOFFICE_ROLES role gate and passed — so this redirect is
+  // about UX correctness, not security.
+  const roles = user?.roles ?? [];
+  const venueOnly = roles.includes("venue_manager") && !canReadOrgEvents && !canReadOrgAnalytics;
+
+  useEffect(() => {
+    if (venueOnly) {
+      router.replace(resolveLandingRoute(roles));
+    }
+  }, [venueOnly, roles, router]);
+
   // Recent-events list for the bottom of the page — kept at 5 for a
-  // focused "last activity" panel.
-  const { data, isLoading } = useEvents({ limit: 5, orderBy: "createdAt", orderDir: "desc" });
+  // focused "last activity" panel. Skipped entirely if the caller
+  // lacks org-scoped event read.
+  const { data, isLoading } = useEvents(
+    { limit: 5, orderBy: "createdAt", orderDir: "desc" },
+    { enabled: canReadOrgEvents },
+  );
   const events = data?.data ?? [];
 
   // Stat cards read from the org-analytics endpoint (timeframe=all)
@@ -26,9 +61,10 @@ export default function DashboardPage() {
   // recent. Previously the dashboard reduced over the 5-event page and
   // silently underreported totals for any org with more than five
   // events — the fix surfaces real org-wide figures.
-  const { data: analyticsData, isLoading: analyticsLoading } = useOrgAnalytics({
-    timeframe: "all",
-  });
+  const { data: analyticsData, isLoading: analyticsLoading } = useOrgAnalytics(
+    { timeframe: "all" },
+    { enabled: canReadOrgAnalytics },
+  );
   const summary = analyticsData?.data?.summary;
   const total = summary?.totalEvents ?? 0;
   const totalRegistered = summary?.totalRegistrations ?? 0;
@@ -45,6 +81,10 @@ export default function DashboardPage() {
       minimumFractionDigits: 0,
     }).format(amount);
 
+  // If the caller is strictly a venue_manager the redirect effect above
+  // has already fired; render nothing until it lands.
+  if (venueOnly) return null;
+
   return (
     <div className="space-y-8">
       <SectionHeader
@@ -55,127 +95,150 @@ export default function DashboardPage() {
         as="h1"
       />
 
-      {/* Stats cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-        <StatCard
-          icon={<Calendar className="h-5 w-5 text-blue-600" />}
-          label="Total événements"
-          value={analyticsLoading ? undefined : String(total)}
-          bgColor="bg-blue-50 dark:bg-blue-900/20"
-          isLoading={analyticsLoading}
-        />
-        <StatCard
-          icon={<TrendingUp className="h-5 w-5 text-green-600" />}
-          label="Publiés (récents)"
-          value={isLoading ? undefined : String(publishedCount)}
-          bgColor="bg-green-50 dark:bg-green-900/20"
-          isLoading={isLoading}
-          subtitle="Sur les 5 derniers"
-        />
-        <StatCard
-          icon={<Users className="h-5 w-5 text-purple-600" />}
-          label="Total inscrits"
-          value={analyticsLoading ? undefined : String(totalRegistered)}
-          bgColor="bg-purple-50 dark:bg-purple-900/20"
-          isLoading={analyticsLoading}
-          subtitle="Tous événements confondus"
-        />
-        <StatCard
-          icon={<Ticket className="h-5 w-5 text-orange-600" />}
-          label="Check-ins"
-          value={analyticsLoading ? undefined : String(totalCheckedIn)}
-          bgColor="bg-orange-50 dark:bg-orange-900/20"
-          isLoading={analyticsLoading}
-          subtitle="Tous événements confondus"
-        />
-        <StatCard
-          icon={<Banknote className="h-5 w-5 text-amber-600" />}
-          label="Revenus"
-          value={isLoading ? undefined : formatXOF(0)}
-          bgColor="bg-amber-50 dark:bg-amber-900/20"
-          isLoading={isLoading}
-          subtitle="Paiements bientôt disponibles"
-        />
-      </div>
-
-      {/* Recent events */}
-      <section className="space-y-4">
-        <SectionHeader
-          kicker="— DERNIÈRE ACTIVITÉ"
-          title="Événements récents"
-          size="section"
-          action={
-            <Link
-              href="/events"
-              className="inline-flex items-center gap-1 font-mono-kicker text-[11px] font-medium uppercase tracking-[0.14em] text-teranga-gold-dark hover:text-teranga-navy transition-colors"
-            >
-              Tout voir <ArrowRight className="h-3.5 w-3.5" />
-            </Link>
-          }
-        />
-
-        <div className="bg-card rounded-xl border border-border">
-          <DataTable<(typeof events)[number] & Record<string, unknown>>
-          aria-label="Événements récents"
-          emptyMessage="Aucun événement pour le moment."
-          responsiveCards
-          loading={isLoading}
-          data={events as ((typeof events)[number] & Record<string, unknown>)[]}
-          columns={
-            [
-              {
-                key: "title",
-                header: "Événement",
-                primary: true,
-                render: (event) => (
-                  <Link
-                    href={`/events/${event.id}`}
-                    className="font-medium text-foreground hover:text-primary"
-                  >
-                    {event.title}
-                  </Link>
-                ),
-              },
-              {
-                key: "startDate",
-                header: "Date",
-                hideOnMobile: true,
-                render: (event) => (
-                  <span className="text-muted-foreground text-xs whitespace-nowrap">
-                    {formatDate(event.startDate)}
-                  </span>
-                ),
-              },
-              {
-                key: "status",
-                header: "Statut",
-                render: (event) => (
-                  <Badge variant={getStatusVariant(event.status)}>
-                    {getEventStatusLabel(event.status)}
-                  </Badge>
-                ),
-              },
-              {
-                key: "registered",
-                header: "Inscrits",
-                render: (event) => (
-                  <span className="text-muted-foreground">
-                    {event.registeredCount ?? 0} inscrits
-                  </span>
-                ),
-              },
-            ] as DataTableColumn<(typeof events)[number] & Record<string, unknown>>[]
-          }
-        />
-          {events.length === 0 && !isLoading && (
-            <div className="p-8 text-center text-muted-foreground">
-              <Link href="/events/new" className="text-primary hover:underline">
-                Créer votre premier événement
-              </Link>
-            </div>
-          )}
+      {/* Degraded CTA — rendered when the caller lacks org-wide read
+          so the page is never blank. Example: a co_organizer whose
+          permissions were tightened post-launch lands here before an
+          org admin grants them analytics; the card points them at
+          what they CAN do. */}
+      {!canReadOrgAnalytics && !canReadOrgEvents && (
+        <div className="flex items-center gap-3 rounded-xl border border-border bg-card p-5">
+          <MapPin className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
+          <div className="text-sm text-muted-foreground">
+            Cette vue synthèse est réservée aux organisateurs. Consultez vos propres espaces
+            ci-dessous.
+          </div>
         </div>
-      </section>
+      )}
+
+      {/* Stats cards — only rendered when the caller can read org
+          analytics. Non-empty dashboard for organizers and above,
+          graceful degradation elsewhere. */}
+      {canReadOrgAnalytics && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+          <StatCard
+            icon={<Calendar className="h-5 w-5 text-blue-600" />}
+            label="Total événements"
+            value={analyticsLoading ? undefined : String(total)}
+            bgColor="bg-blue-50 dark:bg-blue-900/20"
+            isLoading={analyticsLoading}
+          />
+          <StatCard
+            icon={<TrendingUp className="h-5 w-5 text-green-600" />}
+            label="Publiés (récents)"
+            value={isLoading ? undefined : String(publishedCount)}
+            bgColor="bg-green-50 dark:bg-green-900/20"
+            isLoading={isLoading}
+            subtitle="Sur les 5 derniers"
+          />
+          <StatCard
+            icon={<Users className="h-5 w-5 text-purple-600" />}
+            label="Total inscrits"
+            value={analyticsLoading ? undefined : String(totalRegistered)}
+            bgColor="bg-purple-50 dark:bg-purple-900/20"
+            isLoading={analyticsLoading}
+            subtitle="Tous événements confondus"
+          />
+          <StatCard
+            icon={<Ticket className="h-5 w-5 text-orange-600" />}
+            label="Check-ins"
+            value={analyticsLoading ? undefined : String(totalCheckedIn)}
+            bgColor="bg-orange-50 dark:bg-orange-900/20"
+            isLoading={analyticsLoading}
+            subtitle="Tous événements confondus"
+          />
+          <StatCard
+            icon={<Banknote className="h-5 w-5 text-amber-600" />}
+            label="Revenus"
+            value={isLoading ? undefined : formatXOF(0)}
+            bgColor="bg-amber-50 dark:bg-amber-900/20"
+            isLoading={isLoading}
+            subtitle="Paiements bientôt disponibles"
+          />
+        </div>
+      )}
+
+      {/* Recent events — gated on event:read_all_org. For an organizer
+          this renders exactly as before; for a caller without the
+          permission the whole section disappears. */}
+      {canReadOrgEvents && (
+        <section className="space-y-4">
+          <SectionHeader
+            kicker="— DERNIÈRE ACTIVITÉ"
+            title="Événements récents"
+            size="section"
+            action={
+              <Link
+                href="/events"
+                className="inline-flex items-center gap-1 font-mono-kicker text-[11px] font-medium uppercase tracking-[0.14em] text-teranga-gold-dark hover:text-teranga-navy transition-colors"
+              >
+                Tout voir <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+            }
+          />
+
+          <div className="bg-card rounded-xl border border-border">
+            <DataTable<(typeof events)[number] & Record<string, unknown>>
+              aria-label="Événements récents"
+              emptyMessage="Aucun événement pour le moment."
+              responsiveCards
+              loading={isLoading}
+              data={events as ((typeof events)[number] & Record<string, unknown>)[]}
+              columns={
+                [
+                  {
+                    key: "title",
+                    header: "Événement",
+                    primary: true,
+                    render: (event) => (
+                      <Link
+                        href={`/events/${event.id}`}
+                        className="font-medium text-foreground hover:text-primary"
+                      >
+                        {event.title}
+                      </Link>
+                    ),
+                  },
+                  {
+                    key: "startDate",
+                    header: "Date",
+                    hideOnMobile: true,
+                    render: (event) => (
+                      <span className="text-muted-foreground text-xs whitespace-nowrap">
+                        {formatDate(event.startDate)}
+                      </span>
+                    ),
+                  },
+                  {
+                    key: "status",
+                    header: "Statut",
+                    render: (event) => (
+                      <Badge variant={getStatusVariant(event.status)}>
+                        {getEventStatusLabel(event.status)}
+                      </Badge>
+                    ),
+                  },
+                  {
+                    key: "registered",
+                    header: "Inscrits",
+                    render: (event) => (
+                      <span className="text-muted-foreground">
+                        {event.registeredCount ?? 0} inscrits
+                      </span>
+                    ),
+                  },
+                ] as DataTableColumn<(typeof events)[number] & Record<string, unknown>>[]
+              }
+            />
+            {events.length === 0 && !isLoading && (
+              <div className="p-8 text-center text-muted-foreground">
+                <Link href="/events/new" className="text-primary hover:underline">
+                  Créer votre premier événement
+                </Link>
+              </div>
+            )}
+          </div>
+        </section>
+      )}
     </div>
   );
 }

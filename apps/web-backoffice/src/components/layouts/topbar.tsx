@@ -46,16 +46,59 @@ function formatRelative(iso: string): string {
 // identity. The `participant` fallback is keyed generically.
 const ROLE_COLORS: Record<string, string> = {
   super_admin: "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300",
+  "platform:super_admin":
+    "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300",
+  "platform:support": "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300",
+  "platform:finance": "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300",
+  "platform:ops": "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300",
+  "platform:security": "bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300",
   organizer: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300",
   co_organizer: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
+  venue_manager: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
   staff: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300",
+  speaker: "bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300",
+  sponsor: "bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300",
   participant: "bg-accent text-muted-foreground",
 };
 
 type RoleKey = keyof typeof ROLE_COLORS;
 
-function isKnownRole(value: string): value is RoleKey {
-  return value in ROLE_COLORS;
+/**
+ * Highest-privilege role the user holds, used for the topbar chip.
+ *
+ * Picking `roles[0]` (the previous behaviour) was wrong: Firestore
+ * stores roles in insertion order, so a user with
+ * `["participant", "venue_manager"]` — the common shape for venue
+ * managers who also register as participants — rendered as
+ * "Participant" in the chip while the sidebar showed the
+ * venue-manager nav. Operator confusion followed.
+ *
+ * The priority order mirrors `resolveLandingRoute` in `lib/access.ts`:
+ * admin tier before org tier before venue tier before baseline. A
+ * super-admin who also holds `organizer` shows as super_admin.
+ */
+const ROLE_PRIORITY: readonly RoleKey[] = [
+  "super_admin",
+  "platform:super_admin",
+  "platform:security",
+  "platform:ops",
+  "platform:finance",
+  "platform:support",
+  "organizer",
+  "co_organizer",
+  "venue_manager",
+  "staff",
+  "speaker",
+  "sponsor",
+  "participant",
+];
+
+function pickPrimaryRole(roles: readonly string[]): RoleKey {
+  for (const candidate of ROLE_PRIORITY) {
+    if (roles.includes(candidate)) return candidate;
+  }
+  // User holds only unknown / future roles — render the neutral chip.
+  return "participant";
 }
 
 interface TopBarProps {
@@ -76,10 +119,18 @@ export function TopBar({ onShowShortcuts }: TopBarProps) {
   // so there is no regression for the primary persona of this shell.
   const adminRole = useAdminRole();
 
-  const rawRole = user?.roles?.[0] ?? "participant";
-  const primaryRole: RoleKey = isKnownRole(rawRole) ? rawRole : "participant";
+  const primaryRole: RoleKey = pickPrimaryRole(user?.roles ?? []);
   const roleColor = ROLE_COLORS[primaryRole];
-  const roleLabel = tRoles(primaryRole);
+  // i18n keys cover `super_admin`, `organizer`, `co_organizer`, `staff`,
+  // `participant`. Platform subroles + venue_manager + speaker + sponsor
+  // fall through to a generic fallback so we never render a raw i18n key.
+  const roleLabel = (() => {
+    try {
+      return tRoles(primaryRole);
+    } catch {
+      return tRoles("participant");
+    }
+  })();
 
   // Bell data — first page only (10 rows); the full history lives at
   // /account/notifications/history. We deliberately don't gate behind
