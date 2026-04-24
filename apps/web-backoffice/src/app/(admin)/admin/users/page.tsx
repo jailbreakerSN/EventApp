@@ -2,7 +2,15 @@
 
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
-import { useAdminUsers, useUpdateUserRoles, useUpdateUserStatus } from "@/hooks/use-admin";
+import {
+  useAdminUsers,
+  useBulkUpdateUserStatus,
+  useUpdateUserRoles,
+  useUpdateUserStatus,
+} from "@/hooks/use-admin";
+import { useBulkSelection } from "@/hooks/use-bulk-selection";
+import { BulkActionBar } from "@/components/admin/bulk-action-bar";
+import { toast } from "sonner";
 import {
   Card,
   CardContent,
@@ -216,6 +224,13 @@ export default function AdminUsersPage() {
 
   const updateRoles = useUpdateUserRoles();
   const updateStatus = useUpdateUserStatus();
+  const bulkUpdateStatus = useBulkUpdateUserStatus();
+
+  // Selection state is scoped to the current page. Switching pages or
+  // filters deliberately resets the selection set via pageIds reference,
+  // so operators cannot accidentally suspend rows they can no longer see.
+  const pageIds = users.map((u) => u.uid);
+  const bulk = useBulkSelection<string>(pageIds);
 
   const handleToggleStatus = (user: AdminUserRow) => {
     const action = user.isActive ? "suspendre" : "reactiver";
@@ -223,6 +238,44 @@ export default function AdminUsersPage() {
       return;
     }
     updateStatus.mutate({ userId: user.uid, isActive: !user.isActive });
+  };
+
+  const handleBulkUpdateStatus = (isActive: boolean) => {
+    const ids = Array.from(bulk.selectedIds);
+    if (ids.length === 0) return;
+    const verb = isActive ? "réactiver" : "suspendre";
+    if (
+      !window.confirm(
+        `Confirmer : ${verb} ${ids.length} utilisateur${ids.length > 1 ? "s" : ""} ? ` +
+          `Cette action est auditée individuellement et peut être lente (~${ids.length}× le ` +
+          `temps d'une mutation unitaire).`,
+      )
+    ) {
+      return;
+    }
+    bulkUpdateStatus.mutate(
+      { ids, isActive },
+      {
+        onSuccess: (res) => {
+          const ok = res.data?.succeeded.length ?? 0;
+          const ko = res.data?.failed.length ?? 0;
+          if (ko > 0) {
+            toast.error(
+              `Bulk ${verb} partiel : ${ok} réussi${ok > 1 ? "s" : ""}, ${ko} échoué${ko > 1 ? "s" : ""}. ` +
+                `Premier échec : ${res.data?.failed[0]?.reason ?? "inconnu"}.`,
+            );
+          } else {
+            toast.success(`${ok} utilisateur${ok > 1 ? "s" : ""} ${verb}${ok > 1 ? "s" : ""}.`);
+          }
+          bulk.clear();
+        },
+        onError: (err) => {
+          toast.error(
+            `Bulk ${verb} échoué : ${err instanceof Error ? err.message : "erreur inconnue"}`,
+          );
+        },
+      },
+    );
   };
 
   const handleUpdateRoles = (userId: string, roles: string[]) => {
@@ -306,6 +359,35 @@ export default function AdminUsersPage() {
             data={users as (AdminUserRow & Record<string, unknown>)[]}
             columns={
               [
+                {
+                  key: "__select",
+                  // Header hosts the tri-state select-all checkbox. The
+                  // `indeterminate` DOM property is set imperatively via
+                  // ref since React's JSX `indeterminate` attribute does
+                  // not propagate to the underlying HTMLInputElement.
+                  header: (
+                    <input
+                      type="checkbox"
+                      aria-label="Sélectionner toute la page"
+                      checked={bulk.selectAllChecked}
+                      ref={(el) => {
+                        if (el) el.indeterminate = bulk.selectAllState === "some";
+                      }}
+                      onChange={(e) => bulk.toggleAll(e.target.checked)}
+                      className="h-4 w-4 cursor-pointer rounded border-border"
+                    />
+                  ),
+                  hideOnMobile: true,
+                  render: (user) => (
+                    <input
+                      type="checkbox"
+                      aria-label={`Sélectionner ${user.displayName}`}
+                      checked={bulk.isSelected(user.uid)}
+                      onChange={(e) => bulk.toggle(user.uid, e.target.checked)}
+                      className="h-4 w-4 cursor-pointer rounded border-border"
+                    />
+                  ),
+                },
                 {
                   key: "displayName",
                   header: "Nom / Email",
@@ -400,6 +482,35 @@ export default function AdminUsersPage() {
           />
         </CardContent>
       </Card>
+
+      {/* Bulk action bar — appears when ≥ 1 row selected. */}
+      <BulkActionBar
+        count={bulk.size}
+        onClear={bulk.clear}
+        entityLabel={{
+          singular: "utilisateur sélectionné",
+          plural: "utilisateurs sélectionnés",
+        }}
+      >
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => handleBulkUpdateStatus(true)}
+          disabled={bulkUpdateStatus.isPending}
+        >
+          <CheckCircle className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
+          Réactiver
+        </Button>
+        <Button
+          variant="destructive"
+          size="sm"
+          onClick={() => handleBulkUpdateStatus(false)}
+          disabled={bulkUpdateStatus.isPending}
+        >
+          <Ban className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
+          Suspendre
+        </Button>
+      </BulkActionBar>
 
       {/* Pagination */}
       {!isLoading && meta.totalPages > 1 && (

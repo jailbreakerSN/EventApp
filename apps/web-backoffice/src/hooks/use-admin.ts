@@ -47,6 +47,15 @@ export function useUpdateUserStatus() {
   });
 }
 
+export function useBulkUpdateUserStatus() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ ids, isActive }: { ids: string[]; isActive: boolean }) =>
+      adminApi.bulkUpdateUserStatus(ids, isActive),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin", "users"] }),
+  });
+}
+
 // ─── Organizations ──────────────────────────────────────────────────────────
 
 export function useAdminOrganizations(params: Partial<AdminOrgQuery> = {}) {
@@ -69,6 +78,15 @@ export function useUpdateOrgStatus() {
   return useMutation({
     mutationFn: ({ orgId, isActive }: { orgId: string; isActive: boolean }) =>
       adminApi.updateOrgStatus(orgId, isActive),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["admin", "organizations"] }),
+  });
+}
+
+export function useBulkUpdateOrgStatus() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ ids, isActive }: { ids: string[]; isActive: boolean }) =>
+      adminApi.bulkUpdateOrgStatus(ids, isActive),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["admin", "organizations"] }),
   });
 }

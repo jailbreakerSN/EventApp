@@ -87,6 +87,7 @@ import type {
   BalanceTransactionQuery,
   OrganizationBalance,
   AdminUserRow,
+  BulkUpdateStatusResult,
 } from "@teranga/shared-types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
@@ -736,6 +737,16 @@ export const adminApi = {
   updateUserStatus: (userId: string, isActive: boolean) =>
     api.patch<void>(`/v1/admin/users/${userId}/status`, { isActive }),
 
+  // T1.2 — bulk suspend/reactivate on up to 100 ids per call. The
+  // service layer delegates to updateUserStatus for each id (audit +
+  // transactional write per row), so the UI gets per-id success/failure
+  // even when the bulk mutation is partially applied.
+  bulkUpdateUserStatus: (ids: string[], isActive: boolean) =>
+    api.post<ApiResponse<BulkUpdateStatusResult>>(`/v1/admin/users/bulk-update-status`, {
+      ids,
+      isActive,
+    }),
+
   listOrganizations: (query: Partial<AdminOrgQuery> = {}) =>
     api.get<PaginatedResponse<Organization>>(`/v1/admin/organizations${buildQuery(query)}`),
 
@@ -744,6 +755,12 @@ export const adminApi = {
 
   updateOrgStatus: (orgId: string, isActive: boolean) =>
     api.patch<void>(`/v1/admin/organizations/${orgId}/status`, { isActive }),
+
+  bulkUpdateOrgStatus: (ids: string[], isActive: boolean) =>
+    api.post<ApiResponse<BulkUpdateStatusResult>>(
+      `/v1/admin/organizations/bulk-update-status`,
+      { ids, isActive },
+    ),
 
   listEvents: (query: Partial<AdminEventQuery> = {}) =>
     api.get<PaginatedResponse<Event>>(`/v1/admin/events${buildQuery(query)}`),

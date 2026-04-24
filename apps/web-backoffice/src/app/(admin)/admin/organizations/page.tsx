@@ -5,9 +5,13 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
   useAdminOrganizations,
+  useBulkUpdateOrgStatus,
   useVerifyOrganization,
   useUpdateOrgStatus,
 } from "@/hooks/use-admin";
+import { useBulkSelection } from "@/hooks/use-bulk-selection";
+import { BulkActionBar } from "@/components/admin/bulk-action-bar";
+import { toast } from "sonner";
 import {
   Card,
   CardContent,
@@ -106,6 +110,11 @@ export default function AdminOrganizationsPage() {
 
   const verifyOrg = useVerifyOrganization();
   const updateOrgStatus = useUpdateOrgStatus();
+  const bulkUpdateStatus = useBulkUpdateOrgStatus();
+
+  // Same page-scoped selection pattern as /admin/users.
+  const orgPageIds = organizations.map((o) => o.id);
+  const bulk = useBulkSelection<string>(orgPageIds);
 
   const [assignTarget, setAssignTarget] = useState<Organization | null>(null);
 
@@ -122,6 +131,44 @@ export default function AdminOrganizationsPage() {
       return;
     }
     updateOrgStatus.mutate({ orgId: org.id, isActive: !org.isActive });
+  };
+
+  const handleBulkUpdateStatus = (isActive: boolean) => {
+    const ids = Array.from(bulk.selectedIds);
+    if (ids.length === 0) return;
+    const verb = isActive ? "réactiver" : "suspendre";
+    if (
+      !window.confirm(
+        `Confirmer : ${verb} ${ids.length} organisation${ids.length > 1 ? "s" : ""} ? ` +
+          `Cette action est auditée individuellement. Suspendre bloque aussi l'accès des ` +
+          `membres, à utiliser avec prudence.`,
+      )
+    ) {
+      return;
+    }
+    bulkUpdateStatus.mutate(
+      { ids, isActive },
+      {
+        onSuccess: (res) => {
+          const ok = res.data?.succeeded.length ?? 0;
+          const ko = res.data?.failed.length ?? 0;
+          if (ko > 0) {
+            toast.error(
+              `Bulk ${verb} partiel : ${ok} réussi${ok > 1 ? "s" : ""}, ${ko} échoué${ko > 1 ? "s" : ""}. ` +
+                `Premier échec : ${res.data?.failed[0]?.reason ?? "inconnu"}.`,
+            );
+          } else {
+            toast.success(`${ok} organisation${ok > 1 ? "s" : ""} ${verb}${ok > 1 ? "s" : ""}.`);
+          }
+          bulk.clear();
+        },
+        onError: (err) => {
+          toast.error(
+            `Bulk ${verb} échoué : ${err instanceof Error ? err.message : "erreur inconnue"}`,
+          );
+        },
+      },
+    );
   };
 
   return (
@@ -229,6 +276,31 @@ export default function AdminOrganizationsPage() {
             columns={
               [
                 {
+                  key: "__select",
+                  header: (
+                    <input
+                      type="checkbox"
+                      aria-label="Sélectionner toute la page"
+                      checked={bulk.selectAllChecked}
+                      ref={(el) => {
+                        if (el) el.indeterminate = bulk.selectAllState === "some";
+                      }}
+                      onChange={(e) => bulk.toggleAll(e.target.checked)}
+                      className="h-4 w-4 cursor-pointer rounded border-border"
+                    />
+                  ),
+                  hideOnMobile: true,
+                  render: (org) => (
+                    <input
+                      type="checkbox"
+                      aria-label={`Sélectionner ${org.name}`}
+                      checked={bulk.isSelected(org.id)}
+                      onChange={(e) => bulk.toggle(org.id, e.target.checked)}
+                      className="h-4 w-4 cursor-pointer rounded border-border"
+                    />
+                  ),
+                },
+                {
                   key: "name",
                   header: "Nom",
                   primary: true,
@@ -335,6 +407,33 @@ export default function AdminOrganizationsPage() {
           />
         </CardContent>
       </Card>
+
+      {/* Bulk action bar — appears when ≥ 1 org selected. */}
+      <BulkActionBar
+        count={bulk.size}
+        onClear={bulk.clear}
+        entityLabel={{
+          singular: "organisation sélectionnée",
+          plural: "organisations sélectionnées",
+        }}
+      >
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => handleBulkUpdateStatus(true)}
+          disabled={bulkUpdateStatus.isPending}
+        >
+          Réactiver
+        </Button>
+        <Button
+          variant="destructive"
+          size="sm"
+          onClick={() => handleBulkUpdateStatus(false)}
+          disabled={bulkUpdateStatus.isPending}
+        >
+          Suspendre
+        </Button>
+      </BulkActionBar>
 
       {/* Pagination */}
       {!isLoading && meta.totalPages > 1 && (
