@@ -1,8 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
   type Organization,
-  type Entitlement,
-  type EntitlementMap,
   PLAN_LIMIT_UNLIMITED,
   LEGACY_FEATURE_ENTITLEMENT_KEYS,
   LEGACY_QUOTA_ENTITLEMENT_KEYS,
