@@ -40,7 +40,6 @@ import { useAdminRole } from "@/hooks/use-admin-role";
 import { BrandedLoader } from "@/components/branded-loader";
 import { AdminSidebar } from "@/components/admin/admin-sidebar";
 import { CommandPalette } from "@/components/admin/command-palette";
-import { ImpersonationBanner } from "@/components/admin/impersonation-banner";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { canViewOrganizerShell } from "@/lib/access";
 import type { UserRole } from "@teranga/shared-types";
@@ -152,14 +151,10 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         {t("skipToContent")}
       </a>
 
-      {/* Impersonation banner — stays at the very top so the entire shell
-          gets pushed down when a super-admin is acting as another user.
-          In the current model, impersonating logs the admin OUT of the
-          admin session and into the target's participant session, so in
-          practice this banner renders in the organizer shell. We still
-          mount it here defensively for future flows where an admin may
-          launch inline QA while keeping their admin session. */}
-      <ImpersonationBanner />
+      {/* Impersonation banner moved to the root layout (see
+          apps/web-backoffice/src/app/layout.tsx) so a single mount
+          covers every route group — (auth), (admin), (dashboard),
+          and root-level pages like /unauthorized. */}
 
       <div className="flex flex-1 overflow-hidden">
         <AdminSidebar />

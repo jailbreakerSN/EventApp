@@ -5,6 +5,7 @@ import { getLocale, getMessages } from "next-intl/server";
 import { Providers } from "./providers";
 import { Toaster } from "@teranga/shared-ui";
 import { OfflineIndicator } from "@/components/offline-indicator";
+import { ImpersonationBanner } from "@/components/impersonation-banner";
 import { SwRegister } from "@/components/sw-register";
 import "./globals.css";
 
@@ -93,6 +94,19 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       <body className={inter.className}>
         <NextIntlClientProvider locale={locale} messages={messages}>
           <OfflineIndicator />
+          {/*
+            Impersonation banner MUST live at the root layout (above the
+            route-group layouts) so it's visible on every page — the
+            participant home resolves in (public), the authenticated
+            shell in (authenticated), and the impersonation accept page
+            is at app/impersonation/. Mounting inside any one group
+            would miss the others. The banner self-gates: it only
+            renders when the current Firebase ID token carries the
+            server-signed `impersonatedBy` claim, so mounting
+            unconditionally is safe (no flash for non-impersonated
+            sessions).
+          */}
+          <ImpersonationBanner />
           <Providers>{children}</Providers>
           <Toaster />
           <SwRegister />
