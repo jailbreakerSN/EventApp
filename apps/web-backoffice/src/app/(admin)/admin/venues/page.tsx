@@ -29,6 +29,7 @@ import {
 } from "@/hooks/use-venues";
 import type { Venue, VenueType, VenueStatus } from "@teranga/shared-types";
 import { useTranslations } from "next-intl";
+import { CsvExportButton } from "@/components/admin/csv-export-button";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -136,9 +137,15 @@ export default function AdminVenuesPage() {
       </Breadcrumb>
 
       {/* Header */}
-      <div className="flex items-center gap-3">
-        <MapPin className="h-7 w-7 text-primary" />
-        <h1 className="text-2xl font-bold text-foreground">Gestion des lieux</h1>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <MapPin className="h-7 w-7 text-primary" />
+          <h1 className="text-2xl font-bold text-foreground">Gestion des lieux</h1>
+        </div>
+        <CsvExportButton
+          resource="venues"
+          filters={statusFilter ? `status=${encodeURIComponent(statusFilter)}` : ""}
+        />
       </div>
 
       {/* Filters */}

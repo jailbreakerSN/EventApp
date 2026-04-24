@@ -22,6 +22,7 @@ import { CreditCard, Archive, Pencil, Plus, Lock } from "lucide-react";
 import type { Plan, PricingModel } from "@teranga/shared-types";
 import { PLAN_LIMIT_UNLIMITED } from "@teranga/shared-types";
 import { toast } from "sonner";
+import { CsvExportButton } from "@/components/admin/csv-export-button";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -116,6 +117,10 @@ export default function AdminPlansPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <CsvExportButton
+            resource="plans"
+            filters={includeArchived ? "includeArchived=true" : ""}
+          />
           <Link
             href="/admin/plans/analytics"
             className="inline-flex items-center gap-1 rounded-lg border border-primary/40 bg-background px-4 py-2 text-sm font-medium text-primary hover:bg-primary/5 transition-colors"
