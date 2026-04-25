@@ -59,7 +59,7 @@ function formatScalar(v: unknown): string {
     return v;
   }
   if (typeof v === "boolean") return v ? "oui" : "non";
-  if (typeof v === "number") return v.toLocaleString("fr-FR");
+  if (typeof v === "number") return v.toLocaleString("fr-SN");
   try {
     return JSON.stringify(v);
   } catch {

@@ -130,12 +130,12 @@ export default function AdminRevenuePage() {
           <div className="grid gap-3 sm:grid-cols-3">
             <MetricCard
               icon={<Coins className="h-5 w-5 text-teranga-gold" aria-hidden="true" />}
-              label="MRR — Monthly recurring"
+              label="MRR — Revenu mensuel récurrent"
               value={fmtXof(data.mrrXof)}
             />
             <MetricCard
               icon={<TrendingUp className="h-5 w-5 text-teranga-green" aria-hidden="true" />}
-              label="ARR — Annual recurring (×12)"
+              label="ARR — Revenu annuel récurrent (×12)"
               value={fmtXof(data.arrXof)}
             />
             <MetricCard
@@ -177,7 +177,12 @@ export default function AdminRevenuePage() {
           </Card>
 
           <div className="text-right text-[10px] text-muted-foreground">
-            Instantané calculé le {new Date(data.computedAt).toLocaleString("fr-FR")}
+            Instantané calculé le{" "}
+            {new Date(data.computedAt).toLocaleString("fr-SN", {
+              dateStyle: "short",
+              timeStyle: "short",
+              timeZone: "Africa/Dakar",
+            })}
           </div>
 
           {/* A.3 closure — cohort retention curve */}
@@ -241,7 +246,7 @@ function CohortsSection({ cohorts }: { cohorts: CohortsSnapshot }) {
       <div className="grid gap-3 sm:grid-cols-3">
         <MetricCard
           icon={<Users className="h-5 w-5 text-teranga-navy" aria-hidden="true" />}
-          label="Signups (12 derniers mois)"
+          label="Inscriptions (12 derniers mois)"
           value={String(totalSignups)}
         />
         <MetricCard
@@ -264,7 +269,7 @@ function CohortsSection({ cohorts }: { cohorts: CohortsSnapshot }) {
             <thead className="border-b border-border bg-muted/30 text-left text-[11px] uppercase tracking-wider text-muted-foreground">
               <tr>
                 <th className="px-4 py-2">Cohorte</th>
-                <th className="px-4 py-2 text-right">Signups</th>
+                <th className="px-4 py-2 text-right">Inscriptions</th>
                 <th className="px-4 py-2 text-right">Encore actifs</th>
                 <th className="px-4 py-2 text-right">Rétention</th>
                 <th className="px-4 py-2">Courbe</th>
@@ -303,7 +308,12 @@ function CohortsSection({ cohorts }: { cohorts: CohortsSnapshot }) {
 
       <div className="text-right text-[10px] text-muted-foreground">
         Calcul basé sur l&apos;état actuel des abonnements ({" "}
-        {new Date(cohorts.computedAt).toLocaleString("fr-FR")} ). Le mois courant
+        {new Date(cohorts.computedAt).toLocaleString("fr-SN", {
+          dateStyle: "short",
+          timeStyle: "short",
+          timeZone: "Africa/Dakar",
+        })}{" "}
+        ). Le mois courant
         retient mécaniquement 100% — utilisez la moyenne « hors mois courant » comme
         signal long-terme.
       </div>

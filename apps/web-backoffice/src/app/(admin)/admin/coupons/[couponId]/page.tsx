@@ -110,7 +110,7 @@ export default function AdminEditCouponPage(props: {
           <Badge variant="outline" className="text-[10px]">
             {coupon.discountType === "percentage"
               ? `-${coupon.discountValue}%`
-              : `-${coupon.discountValue.toLocaleString("fr-FR")} XOF`}
+              : `-${coupon.discountValue.toLocaleString("fr-SN")} XOF`}
           </Badge>
         </>
       }
@@ -188,7 +188,7 @@ function RedemptionsTab({ couponId }: { couponId: string }) {
               Total des rédemptions
             </div>
             <div className="text-2xl font-semibold text-teranga-gold">
-              {aggregates.totalRedemptions.toLocaleString("fr-FR")}
+              {aggregates.totalRedemptions.toLocaleString("fr-SN")}
             </div>
           </CardContent>
         </Card>
@@ -198,7 +198,7 @@ function RedemptionsTab({ couponId }: { couponId: string }) {
               Remise totale appliquée
             </div>
             <div className="text-2xl font-semibold text-teranga-green">
-              {aggregates.totalDiscountAppliedXof.toLocaleString("fr-FR")} XOF
+              {aggregates.totalDiscountAppliedXof.toLocaleString("fr-SN")} XOF
             </div>
             {aggregates.totalRedemptions > 500 && (
               <p className="text-[10px] text-amber-600">
@@ -241,10 +241,10 @@ function RedemptionsTab({ couponId }: { couponId: string }) {
                   <tr key={p.planId} className="border-b border-border last:border-0">
                     <td className="px-3 py-1.5 font-mono text-xs">{p.planId}</td>
                     <td className="px-3 py-1.5 text-right font-mono text-xs">
-                      {p.count.toLocaleString("fr-FR")}
+                      {p.count.toLocaleString("fr-SN")}
                     </td>
                     <td className="px-3 py-1.5 text-right font-mono text-xs text-teranga-green">
-                      -{p.discountXof.toLocaleString("fr-FR")} XOF
+                      -{p.discountXof.toLocaleString("fr-SN")} XOF
                     </td>
                   </tr>
                 ))}
@@ -308,19 +308,20 @@ function RedemptionRow({ row }: { row: CouponRedemption }) {
         <div className="mt-0.5 text-[11px] text-muted-foreground">
           Plan {row.planId}
           {row.cycle ? ` · ${row.cycle}` : ""} · Appliqué le{" "}
-          {new Date(row.redeemedAt).toLocaleString("fr-FR", {
+          {new Date(row.redeemedAt).toLocaleString("fr-SN", {
             dateStyle: "medium",
             timeStyle: "short",
+            timeZone: "Africa/Dakar",
           })}
         </div>
       </div>
       <div className="text-right">
         <div className="font-semibold text-teranga-green">
-          -{row.discountAppliedXof.toLocaleString("fr-FR")} XOF
+          -{row.discountAppliedXof.toLocaleString("fr-SN")} XOF
         </div>
         <div className="text-[11px] text-muted-foreground">
-          {row.originalPriceXof.toLocaleString("fr-FR")} →{" "}
-          {row.finalPriceXof.toLocaleString("fr-FR")} XOF
+          {row.originalPriceXof.toLocaleString("fr-SN")} →{" "}
+          {row.finalPriceXof.toLocaleString("fr-SN")} XOF
         </div>
       </div>
     </div>
@@ -350,7 +351,7 @@ function RedemptionsByMonthChart({
               <div
                 className="w-full bg-teranga-gold/70 transition-colors hover:bg-teranga-gold"
                 style={{ height: `${Math.max(2, (d.count / max) * 100)}%` }}
-                title={`${d.month} : ${d.count} rédemption${d.count > 1 ? "s" : ""} · -${d.discountXof.toLocaleString("fr-FR")} XOF`}
+                title={`${d.month} : ${d.count} rédemption${d.count > 1 ? "s" : ""} · -${d.discountXof.toLocaleString("fr-SN")} XOF`}
               />
             </div>
             <span className="text-[10px] font-mono text-muted-foreground">{d.month}</span>

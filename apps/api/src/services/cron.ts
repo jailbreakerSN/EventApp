@@ -41,12 +41,21 @@ function parseField(field: string, min: number, max: number): ParsedField {
     return { values };
   }
   if (field.includes(",")) {
-    return {
-      values: field
-        .split(",")
-        .map((p) => Number(p))
-        .filter((n) => Number.isFinite(n) && n >= min && n <= max),
-    };
+    // Senior-review F-5 — strict validation. The previous implementation
+    // silently filtered out-of-range values (e.g. "0,60" for the minutes
+    // field would parse as [0] and the operator would believe they had
+    // scheduled minute 60). Now every token must validate or the whole
+    // expression is rejected — matches the explicit error thrown by the
+    // range and single-value branches below.
+    const values: number[] = [];
+    for (const part of field.split(",")) {
+      const n = Number(part);
+      if (!Number.isFinite(n) || !Number.isInteger(n) || n < min || n > max) {
+        throw new Error(`invalid value in cron field: "${part}" (range ${min}-${max})`);
+      }
+      values.push(n);
+    }
+    return { values };
   }
   if (field.includes("-")) {
     const [a, b] = field.split("-").map(Number);

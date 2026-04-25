@@ -52,7 +52,7 @@ const WINDOW_OPTIONS = [
 ];
 
 function formatNumber(n: number): string {
-  return n.toLocaleString("fr-FR");
+  return n.toLocaleString("fr-SN");
 }
 
 export default function AdminCostPage() {
@@ -253,7 +253,7 @@ function DailyBars({ daily }: { daily: Array<{ day: string; reads: number }> }) 
             <div
               className="w-full bg-teranga-gold/70 transition-colors hover:bg-teranga-gold"
               style={{ height: `${Math.max(2, (d.reads / max) * 100)}%` }}
-              title={`${d.day} : ${d.reads.toLocaleString("fr-FR")} lectures`}
+              title={`${d.day} : ${d.reads.toLocaleString("fr-SN")} lectures`}
             />
           </div>
           <span className="text-[9px] font-mono text-muted-foreground">{d.day.slice(5)}</span>

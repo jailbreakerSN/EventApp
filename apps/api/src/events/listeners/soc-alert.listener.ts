@@ -69,13 +69,31 @@ async function post(payload: AlertPayload): Promise<void> {
   const url = config.SOC_ALERT_WEBHOOK_URL;
   if (!url) return; // No webhook configured — silently no-op.
 
+  // Senior-review F-3 — sign the raw body with HMAC-SHA256 so the
+  // receiver can verify authenticity. The header format mirrors
+  // GitHub / Stripe webhooks: `X-Teranga-Signature: sha256=<hex>`.
+  // When the secret is unset, send unsigned (with a one-shot stderr
+  // warning) — useful for dev / CI; production should always set it.
+  const body = JSON.stringify(payload);
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  const secret = config.SOC_ALERT_WEBHOOK_SECRET;
+  if (secret) {
+    const sig = crypto.createHmac("sha256", secret).update(body).digest("hex");
+    headers["X-Teranga-Signature"] = `sha256=${sig}`;
+  } else if (!warnedAboutMissingSecret) {
+    warnedAboutMissingSecret = true;
+    process.stderr.write(
+      "[soc-alert] SOC_ALERT_WEBHOOK_SECRET unset — posting unsigned alerts. Set it in production.\n",
+    );
+  }
+
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
     const res = await fetch(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      headers,
+      body,
       signal: controller.signal,
     });
     if (!res.ok) {
@@ -93,6 +111,8 @@ async function post(payload: AlertPayload): Promise<void> {
     clearTimeout(timer);
   }
 }
+
+let warnedAboutMissingSecret = false;
 
 export function registerSocAlertListeners(): void {
   // Skip wiring entirely when no webhook is configured. Avoids an

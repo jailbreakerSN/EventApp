@@ -243,20 +243,27 @@ class ScheduledOpsService extends BaseService {
     const ref = db.collection(COLLECTIONS.SCHEDULED_ADMIN_OPS).doc(opId);
 
     const now = new Date().toISOString();
-    await db.runTransaction(async (tx) => {
+    // Senior-review D-1 — only emit when an actual archive transition
+    // happened. The previous version emitted unconditionally, so a
+    // second delete on an already-archived op would write a duplicate
+    // audit row claiming a deletion that never occurred.
+    const transitioned = await db.runTransaction(async (tx) => {
       const snap = await tx.get(ref);
       if (!snap.exists) throw new NotFoundError("scheduledAdminOp", opId);
       const current = snap.data() as ScheduledAdminOp;
       if (current.status === "archived") {
         // Idempotent — already soft-deleted, no-op.
-        return;
+        return false;
       }
       tx.update(ref, {
         status: "archived",
         enabled: false,
         updatedAt: now,
       });
+      return true;
     });
+
+    if (!transitioned) return;
 
     eventBus.emit("scheduled_admin_op.deleted", {
       opId,

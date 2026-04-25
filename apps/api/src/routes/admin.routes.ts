@@ -238,41 +238,9 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
         security: [{ BearerAuth: [] }],
       },
     },
-    async (_request, reply) => {
-      const snap = await db
-        .collection(COLLECTIONS.SUBSCRIPTIONS)
-        .where("status", "==", "active")
-        .get();
-      type Sub = {
-        organizationId?: string;
-        plan?: string;
-        status?: string;
-        priceXof?: number;
-        billingCycle?: string;
-      };
-      let mrrXof = 0;
-      const byPlan: Record<string, { count: number; mrrXof: number }> = {};
-      for (const doc of snap.docs) {
-        const s = doc.data() as Sub;
-        const price = Number(s.priceXof ?? 0);
-        // Normalise annual subs into monthly for the MRR aggregate.
-        const monthly = s.billingCycle === "annual" ? Math.round(price / 12) : price;
-        mrrXof += monthly;
-        const plan = s.plan ?? "unknown";
-        if (!byPlan[plan]) byPlan[plan] = { count: 0, mrrXof: 0 };
-        byPlan[plan].count += 1;
-        byPlan[plan].mrrXof += monthly;
-      }
-      return reply.send({
-        success: true,
-        data: {
-          mrrXof,
-          arrXof: mrrXof * 12,
-          activeSubscriptions: snap.size,
-          byPlan,
-          computedAt: new Date().toISOString(),
-        },
-      });
+    async (request, reply) => {
+      const data = await adminService.getRevenueSnapshot(request.user!);
+      return reply.send({ success: true, data });
     },
   );
 

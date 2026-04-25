@@ -79,7 +79,7 @@ class AdminService extends BaseService {
   // ── Platform Stats ────────────────────────────────────────────────────
 
   async getStats(user: AuthUser): Promise<PlatformStats> {
-    this.requirePermission(user, "platform:manage");
+    this.requireAnyPermission(user, ["platform:audit_read", "platform:manage"]);
     return adminRepository.getPlatformStats();
   }
 
@@ -448,7 +448,7 @@ class AdminService extends BaseService {
     }>;
     computedAt: string;
   }> {
-    this.requirePermission(user, "platform:manage");
+    this.requireAnyPermission(user, ["platform:audit_read", "platform:manage"]);
 
     // Safe counting helper — a single failing collection shouldn't tank
     // the whole inbox. We swallow and return 0 on error, logging via
@@ -980,7 +980,7 @@ class AdminService extends BaseService {
     events: Array<{ id: string; label: string; sublabel?: string }>;
     venues: Array<{ id: string; label: string; sublabel?: string }>;
   }> {
-    this.requirePermission(user, "platform:manage");
+    this.requireAnyPermission(user, ["platform:audit_read", "platform:manage"]);
     const q = query.trim().toLowerCase();
     if (q.length < 2) {
       return { users: [], organizations: [], events: [], venues: [] };
@@ -1292,7 +1292,7 @@ class AdminService extends BaseService {
   }
 
   async getUserById(user: AuthUser, targetUid: string): Promise<AdminUserRow> {
-    this.requirePermission(user, "platform:manage");
+    this.requireAnyPermission(user, ["platform:audit_read", "platform:manage"]);
     const doc = await db.collection(COLLECTIONS.USERS).doc(targetUid).get();
     if (!doc.exists) {
       throw new NotFoundError("User", targetUid);
@@ -1302,7 +1302,7 @@ class AdminService extends BaseService {
   }
 
   async listUsers(user: AuthUser, query: AdminUserQuery): Promise<PaginatedResult<AdminUserRow>> {
-    this.requirePermission(user, "platform:manage");
+    this.requireAnyPermission(user, ["platform:audit_read", "platform:manage"]);
     const page = await adminRepository.listAllUsers(
       { q: query.q, role: query.role, isActive: query.isActive },
       { page: query.page, limit: query.limit },
@@ -1505,13 +1505,65 @@ class AdminService extends BaseService {
     });
   }
 
+  // ── Revenue snapshot (Senior-review F-2) ──────────────────────────────
+  // Extracted from `routes/admin.routes.ts` so the service-layer
+  // permission gate provides defense-in-depth on top of the route's
+  // `readOnlyAdminPreHandler`. Sums priceXof per active subscription
+  // to derive MRR (monthly), ARR (×12), and a per-plan breakdown.
+  // On-demand; cardinality is tens of orgs.
+  async getRevenueSnapshot(user: AuthUser): Promise<{
+    mrrXof: number;
+    arrXof: number;
+    activeSubscriptions: number;
+    byPlan: Record<string, { count: number; mrrXof: number }>;
+    computedAt: string;
+  }> {
+    // `platform:audit_read` covers support / security / finance roles —
+    // each of which carries audit_read by design. No dedicated
+    // `platform:finance` granular permission exists; the role-name
+    // appears in the catalog but routes/services gate on the
+    // capability, not the role.
+    this.requireAnyPermission(user, ["platform:audit_read", "platform:manage"]);
+    const snap = await db
+      .collection(COLLECTIONS.SUBSCRIPTIONS)
+      .where("status", "==", "active")
+      .get();
+    type Sub = {
+      organizationId?: string;
+      plan?: string;
+      status?: string;
+      priceXof?: number;
+      billingCycle?: string;
+    };
+    let mrrXof = 0;
+    const byPlan: Record<string, { count: number; mrrXof: number }> = {};
+    for (const doc of snap.docs) {
+      const s = doc.data() as Sub;
+      const price = Number(s.priceXof ?? 0);
+      // Normalise annual subs into monthly for the MRR aggregate.
+      const monthly = s.billingCycle === "annual" ? Math.round(price / 12) : price;
+      mrrXof += monthly;
+      const plan = s.plan ?? "unknown";
+      if (!byPlan[plan]) byPlan[plan] = { count: 0, mrrXof: 0 };
+      byPlan[plan].count += 1;
+      byPlan[plan].mrrXof += monthly;
+    }
+    return {
+      mrrXof,
+      arrXof: mrrXof * 12,
+      activeSubscriptions: snap.size,
+      byPlan,
+      computedAt: new Date().toISOString(),
+    };
+  }
+
   // ── Organization Management ───────────────────────────────────────────
 
   async listOrganizations(
     user: AuthUser,
     query: AdminOrgQuery,
   ): Promise<PaginatedResult<Organization>> {
-    this.requirePermission(user, "platform:manage");
+    this.requireAnyPermission(user, ["platform:audit_read", "platform:manage"]);
     return adminRepository.listAllOrganizations(
       { q: query.q, plan: query.plan, isVerified: query.isVerified, isActive: query.isActive },
       { page: query.page, limit: query.limit },
@@ -1521,18 +1573,22 @@ class AdminService extends BaseService {
   async verifyOrganization(user: AuthUser, orgId: string): Promise<void> {
     this.requirePermission(user, "platform:manage");
 
-    const orgDoc = await db.collection(COLLECTIONS.ORGANIZATIONS).doc(orgId).get();
-    if (!orgDoc.exists) throw new NotFoundError("Organization", orgId);
-
-    await db.collection(COLLECTIONS.ORGANIZATIONS).doc(orgId).update({
-      isVerified: true,
-      updatedAt: new Date().toISOString(),
+    // Senior-review F-4 — read-then-write must be transactional. A
+    // concurrent caller can otherwise observe a doc that is then
+    // deleted (silent no-op `.update()` instead of a 404) or two
+    // concurrent verifications can race on the existence check.
+    const ref = db.collection(COLLECTIONS.ORGANIZATIONS).doc(orgId);
+    const now = new Date().toISOString();
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) throw new NotFoundError("Organization", orgId);
+      tx.update(ref, { isVerified: true, updatedAt: now });
     });
 
     eventBus.emit("organization.verified", {
       actorId: user.uid,
       requestId: getRequestId(),
-      timestamp: new Date().toISOString(),
+      timestamp: now,
       organizationId: orgId,
     });
   }
@@ -1540,18 +1596,19 @@ class AdminService extends BaseService {
   async updateOrgStatus(user: AuthUser, orgId: string, isActive: boolean): Promise<void> {
     this.requirePermission(user, "platform:manage");
 
-    const orgDoc = await db.collection(COLLECTIONS.ORGANIZATIONS).doc(orgId).get();
-    if (!orgDoc.exists) throw new NotFoundError("Organization", orgId);
-
-    await db.collection(COLLECTIONS.ORGANIZATIONS).doc(orgId).update({
-      isActive,
-      updatedAt: new Date().toISOString(),
+    // Senior-review F-4 — same TOCTOU as `verifyOrganization` above.
+    const ref = db.collection(COLLECTIONS.ORGANIZATIONS).doc(orgId);
+    const now = new Date().toISOString();
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) throw new NotFoundError("Organization", orgId);
+      tx.update(ref, { isActive, updatedAt: now });
     });
 
     eventBus.emit("organization.status_changed", {
       actorId: user.uid,
       requestId: getRequestId(),
-      timestamp: new Date().toISOString(),
+      timestamp: now,
       organizationId: orgId,
       isActive,
     });
@@ -1560,7 +1617,7 @@ class AdminService extends BaseService {
   // ── Event Oversight ───────────────────────────────────────────────────
 
   async listEvents(user: AuthUser, query: AdminEventQuery): Promise<PaginatedResult<Event>> {
-    this.requirePermission(user, "platform:manage");
+    this.requireAnyPermission(user, ["platform:audit_read", "platform:manage"]);
     return adminRepository.listAllEvents(
       {
         q: query.q,
@@ -1895,7 +1952,7 @@ class AdminService extends BaseService {
     failureCount30d: number;
     lastPromotedAt: string | null;
   }> {
-    this.requirePermission(user, "platform:manage");
+    this.requireAnyPermission(user, ["platform:audit_read", "platform:manage"]);
 
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
@@ -1953,7 +2010,7 @@ class AdminService extends BaseService {
   // `suspended` / `archived`) so the moderation inbox deep-link
   // (/admin/venues?status=pending) actually shows pending venues.
   async listVenues(user: AuthUser, query: AdminVenueQuery): Promise<PaginatedResult<Venue>> {
-    this.requirePermission(user, "platform:manage");
+    this.requireAnyPermission(user, ["platform:audit_read", "platform:manage"]);
     return adminRepository.listAllVenues(
       {
         status: query.status,
@@ -1977,7 +2034,7 @@ class AdminService extends BaseService {
   // the audit log and showed an empty list whenever audit entries
   // lagged behind the payments collection.
   async listPayments(user: AuthUser, query: AdminPaymentQuery): Promise<PaginatedResult<Payment>> {
-    this.requirePermission(user, "platform:manage");
+    this.requireAnyPermission(user, ["platform:audit_read", "platform:manage"]);
     return adminRepository.listAllPayments(
       {
         status: query.status,
@@ -1999,7 +2056,7 @@ class AdminService extends BaseService {
     user: AuthUser,
     query: AdminSubscriptionQuery,
   ): Promise<PaginatedResult<Subscription>> {
-    this.requirePermission(user, "platform:manage");
+    this.requireAnyPermission(user, ["platform:audit_read", "platform:manage"]);
     return adminRepository.listAllSubscriptions(
       { status: query.status, plan: query.plan },
       // Default orderBy (`createdAt DESC`) — same rationale as listPayments.
@@ -2019,7 +2076,7 @@ class AdminService extends BaseService {
     user: AuthUser,
     query: AdminInviteQuery,
   ): Promise<PaginatedResult<OrganizationInvite>> {
-    this.requirePermission(user, "platform:manage");
+    this.requireAnyPermission(user, ["platform:audit_read", "platform:manage"]);
     return adminRepository.listAllInvites(
       { status: query.status, organizationId: query.organizationId, role: query.role },
       { page: query.page, limit: query.limit },

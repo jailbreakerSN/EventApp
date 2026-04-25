@@ -159,7 +159,32 @@ const envSchema = z.object({
   // stay quiet without an explicit unset.
   SOC_ALERT_WEBHOOK_URL: z.preprocess(
     (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
-    z.string().url().optional(),
+    z
+      .string()
+      .url()
+      .refine((u) => u.startsWith("https://"), {
+        message: "SOC_ALERT_WEBHOOK_URL must use https:// (security review F-3)",
+      })
+      .optional(),
+  ),
+
+  // Senior-review F-3 — HMAC secret used to sign every SOC alert
+  // webhook payload. The receiver verifies
+  // `X-Teranga-Signature: sha256=<hex>` against
+  // HMAC-SHA256(secret, raw-body) before trusting the alert. Empty
+  // string normalises to undefined so dev environments stay quiet
+  // without an explicit unset; when undefined the listener sends
+  // unsigned requests with a stderr warning (acceptable in dev,
+  // rejected by a security-conscious receiver in prod). 32+ chars
+  // when set. Separate from every other HMAC secret in this file —
+  // a compromise of QR_SECRET / NEWSLETTER_CONFIRM_SECRET / etc.
+  // must not also forge SOC alerts.
+  SOC_ALERT_WEBHOOK_SECRET: z.preprocess(
+    (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
+    z
+      .string()
+      .min(32, "SOC_ALERT_WEBHOOK_SECRET must be at least 32 characters")
+      .optional(),
   ),
 
   // ─── Observability (optional) ──────────────────────────────────────────────

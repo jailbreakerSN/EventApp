@@ -266,9 +266,10 @@ function ApiKeyActivityLog({ orgId }: { orgId: string }) {
                   dateTime={row.timestamp}
                   className="shrink-0 text-[11px] text-muted-foreground"
                 >
-                  {new Date(row.timestamp).toLocaleString("fr-FR", {
+                  {new Date(row.timestamp).toLocaleString("fr-SN", {
                     dateStyle: "short",
                     timeStyle: "short",
+                    timeZone: "Africa/Dakar",
                   })}
                 </time>
               </div>
@@ -407,7 +408,7 @@ function CreateApiKeyForm({
                       : "rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium text-muted-foreground hover:bg-muted"
                   }
                 >
-                  {env === "live" ? "Production (live)" : "Test"}
+                  {env === "live" ? "Production" : "Test"}
                 </button>
               ))}
             </div>
@@ -524,10 +525,11 @@ function ApiKeyRow({
             <span aria-hidden="true">·</span>
             <span>
               Créée le{" "}
-              {new Date(apiKey.createdAt).toLocaleDateString("fr-FR", {
+              {new Date(apiKey.createdAt).toLocaleDateString("fr-SN", {
                 day: "2-digit",
                 month: "short",
                 year: "numeric",
+                timeZone: "Africa/Dakar",
               })}
             </span>
             {apiKey.lastUsedAt && (
@@ -535,9 +537,10 @@ function ApiKeyRow({
                 <span aria-hidden="true">·</span>
                 <span>
                   Dernière utilisation :{" "}
-                  {new Date(apiKey.lastUsedAt).toLocaleString("fr-FR", {
+                  {new Date(apiKey.lastUsedAt).toLocaleString("fr-SN", {
                     dateStyle: "short",
                     timeStyle: "short",
+                    timeZone: "Africa/Dakar",
                   })}
                 </span>
               </>
@@ -560,9 +563,10 @@ function ApiKeyRow({
             <div className="mt-1 text-[11px] text-muted-foreground">
               Révoquée le{" "}
               {apiKey.revokedAt &&
-                new Date(apiKey.revokedAt).toLocaleString("fr-FR", {
+                new Date(apiKey.revokedAt).toLocaleString("fr-SN", {
                   dateStyle: "short",
                   timeStyle: "short",
+                  timeZone: "Africa/Dakar",
                 })}{" "}
               · « {apiKey.revocationReason} »
             </div>
@@ -655,7 +659,7 @@ function ApiKeyUsageChart({ orgId, apiKeyId }: { orgId: string; apiKeyId: string
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-[11px]">
         <div className="font-medium text-foreground">
           Usage sur 30 jours :{" "}
-          <span className="font-mono">{usage.totalLast30d.toLocaleString("fr-FR")}</span>{" "}
+          <span className="font-mono">{usage.totalLast30d.toLocaleString("fr-SN")}</span>{" "}
           requêtes vérifiées
         </div>
         <div className="text-muted-foreground">
