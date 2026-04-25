@@ -56,6 +56,7 @@ import { seedEvents } from "./seed/04-events";
 import { seedActivity } from "./seed/05-activity";
 import { seedSocial } from "./seed/06-social";
 import { seedInvites } from "./seed/07-invites";
+import { seedAdminFixtures } from "./seed/08-admin-fixtures";
 
 const app = initializeApp({ projectId: PROJECT_ID });
 const auth = getAuth(app);
@@ -238,6 +239,27 @@ async function seed() {
   {
     const n = await seedInvites(db);
     console.log(`  ✓ ${n} invites seeded (pending / accepted / declined / expired)`);
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 5c. ADMIN FIXTURES (job runs, announcements, plan coupons, redemptions,
+  //                    feature flags) — Sprint C of the docs/seed overhaul
+  // ═══════════════════════════════════════════════════════════════════════════
+  //
+  // The five collections covered here were previously listed in
+  // RESETTABLE_COLLECTIONS but had no seed writer. Without fixtures, the
+  // back-office admin surfaces (Sprint 4) and the plan-coupon flow render
+  // empty in local dev and staging, making demos unnecessarily harder.
+  // See scripts/seed/08-admin-fixtures.ts.
+
+  console.log("\n🛠️  Creating admin + freemium-coupon fixtures...");
+  {
+    const a = await seedAdminFixtures(db);
+    console.log(
+      `  ✓ admin fixtures seeded — ${a.adminJobRuns} job runs, ${a.announcements} announcements, ` +
+        `${a.planCoupons} plan coupons (${a.couponRedemptions} redemptions), ` +
+        `${a.featureFlags} feature flags`,
+    );
   }
 
   console.log("\n💬 Creating social + subscription fixtures...");
