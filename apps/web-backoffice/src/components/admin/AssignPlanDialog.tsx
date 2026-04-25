@@ -53,6 +53,7 @@ const FEATURE_LABELS: Record<keyof PlanFeatures, string> = {
   apiAccess: "Accès API",
   whiteLabel: "Marque blanche",
   promoCodes: "Codes promo",
+  waitlist: "Liste d'attente",
 };
 
 type LimitKey = "maxEvents" | "maxParticipantsPerEvent" | "maxMembers";

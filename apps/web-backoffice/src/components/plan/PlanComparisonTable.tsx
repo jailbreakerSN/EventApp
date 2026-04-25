@@ -30,6 +30,7 @@ const FEATURE_LABELS: Record<PlanFeature, string> = {
   apiAccess: "Accès API",
   whiteLabel: "White-label",
   promoCodes: "Codes promo",
+  waitlist: "Liste d'attente",
 };
 
 const LIMIT_ROWS: {

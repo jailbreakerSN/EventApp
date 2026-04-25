@@ -446,6 +446,11 @@ export function registerAuditListeners(): void {
       organizationId: payload.organizationId,
       details: {
         userId: payload.userId,
+        // F2 — denormalise the bulk-path discriminator so audit
+        // dashboards can filter out per-entry rows when aggregating
+        // alongside the parallel `waitlist.bulk_promoted` summary
+        // (avoids double-counting). Absent ⇒ single-cancel path.
+        ...(payload.bulkPromotion ? { bulkPromotion: true } : {}),
       },
     });
   });
@@ -466,12 +471,44 @@ export function registerAuditListeners(): void {
       eventId: payload.eventId,
       organizationId: payload.organizationId,
       details: {
-        cancelledRegistrationId: payload.cancelledRegistrationId,
+        // Only persist `cancelledRegistrationId` when present — the
+        // retry-exhaustion path (B2 follow-up F2) deliberately omits
+        // it so future queries that join the field back to
+        // `registrations/{id}` aren't poisoned by sentinel strings.
+        ...(payload.cancelledRegistrationId
+          ? { cancelledRegistrationId: payload.cancelledRegistrationId }
+          : {}),
         // B2 — denormalise the tier scope onto the audit row so
         // operators can answer "which tier is stuck" without joining
         // back to the cancelled registration.
         ...(payload.ticketTypeId ? { ticketTypeId: payload.ticketTypeId } : {}),
+        // F2 — discriminator: `cancel_driven` (cancel triggered),
+        // `retry_exhausted` (5 race-losses), `bulk_entry` (per-entry
+        // exception during `bulkPromoteWaitlisted`).
+        ...(payload.failureKind ? { failureKind: payload.failureKind } : {}),
         reason: payload.reason,
+      },
+    });
+  });
+
+  // B2 follow-up — aggregate audit row for bulk-promote runs. Carries
+  // the totals + tier scope so an operator dashboard can answer
+  // "which organiser ran a 25-person promotion last week" without
+  // counting per-entry `waitlist.promoted` rows by `requestId`.
+  eventBus.on("waitlist.bulk_promoted", async (payload) => {
+    await auditService.log({
+      action: "waitlist.bulk_promoted",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "event",
+      resourceId: payload.eventId,
+      eventId: payload.eventId,
+      organizationId: payload.organizationId,
+      details: {
+        promotedCount: payload.promotedCount,
+        skipped: payload.skipped,
+        ...(payload.ticketTypeId ? { ticketTypeId: payload.ticketTypeId } : {}),
       },
     });
   });

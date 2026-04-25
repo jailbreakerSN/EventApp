@@ -45,6 +45,10 @@ const FEATURE_LABELS: Record<keyof PlanFeatures, { fr: string; hint?: string }> 
   apiAccess: { fr: "Accès API" },
   whiteLabel: { fr: "Marque blanche" },
   promoCodes: { fr: "Codes promo" },
+  waitlist: {
+    fr: "Liste d'attente",
+    hint: "Active la promotion FIFO sur les événements complets",
+  },
 };
 
 const DEFAULT_FEATURES: PlanFeatures = {

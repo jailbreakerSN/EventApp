@@ -27,6 +27,7 @@ const FEATURE_LABELS: Record<PlanFeature, string> = {
   apiAccess: "Accès API",
   whiteLabel: "White-label",
   promoCodes: "Codes promo",
+  waitlist: "Liste d'attente",
 };
 
 function formatPlanCost(display: { priceXof: number; pricingModel: string }): string {

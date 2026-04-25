@@ -154,16 +154,21 @@ describe("RegistrationService.promoteNextWaitlisted — ticket-type aware", () =
     expect(eventBus.emit).not.toHaveBeenCalled();
   });
 
-  it("skips promotion AND skips emit when the doc was raced out of waitlisted state", async () => {
-    // B2 senior review remediation — the tx callback now returns a
-    // boolean and the `waitlist.promoted` emit is gated on it. A
-    // race-loss must NOT fire a false-positive audit event because
-    // the audit listener would log a promotion that never happened
-    // (and the notification dispatcher would email the user that
-    // their waitlist entry is confirmed when it isn't).
+  it("skips promotion AND skips emit on race-loss when waitlist is exhausted", async () => {
+    // B2 senior review remediation + B2 follow-up #2:
+    //   - The tx callback returns a boolean and the `waitlist.promoted`
+    //     emit is gated on it (prevents false-positive audit events).
+    //   - The drain-with-retry loop refetches `findOldestWaitlisted`
+    //     after each race-loss and retries. When the waitlist is
+    //     exhausted (the raced-out entry was the only candidate), the
+    //     loop early-exits without emitting anything.
     const candidate = buildReg();
-    mockRegRepo.findOldestWaitlisted.mockResolvedValue(candidate);
-    // tx.get returns a doc with status changed to confirmed before we updated it
+    // First call returns the doomed candidate; the retry call returns
+    // null (someone else already promoted X, no other waitlisters
+    // remain in scope) so the drain loop cleanly terminates.
+    mockRegRepo.findOldestWaitlisted
+      .mockResolvedValueOnce(candidate)
+      .mockResolvedValue(null);
     mockTxGet.mockResolvedValue({
       exists: true,
       id: candidate.id,
@@ -174,6 +179,70 @@ describe("RegistrationService.promoteNextWaitlisted — ticket-type aware", () =
 
     expect(mockTxUpdate).not.toHaveBeenCalled();
     expect(eventBus.emit).not.toHaveBeenCalled();
+  });
+
+  it("retries on race-loss and promotes the next candidate (drain loop)", async () => {
+    // F2 — concurrent cancel A promotes X; concurrent cancel B's
+    // promotion path picks X (race-loss in tx), then refetches and
+    // finds Y, promotes Y, fires emit for Y. Without the retry, B's
+    // freed slot would be stranded.
+    const lostCandidate = buildReg({ id: "reg-x", userId: "user-x" });
+    const winningCandidate = buildReg({ id: "reg-y", userId: "user-y" });
+    mockRegRepo.findOldestWaitlisted
+      .mockResolvedValueOnce(lostCandidate)
+      .mockResolvedValueOnce(winningCandidate);
+    mockTxGet.mockImplementation(async (ref: { id: string }) => {
+      if (ref.id === "reg-x") {
+        return {
+          exists: true,
+          id: "reg-x",
+          data: () => ({ ...lostCandidate, status: "confirmed" }),
+        };
+      }
+      return { exists: true, id: ref.id, data: () => winningCandidate };
+    });
+
+    await service.promoteNextWaitlisted("event-1", "org-1", "actor-1", "ticket-vip");
+
+    expect(mockTxUpdate).toHaveBeenCalledTimes(1);
+    expect(eventBus.emit).toHaveBeenCalledTimes(1);
+    expect(eventBus.emit).toHaveBeenCalledWith(
+      "waitlist.promoted",
+      expect.objectContaining({ registrationId: "reg-y", userId: "user-y" }),
+    );
+  });
+
+  it("emits waitlist.promotion_failed after MAX_RETRIES race-losses", async () => {
+    // F2 — degenerate case: every refetch returns the same doomed
+    // candidate (impossible in practice, but bounds the loop). After 5
+    // retries we give up and emit a failure event for ops visibility.
+    const doomed = buildReg({ id: "reg-doomed" });
+    mockRegRepo.findOldestWaitlisted.mockResolvedValue(doomed);
+    mockTxGet.mockResolvedValue({
+      exists: true,
+      id: doomed.id,
+      data: () => ({ ...doomed, status: "confirmed" }),
+    });
+
+    await service.promoteNextWaitlisted("event-1", "org-1", "actor-1", "ticket-vip");
+
+    expect(mockTxUpdate).not.toHaveBeenCalled();
+    expect(eventBus.emit).toHaveBeenCalledTimes(1);
+    const promotionFailedCall = (eventBus.emit as ReturnType<typeof vi.fn>).mock
+      .calls[0];
+    expect(promotionFailedCall[0]).toBe("waitlist.promotion_failed");
+    const payload = promotionFailedCall[1] as Record<string, unknown>;
+    expect(payload).toMatchObject({
+      eventId: "event-1",
+      ticketTypeId: "ticket-vip",
+      // F2 — retry-exhaustion uses `failureKind` discriminator and
+      // OMITS `cancelledRegistrationId` (no specific cancellation
+      // attributable). Pre-fix this carried a sentinel string that
+      // poisoned downstream join queries.
+      failureKind: "retry_exhausted",
+      reason: expect.stringContaining("5 concurrent races"),
+    });
+    expect(payload.cancelledRegistrationId).toBeUndefined();
   });
 });
 
@@ -218,7 +287,24 @@ describe("RegistrationService.bulkPromoteWaitlisted", () => {
     expect(result.promotedCount).toBe(3);
     expect(result.skipped).toBe(0);
     expect(mockTxUpdate).toHaveBeenCalledTimes(3);
-    expect(eventBus.emit).toHaveBeenCalledTimes(3);
+    // 3 per-entry `waitlist.promoted` + 1 aggregate `waitlist.bulk_promoted`
+    expect(eventBus.emit).toHaveBeenCalledTimes(4);
+    expect(eventBus.emit).toHaveBeenCalledWith(
+      "waitlist.bulk_promoted",
+      expect.objectContaining({
+        eventId,
+        organizationId: orgId,
+        promotedCount: 3,
+        skipped: 0,
+      }),
+    );
+    // F2 — per-entry events from the bulk path carry `bulkPromotion: true`
+    // so dashboard queries can filter them out when summing alongside
+    // the aggregate row (avoids double-counting in operator queries).
+    expect(eventBus.emit).toHaveBeenCalledWith(
+      "waitlist.promoted",
+      expect.objectContaining({ bulkPromotion: true }),
+    );
   });
 
   it("counts a candidate already promoted as skipped, not failed", async () => {
@@ -261,6 +347,9 @@ describe("RegistrationService.bulkPromoteWaitlisted", () => {
         organizationId: orgId,
         cancelledRegistrationId: "reg-1",
         ticketTypeId: "ticket-vip",
+        // F2 discriminator — disambiguates from the cancel-driven
+        // path (`cancel_driven`) and retry-exhaustion (`retry_exhausted`).
+        failureKind: "bulk_entry",
         reason: "firestore boom",
       }),
     );

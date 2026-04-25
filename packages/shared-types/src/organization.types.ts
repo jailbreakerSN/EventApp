@@ -53,6 +53,12 @@ export const OrganizationSchema = z.object({
       apiAccess: z.boolean(),
       whiteLabel: z.boolean(),
       promoCodes: z.boolean(),
+      // B2 follow-up — waitlist gating. Optional to keep the
+      // contract snapshot stable for orgs whose denorm hasn't been
+      // re-projected since the field was added; the resolver fills
+      // it in on the next plan write. Default-false at the API
+      // layer matches free-tier expectation; starter+ ships true.
+      waitlist: z.boolean().optional(),
     })
     .optional(),
   effectivePlanKey: z.string().optional(),
@@ -245,6 +251,21 @@ export interface PlanFeatures {
   apiAccess: boolean;
   whiteLabel: boolean;
   promoCodes: boolean;
+  /**
+   * B2 follow-up — when `true`, the API will route over-capacity
+   * registrations to `status: "waitlisted"` (instead of throwing
+   * `EventFullError`) on events with `requiresApproval: true`. Free
+   * plan ships `false` so sold-out events are an obvious upgrade
+   * trigger; starter+ enables it. Reads via the `effectiveFeatures`
+   * snapshot on the org doc — `requirePlanFeature(org, "waitlist")`
+   * is the canonical gate.
+   *
+   * Optional on the interface to keep legacy fixtures + denorm
+   * snapshots compatible — every reader uses `feature.waitlist === true`
+   * (truthy compare) so undefined is treated as `false` (the safe
+   * default that matches the free-tier value).
+   */
+  waitlist?: boolean;
 }
 
 export type PlanFeature = keyof PlanFeatures;
@@ -268,6 +289,11 @@ const FREE_FEATURES: PlanFeatures = {
   apiAccess: false,
   whiteLabel: false,
   promoCodes: false,
+  // B2 follow-up — free tier gets the hard "Complet" wall on full
+  // events. Sold-out is an obvious upgrade trigger; the waitlist
+  // surface (FIFO promotion + email notification on opening) is
+  // a starter+ value-add.
+  waitlist: false,
 };
 
 const STARTER_FEATURES: PlanFeatures = {
@@ -282,6 +308,7 @@ const STARTER_FEATURES: PlanFeatures = {
   apiAccess: false,
   whiteLabel: false,
   promoCodes: true,
+  waitlist: true,
 };
 
 const PRO_FEATURES: PlanFeatures = {
@@ -296,6 +323,7 @@ const PRO_FEATURES: PlanFeatures = {
   apiAccess: false,
   whiteLabel: false,
   promoCodes: true,
+  waitlist: true,
 };
 
 const ENTERPRISE_FEATURES: PlanFeatures = {
@@ -310,6 +338,7 @@ const ENTERPRISE_FEATURES: PlanFeatures = {
   apiAccess: true,
   whiteLabel: true,
   promoCodes: true,
+  waitlist: true,
 };
 
 /**

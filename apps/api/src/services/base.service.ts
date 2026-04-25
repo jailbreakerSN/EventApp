@@ -134,6 +134,20 @@ export abstract class BaseService {
   }
 
   /**
+   * Non-throwing variant of `requirePlanFeature`. Returns the boolean
+   * directly so callers can branch on the feature flag without
+   * catching `PlanLimitError` — used by the registration service's
+   * waitlist gate where the rejection signal is `EventFullError`,
+   * not `PlanLimitError`.
+   *
+   * Reads via the same `effectiveFeatures` resolver as the throwing
+   * variant so legacy + denormalised orgs behave identically.
+   */
+  protected hasPlanFeature(org: Organization, feature: PlanFeature): boolean {
+    return Boolean(effectiveFeatures(org)[feature]);
+  }
+
+  /**
    * Check a numeric plan limit without throwing.
    * Returns the comparison so the caller can decide (throw, waitlist, etc.).
    *

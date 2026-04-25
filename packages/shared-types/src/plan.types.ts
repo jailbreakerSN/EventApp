@@ -36,6 +36,12 @@ export const PlanFeaturesSchema = z.object({
   apiAccess: z.boolean(),
   whiteLabel: z.boolean(),
   promoCodes: z.boolean(),
+  // B2 follow-up — waitlist gating. Optional so legacy plan docs that
+  // pre-date the field don't fail validation; the seed-plans script
+  // populates it as part of the routine reseed. Free tier ships
+  // `false` (sold-out is an obvious upgrade trigger), starter+ ships
+  // `true`. Readers use truthy compare so `undefined` is `false`.
+  waitlist: z.boolean().optional(),
 });
 
 // Numeric plan limits — Infinity is represented as the literal number in JSON
@@ -155,6 +161,7 @@ export const LEGACY_FEATURE_ENTITLEMENT_KEYS = {
   apiAccess: "feature.apiAccess",
   whiteLabel: "feature.whiteLabel",
   promoCodes: "feature.promoCodes",
+  waitlist: "feature.waitlist",
 } as const;
 
 // Frozen catalog of the 3 quota keys projected into the entitlement

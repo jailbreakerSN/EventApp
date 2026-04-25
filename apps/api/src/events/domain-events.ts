@@ -218,6 +218,44 @@ export interface WaitlistPromotedEvent extends BaseEventPayload {
   eventId: string;
   userId: string;
   organizationId: string;
+  /**
+   * B2 follow-up F2 — set to `true` on per-entry events emitted from
+   * `bulkPromoteWaitlisted` so dashboard queries can filter them out
+   * when counting against the aggregate `waitlist.bulk_promoted` row
+   * (avoids double-counting). Absent / `false` ⇒ single-cancel path.
+   * Notifications still fire via the per-entry events regardless of
+   * source — the discriminator is purely an audit / analytics signal.
+   */
+  bulkPromotion?: boolean;
+}
+
+/**
+ * Aggregate event emitted by `RegistrationService.bulkPromoteWaitlisted`
+ * after every per-entry transaction has run. Pairs with the per-entry
+ * `waitlist.promoted` events: the per-entry events drive notification
+ * dispatch (one email per promoted user), this aggregate gives operators
+ * a single audit row + dashboard signal answering "who ran a bulk
+ * promotion, when, with what tier scope, and what was the outcome".
+ *
+ * Precedent: `checkin.bulk_synced`, `event.series_created`,
+ * `badge.bulk_generated` — same pattern (per-entry events for delivery,
+ * one aggregate event for the audit trail summary).
+ */
+export interface WaitlistBulkPromotedEvent extends BaseEventPayload {
+  eventId: string;
+  organizationId: string;
+  /** How many waitlisted entries were promoted to confirmed. */
+  promotedCount: number;
+  /**
+   * How many candidates were skipped. Skip can be a race-loss (already
+   * promoted by a concurrent path), an exception inside the per-entry
+   * transaction, or a candidate that was already cancelled when the
+   * tx re-read it. The matching `waitlist.promotion_failed` events
+   * carry per-entry detail; this number is the operator-facing total.
+   */
+  skipped: number;
+  /** Optional ticket-type scope the batch ran against. Absent ⇒ global FIFO. */
+  ticketTypeId?: string;
 }
 
 /**
@@ -231,8 +269,14 @@ export interface WaitlistPromotedEvent extends BaseEventPayload {
 export interface WaitlistPromotionFailedEvent extends BaseEventPayload {
   eventId: string;
   organizationId: string;
-  /** The registration whose cancel triggered the promotion attempt. */
-  cancelledRegistrationId: string;
+  /**
+   * The registration whose cancel triggered the promotion attempt.
+   * Optional because the retry-exhaustion failure path (B2 follow-up
+   * F2) has no specific cancelled registration to attribute the
+   * failure to — surfacing a synthetic doc-id string poisons any
+   * future query that joins this field back to `registrations`.
+   */
+  cancelledRegistrationId?: string;
   /**
    * B2 — the ticket-type slice the failed promotion was scoped to. Cancel-
    * driven promotions are tier-aware (a freed VIP slot promotes a VIP
@@ -243,6 +287,15 @@ export interface WaitlistPromotionFailedEvent extends BaseEventPayload {
    * `ticketTypeId` filter).
    */
   ticketTypeId?: string;
+  /**
+   * B2 follow-up F2 — discriminator so the audit listener + dashboard
+   * queries can tell the cancel-driven path apart from
+   * retry-exhaustion (no specific cancelled reg) and bulk-entry
+   * (per-candidate exception inside `bulkPromoteWaitlisted`).
+   * Optional for backward compatibility with pre-F2 emits already
+   * persisted in the audit log.
+   */
+  failureKind?: "cancel_driven" | "retry_exhausted" | "bulk_entry";
   /** Short reason string from the caught error. Not user-facing. */
   reason: string;
 }
@@ -1057,6 +1110,8 @@ export interface DomainEventMap {
   "event.series_published": EventSeriesPublishedEvent;
   "waitlist.promoted": WaitlistPromotedEvent;
   "waitlist.promotion_failed": WaitlistPromotionFailedEvent;
+  // B2 follow-up — aggregate row for bulk-promote calls.
+  "waitlist.bulk_promoted": WaitlistBulkPromotedEvent;
   "ticket_type.added": TicketTypeAddedEvent;
   "ticket_type.updated": TicketTypeUpdatedEvent;
   "ticket_type.removed": TicketTypeRemovedEvent;

@@ -140,7 +140,7 @@ describe("EntitlementMapSchema — record validation", () => {
 // ─── Legacy key constants — pinning the back-compat contract ──────────────
 
 describe("LEGACY_FEATURE_ENTITLEMENT_KEYS — back-compat contract", () => {
-  it("covers every one of the 11 PlanFeatures keys", () => {
+  it("covers every one of the PlanFeatures keys", () => {
     // Any PlanFeatures key that loses its entitlement mapping would
     // silently break the resolver's projection for that feature; pin
     // the exact value set so a rename elsewhere is caught.
@@ -156,6 +156,9 @@ describe("LEGACY_FEATURE_ENTITLEMENT_KEYS — back-compat contract", () => {
       apiAccess: "feature.apiAccess",
       whiteLabel: "feature.whiteLabel",
       promoCodes: "feature.promoCodes",
+      // B2 follow-up — waitlist gating added in the same commit set
+      // that introduced the smart-promotion service surface.
+      waitlist: "feature.waitlist",
     });
   });
 

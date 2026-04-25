@@ -82,29 +82,35 @@ export class RegistrationService extends BaseService {
         throw new RegistrationClosedError(eventId, "event_ended");
       }
 
+      // ── Read the org doc once (used for plan-limit + waitlist gates) ──
+      // Read ahead of the duplicate-check and capacity-classification so
+      // both branches below have a single org snapshot to consult.
+      // Firestore tx ordering still requires reads-before-writes; org
+      // is read alongside the event/registration reads above.
+      const orgRef = organizationRepository.ref.doc(event.organizationId);
+      const orgSnap = await tx.get(orgRef);
+      const org = orgSnap.exists
+        ? ({ id: orgSnap.id, ...orgSnap.data() } as Organization)
+        : null;
+
       // ── Check plan participant-per-event limit ──
       // Grace period: skip if event has already started (never block during live events)
       const eventStarted = new Date() >= new Date(event.startDate);
-      if (!eventStarted) {
-        const orgRef = organizationRepository.ref.doc(event.organizationId);
-        const orgSnap = await tx.get(orgRef);
-        if (orgSnap.exists) {
-          const org = { id: orgSnap.id, ...orgSnap.data() } as Organization;
-          const { allowed, limit } = this.checkPlanLimit(
-            org,
-            "participantsPerEvent",
-            event.registeredCount,
+      if (!eventStarted && org) {
+        const { allowed, limit } = this.checkPlanLimit(
+          org,
+          "participantsPerEvent",
+          event.registeredCount,
+        );
+        if (!allowed) {
+          throw new PlanLimitError(
+            `Maximum ${limit} participants par événement sur le plan ${org.effectivePlanKey ?? org.plan}`,
+            {
+              current: event.registeredCount,
+              max: limit,
+              plan: org.effectivePlanKey ?? org.plan,
+            },
           );
-          if (!allowed) {
-            throw new PlanLimitError(
-              `Maximum ${limit} participants par événement sur le plan ${org.effectivePlanKey ?? org.plan}`,
-              {
-                current: event.registeredCount,
-                max: limit,
-                plan: org.effectivePlanKey ?? org.plan,
-              },
-            );
-          }
         }
       }
 
@@ -142,29 +148,38 @@ export class RegistrationService extends BaseService {
       //   1. Per-ticket-type:  ticketType.soldCount >= totalQuantity
       //   2. Event-level:      event.registeredCount >= maxAttendees
       // Either one being saturated makes the registration ineligible
-      // for "confirmed". The disposition then depends on requiresApproval:
-      //   - requiresApproval=true  → waitlist (organizer decides per-tier)
+      // for "confirmed". The disposition then depends on requiresApproval
+      // AND the org's `waitlist` feature flag:
+      //   - requiresApproval=true + waitlist enabled → status: "waitlisted"
+      //   - requiresApproval=true + waitlist disabled → reject (free tier)
       //   - requiresApproval=false → reject with EventFullError
-      // Pre-B2 the ticket-type check was a hard reject regardless of
-      // requiresApproval; that meant an organizer with `requiresApproval=true`
-      // could waitlist on event-level capacity but NOT on ticket-type
-      // sold-out — a real funnel hole. B2 closes it.
+      // The plan-feature gate (B2 follow-up #3) makes waitlist a starter+
+      // value-add — free orgs see "Complet" (the obvious upgrade trigger)
+      // while paid orgs get the full FIFO + email-on-promote experience.
       const ticketSoldOut =
         ticketType.totalQuantity !== null &&
         ticketType.soldCount >= ticketType.totalQuantity;
       const eventSoldOut = !!(event.maxAttendees && event.registeredCount >= event.maxAttendees);
       const anyCapacityHit = ticketSoldOut || eventSoldOut;
+      // `org` may be null during the Phase 2 migration window; default
+      // to permitting waitlist (mirrors existing behaviour) so the
+      // backfill doesn't accidentally regress orgs that haven't been
+      // re-projected yet. Once denorm is complete this branch is dead
+      // code and `org` is always populated.
+      const waitlistEnabled = org ? this.hasPlanFeature(org, "waitlist") : true;
 
-      if (anyCapacityHit && !event.requiresApproval) {
+      if (anyCapacityHit && (!event.requiresApproval || !waitlistEnabled)) {
         throw new EventFullError(eventId);
       }
 
       // ── Determine initial status ──
       // requiresApproval=true ALWAYS routes to a non-confirmed status:
-      // - capacity hit → waitlisted (the organizer must promote)
+      // - capacity hit + waitlist enabled → waitlisted
       // - no capacity hit → pending (the organizer must approve)
       // Without requiresApproval, the only path to non-confirmed is
-      // event-level overflow (ticket overflow already threw above).
+      // event-level overflow + waitlist enabled (ticket overflow
+      // without approval already threw above). The waitlist feature
+      // gate is enforced uniformly in both directions.
       let status: RegistrationStatus = "confirmed";
       if (event.requiresApproval) {
         status = anyCapacityHit ? "waitlisted" : "pending";
@@ -411,6 +426,7 @@ export class RegistrationService extends BaseService {
           organizationId: eventPayload.organizationId,
           cancelledRegistrationId: registrationId,
           ticketTypeId: registration.ticketTypeId,
+          failureKind: "cancel_driven",
           reason,
           actorId: user.uid,
           requestId: reqId,
@@ -779,45 +795,88 @@ export class RegistrationService extends BaseService {
     actorId: string,
     ticketTypeId?: string,
   ): Promise<void> {
-    const waitlisted = await registrationRepository.findOldestWaitlisted(
-      eventId,
-      ticketTypeId,
-    );
-    if (!waitlisted) return; // No one on the waitlist (within scope)
+    // B2 follow-up — drain-with-retry. Two concurrent cancels both fire
+    // this method; without retry both call `findOldestWaitlisted`
+    // outside any transaction, both pick the same candidate, only one
+    // wins the in-tx race, and the loser silently no-ops — leaving the
+    // freed slot from the second cancel unfilled. Pre-fix scenario:
+    // cancel A frees a slot → promotes X. Cancel B fires concurrently
+    // → reads X as oldest waitlisted → tx finds X already confirmed,
+    // skips. Slot from B never filled.
+    //
+    // Fix: on race-loss, refetch the next-oldest waitlister and retry,
+    // bounded by `MAX_RETRIES` so the loop always terminates. The
+    // bound matches the typical concurrent-cancel storm size for a
+    // single event (3 simultaneous cancellations is already a tail
+    // event); larger storms self-correct over the next cancel cycle.
+    const MAX_RETRIES = 5;
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt += 1) {
+      const waitlisted = await registrationRepository.findOldestWaitlisted(
+        eventId,
+        ticketTypeId,
+      );
+      if (!waitlisted) return; // Waitlist drained (within scope)
 
-    const now = new Date().toISOString();
-    // The tx returns whether it actually wrote — a race-loss (the
-    // candidate was promoted by a concurrent path between our pre-tx
-    // read and the tx-time re-check) returns `false` so we don't fire a
-    // false `waitlist.promoted` event. Mirrors the same pattern in
-    // `bulkPromoteWaitlisted`.
-    const promoted = await runTransaction(async (tx) => {
-      // Re-read inside transaction to prevent double promotion
-      const regRef = registrationRepository.ref.doc(waitlisted.id);
-      const regSnap = await tx.get(regRef);
-      if (!regSnap.exists) return false;
+      const now = new Date().toISOString();
+      // The tx returns whether it actually wrote — a race-loss (the
+      // candidate was promoted by a concurrent path between our pre-tx
+      // read and the tx-time re-check) returns `false` and we retry
+      // with the next oldest. The retry loop terminates when:
+      //   1. We successfully promoted ⇒ break.
+      //   2. The waitlist is exhausted ⇒ early return above.
+      //   3. We hit MAX_RETRIES on persistent contention ⇒ give up
+      //      (extremely unlikely; would require >5 concurrent cancels).
+      const promoted = await runTransaction(async (tx) => {
+        const regRef = registrationRepository.ref.doc(waitlisted.id);
+        const regSnap = await tx.get(regRef);
+        if (!regSnap.exists) return false;
 
-      const current = { id: regSnap.id, ...regSnap.data() } as Registration;
-      if (current.status !== "waitlisted") return false; // Already promoted by another request
+        const current = { id: regSnap.id, ...regSnap.data() } as Registration;
+        if (current.status !== "waitlisted") return false; // Already promoted by another request
 
-      tx.update(regRef, {
-        status: "confirmed",
-        promotedFromWaitlistAt: now,
-        updatedAt: now,
+        tx.update(regRef, {
+          status: "confirmed",
+          promotedFromWaitlistAt: now,
+          updatedAt: now,
+        });
+        return true;
       });
-      return true;
-    });
 
-    if (!promoted) return;
-
-    eventBus.emit("waitlist.promoted", {
-      registrationId: waitlisted.id,
+      if (promoted) {
+        eventBus.emit("waitlist.promoted", {
+          registrationId: waitlisted.id,
+          eventId,
+          userId: waitlisted.userId,
+          organizationId,
+          actorId,
+          requestId: getRequestId(),
+          timestamp: now,
+        });
+        return;
+      }
+      // else: race-loss, loop again with the next oldest waitlisted
+    }
+    // Exhausted retries — all the candidates we picked were raced out
+    // from under us. Surface as a failure event so ops can investigate
+    // (typically harmless: a high-contention burst on a popular
+    // event), but log the cap-hit so persistent issues are visible.
+    process.stderr.write(
+      `[RegistrationService] promoteNextWaitlisted exhausted ${MAX_RETRIES} retries ` +
+        `for event=${eventId} org=${organizationId} ticketType=${ticketTypeId ?? "*"}\n`,
+    );
+    eventBus.emit("waitlist.promotion_failed", {
       eventId,
-      userId: waitlisted.userId,
       organizationId,
+      // No specific cancelled registration on retry-exhaustion — using
+      // a sentinel string would poison any future query that joins
+      // `cancelledRegistrationId` to `registrations/{id}`. The
+      // `failureKind` discriminator carries the semantic instead.
+      ticketTypeId,
+      failureKind: "retry_exhausted",
+      reason: `Promotion lost to ${MAX_RETRIES} concurrent races`,
       actorId,
       requestId: getRequestId(),
-      timestamp: now,
+      timestamp: new Date().toISOString(),
     });
   }
 
@@ -899,6 +958,10 @@ export class RegistrationService extends BaseService {
             eventId,
             userId: candidate.userId,
             organizationId,
+            // F2 — flag bulk-path emits so dashboard queries can
+            // filter them out when summing alongside the aggregate
+            // `waitlist.bulk_promoted` row (no double-count).
+            bulkPromotion: true,
             actorId: user.uid,
             requestId: getRequestId(),
             timestamp: new Date().toISOString(),
@@ -922,8 +985,12 @@ export class RegistrationService extends BaseService {
         eventBus.emit("waitlist.promotion_failed", {
           eventId,
           organizationId,
+          // For the bulk path, `cancelledRegistrationId` is the failed
+          // candidate's id (not a "cancellation" — naming is a B2
+          // legacy from when the only failure path was cancel-driven).
           cancelledRegistrationId: candidate.id,
           ticketTypeId: candidate.ticketTypeId,
+          failureKind: "bulk_entry",
           reason,
           actorId: user.uid,
           requestId: getRequestId(),
@@ -931,6 +998,22 @@ export class RegistrationService extends BaseService {
         });
       }
     }
+
+    // B2 follow-up — aggregate audit row. Per-entry `waitlist.promoted`
+    // events drive notification dispatch (one email per promoted user);
+    // this single event answers "who ran a bulk promotion, when, with
+    // what tier scope, and what was the outcome" for ops dashboards.
+    // Precedent: `checkin.bulk_synced`, `event.series_created`.
+    eventBus.emit("waitlist.bulk_promoted", {
+      eventId,
+      organizationId,
+      promotedCount,
+      skipped,
+      ...(ticketTypeId ? { ticketTypeId } : {}),
+      actorId: user.uid,
+      requestId: getRequestId(),
+      timestamp: new Date().toISOString(),
+    });
 
     return { promotedCount, skipped };
   }

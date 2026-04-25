@@ -387,9 +387,17 @@ describe("Registrations", () => {
     await assertSucceeds(db.collection("registrations").doc("reg-1").get());
   });
 
-  it("allows participant to create registration with own userId", async () => {
+  it("denies any participant from creating a registration directly (API-only)", async () => {
+    // B2 follow-up — the create path was tightened from
+    // `allow create: if isAuthenticated() && userId == currentUid()
+    //                && status in [confirmed, pending, waitlisted]`
+    // to `allow create: if false` because a direct write bypassed every
+    // server-side guard (plan limits, capacity, QR signing, counter
+    // increment, waitlist plan-feature gate). The API uses the Admin
+    // SDK and is exempt from rules; clients (web-participant, web-
+    // backoffice, mobile/Flutter) already route through the API.
     const db = participant("user-2").firestore();
-    await assertSucceeds(
+    await assertFails(
       db.collection("registrations").doc("reg-new").set({
         userId: "user-2",
         eventId: "ev-1",
@@ -400,13 +408,30 @@ describe("Registrations", () => {
     );
   });
 
-  it("denies creating registration with another userId", async () => {
+  it("denies creating registration with a spoofed userId (no longer creatable at all)", async () => {
     const db = participant("user-2").firestore();
     await assertFails(
       db.collection("registrations").doc("reg-new").set({
         userId: "user-spoofed",
         eventId: "ev-1",
         status: "confirmed",
+      }),
+    );
+  });
+
+  it("denies creating a waitlisted registration directly (API-only path closes plan-feature bypass)", async () => {
+    // F3 — waitlist is now a plan feature gated to starter+. A free-tier
+    // participant could have written a waitlisted registration directly
+    // pre-fix and the API's gate would never run. The closed create rule
+    // makes the gate unbypassable.
+    const db = participant("user-2").firestore();
+    await assertFails(
+      db.collection("registrations").doc("reg-new").set({
+        userId: "user-2",
+        eventId: "ev-1",
+        ticketTypeId: "ticket-1",
+        status: "waitlisted",
+        createdAt: "2026-01-01T00:00:00Z",
       }),
     );
   });
