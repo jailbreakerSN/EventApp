@@ -76,7 +76,6 @@ describe("registerSocAlertListeners — wiring", () => {
       newRoles: ["organizer"],
       requestId: "req-0",
       timestamp: "2026-04-25T10:00:00.000Z",
-      organizationId: null,
     });
     await new Promise((r) => setImmediate(r));
 
@@ -97,7 +96,6 @@ describe("registerSocAlertListeners — wiring", () => {
             newRoles: ["organizer"],
             requestId: "r",
             timestamp: "2026-04-25T10:00:00.000Z",
-            organizationId: null,
           }),
       ],
       [
@@ -124,7 +122,7 @@ describe("registerSocAlertListeners — wiring", () => {
             actorId: "a",
             organizationId: "o",
             planKey: "pro",
-            cancelledBy: "u",
+            cancelledBy: "self",
             effectiveAt: "2026-05-01T00:00:00.000Z",
             requestId: "r",
             timestamp: "2026-04-25T10:00:00.000Z",
@@ -192,7 +190,6 @@ describe("registerSocAlertListeners — HMAC signing", () => {
       newRoles: ["organizer"],
       requestId: "req-1",
       timestamp: "2026-04-25T10:00:00.000Z",
-      organizationId: null,
     });
     // Listeners are async — flush microtasks.
     await new Promise((r) => setImmediate(r));
@@ -214,7 +211,6 @@ describe("registerSocAlertListeners — HMAC signing", () => {
       newRoles: ["organizer"],
       requestId: "req-2",
       timestamp: "2026-04-25T10:00:00.000Z",
-      organizationId: null,
     });
     await new Promise((r) => setImmediate(r));
 
@@ -263,7 +259,7 @@ describe("registerSocAlertListeners — payload shapes", () => {
       actorId: "admin-1",
       organizationId: "org-9",
       planKey: "pro",
-      cancelledBy: "user-7",
+      cancelledBy: "self",
       effectiveAt: "2026-05-01T00:00:00.000Z",
       requestId: "req-4",
       timestamp: "2026-04-25T10:00:00.000Z",
@@ -287,7 +283,6 @@ describe("registerSocAlertListeners — payload shapes", () => {
       newRoles: ["organizer", "speaker"],
       requestId: "req-5",
       timestamp: "2026-04-25T10:00:00.000Z",
-      organizationId: null,
     });
     await new Promise((r) => setImmediate(r));
 

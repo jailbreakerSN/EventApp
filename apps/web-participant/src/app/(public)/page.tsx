@@ -137,7 +137,19 @@ export default async function HomePage() {
                 </button>
               </form>
 
-              {/* Stat row */}
+              {/* Stat row.
+                  Structured as a definition list — Lighthouse a11y audit
+                  `definition-list` rejects any direct `<dl>` (or `<dl>`-
+                  child `<div>`) child that isn't `<dt>`/`<dd>`/`<script>`/
+                  `<template>`/`<div>`. The previous `<dt class="sr-only">`
+                  + `<p>` shape worked visually but produced an inaccessible
+                  pair (the visible label was a `<p>`, divorced from the
+                  `<dd>` it belonged to). We now mark the visible label as
+                  the `<dt>` and the figure as the `<dd>`, then use
+                  `flex-col-reverse` to render the figure ABOVE the term —
+                  preserving the editorial composition while keeping the
+                  semantic order term-then-description that screen readers
+                  expect. */}
               <dl className="mt-11 grid grid-cols-2 gap-y-6 border-t border-white/10 pt-7 sm:flex sm:flex-wrap sm:gap-x-10 sm:gap-y-0">
                 {[
                   { n: "412", l: tHome("heroStats.events") },
@@ -145,14 +157,13 @@ export default async function HomePage() {
                   { n: "24", l: tHome("heroStats.cities") },
                   { n: "4.8★", l: tHome("heroStats.rating") },
                 ].map((s) => (
-                  <div key={s.l}>
-                    <dt className="sr-only">{s.l}</dt>
+                  <div key={s.l} className="flex flex-col-reverse">
+                    <dt className="font-mono-kicker mt-1 text-[10px] uppercase tracking-[0.1em] text-white/70">
+                      {s.l}
+                    </dt>
                     <dd className="font-serif-display text-[26px] font-semibold leading-none text-white">
                       {s.n}
                     </dd>
-                    <p className="font-mono-kicker mt-1 text-[10px] uppercase tracking-[0.1em] text-white/55">
-                      {s.l}
-                    </p>
                   </div>
                 ))}
               </dl>
@@ -232,25 +243,27 @@ export default async function HomePage() {
           }
         />
 
-        {/* Category chips */}
-        <div
-          role="list"
-          className="mt-8 flex gap-2 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-        >
+        {/* Category chips.
+            Lighthouse a11y rule `aria-allowed-role` rejects
+            `<a role="listitem">` because the implicit role of `<a href>`
+            is `link` and `listitem` is not in the allowed-override set.
+            Real `<ul>`/`<li>` markup avoids the role conflict and lets
+            screen readers announce "list, N items" natively. */}
+        <ul className="mt-8 flex gap-2 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {categoryChips.map(({ slug, glyph, labelKey }) => (
-            <Link
-              role="listitem"
-              key={slug}
-              href={`/events?category=${slug}`}
-              className="inline-flex shrink-0 items-center gap-2 rounded-full border bg-card px-4 py-2.5 text-sm font-medium text-foreground transition-colors hover:border-teranga-navy hover:bg-teranga-navy hover:text-white"
-            >
-              <span aria-hidden className="text-base opacity-60">
-                {glyph}
-              </span>
-              {tCategories(labelKey as "conference_plural")}
-            </Link>
+            <li key={slug} className="shrink-0">
+              <Link
+                href={`/events?category=${slug}`}
+                className="inline-flex shrink-0 items-center gap-2 rounded-full border bg-card px-4 py-2.5 text-sm font-medium text-foreground transition-colors hover:border-teranga-navy hover:bg-teranga-navy hover:text-white"
+              >
+                <span aria-hidden className="text-base opacity-60">
+                  {glyph}
+                </span>
+                {tCategories(labelKey as "conference_plural")}
+              </Link>
+            </li>
           ))}
-        </div>
+        </ul>
 
         {/* Event grid */}
         {latestEvents.length > 0 ? (
@@ -597,11 +610,11 @@ function TicketStub({
             <DecorativeQR size={82} seed={code} />
           </div>
           <div className="flex-1">
-            <p className="font-mono-kicker text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
+            <p className="font-mono-kicker text-[10px] uppercase tracking-[0.1em] text-teranga-navy/65">
               {holderLabel}
             </p>
             <p className="mt-0.5 text-sm font-semibold">{holderName}</p>
-            <p className="font-mono-kicker mt-1.5 text-[10px] tracking-[0.08em] text-muted-foreground">
+            <p className="font-mono-kicker mt-1.5 text-[10px] tracking-[0.08em] text-teranga-navy/65">
               {code}
             </p>
           </div>
@@ -612,9 +625,15 @@ function TicketStub({
 }
 
 function TicketStubField({ label, value }: { label: string; value: string }) {
+  // `text-muted-foreground` resolves to slate-500 (#64748b) which
+  // measures 4.41:1 on the `gold-whisper` (#faf6ee) ticket paper —
+  // 0.09 short of the WCAG AA 4.5:1 floor. `text-teranga-navy/65`
+  // picks the brand navy (#1A1A2E) blended with the cream paper at
+  // 65% opacity, yielding ~5.1:1 contrast and matching the editorial
+  // aesthetic better than slate.
   return (
     <div>
-      <p className="font-mono-kicker text-[9px] uppercase tracking-[0.1em] text-muted-foreground">
+      <p className="font-mono-kicker text-[9px] uppercase tracking-[0.1em] text-teranga-navy/65">
         {label}
       </p>
       <p className="mt-0.5 text-[13px] font-semibold">{value}</p>

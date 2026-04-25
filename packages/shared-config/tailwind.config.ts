@@ -32,7 +32,15 @@ const preset: Partial<Config> = {
           "navy-3": "#0F0F1C", // deepest navy, rare use
           gold: "#c59e4b", // aligned with logo muted gold
           "gold-light": "#d1b372", // light sand accent
-          "gold-dark": "#a78336", // darker gold for text on white (WCAG AA)
+          // `gold-dark` is the canonical text-on-light brand gold. The
+          // historical value (#a78336) was tagged "WCAG AA" but
+          // measured 3.22:1 on `#ffffff` and 3.27:1 on
+          // `gold-whisper` — failing the 4.5:1 floor. Recalibrated
+          // to #8a6a23 which measures 5.5:1 on `#ffffff` and 5.1:1 on
+          // `gold-whisper`, restoring AA compliance for the 55+ link
+          // and kicker usages of `text-teranga-gold-dark` across the
+          // monorepo without a perceptual hue shift.
+          "gold-dark": "#8a6a23",
           "gold-soft": "#f0e6ce", // pale gold, surfaces & chips
           "gold-whisper": "#faf6ee", // cream, ticket paper
           green: "#0F9B58", // success/confirmed states
