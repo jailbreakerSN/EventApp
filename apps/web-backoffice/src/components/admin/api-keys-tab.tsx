@@ -381,7 +381,7 @@ function ApiKeyRow({
     try {
       const result = await rotate.mutateAsync({
         apiKeyId: apiKey.id,
-        dto: { reason: "Manual rotation from admin" },
+        dto: { reason: "Rotation manuelle depuis l'administration" },
       });
       onRotated(result.data);
     } catch (err) {
