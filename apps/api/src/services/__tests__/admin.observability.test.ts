@@ -214,3 +214,80 @@ describe("AdminService.getWaitlistHealth", () => {
     );
   });
 });
+
+// ─── getRevenueCohorts (A.3 closure) ─────────────────────────────────────
+
+describe("AdminService.getRevenueCohorts", () => {
+  it("groups orgs by createdAt YYYY-MM and tags retention from active subs", async () => {
+    const admin = buildSuperAdmin();
+
+    // Two parallel reads fire: orgs filtered by createdAt window, and
+    // active subscriptions. Order matches Promise.all in the
+    // implementation. We model 3 orgs across 2 cohorts and 1 active
+    // subscription so retention[cohort1] = 1/2 and retention[cohort2] = 0.
+    queueGet.push(async () => ({
+      docs: [
+        // Cohort A: 2 signups
+        { id: "org-A1", data: () => ({ createdAt: "2026-02-15T10:00:00.000Z" }) },
+        { id: "org-A2", data: () => ({ createdAt: "2026-02-20T10:00:00.000Z" }) },
+        // Cohort B: 1 signup
+        { id: "org-B1", data: () => ({ createdAt: "2026-03-10T10:00:00.000Z" }) },
+      ],
+      empty: false,
+      size: 3,
+    }));
+    queueGet.push(async () => ({
+      // Only org-A1 still has an active subscription
+      docs: [{ id: "sub-1", data: () => ({ organizationId: "org-A1" }) }],
+      empty: false,
+      size: 1,
+    }));
+
+    const result = await adminService.getRevenueCohorts(admin, 12);
+
+    // Cohorts span the full 12-month window, including months with
+    // zero signups. Find the two cohorts we seeded.
+    const feb = result.cohorts.find((c) => c.cohortMonth === "2026-02");
+    const mar = result.cohorts.find((c) => c.cohortMonth === "2026-03");
+
+    expect(feb).toEqual({
+      cohortMonth: "2026-02",
+      signupCount: 2,
+      retainedNow: 1,
+      retentionPct: 0.5,
+    });
+    expect(mar).toEqual({
+      cohortMonth: "2026-03",
+      signupCount: 1,
+      retainedNow: 0,
+      retentionPct: 0,
+    });
+
+    // Empty months are still emitted with all-zero stats so the UI
+    // axis stays even.
+    expect(result.cohorts.length).toBe(12);
+    const allMonthsHaveStats = result.cohorts.every(
+      (c) =>
+        typeof c.signupCount === "number" &&
+        typeof c.retainedNow === "number" &&
+        typeof c.retentionPct === "number",
+    );
+    expect(allMonthsHaveStats).toBe(true);
+  });
+
+  it("clamps the months parameter into [1, 24]", async () => {
+    const admin = buildSuperAdmin();
+    queueGet.push(async () => ({ docs: [], empty: true, size: 0 }));
+    queueGet.push(async () => ({ docs: [], empty: true, size: 0 }));
+
+    const result = await adminService.getRevenueCohorts(admin, 999);
+    expect(result.cohorts.length).toBe(24);
+  });
+
+  it("rejects callers without platform:audit_read or platform:manage", async () => {
+    const participant = buildAuthUser({ roles: ["participant"] });
+    await expect(adminService.getRevenueCohorts(participant, 12)).rejects.toThrow(
+      ForbiddenError,
+    );
+  });
+});

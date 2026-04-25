@@ -1461,6 +1461,126 @@ class AdminService extends BaseService {
   }
 
   /**
+   * A.3 closure — signup-cohort retention curve.
+   *
+   * For each of the last `months` calendar months (default 12), groups
+   * organisations by the YYYY-MM of their `createdAt` and returns:
+   *   - signupCount   : how many orgs joined in that cohort
+   *   - retainedNow   : how many of those orgs still hold an
+   *                     `active` subscription today
+   *   - retentionPct  : retainedNow / signupCount (0 when 0/0)
+   *
+   * Implementation note — the response is NOT a true month-by-month
+   * matrix (which would require subscription history reconstruction
+   * from audit logs). It's a "current retention" curve, the most
+   * actionable signal we can compute from current state alone:
+   *   "of the orgs that signed up N months ago, what fraction are
+   *    still paying us today?"
+   *
+   * Two bounded reads in parallel: the orgs collection filtered on
+   * `createdAt >= startMonthIso` (cap 2000), and the active
+   * subscriptions index (cap 2000). For Teranga's current scale
+   * (tens to low hundreds of orgs / month) both fit easily; the cap
+   * is a safety rail rather than a routine throttle.
+   *
+   * Permission: `platform:audit_read` OR `platform:manage`. Read-only.
+   */
+  async getRevenueCohorts(
+    user: AuthUser,
+    months: number,
+  ): Promise<{
+    cohorts: Array<{
+      cohortMonth: string;
+      signupCount: number;
+      retainedNow: number;
+      retentionPct: number;
+    }>;
+    computedAt: string;
+  }> {
+    this.requireAnyPermission(user, ["platform:audit_read", "platform:manage"]);
+
+    // Hard cap on the lookback window. 24 months is more than enough
+    // for any retention conversation a Sales / CS team needs today
+    // and keeps the read tiny. Negative or zero defaults to 12.
+    const lookback = Math.max(1, Math.min(24, Math.floor(months) || 12));
+    const now = new Date();
+    const cohortStart = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - lookback + 1, 1, 0, 0, 0, 0),
+    );
+    const startIso = cohortStart.toISOString();
+
+    const [orgsSnap, subsSnap] = await Promise.all([
+      db
+        .collection(COLLECTIONS.ORGANIZATIONS)
+        .where("createdAt", ">=", startIso)
+        .select("createdAt")
+        .limit(2000)
+        .get(),
+      db
+        .collection(COLLECTIONS.SUBSCRIPTIONS)
+        .where("status", "==", "active")
+        .select("organizationId")
+        .limit(2000)
+        .get(),
+    ]);
+
+    // Build the "currently active" org set from the subscription
+    // snapshot. We don't dedupe per-org because the sub query already
+    // filters on `status: active` and an org should hold at most one
+    // active subscription at a time (enforced by `subscription.service`
+    // upgrade/cancel transactions).
+    const activeOrgIds = new Set<string>();
+    for (const doc of subsSnap.docs) {
+      const sub = doc.data() as { organizationId?: string };
+      if (sub.organizationId) activeOrgIds.add(sub.organizationId);
+    }
+
+    // Group orgs into YYYY-MM cohorts. We slice the ISO string
+    // directly rather than `new Date()`-parsing each row — string
+    // comparison is faster and avoids any local-time pitfalls
+    // (createdAt is stored as UTC ISO 8601 throughout the platform).
+    const cohortMap = new Map<string, { signupCount: number; retainedNow: number }>();
+    for (const doc of orgsSnap.docs) {
+      const data = doc.data() as { createdAt?: string };
+      const orgId = doc.id;
+      if (!data.createdAt) continue;
+      const cohortMonth = data.createdAt.slice(0, 7); // "YYYY-MM"
+      const entry = cohortMap.get(cohortMonth) ?? { signupCount: 0, retainedNow: 0 };
+      entry.signupCount += 1;
+      if (activeOrgIds.has(orgId)) entry.retainedNow += 1;
+      cohortMap.set(cohortMonth, entry);
+    }
+
+    // Always emit a row per month in the lookback window so the UI
+    // can render an even axis even when a month has zero signups.
+    const cohorts: Array<{
+      cohortMonth: string;
+      signupCount: number;
+      retainedNow: number;
+      retentionPct: number;
+    }> = [];
+    for (let offset = 0; offset < lookback; offset += 1) {
+      const monthDate = new Date(
+        Date.UTC(cohortStart.getUTCFullYear(), cohortStart.getUTCMonth() + offset, 1),
+      );
+      const cohortMonth = monthDate.toISOString().slice(0, 7);
+      const stats = cohortMap.get(cohortMonth) ?? { signupCount: 0, retainedNow: 0 };
+      cohorts.push({
+        cohortMonth,
+        signupCount: stats.signupCount,
+        retainedNow: stats.retainedNow,
+        retentionPct:
+          stats.signupCount > 0 ? stats.retainedNow / stats.signupCount : 0,
+      });
+    }
+
+    return {
+      cohorts,
+      computedAt: new Date().toISOString(),
+    };
+  }
+
+  /**
    * Phase 7+ B2 closure — waitlist health snapshot for one event.
    *
    * Returns the four counts an operator wants when an event surfaces
