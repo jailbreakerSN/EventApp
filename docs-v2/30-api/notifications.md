@@ -1,3 +1,9 @@
+---
+title: Notifications & Broadcasts API
+status: shipped
+last_updated: 2026-04-25
+---
+
 # Notifications & Broadcasts API
 
 > **Status: shipped**

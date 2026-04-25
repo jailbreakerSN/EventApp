@@ -1,3 +1,9 @@
+---
+title: Permissions Reference
+status: shipped
+last_updated: 2026-04-25
+---
+
 # Permissions Reference
 
 > **Status: shipped** — Defined in `packages/shared-types/src/permissions.types.ts`.

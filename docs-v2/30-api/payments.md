@@ -1,3 +1,9 @@
+---
+title: Payments API
+status: shipped
+last_updated: 2026-04-25
+---
+
 # Payments API
 
 > **Status: partial** — Wave and Orange Money are wired. Card (PayDunya/Stripe) and Free Money are stubs.

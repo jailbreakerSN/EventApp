@@ -1,3 +1,9 @@
+---
+title: Personas
+status: shipped
+last_updated: 2026-04-25
+---
+
 # Personas
 
 > **Status: shipped** — All 8 system roles are implemented in the permission model and enforced at the API layer.

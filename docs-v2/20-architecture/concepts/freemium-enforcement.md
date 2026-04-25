@@ -1,3 +1,9 @@
+---
+title: Freemium Enforcement — effectiveLimits Architecture
+status: shipped
+last_updated: 2026-04-25
+---
+
 # Freemium Enforcement — effectiveLimits Architecture
 
 > **Status: partial** — Phase 2 (denormalization) is in progress. The fallback to hardcoded `PLAN_LIMITS` is still active.

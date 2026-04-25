@@ -1,3 +1,9 @@
+---
+title: Environment Variables Reference
+status: shipped
+last_updated: 2026-04-25
+---
+
 # Environment Variables Reference
 
 > Master reference for all environment variables across every service. Copy `.env.example` files and fill in real values — never commit secrets to git.

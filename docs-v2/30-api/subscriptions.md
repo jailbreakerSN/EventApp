@@ -1,3 +1,9 @@
+---
+title: Subscriptions API
+status: shipped
+last_updated: 2026-04-25
+---
+
 # Subscriptions API
 
 > **Status: shipped** (upgrade/downgrade/cancel). Dynamic billing (Wave/OM payments for subscriptions) is planned.

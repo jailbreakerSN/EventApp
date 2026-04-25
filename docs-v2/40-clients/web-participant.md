@@ -1,3 +1,9 @@
+---
+title: Web Participant App
+status: partial
+last_updated: 2026-04-25
+---
+
 # Web Participant App
 
 > **Status: ~70% shipped** — Event discovery, registration, badge, feed, and messaging are functional. Speaker/sponsor portals and SEO metadata are pending.

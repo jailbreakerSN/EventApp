@@ -1,3 +1,9 @@
+---
+title: Multi-Tenancy & Org Isolation
+status: shipped
+last_updated: 2026-04-25
+---
+
 # Multi-Tenancy & Org Isolation
 
 > **Status: shipped** — Org isolation is enforced at every layer.

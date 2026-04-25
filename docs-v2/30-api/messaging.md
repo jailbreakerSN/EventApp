@@ -1,3 +1,9 @@
+---
+title: Messaging API
+status: shipped
+last_updated: 2026-04-25
+---
+
 # Messaging API
 
 > **Status: shipped** — 1:1 participant messaging.

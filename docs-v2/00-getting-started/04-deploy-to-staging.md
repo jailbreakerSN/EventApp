@@ -1,3 +1,9 @@
+---
+title: Deploy to Staging
+status: shipped
+last_updated: 2026-04-25
+---
+
 # Deploy to Staging
 
 > **Status: shipped** — The staging pipeline deploys to GCP Cloud Run + Firebase (europe-west1). No production deploy pipeline exists yet.

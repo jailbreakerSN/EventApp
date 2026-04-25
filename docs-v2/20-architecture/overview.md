@@ -1,3 +1,9 @@
+---
+title: System Architecture Overview
+status: shipped
+last_updated: 2026-04-25
+---
+
 # System Architecture Overview
 
 > **Status: shipped** — Reflects the implemented system as of April 2026.

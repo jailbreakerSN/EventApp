@@ -1,3 +1,9 @@
+---
+title: Registrations API
+status: shipped
+last_updated: 2026-04-25
+---
+
 # Registrations API
 
 > **Status: shipped**

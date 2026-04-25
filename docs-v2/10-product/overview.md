@@ -1,3 +1,9 @@
+---
+title: Platform Overview
+status: shipped
+last_updated: 2026-04-25
+---
+
 # Platform Overview
 
 > **Status: shipped**

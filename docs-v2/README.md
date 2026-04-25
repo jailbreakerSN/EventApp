@@ -1,3 +1,9 @@
+---
+title: Teranga — Documentation v2
+status: shipped
+last_updated: 2026-04-25
+---
+
 # Teranga — Documentation v2
 
 > **Canonical reference as of April 2026.** Legacy sprint artefacts and design-system audits live in [`docs/`](../docs/ARCHIVE.md). If a legacy file contradicts this documentation, this documentation is correct.

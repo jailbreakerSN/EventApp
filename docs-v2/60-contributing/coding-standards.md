@@ -1,3 +1,9 @@
+---
+title: Coding Standards
+status: shipped
+last_updated: 2026-04-25
+---
+
 # Coding Standards
 
 ---

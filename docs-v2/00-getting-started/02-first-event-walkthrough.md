@@ -1,3 +1,9 @@
+---
+title: Create Your First Event — End-to-End Walkthrough
+status: shipped
+last_updated: 2026-04-25
+---
+
 # Create Your First Event — End-to-End Walkthrough
 
 > **Status: shipped** — This walkthrough follows the actual back-office UI and API as implemented.

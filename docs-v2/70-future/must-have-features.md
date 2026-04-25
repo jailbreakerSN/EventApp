@@ -1,3 +1,9 @@
+---
+title: Must-Have Features
+status: planned
+last_updated: 2026-04-25
+---
+
 # Must-Have Features
 
 > Features that are **required** before the platform can be considered production-ready or compete effectively in the Senegalese market. Prioritized by revenue impact and user adoption risk.

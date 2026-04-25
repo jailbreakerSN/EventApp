@@ -1,3 +1,9 @@
+---
+title: Domain Events & Audit Trail
+status: shipped
+last_updated: 2026-04-25
+---
+
 # Domain Events & Audit Trail
 
 > **Status: shipped** — The event bus and audit listener are fully implemented. 83 audit actions are defined.

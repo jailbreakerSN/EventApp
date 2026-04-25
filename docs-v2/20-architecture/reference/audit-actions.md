@@ -1,3 +1,9 @@
+---
+title: Audit Actions Reference
+status: shipped
+last_updated: 2026-04-25
+---
+
 # Audit Actions Reference
 
 > **Status: shipped** — 69 `AuditAction` enum values defined in `packages/shared-types/src/audit.types.ts`.

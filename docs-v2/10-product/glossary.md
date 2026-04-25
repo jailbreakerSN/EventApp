@@ -1,3 +1,9 @@
+---
+title: Glossary
+status: shipped
+last_updated: 2026-04-25
+---
+
 # Glossary
 
 Domain-specific terms used throughout the Teranga codebase and documentation.

@@ -1,3 +1,9 @@
+---
+title: Seeding
+status: shipped
+last_updated: 2026-04-25
+---
+
 # Seeding
 
 > **Status: shipped** — Seed script is idempotent and runs on every staging deploy.

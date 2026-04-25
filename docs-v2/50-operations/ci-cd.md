@@ -1,3 +1,9 @@
+---
+title: CI / CD
+status: shipped
+last_updated: 2026-04-25
+---
+
 # CI / CD
 
 > **Status: shipped** — Staging deploy pipeline is fully automated. Production deploy pipeline is planned (Wave 10).
