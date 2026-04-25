@@ -119,6 +119,16 @@ export const AdminJobDescriptorSchema = z.object({
    */
   dangerNoteFr: z.string().nullable(),
   dangerNoteEn: z.string().nullable(),
+  /**
+   * Sprint-4 T3.2 follow-up — when true, the job is refused by the
+   * `scheduledOpsService.create` allowlist. Manual triggers from
+   * `/admin/jobs` still work (they require an explicit operator
+   * click + confirmation), but cron-driven automation of a
+   * destructive op is gated behind a deliberate per-job opt-in.
+   * Defaults to undefined (= treated as non-dangerous) so existing
+   * handlers don't need a per-file opt-in.
+   */
+  dangerous: z.boolean().optional(),
 });
 export type AdminJobDescriptor = z.infer<typeof AdminJobDescriptorSchema>;
 
@@ -173,6 +183,9 @@ export const CronExpressionSchema = z
     { message: "cron must be 5 space-separated fields (m h dom mon dow)" },
   );
 
+export const ScheduledAdminOpStatusSchema = z.enum(["active", "archived"]);
+export type ScheduledAdminOpStatus = z.infer<typeof ScheduledAdminOpStatusSchema>;
+
 export const ScheduledAdminOpSchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1).max(120),
@@ -181,6 +194,15 @@ export const ScheduledAdminOpSchema = z.object({
   cron: CronExpressionSchema,
   timezone: z.string().min(1).max(80).default("Africa/Dakar"),
   enabled: z.boolean().default(true),
+  /**
+   * Sprint-4 T3.2 follow-up — soft-delete status. Operators
+   * "delete" via the UI, which flips `status: "archived"` instead
+   * of removing the doc. The list endpoint filters archived rows
+   * by default. Mirrors the platform-wide soft-delete-only rule
+   * (CLAUDE.md § Security Hardening Checklist row "No hard
+   * deletes").
+   */
+  status: ScheduledAdminOpStatusSchema.default("active"),
   nextRunAt: z.string().datetime(),
   lastRunAt: z.string().datetime().nullable(),
   lastRunRunId: z.string().nullable(),

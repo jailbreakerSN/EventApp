@@ -752,6 +752,27 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // ─── Sprint-3 T4.2 — Firestore read-volume usage tracker ──────────────
+    // Server-only: doc ids encode `${orgId}_${day}` and the only
+    // writer is the `flushFirestoreUsage` hook (Admin SDK). Operators
+    // read aggregates exclusively via the `/v1/admin/usage/firestore`
+    // admin endpoint — direct client access would expose cross-org
+    // read counts that aren't part of any user-facing surface.
+    match /firestoreUsage/{usageDocId} {
+      allow read, write: if false;
+    }
+
+    // ─── Sprint-4 T3.2 — Scheduled admin operations ───────────────────────
+    // Server-only. Operators CRUD via the admin routes; the
+    // out-of-process Cloud Functions trigger reads via the Admin
+    // SDK. No client SDK path — opening one would leak the
+    // `jobInput` contents, which can carry sensitive task params.
+    // Deny-all is the same defence-in-depth pattern as `apiKeys`
+    // and `webhookEvents`.
+    match /scheduledAdminOps/{opId} {
+      allow read, write: if false;
+    }
+
     // ─── Plan Catalog ──────────────────────────────────────────────────────
     // Superadmin-managed catalog of subscription plans. Any authenticated
     // user can read published (public, non-archived) plans so the billing

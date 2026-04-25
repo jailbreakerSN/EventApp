@@ -41,7 +41,14 @@ class ScheduledOpsService extends BaseService {
       .orderBy("createdAt", "desc")
       .limit(200)
       .get();
-    return snap.docs.map((d) => d.data() as ScheduledAdminOp);
+    // Sprint-4 T3.2 follow-up — filter soft-deleted ("archived")
+    // ops out of the default list. Archived rows stay in
+    // Firestore for audit-trail continuity (the trigger logs +
+    // domain events still reference them) but the back-office
+    // doesn't surface them.
+    return snap.docs
+      .map((d) => d.data() as ScheduledAdminOp)
+      .filter((op) => op.status !== "archived");
   }
 
   async get(user: AuthUser, opId: string): Promise<ScheduledAdminOp> {
@@ -67,6 +74,17 @@ class ScheduledOpsService extends BaseService {
     if (!handler) {
       throw new ValidationError(
         `Unknown jobKey "${dto.jobKey}" — must be one of the registered admin jobs.`,
+      );
+    }
+
+    // Sprint-4 T3.2 follow-up — refuse to schedule destructive
+    // jobs on cron. The handler descriptor self-flags via
+    // `dangerous: true` (currently set on `firestore-restore`).
+    // Operators must trigger destructive jobs manually from
+    // `/admin/jobs` so a confirmation dialog runs first.
+    if (handler.descriptor.dangerous === true) {
+      throw new ValidationError(
+        `Job "${dto.jobKey}" is flagged dangerous and cannot be scheduled on cron. Trigger it manually from /admin/jobs.`,
       );
     }
 
@@ -109,6 +127,7 @@ class ScheduledOpsService extends BaseService {
       cron: dto.cron,
       timezone: tz,
       enabled: dto.enabled ?? true,
+      status: "active",
       nextRunAt,
       lastRunAt: null,
       lastRunRunId: null,
@@ -210,18 +229,40 @@ class ScheduledOpsService extends BaseService {
     return updated;
   }
 
+  /**
+   * Sprint-4 T3.2 follow-up — SOFT delete. Flips `status: "archived"`
+   * + `enabled: false` instead of removing the document. Mirrors the
+   * platform-wide soft-delete-only rule (CLAUDE.md § Security
+   * Hardening Checklist row "No hard deletes"). The archived row
+   * stays in Firestore so the audit trail (cron history,
+   * `lastRunRunId`, etc.) keeps resolving; the list endpoint
+   * filters it out.
+   */
   async delete(user: AuthUser, opId: string): Promise<void> {
     this.requirePermission(user, "platform:manage");
     const ref = db.collection(COLLECTIONS.SCHEDULED_ADMIN_OPS).doc(opId);
-    const snap = await ref.get();
-    if (!snap.exists) throw new NotFoundError("scheduledAdminOp", opId);
-    await ref.delete();
+
+    const now = new Date().toISOString();
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) throw new NotFoundError("scheduledAdminOp", opId);
+      const current = snap.data() as ScheduledAdminOp;
+      if (current.status === "archived") {
+        // Idempotent — already soft-deleted, no-op.
+        return;
+      }
+      tx.update(ref, {
+        status: "archived",
+        enabled: false,
+        updatedAt: now,
+      });
+    });
 
     eventBus.emit("scheduled_admin_op.deleted", {
       opId,
       actorId: user.uid,
       requestId: getRequestId(),
-      timestamp: new Date().toISOString(),
+      timestamp: now,
     });
   }
 }

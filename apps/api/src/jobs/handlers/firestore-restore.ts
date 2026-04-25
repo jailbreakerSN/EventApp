@@ -74,6 +74,11 @@ export const firestoreRestoreHandler: JobHandler<Input> = {
       "DESTRUCTIF — l'import écrase tous les documents partageant un id avec l'export. Tester d'abord sur un projet clone.",
     dangerNoteEn:
       "DESTRUCTIVE — the import overwrites every document sharing an id with the export. Test on a clone project first.",
+    // Sprint-4 T3.2 follow-up — refuse to schedule on cron.
+    // Restore is a one-shot incident-response action: the
+    // operator must consciously kick it from `/admin/jobs` with
+    // a confirmation dialog, never let it run unattended.
+    dangerous: true,
   },
   inputSchema,
   run: async (input: Input, ctx) => {
