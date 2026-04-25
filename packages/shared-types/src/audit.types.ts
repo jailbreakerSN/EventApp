@@ -18,6 +18,8 @@ export const AuditActionSchema = z.enum([
   "event.unpublished",
   "event.cancelled",
   "event.archived",
+  "event.restored",
+  "event.series_cancelled",
   "organization.created",
   "member.added",
   "member.removed",

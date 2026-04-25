@@ -561,13 +561,18 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get(
     "/export/:resource.csv",
     {
-      // B3 closure — CSV export is a pure read of data already
-      // reachable via the list endpoints (which now sit on
-      // `readOnlyAdminPreHandler`). Granting `platform:audit_read`
-      // holders the same export rights keeps the UX coherent: a
-      // support agent who can READ the orgs list should be able to
-      // export it as CSV without escalating to `platform:manage`.
-      preHandler: readOnlyAdminPreHandler,
+      // B3 follow-up (security-review fix) — CSV export reverted to
+      // `adminPreHandler` (platform:manage). The /admin/audit log
+      // surface already exposes `platform:audit_read` holders to
+      // every PII column individually; bulk CSV export is a
+      // qualitatively different surface (whole-table dump in a
+      // form trivial to exfiltrate) and is held to the stricter
+      // bar. Keeps route + service guards aligned: `exportCsv`
+      // service-side also requires `platform:manage`. Reverting
+      // the route closes the latent risk that a future refactor
+      // could relax the service guard while leaving the route
+      // permissive.
+      preHandler: adminPreHandler,
       schema: {
         tags: ["Admin"],
         summary: "Streaming CSV export of a filtered list",

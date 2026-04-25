@@ -1494,6 +1494,16 @@ class AdminService extends BaseService {
       signupCount: number;
       retainedNow: number;
       retentionPct: number;
+      /** T2.4 — months elapsed between cohort signup and now. */
+      monthsSinceSignup: number;
+    }>;
+    /**
+     * T2.4 — derived "retention by age" curve. One point per
+     * months-elapsed bucket where at least one cohort exists.
+     */
+    retentionCurve: Array<{
+      monthsSinceSignup: number;
+      retentionPct: number;
     }>;
     computedAt: string;
   }> {
@@ -1558,6 +1568,7 @@ class AdminService extends BaseService {
       signupCount: number;
       retainedNow: number;
       retentionPct: number;
+      monthsSinceSignup: number;
     }> = [];
     for (let offset = 0; offset < lookback; offset += 1) {
       const monthDate = new Date(
@@ -1565,17 +1576,54 @@ class AdminService extends BaseService {
       );
       const cohortMonth = monthDate.toISOString().slice(0, 7);
       const stats = cohortMap.get(cohortMonth) ?? { signupCount: 0, retainedNow: 0 };
+      // T2.4 closure — `monthsSinceSignup` exposes how old each
+      // cohort is so the UI can render a triangular heatmap
+      // (cohort × elapsed-month). Without subscription-history
+      // reconstruction we can only fill the diagonal cell — but
+      // that's the most actionable signal: "of orgs that joined N
+      // months ago, what fraction are still paying today?"
+      const cohortYear = monthDate.getUTCFullYear();
+      const cohortMonthIdx = monthDate.getUTCMonth();
+      const monthsSinceSignup =
+        (now.getUTCFullYear() - cohortYear) * 12 +
+        (now.getUTCMonth() - cohortMonthIdx);
       cohorts.push({
         cohortMonth,
         signupCount: stats.signupCount,
         retainedNow: stats.retainedNow,
         retentionPct:
           stats.signupCount > 0 ? stats.retainedNow / stats.signupCount : 0,
+        monthsSinceSignup,
+      });
+    }
+
+    // T2.4 closure — derived "average retention by age" curve.
+    // Each cohort contributes ONE data point (its retention at age
+    // = monthsSinceSignup). The curve is the natural read of those
+    // diagonal cells, which is the operator-facing equivalent of
+    // "after N months, X% of cohorts retain Y%". Empty when no
+    // cohort lands at that age (gaps left as null for the chart).
+    const retentionByAge = new Map<number, { sum: number; count: number }>();
+    for (const c of cohorts) {
+      if (c.signupCount === 0) continue;
+      const bucket = retentionByAge.get(c.monthsSinceSignup) ?? { sum: 0, count: 0 };
+      bucket.sum += c.retentionPct;
+      bucket.count += 1;
+      retentionByAge.set(c.monthsSinceSignup, bucket);
+    }
+    const retentionCurve: Array<{ monthsSinceSignup: number; retentionPct: number }> = [];
+    for (let age = 0; age < lookback; age += 1) {
+      const bucket = retentionByAge.get(age);
+      if (!bucket) continue;
+      retentionCurve.push({
+        monthsSinceSignup: age,
+        retentionPct: bucket.sum / bucket.count,
       });
     }
 
     return {
       cohorts,
+      retentionCurve,
       computedAt: new Date().toISOString(),
     };
   }

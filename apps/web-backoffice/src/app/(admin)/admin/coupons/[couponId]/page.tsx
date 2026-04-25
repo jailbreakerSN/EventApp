@@ -161,6 +161,8 @@ function RedemptionsTab({ couponId }: { couponId: string }) {
   const aggregates = payload?.aggregates ?? {
     totalRedemptions: 0,
     totalDiscountAppliedXof: 0,
+    byMonth: [],
+    byPlan: [],
   };
 
   if (rows.length === 0 && meta.page === 1) {
@@ -206,6 +208,51 @@ function RedemptionsTab({ couponId }: { couponId: string }) {
           </CardContent>
         </Card>
       </div>
+
+      {/* Sprint-2 S3 — monthly + per-plan breakdown. Renders only
+          when there's data, so the empty state above stays clean. */}
+      {aggregates.byMonth.length > 0 && (
+        <Card>
+          <CardContent className="space-y-3 p-4">
+            <div className="text-sm font-semibold text-foreground">
+              Rédemptions par mois
+            </div>
+            <RedemptionsByMonthChart data={aggregates.byMonth} />
+          </CardContent>
+        </Card>
+      )}
+
+      {aggregates.byPlan.length > 0 && (
+        <Card>
+          <CardContent className="space-y-3 p-4">
+            <div className="text-sm font-semibold text-foreground">
+              Rédemptions par plan
+            </div>
+            <table className="w-full text-left text-sm">
+              <thead className="border-b border-border text-[10px] uppercase tracking-wider text-muted-foreground">
+                <tr>
+                  <th className="px-3 py-1.5 font-medium">Plan</th>
+                  <th className="px-3 py-1.5 text-right font-medium">Rédemptions</th>
+                  <th className="px-3 py-1.5 text-right font-medium">Remise totale</th>
+                </tr>
+              </thead>
+              <tbody>
+                {aggregates.byPlan.map((p) => (
+                  <tr key={p.planId} className="border-b border-border last:border-0">
+                    <td className="px-3 py-1.5 font-mono text-xs">{p.planId}</td>
+                    <td className="px-3 py-1.5 text-right font-mono text-xs">
+                      {p.count.toLocaleString("fr-FR")}
+                    </td>
+                    <td className="px-3 py-1.5 text-right font-mono text-xs text-teranga-green">
+                      -{p.discountXof.toLocaleString("fr-FR")} XOF
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="divide-y divide-border rounded-xl border border-border">
         {rows.map((r: CouponRedemption) => (
@@ -275,6 +322,40 @@ function RedemptionRow({ row }: { row: CouponRedemption }) {
           {row.originalPriceXof.toLocaleString("fr-FR")} →{" "}
           {row.finalPriceXof.toLocaleString("fr-FR")} XOF
         </div>
+      </div>
+    </div>
+  );
+}
+
+
+// ─── Sprint-2 S3 — monthly redemptions sparkline ─────────────────────────
+
+function RedemptionsByMonthChart({
+  data,
+}: {
+  data: Array<{ month: string; count: number; discountXof: number }>;
+}) {
+  if (data.length === 0) return null;
+  const max = Math.max(1, ...data.map((d) => d.count));
+  return (
+    <div>
+      <div
+        className="flex h-24 items-end gap-1"
+        role="img"
+        aria-label={`Histogramme des rédemptions mensuelles, ${data.length} mois`}
+      >
+        {data.map((d) => (
+          <div key={d.month} className="flex flex-1 flex-col items-center gap-1">
+            <div className="flex h-full w-full items-end">
+              <div
+                className="w-full bg-teranga-gold/70 transition-colors hover:bg-teranga-gold"
+                style={{ height: `${Math.max(2, (d.count / max) * 100)}%` }}
+                title={`${d.month} : ${d.count} rédemption${d.count > 1 ? "s" : ""} · -${d.discountXof.toLocaleString("fr-FR")} XOF`}
+              />
+            </div>
+            <span className="text-[10px] font-mono text-muted-foreground">{d.month}</span>
+          </div>
+        ))}
       </div>
     </div>
   );

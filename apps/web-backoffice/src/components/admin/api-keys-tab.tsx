@@ -41,6 +41,7 @@ import {
   Plus,
   AlertTriangle,
   History,
+  Activity,
 } from "lucide-react";
 import {
   type ApiKey,
@@ -54,6 +55,7 @@ import {
   useRotateOrgApiKey,
   useRevokeOrgApiKey,
   useAdminAuditLogs,
+  useOrgApiKeyUsage,
 } from "@/hooks/use-admin";
 import { useErrorHandler } from "@/hooks/use-error-handler";
 
@@ -462,6 +464,7 @@ function ApiKeyRow({
     revokedApiKeyId: string;
   }) => void;
 }) {
+  const [showUsage, setShowUsage] = useState(false);
   const rotate = useRotateOrgApiKey(orgId);
   const revoke = useRevokeOrgApiKey(orgId);
   const { resolve } = useErrorHandler();
@@ -566,31 +569,48 @@ function ApiKeyRow({
           )}
         </div>
 
-        {isActive && (
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => void handleRotate()}
-              disabled={rotate.isPending || revoke.isPending}
-              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-muted-foreground hover:bg-muted disabled:opacity-50"
-              aria-label={`Rotation de la clé ${apiKey.name}`}
-            >
-              <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
-              Rotation
-            </button>
-            <button
-              type="button"
-              onClick={() => void handleRevoke()}
-              disabled={rotate.isPending || revoke.isPending}
-              className="inline-flex items-center gap-1.5 rounded-md border border-red-300 bg-background px-2.5 py-1 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 dark:border-red-900/60 dark:hover:bg-red-950/30"
-              aria-label={`Révoquer la clé ${apiKey.name}`}
-            >
-              <Ban className="h-3.5 w-3.5" aria-hidden="true" />
-              Révoquer
-            </button>
-          </div>
-        )}
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setShowUsage((v) => !v)}
+            aria-pressed={showUsage}
+            className={
+              showUsage
+                ? "inline-flex items-center gap-1.5 rounded-md border border-teranga-gold bg-teranga-gold/10 px-2.5 py-1 text-xs font-medium text-teranga-gold"
+                : "inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-muted-foreground hover:bg-muted"
+            }
+            aria-label={`Voir les statistiques d'usage de la clé ${apiKey.name}`}
+          >
+            <Activity className="h-3.5 w-3.5" aria-hidden="true" />
+            Stats
+          </button>
+          {isActive && (
+            <>
+              <button
+                type="button"
+                onClick={() => void handleRotate()}
+                disabled={rotate.isPending || revoke.isPending}
+                className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-muted-foreground hover:bg-muted disabled:opacity-50"
+                aria-label={`Rotation de la clé ${apiKey.name}`}
+              >
+                <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
+                Rotation
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleRevoke()}
+                disabled={rotate.isPending || revoke.isPending}
+                className="inline-flex items-center gap-1.5 rounded-md border border-red-300 bg-background px-2.5 py-1 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 dark:border-red-900/60 dark:hover:bg-red-950/30"
+                aria-label={`Révoquer la clé ${apiKey.name}`}
+              >
+                <Ban className="h-3.5 w-3.5" aria-hidden="true" />
+                Révoquer
+              </button>
+            </>
+          )}
+        </div>
       </div>
+      {showUsage && <ApiKeyUsageChart orgId={orgId} apiKeyId={apiKey.id} />}
       {actionError && (
         <InlineErrorBanner
           severity="destructive"
@@ -599,6 +619,68 @@ function ApiKeyRow({
           description={actionError}
         />
       )}
+    </div>
+  );
+}
+
+// T2.3 closure — 30-day request-volume sparkline. Pure CSS bars, no
+// chart library — keeps the bundle lean and the sparkline reads
+// well at 200×40 inside a row.
+function ApiKeyUsageChart({ orgId, apiKeyId }: { orgId: string; apiKeyId: string }) {
+  const { data, isLoading, isError, error } = useOrgApiKeyUsage(orgId, apiKeyId);
+
+  if (isLoading) {
+    return (
+      <div className="rounded-md border border-border bg-muted/20 p-3 text-[11px] text-muted-foreground">
+        Chargement des statistiques d&apos;usage…
+      </div>
+    );
+  }
+  if (isError) {
+    return (
+      <InlineErrorBanner
+        severity="destructive"
+        kicker="— Erreur"
+        title="Impossible de charger les statistiques"
+        description={error instanceof Error ? error.message : "Erreur inconnue"}
+      />
+    );
+  }
+  const usage = data?.data;
+  if (!usage) return null;
+
+  const max = Math.max(1, ...usage.daily.map((d) => d.count));
+  return (
+    <div className="rounded-md border border-border bg-muted/10 p-3">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-[11px]">
+        <div className="font-medium text-foreground">
+          Usage sur 30 jours :{" "}
+          <span className="font-mono">{usage.totalLast30d.toLocaleString("fr-FR")}</span>{" "}
+          requêtes vérifiées
+        </div>
+        <div className="text-muted-foreground">
+          Borne basse — un événement <code className="font-mono">api_key.verified</code> n&apos;est
+          consigné qu&apos;une fois par heure pour un même couple (clé, IP, agent).
+        </div>
+      </div>
+      <div
+        className="flex h-10 items-end gap-px"
+        role="img"
+        aria-label={`Histogramme des requêtes des 30 derniers jours, total ${usage.totalLast30d}`}
+      >
+        {usage.daily.map((d) => (
+          <div
+            key={d.day}
+            className="flex-1 bg-teranga-gold/60 transition-colors hover:bg-teranga-gold"
+            style={{ height: `${Math.max(2, (d.count / max) * 100)}%` }}
+            title={`${d.day} : ${d.count} requête${d.count > 1 ? "s" : ""}`}
+          />
+        ))}
+      </div>
+      <div className="mt-1 flex justify-between text-[10px] text-muted-foreground">
+        <span>{usage.daily[0]?.day}</span>
+        <span>{usage.daily[usage.daily.length - 1]?.day}</span>
+      </div>
     </div>
   );
 }

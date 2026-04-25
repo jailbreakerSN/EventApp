@@ -568,15 +568,20 @@ describe("EventService.cancel", () => {
 });
 
 describe("EventService.archive", () => {
-  it("archives an event with soft delete", async () => {
+  it("archives an event with status + archivedAt timestamp", async () => {
     const user = buildOrganizerUser("org-1");
     const event = buildEvent({ organizationId: "org-1", status: "published" });
     mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
-    mockEventRepo.softDelete.mockResolvedValue(undefined);
+    mockEventRepo.update.mockResolvedValue(undefined);
 
     await service.archive(event.id, user);
 
-    expect(mockEventRepo.softDelete).toHaveBeenCalledWith(event.id, "status", "archived");
+    // T2.2 closure — archive now stamps `archivedAt` so the
+    // restore window can be enforced.
+    expect(mockEventRepo.update).toHaveBeenCalledWith(
+      event.id,
+      expect.objectContaining({ status: "archived", archivedAt: expect.any(String) }),
+    );
   });
 
   it("requires event:delete permission", async () => {
@@ -585,6 +590,76 @@ describe("EventService.archive", () => {
     mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
 
     await expect(service.archive(event.id, user)).rejects.toThrow("Permission manquante");
+  });
+});
+
+// T2.2 closure — restore endpoint contract tests.
+describe("EventService.restore", () => {
+  it("restores an archived event within the 30-day window to draft status", async () => {
+    const user = buildOrganizerUser("org-1");
+    const archivedAt = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(); // 5 days ago
+    const event = buildEvent({
+      organizationId: "org-1",
+      status: "archived",
+      archivedAt,
+    });
+    mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
+    mockEventRepo.update.mockResolvedValue(undefined);
+
+    const result = await service.restore(event.id, user);
+
+    expect(result).toEqual({ eventId: event.id });
+    expect(mockEventRepo.update).toHaveBeenCalledWith(
+      event.id,
+      expect.objectContaining({ status: "draft", archivedAt: null }),
+    );
+  });
+
+  it("rejects restoring a non-archived event (e.g. cancelled)", async () => {
+    const user = buildOrganizerUser("org-1");
+    const event = buildEvent({ organizationId: "org-1", status: "cancelled" });
+    mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
+
+    await expect(service.restore(event.id, user)).rejects.toThrow(
+      /Seuls les événements archivés peuvent être restaurés/,
+    );
+    expect(mockEventRepo.update).not.toHaveBeenCalled();
+  });
+
+  it("rejects restoring an event archived more than 30 days ago", async () => {
+    const user = buildOrganizerUser("org-1");
+    const archivedAt = new Date(Date.now() - 35 * 24 * 60 * 60 * 1000).toISOString();
+    const event = buildEvent({
+      organizationId: "org-1",
+      status: "archived",
+      archivedAt,
+    });
+    mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
+
+    await expect(service.restore(event.id, user)).rejects.toThrow(
+      /Fenêtre de restauration dépassée/,
+    );
+    expect(mockEventRepo.update).not.toHaveBeenCalled();
+  });
+
+  it("rejects restoring a legacy archived event without archivedAt", async () => {
+    const user = buildOrganizerUser("org-1");
+    const event = buildEvent({
+      organizationId: "org-1",
+      status: "archived",
+      archivedAt: null,
+    });
+    mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
+
+    await expect(service.restore(event.id, user)).rejects.toThrow(
+      /archivé avant l'introduction de la fenêtre/,
+    );
+    expect(mockEventRepo.update).not.toHaveBeenCalled();
+  });
+
+  it("requires event:delete permission", async () => {
+    const user = buildAuthUser({ roles: ["participant"] });
+    await expect(service.restore("evt-1", user)).rejects.toThrow("Permission manquante");
   });
 });
 

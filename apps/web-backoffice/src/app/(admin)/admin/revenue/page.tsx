@@ -45,6 +45,11 @@ interface CohortsSnapshot {
     signupCount: number;
     retainedNow: number;
     retentionPct: number;
+    monthsSinceSignup: number;
+  }>;
+  retentionCurve: Array<{
+    monthsSinceSignup: number;
+    retentionPct: number;
   }>;
   computedAt: string;
 }
@@ -294,6 +299,8 @@ function CohortsSection({ cohorts }: { cohorts: CohortsSnapshot }) {
         </CardContent>
       </Card>
 
+      <RetentionCurveCard curve={cohorts.retentionCurve} />
+
       <div className="text-right text-[10px] text-muted-foreground">
         Calcul basé sur l&apos;état actuel des abonnements ({" "}
         {new Date(cohorts.computedAt).toLocaleString("fr-FR")} ). Le mois courant
@@ -301,6 +308,59 @@ function CohortsSection({ cohorts }: { cohorts: CohortsSnapshot }) {
         signal long-terme.
       </div>
     </>
+  );
+}
+
+// T2.4 closure — derived "average retention by months elapsed"
+// curve. Each cohort contributes its current diagonal data point
+// — the curve shows "after N months, X% of orgs still pay". Empty
+// gaps left blank so the chart visually telegraphs the limit.
+function RetentionCurveCard({ curve }: { curve: CohortsSnapshot["retentionCurve"] }) {
+  if (curve.length === 0) {
+    return null;
+  }
+  const max = 1; // Always 0..100% scale.
+  return (
+    <Card>
+      <CardContent className="space-y-3 p-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-semibold text-foreground">Courbe de rétention par âge</h3>
+            <p className="text-[11px] text-muted-foreground">
+              Pour chaque âge de cohorte (mois écoulés depuis l&apos;inscription), pourcentage moyen
+              d&apos;orgs encore actives. Calculé sur l&apos;état courant — pas une matrice mois-par-mois.
+            </p>
+          </div>
+        </div>
+        <div className="overflow-x-auto">
+          <div className="flex h-24 items-end gap-1" role="img" aria-label="Courbe de rétention par âge de cohorte">
+            {curve.map((p) => {
+              const height = (p.retentionPct / max) * 100;
+              const color =
+                p.retentionPct < 0.3
+                  ? "bg-red-500"
+                  : p.retentionPct < 0.6
+                    ? "bg-amber-500"
+                    : "bg-teranga-green";
+              return (
+                <div key={p.monthsSinceSignup} className="flex flex-1 flex-col items-center gap-1">
+                  <div className="flex h-full w-full items-end">
+                    <div
+                      className={`w-full ${color} transition-colors`}
+                      style={{ height: `${Math.max(2, height)}%` }}
+                      title={`${p.monthsSinceSignup} mois : ${Math.round(p.retentionPct * 100)}%`}
+                    />
+                  </div>
+                  <span className="text-[10px] font-mono text-muted-foreground">
+                    M+{p.monthsSinceSignup}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 

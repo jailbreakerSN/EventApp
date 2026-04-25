@@ -394,3 +394,17 @@ export function useRevokeOrgApiKey(orgId: string) {
     },
   });
 }
+
+// T2.3 closure — 30-day request-volume analytics per key.
+export function useOrgApiKeyUsage(
+  orgId: string,
+  apiKeyId: string | undefined,
+  enabled: boolean = true,
+) {
+  return useQuery({
+    queryKey: ["admin", "organizations", "api-keys", "usage", orgId, apiKeyId],
+    queryFn: () => apiKeysApi.usage(orgId, apiKeyId!),
+    enabled: enabled && !!apiKeyId,
+    staleTime: 30_000,
+  });
+}

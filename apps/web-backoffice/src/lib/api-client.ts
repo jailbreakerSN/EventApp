@@ -293,6 +293,21 @@ export const eventsApi = {
   archive: (id: string) =>
     api.delete(`/v1/events/${id}`),
 
+  // T2.2 closure — undo a recent archive (30-day window enforced
+  // server-side). Returns 204 on success, 400 on stale archive or
+  // wrong status.
+  restore: (id: string) =>
+    api.post<ApiResponse<{ eventId: string }>>(`/v1/events/${id}/restore`, {}),
+
+  // Sprint-2 S1 closure — atomic cancel of an entire recurring
+  // series (parent + every non-cancelled child). Server-side
+  // refuses non-parent docs; per-event cancel stays available.
+  cancelSeries: (parentEventId: string) =>
+    api.post<ApiResponse<{ parentEventId: string; cancelledCount: number }>>(
+      `/v1/events/${parentEventId}/cancel-series`,
+      {},
+    ),
+
   clone: (id: string, dto: CloneEventDto) =>
     api.post<ApiResponse<Event>>(`/v1/events/${id}/clone`, dto),
 
@@ -921,7 +936,15 @@ export const adminApi = {
           data: CouponRedemption[];
           meta: { page: number; limit: number; total: number; totalPages: number };
         };
-        aggregates: { totalRedemptions: number; totalDiscountAppliedXof: number };
+        // Sprint-2 S3 — extended aggregates with monthly + per-plan
+        // buckets. Drives the analytics chart + breakdown table on
+        // the admin coupon detail page.
+        aggregates: {
+          totalRedemptions: number;
+          totalDiscountAppliedXof: number;
+          byMonth: Array<{ month: string; count: number; discountXof: number }>;
+          byPlan: Array<{ planId: string; count: number; discountXof: number }>;
+        };
       }>
     >(`/v1/admin/coupons/${couponId}/redemptions${buildQuery(query)}`),
   validateCoupon: (
@@ -1021,6 +1044,19 @@ export const apiKeysApi = {
     api.post<ApiResponse<RotateApiKeyResponse>>(
       `/v1/organizations/${encodeURIComponent(orgId)}/api-keys/${encodeURIComponent(apiKeyId)}/rotate`,
       dto,
+    ),
+
+  // T2.3 closure — 30-day usage analytics for a single key.
+  usage: (orgId: string, apiKeyId: string) =>
+    api.get<
+      ApiResponse<{
+        apiKeyId: string;
+        daily: Array<{ day: string; count: number }>;
+        totalLast30d: number;
+        throttleWindowMs: number;
+      }>
+    >(
+      `/v1/organizations/${encodeURIComponent(orgId)}/api-keys/${encodeURIComponent(apiKeyId)}/usage`,
     ),
 };
 

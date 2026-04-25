@@ -241,6 +241,22 @@ export function registerAuditListeners(): void {
     });
   });
 
+  // T2.2 closure — admin "Restaurer" undo. Emitted when an archived
+  // event is brought back into draft within the 30-day window.
+  eventBus.on("event.restored", async (payload) => {
+    await auditService.log({
+      action: "event.restored",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "event",
+      resourceId: payload.eventId,
+      eventId: payload.eventId,
+      organizationId: payload.organizationId,
+      details: {},
+    });
+  });
+
   // `event.cloned` was emitted by `EventService.clone()` but had no audit
   // mapping — cloning an event left no trail. The new clone carries a
   // fresh `qrKid`, so rotation metadata forensics also depended on this.
@@ -287,6 +303,24 @@ export function registerAuditListeners(): void {
       eventId: payload.parentEventId,
       organizationId: payload.organizationId,
       details: { publishedCount: payload.publishedCount },
+    });
+  });
+
+  // Sprint-2 S1 closure — bulk cancel of an entire series.
+  eventBus.on("event.series_cancelled", async (payload) => {
+    await auditService.log({
+      action: "event.series_cancelled",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "event",
+      resourceId: payload.parentEventId,
+      eventId: payload.parentEventId,
+      organizationId: payload.organizationId,
+      details: {
+        cancelledCount: payload.cancelledCount,
+        cancelledChildIds: payload.cancelledChildIds,
+      },
     });
   });
 

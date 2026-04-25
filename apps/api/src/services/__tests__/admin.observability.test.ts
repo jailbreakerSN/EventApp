@@ -250,18 +250,29 @@ describe("AdminService.getRevenueCohorts", () => {
     const feb = result.cohorts.find((c) => c.cohortMonth === "2026-02");
     const mar = result.cohorts.find((c) => c.cohortMonth === "2026-03");
 
-    expect(feb).toEqual({
+    expect(feb).toMatchObject({
       cohortMonth: "2026-02",
       signupCount: 2,
       retainedNow: 1,
       retentionPct: 0.5,
     });
-    expect(mar).toEqual({
+    // T2.4 — `monthsSinceSignup` is computed; assert it's a
+    // non-negative integer rather than a hard-coded value (the
+    // exact value depends on the test clock).
+    expect(feb?.monthsSinceSignup).toBeTypeOf("number");
+    expect(feb!.monthsSinceSignup).toBeGreaterThanOrEqual(0);
+    expect(mar).toMatchObject({
       cohortMonth: "2026-03",
       signupCount: 1,
       retainedNow: 0,
       retentionPct: 0,
     });
+    expect(mar?.monthsSinceSignup).toBeTypeOf("number");
+    // T2.4 — `retentionCurve` is derived from cohort diagonals.
+    // We seeded two non-empty cohorts so the curve has at least
+    // one point.
+    expect(Array.isArray(result.retentionCurve)).toBe(true);
+    expect(result.retentionCurve.length).toBeGreaterThan(0);
 
     // Empty months are still emitted with all-zero stats so the UI
     // axis stays even.

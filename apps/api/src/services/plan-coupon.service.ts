@@ -184,6 +184,20 @@ class PlanCouponService extends BaseService {
     aggregates: {
       totalRedemptions: number;
       totalDiscountAppliedXof: number;
+      /**
+       * Sprint-2 S3 — per-month bucket of redemption count + total
+       * discount applied. One row per YYYY-MM that saw at least
+       * one redemption, sorted ascending. Drives the analytics chart
+       * on the admin coupon detail page.
+       */
+      byMonth: Array<{ month: string; count: number; discountXof: number }>;
+      /**
+       * Sprint-2 S3 — per-plan breakdown of redemptions. `planId` is
+       * the plan VERSION id (matches the redemption snapshot at
+       * apply-time), so a coupon used across multiple plan revisions
+       * shows up as separate rows.
+       */
+      byPlan: Array<{ planId: string; count: number; discountXof: number }>;
     };
   }> {
     this.requirePermission(user, "platform:manage");
@@ -211,19 +225,50 @@ class PlanCouponService extends BaseService {
       // explicitly. In practice no coupon is expected to scale
       // beyond a few hundred redemptions before it's archived and
       // replaced, so the cap is theoretical.
-      baseQuery.select("discountAppliedXof").limit(500).get(),
+      // Sprint-2 S3 — also project `redeemedAt` + `planId` so the
+      // monthly + per-plan aggregations can run on the same slice.
+      baseQuery
+        .select("discountAppliedXof", "redeemedAt", "planId")
+        .limit(500)
+        .get(),
     ]);
 
     const total = countSnap.data().count;
     const data = pageSnap.docs.map((d) => d.data() as CouponRedemption);
 
     let totalDiscountAppliedXof = 0;
+    const monthMap = new Map<string, { count: number; discountXof: number }>();
+    const planMap = new Map<string, { count: number; discountXof: number }>();
     for (const doc of totalsSnap.docs) {
-      const row = doc.data() as { discountAppliedXof?: number };
-      if (typeof row.discountAppliedXof === "number") {
-        totalDiscountAppliedXof += row.discountAppliedXof;
+      const row = doc.data() as {
+        discountAppliedXof?: number;
+        redeemedAt?: string;
+        planId?: string;
+      };
+      const discount =
+        typeof row.discountAppliedXof === "number" ? row.discountAppliedXof : 0;
+      totalDiscountAppliedXof += discount;
+      if (row.redeemedAt) {
+        const month = row.redeemedAt.slice(0, 7); // "YYYY-MM"
+        const bucket = monthMap.get(month) ?? { count: 0, discountXof: 0 };
+        bucket.count += 1;
+        bucket.discountXof += discount;
+        monthMap.set(month, bucket);
+      }
+      if (row.planId) {
+        const bucket = planMap.get(row.planId) ?? { count: 0, discountXof: 0 };
+        bucket.count += 1;
+        bucket.discountXof += discount;
+        planMap.set(row.planId, bucket);
       }
     }
+
+    const byMonth = Array.from(monthMap.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([month, b]) => ({ month, count: b.count, discountXof: b.discountXof }));
+    const byPlan = Array.from(planMap.entries())
+      .sort(([, a], [, b]) => b.count - a.count) // most-used plans first
+      .map(([planId, b]) => ({ planId, count: b.count, discountXof: b.discountXof }));
 
     return {
       couponId,
@@ -239,6 +284,8 @@ class PlanCouponService extends BaseService {
       aggregates: {
         totalRedemptions: total,
         totalDiscountAppliedXof,
+        byMonth,
+        byPlan,
       },
     };
   }

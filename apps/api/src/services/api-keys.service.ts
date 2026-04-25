@@ -317,6 +317,84 @@ export class ApiKeysService extends BaseService {
   }
 
   /**
+   * T2.3 closure — request-volume analytics for one API key.
+   *
+   * Reconstructs a daily-bucket histogram from the `api_key.verified`
+   * audit rows for this key over the last 30 days. The `verified`
+   * event itself is per-pod throttled (see `VERIFY_THROTTLE_MS`) so
+   * the count under-reports raw verifications by a constant factor
+   * — but the SHAPE (which days had traffic, which were quiet) is
+   * preserved, which is what an operator chasing an anomaly cares
+   * about. The throttle factor is documented in the response so the
+   * UI can warn.
+   *
+   * Permission: `organization:read` + `requireOrganizationAccess`
+   * (super-admin gets cross-org via the admin bypass).
+   */
+  async getUsageAnalytics(
+    user: AuthUser,
+    organizationId: string,
+    apiKeyId: string,
+  ): Promise<{
+    apiKeyId: string;
+    daily: Array<{ day: string; count: number }>;
+    totalLast30d: number;
+    /**
+     * `api_key.verified` is throttled per-pod to once per
+     * (key, ipHash, uaHash) per hour. Surface this so the UI can
+     * label the count as a lower bound rather than an exact total.
+     */
+    throttleWindowMs: number;
+  }> {
+    this.requireOrganizationAccess(user, organizationId);
+    this.requirePermission(user, "organization:read");
+
+    // Existence check + cross-org guard — reuses `get` to keep the
+    // 404 shape identical.
+    await this.get(user, organizationId, apiKeyId);
+
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    const snap = await db
+      .collection(COLLECTIONS.AUDIT_LOGS)
+      .where("action", "==", "api_key.verified")
+      .where("resourceId", "==", apiKeyId)
+      .where("timestamp", ">=", thirtyDaysAgo)
+      .select("timestamp")
+      .limit(2000)
+      .get();
+
+    // Bucket by Africa/Dakar day (UTC offset 0 ─ Senegal observes
+    // no DST). Slice the ISO string at index 10 ("YYYY-MM-DD").
+    const counts = new Map<string, number>();
+    for (const doc of snap.docs) {
+      const row = doc.data() as { timestamp?: string };
+      if (!row.timestamp) continue;
+      const day = row.timestamp.slice(0, 10);
+      counts.set(day, (counts.get(day) ?? 0) + 1);
+    }
+
+    // Emit one row per day in the lookback window so the sparkline
+    // axis stays evenly spaced even on a quiet key.
+    const daily: Array<{ day: string; count: number }> = [];
+    let total = 0;
+    const now = Date.now();
+    for (let offset = 29; offset >= 0; offset -= 1) {
+      const dayDate = new Date(now - offset * 24 * 60 * 60 * 1000);
+      const day = dayDate.toISOString().slice(0, 10);
+      const count = counts.get(day) ?? 0;
+      daily.push({ day, count });
+      total += count;
+    }
+
+    return {
+      apiKeyId,
+      daily,
+      totalLast30d: total,
+      throttleWindowMs: 60 * 60 * 1000,
+    };
+  }
+
+  /**
    * Revoke a key. Transactional so the state transition (active →
    * revoked) can't race against a concurrent rotate. The row is
    * preserved for audit — we never hard-delete.

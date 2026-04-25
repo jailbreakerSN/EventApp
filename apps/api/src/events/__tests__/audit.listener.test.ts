@@ -620,7 +620,9 @@ describe("Audit Listener", () => {
       // handler — the per-entry `waitlist.promoted` events drive
       // notification dispatch, this aggregate gives ops a single
       // audit row per bulk-promote run.
-      const EXPECTED_HANDLER_COUNT = 94;
+      // Sprint-2 T2.2 — `event.restored` listener added.
+      // Sprint-2 S1 — `event.series_cancelled` listener added.
+      const EXPECTED_HANDLER_COUNT = 96;
 
       expect(registered).toHaveLength(EXPECTED_HANDLER_COUNT);
       // Each registered event name should be unique — a double

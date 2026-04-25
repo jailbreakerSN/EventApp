@@ -365,3 +365,68 @@ describe("EventService.publishSeries", () => {
     );
   });
 });
+
+// Sprint-2 S1 closure — bulk cancel a recurring series.
+describe("EventService.cancelSeries", () => {
+  it("cancels parent + all non-already-cancelled children atomically", async () => {
+    const user = buildOrganizerUser("org-1");
+    const parent = buildEvent({
+      id: "parent-1",
+      organizationId: "org-1",
+      isRecurringParent: true,
+      parentEventId: null,
+      status: "published",
+    });
+    mockEventRepo.findByIdOrThrow.mockResolvedValue(parent);
+    mockChildrenGet.mockResolvedValue({
+      size: 4,
+      docs: [
+        { id: "c1", ref: { id: "c1" }, data: () => ({ status: "published" }) },
+        { id: "c2", ref: { id: "c2" }, data: () => ({ status: "draft" }) },
+        // Already cancelled — should be skipped.
+        { id: "c3", ref: { id: "c3" }, data: () => ({ status: "cancelled" }) },
+        // Already archived — should be skipped.
+        { id: "c4", ref: { id: "c4" }, data: () => ({ status: "archived" }) },
+      ],
+    });
+
+    const result = await service.cancelSeries("parent-1", user);
+
+    expect(result.parentEventId).toBe("parent-1");
+    expect(result.cancelledCount).toBe(2); // c1 + c2 only
+    // 1 parent + 2 children = 3 transactional updates.
+    expect(mockTxUpdate).toHaveBeenCalledTimes(3);
+    const allCalls = mockTxUpdate.mock.calls;
+    for (const call of allCalls) {
+      expect((call[1] as Record<string, unknown>).status).toBe("cancelled");
+    }
+    expect(eventBus.emit).toHaveBeenCalledWith(
+      "event.series_cancelled",
+      expect.objectContaining({
+        parentEventId: "parent-1",
+        cancelledCount: 2,
+        cancelledChildIds: ["c1", "c2"],
+      }),
+    );
+  });
+
+  it("rejects when the target event isn't a recurring parent", async () => {
+    const user = buildOrganizerUser("org-1");
+    mockEventRepo.findByIdOrThrow.mockResolvedValue(
+      buildEvent({ id: "parent-1", organizationId: "org-1", isRecurringParent: false }),
+    );
+
+    await expect(service.cancelSeries("parent-1", user)).rejects.toThrow(
+      /parent d'une série/,
+    );
+    expect(mockTxUpdate).not.toHaveBeenCalled();
+  });
+
+  it("rejects callers without event:update", async () => {
+    const user = buildOrganizerUser("org-1");
+    const noUpdate = { ...user, roles: ["participant"] as typeof user.roles };
+    await expect(service.cancelSeries("parent-1", noUpdate)).rejects.toThrow(
+      /Permission manquante/,
+    );
+  });
+});

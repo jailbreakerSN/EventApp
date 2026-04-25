@@ -84,6 +84,28 @@ export const apiKeysRoutes: FastifyPluginAsync = async (app) => {
     },
   );
 
+  // ─── Usage analytics (T2.3 closure) ────────────────────────────────────
+  // 30-day daily request-volume bucket, derived from the `api_key.
+  // verified` audit rows. Read-only; gated on `organization:read`.
+  app.get<{ Params: z.infer<typeof KeyParams> }>(
+    "/v1/organizations/:orgId/api-keys/:apiKeyId/usage",
+    {
+      preHandler: [
+        authenticate,
+        requirePermission("organization:read"),
+        validate({ params: KeyParams }),
+      ],
+    },
+    async (request, reply) => {
+      const data = await apiKeysService.getUsageAnalytics(
+        request.user!,
+        request.params.orgId,
+        request.params.apiKeyId,
+      );
+      return reply.send({ success: true, data });
+    },
+  );
+
   // ─── Issue ─────────────────────────────────────────────────────────────
   // Returns 201 with the plaintext key included in the response body.
   // The caller MUST store the plaintext now — subsequent GETs return
