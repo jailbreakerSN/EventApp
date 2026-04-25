@@ -10,6 +10,7 @@ import {
 } from "@teranga/shared-types";
 import { paymentRepository } from "@/repositories/payment.repository";
 import { eventRepository } from "@/repositories/event.repository";
+import { organizationRepository } from "@/repositories/organization.repository";
 import { db, COLLECTIONS } from "@/config/firebase";
 import { FieldValue } from "@/repositories/transaction.helper";
 import { type AuthUser } from "@/middlewares/auth.middleware";
@@ -159,6 +160,7 @@ export class PaymentService extends BaseService {
     method: PaymentMethod,
     returnUrl: string | undefined,
     user: AuthUser,
+    opts: { idempotencyKey?: string } = {},
   ): Promise<{ paymentId: string; redirectUrl: string }> {
     this.requirePermission(user, "payment:initiate");
 
@@ -187,6 +189,14 @@ export class PaymentService extends BaseService {
       throw new ValidationError("Ce billet est gratuit. Utilisez l'inscription classique.");
     }
 
+    // ── P1-13 (audit H1) — paidTickets plan-feature gate at payment init ──
+    // Money-of-record enforcement at the payment layer. Event creation
+    // already enforces this at event.service.ts; we re-enforce here so a
+    // free / starter org that downgrades AFTER creating a paid event can
+    // never collect real money via this code path.
+    const org = await organizationRepository.findByIdOrThrow(event.organizationId);
+    this.requirePlanFeature(org, "paidTickets");
+
     // ── Check availability ──
     if (ticketType.totalQuantity !== null && ticketType.soldCount >= ticketType.totalQuantity) {
       throw new EventFullError(eventId);
@@ -195,15 +205,12 @@ export class PaymentService extends BaseService {
       throw new EventFullError(eventId);
     }
 
-    // ── Prepare references and provider call ──
+    // ── Prepare references ──
     const now = new Date().toISOString();
     const regRef = db.collection(COLLECTIONS.REGISTRATIONS).doc();
     const payRef = db.collection(COLLECTIONS.PAYMENTS).doc();
     const regId = regRef.id;
     const payId = payRef.id;
-    // QR signing: v4 (per-event `kid` + HKDF-derived key) when the event
-    // has migrated to the new signing scheme; v3 fallback for legacy
-    // events whose docs predate the `qrKid` field.
     const qrWindow = computeValidityWindow(event.startDate, event.endDate);
     const qrCodeValue = event.qrKid
       ? signQrPayloadV4(
@@ -216,27 +223,64 @@ export class PaymentService extends BaseService {
         )
       : signQrPayload(regId, eventId, user.uid, qrWindow.notBefore, qrWindow.notAfter);
 
-    // Webhook path encodes the provider so the endpoint can route to
-    // the correct signature verifier without a query-string sniff.
     const callbackUrl = paymentWebhookUrl(method);
     const defaultReturnUrl = paymentReturnUrl(eventId, payId);
     const finalReturnUrl = returnUrl ? assertAllowedReturnUrl(returnUrl) : defaultReturnUrl;
 
-    // Get provider and initiate (outside transaction — provider call is idempotent)
-    const provider = getProvider(method);
-    const { providerTransactionId, redirectUrl } = await provider.initiate({
-      paymentId: payId,
-      amount: ticketType.price,
-      currency: "XOF",
-      description: `Inscription : ${event.title} — ${ticketType.name}`,
-      callbackUrl,
-      returnUrl: finalReturnUrl,
-      method,
-    });
+    // ── P1-06 (audit C1) — Idempotency key resolution ──
+    // Client SHOULD pass an `Idempotency-Key` header (UUID per intent).
+    // If absent, we synthesise a deterministic fingerprint covering
+    // (userId, eventId, ticketTypeId, method) with a 60 s time bucket
+    // — gives near-immediate retry coverage for legacy clients without
+    // creating long-tail dedupe (after 60 s the user clicking buy
+    // again is a deliberate new intent).
+    const idemKeySource =
+      opts.idempotencyKey?.trim() ||
+      `synth:${user.uid}:${eventId}:${ticketTypeId}:${method}:${Math.floor(Date.now() / 60_000)}`;
+    const idemDocId = crypto.createHash("sha256").update(idemKeySource).digest("hex").slice(0, 32);
+    const idemRef = db.collection(COLLECTIONS.PAYMENT_IDEMPOTENCY_KEYS).doc(idemDocId);
 
-    // ── Atomic: check duplicate + create registration + payment ──
-    await db.runTransaction(async (tx) => {
-      // Re-check for duplicate inside transaction to prevent race conditions
+    // ── P1-07 (audit H2) — Two-phase pattern, Phase 1 ──
+    // tx1: idempotency check + duplicate-reg check + placeholder
+    //      Payment + placeholder Registration. Provider session does
+    //      NOT yet exist; we have a local record to attach it to.
+    // After tx1 commits → outside-tx provider.initiate() call.
+    // tx2: update placeholder Payment with the real
+    //      providerTransactionId + redirectUrl.
+    type Phase1 =
+      | { kind: "replayed"; paymentId: string; redirectUrl: string }
+      | { kind: "fresh"; payment: Payment };
+    const phase1: Phase1 = await db.runTransaction(async (tx) => {
+      // Idempotency: same key within 24h returns the cached payment.
+      const existingIdem = await tx.get(idemRef);
+      if (existingIdem.exists) {
+        const cached = existingIdem.data() as {
+          paymentId: string;
+          redirectUrl?: string;
+        };
+        // Read the cached Payment to surface its current redirectUrl
+        // (Phase 2 may have populated it after the idempotency doc
+        // was first written).
+        const cachedPayRef = db.collection(COLLECTIONS.PAYMENTS).doc(cached.paymentId);
+        const cachedPaySnap = await tx.get(cachedPayRef);
+        if (cachedPaySnap.exists) {
+          const cachedPay = cachedPaySnap.data() as Payment;
+          return {
+            kind: "replayed",
+            paymentId: cached.paymentId,
+            redirectUrl: cachedPay.redirectUrl ?? cached.redirectUrl ?? "",
+          };
+        }
+        // Idempotency claim exists but the Payment doesn't — orphaned
+        // claim from a prior crash. Fall through to the fresh branch
+        // and OVERWRITE the claim below (`tx.set(idemRef, ...)`
+        // overwrites by default). Operator-perceived behaviour: the
+        // retry succeeds, no duplicate created.
+      }
+
+      // Re-check for duplicate inside the transaction to prevent race
+      // conditions (a different IK on the same user + event = a
+      // genuinely new attempt that needs the dup guard).
       const dupeSnap = await tx.get(
         db
           .collection(COLLECTIONS.REGISTRATIONS)
@@ -266,7 +310,10 @@ export class PaymentService extends BaseService {
         updatedAt: now,
       };
 
-      const payment: Payment = {
+      // Placeholder payment: providerTransactionId + redirectUrl
+      // populated in Phase 2. status='pending' (not 'processing')
+      // until the provider session is confirmed.
+      const placeholder: Payment = {
         id: payId,
         registrationId: regId,
         eventId,
@@ -275,9 +322,9 @@ export class PaymentService extends BaseService {
         amount: ticketType.price,
         currency: "XOF",
         method,
-        providerTransactionId,
-        status: "processing",
-        redirectUrl,
+        providerTransactionId: null,
+        status: "pending",
+        redirectUrl: null,
         callbackUrl,
         returnUrl: finalReturnUrl,
         providerMetadata: null,
@@ -290,7 +337,79 @@ export class PaymentService extends BaseService {
       } as Payment;
 
       tx.set(regRef, registration);
-      tx.set(payRef, payment);
+      tx.set(payRef, placeholder);
+      // Idempotency claim: write AFTER reg + payment so the cached
+      // `paymentId` always points to a doc that exists.
+      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+      tx.set(idemRef, {
+        paymentId: payId,
+        userId: user.uid,
+        eventId,
+        ticketTypeId,
+        method,
+        createdAt: now,
+        expiresAt,
+        // Stored so a future audit / forensics surface can see whether
+        // this was a client-supplied IK or a server-synthesised one.
+        keySource: opts.idempotencyKey ? "client" : "synthetic",
+      });
+
+      return { kind: "fresh", payment: placeholder };
+    });
+
+    if (phase1.kind === "replayed") {
+      return { paymentId: phase1.paymentId, redirectUrl: phase1.redirectUrl };
+    }
+
+    // ── Provider call (outside any tx — long network call) ──
+    const provider = getProvider(method);
+    let providerResult: { providerTransactionId: string; redirectUrl: string };
+    try {
+      providerResult = await provider.initiate({
+        paymentId: payId,
+        amount: ticketType.price,
+        currency: "XOF",
+        description: `Inscription : ${event.title} — ${ticketType.name}`,
+        callbackUrl,
+        returnUrl: finalReturnUrl,
+        method,
+      });
+    } catch (err) {
+      // P1-07 recovery — mark the placeholder Payment as `failed` so
+      // the org dashboard surfaces a clear "provider rejected" state
+      // rather than an orphan `pending` record. The reconciliation
+      // job (Phase 3) double-checks any `pending` records older than
+      // 5 min via `provider.verify()`.
+      const failureReason =
+        err instanceof Error ? err.message.slice(0, 500) : "Provider initiate failed";
+      await db
+        .collection(COLLECTIONS.PAYMENTS)
+        .doc(payId)
+        .update({
+          status: "failed" satisfies PaymentStatus,
+          failureReason,
+          updatedAt: new Date().toISOString(),
+        })
+        .catch(() => {
+          // Update best-effort; the placeholder will be picked up by
+          // the reconciliation sweep if this update fails.
+        });
+      throw err;
+    }
+
+    // ── P1-07 Phase 2: update placeholder with real provider data ──
+    await db.runTransaction(async (tx) => {
+      const update: Partial<Payment> = {
+        providerTransactionId: providerResult.providerTransactionId,
+        status: "processing" satisfies PaymentStatus,
+        redirectUrl: providerResult.redirectUrl,
+        updatedAt: new Date().toISOString(),
+      };
+      tx.update(payRef, update);
+      // Refresh idempotency cache with the redirectUrl so a retry
+      // within the 24 h window returns the right URL even if it
+      // arrives between Phase 1 and Phase 2.
+      tx.update(idemRef, { redirectUrl: providerResult.redirectUrl });
     });
 
     eventBus.emit("payment.initiated", {
@@ -305,7 +424,7 @@ export class PaymentService extends BaseService {
       timestamp: now,
     });
 
-    return { paymentId: payId, redirectUrl };
+    return { paymentId: payId, redirectUrl: providerResult.redirectUrl };
   }
 
   /**
@@ -336,6 +455,17 @@ export class PaymentService extends BaseService {
     const now = new Date().toISOString();
 
     if (providerStatus === "succeeded") {
+      // ── P1-08 (audit H3) — wasNewlySucceeded flag ──────────────────
+      // Concurrent webhook retries from Wave / OM (2-5 deliveries
+      // within seconds) used to fire `payment.succeeded` once per
+      // invocation that reached the emit, even when the inner-tx
+      // idempotency guard correctly prevented the LEDGER from being
+      // double-written. That double-emitted notifications, audit
+      // rows, and `registration.confirmed` cascades.
+      //
+      // Capture the actual-transition signal from inside the
+      // transaction; emit only when the tx truly flipped status.
+      let wasNewlySucceeded = false;
       // ── Confirm payment + registration atomically ──
       await db.runTransaction(async (tx) => {
         // Re-read payment inside transaction for true idempotency
@@ -352,6 +482,8 @@ export class PaymentService extends BaseService {
         ) {
           return;
         }
+
+        wasNewlySucceeded = true;
 
         const regRef = db.collection(COLLECTIONS.REGISTRATIONS).doc(payment.registrationId);
         const regSnap = await tx.get(regRef);
@@ -452,18 +584,28 @@ export class PaymentService extends BaseService {
         }
       });
 
-      eventBus.emit("payment.succeeded", {
-        paymentId: payment.id,
-        registrationId: payment.registrationId,
-        eventId: payment.eventId,
-        organizationId: payment.organizationId,
-        amount: payment.amount,
-        actorId: payment.userId,
-        requestId: getRequestId(),
-        timestamp: now,
-      });
+      // P1-08 — fire only on the actual `processing → succeeded`
+      // transition (suppressed on no-op retries that hit the inner-tx
+      // idempotency guard). Without this gate, listeners would be
+      // notified multiple times per single payment.
+      if (wasNewlySucceeded) {
+        eventBus.emit("payment.succeeded", {
+          paymentId: payment.id,
+          registrationId: payment.registrationId,
+          eventId: payment.eventId,
+          organizationId: payment.organizationId,
+          amount: payment.amount,
+          actorId: payment.userId,
+          requestId: getRequestId(),
+          timestamp: now,
+        });
+      }
     } else {
       // ── Payment failed — atomic update of payment + registration ──
+      // P1-08 — same wasNewlyFailed gate as the success path so a
+      // duplicate `failed` webhook doesn't double-fire the failure
+      // notification cascade.
+      let wasNewlyFailed = false;
       await db.runTransaction(async (tx) => {
         const payRef = db.collection(COLLECTIONS.PAYMENTS).doc(payment.id);
         const paySnap = await tx.get(payRef);
@@ -477,6 +619,8 @@ export class PaymentService extends BaseService {
         ) {
           return;
         }
+
+        wasNewlyFailed = true;
 
         const regRef = db.collection(COLLECTIONS.REGISTRATIONS).doc(payment.registrationId);
 
@@ -493,6 +637,7 @@ export class PaymentService extends BaseService {
         });
       });
 
+      if (!wasNewlyFailed) return;
       eventBus.emit("payment.failed", {
         paymentId: payment.id,
         registrationId: payment.registrationId,

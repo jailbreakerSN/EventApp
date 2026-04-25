@@ -157,12 +157,23 @@ export const paymentRoutes: FastifyPluginAsync = async (fastify) => {
       const { eventId, ticketTypeId, method, returnUrl } = request.body as z.infer<
         typeof InitiatePaymentSchema
       >;
+      // P1-06 (audit C1) — Idempotency-Key header. Industry-standard
+      // shape (Stripe / Adyen): a UUID per intent, replayed verbatim
+      // on automatic retry. The service falls back to a server-
+      // synthesised key if the header is absent (60 s bucket; see
+      // payment.service.ts).
+      const rawIk = request.headers["idempotency-key"];
+      const idempotencyKey =
+        typeof rawIk === "string" && rawIk.trim().length > 0 && rawIk.trim().length <= 255
+          ? rawIk.trim()
+          : undefined;
       const result = await paymentService.initiatePayment(
         eventId,
         ticketTypeId,
         method,
         returnUrl,
         request.user!,
+        { idempotencyKey },
       );
       return reply.status(201).send({ success: true, data: result });
     },

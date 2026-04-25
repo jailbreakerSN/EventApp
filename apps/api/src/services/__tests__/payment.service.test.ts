@@ -12,6 +12,7 @@ import {
 
 const {
   mockEventRepo,
+  mockOrgRepo,
   mockRegRepo,
   mockPaymentRepo,
   mockProvider,
@@ -26,6 +27,35 @@ const {
 } = vi.hoisted(() => {
   const _mockEventRepo = {
     findByIdOrThrow: vi.fn(),
+  };
+  // P1-13 — paidTickets plan-feature gate calls
+  // organizationRepository.findByIdOrThrow inside initiatePayment.
+  // Default mock returns a `pro`-plan org so existing tests pass; tests
+  // that exercise the plan-gate failure path override per-case.
+  const _mockOrgRepo = {
+    findByIdOrThrow: vi.fn(async () => ({
+      id: "org-1",
+      plan: "pro",
+      effectivePlan: "pro",
+      effectiveLimits: {
+        maxEvents: Infinity,
+        maxParticipantsPerEvent: 2000,
+        maxMembers: 50,
+      },
+      effectiveFeatures: {
+        paidTickets: true,
+        qrScanning: true,
+        customBadges: true,
+        csvExport: true,
+        smsNotifications: true,
+        advancedAnalytics: true,
+        speakerPortal: true,
+        sponsorPortal: true,
+        apiAccess: false,
+        whiteLabel: false,
+        promoCodes: true,
+      },
+    })),
   };
   const _mockRegRepo = {
     findOne: vi.fn(),
@@ -64,6 +94,7 @@ const {
   });
   return {
     mockEventRepo: _mockEventRepo,
+    mockOrgRepo: _mockOrgRepo,
     mockRegRepo: _mockRegRepo,
     mockPaymentRepo: _mockPaymentRepo,
     mockProvider: _mockProvider,
@@ -83,6 +114,15 @@ vi.mock("@/repositories/event.repository", () => ({
     {},
     {
       get: (_target, prop) => (mockEventRepo as Record<string, unknown>)[prop as string],
+    },
+  ),
+}));
+
+vi.mock("@/repositories/organization.repository", () => ({
+  organizationRepository: new Proxy(
+    {},
+    {
+      get: (_target, prop) => (mockOrgRepo as Record<string, unknown>)[prop as string],
     },
   ),
 }));
@@ -221,15 +261,22 @@ describe("PaymentService.initiatePayment", () => {
       providerTransactionId: "mock_tx_123",
       redirectUrl: "http://mock-checkout/mock_tx_123",
     });
-    // Transaction duplicate check returns empty
-    mockTxGet.mockResolvedValue({ empty: true });
+    // Tx1 idempotency lookup returns no existing claim, then dup check
+    // returns empty. P1-06+P1-07 reordered the reads so both are inside
+    // the same tx; supply both via mockResolvedValueOnce.
+    mockTxGet
+      .mockResolvedValueOnce({ exists: false }) // idem doc
+      .mockResolvedValueOnce({ empty: true }); // dup-reg query
 
     const result = await service.initiatePayment("ev-1", "vip", "mock", undefined, user);
 
     expect(result).toHaveProperty("paymentId");
     expect(result).toHaveProperty("redirectUrl");
     expect(mockRunTransaction).toHaveBeenCalled();
-    expect(mockTxSet).toHaveBeenCalledTimes(2); // registration + payment
+    // P1-06+P1-07 — tx1 writes 3 docs: registration + placeholder
+    // payment + idempotency claim. Tx2 then UPDATES the payment with
+    // the real providerTransactionId/redirectUrl (no additional sets).
+    expect(mockTxSet).toHaveBeenCalledTimes(3);
     expect(mockProvider.initiate).toHaveBeenCalledWith(
       expect.objectContaining({ amount: 10000, currency: "XOF" }),
     );
@@ -307,6 +354,12 @@ describe("PaymentService.initiatePayment", () => {
 
   it("rejects for unsupported payment method", async () => {
     mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
+    // P1-06+P1-07 — tx1 reads happen BEFORE getProvider() throws, so
+    // we must satisfy them or the dup-check fires first with a
+    // misleading error.
+    mockTxGet
+      .mockResolvedValueOnce({ exists: false }) // idem doc
+      .mockResolvedValueOnce({ empty: true }); // dup-reg query
     await expect(
       service.initiatePayment("ev-1", "vip", "crypto" as never, undefined, user),
     ).rejects.toThrow("non disponible");

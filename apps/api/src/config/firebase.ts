@@ -80,6 +80,13 @@ export const COLLECTIONS = {
   // doc or debit ledger entry is written. Lock is permanent (one payout
   // per period — semantically correct).
   PAYOUT_LOCKS: "payoutLocks",
+  // Payment idempotency keys (P1-06 / audit C1). Doc id is a hash of
+  // either the client-supplied `Idempotency-Key` header or a
+  // deterministic synthesis from (userId, eventId, ticketTypeId,
+  // method). Stores the cached `paymentId` + creation timestamp so a
+  // network-retry returns the same payment record instead of creating
+  // a duplicate. 24h TTL via Firestore's TTL policy on `expiresAt`.
+  PAYMENT_IDEMPOTENCY_KEYS: "paymentIdempotencyKeys",
   INVITES: "invites",
   PAYMENTS: "payments",
   RECEIPTS: "receipts",
