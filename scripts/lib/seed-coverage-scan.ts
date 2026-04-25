@@ -163,6 +163,14 @@ export const SEED_COVERAGE_WAIVER: ReadonlyMap<string, string> = new Map<
     "apiKeys",
     "T2.3 — organization-scoped API keys. Stored as SHA-256 hashes only; plaintext returned exactly once at issuance and never persisted. Seeding would write hashes whose plaintexts nobody holds, producing 'valid-looking but unusable' rows forever — confusing for QA and pointless for integration tests (which mint keys through the service API anyway).",
   ],
+  [
+    "scheduledAdminOps",
+    "Sprint-4 T3.2 — operator-defined cron schedules that bind a registered admin job key, JSON input, cron expression, and timezone. Created exclusively from the back-office (super-admin) and dispatched out-of-process by a Cloud Functions scheduled trigger. Seeding synthetic rows would either fire bogus jobs against the dev environment on every emulator restart or sit perpetually paused — both confusing for QA. Rules deny all client writes (Admin SDK only).",
+  ],
+  [
+    "firestoreUsage",
+    "Sprint-4 T3.3 — per-org per-day Firestore read counters flushed by the AsyncLocalStorage middleware. Pure runtime telemetry. Seeding would either inflate the cost dashboard with synthetic numbers (misleading operators) or zero on every reset (defeating the rolling-window view). Append/increment-only; rules deny all client writes (Admin SDK only).",
+  ],
 ]);
 
 // ─── COLLECTIONS constant parsing ──────────────────────────────────────────

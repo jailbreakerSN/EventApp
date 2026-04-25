@@ -4,6 +4,8 @@ import { authenticate } from "@/middlewares/auth.middleware";
 import { validate } from "@/middlewares/validate.middleware";
 import { requireAnyPermission, requirePermission } from "@/middlewares/permission.middleware";
 import { adminService } from "@/services/admin.service";
+import { firestoreUsageService } from "@/services/firestore-usage.service";
+import { scheduledOpsService } from "@/services/scheduled-ops.service";
 import { adminJobsService } from "@/services/admin-jobs.service";
 import { webhookEventsService } from "@/services/webhook-events.service";
 import { subscriptionService } from "@/services/subscription.service";
@@ -32,6 +34,8 @@ import {
   AdminJobRunsQuerySchema,
   RunAdminJobRequestSchema,
   AdminWebhookEventsQuerySchema,
+  CreateScheduledAdminOpSchema,
+  UpdateScheduledAdminOpSchema,
 } from "@teranga/shared-types";
 import {
   notificationSettingsRepository,
@@ -234,41 +238,9 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
         security: [{ BearerAuth: [] }],
       },
     },
-    async (_request, reply) => {
-      const snap = await db
-        .collection(COLLECTIONS.SUBSCRIPTIONS)
-        .where("status", "==", "active")
-        .get();
-      type Sub = {
-        organizationId?: string;
-        plan?: string;
-        status?: string;
-        priceXof?: number;
-        billingCycle?: string;
-      };
-      let mrrXof = 0;
-      const byPlan: Record<string, { count: number; mrrXof: number }> = {};
-      for (const doc of snap.docs) {
-        const s = doc.data() as Sub;
-        const price = Number(s.priceXof ?? 0);
-        // Normalise annual subs into monthly for the MRR aggregate.
-        const monthly = s.billingCycle === "annual" ? Math.round(price / 12) : price;
-        mrrXof += monthly;
-        const plan = s.plan ?? "unknown";
-        if (!byPlan[plan]) byPlan[plan] = { count: 0, mrrXof: 0 };
-        byPlan[plan].count += 1;
-        byPlan[plan].mrrXof += monthly;
-      }
-      return reply.send({
-        success: true,
-        data: {
-          mrrXof,
-          arrXof: mrrXof * 12,
-          activeSubscriptions: snap.size,
-          byPlan,
-          computedAt: new Date().toISOString(),
-        },
-      });
+    async (request, reply) => {
+      const data = await adminService.getRevenueSnapshot(request.user!);
+      return reply.send({ success: true, data });
     },
   );
 
@@ -293,6 +265,203 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
       const data = await adminService.getRevenueCohorts(
         request.user!,
         request.query.months,
+      );
+      return reply.send({ success: true, data });
+    },
+  );
+
+  // ── Sprint-4 T3.2 — Scheduled admin operations ───────────────────────
+  // CRUD over `scheduledAdminOps` docs. The actual triggering
+  // happens out-of-process via a Cloud Functions scheduled job;
+  // see `docs/runbooks/scheduled-ops.md`.
+  fastify.get(
+    "/scheduled-ops",
+    {
+      preHandler: readOnlyAdminPreHandler,
+      schema: {
+        tags: ["Admin"],
+        summary: "List scheduled admin operations",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const data = await scheduledOpsService.list(request.user!);
+      return reply.send({ success: true, data });
+    },
+  );
+
+  const ScheduledOpParams = z.object({ opId: z.string().min(1).max(64) });
+
+  fastify.post(
+    "/scheduled-ops",
+    {
+      preHandler: [
+        ...adminPreHandler,
+        validate({ body: CreateScheduledAdminOpSchema }),
+      ],
+      schema: {
+        tags: ["Admin"],
+        summary: "Create a new scheduled admin operation",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const data = await scheduledOpsService.create(
+        request.user!,
+        request.body as z.infer<typeof CreateScheduledAdminOpSchema>,
+      );
+      return reply.status(201).send({ success: true, data });
+    },
+  );
+
+  fastify.patch<{ Params: z.infer<typeof ScheduledOpParams> }>(
+    "/scheduled-ops/:opId",
+    {
+      preHandler: [
+        ...adminPreHandler,
+        validate({ params: ScheduledOpParams, body: UpdateScheduledAdminOpSchema }),
+      ],
+      schema: {
+        tags: ["Admin"],
+        summary: "Update a scheduled admin operation",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const data = await scheduledOpsService.update(
+        request.user!,
+        request.params.opId,
+        request.body as z.infer<typeof UpdateScheduledAdminOpSchema>,
+      );
+      return reply.send({ success: true, data });
+    },
+  );
+
+  fastify.delete<{ Params: z.infer<typeof ScheduledOpParams> }>(
+    "/scheduled-ops/:opId",
+    {
+      preHandler: [...adminPreHandler, validate({ params: ScheduledOpParams })],
+      schema: {
+        tags: ["Admin"],
+        summary: "Delete a scheduled admin operation",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      await scheduledOpsService.delete(request.user!, request.params.opId);
+      return reply.status(204).send();
+    },
+  );
+
+  // ── Sprint-4 T3.3 — Public admin OpenAPI spec ───────────────────────
+  // Returns the full OpenAPI 3.0 spec for the API as JSON. Used by
+  // enterprise customers + internal tooling to script against
+  // Teranga without copying endpoint shapes by hand. Gated on
+  // `platform:audit_read` (any admin role can read) so the
+  // spec doesn't leak the surface to anonymous traffic. The
+  // spec is generated by `@fastify/swagger` from the inline
+  // `schema` blocks on every route — keep those tagged for the
+  // generated doc to stay rich.
+  fastify.get(
+    "/openapi.json",
+    {
+      preHandler: readOnlyAdminPreHandler,
+      schema: {
+        tags: ["Admin"],
+        summary: "OpenAPI 3.0 spec — full API surface",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (_request, reply) => {
+      // `swagger()` is the runtime accessor exposed by
+      // `@fastify/swagger` after registration. Returns the full
+      // OpenAPI document as a plain JS object.
+      const spec = fastify.swagger();
+      return reply.type("application/json").send(spec);
+    },
+  );
+
+  // ── Sprint-4 T3.1 — Time-travel timeline ─────────────────────────────
+  // Returns the audit log for one (resourceType, resourceId) pair.
+  // The UI uses this to render a forensic timeline + reconstruct
+  // entity state at any point covered by audit retention.
+  const TimelineQuery = z.object({
+    resourceType: z.string().min(1).max(64),
+    resourceId: z.string().min(1).max(128),
+    atIso: z.string().datetime().optional(),
+  });
+  fastify.get<{ Querystring: z.infer<typeof TimelineQuery> }>(
+    "/timeline",
+    {
+      preHandler: [...readOnlyAdminPreHandler, validate({ query: TimelineQuery })],
+      schema: {
+        tags: ["Admin"],
+        summary: "Time-travel — audit timeline for one resource",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const data = await adminService.getResourceTimeline(request.user!, {
+        resourceType: request.query.resourceType,
+        resourceId: request.query.resourceId,
+        atIso: request.query.atIso,
+      });
+      return reply.send({ success: true, data });
+    },
+  );
+
+  // ── Sprint-3 T4.2 — Firestore cost dashboard ─────────────────────────
+  // Top consumers + daily volume over a configurable window.
+  // Backed by `firestoreUsage/{orgId}_{day}` aggregates flushed by
+  // the request-tracking hook in `app.ts`. Read-only.
+  const FirestoreUsageQuery = z.object({
+    days: z.coerce.number().int().min(1).max(30).default(7),
+    topN: z.coerce.number().int().min(1).max(50).default(10),
+  });
+  fastify.get<{ Querystring: z.infer<typeof FirestoreUsageQuery> }>(
+    "/usage/firestore",
+    {
+      preHandler: [...readOnlyAdminPreHandler, validate({ query: FirestoreUsageQuery })],
+      schema: {
+        tags: ["Admin"],
+        summary: "Firestore read-volume dashboard (top consumers + daily totals)",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const data = await firestoreUsageService.getTopConsumers(request.user!, {
+        days: request.query.days,
+        topN: request.query.topN,
+      });
+      return reply.send({ success: true, data });
+    },
+  );
+
+  const FirestoreUsageOrgParams = z.object({ orgId: z.string().min(1).max(128) });
+  const FirestoreUsageOrgQuery = z.object({
+    days: z.coerce.number().int().min(1).max(30).default(30),
+  });
+  fastify.get<{
+    Params: z.infer<typeof FirestoreUsageOrgParams>;
+    Querystring: z.infer<typeof FirestoreUsageOrgQuery>;
+  }>(
+    "/usage/firestore/:orgId",
+    {
+      preHandler: [
+        ...readOnlyAdminPreHandler,
+        validate({ params: FirestoreUsageOrgParams, query: FirestoreUsageOrgQuery }),
+      ],
+      schema: {
+        tags: ["Admin"],
+        summary: "Firestore read-volume drill-down for one organisation",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const data = await firestoreUsageService.getOrgUsage(
+        request.user!,
+        request.params.orgId,
+        { days: request.query.days },
       );
       return reply.send({ success: true, data });
     },
@@ -561,6 +730,17 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get(
     "/export/:resource.csv",
     {
+      // B3 follow-up (security-review fix) — CSV export reverted to
+      // `adminPreHandler` (platform:manage). The /admin/audit log
+      // surface already exposes `platform:audit_read` holders to
+      // every PII column individually; bulk CSV export is a
+      // qualitatively different surface (whole-table dump in a
+      // form trivial to exfiltrate) and is held to the stricter
+      // bar. Keeps route + service guards aligned: `exportCsv`
+      // service-side also requires `platform:manage`. Reverting
+      // the route closes the latent risk that a future refactor
+      // could relax the service guard while leaving the route
+      // permissive.
       preHandler: adminPreHandler,
       schema: {
         tags: ["Admin"],
@@ -717,6 +897,13 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post(
     "/users/:userId/impersonate",
     {
+      // Impersonation INTENTIONALLY stays on `platform:manage` only
+      // (super_admin / platform:super_admin). The service layer
+      // additionally narrows to those two roles via
+      // `resolveImpersonationRole` — even other `platform:*` roles
+      // that hold `platform:manage` (none today after T2.1 Phase 2)
+      // would be refused. See the comment on `platform:support` in
+      // `DEFAULT_ROLE_PERMISSIONS` for the security rationale.
       preHandler: [...adminPreHandler, validate({ params: ParamsUserId })],
       schema: {
         tags: ["Admin"],
@@ -1107,7 +1294,13 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get(
     "/notifications",
     {
-      preHandler: adminPreHandler,
+      // B3 closure — notification config readout is observability,
+      // not configuration. Sits behind `platform:audit_read` so a
+      // support agent investigating "why didn't user X get the
+      // welcome email" can see the override state without holding
+      // `platform:manage`. Writes (PUT below) stay on
+      // `platform:manage`.
+      preHandler: readOnlyAdminPreHandler,
       schema: {
         tags: ["Admin", "Notifications"],
         summary: "List every notification with admin override state",
@@ -1435,8 +1628,11 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
   }>(
     "/notifications/:key/history",
     {
+      // B3 closure — read-only history of config edits (no delivery
+      // content). Same `platform:audit_read OR platform:manage` gate
+      // as the rest of the audit-style observability surfaces.
       preHandler: [
-        ...adminPreHandler,
+        ...readOnlyAdminPreHandler,
         validate({ params: ParamsNotificationKey, query: HistoryQuerySchema }),
       ],
       schema: {
@@ -1474,7 +1670,8 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get(
     "/notifications/per-org",
     {
-      preHandler: adminPreHandler,
+      // B3 closure — observability list of per-org overrides.
+      preHandler: readOnlyAdminPreHandler,
       schema: {
         tags: ["Admin", "Notifications"],
         summary: "List every notificationSetting override scoped to an organization",
@@ -1498,7 +1695,8 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get<{ Querystring: z.infer<typeof NotificationStatsQuery> }>(
     "/notifications/stats",
     {
-      preHandler: [...adminPreHandler, validate({ query: NotificationStatsQuery })],
+      // B3 closure — observability stats, no PII rendered.
+      preHandler: [...readOnlyAdminPreHandler, validate({ query: NotificationStatsQuery })],
       schema: {
         tags: ["Admin", "Notifications"],
         summary: "Aggregated dispatch stats per notification key",
@@ -1537,7 +1735,10 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get<{ Querystring: z.infer<typeof DeliveryDashboardQuery> }>(
     "/notifications/delivery",
     {
-      preHandler: [...adminPreHandler, validate({ query: DeliveryDashboardQuery })],
+      // B3 closure — delivery dashboard is per-channel aggregate
+      // counts, no PII; same gate as the rest of the read-only
+      // observability surfaces.
+      preHandler: [...readOnlyAdminPreHandler, validate({ query: DeliveryDashboardQuery })],
       schema: {
         tags: ["Admin", "Notifications"],
         summary: "Delivery outcomes dashboard — per-channel totals + time series",

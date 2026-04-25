@@ -79,7 +79,7 @@ class AdminService extends BaseService {
   // ── Platform Stats ────────────────────────────────────────────────────
 
   async getStats(user: AuthUser): Promise<PlatformStats> {
-    this.requirePermission(user, "platform:manage");
+    this.requireAnyPermission(user, ["platform:audit_read", "platform:manage"]);
     return adminRepository.getPlatformStats();
   }
 
@@ -448,7 +448,7 @@ class AdminService extends BaseService {
     }>;
     computedAt: string;
   }> {
-    this.requirePermission(user, "platform:manage");
+    this.requireAnyPermission(user, ["platform:audit_read", "platform:manage"]);
 
     // Safe counting helper — a single failing collection shouldn't tank
     // the whole inbox. We swallow and return 0 on error, logging via
@@ -466,6 +466,8 @@ class AdminService extends BaseService {
     };
 
     const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const thirtyDaysAgoIso = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
     const [
       pendingVenues,
@@ -479,6 +481,9 @@ class AdminService extends BaseService {
       multiDeviceScans,
       eventsLive,
       stuckWaitlists,
+      eventVelocityAnomalies,
+      refundSpikes,
+      downgradeVolume,
     ] = await Promise.all([
       safeCount("venues.pending", async () => {
         const snap = await db
@@ -662,6 +667,71 @@ class AdminService extends BaseService {
         }
         return stuck.size;
       }),
+      // Sprint-4 T3.4 — event velocity anomaly. Counts orgs that
+      // created ≥ 6 events in the last 24h. The free plan caps
+      // at 3 active events so any org breaching 6 in a day is
+      // either trial-spamming, scripting, or onboarded a bulk
+      // import (third case = legitimate but worth surfacing).
+      // Reads from the `event.created` audit rows so we don't
+      // need a dedicated counter on each org.
+      safeCount("anomaly.event_velocity", async () => {
+        const snap = await db
+          .collection(COLLECTIONS.AUDIT_LOGS)
+          .where("action", "==", "event.created")
+          .where("timestamp", ">=", twentyFourHoursAgo)
+          .select("organizationId")
+          .limit(1000)
+          .get();
+        const byOrg = new Map<string, number>();
+        for (const doc of snap.docs) {
+          const row = doc.data() as { organizationId?: string };
+          if (!row.organizationId) continue;
+          byOrg.set(row.organizationId, (byOrg.get(row.organizationId) ?? 0) + 1);
+        }
+        let flagged = 0;
+        for (const count of byOrg.values()) {
+          if (count >= 6) flagged += 1;
+        }
+        return flagged;
+      }),
+      // Sprint-4 T3.4 — refund spike anomaly. Counts orgs that saw
+      // ≥ 3 refunds in the last 30 days. A normal org refunds
+      // sporadically (1-2 / month is benign); 3+ in 30d signals a
+      // problematic event (mass cancellation, dispute wave) that
+      // the customer-success team should chase before churn.
+      safeCount("anomaly.refund_spike", async () => {
+        const snap = await db
+          .collection(COLLECTIONS.AUDIT_LOGS)
+          .where("action", "==", "payment.refunded")
+          .where("timestamp", ">=", thirtyDaysAgoIso)
+          .select("organizationId")
+          .limit(1000)
+          .get();
+        const byOrg = new Map<string, number>();
+        for (const doc of snap.docs) {
+          const row = doc.data() as { organizationId?: string };
+          if (!row.organizationId) continue;
+          byOrg.set(row.organizationId, (byOrg.get(row.organizationId) ?? 0) + 1);
+        }
+        let flagged = 0;
+        for (const count of byOrg.values()) {
+          if (count >= 3) flagged += 1;
+        }
+        return flagged;
+      }),
+      // Sprint-4 T3.4 — downgrade volume anomaly. Raw count of
+      // `subscription.downgraded` audit rows in the last 7 days.
+      // Spikes correlate with churn campaigns or pricing
+      // backlash — finance + product own the response.
+      safeCount("anomaly.downgrade_volume", async () => {
+        const snap = await db
+          .collection(COLLECTIONS.AUDIT_LOGS)
+          .where("action", "==", "subscription.downgraded")
+          .where("timestamp", ">=", sevenDaysAgo)
+          .count()
+          .get();
+        return snap.data().count;
+      }),
     ]);
 
     const signals: Array<{
@@ -844,6 +914,49 @@ class AdminService extends BaseService {
       });
     }
 
+    // Sprint-4 T3.4 — anomaly widgets (velocity / refund / downgrade).
+    // Severity: warning by default (suspicious patterns, not
+    // confirmed incidents); operator drills via the deep-linked
+    // audit query.
+    if (eventVelocityAnomalies > 0) {
+      signals.push({
+        id: "anomaly.event_velocity",
+        category: "anomaly",
+        severity: "warning",
+        title: `${eventVelocityAnomalies} organisation${eventVelocityAnomalies > 1 ? "s" : ""} avec rythme de création anormal`,
+        description:
+          "≥ 6 événements créés en 24h. Signal scripting / trial-spam ou import en masse légitime.",
+        count: eventVelocityAnomalies,
+        href: "/admin/audit?action=event.created",
+      });
+    }
+
+    if (refundSpikes > 0) {
+      signals.push({
+        id: "anomaly.refund_spike",
+        category: "anomaly",
+        severity: "warning",
+        title: `${refundSpikes} organisation${refundSpikes > 1 ? "s" : ""} avec pic de remboursements`,
+        description:
+          "≥ 3 remboursements sur 30 jours. Investiguer la cause (annulation d'événement, dispute, fraude).",
+        count: refundSpikes,
+        href: "/admin/audit?action=payment.refunded",
+      });
+    }
+
+    if (downgradeVolume > 0) {
+      signals.push({
+        id: "anomaly.downgrade_volume",
+        category: "anomaly",
+        severity: "warning",
+        title: `${downgradeVolume} downgrade${downgradeVolume > 1 ? "s" : ""} d'abonnement (7j)`,
+        description:
+          "Volume de downgrades sur 7 jours. Surveiller si supérieur à la baseline pour détecter une vague de churn.",
+        count: downgradeVolume,
+        href: "/admin/audit?action=subscription.downgraded",
+      });
+    }
+
     return {
       signals,
       computedAt: new Date().toISOString(),
@@ -867,7 +980,7 @@ class AdminService extends BaseService {
     events: Array<{ id: string; label: string; sublabel?: string }>;
     venues: Array<{ id: string; label: string; sublabel?: string }>;
   }> {
-    this.requirePermission(user, "platform:manage");
+    this.requireAnyPermission(user, ["platform:audit_read", "platform:manage"]);
     const q = query.trim().toLowerCase();
     if (q.length < 2) {
       return { users: [], organizations: [], events: [], venues: [] };
@@ -1179,7 +1292,7 @@ class AdminService extends BaseService {
   }
 
   async getUserById(user: AuthUser, targetUid: string): Promise<AdminUserRow> {
-    this.requirePermission(user, "platform:manage");
+    this.requireAnyPermission(user, ["platform:audit_read", "platform:manage"]);
     const doc = await db.collection(COLLECTIONS.USERS).doc(targetUid).get();
     if (!doc.exists) {
       throw new NotFoundError("User", targetUid);
@@ -1189,7 +1302,7 @@ class AdminService extends BaseService {
   }
 
   async listUsers(user: AuthUser, query: AdminUserQuery): Promise<PaginatedResult<AdminUserRow>> {
-    this.requirePermission(user, "platform:manage");
+    this.requireAnyPermission(user, ["platform:audit_read", "platform:manage"]);
     const page = await adminRepository.listAllUsers(
       { q: query.q, role: query.role, isActive: query.isActive },
       { page: query.page, limit: query.limit },
@@ -1392,13 +1505,65 @@ class AdminService extends BaseService {
     });
   }
 
+  // ── Revenue snapshot (Senior-review F-2) ──────────────────────────────
+  // Extracted from `routes/admin.routes.ts` so the service-layer
+  // permission gate provides defense-in-depth on top of the route's
+  // `readOnlyAdminPreHandler`. Sums priceXof per active subscription
+  // to derive MRR (monthly), ARR (×12), and a per-plan breakdown.
+  // On-demand; cardinality is tens of orgs.
+  async getRevenueSnapshot(user: AuthUser): Promise<{
+    mrrXof: number;
+    arrXof: number;
+    activeSubscriptions: number;
+    byPlan: Record<string, { count: number; mrrXof: number }>;
+    computedAt: string;
+  }> {
+    // `platform:audit_read` covers support / security / finance roles —
+    // each of which carries audit_read by design. No dedicated
+    // `platform:finance` granular permission exists; the role-name
+    // appears in the catalog but routes/services gate on the
+    // capability, not the role.
+    this.requireAnyPermission(user, ["platform:audit_read", "platform:manage"]);
+    const snap = await db
+      .collection(COLLECTIONS.SUBSCRIPTIONS)
+      .where("status", "==", "active")
+      .get();
+    type Sub = {
+      organizationId?: string;
+      plan?: string;
+      status?: string;
+      priceXof?: number;
+      billingCycle?: string;
+    };
+    let mrrXof = 0;
+    const byPlan: Record<string, { count: number; mrrXof: number }> = {};
+    for (const doc of snap.docs) {
+      const s = doc.data() as Sub;
+      const price = Number(s.priceXof ?? 0);
+      // Normalise annual subs into monthly for the MRR aggregate.
+      const monthly = s.billingCycle === "annual" ? Math.round(price / 12) : price;
+      mrrXof += monthly;
+      const plan = s.plan ?? "unknown";
+      if (!byPlan[plan]) byPlan[plan] = { count: 0, mrrXof: 0 };
+      byPlan[plan].count += 1;
+      byPlan[plan].mrrXof += monthly;
+    }
+    return {
+      mrrXof,
+      arrXof: mrrXof * 12,
+      activeSubscriptions: snap.size,
+      byPlan,
+      computedAt: new Date().toISOString(),
+    };
+  }
+
   // ── Organization Management ───────────────────────────────────────────
 
   async listOrganizations(
     user: AuthUser,
     query: AdminOrgQuery,
   ): Promise<PaginatedResult<Organization>> {
-    this.requirePermission(user, "platform:manage");
+    this.requireAnyPermission(user, ["platform:audit_read", "platform:manage"]);
     return adminRepository.listAllOrganizations(
       { q: query.q, plan: query.plan, isVerified: query.isVerified, isActive: query.isActive },
       { page: query.page, limit: query.limit },
@@ -1408,18 +1573,22 @@ class AdminService extends BaseService {
   async verifyOrganization(user: AuthUser, orgId: string): Promise<void> {
     this.requirePermission(user, "platform:manage");
 
-    const orgDoc = await db.collection(COLLECTIONS.ORGANIZATIONS).doc(orgId).get();
-    if (!orgDoc.exists) throw new NotFoundError("Organization", orgId);
-
-    await db.collection(COLLECTIONS.ORGANIZATIONS).doc(orgId).update({
-      isVerified: true,
-      updatedAt: new Date().toISOString(),
+    // Senior-review F-4 — read-then-write must be transactional. A
+    // concurrent caller can otherwise observe a doc that is then
+    // deleted (silent no-op `.update()` instead of a 404) or two
+    // concurrent verifications can race on the existence check.
+    const ref = db.collection(COLLECTIONS.ORGANIZATIONS).doc(orgId);
+    const now = new Date().toISOString();
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) throw new NotFoundError("Organization", orgId);
+      tx.update(ref, { isVerified: true, updatedAt: now });
     });
 
     eventBus.emit("organization.verified", {
       actorId: user.uid,
       requestId: getRequestId(),
-      timestamp: new Date().toISOString(),
+      timestamp: now,
       organizationId: orgId,
     });
   }
@@ -1427,18 +1596,19 @@ class AdminService extends BaseService {
   async updateOrgStatus(user: AuthUser, orgId: string, isActive: boolean): Promise<void> {
     this.requirePermission(user, "platform:manage");
 
-    const orgDoc = await db.collection(COLLECTIONS.ORGANIZATIONS).doc(orgId).get();
-    if (!orgDoc.exists) throw new NotFoundError("Organization", orgId);
-
-    await db.collection(COLLECTIONS.ORGANIZATIONS).doc(orgId).update({
-      isActive,
-      updatedAt: new Date().toISOString(),
+    // Senior-review F-4 — same TOCTOU as `verifyOrganization` above.
+    const ref = db.collection(COLLECTIONS.ORGANIZATIONS).doc(orgId);
+    const now = new Date().toISOString();
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) throw new NotFoundError("Organization", orgId);
+      tx.update(ref, { isActive, updatedAt: now });
     });
 
     eventBus.emit("organization.status_changed", {
       actorId: user.uid,
       requestId: getRequestId(),
-      timestamp: new Date().toISOString(),
+      timestamp: now,
       organizationId: orgId,
       isActive,
     });
@@ -1447,7 +1617,7 @@ class AdminService extends BaseService {
   // ── Event Oversight ───────────────────────────────────────────────────
 
   async listEvents(user: AuthUser, query: AdminEventQuery): Promise<PaginatedResult<Event>> {
-    this.requirePermission(user, "platform:manage");
+    this.requireAnyPermission(user, ["platform:audit_read", "platform:manage"]);
     return adminRepository.listAllEvents(
       {
         q: query.q,
@@ -1458,6 +1628,131 @@ class AdminService extends BaseService {
       },
       { page: query.page, limit: query.limit },
     );
+  }
+
+  /**
+   * Sprint-4 T3.1 closure — time-travel timeline for one resource.
+   *
+   * Returns the audit log for a single (resourceType, resourceId)
+   * pair, optionally bounded by an `atIso` timestamp ("show me the
+   * state at this date"). The response carries:
+   *
+   *   - `rows`: every audit row touching the resource, sorted
+   *     ascending by `timestamp`, with the canonical fields plus
+   *     a `details` payload (when the original event embedded it).
+   *
+   *   - `reconstructable`: a per-field map indicating whether the
+   *     row's `details.before/after` shape is rich enough for the
+   *     UI to render an authoritative diff. When false, the UI
+   *     downgrades to "audit row recorded but pre-state not
+   *     captured" — honest UX, no fake reconstruction.
+   *
+   *   - `coverage`: forensic metadata so the operator knows whether
+   *     the audit retention window covered the requested date or
+   *     whether the data is older than what the system can prove.
+   *
+   * Permission: `platform:audit_read OR platform:manage` (read-
+   * only). Cross-org by design — investigating a customer's
+   * forensic timeline is the canonical use case.
+   */
+  async getResourceTimeline(
+    user: AuthUser,
+    params: {
+      resourceType: string;
+      resourceId: string;
+      atIso?: string;
+    },
+  ): Promise<{
+    resourceType: string;
+    resourceId: string;
+    atIso: string | null;
+    rows: Array<{
+      id: string;
+      action: string;
+      actorId: string;
+      actorRole: string | null;
+      timestamp: string;
+      details: Record<string, unknown> | null;
+      reconstructable: boolean;
+    }>;
+    coverage: {
+      oldestRowTimestamp: string | null;
+      newestRowTimestamp: string | null;
+      requestedDateInWindow: boolean | null;
+    };
+  }> {
+    this.requireAnyPermission(user, ["platform:audit_read", "platform:manage"]);
+
+    // Bounded scan — same 500-row budget as the rest of the admin
+    // observability surfaces. Most resources have far fewer audit
+    // rows; the cap is a safety rail. If a resource hits this
+    // ceiling, the operator should narrow via the time filter.
+    const snap = await db
+      .collection(COLLECTIONS.AUDIT_LOGS)
+      .where("resourceType", "==", params.resourceType)
+      .where("resourceId", "==", params.resourceId)
+      .orderBy("timestamp", "asc")
+      .limit(500)
+      .get();
+
+    const rows = snap.docs.map((doc) => {
+      const data = doc.data() as {
+        action?: string;
+        actorId?: string;
+        actorRole?: string | null;
+        timestamp?: string;
+        details?: Record<string, unknown> | null;
+      };
+      const details = data.details ?? null;
+      // `reconstructable` is true when the audit row carries enough
+      // information to render an authoritative before/after diff.
+      // The canonical signal is a `details.before` AND a
+      // `details.after` object — the state-snapshotting pattern
+      // we use on `event.updated`, `plan.updated`, etc. Rows that
+      // only carry a `changes: string[]` field-list are
+      // partially-reconstructable (the UI shows changed field
+      // names but not values). Pure-action rows
+      // (`event.published`, `event.archived`) have no diff state
+      // at all and surface as "transition" markers.
+      const reconstructable =
+        !!details &&
+        typeof details === "object" &&
+        "before" in details &&
+        "after" in details;
+      return {
+        id: doc.id,
+        action: data.action ?? "",
+        actorId: data.actorId ?? "",
+        actorRole: data.actorRole ?? null,
+        timestamp: data.timestamp ?? "",
+        details,
+        reconstructable,
+      };
+    });
+
+    // `atIso` filtering happens client-side — we always return the
+    // full window the API can prove, so the operator can scrub the
+    // timeline back and forth without a network round-trip per
+    // tick. The atIso parameter is just echoed back so the UI can
+    // pin the cursor without re-deriving it from query state.
+    const oldestRowTimestamp = rows.length > 0 ? rows[0].timestamp : null;
+    const newestRowTimestamp =
+      rows.length > 0 ? rows[rows.length - 1].timestamp : null;
+    const requestedDateInWindow = params.atIso
+      ? oldestRowTimestamp !== null && params.atIso >= oldestRowTimestamp
+      : null;
+
+    return {
+      resourceType: params.resourceType,
+      resourceId: params.resourceId,
+      atIso: params.atIso ?? null,
+      rows,
+      coverage: {
+        oldestRowTimestamp,
+        newestRowTimestamp,
+        requestedDateInWindow,
+      },
+    };
   }
 
   /**
@@ -1493,6 +1788,16 @@ class AdminService extends BaseService {
       cohortMonth: string;
       signupCount: number;
       retainedNow: number;
+      retentionPct: number;
+      /** T2.4 — months elapsed between cohort signup and now. */
+      monthsSinceSignup: number;
+    }>;
+    /**
+     * T2.4 — derived "retention by age" curve. One point per
+     * months-elapsed bucket where at least one cohort exists.
+     */
+    retentionCurve: Array<{
+      monthsSinceSignup: number;
       retentionPct: number;
     }>;
     computedAt: string;
@@ -1558,6 +1863,7 @@ class AdminService extends BaseService {
       signupCount: number;
       retainedNow: number;
       retentionPct: number;
+      monthsSinceSignup: number;
     }> = [];
     for (let offset = 0; offset < lookback; offset += 1) {
       const monthDate = new Date(
@@ -1565,17 +1871,54 @@ class AdminService extends BaseService {
       );
       const cohortMonth = monthDate.toISOString().slice(0, 7);
       const stats = cohortMap.get(cohortMonth) ?? { signupCount: 0, retainedNow: 0 };
+      // T2.4 closure — `monthsSinceSignup` exposes how old each
+      // cohort is so the UI can render a triangular heatmap
+      // (cohort × elapsed-month). Without subscription-history
+      // reconstruction we can only fill the diagonal cell — but
+      // that's the most actionable signal: "of orgs that joined N
+      // months ago, what fraction are still paying today?"
+      const cohortYear = monthDate.getUTCFullYear();
+      const cohortMonthIdx = monthDate.getUTCMonth();
+      const monthsSinceSignup =
+        (now.getUTCFullYear() - cohortYear) * 12 +
+        (now.getUTCMonth() - cohortMonthIdx);
       cohorts.push({
         cohortMonth,
         signupCount: stats.signupCount,
         retainedNow: stats.retainedNow,
         retentionPct:
           stats.signupCount > 0 ? stats.retainedNow / stats.signupCount : 0,
+        monthsSinceSignup,
+      });
+    }
+
+    // T2.4 closure — derived "average retention by age" curve.
+    // Each cohort contributes ONE data point (its retention at age
+    // = monthsSinceSignup). The curve is the natural read of those
+    // diagonal cells, which is the operator-facing equivalent of
+    // "after N months, X% of cohorts retain Y%". Empty when no
+    // cohort lands at that age (gaps left as null for the chart).
+    const retentionByAge = new Map<number, { sum: number; count: number }>();
+    for (const c of cohorts) {
+      if (c.signupCount === 0) continue;
+      const bucket = retentionByAge.get(c.monthsSinceSignup) ?? { sum: 0, count: 0 };
+      bucket.sum += c.retentionPct;
+      bucket.count += 1;
+      retentionByAge.set(c.monthsSinceSignup, bucket);
+    }
+    const retentionCurve: Array<{ monthsSinceSignup: number; retentionPct: number }> = [];
+    for (let age = 0; age < lookback; age += 1) {
+      const bucket = retentionByAge.get(age);
+      if (!bucket) continue;
+      retentionCurve.push({
+        monthsSinceSignup: age,
+        retentionPct: bucket.sum / bucket.count,
       });
     }
 
     return {
       cohorts,
+      retentionCurve,
       computedAt: new Date().toISOString(),
     };
   }
@@ -1609,7 +1952,7 @@ class AdminService extends BaseService {
     failureCount30d: number;
     lastPromotedAt: string | null;
   }> {
-    this.requirePermission(user, "platform:manage");
+    this.requireAnyPermission(user, ["platform:audit_read", "platform:manage"]);
 
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
@@ -1667,7 +2010,7 @@ class AdminService extends BaseService {
   // `suspended` / `archived`) so the moderation inbox deep-link
   // (/admin/venues?status=pending) actually shows pending venues.
   async listVenues(user: AuthUser, query: AdminVenueQuery): Promise<PaginatedResult<Venue>> {
-    this.requirePermission(user, "platform:manage");
+    this.requireAnyPermission(user, ["platform:audit_read", "platform:manage"]);
     return adminRepository.listAllVenues(
       {
         status: query.status,
@@ -1691,7 +2034,7 @@ class AdminService extends BaseService {
   // the audit log and showed an empty list whenever audit entries
   // lagged behind the payments collection.
   async listPayments(user: AuthUser, query: AdminPaymentQuery): Promise<PaginatedResult<Payment>> {
-    this.requirePermission(user, "platform:manage");
+    this.requireAnyPermission(user, ["platform:audit_read", "platform:manage"]);
     return adminRepository.listAllPayments(
       {
         status: query.status,
@@ -1713,7 +2056,7 @@ class AdminService extends BaseService {
     user: AuthUser,
     query: AdminSubscriptionQuery,
   ): Promise<PaginatedResult<Subscription>> {
-    this.requirePermission(user, "platform:manage");
+    this.requireAnyPermission(user, ["platform:audit_read", "platform:manage"]);
     return adminRepository.listAllSubscriptions(
       { status: query.status, plan: query.plan },
       // Default orderBy (`createdAt DESC`) — same rationale as listPayments.
@@ -1733,7 +2076,7 @@ class AdminService extends BaseService {
     user: AuthUser,
     query: AdminInviteQuery,
   ): Promise<PaginatedResult<OrganizationInvite>> {
-    this.requirePermission(user, "platform:manage");
+    this.requireAnyPermission(user, ["platform:audit_read", "platform:manage"]);
     return adminRepository.listAllInvites(
       { status: query.status, organizationId: query.organizationId, role: query.role },
       { page: query.page, limit: query.limit },

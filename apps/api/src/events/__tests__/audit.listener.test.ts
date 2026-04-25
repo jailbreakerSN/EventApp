@@ -620,7 +620,10 @@ describe("Audit Listener", () => {
       // handler — the per-entry `waitlist.promoted` events drive
       // notification dispatch, this aggregate gives ops a single
       // audit row per bulk-promote run.
-      const EXPECTED_HANDLER_COUNT = 94;
+      // Sprint-2 T2.2 — `event.restored` listener added.
+      // Sprint-2 S1 — `event.series_cancelled` listener added.
+      // Sprint-4 T3.2 — 3 scheduled_admin_op.* listeners added.
+      const EXPECTED_HANDLER_COUNT = 99;
 
       expect(registered).toHaveLength(EXPECTED_HANDLER_COUNT);
       // Each registered event name should be unique — a double
@@ -723,6 +726,122 @@ describe("Audit Listener", () => {
       expect(
         (auditService.log as unknown as { mock: { calls: unknown[] } }).mock.calls.length,
       ).toBeGreaterThanOrEqual(registered.length);
+    });
+  });
+
+  // ── Per-handler assertions for the 5 events added by the 4-sprint
+  // admin overhaul. The structural check above guarantees each handler
+  // calls log; these verify the exact arg shape so a refactor that
+  // accidentally drops `details.cron` or swaps `eventId` for `null`
+  // surfaces here, not in a production audit-row regression.
+
+  describe("Sprint-4 admin overhaul — per-handler audit shapes", () => {
+    it("event.restored writes a clean audit row with eventId + organizationId", async () => {
+      eventBus.emit("event.restored", {
+        eventId: "ev-1",
+        organizationId: "org-1",
+        actorId: "admin-1",
+        requestId: "req-r1",
+        timestamp: "2026-04-25T12:00:00.000Z",
+      } as never);
+      await flush();
+
+      expect(auditService.log).toHaveBeenCalledWith({
+        action: "event.restored",
+        actorId: "admin-1",
+        requestId: "req-r1",
+        timestamp: "2026-04-25T12:00:00.000Z",
+        resourceType: "event",
+        resourceId: "ev-1",
+        eventId: "ev-1",
+        organizationId: "org-1",
+        details: {},
+      });
+    });
+
+    it("event.series_cancelled writes the parent eventId + cancelled count", async () => {
+      eventBus.emit("event.series_cancelled", {
+        parentEventId: "parent-1",
+        organizationId: "org-1",
+        cancelledCount: 4,
+        actorId: "admin-1",
+        requestId: "req-sc1",
+        timestamp: "2026-04-25T12:00:00.000Z",
+      } as never);
+      await flush();
+
+      expect(auditService.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: "event.series_cancelled",
+          resourceType: "event",
+          resourceId: "parent-1",
+          eventId: "parent-1",
+          organizationId: "org-1",
+        }),
+      );
+    });
+
+    it("scheduled_admin_op.created writes a platform-scoped row (organizationId: null)", async () => {
+      eventBus.emit("scheduled_admin_op.created", {
+        opId: "op-1",
+        jobKey: "ping",
+        cron: "0 0 * * *",
+        actorId: "admin-1",
+        requestId: "req-c1",
+        timestamp: "2026-04-25T12:00:00.000Z",
+      } as never);
+      await flush();
+
+      expect(auditService.log).toHaveBeenCalledWith({
+        action: "scheduled_admin_op.created",
+        actorId: "admin-1",
+        requestId: "req-c1",
+        timestamp: "2026-04-25T12:00:00.000Z",
+        resourceType: "scheduled_admin_op",
+        resourceId: "op-1",
+        eventId: null,
+        organizationId: null,
+        details: { jobKey: "ping", cron: "0 0 * * *" },
+      });
+    });
+
+    it("scheduled_admin_op.updated carries the changes array", async () => {
+      eventBus.emit("scheduled_admin_op.updated", {
+        opId: "op-1",
+        changes: ["name", "enabled"],
+        actorId: "admin-1",
+        requestId: "req-u1",
+        timestamp: "2026-04-25T12:00:00.000Z",
+      } as never);
+      await flush();
+
+      expect(auditService.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: "scheduled_admin_op.updated",
+          resourceId: "op-1",
+          organizationId: null,
+          details: { changes: ["name", "enabled"] },
+        }),
+      );
+    });
+
+    it("scheduled_admin_op.deleted writes the soft-delete trail", async () => {
+      eventBus.emit("scheduled_admin_op.deleted", {
+        opId: "op-1",
+        actorId: "admin-1",
+        requestId: "req-d1",
+        timestamp: "2026-04-25T12:00:00.000Z",
+      } as never);
+      await flush();
+
+      expect(auditService.log).toHaveBeenCalledWith(
+        expect.objectContaining({
+          action: "scheduled_admin_op.deleted",
+          resourceType: "scheduled_admin_op",
+          resourceId: "op-1",
+          organizationId: null,
+        }),
+      );
     });
   });
 });

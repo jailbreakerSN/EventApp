@@ -169,4 +169,19 @@ export const COLLECTIONS = {
   // successful redemption. Queried by `(organizationId, couponId)` to
   // enforce `maxUsesPerOrg`. Server-only at the rules layer.
   COUPON_REDEMPTIONS: "couponRedemptions",
+  // Sprint-3 T4.2 — Firestore read-volume tracking, one doc per
+  // (org, day) bucket. Doc id = `${orgId}_${YYYY-MM-DD}` so the
+  // single-doc upsert path is O(1). Field `reads` is a monotonic
+  // counter bumped via `FieldValue.increment` after each request
+  // by the read-tracking flush hook. Server-only at the rules
+  // layer — operators read it via the admin endpoint, never
+  // directly via Firestore.
+  FIRESTORE_USAGE: "firestoreUsage",
+  // Sprint-4 T3.2 — recurring admin operations. Each doc binds a
+  // registered job key + cron schedule + frozen input payload.
+  // A Cloud Functions scheduled trigger (every 5 min) reads
+  // docs where `enabled=true AND nextRunAt <= now` and dispatches
+  // them into the existing admin job runner. Server-only at the
+  // rules layer — operators CRUD via /admin/scheduled-ops.
+  SCHEDULED_ADMIN_OPS: "scheduledAdminOps",
 } as const;

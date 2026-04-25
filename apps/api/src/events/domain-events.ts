@@ -181,6 +181,16 @@ export interface EventArchivedEvent extends BaseEventPayload {
   organizationId: string;
 }
 
+/**
+ * T2.2 closure — emitted when an admin uses the "Restaurer" flow to
+ * undo a recent archive (within the 30-day window). The actor is
+ * the admin, not the original organizer.
+ */
+export interface EventRestoredEvent extends BaseEventPayload {
+  eventId: string;
+  organizationId: string;
+}
+
 export interface EventClonedEvent extends BaseEventPayload {
   sourceEventId: string;
   newEventId: string;
@@ -211,6 +221,38 @@ export interface EventSeriesPublishedEvent extends BaseEventPayload {
   parentEventId: string;
   organizationId: string;
   publishedCount: number;
+}
+
+/**
+ * Sprint-4 T3.2 — emitted on scheduled-op CRUD lifecycle.
+ */
+export interface ScheduledAdminOpCreatedEvent extends BaseEventPayload {
+  opId: string;
+  jobKey: string;
+  cron: string;
+}
+
+export interface ScheduledAdminOpUpdatedEvent extends BaseEventPayload {
+  opId: string;
+  changes: string[];
+}
+
+export interface ScheduledAdminOpDeletedEvent extends BaseEventPayload {
+  opId: string;
+}
+
+/**
+ * Sprint-2 S1 closure — emitted when an admin/organizer cancels an
+ * entire recurring-event series in one operation. The parent + every
+ * non-already-cancelled child are flipped to `cancelled` atomically.
+ * Listeners that need per-child fan-out (refunds, notifications)
+ * read the included id list rather than re-querying.
+ */
+export interface EventSeriesCancelledEvent extends BaseEventPayload {
+  parentEventId: string;
+  organizationId: string;
+  cancelledCount: number;
+  cancelledChildIds: string[];
 }
 
 export interface WaitlistPromotedEvent extends BaseEventPayload {
@@ -1104,10 +1146,15 @@ export interface DomainEventMap {
   "event.unpublished": EventUnpublishedEvent;
   "event.cancelled": EventCancelledEvent;
   "event.archived": EventArchivedEvent;
+  "event.restored": EventRestoredEvent;
   "event.cloned": EventClonedEvent;
   // Recurring events (Phase 7+ item #B1)
   "event.series_created": EventSeriesCreatedEvent;
   "event.series_published": EventSeriesPublishedEvent;
+  "event.series_cancelled": EventSeriesCancelledEvent;
+  "scheduled_admin_op.created": ScheduledAdminOpCreatedEvent;
+  "scheduled_admin_op.updated": ScheduledAdminOpUpdatedEvent;
+  "scheduled_admin_op.deleted": ScheduledAdminOpDeletedEvent;
   "waitlist.promoted": WaitlistPromotedEvent;
   "waitlist.promotion_failed": WaitlistPromotionFailedEvent;
   // B2 follow-up — aggregate row for bulk-promote calls.

@@ -446,12 +446,19 @@ describe("SECURITY: Soft-Delete Enforcement", () => {
 
   it("archive sets status, does not hard delete", async () => {
     mockEventRepo.findByIdOrThrow.mockResolvedValue(eventOrgA);
-    mockEventRepo.softDelete.mockResolvedValue({ ...eventOrgA, status: "archived" });
+    mockEventRepo.update.mockResolvedValue({ ...eventOrgA, status: "archived" });
 
     await service.archive("evt-a", superAdmin);
 
-    // Verify it calls softDelete (status = archived), NOT a Firestore delete()
-    expect(mockEventRepo.softDelete).toHaveBeenCalledWith("evt-a", "status", "archived");
+    // Sprint-2 T2.2 — archive moved from `softDelete` to `update`
+    // so it can also stamp `archivedAt` (used by the 30-day undo).
+    // The security guarantee (status flip, no hard delete) is
+    // unchanged: `update` patches the doc, never removes it.
+    expect(mockEventRepo.update).toHaveBeenCalledWith(
+      "evt-a",
+      expect.objectContaining({ status: "archived", archivedAt: expect.any(String) }),
+    );
+    expect(mockEventRepo.softDelete).not.toHaveBeenCalled();
   });
 });
 

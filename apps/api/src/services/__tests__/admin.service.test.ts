@@ -121,14 +121,17 @@ describe("AdminService — permission denial", () => {
   const organizer = buildOrganizerUser("org-1");
 
   it("rejects getStats for non-super_admin", async () => {
+    // Senior-review F-1 — read-only admin endpoints now accept
+    // `platform:audit_read` OR `platform:manage`. The error string
+    // tracks `requireAnyPermission`, not `requirePermission`.
     await expect(adminService.getStats(participant)).rejects.toThrow(
-      "Permission manquante : platform:manage",
+      /Permissions manquantes.*platform:audit_read.*platform:manage/,
     );
   });
 
   it("rejects listUsers for organizer", async () => {
     await expect(adminService.listUsers(organizer, { page: 1, limit: 20 })).rejects.toThrow(
-      "Permission manquante : platform:manage",
+      /Permissions manquantes.*platform:audit_read.*platform:manage/,
     );
   });
 
@@ -147,7 +150,7 @@ describe("AdminService — permission denial", () => {
   it("rejects listOrganizations for participant", async () => {
     await expect(
       adminService.listOrganizations(participant, { page: 1, limit: 20 }),
-    ).rejects.toThrow("Permission manquante : platform:manage");
+    ).rejects.toThrow(/Permissions manquantes.*platform:audit_read.*platform:manage/);
   });
 
   it("rejects verifyOrganization for organizer", async () => {
@@ -158,17 +161,18 @@ describe("AdminService — permission denial", () => {
 
   it("rejects listEvents for participant", async () => {
     await expect(adminService.listEvents(participant, { page: 1, limit: 20 })).rejects.toThrow(
-      "Permission manquante : platform:manage",
+      /Permissions manquantes.*platform:audit_read.*platform:manage/,
     );
   });
 
   it("rejects listInvites for organizer", async () => {
-    // Regression for PR #182-follow-up: the admin-invites endpoint
-    // must stay `platform:manage` even though organizers hold the
-    // per-org `organization:read` permission. Cross-tenant invite
-    // discovery is a platform-only concern (PII + cleanup workflow).
+    // Senior-review F-1 — read-only admin endpoints accept
+    // `platform:audit_read` OR `platform:manage`. Organizers still
+    // hold neither, so they're correctly denied — the error string
+    // tracks `requireAnyPermission`, not the older single-permission
+    // gate. PII + cross-tenant discovery semantics are unchanged.
     await expect(adminService.listInvites(organizer, { page: 1, limit: 20 })).rejects.toThrow(
-      "Permission manquante : platform:manage",
+      /Permissions manquantes.*platform:audit_read.*platform:manage/,
     );
   });
 
@@ -988,13 +992,17 @@ describe("AdminService.startImpersonation (OAuth-style auth-code flow)", () => {
   });
 
   it("refuses platform:support (and other non-super platform:* roles)", async () => {
-    // platform:support holds platform:manage (so passes requirePermission)
-    // but MUST NOT be allowed to impersonate — impersonation is the most
-    // sensitive action on the platform, gated to super_admin tier only.
+    // T2.1 Phase 2 — platform:support no longer holds `platform:manage`,
+    // so the FIRST gate (`requirePermission`) trips with "Permission
+    // manquante" before reaching `resolveImpersonationRole`. The
+    // observable behaviour is identical: impersonation is refused.
+    // Asserting the union /Only super_admin|Permission manquante/
+    // documents both gates so a future tightening that only fires
+    // one of them still passes.
     const support = buildAuthUser({ uid: "u-support", roles: ["platform:support"] });
-    // Target doc is NOT reached since the role gate trips first.
+    // Target doc is NOT reached since the gate trips first.
     await expect(adminService.startImpersonation(support, participantTarget.uid)).rejects.toThrow(
-      /Only super_admin may impersonate/i,
+      /Only super_admin may impersonate|Permission manquante/i,
     );
     expect(auth.createCustomToken).not.toHaveBeenCalled();
     expect(mockAuditAdd).not.toHaveBeenCalled();

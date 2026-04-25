@@ -725,6 +725,8 @@ exports[`shared-types contract snapshots > AuditLogEntrySchema shape is stable 1
           "event.created",
           "event.published",
           "event.qr_key_rotated",
+          "event.restored",
+          "event.series_cancelled",
           "event.series_created",
           "event.series_published",
           "event.unpublished",
@@ -776,6 +778,9 @@ exports[`shared-types contract snapshots > AuditLogEntrySchema shape is stable 1
           "registration.approved",
           "registration.cancelled",
           "registration.created",
+          "scheduled_admin_op.created",
+          "scheduled_admin_op.deleted",
+          "scheduled_admin_op.updated",
           "session.created",
           "session.deleted",
           "session.updated",
@@ -1397,6 +1402,21 @@ exports[`shared-types contract snapshots > CreateEventSchema shape is stable 1`]
           "kind": "array",
         },
         "kind": "default",
+      },
+    },
+    "archivedAt": {
+      "required": false,
+      "shape": {
+        "inner": {
+          "inner": {
+            "checks": [
+              "datetime",
+            ],
+            "kind": "string",
+          },
+          "kind": "nullable",
+        },
+        "kind": "optional",
       },
     },
     "bannerImageURL": {
@@ -2123,6 +2143,21 @@ exports[`shared-types contract snapshots > EventSchema shape is stable 1`] = `
           "kind": "array",
         },
         "kind": "default",
+      },
+    },
+    "archivedAt": {
+      "required": false,
+      "shape": {
+        "inner": {
+          "inner": {
+            "checks": [
+              "datetime",
+            ],
+            "kind": "string",
+          },
+          "kind": "nullable",
+        },
+        "kind": "optional",
       },
     },
     "bannerImageURL": {

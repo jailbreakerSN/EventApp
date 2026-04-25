@@ -61,6 +61,21 @@ export interface DataTableProps<T> extends React.HTMLAttributes<HTMLDivElement> 
    * disable navigation for a specific row (e.g. archived rows).
    */
   onRowClick?: (row: T) => void;
+  /**
+   * Sprint-1 B2 closure — index of the row currently highlighted by a
+   * page-level keyboard navigation hook (`useRowKeyboardNav`). When
+   * set, the matching row gets a visible accent so power users know
+   * which row Enter / Space will activate. -1 disables the
+   * highlight. Mouse hover takes precedence visually because hover
+   * also drives most operators' attention.
+   */
+  activeRowIndex?: number;
+  /**
+   * Sprint-1 B2 closure — fired when the operator moves the mouse
+   * over a row. Lets a page sync its keyboard cursor with the mouse
+   * cursor so j/k after a hover keeps a coherent context.
+   */
+  onRowHover?: (rowIndex: number) => void;
 }
 
 function DataTable<T extends Record<string, unknown>>({
@@ -72,6 +87,8 @@ function DataTable<T extends Record<string, unknown>>({
   "aria-label": ariaLabel,
   responsiveCards = false,
   onRowClick,
+  activeRowIndex = -1,
+  onRowHover,
   ...props
 }: DataTableProps<T>) {
   const primaryCol = columns.find((c) => c.primary) ?? columns[0];
@@ -158,12 +175,22 @@ function DataTable<T extends Record<string, unknown>>({
                 ? null
                 : data.map((item, rowIdx) => {
                     const interaction = rowInteractionProps(item);
+                    const isActive = activeRowIndex === rowIdx;
                     return (
                       <tr
                         key={rowIdx}
                         {...interaction}
+                        // B2 — when a page-level keyboard nav hook
+                        // owns the cursor, expose it to assistive
+                        // tech via `aria-selected` and the
+                        // `data-active` attribute used by the
+                        // theming layer.
+                        aria-selected={onRowClick ? isActive : undefined}
+                        data-active={isActive || undefined}
+                        onMouseEnter={onRowHover ? () => onRowHover(rowIdx) : undefined}
                         className={cn(
                           "border-t border-border transition-colors hover:bg-muted/50",
+                          isActive && "bg-teranga-gold/10 ring-2 ring-inset ring-teranga-gold/40",
                           interaction.className,
                         )}
                       >

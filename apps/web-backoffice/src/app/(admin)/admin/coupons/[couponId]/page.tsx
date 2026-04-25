@@ -110,7 +110,7 @@ export default function AdminEditCouponPage(props: {
           <Badge variant="outline" className="text-[10px]">
             {coupon.discountType === "percentage"
               ? `-${coupon.discountValue}%`
-              : `-${coupon.discountValue.toLocaleString("fr-FR")} XOF`}
+              : `-${coupon.discountValue.toLocaleString("fr-SN")} XOF`}
           </Badge>
         </>
       }
@@ -161,6 +161,8 @@ function RedemptionsTab({ couponId }: { couponId: string }) {
   const aggregates = payload?.aggregates ?? {
     totalRedemptions: 0,
     totalDiscountAppliedXof: 0,
+    byMonth: [],
+    byPlan: [],
   };
 
   if (rows.length === 0 && meta.page === 1) {
@@ -186,7 +188,7 @@ function RedemptionsTab({ couponId }: { couponId: string }) {
               Total des rédemptions
             </div>
             <div className="text-2xl font-semibold text-teranga-gold">
-              {aggregates.totalRedemptions.toLocaleString("fr-FR")}
+              {aggregates.totalRedemptions.toLocaleString("fr-SN")}
             </div>
           </CardContent>
         </Card>
@@ -196,7 +198,7 @@ function RedemptionsTab({ couponId }: { couponId: string }) {
               Remise totale appliquée
             </div>
             <div className="text-2xl font-semibold text-teranga-green">
-              {aggregates.totalDiscountAppliedXof.toLocaleString("fr-FR")} XOF
+              {aggregates.totalDiscountAppliedXof.toLocaleString("fr-SN")} XOF
             </div>
             {aggregates.totalRedemptions > 500 && (
               <p className="text-[10px] text-amber-600">
@@ -206,6 +208,51 @@ function RedemptionsTab({ couponId }: { couponId: string }) {
           </CardContent>
         </Card>
       </div>
+
+      {/* Sprint-2 S3 — monthly + per-plan breakdown. Renders only
+          when there's data, so the empty state above stays clean. */}
+      {aggregates.byMonth.length > 0 && (
+        <Card>
+          <CardContent className="space-y-3 p-4">
+            <div className="text-sm font-semibold text-foreground">
+              Rédemptions par mois
+            </div>
+            <RedemptionsByMonthChart data={aggregates.byMonth} />
+          </CardContent>
+        </Card>
+      )}
+
+      {aggregates.byPlan.length > 0 && (
+        <Card>
+          <CardContent className="space-y-3 p-4">
+            <div className="text-sm font-semibold text-foreground">
+              Rédemptions par plan
+            </div>
+            <table className="w-full text-left text-sm">
+              <thead className="border-b border-border text-[10px] uppercase tracking-wider text-muted-foreground">
+                <tr>
+                  <th className="px-3 py-1.5 font-medium">Plan</th>
+                  <th className="px-3 py-1.5 text-right font-medium">Rédemptions</th>
+                  <th className="px-3 py-1.5 text-right font-medium">Remise totale</th>
+                </tr>
+              </thead>
+              <tbody>
+                {aggregates.byPlan.map((p) => (
+                  <tr key={p.planId} className="border-b border-border last:border-0">
+                    <td className="px-3 py-1.5 font-mono text-xs">{p.planId}</td>
+                    <td className="px-3 py-1.5 text-right font-mono text-xs">
+                      {p.count.toLocaleString("fr-SN")}
+                    </td>
+                    <td className="px-3 py-1.5 text-right font-mono text-xs text-teranga-green">
+                      -{p.discountXof.toLocaleString("fr-SN")} XOF
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="divide-y divide-border rounded-xl border border-border">
         {rows.map((r: CouponRedemption) => (
@@ -261,20 +308,55 @@ function RedemptionRow({ row }: { row: CouponRedemption }) {
         <div className="mt-0.5 text-[11px] text-muted-foreground">
           Plan {row.planId}
           {row.cycle ? ` · ${row.cycle}` : ""} · Appliqué le{" "}
-          {new Date(row.redeemedAt).toLocaleString("fr-FR", {
+          {new Date(row.redeemedAt).toLocaleString("fr-SN", {
             dateStyle: "medium",
             timeStyle: "short",
+            timeZone: "Africa/Dakar",
           })}
         </div>
       </div>
       <div className="text-right">
         <div className="font-semibold text-teranga-green">
-          -{row.discountAppliedXof.toLocaleString("fr-FR")} XOF
+          -{row.discountAppliedXof.toLocaleString("fr-SN")} XOF
         </div>
         <div className="text-[11px] text-muted-foreground">
-          {row.originalPriceXof.toLocaleString("fr-FR")} →{" "}
-          {row.finalPriceXof.toLocaleString("fr-FR")} XOF
+          {row.originalPriceXof.toLocaleString("fr-SN")} →{" "}
+          {row.finalPriceXof.toLocaleString("fr-SN")} XOF
         </div>
+      </div>
+    </div>
+  );
+}
+
+
+// ─── Sprint-2 S3 — monthly redemptions sparkline ─────────────────────────
+
+function RedemptionsByMonthChart({
+  data,
+}: {
+  data: Array<{ month: string; count: number; discountXof: number }>;
+}) {
+  if (data.length === 0) return null;
+  const max = Math.max(1, ...data.map((d) => d.count));
+  return (
+    <div>
+      <div
+        className="flex h-24 items-end gap-1"
+        role="img"
+        aria-label={`Histogramme des rédemptions mensuelles, ${data.length} mois`}
+      >
+        {data.map((d) => (
+          <div key={d.month} className="flex flex-1 flex-col items-center gap-1">
+            <div className="flex h-full w-full items-end">
+              <div
+                className="w-full bg-teranga-gold/70 transition-colors hover:bg-teranga-gold"
+                style={{ height: `${Math.max(2, (d.count / max) * 100)}%` }}
+                title={`${d.month} : ${d.count} rédemption${d.count > 1 ? "s" : ""} · -${d.discountXof.toLocaleString("fr-SN")} XOF`}
+              />
+            </div>
+            <span className="text-[10px] font-mono text-muted-foreground">{d.month}</span>
+          </div>
+        ))}
       </div>
     </div>
   );

@@ -24,7 +24,7 @@ import { venueRepository } from "@/repositories/venue.repository";
 import { PLAN_LIMITS, PLAN_LIMIT_UNLIMITED, isAdminSystemRole } from "@teranga/shared-types";
 import { type PaginationParams, type PaginatedResult } from "@/repositories/base.repository";
 import { type AuthUser } from "@/middlewares/auth.middleware";
-import { ForbiddenError, ValidationError, PlanLimitError } from "@/errors/app-error";
+import { ForbiddenError, NotFoundError, ValidationError, PlanLimitError } from "@/errors/app-error";
 import { db } from "@/config/firebase";
 import { COLLECTIONS } from "@/config/firebase";
 import { BaseService } from "./base.service";
@@ -611,6 +611,93 @@ export class EventService extends BaseService {
   }
 
   /**
+   * Sprint-2 S1 closure — cancel an entire recurring-event series in
+   * one atomic operation. Flips the parent + every child to
+   * `status: "cancelled"` inside a single Firestore transaction so a
+   * partial failure can't leave the series in mixed state.
+   *
+   * Refuses to operate on non-parent docs (use `cancel` for individual
+   * events). Children that are already cancelled / archived are
+   * left untouched — the existing state-machine guards in the per-
+   * event flow stay authoritative.
+   *
+   * Per CLAUDE.md, the 500-write transaction budget caps us at ~250
+   * children. The recurring-events MVP already enforces a 52-
+   * occurrence ceiling so we're well below the budget.
+   */
+  async cancelSeries(
+    parentEventId: string,
+    user: AuthUser,
+  ): Promise<{ parentEventId: string; cancelledCount: number }> {
+    this.requirePermission(user, "event:update");
+
+    const parent = await eventRepository.findByIdOrThrow(parentEventId);
+    if (!parent.isRecurringParent) {
+      throw new ValidationError(
+        "Cet événement n'est pas le parent d'une série — utilisez l'annulation classique.",
+      );
+    }
+    this.requireOrganizationAccess(user, parent.organizationId);
+
+    const now = new Date().toISOString();
+    let cancelledCount = 0;
+    const cancelledChildIds: string[] = [];
+
+    // Sprint-2 review fix — children collection read MUST be inside
+    // the transaction so a child created or status-flipped between
+    // the read and the writes can't be silently missed. Firestore
+    // doesn't support `query.get()` directly on a `Transaction` —
+    // we use the standard pattern of `tx.get(query)` which re-reads
+    // the matching docs at transaction-commit time. The 500-write
+    // budget is bounded by the recurring-events 52-occurrence cap.
+    await db.runTransaction(async (tx) => {
+      const childrenSnap = await tx.get(
+        db.collection(COLLECTIONS.EVENTS).where("parentEventId", "==", parentEventId),
+      );
+
+      // Always flip the parent (even if it's `draft` — the anchor
+      // doc never went public anyway, but cancelling it makes the
+      // intent explicit in the audit log).
+      tx.update(db.collection(COLLECTIONS.EVENTS).doc(parentEventId), {
+        status: "cancelled" as EventStatus,
+        updatedAt: now,
+        updatedBy: user.uid,
+      });
+
+      for (const doc of childrenSnap.docs) {
+        const child = doc.data() as Event;
+        if (child.status === "cancelled" || child.status === "archived") continue;
+        tx.update(doc.ref, {
+          status: "cancelled" as EventStatus,
+          updatedAt: now,
+          updatedBy: user.uid,
+        });
+        cancelledChildIds.push(doc.id);
+      }
+      cancelledCount = cancelledChildIds.length;
+    });
+
+    // One aggregate event for the whole series — keeps audit
+    // dashboards from getting blasted with N rows for a single
+    // operator action. Per-child cancel events are NOT emitted
+    // since the bulk path is the canonical record. Listeners
+    // that care about per-child cleanup (refunds, notifications)
+    // can subscribe to `event.series_cancelled` and fan out from
+    // the included `cancelledChildIds` list.
+    eventBus.emit("event.series_cancelled", {
+      parentEventId,
+      organizationId: parent.organizationId,
+      cancelledCount,
+      cancelledChildIds,
+      actorId: user.uid,
+      requestId: getRequestId(),
+      timestamp: now,
+    });
+
+    return { parentEventId, cancelledCount };
+  }
+
+  /**
    * Rotate the event's QR signing key id. Used when a staff device has
    * been lost or a key is suspected compromised.
    *
@@ -753,15 +840,106 @@ export class EventService extends BaseService {
     const event = await eventRepository.findByIdOrThrow(eventId);
     this.requireOrganizationAccess(user, event.organizationId);
 
-    await eventRepository.softDelete(eventId, "status", "archived");
+    // T2.2 closure — capture `archivedAt` so the admin "Restaurer"
+    // flow can enforce a 30-day undo window. `softDelete` only
+    // updates the status; we patch in the timestamp via a single
+    // direct repo update to keep the change atomic with the status
+    // flip.
+    const now = new Date().toISOString();
+    await eventRepository.update(eventId, {
+      status: "archived",
+      archivedAt: now,
+    } as Partial<Event>);
 
     eventBus.emit("event.archived", {
       eventId,
       organizationId: event.organizationId,
       actorId: user.uid,
       requestId: getRequestId(),
-      timestamp: new Date().toISOString(),
+      timestamp: now,
     });
+  }
+
+  /**
+   * T2.2 closure — undo a recent archive. An event is restorable when:
+   *  - its current `status` is `"archived"`, AND
+   *  - its `archivedAt` timestamp is within the last 30 days
+   *
+   * Restored events return to `status: "draft"` (not the previous
+   * `"published"` state) so an organizer must consciously re-publish
+   * before participants see it again. This avoids surprise
+   * re-availability on the public discovery surface.
+   *
+   * Permission gate: same as archive (`event:delete`) — anyone who
+   * could archive can undo their own action. Org access enforced.
+   * `cancelled` events are NOT restorable: cancellation is a stronger
+   * end-state with downstream side effects (refunds, notifications).
+   */
+  async restore(eventId: string, user: AuthUser): Promise<{ eventId: string }> {
+    this.requirePermission(user, "event:delete");
+
+    // Pre-load the event for access + plan-limit checks. The
+    // authoritative state is re-read INSIDE the transaction below
+    // so a concurrent mutation between the pre-load and the commit
+    // can't slip through (T2.2 review fix — TOCTOU race on
+    // `status` between the pre-check and the write).
+    const preloaded = await eventRepository.findByIdOrThrow(eventId);
+    this.requireOrganizationAccess(user, preloaded.organizationId);
+
+    // T2.2 plan-limit fix — restoring brings the event back to a
+    // status that counts against `maxEvents`. An organizer who
+    // archived to free a slot, then created a new event, then
+    // restored the old one would otherwise overshoot the cap.
+    // Mirrors `create` / `clone` exactly.
+    const org = await organizationRepository.findByIdOrThrow(preloaded.organizationId);
+    await this.checkEventLimit(org);
+
+    const now = new Date().toISOString();
+    await db.runTransaction(async (tx) => {
+      const ref = db.collection(COLLECTIONS.EVENTS).doc(eventId);
+      const snap = await tx.get(ref);
+      if (!snap.exists) throw new NotFoundError("event", eventId);
+      const fresh = snap.data() as Event;
+
+      if (fresh.status !== "archived") {
+        throw new ValidationError(
+          "Seuls les événements archivés peuvent être restaurés.",
+        );
+      }
+      if (!fresh.archivedAt) {
+        // Legacy events archived before T2.2 don't carry the
+        // timestamp. Refuse rather than guess.
+        throw new ValidationError(
+          "Cet événement a été archivé avant l'introduction de la fenêtre de restauration. Veuillez le recréer manuellement si nécessaire.",
+        );
+      }
+      const archivedAtMs = new Date(fresh.archivedAt).getTime();
+      const ageMs = Date.now() - archivedAtMs;
+      const RESTORE_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+      if (ageMs > RESTORE_WINDOW_MS) {
+        const daysAgo = Math.floor(ageMs / (24 * 60 * 60 * 1000));
+        throw new ValidationError(
+          `Fenêtre de restauration dépassée (archivé il y a ${daysAgo} jours, limite 30 jours).`,
+        );
+      }
+
+      tx.update(ref, {
+        status: "draft",
+        archivedAt: null,
+        updatedAt: now,
+        updatedBy: user.uid,
+      });
+    });
+
+    eventBus.emit("event.restored", {
+      eventId,
+      organizationId: preloaded.organizationId,
+      actorId: user.uid,
+      requestId: getRequestId(),
+      timestamp: now,
+    });
+
+    return { eventId };
   }
 
   async unpublish(eventId: string, user: AuthUser): Promise<void> {

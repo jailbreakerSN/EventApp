@@ -7,6 +7,7 @@ This directory ships reusable skills that Claude Code (and other agents that sup
 | Skill                      | Source                                              | Purpose                                                                                                                                                                                                       |
 | -------------------------- | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `teranga-design-review`    | **first-party (this repo)**                         | **Primary entry point for all UX/UI work.** Wraps the four external skills below with Teranga's brand tokens, francophone-first constraints, and WCAG 2.1 AA floor.                                           |
+| `teranga-testing`          | **first-party (this repo)**                         | **Primary entry point for all test authoring.** Encodes the project's Vitest mock conventions (Firestore tx, eventBus, AuthUser factories, request context), the four mandatory test cases per service method, the snapshot-test policy, and templates for service / route / listener / hook / component tests. Auto-triggers on any test file edit. Pairs with the `test-coverage-reviewer` agent. |
 | `frontend-design`          | [anthropics/skills](https://github.com/anthropics/skills/tree/main/skills/frontend-design) | Design-thinking guardrails: pick a bold aesthetic direction, avoid generic AI-slop patterns. Used as a *lens* — its "avoid Inter" advice is **overridden** by `teranga-design-review`.                        |
 | `theme-factory`            | [anthropics/skills](https://github.com/anthropics/skills/tree/main/skills/theme-factory)   | 10 preset themes + on-the-fly theme generator. Used **only** to explore accent variants within the teranga palette.                                                                                           |
 | `webapp-testing`           | [anthropics/skills](https://github.com/anthropics/skills/tree/main/skills/webapp-testing)  | Automated browser-driven UX/UI testing (focus trap, responsive breakpoints, keyboard flow). Run after every structural change.                                                                                |
@@ -21,6 +22,7 @@ This directory ships reusable skills that Claude Code (and other agents that sup
    python3 .claude/skills/ui-ux-pro-max/.claude/skills/ui-ux-pro-max/scripts/search.py "<product type>" --design-system
    ```
 4. Verify changes with `webapp-testing` before marking work done.
+5. When Claude is **authoring or modifying tests**, the `teranga-testing` skill auto-triggers. It documents the project's Vitest conventions (factories, mock-tx, the four mandatory cases per service method, the snapshot-pin discipline). Pair it with the `test-coverage-reviewer` subagent (`.claude/agents/test-coverage-reviewer.md`) before pushing — the skill guides authoring, the agent enforces coverage.
 
 ## Pruning
 

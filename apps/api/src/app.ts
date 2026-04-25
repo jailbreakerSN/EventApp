@@ -12,6 +12,8 @@ import { runWithContext, enrichContext } from "@/context/request-context";
 import { registerNotificationListeners } from "@/events/listeners/notification.listener";
 import { registerNotificationDispatcherListeners } from "@/events/listeners/notification-dispatcher.listener";
 import { registerAuditListeners } from "@/events/listeners/audit.listener";
+import { registerSocAlertListeners } from "@/events/listeners/soc-alert.listener";
+import { flushFirestoreUsage } from "@/services/firestore-usage.service";
 import { registerEffectivePlanListeners } from "@/events/listeners/effective-plan.listener";
 import { registerEventDenormListeners } from "@/events/listeners/event-denorm.listener";
 import { captureError } from "@/observability/sentry";
@@ -128,38 +130,79 @@ export async function buildApp() {
     done();
   });
 
-  // ─── API Documentation (non-production) ──────────────────────────────────
-  if (config.NODE_ENV !== "production") {
-    await app.register(swagger, {
-      openapi: {
-        info: {
-          title: "Teranga API",
-          description:
-            "African Event Management Platform — REST API for events, registrations, badges, and users",
-          version: "0.1.0",
-          contact: { name: "Teranga Team", email: "dev@teranga.events" },
-        },
-        servers: [{ url: `http://localhost:${config.PORT}`, description: "Local dev" }],
-        components: {
-          securitySchemes: {
-            BearerAuth: {
-              type: "http",
-              scheme: "bearer",
-              bearerFormat: "Firebase JWT",
-              description: "Firebase ID token obtained via Firebase Auth SDK",
-            },
+  // ─── Sprint-3 T4.2 — Firestore read-volume flush ─────────────────────────
+  // Pushes the per-request `firestoreReads` counter into the
+  // `firestoreUsage/{orgId}_{day}` aggregate doc. Fire-and-forget:
+  // a write failure here must not block the response or surface to
+  // the caller, so we swallow + log to stderr only. Skipped when:
+  //   - the request had no organisation context (anonymous /
+  //     pre-auth probes)
+  //   - the request didn't actually read Firestore (rare — most
+  //     authed endpoints touch at least the user doc)
+  //   - the writer itself targets `firestoreUsage` (avoid an
+  //     infinite recursion of usage tracking the usage tracker)
+  app.addHook("onResponse", (_request, _reply, done) => {
+    void flushFirestoreUsage();
+    done();
+  });
+
+  // ─── API Documentation ──────────────────────────────────────────────────
+  // Sprint-4 T3.3 closure — Swagger always-on so the OpenAPI spec
+  // is reachable in every environment via the admin-gated
+  // `/v1/admin/openapi.json` endpoint. The Swagger UI itself
+  // (interactive docs at `/docs`) stays non-production only so
+  // public traffic can't enumerate the surface without an admin
+  // session.
+  await app.register(swagger, {
+    openapi: {
+      info: {
+        title: "Teranga API",
+        description:
+          "African Event Management Platform — REST API for events, registrations, badges, and users",
+        version: "0.1.0",
+        contact: { name: "Teranga Team", email: "dev@teranga.events" },
+      },
+      servers: [
+        config.NODE_ENV === "production"
+          ? { url: "https://api.teranga.events", description: "Production" }
+          : { url: `http://localhost:${config.PORT}`, description: "Local dev" },
+      ],
+      components: {
+        securitySchemes: {
+          BearerAuth: {
+            type: "http",
+            scheme: "bearer",
+            bearerFormat: "Firebase JWT",
+            description: "Firebase ID token obtained via Firebase Auth SDK",
+          },
+          ApiKeyAuth: {
+            type: "http",
+            scheme: "bearer",
+            bearerFormat: "terk_<env>_<40chars>_<4chksum>",
+            description:
+              "Organization API key (T2.3). Issued via /admin/organizations/[id]?tab=api-keys.",
           },
         },
-        tags: [
-          { name: "Events", description: "Event CRUD and publishing" },
-          { name: "Registrations", description: "Registration, check-in, and QR validation" },
-          { name: "Badges", description: "Badge generation, templates, and offline sync" },
-          { name: "Users", description: "User profiles and FCM tokens" },
-          { name: "Organizations", description: "Multi-tenant organization management" },
-        ],
       },
-    });
+      tags: [
+        { name: "Events", description: "Event CRUD and publishing" },
+        { name: "Registrations", description: "Registration, check-in, and QR validation" },
+        { name: "Badges", description: "Badge generation, templates, and offline sync" },
+        { name: "Users", description: "User profiles and FCM tokens" },
+        { name: "Organizations", description: "Multi-tenant organization management" },
+        { name: "Admin", description: "Platform administration — super-admin only" },
+        { name: "Coupons", description: "Plan-level coupons + redemption" },
+        { name: "Notifications", description: "Notification settings + delivery dashboard" },
+      ],
+    },
+  });
 
+  if (config.NODE_ENV !== "production") {
+    // Interactive UI — non-production only. Operators in
+    // production reach the OpenAPI spec via the admin-gated JSON
+    // endpoint and import it into Postman / Bruno / their own
+    // tooling. Avoids accidental enumeration of the API surface
+    // by a curious unauthenticated visitor.
     await app.register(swaggerUi, {
       routePrefix: "/docs",
       uiConfig: { deepLinking: true },
@@ -172,6 +215,9 @@ export async function buildApp() {
   registerAuditListeners();
   registerEffectivePlanListeners();
   registerEventDenormListeners();
+  // Sprint-3 T4.1 closure — fire-and-forget SOC alerts on critical
+  // audit actions. No-ops when SOC_ALERT_WEBHOOK_URL is unset.
+  registerSocAlertListeners();
 
   // ─── Routes ───────────────────────────────────────────────────────────────
   await registerRoutes(app);

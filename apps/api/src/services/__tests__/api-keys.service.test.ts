@@ -53,29 +53,41 @@ vi.mock("@/context/request-context", () => ({
   }),
 }));
 
-vi.mock("@/config/firebase", () => ({
-  db: {
-    collection: vi.fn((_name: string) => ({
+vi.mock("@/config/firebase", () => {
+  // Senior-review T-3 — `issue()` builds an active-keys query
+  // (`db.collection(...).where(...).where(...)`) and reads it inside
+  // the transaction. The mock collection therefore exposes a
+  // chainable `where()` returning the same builder so the query
+  // construction doesn't blow up.
+  const buildCollection = () => {
+    const builder: Record<string, unknown> = {
       doc: vi.fn((id?: string) => ({
         id: id ?? "new-id",
         create: hoisted.mockDocCreate,
         update: hoisted.mockDocUpdate,
         get: hoisted.mockDocGet,
       })),
-    })),
-    runTransaction: vi.fn(async (cb: (tx: unknown) => unknown) => {
-      const tx = {
-        get: hoisted.mockTxGet,
-        update: hoisted.mockTxUpdate,
-        create: hoisted.mockTxCreate,
-      };
-      return cb(tx);
-    }),
-  },
-  COLLECTIONS: {
-    API_KEYS: "apiKeys",
-  },
-}));
+      where: vi.fn(() => builder),
+    };
+    return builder;
+  };
+  return {
+    db: {
+      collection: vi.fn((_name: string) => buildCollection()),
+      runTransaction: vi.fn(async (cb: (tx: unknown) => unknown) => {
+        const tx = {
+          get: hoisted.mockTxGet,
+          update: hoisted.mockTxUpdate,
+          create: hoisted.mockTxCreate,
+        };
+        return cb(tx);
+      }),
+    },
+    COLLECTIONS: {
+      API_KEYS: "apiKeys",
+    },
+  };
+});
 
 vi.mock("@/config", () => ({
   config: {
@@ -94,6 +106,12 @@ beforeEach(() => {
   hoisted.mockDocCreate.mockResolvedValue(undefined);
   hoisted.mockDocUpdate.mockResolvedValue(undefined);
   hoisted.mockRecordUsage.mockResolvedValue(undefined);
+  // Senior-review T-3 — `issue()` now `tx.get(query)` to count active
+  // keys + `tx.create()` to write inside a single transaction. The
+  // sensible default is "no active keys" so happy-path tests don't
+  // need to wire a count themselves.
+  hoisted.mockTxGet.mockResolvedValue({ size: 0 });
+  hoisted.mockTxCreate.mockReturnValue(undefined);
 });
 
 // ─── Format / parse ────────────────────────────────────────────────────────
@@ -176,7 +194,7 @@ describe("ApiKeysService.issue", () => {
     expect(result.apiKey.organizationId).toBe("org-1");
     expect(result.apiKey.scopes).toEqual(["checkin:scan"]);
     expect(result.apiKey.keyHash).toHaveLength(64);
-    expect(hoisted.mockDocCreate).toHaveBeenCalledTimes(1);
+    expect(hoisted.mockTxCreate).toHaveBeenCalledTimes(1);
     expect(hoisted.mockBusEmit).toHaveBeenCalledWith(
       "api_key.created",
       expect.objectContaining({
@@ -202,7 +220,7 @@ describe("ApiKeysService.issue", () => {
         environment: "live",
       }),
     ).rejects.toBeInstanceOf(PlanLimitError);
-    expect(hoisted.mockDocCreate).not.toHaveBeenCalled();
+    expect(hoisted.mockTxCreate).not.toHaveBeenCalled();
   });
 
   it("refuses to issue for a different org (ForbiddenError)", async () => {
@@ -449,10 +467,10 @@ describe("ApiKeysService.issue — prefix collision retry", () => {
       code: 6, // gRPC ALREADY_EXISTS
     });
     let callCount = 0;
-    hoisted.mockDocCreate.mockImplementation(() => {
+    hoisted.mockTxCreate.mockImplementation(() => {
       callCount++;
-      if (callCount === 1) return Promise.reject(collisionErr);
-      return Promise.resolve(undefined);
+      if (callCount === 1) throw collisionErr;
+      return undefined;
     });
 
     const result = await apiKeysService.issue(admin, "org-1", {
@@ -462,7 +480,7 @@ describe("ApiKeysService.issue — prefix collision retry", () => {
     });
 
     // At least two create attempts.
-    expect(hoisted.mockDocCreate).toHaveBeenCalledTimes(2);
+    expect(hoisted.mockTxCreate).toHaveBeenCalledTimes(2);
 
     // The plaintext returned must hash (SHA-256) to the stored keyHash.
     const crypto = await import("node:crypto");
@@ -480,7 +498,9 @@ describe("ApiKeysService.issue — prefix collision retry", () => {
       buildOrgWithPlan("enterprise", { id: "org-1" }),
     );
     // Every attempt collides — should exhaust the retry budget.
-    hoisted.mockDocCreate.mockRejectedValue(new Error("ALREADY_EXISTS"));
+    hoisted.mockTxCreate.mockImplementation(() => {
+      throw new Error("ALREADY_EXISTS");
+    });
 
     await expect(
       apiKeysService.issue(admin, "org-1", {
@@ -490,7 +510,7 @@ describe("ApiKeysService.issue — prefix collision retry", () => {
       }),
     ).rejects.toThrow();
     // 3 attempts total (initial + 2 retries).
-    expect(hoisted.mockDocCreate).toHaveBeenCalledTimes(3);
+    expect(hoisted.mockTxCreate).toHaveBeenCalledTimes(3);
   });
 });
 

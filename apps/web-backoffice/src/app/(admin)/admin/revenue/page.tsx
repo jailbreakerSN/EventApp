@@ -45,6 +45,11 @@ interface CohortsSnapshot {
     signupCount: number;
     retainedNow: number;
     retentionPct: number;
+    monthsSinceSignup: number;
+  }>;
+  retentionCurve: Array<{
+    monthsSinceSignup: number;
+    retentionPct: number;
   }>;
   computedAt: string;
 }
@@ -125,12 +130,12 @@ export default function AdminRevenuePage() {
           <div className="grid gap-3 sm:grid-cols-3">
             <MetricCard
               icon={<Coins className="h-5 w-5 text-teranga-gold" aria-hidden="true" />}
-              label="MRR — Monthly recurring"
+              label="MRR — Revenu mensuel récurrent"
               value={fmtXof(data.mrrXof)}
             />
             <MetricCard
               icon={<TrendingUp className="h-5 w-5 text-teranga-green" aria-hidden="true" />}
-              label="ARR — Annual recurring (×12)"
+              label="ARR — Revenu annuel récurrent (×12)"
               value={fmtXof(data.arrXof)}
             />
             <MetricCard
@@ -172,7 +177,12 @@ export default function AdminRevenuePage() {
           </Card>
 
           <div className="text-right text-[10px] text-muted-foreground">
-            Instantané calculé le {new Date(data.computedAt).toLocaleString("fr-FR")}
+            Instantané calculé le{" "}
+            {new Date(data.computedAt).toLocaleString("fr-SN", {
+              dateStyle: "short",
+              timeStyle: "short",
+              timeZone: "Africa/Dakar",
+            })}
           </div>
 
           {/* A.3 closure — cohort retention curve */}
@@ -236,7 +246,7 @@ function CohortsSection({ cohorts }: { cohorts: CohortsSnapshot }) {
       <div className="grid gap-3 sm:grid-cols-3">
         <MetricCard
           icon={<Users className="h-5 w-5 text-teranga-navy" aria-hidden="true" />}
-          label="Signups (12 derniers mois)"
+          label="Inscriptions (12 derniers mois)"
           value={String(totalSignups)}
         />
         <MetricCard
@@ -259,7 +269,7 @@ function CohortsSection({ cohorts }: { cohorts: CohortsSnapshot }) {
             <thead className="border-b border-border bg-muted/30 text-left text-[11px] uppercase tracking-wider text-muted-foreground">
               <tr>
                 <th className="px-4 py-2">Cohorte</th>
-                <th className="px-4 py-2 text-right">Signups</th>
+                <th className="px-4 py-2 text-right">Inscriptions</th>
                 <th className="px-4 py-2 text-right">Encore actifs</th>
                 <th className="px-4 py-2 text-right">Rétention</th>
                 <th className="px-4 py-2">Courbe</th>
@@ -294,13 +304,73 @@ function CohortsSection({ cohorts }: { cohorts: CohortsSnapshot }) {
         </CardContent>
       </Card>
 
+      <RetentionCurveCard curve={cohorts.retentionCurve} />
+
       <div className="text-right text-[10px] text-muted-foreground">
         Calcul basé sur l&apos;état actuel des abonnements ({" "}
-        {new Date(cohorts.computedAt).toLocaleString("fr-FR")} ). Le mois courant
+        {new Date(cohorts.computedAt).toLocaleString("fr-SN", {
+          dateStyle: "short",
+          timeStyle: "short",
+          timeZone: "Africa/Dakar",
+        })}{" "}
+        ). Le mois courant
         retient mécaniquement 100% — utilisez la moyenne « hors mois courant » comme
         signal long-terme.
       </div>
     </>
+  );
+}
+
+// T2.4 closure — derived "average retention by months elapsed"
+// curve. Each cohort contributes its current diagonal data point
+// — the curve shows "after N months, X% of orgs still pay". Empty
+// gaps left blank so the chart visually telegraphs the limit.
+function RetentionCurveCard({ curve }: { curve: CohortsSnapshot["retentionCurve"] }) {
+  if (curve.length === 0) {
+    return null;
+  }
+  const max = 1; // Always 0..100% scale.
+  return (
+    <Card>
+      <CardContent className="space-y-3 p-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-semibold text-foreground">Courbe de rétention par âge</h3>
+            <p className="text-[11px] text-muted-foreground">
+              Pour chaque âge de cohorte (mois écoulés depuis l&apos;inscription), pourcentage moyen
+              d&apos;orgs encore actives. Calculé sur l&apos;état courant — pas une matrice mois-par-mois.
+            </p>
+          </div>
+        </div>
+        <div className="overflow-x-auto">
+          <div className="flex h-24 items-end gap-1" role="img" aria-label="Courbe de rétention par âge de cohorte">
+            {curve.map((p) => {
+              const height = (p.retentionPct / max) * 100;
+              const color =
+                p.retentionPct < 0.3
+                  ? "bg-red-500"
+                  : p.retentionPct < 0.6
+                    ? "bg-amber-500"
+                    : "bg-teranga-green";
+              return (
+                <div key={p.monthsSinceSignup} className="flex flex-1 flex-col items-center gap-1">
+                  <div className="flex h-full w-full items-end">
+                    <div
+                      className={`w-full ${color} transition-colors`}
+                      style={{ height: `${Math.max(2, height)}%` }}
+                      title={`${p.monthsSinceSignup} mois : ${Math.round(p.retentionPct * 100)}%`}
+                    />
+                  </div>
+                  <span className="text-[10px] font-mono text-muted-foreground">
+                    M+{p.monthsSinceSignup}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 

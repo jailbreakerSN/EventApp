@@ -187,6 +187,15 @@ export const EventSchema = z.object({
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
   publishedAt: z.string().datetime().nullable().optional(),
+  /**
+   * T2.2 closure — timestamp captured when an event is soft-deleted
+   * (`status: "archived"`). Used by the admin "Restaurer" flow to
+   * enforce a 30-day undo window, so a misclick can be reversed but
+   * a long-archived event can't be silently re-published months
+   * later. Null on never-archived events; cleared back to null on
+   * successful restore.
+   */
+  archivedAt: z.string().datetime().nullable().optional(),
   // ─── v4 QR signing key id ───────────────────────────────────────────────
   // Opaque 8-char base36 identifier used by HKDF as part of the per-event
   // HMAC key derivation: `key = HKDF(QR_MASTER, salt=eventId,

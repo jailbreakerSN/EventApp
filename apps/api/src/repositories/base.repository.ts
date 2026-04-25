@@ -8,6 +8,7 @@ import {
 } from "firebase-admin/firestore";
 import { db } from "@/config/firebase";
 import { NotFoundError } from "@/errors/app-error";
+import { trackFirestoreReads } from "@/context/request-context";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -46,9 +47,21 @@ export class BaseRepository<T extends { id: string }> {
   }
 
   // ── Read ──────────────────────────────────────────────────────────────
+  //
+  // Sprint-3 T4.2 — every read path here calls `trackFirestoreReads()`
+  // so the per-request counter on the request context reflects what
+  // actually hits Firestore. The counter is flushed after request
+  // completion to `firestoreUsage/{orgId}_{day}` for the cost
+  // dashboard. `aggregate count()` queries count as 1 read by
+  // Firestore billing semantics; document reads count per doc
+  // returned. We mirror that accounting so the dashboard maps onto
+  // the actual GCP bill. Ad-hoc `db.collection().get()` chains
+  // outside this base class also need to call `trackFirestoreReads`
+  // explicitly — see `admin.repository.ts` and the inline routes.
 
   async findById(id: string): Promise<T | null> {
     const doc = await this.collection.doc(id).get();
+    trackFirestoreReads(1);
     if (!doc.exists) return null;
     return { id: doc.id, ...doc.data() } as T;
   }
@@ -74,6 +87,7 @@ export class BaseRepository<T extends { id: string }> {
 
     // Count total (for pagination meta)
     const countSnap = await query.count().get();
+    trackFirestoreReads(1); // aggregate count() = 1 read
     const total = countSnap.data().count;
 
     // Apply ordering and pagination
@@ -83,6 +97,7 @@ export class BaseRepository<T extends { id: string }> {
       .limit(limit);
 
     const snapshot = await query.get();
+    trackFirestoreReads(snapshot.size);
     const data = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }) as T);
 
     return {
@@ -102,6 +117,7 @@ export class BaseRepository<T extends { id: string }> {
       query = query.where(filter.field, filter.op, filter.value);
     }
     const snapshot = await query.limit(1).get();
+    trackFirestoreReads(snapshot.size || 1); // empty result still bills 1
     if (snapshot.empty) return null;
     const doc = snapshot.docs[0];
     return { id: doc.id, ...doc.data() } as T;
@@ -109,6 +125,7 @@ export class BaseRepository<T extends { id: string }> {
 
   async exists(id: string): Promise<boolean> {
     const doc = await this.collection.doc(id).get();
+    trackFirestoreReads(1);
     return doc.exists;
   }
 

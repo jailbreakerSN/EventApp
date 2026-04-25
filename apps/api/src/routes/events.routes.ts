@@ -197,6 +197,30 @@ export const eventRoutes: FastifyPluginAsync = async (fastify) => {
     },
   );
 
+  // Sprint-2 S1 closure — cancel an entire recurring series in one
+  // atomic call. Requires `event:update` (same as per-event cancel).
+  fastify.post(
+    "/:eventId/cancel-series",
+    {
+      preHandler: [
+        authenticate,
+        requireEmailVerified,
+        requirePermission("event:update"),
+        validate({ params: ParamsWithEventId }),
+      ],
+      schema: {
+        tags: ["Events"],
+        summary: "Cancel a recurring event series (parent + every child)",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const { eventId } = request.params as z.infer<typeof ParamsWithEventId>;
+      const result = await eventService.cancelSeries(eventId, request.user!);
+      return reply.send({ success: true, data: result });
+    },
+  );
+
   // ─── Bulk-promote Waitlist (B2 — Phase 7+) ──────────────────────────────
   // Replaces the backoffice's per-registration loop with a single
   // round-trip. `count` caps at 100 (server-side guard); the typical
@@ -310,6 +334,32 @@ export const eventRoutes: FastifyPluginAsync = async (fastify) => {
       const { eventId } = request.params as z.infer<typeof ParamsWithEventId>;
       await eventService.archive(eventId, request.user!);
       return reply.status(204).send();
+    },
+  );
+
+  // T2.2 closure — undo a recent archive within the 30-day window.
+  // Returns the event to `status: "draft"` (organizer must
+  // re-publish consciously before participants see it again).
+  // Refuses cancellations (those have stronger downstream effects).
+  fastify.post<{ Params: z.infer<typeof ParamsWithEventId> }>(
+    "/:eventId/restore",
+    {
+      preHandler: [
+        authenticate,
+        requireEmailVerified,
+        requirePermission("event:delete"),
+        validate({ params: ParamsWithEventId }),
+      ],
+      schema: {
+        tags: ["Events"],
+        summary: "Restore a recently archived event (within 30 days)",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const { eventId } = request.params;
+      const data = await eventService.restore(eventId, request.user!);
+      return reply.send({ success: true, data });
     },
   );
 

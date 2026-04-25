@@ -10,6 +10,7 @@ import {
   useUpdateUserStatus,
 } from "@/hooks/use-admin";
 import { useBulkSelection } from "@/hooks/use-bulk-selection";
+import { useRowKeyboardNav } from "@/hooks/use-row-keyboard-nav";
 import { BulkActionBar } from "@/components/admin/bulk-action-bar";
 import { SavedViewsBar } from "@/components/admin/saved-views-bar";
 import { toast } from "sonner";
@@ -225,6 +226,14 @@ export default function AdminUsersPage() {
   const users: AdminUserRow[] = data?.data ?? [];
   const meta = data?.meta ?? { page: 1, limit, total: 0, totalPages: 1 };
 
+  // B2 — row keyboard nav (j/k/Enter/Esc/Home/End). The hook is
+  // idempotent on `items.length` change so we don't need to reset
+  // when the page slice rolls over.
+  const { activeIndex, setActiveIndex } = useRowKeyboardNav({
+    items: users,
+    onSelect: (u) => router.push(`/admin/users/${encodeURIComponent(u.uid)}`),
+  });
+
   const updateRoles = useUpdateUserRoles();
   const updateStatus = useUpdateUserStatus();
   const bulkUpdateStatus = useBulkUpdateUserStatus();
@@ -366,6 +375,8 @@ export default function AdminUsersPage() {
             // Whole-row click → user detail. Middle-click on the primary
             // column (displayName Link below) opens in a new tab.
             onRowClick={(u) => router.push(`/admin/users/${encodeURIComponent(u.uid)}`)}
+            activeRowIndex={activeIndex}
+            onRowHover={setActiveIndex}
             columns={
               [
                 {

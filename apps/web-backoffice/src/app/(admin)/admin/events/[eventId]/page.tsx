@@ -21,6 +21,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Badge,
   Card,
@@ -41,9 +42,11 @@ import {
   Hourglass,
   CheckCircle2,
   XCircle,
+  RotateCcw,
+  Ban,
 } from "lucide-react";
 import type { Event } from "@teranga/shared-types";
-import { eventsApi } from "@/lib/api-client";
+import { eventsApi, registrationsApi } from "@/lib/api-client";
 import { EntityDetailLayout, type EntityTab } from "@/components/admin/entity-detail-layout";
 import { useErrorHandler } from "@/hooks/use-error-handler";
 import { useAdminEvents, useAdminEventWaitlistHealth } from "@/hooks/use-admin";
@@ -206,6 +209,61 @@ export default function AdminEventDetailPage() {
             : undefined,
           onClick: isParent ? undefined : () => window.open(`/events/${event.slug}`, "_blank"),
         },
+        // T2.2 closure — restore action only surfaces on archived
+        // events. Server-side enforces the 30-day window + flips
+        // the status to draft (not the previous published state).
+        ...(event.status === "archived"
+          ? [
+              {
+                id: "restore",
+                label: "Restaurer",
+                icon: <RotateCcw className="h-4 w-4" aria-hidden="true" />,
+                onClick: async () => {
+                  if (
+                    !window.confirm(
+                      "Restaurer cet événement ? Il reviendra en brouillon — vous devrez le publier à nouveau pour qu'il soit visible.",
+                    )
+                  ) {
+                    return;
+                  }
+                  try {
+                    await eventsApi.restore(event.id);
+                    await fetchEvent();
+                  } catch (err) {
+                    setError(resolve(err).description);
+                  }
+                },
+              },
+            ]
+          : []),
+        // Sprint-2 S1 closure — bulk cancel an entire recurring
+        // series. Only surfaces on the parent anchor and only
+        // when the parent isn't already cancelled.
+        ...(isParent && event.status !== "cancelled"
+          ? [
+              {
+                id: "cancel-series",
+                label: "Annuler la série",
+                icon: <Ban className="h-4 w-4" aria-hidden="true" />,
+                variant: "destructive" as const,
+                onClick: async () => {
+                  if (
+                    !window.confirm(
+                      "Annuler la série entière ? Le parent + chaque occurrence non encore annulée seront passés à « cancelled ». Action atomique, irréversible.",
+                    )
+                  ) {
+                    return;
+                  }
+                  try {
+                    await eventsApi.cancelSeries(event.id);
+                    await fetchEvent();
+                  } catch (err) {
+                    setError(resolve(err).description);
+                  }
+                },
+              },
+            ]
+          : []),
       ]}
       tabs={tabs}
     />
@@ -443,6 +501,10 @@ function WaitlistTab({ eventId }: { eventId: string }) {
         </Card>
       </div>
 
+      {/* S2 closure — actionable bulk-promote button. Visible only
+          when there's something to drain. */}
+      {health.waitlistedCount > 0 && <WaitlistBulkPromote eventId={eventId} pending={health.waitlistedCount} />}
+
       <div className="grid gap-3 md:grid-cols-2">
         <DeepLinkCard
           icon={<CheckCircle2 className="h-8 w-8" aria-hidden="true" />}
@@ -460,6 +522,112 @@ function WaitlistTab({ eventId }: { eventId: string }) {
         />
       </div>
     </div>
+  );
+}
+
+// Sprint-2 S2 closure — admin-side bulk-promote trigger. The
+// underlying endpoint (`POST /v1/events/:id/waitlist/promote-batch`)
+// caps `count` at 25 server-side; we surface a slider 1..25 so the
+// operator chooses based on remaining capacity. Status is fetched
+// from the parent's `useAdminEventWaitlistHealth` cache and is
+// invalidated on success so the cards refresh automatically.
+function WaitlistBulkPromote({
+  eventId,
+  pending,
+}: {
+  eventId: string;
+  pending: number;
+}) {
+  const [count, setCount] = useState(Math.min(10, pending));
+  const [submitting, setSubmitting] = useState(false);
+  const [result, setResult] = useState<{ promoted: number; skipped: number } | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const qc = useQueryClient();
+  const { resolve } = useErrorHandler();
+
+  const handleSubmit = async () => {
+    if (
+      !window.confirm(
+        `Promouvoir les ${count} premières entrées de la liste d'attente vers « confirmé » ? Action irréversible.`,
+      )
+    ) {
+      return;
+    }
+    setSubmitError(null);
+    setSubmitting(true);
+    try {
+      const res = await registrationsApi.bulkPromoteWaitlist(eventId, { count });
+      setResult({ promoted: res.data.promotedCount, skipped: res.data.skipped });
+      // Refresh the health card grid so the operator sees the new
+      // state without a manual reload.
+      qc.invalidateQueries({ queryKey: ["admin", "events", eventId, "waitlist-health"] });
+    } catch (err) {
+      setSubmitError(resolve(err).description);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Card>
+      <CardContent className="space-y-3 p-4">
+        <div>
+          <div className="text-sm font-semibold text-foreground">
+            Promotion en masse depuis la liste d&apos;attente
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Capacité — {pending} entrée{pending > 1 ? "s" : ""} en attente. Le serveur plafonne
+            chaque appel à 25 promotions pour éviter une rafale d&apos;e-mails de notification.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <label htmlFor="bulk-promote-count" className="text-xs font-medium text-foreground">
+            Nombre :
+          </label>
+          <input
+            id="bulk-promote-count"
+            type="number"
+            min={1}
+            max={Math.min(25, pending)}
+            value={count}
+            onChange={(e) => setCount(Math.max(1, Math.min(25, Number(e.target.value) || 1)))}
+            className="w-20 rounded-md border border-border bg-background px-2 py-1 text-sm"
+            disabled={submitting}
+          />
+          <button
+            type="button"
+            onClick={() => void handleSubmit()}
+            disabled={submitting || count < 1}
+            className="inline-flex items-center gap-1.5 rounded-md bg-teranga-gold px-3 py-1.5 text-sm font-medium text-white hover:bg-teranga-gold/90 disabled:opacity-50"
+          >
+            <CheckCircle2 className="h-4 w-4" aria-hidden="true" />
+            {submitting ? "Promotion en cours…" : `Promouvoir ${count}`}
+          </button>
+        </div>
+        {result && (
+          <div className="rounded-md border border-teranga-green/40 bg-teranga-green/10 p-2 text-xs">
+            <strong className="text-teranga-green">{result.promoted}</strong> promotion
+            {result.promoted > 1 ? "s" : ""} effectuée
+            {result.promoted > 1 ? "s" : ""}
+            {result.skipped > 0 && (
+              <>
+                {" "}— <strong>{result.skipped}</strong> entrée{result.skipped > 1 ? "s" : ""} ignorée
+                {result.skipped > 1 ? "s" : ""} (race ou tier saturé)
+              </>
+            )}
+            .
+          </div>
+        )}
+        {submitError && (
+          <InlineErrorBanner
+            severity="destructive"
+            kicker="— Erreur"
+            title="La promotion en masse a échoué"
+            description={submitError}
+          />
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

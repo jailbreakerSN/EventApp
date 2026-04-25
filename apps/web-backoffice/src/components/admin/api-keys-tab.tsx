@@ -40,17 +40,22 @@ import {
   Ban,
   Plus,
   AlertTriangle,
+  History,
+  Activity,
 } from "lucide-react";
 import {
   type ApiKey,
   type ApiKeyScope,
   ApiKeyScopeSchema,
 } from "@teranga/shared-types";
+import Link from "next/link";
 import {
   useOrgApiKeys,
   useCreateOrgApiKey,
   useRotateOrgApiKey,
   useRevokeOrgApiKey,
+  useAdminAuditLogs,
+  useOrgApiKeyUsage,
 } from "@/hooks/use-admin";
 import { useErrorHandler } from "@/hooks/use-error-handler";
 
@@ -167,6 +172,10 @@ export function ApiKeysTab({ orgId, orgName }: { orgId: string; orgName: string 
         </div>
       )}
 
+      {/* B4 closure — recent api_key.* audit activity for this org. */}
+      <ApiKeyActivityLog orgId={orgId} />
+
+
       {/* Plaintext secret modal — visible exactly once after issue/rotate */}
       {newSecret && (
         <NewKeySecretModal
@@ -175,6 +184,98 @@ export function ApiKeysTab({ orgId, orgName }: { orgId: string; orgName: string 
           rotationOf={newSecret.rotationOf}
           onClose={() => setNewSecret(null)}
         />
+      )}
+    </div>
+  );
+}
+
+// ─── B4 closure — recent activity (api_key.* audit rows) ────────────────
+
+const ACTIVITY_LABEL: Record<string, string> = {
+  "api_key.created": "Émission",
+  "api_key.rotated": "Rotation",
+  "api_key.revoked": "Révocation",
+  "api_key.verified": "Vérification (auth)",
+};
+
+function ApiKeyActivityLog({ orgId }: { orgId: string }) {
+  // Pull the latest api_key.* audit rows for this org. Since the
+  // audit query schema accepts `organizationId` we get a server-side
+  // filter — no client-side trimming needed. Limit kept low (10)
+  // because the row already deep-links to the full audit page if
+  // an operator needs the entire history.
+  const { data, isLoading } = useAdminAuditLogs({
+    organizationId: orgId,
+    resourceType: "api_key",
+    limit: 10,
+    page: 1,
+  });
+
+  const rows = data?.data ?? [];
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <History className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+          <h3 className="text-sm font-semibold text-foreground">Activité récente</h3>
+        </div>
+        <Link
+          href={`/admin/audit?resourceType=api_key&organizationId=${encodeURIComponent(orgId)}`}
+          className="text-xs font-medium text-teranga-gold hover:underline"
+        >
+          Voir tout l&apos;audit →
+        </Link>
+      </div>
+
+      {isLoading && (
+        <div className="rounded-xl border border-border p-4 text-xs text-muted-foreground">
+          Chargement de l&apos;activité…
+        </div>
+      )}
+
+      {!isLoading && rows.length === 0 && (
+        <div className="rounded-xl border border-border bg-muted/30 p-4 text-center text-xs text-muted-foreground">
+          Aucune activité récente sur les clés API de cette organisation.
+        </div>
+      )}
+
+      {!isLoading && rows.length > 0 && (
+        <div className="divide-y divide-border rounded-xl border border-border">
+          {rows.map((row) => {
+            const label = ACTIVITY_LABEL[row.action] ?? row.action;
+            const actor =
+              (row as unknown as { actorDisplayName?: string }).actorDisplayName ??
+              row.actorId;
+            return (
+              <div key={row.id} className="flex items-start justify-between gap-3 p-3 text-xs">
+                <div className="min-w-0">
+                  <div className="font-medium text-foreground">{label}</div>
+                  <div className="mt-0.5 truncate text-muted-foreground">
+                    Acteur :{" "}
+                    <code className="font-mono">{actor}</code>
+                    {row.resourceId && (
+                      <>
+                        {" · "}clé{" "}
+                        <code className="font-mono">{row.resourceId.slice(0, 12)}…</code>
+                      </>
+                    )}
+                  </div>
+                </div>
+                <time
+                  dateTime={row.timestamp}
+                  className="shrink-0 text-[11px] text-muted-foreground"
+                >
+                  {new Date(row.timestamp).toLocaleString("fr-SN", {
+                    dateStyle: "short",
+                    timeStyle: "short",
+                    timeZone: "Africa/Dakar",
+                  })}
+                </time>
+              </div>
+            );
+          })}
+        </div>
       )}
     </div>
   );
@@ -307,7 +408,7 @@ function CreateApiKeyForm({
                       : "rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium text-muted-foreground hover:bg-muted"
                   }
                 >
-                  {env === "live" ? "Production (live)" : "Test"}
+                  {env === "live" ? "Production" : "Test"}
                 </button>
               ))}
             </div>
@@ -364,6 +465,7 @@ function ApiKeyRow({
     revokedApiKeyId: string;
   }) => void;
 }) {
+  const [showUsage, setShowUsage] = useState(false);
   const rotate = useRotateOrgApiKey(orgId);
   const revoke = useRevokeOrgApiKey(orgId);
   const { resolve } = useErrorHandler();
@@ -423,10 +525,11 @@ function ApiKeyRow({
             <span aria-hidden="true">·</span>
             <span>
               Créée le{" "}
-              {new Date(apiKey.createdAt).toLocaleDateString("fr-FR", {
+              {new Date(apiKey.createdAt).toLocaleDateString("fr-SN", {
                 day: "2-digit",
                 month: "short",
                 year: "numeric",
+                timeZone: "Africa/Dakar",
               })}
             </span>
             {apiKey.lastUsedAt && (
@@ -434,9 +537,10 @@ function ApiKeyRow({
                 <span aria-hidden="true">·</span>
                 <span>
                   Dernière utilisation :{" "}
-                  {new Date(apiKey.lastUsedAt).toLocaleString("fr-FR", {
+                  {new Date(apiKey.lastUsedAt).toLocaleString("fr-SN", {
                     dateStyle: "short",
                     timeStyle: "short",
+                    timeZone: "Africa/Dakar",
                   })}
                 </span>
               </>
@@ -459,40 +563,58 @@ function ApiKeyRow({
             <div className="mt-1 text-[11px] text-muted-foreground">
               Révoquée le{" "}
               {apiKey.revokedAt &&
-                new Date(apiKey.revokedAt).toLocaleString("fr-FR", {
+                new Date(apiKey.revokedAt).toLocaleString("fr-SN", {
                   dateStyle: "short",
                   timeStyle: "short",
+                  timeZone: "Africa/Dakar",
                 })}{" "}
               · « {apiKey.revocationReason} »
             </div>
           )}
         </div>
 
-        {isActive && (
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => void handleRotate()}
-              disabled={rotate.isPending || revoke.isPending}
-              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-muted-foreground hover:bg-muted disabled:opacity-50"
-              aria-label={`Rotation de la clé ${apiKey.name}`}
-            >
-              <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
-              Rotation
-            </button>
-            <button
-              type="button"
-              onClick={() => void handleRevoke()}
-              disabled={rotate.isPending || revoke.isPending}
-              className="inline-flex items-center gap-1.5 rounded-md border border-red-300 bg-background px-2.5 py-1 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 dark:border-red-900/60 dark:hover:bg-red-950/30"
-              aria-label={`Révoquer la clé ${apiKey.name}`}
-            >
-              <Ban className="h-3.5 w-3.5" aria-hidden="true" />
-              Révoquer
-            </button>
-          </div>
-        )}
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => setShowUsage((v) => !v)}
+            aria-pressed={showUsage}
+            className={
+              showUsage
+                ? "inline-flex items-center gap-1.5 rounded-md border border-teranga-gold bg-teranga-gold/10 px-2.5 py-1 text-xs font-medium text-teranga-gold"
+                : "inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-muted-foreground hover:bg-muted"
+            }
+            aria-label={`Voir les statistiques d'usage de la clé ${apiKey.name}`}
+          >
+            <Activity className="h-3.5 w-3.5" aria-hidden="true" />
+            Statistiques
+          </button>
+          {isActive && (
+            <>
+              <button
+                type="button"
+                onClick={() => void handleRotate()}
+                disabled={rotate.isPending || revoke.isPending}
+                className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-2.5 py-1 text-xs font-medium text-muted-foreground hover:bg-muted disabled:opacity-50"
+                aria-label={`Rotation de la clé ${apiKey.name}`}
+              >
+                <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
+                Rotation
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleRevoke()}
+                disabled={rotate.isPending || revoke.isPending}
+                className="inline-flex items-center gap-1.5 rounded-md border border-red-300 bg-background px-2.5 py-1 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 dark:border-red-900/60 dark:hover:bg-red-950/30"
+                aria-label={`Révoquer la clé ${apiKey.name}`}
+              >
+                <Ban className="h-3.5 w-3.5" aria-hidden="true" />
+                Révoquer
+              </button>
+            </>
+          )}
+        </div>
       </div>
+      {showUsage && <ApiKeyUsageChart orgId={orgId} apiKeyId={apiKey.id} />}
       {actionError && (
         <InlineErrorBanner
           severity="destructive"
@@ -501,6 +623,68 @@ function ApiKeyRow({
           description={actionError}
         />
       )}
+    </div>
+  );
+}
+
+// T2.3 closure — 30-day request-volume sparkline. Pure CSS bars, no
+// chart library — keeps the bundle lean and the sparkline reads
+// well at 200×40 inside a row.
+function ApiKeyUsageChart({ orgId, apiKeyId }: { orgId: string; apiKeyId: string }) {
+  const { data, isLoading, isError, error } = useOrgApiKeyUsage(orgId, apiKeyId);
+
+  if (isLoading) {
+    return (
+      <div className="rounded-md border border-border bg-muted/20 p-3 text-[11px] text-muted-foreground">
+        Chargement des statistiques d&apos;usage…
+      </div>
+    );
+  }
+  if (isError) {
+    return (
+      <InlineErrorBanner
+        severity="destructive"
+        kicker="— Erreur"
+        title="Impossible de charger les statistiques"
+        description={error instanceof Error ? error.message : "Erreur inconnue"}
+      />
+    );
+  }
+  const usage = data?.data;
+  if (!usage) return null;
+
+  const max = Math.max(1, ...usage.daily.map((d) => d.count));
+  return (
+    <div className="rounded-md border border-border bg-muted/10 p-3">
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-[11px]">
+        <div className="font-medium text-foreground">
+          Usage sur 30 jours :{" "}
+          <span className="font-mono">{usage.totalLast30d.toLocaleString("fr-SN")}</span>{" "}
+          requêtes vérifiées
+        </div>
+        <div className="text-muted-foreground">
+          Borne basse — un événement <code className="font-mono">api_key.verified</code> n&apos;est
+          consigné qu&apos;une fois par heure pour un même couple (clé, IP, agent).
+        </div>
+      </div>
+      <div
+        className="flex h-10 items-end gap-px"
+        role="img"
+        aria-label={`Histogramme des requêtes des 30 derniers jours, total ${usage.totalLast30d}`}
+      >
+        {usage.daily.map((d) => (
+          <div
+            key={d.day}
+            className="flex-1 bg-teranga-gold/60 transition-colors hover:bg-teranga-gold"
+            style={{ height: `${Math.max(2, (d.count / max) * 100)}%` }}
+            title={`${d.day} : ${d.count} requête${d.count > 1 ? "s" : ""}`}
+          />
+        ))}
+      </div>
+      <div className="mt-1 flex justify-between text-[10px] text-muted-foreground">
+        <span>{usage.daily[0]?.day}</span>
+        <span>{usage.daily[usage.daily.length - 1]?.day}</span>
+      </div>
     </div>
   );
 }

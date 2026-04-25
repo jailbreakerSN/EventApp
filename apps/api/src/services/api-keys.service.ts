@@ -193,77 +193,86 @@ export class ApiKeysService extends BaseService {
     const org = await organizationRepository.findByIdOrThrow(organizationId);
     this.requireApiAccess(org);
 
-    // Security-review P1 (T2.3) — per-org ceiling on active keys.
-    // Without this an org could mint keys in a tight loop, evading
-    // revocation audits and filling the `apiKeys` collection with
-    // hashes whose plaintexts nobody holds. 20 is generous enough
-    // to cover: CRM integration + scanner fleet + CI test keys +
-    // contingency spares; if an operator legitimately needs more
-    // they must revoke stale ones first, which is the right
-    // pressure toward key hygiene.
-    const active = await apiKeysRepository.countActive(organizationId);
-    if (active >= MAX_ACTIVE_KEYS_PER_ORG) {
-      throw new PlanLimitError(
-        `Plafond de ${MAX_ACTIVE_KEYS_PER_ORG} clés actives atteint. Révoquez les clés inutilisées avant d'en émettre une nouvelle.`,
-        {
-          feature: "apiAccess",
-          plan: org.effectivePlanKey ?? org.plan,
-          current: active,
-          max: MAX_ACTIVE_KEYS_PER_ORG,
-        },
-      );
-    }
-
-    const material = generateKeyMaterial(request.environment);
-    const now = new Date().toISOString();
-    const doc: ApiKey = {
-      id: material.hashPrefix,
-      organizationId,
-      name: request.name,
-      hashPrefix: material.hashPrefix,
-      keyHash: material.keyHash,
-      scopes: request.scopes,
-      environment: request.environment,
-      status: "active",
-      createdBy: user.uid,
-      createdAt: now,
-      updatedAt: now,
-      lastUsedAt: null,
-      lastUsedIp: null,
-      revokedAt: null,
-      revokedBy: null,
-      revocationReason: null,
-    };
-
-    // Write via createWithId — fails if the prefix collides (1 in 62^10
-    // ≈ 1 in 8e17, but we handle the error gracefully anyway).
+    // Senior-review T-3 — per-org ceiling on active keys. The
+    // count + create MUST be transactional or two concurrent
+    // issuances at `active = MAX − 1` both pass the gate and write,
+    // landing the org at MAX + 1 active keys. The ceiling is a
+    // security control (key hygiene + audit lineage), not a
+    // cosmetic cap, so we close the race here.
     //
-    // SENIOR-REVIEW FIX — the `plaintext` we hand back MUST match the
-    // `keyHash` we persist. The previous implementation mutated the
-    // outer `material` object on retry, which was correct but fragile
-    // (a future refactor renaming `material` to `const` would silently
-    // brick the key). We now track the "winning" material in a mutable
-    // local and swap it atomically with the doc fields on each retry.
-    let persisted = material;
+    // Firestore `.count()` aggregations cannot run inside a
+    // transaction, so we `tx.get(query)` and count `.size` in
+    // memory — same pattern as
+    // `assertCapNotExceededTx` in `plan-coupon.service.ts`.
+    //
+    // Prefix-collision retry (1 in 62^10 ≈ 1 in 8e17) is folded
+    // into the same loop so a collision triggers fresh material +
+    // fresh tx, and the cap re-check catches any concurrent issuance
+    // that may have landed during the previous tx attempt.
+    const now = new Date().toISOString();
     const MAX_PREFIX_COLLISION_RETRIES = 2;
+    let persisted = generateKeyMaterial(request.environment);
+    let doc: ApiKey | undefined;
     let lastErr: unknown = undefined;
+    const planForError = org.effectivePlanKey ?? org.plan;
     for (let attempt = 0; attempt <= MAX_PREFIX_COLLISION_RETRIES; attempt++) {
+      const candidateMaterial =
+        attempt === 0 ? persisted : generateKeyMaterial(request.environment);
+      const candidateDoc: ApiKey = {
+        id: candidateMaterial.hashPrefix,
+        organizationId,
+        name: request.name,
+        hashPrefix: candidateMaterial.hashPrefix,
+        keyHash: candidateMaterial.keyHash,
+        scopes: request.scopes,
+        environment: request.environment,
+        status: "active",
+        createdBy: user.uid,
+        createdAt: now,
+        updatedAt: now,
+        lastUsedAt: null,
+        lastUsedIp: null,
+        revokedAt: null,
+        revokedBy: null,
+        revocationReason: null,
+      };
       try {
-        await db.collection(COLLECTIONS.API_KEYS).doc(doc.id).create(doc);
+        await db.runTransaction(async (tx) => {
+          const activeQ = db
+            .collection(COLLECTIONS.API_KEYS)
+            .where("organizationId", "==", organizationId)
+            .where("status", "==", "active");
+          const activeSnap = await tx.get(activeQ);
+          if (activeSnap.size >= MAX_ACTIVE_KEYS_PER_ORG) {
+            throw new PlanLimitError(
+              `Plafond de ${MAX_ACTIVE_KEYS_PER_ORG} clés actives atteint. Révoquez les clés inutilisées avant d'en émettre une nouvelle.`,
+              {
+                feature: "apiAccess",
+                plan: planForError,
+                current: activeSnap.size,
+                max: MAX_ACTIVE_KEYS_PER_ORG,
+              },
+            );
+          }
+          const ref = db.collection(COLLECTIONS.API_KEYS).doc(candidateDoc.id);
+          tx.create(ref, candidateDoc);
+        });
+        persisted = candidateMaterial;
+        doc = candidateDoc;
         lastErr = undefined;
         break;
       } catch (err) {
+        // Plan-limit error: don't retry — propagate immediately so the
+        // operator sees the actionable PlanLimitError instead of an
+        // opaque INTERNAL_ERROR after exhausting retries.
+        if (err instanceof PlanLimitError) throw err;
         lastErr = err;
         if (attempt === MAX_PREFIX_COLLISION_RETRIES) break;
-        // Mint fresh material; keep `doc` and `persisted` in lockstep.
-        const fresh = generateKeyMaterial(request.environment);
-        doc.id = fresh.hashPrefix;
-        doc.hashPrefix = fresh.hashPrefix;
-        doc.keyHash = fresh.keyHash;
-        persisted = fresh;
+        // Otherwise: prefix collision (or a transient tx contention).
+        // Loop with fresh material on the next iteration.
       }
     }
-    if (lastErr !== undefined) {
+    if (lastErr !== undefined || !doc) {
       throw new AppError({
         message: "Impossible de générer une clé unique — réessayez.",
         code: ERROR_CODES.INTERNAL_ERROR,
@@ -314,6 +323,84 @@ export class ApiKeysService extends BaseService {
       throw new NotFoundError("apiKey", apiKeyId);
     }
     return { ...row, keyHash: "" };
+  }
+
+  /**
+   * T2.3 closure — request-volume analytics for one API key.
+   *
+   * Reconstructs a daily-bucket histogram from the `api_key.verified`
+   * audit rows for this key over the last 30 days. The `verified`
+   * event itself is per-pod throttled (see `VERIFY_THROTTLE_MS`) so
+   * the count under-reports raw verifications by a constant factor
+   * — but the SHAPE (which days had traffic, which were quiet) is
+   * preserved, which is what an operator chasing an anomaly cares
+   * about. The throttle factor is documented in the response so the
+   * UI can warn.
+   *
+   * Permission: `organization:read` + `requireOrganizationAccess`
+   * (super-admin gets cross-org via the admin bypass).
+   */
+  async getUsageAnalytics(
+    user: AuthUser,
+    organizationId: string,
+    apiKeyId: string,
+  ): Promise<{
+    apiKeyId: string;
+    daily: Array<{ day: string; count: number }>;
+    totalLast30d: number;
+    /**
+     * `api_key.verified` is throttled per-pod to once per
+     * (key, ipHash, uaHash) per hour. Surface this so the UI can
+     * label the count as a lower bound rather than an exact total.
+     */
+    throttleWindowMs: number;
+  }> {
+    this.requireOrganizationAccess(user, organizationId);
+    this.requirePermission(user, "organization:read");
+
+    // Existence check + cross-org guard — reuses `get` to keep the
+    // 404 shape identical.
+    await this.get(user, organizationId, apiKeyId);
+
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    const snap = await db
+      .collection(COLLECTIONS.AUDIT_LOGS)
+      .where("action", "==", "api_key.verified")
+      .where("resourceId", "==", apiKeyId)
+      .where("timestamp", ">=", thirtyDaysAgo)
+      .select("timestamp")
+      .limit(2000)
+      .get();
+
+    // Bucket by Africa/Dakar day (UTC offset 0 ─ Senegal observes
+    // no DST). Slice the ISO string at index 10 ("YYYY-MM-DD").
+    const counts = new Map<string, number>();
+    for (const doc of snap.docs) {
+      const row = doc.data() as { timestamp?: string };
+      if (!row.timestamp) continue;
+      const day = row.timestamp.slice(0, 10);
+      counts.set(day, (counts.get(day) ?? 0) + 1);
+    }
+
+    // Emit one row per day in the lookback window so the sparkline
+    // axis stays evenly spaced even on a quiet key.
+    const daily: Array<{ day: string; count: number }> = [];
+    let total = 0;
+    const now = Date.now();
+    for (let offset = 29; offset >= 0; offset -= 1) {
+      const dayDate = new Date(now - offset * 24 * 60 * 60 * 1000);
+      const day = dayDate.toISOString().slice(0, 10);
+      const count = counts.get(day) ?? 0;
+      daily.push({ day, count });
+      total += count;
+    }
+
+    return {
+      apiKeyId,
+      daily,
+      totalLast30d: total,
+      throttleWindowMs: 60 * 60 * 1000,
+    };
   }
 
   /**

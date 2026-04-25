@@ -1,0 +1,11 @@
+{
+  "lifecycle": {
+    "rule": [
+      {
+        "comment": "Sprint-3 T4.3 — auto-purge Firestore exports older than 90 days. Daily backups + ad-hoc pre-migration backups together stay well under 90 days of useful retention; older exports are stale (schema drift) and cost money to keep.",
+        "action": { "type": "Delete" },
+        "condition": { "age": 90 }
+      }
+    ]
+  }
+}

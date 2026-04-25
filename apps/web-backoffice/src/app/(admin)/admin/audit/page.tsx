@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { CsvExportButton } from "@/components/admin/csv-export-button";
 import { SavedViewsBar } from "@/components/admin/saved-views-bar";
+import { AuditDiffView } from "@/components/admin/audit-diff-view";
 import {
   Card,
   CardContent,
@@ -368,10 +369,21 @@ export default function AdminAuditPage() {
                       const resourceType = (log.resourceType as string) ?? "";
                       const resourceId = (log.resourceId as string) ?? "";
                       const url = getResourceUrl(resourceType, resourceId);
+                      // B5 closure — show a diff toggle on rows whose
+                      // `details` payload is structured. The toggle
+                      // is only rendered when there's something to
+                      // unfold, so simple events (e.g. `*.created`
+                      // with no details) don't get a useless caret.
+                      const details = log.details;
+                      const hasDetails =
+                        details != null &&
+                        typeof details === "object" &&
+                        Object.keys(details as Record<string, unknown>).length > 0;
+                      const rowKey = (log.id as string) ?? `${action}-${log.timestamp}`;
                       return (
+                        <div key={rowKey} className="px-4 py-2.5 text-sm">
                         <div
-                          key={(log.id as string) ?? `${action}-${log.timestamp}`}
-                          className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 text-sm"
+                          className="flex flex-wrap items-center justify-between gap-3"
                         >
                           <div className="flex items-center gap-2">
                             <Badge variant={getActionStyle(action).variant}>{action}</Badge>
@@ -407,6 +419,18 @@ export default function AdminAuditPage() {
                               minute: "2-digit",
                             })}
                           </time>
+                        </div>
+                        {hasDetails && (
+                          <details className="mt-2 group">
+                            <summary className="cursor-pointer select-none text-[11px] font-medium text-muted-foreground hover:text-foreground">
+                              <span className="group-open:hidden">Voir le détail ▸</span>
+                              <span className="hidden group-open:inline">Masquer le détail ▾</span>
+                            </summary>
+                            <div className="mt-2">
+                              <AuditDiffView details={details} action={action} />
+                            </div>
+                          </details>
+                        )}
                         </div>
                       );
                     })}
