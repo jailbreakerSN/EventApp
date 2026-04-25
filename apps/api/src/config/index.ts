@@ -18,7 +18,30 @@ const envSchema = z.object({
       .filter(Boolean),
   ),
 
+  // Rate limiting — see ADR-0015 (composite key spaces).
+  //
+  // The composite key generator (apps/api/src/middlewares/rate-limit.middleware.ts)
+  // returns `apikey:<hashPrefix>` / `user:<uid>` / `ip:<ip>` based on the
+  // request's auth state. Each key space gets its own per-window budget:
+  //
+  //   - `apikey:*` → 600 req/min — integrators legitimately make hundreds
+  //     of calls/min; tighter bucket would throttle them into uselessness.
+  //   - `user:*`   → 120 req/min — authenticated humans on the web/mobile
+  //     app; absorbs SSR + client-side bursts.
+  //   - `ip:*`     →  30 req/min — unauthenticated traffic (login, signup,
+  //     public listing). Tight to slow distributed brute-force.
+  //
+  // Per-route stricter overrides on `/auth/*` + `/checkin/scan` are
+  // configured at the route level via `config.rateLimit`.
+  //
+  // `RATE_LIMIT_MAX` is kept for backward compat (older deploy scripts)
+  // but is no longer the canonical knob — set the three space-specific
+  // vars instead. Removed cleanly in a follow-up once all environments
+  // have migrated.
   RATE_LIMIT_MAX: z.coerce.number().default(100),
+  RATE_LIMIT_APIKEY_MAX: z.coerce.number().default(600),
+  RATE_LIMIT_USER_MAX: z.coerce.number().default(120),
+  RATE_LIMIT_IP_MAX: z.coerce.number().default(30),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().default(60_000),
 
   RESEND_API_KEY: z.string().optional(),

@@ -243,9 +243,22 @@ export const registrationRoutes: FastifyPluginAsync = async (fastify) => {
   );
 
   // ─── Check-in (QR Scan) ──────────────────────────────────────────────────
+  // Per-route rate-limit override (ADR-0015): staff scanners legitimately
+  // burst much faster than the global `user:*` 120/min budget would
+  // allow — a busy event entrance can sustain ~3 scans/sec. We grant
+  // 200/min per scanner here. Brute-force is not the threat on this
+  // endpoint (the QR is signed and the staff is permission-gated); the
+  // limit is a back-pressure cap to protect the service, not an
+  // anti-abuse gate.
   fastify.post(
     "/checkin",
     {
+      config: {
+        rateLimit: {
+          max: 200,
+          timeWindow: "1 minute",
+        },
+      },
       preHandler: [
         authenticate,
         requirePermission("checkin:scan"),
