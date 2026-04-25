@@ -22,3 +22,11 @@ Start from the [template](./0000-template.md). Each ADR is immutable once `Accep
 | [0005](./0005-deny-all-firestore-rules.md) | Deny-all Firestore security rules default | Accepted | 2026-01 |
 | [0006](./0006-denormalized-plan-limits.md) | Denormalize plan limits onto org document | Accepted | 2026-02 |
 | [0007](./0007-fastify-layered-architecture.md) | Fastify layered architecture (routes/services/repos) | Accepted | 2026-01 |
+| [0008](./0008-soft-delete-only.md) | Soft-delete only (no hard deletes anywhere) | Accepted | 2026-04 |
+| [0009](./0009-iso-8601-timestamps.md) | Store all timestamps as ISO 8601 strings | Accepted | 2026-04 |
+| [0010](./0010-domain-event-bus.md) | Domain event bus for side effects | Accepted | 2026-04 |
+| [0011](./0011-rbac-resource-action-permissions.md) | RBAC with granular `resource:action` permissions | Accepted | 2026-04 |
+| [0012](./0012-multi-tenancy-via-organization-id.md) | Multi-tenancy via `organizationId` in custom claims | Accepted | 2026-04 |
+| [0013](./0013-api-key-format-checksum-hashed.md) | API key format `terk_*` with checksum + SHA-256 hashed storage | Accepted | 2026-04 |
+| [0014](./0014-graceful-shutdown-process-error-handling.md) | Graceful shutdown + process-level error handling | Accepted | 2026-04 |
+| [0015](./0015-trust-proxy-auth-aware-rate-limit.md) | Trust proxy + auth-aware rate limiting | Accepted | 2026-04 |
