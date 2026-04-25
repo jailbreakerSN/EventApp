@@ -30,6 +30,7 @@
     "seed": "tsx scripts/seed-emulators.ts",
     "seed:staging": "SEED_TARGET=staging tsx scripts/seed-emulators.ts",
     "seed:reset": "tsx scripts/seed-reset.ts",
+    "seed:reset:dry-run": "tsx scripts/seed-reset.ts --dry-run",
     "seed:check": "tsx scripts/check-seed-coverage.ts",
     "seed:status": "tsx scripts/generate-seed-coverage-status.ts",
     "seed:validate": "tsx scripts/validate-seed-schemas.ts",
