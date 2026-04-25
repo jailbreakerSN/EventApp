@@ -40,17 +40,20 @@ import {
   Ban,
   Plus,
   AlertTriangle,
+  History,
 } from "lucide-react";
 import {
   type ApiKey,
   type ApiKeyScope,
   ApiKeyScopeSchema,
 } from "@teranga/shared-types";
+import Link from "next/link";
 import {
   useOrgApiKeys,
   useCreateOrgApiKey,
   useRotateOrgApiKey,
   useRevokeOrgApiKey,
+  useAdminAuditLogs,
 } from "@/hooks/use-admin";
 import { useErrorHandler } from "@/hooks/use-error-handler";
 
@@ -167,6 +170,10 @@ export function ApiKeysTab({ orgId, orgName }: { orgId: string; orgName: string 
         </div>
       )}
 
+      {/* B4 closure — recent api_key.* audit activity for this org. */}
+      <ApiKeyActivityLog orgId={orgId} />
+
+
       {/* Plaintext secret modal — visible exactly once after issue/rotate */}
       {newSecret && (
         <NewKeySecretModal
@@ -175,6 +182,97 @@ export function ApiKeysTab({ orgId, orgName }: { orgId: string; orgName: string 
           rotationOf={newSecret.rotationOf}
           onClose={() => setNewSecret(null)}
         />
+      )}
+    </div>
+  );
+}
+
+// ─── B4 closure — recent activity (api_key.* audit rows) ────────────────
+
+const ACTIVITY_LABEL: Record<string, string> = {
+  "api_key.created": "Émission",
+  "api_key.rotated": "Rotation",
+  "api_key.revoked": "Révocation",
+  "api_key.verified": "Vérification (auth)",
+};
+
+function ApiKeyActivityLog({ orgId }: { orgId: string }) {
+  // Pull the latest api_key.* audit rows for this org. Since the
+  // audit query schema accepts `organizationId` we get a server-side
+  // filter — no client-side trimming needed. Limit kept low (10)
+  // because the row already deep-links to the full audit page if
+  // an operator needs the entire history.
+  const { data, isLoading } = useAdminAuditLogs({
+    organizationId: orgId,
+    resourceType: "api_key",
+    limit: 10,
+    page: 1,
+  });
+
+  const rows = data?.data ?? [];
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <History className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+          <h3 className="text-sm font-semibold text-foreground">Activité récente</h3>
+        </div>
+        <Link
+          href={`/admin/audit?resourceType=api_key&organizationId=${encodeURIComponent(orgId)}`}
+          className="text-xs font-medium text-teranga-gold hover:underline"
+        >
+          Voir tout l&apos;audit →
+        </Link>
+      </div>
+
+      {isLoading && (
+        <div className="rounded-xl border border-border p-4 text-xs text-muted-foreground">
+          Chargement de l&apos;activité…
+        </div>
+      )}
+
+      {!isLoading && rows.length === 0 && (
+        <div className="rounded-xl border border-border bg-muted/30 p-4 text-center text-xs text-muted-foreground">
+          Aucune activité récente sur les clés API de cette organisation.
+        </div>
+      )}
+
+      {!isLoading && rows.length > 0 && (
+        <div className="divide-y divide-border rounded-xl border border-border">
+          {rows.map((row) => {
+            const label = ACTIVITY_LABEL[row.action] ?? row.action;
+            const actor =
+              (row as unknown as { actorDisplayName?: string }).actorDisplayName ??
+              row.actorId;
+            return (
+              <div key={row.id} className="flex items-start justify-between gap-3 p-3 text-xs">
+                <div className="min-w-0">
+                  <div className="font-medium text-foreground">{label}</div>
+                  <div className="mt-0.5 truncate text-muted-foreground">
+                    Acteur :{" "}
+                    <code className="font-mono">{actor}</code>
+                    {row.resourceId && (
+                      <>
+                        {" · "}clé{" "}
+                        <code className="font-mono">{row.resourceId.slice(0, 12)}…</code>
+                      </>
+                    )}
+                  </div>
+                </div>
+                <time
+                  dateTime={row.timestamp}
+                  className="shrink-0 text-[11px] text-muted-foreground"
+                >
+                  {new Date(row.timestamp).toLocaleString("fr-FR", {
+                    dateStyle: "short",
+                    timeStyle: "short",
+                  })}
+                </time>
+              </div>
+            );
+          })}
+        </div>
       )}
     </div>
   );

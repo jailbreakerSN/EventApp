@@ -407,9 +407,23 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRole, readonly Permission[]>
   // permission.
   "platform:super_admin": ["platform:manage", "platform:audit_read"],
   "platform:support": [
-    "platform:manage", // migration safety-net — see note above
+    // T2.1 Phase 2 closure — `platform:manage` safety-net DROPPED.
+    // `platform:support` is now strictly read-only across the admin
+    // surface. Reads are served via `readOnlyAdminPreHandler`
+    // (`platform:audit_read OR platform:manage`) so a support agent
+    // can chase any cross-org investigation. Mutations (verify org,
+    // change roles, run jobs, replay webhooks, edit feature flags,
+    // publish announcements, edit notification config) require a
+    // stronger role.
+    //
+    // Impersonation INTENTIONALLY stays gated to super_admin /
+    // platform:super_admin only — this is the platform's most
+    // powerful action (full session-level identity assumption) and
+    // we follow Stripe / Auth0 / AWS-IAM precedent: only the top
+    // tier impersonates. A support agent who needs to debug a user
+    // session must escalate to a super-admin colleague rather than
+    // receive a permission grant.
     "platform:audit_read",
-    // Narrow capabilities once routes are migrated:
     "organization:read",
     "event:read",
     "registration:read_all",
@@ -437,7 +451,12 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<SystemRole, readonly Permission[]>
     "profile:read_any",
   ],
   "platform:security": [
-    "platform:manage", // migration safety-net
+    // T2.1 Phase 2 closure — `platform:manage` safety-net DROPPED.
+    // Security holds full audit read + read-only org / event /
+    // profile surfaces to chase forensics. Impersonation stays
+    // restricted to super_admin (see comment on platform:support).
+    // Route tightening for ops-style mutations (jobs, webhooks,
+    // flags) tracked as Phase 2c.
     "platform:audit_read",
     "profile:read_any",
     "organization:read",

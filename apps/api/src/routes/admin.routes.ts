@@ -561,7 +561,13 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get(
     "/export/:resource.csv",
     {
-      preHandler: adminPreHandler,
+      // B3 closure — CSV export is a pure read of data already
+      // reachable via the list endpoints (which now sit on
+      // `readOnlyAdminPreHandler`). Granting `platform:audit_read`
+      // holders the same export rights keeps the UX coherent: a
+      // support agent who can READ the orgs list should be able to
+      // export it as CSV without escalating to `platform:manage`.
+      preHandler: readOnlyAdminPreHandler,
       schema: {
         tags: ["Admin"],
         summary: "Streaming CSV export of a filtered list",
@@ -717,6 +723,13 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post(
     "/users/:userId/impersonate",
     {
+      // Impersonation INTENTIONALLY stays on `platform:manage` only
+      // (super_admin / platform:super_admin). The service layer
+      // additionally narrows to those two roles via
+      // `resolveImpersonationRole` — even other `platform:*` roles
+      // that hold `platform:manage` (none today after T2.1 Phase 2)
+      // would be refused. See the comment on `platform:support` in
+      // `DEFAULT_ROLE_PERMISSIONS` for the security rationale.
       preHandler: [...adminPreHandler, validate({ params: ParamsUserId })],
       schema: {
         tags: ["Admin"],
@@ -1107,7 +1120,13 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get(
     "/notifications",
     {
-      preHandler: adminPreHandler,
+      // B3 closure — notification config readout is observability,
+      // not configuration. Sits behind `platform:audit_read` so a
+      // support agent investigating "why didn't user X get the
+      // welcome email" can see the override state without holding
+      // `platform:manage`. Writes (PUT below) stay on
+      // `platform:manage`.
+      preHandler: readOnlyAdminPreHandler,
       schema: {
         tags: ["Admin", "Notifications"],
         summary: "List every notification with admin override state",
@@ -1435,8 +1454,11 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
   }>(
     "/notifications/:key/history",
     {
+      // B3 closure — read-only history of config edits (no delivery
+      // content). Same `platform:audit_read OR platform:manage` gate
+      // as the rest of the audit-style observability surfaces.
       preHandler: [
-        ...adminPreHandler,
+        ...readOnlyAdminPreHandler,
         validate({ params: ParamsNotificationKey, query: HistoryQuerySchema }),
       ],
       schema: {
@@ -1474,7 +1496,8 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get(
     "/notifications/per-org",
     {
-      preHandler: adminPreHandler,
+      // B3 closure — observability list of per-org overrides.
+      preHandler: readOnlyAdminPreHandler,
       schema: {
         tags: ["Admin", "Notifications"],
         summary: "List every notificationSetting override scoped to an organization",
@@ -1498,7 +1521,8 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get<{ Querystring: z.infer<typeof NotificationStatsQuery> }>(
     "/notifications/stats",
     {
-      preHandler: [...adminPreHandler, validate({ query: NotificationStatsQuery })],
+      // B3 closure — observability stats, no PII rendered.
+      preHandler: [...readOnlyAdminPreHandler, validate({ query: NotificationStatsQuery })],
       schema: {
         tags: ["Admin", "Notifications"],
         summary: "Aggregated dispatch stats per notification key",
@@ -1537,7 +1561,10 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get<{ Querystring: z.infer<typeof DeliveryDashboardQuery> }>(
     "/notifications/delivery",
     {
-      preHandler: [...adminPreHandler, validate({ query: DeliveryDashboardQuery })],
+      // B3 closure — delivery dashboard is per-channel aggregate
+      // counts, no PII; same gate as the rest of the read-only
+      // observability surfaces.
+      preHandler: [...readOnlyAdminPreHandler, validate({ query: DeliveryDashboardQuery })],
       schema: {
         tags: ["Admin", "Notifications"],
         summary: "Delivery outcomes dashboard — per-channel totals + time series",

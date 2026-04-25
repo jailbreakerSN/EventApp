@@ -988,13 +988,17 @@ describe("AdminService.startImpersonation (OAuth-style auth-code flow)", () => {
   });
 
   it("refuses platform:support (and other non-super platform:* roles)", async () => {
-    // platform:support holds platform:manage (so passes requirePermission)
-    // but MUST NOT be allowed to impersonate — impersonation is the most
-    // sensitive action on the platform, gated to super_admin tier only.
+    // T2.1 Phase 2 — platform:support no longer holds `platform:manage`,
+    // so the FIRST gate (`requirePermission`) trips with "Permission
+    // manquante" before reaching `resolveImpersonationRole`. The
+    // observable behaviour is identical: impersonation is refused.
+    // Asserting the union /Only super_admin|Permission manquante/
+    // documents both gates so a future tightening that only fires
+    // one of them still passes.
     const support = buildAuthUser({ uid: "u-support", roles: ["platform:support"] });
-    // Target doc is NOT reached since the role gate trips first.
+    // Target doc is NOT reached since the gate trips first.
     await expect(adminService.startImpersonation(support, participantTarget.uid)).rejects.toThrow(
-      /Only super_admin may impersonate/i,
+      /Only super_admin may impersonate|Permission manquante/i,
     );
     expect(auth.createCustomToken).not.toHaveBeenCalled();
     expect(mockAuditAdd).not.toHaveBeenCalled();

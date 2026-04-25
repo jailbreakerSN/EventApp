@@ -1,15 +1,26 @@
 name: Lighthouse CI
 
-# T4.4 — Formal Lighthouse pass for the back-office + participant apps.
+# T4.4 / Sprint-1 B1 — Formal Lighthouse gate for the back-office +
+# participant apps.
 #
 # Runs on pull requests that touch either web app plus a weekly cron so
 # regressions from dependency bumps / Next.js upgrades are caught even
-# without an explicit UI PR. Scores are ADVISORY on first introduction
-# (`continue-on-error: true`) so this workflow lets us collect real-
-# world baselines from CI hardware before tightening the thresholds.
-# Once a week or two of data is in, flip the assertions to `error` and
-# drop `continue-on-error` — at that point Lighthouse becomes a real
-# gate.
+# without an explicit UI PR.
+#
+# Gate model (B1 closure of the Sprint-1 polish batch):
+#  - Accessibility   ≥ 0.95  → ERROR (blocks the PR on regression)
+#  - Best practices  ≥ 0.90  → ERROR
+#  - SEO             ≥ 0.90  → ERROR
+#  - Performance     ≥ 0.85  → WARN (CI hardware variability + cold-
+#                              start penalties make perf a noisy
+#                              metric for a binary gate; tightened on
+#                              real CI baselines after one full
+#                              cycle).
+#
+# `continue-on-error` is DROPPED — accessibility regressions are now
+# blocking. If the gate becomes too noisy on perf flake re-instate
+# only the perf job in advisory mode rather than re-disabling the
+# whole workflow.
 #
 # Run manually via Actions UI or with:
 #   gh workflow run lighthouse-ci.yml
@@ -34,9 +45,10 @@ jobs:
   lighthouse:
     name: Lighthouse audit
     runs-on: ubuntu-latest
-    # Advisory during bring-up. Flip to `false` once baselines are
-    # tuned from real CI data.
-    continue-on-error: true
+    # B1 closure — accessibility / best-practices / SEO are now real
+    # gates. Performance stays advisory inside `.lighthouserc.json`
+    # via the `warn` level, so perf flakes don't block the PR while
+    # we collect a stable baseline from CI hardware.
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

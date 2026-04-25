@@ -10,6 +10,7 @@ import {
   useUpdateOrgStatus,
 } from "@/hooks/use-admin";
 import { useBulkSelection } from "@/hooks/use-bulk-selection";
+import { useRowKeyboardNav } from "@/hooks/use-row-keyboard-nav";
 import { BulkActionBar } from "@/components/admin/bulk-action-bar";
 import { SavedViewsBar } from "@/components/admin/saved-views-bar";
 import { toast } from "sonner";
@@ -109,6 +110,12 @@ export default function AdminOrganizationsPage() {
 
   const organizations: Organization[] = data?.data ?? [];
   const meta = data?.meta ?? { page: 1, limit, total: 0, totalPages: 1 };
+
+  // B2 — row keyboard nav. Same pattern as /admin/users.
+  const { activeIndex, setActiveIndex } = useRowKeyboardNav({
+    items: organizations,
+    onSelect: (o) => router.push(`/admin/organizations/${encodeURIComponent(o.id)}`),
+  });
 
   const verifyOrg = useVerifyOrganization();
   const updateOrgStatus = useUpdateOrgStatus();
@@ -281,6 +288,8 @@ export default function AdminOrganizationsPage() {
             // Whole-row click → org detail. Middle-click on the name
             // Link opens in a new tab (see primary column below).
             onRowClick={(o) => router.push(`/admin/organizations/${encodeURIComponent(o.id)}`)}
+            activeRowIndex={activeIndex}
+            onRowHover={setActiveIndex}
             columns={
               [
                 {

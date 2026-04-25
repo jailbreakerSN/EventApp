@@ -21,6 +21,7 @@ import {
 } from "@teranga/shared-ui";
 import { ChevronLeft, ChevronRight, Eye, Users, Building, Repeat } from "lucide-react";
 import { useAdminEvents, useAdminOrganizations } from "@/hooks/use-admin";
+import { useRowKeyboardNav } from "@/hooks/use-row-keyboard-nav";
 import { useTranslations } from "next-intl";
 
 const STATUS_OPTIONS = [
@@ -67,6 +68,12 @@ export default function AdminEventsPage() {
 
   const events = data?.data ?? [];
   const meta = data?.meta ?? { page: 1, limit: 20, total: 0, totalPages: 1 };
+
+  // B2 — row keyboard nav.
+  const { activeIndex, setActiveIndex } = useRowKeyboardNav({
+    items: events,
+    onSelect: (e) => router.push(`/admin/events/${encodeURIComponent(e.id as string)}`),
+  });
 
   // Fetch organizations to display names instead of IDs
   const { data: orgsData } = useAdminOrganizations({ limit: 100 });
@@ -153,6 +160,8 @@ export default function AdminEventsPage() {
             // not the public /events/:id participant page — admins need
             // the organizer tools: edit, cancel, audit).
             onRowClick={(e) => router.push(`/admin/events/${encodeURIComponent(e.id as string)}`)}
+            activeRowIndex={activeIndex}
+            onRowHover={setActiveIndex}
             columns={
               [
                 {
