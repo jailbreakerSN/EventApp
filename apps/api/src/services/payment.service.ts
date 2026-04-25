@@ -377,20 +377,32 @@ export class PaymentService extends BaseService {
           updatedAt: now,
         });
 
-        // Increment event registeredCount
-        tx.update(eventRef, {
+        // P1-04 (audit H5) — merge the two `tx.update(eventRef, ...)`
+        // calls into one. Firestore merges sequential updates on the
+        // same ref within a tx, but the previous split-into-two pattern
+        // was fragile — any future code that introduces a third update
+        // would silently lose fields if the field set overlapped.
+        //
+        // The `ticketTypes` array rewrite is computed from the
+        // transactional read at `eventSnap`, so the write is consistent
+        // with the read. INVARIANT: `ticketTypes[].soldCount` MUST
+        // ONLY ever be mutated inside a Firestore transaction whose
+        // read of the parent event doc is inside the same tx.
+        // Any future non-transactional path that touches
+        // `ticketTypes[]` will silently drop concurrent increments.
+        // (Phase-3 candidate: model ticketTypes as a subcollection so
+        // FieldValue.increment can target nested fields.)
+        const eventUpdate: Record<string, unknown> = {
           registeredCount: FieldValue.increment(1),
           updatedAt: now,
-        });
-
-        // Increment ticketType.soldCount
+        };
         if (eventData) {
           const reg = regSnap.data() as Registration;
-          const updatedTicketTypes = eventData.ticketTypes.map((tt) =>
+          eventUpdate.ticketTypes = eventData.ticketTypes.map((tt) =>
             tt.id === reg.ticketTypeId ? { ...tt, soldCount: tt.soldCount + 1 } : tt,
           );
-          tx.update(eventRef, { ticketTypes: updatedTicketTypes });
         }
+        tx.update(eventRef, eventUpdate);
 
         // ── Ledger entries ─────────────────────────────────────────────
         // Writes `payment` (+amount) + `platform_fee` (−fee) inside the
@@ -600,21 +612,73 @@ export class PaymentService extends BaseService {
     // Lock is released after the DB transaction commits (success path) or
     // after provider failure (catch path). A stale-sweep job can purge
     // anything older than the provider timeout (30 s) as a safety net.
+    // P1-02 (audit M1) — Refund lock with TTL-based stale recovery.
+    //
+    // The lock prevents two concurrent refund flows from both calling
+    // the provider. It's released inside the success-path transaction
+    // (`tx.delete(lockRef)` at the end of `runTransaction`) so the
+    // lock lifecycle is tied to DB commit, not provider success.
+    //
+    // The remaining failure mode is process crash between
+    // `lockRef.create()` here and either the provider call or the tx —
+    // the lock would otherwise stay forever and block every subsequent
+    // refund on this payment. Mitigations:
+    //
+    //   1. `expiresAt` = now + 5 min on the lock doc. The provider
+    //      timeout is 30 s and the tx commits in seconds, so any
+    //      lock older than 5 min is conclusively stale.
+    //   2. TTL policy on `expiresAt` (configured in
+    //      firestore.indexes.json TTL section) — Firestore auto-purges
+    //      docs whose TTL field is in the past, free + zero-ops.
+    //   3. Defensive recovery on 409: if the existing lock is stale,
+    //      a concurrent transaction replaces it and retries the create.
+    //      Bounds worst-case operator-perceived stuck time to 5 min
+    //      even if the TTL purge is delayed.
     const lockRef = db.collection(COLLECTIONS.REFUND_LOCKS).doc(paymentId);
-    try {
+    const lockTtlMs = 5 * 60 * 1000;
+    const lockNow = new Date();
+    const lockExpiresAt = new Date(lockNow.getTime() + lockTtlMs);
+    const tryAcquireLock = async () => {
       await lockRef.create({
         paymentId,
         refundAmount,
         actorId: user.uid,
-        createdAt: new Date().toISOString(),
+        createdAt: lockNow.toISOString(),
+        expiresAt: lockExpiresAt.toISOString(),
       });
+    };
+    try {
+      await tryAcquireLock();
     } catch (err: unknown) {
       if (err && typeof err === "object" && "code" in err && err.code === 6) {
-        throw new ConflictError(
-          "Un remboursement est déjà en cours pour ce paiement. Réessayez dans quelques secondes.",
-        );
+        // Stale-lock recovery — atomically replace any lock whose
+        // `expiresAt` is already in the past. Concurrent recoverers
+        // contend on the same tx; the loser sees a fresh lock and 409s.
+        const recovered = await db.runTransaction(async (tx) => {
+          const existing = await tx.get(lockRef);
+          if (!existing.exists) return false;
+          const data = existing.data() as { expiresAt?: string };
+          const exp = data.expiresAt ? new Date(data.expiresAt).getTime() : 0;
+          if (exp > Date.now()) return false; // genuine in-flight lock — give up
+          tx.delete(lockRef);
+          tx.create(lockRef, {
+            paymentId,
+            refundAmount,
+            actorId: user.uid,
+            createdAt: lockNow.toISOString(),
+            expiresAt: lockExpiresAt.toISOString(),
+            recoveredFromStale: true,
+          });
+          return true;
+        });
+        if (!recovered) {
+          throw new ConflictError(
+            "Un remboursement est déjà en cours pour ce paiement. Réessayez dans quelques secondes.",
+          );
+        }
+      } else {
+        throw err;
       }
-      throw err;
     }
 
     // Call provider refund
@@ -708,17 +772,68 @@ export class PaymentService extends BaseService {
       });
 
       if (isFullRefund) {
+        // P1-03 (audit H4) — Full refund must decrement BOTH
+        // `event.registeredCount` AND the per-ticket-type `soldCount`,
+        // in the SAME transaction. Decrementing only `registeredCount`
+        // (the previous behaviour) caused a slow-burn drift between
+        // the event-level counter and `sum(ticketTypes[].soldCount)`,
+        // which surfaced as spurious `EventFullError`s on subsequent
+        // registrations because the per-ticket-type counter was
+        // artificially inflated.
+        //
+        // We read the registration to recover the original
+        // `ticketTypeId`, then read the event to mutate its
+        // `ticketTypes` array. Both reads happen here — Firestore tx
+        // semantics require all reads before any writes.
         const regRef = db.collection(COLLECTIONS.REGISTRATIONS).doc(freshPayment.registrationId);
+        const eventRef = db.collection(COLLECTIONS.EVENTS).doc(freshPayment.eventId);
+
+        // Reads (must precede writes per Firestore tx rules).
+        const [regSnap, eventSnap] = await Promise.all([tx.get(regRef), tx.get(eventRef)]);
+        if (!regSnap.exists) {
+          throw new NotFoundError("Registration", freshPayment.registrationId);
+        }
+        if (!eventSnap.exists) {
+          throw new NotFoundError("Event", freshPayment.eventId);
+        }
+        const reg = regSnap.data() as { ticketTypeId?: string };
+        const eventData = eventSnap.data() as {
+          ticketTypes?: Array<{ id: string; soldCount?: number }>;
+        };
+
+        // Defensive: rebuild the ticketTypes array with the matching
+        // type's soldCount decremented (clamped at 0 — never negative).
+        // We don't use `FieldValue.increment` on the nested field
+        // because `ticketTypes` is stored as a Firestore array, not a
+        // map; nested-field increment requires map-typed parents.
+        // The array-rebuild pattern is safe here because we're inside
+        // a tx whose read at `eventSnap` is consistent with this
+        // write — see P1-04 for the parallel hardening on the
+        // webhook-success path that uses the same pattern.
+        let updatedTicketTypes: typeof eventData.ticketTypes;
+        if (Array.isArray(eventData.ticketTypes) && reg.ticketTypeId) {
+          const targetId = reg.ticketTypeId;
+          updatedTicketTypes = eventData.ticketTypes.map((tt) =>
+            tt.id === targetId
+              ? { ...tt, soldCount: Math.max(0, (tt.soldCount ?? 0) - 1) }
+              : tt,
+          );
+        }
+
+        // Writes — registration cancel + event counter decrement +
+        // ticketTypes array rebuild, all in one tx.update on each ref.
         tx.update(regRef, {
           status: "cancelled",
           updatedAt: now,
         });
-
-        const eventRef = db.collection(COLLECTIONS.EVENTS).doc(freshPayment.eventId);
-        tx.update(eventRef, {
+        const eventUpdate: Record<string, unknown> = {
           registeredCount: FieldValue.increment(-1),
           updatedAt: now,
-        });
+        };
+        if (updatedTicketTypes) {
+          eventUpdate.ticketTypes = updatedTicketTypes;
+        }
+        tx.update(eventRef, eventUpdate);
       }
 
       // ── Ledger entry ───────────────────────────────────────────────────

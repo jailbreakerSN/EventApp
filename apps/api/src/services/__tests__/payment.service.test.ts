@@ -383,8 +383,12 @@ describe("PaymentService.handleWebhook", () => {
     await service.handleWebhook(payment.providerTransactionId!, "succeeded");
 
     expect(mockRunTransaction).toHaveBeenCalled();
-    // 4 updates: payment + registration + event counter + ticketTypes
-    expect(mockTxUpdate).toHaveBeenCalledTimes(4);
+    // P1-04 (audit H5) — 3 updates: payment + registration + event
+    // (single tx.update on eventRef carries BOTH registeredCount
+    //  increment AND the ticketTypes array rebuild). Previously
+    // produced 4 updates with two separate tx.update(eventRef, ...)
+    // calls; the merge eliminates that fragility.
+    expect(mockTxUpdate).toHaveBeenCalledTimes(3);
   });
 
   it("emits payment.succeeded event", async () => {
@@ -606,14 +610,24 @@ describe("PaymentService.refundPayment", () => {
       .mockResolvedValueOnce(payment)
       .mockResolvedValueOnce({ ...payment, status: "refunded", refundedAmount: 5000 });
     mockProvider.refund.mockResolvedValue({ success: true, providerRefundId: "ref_1" });
-    // Fresh re-read inside the transaction for lost-update safety
-    mockTxGet.mockResolvedValueOnce({ exists: true, data: () => payment });
+    // Fresh re-read inside the transaction for lost-update safety, then
+    // the regRef + eventRef reads added by P1-03 for ticketTypes.soldCount
+    // decrement on full refund.
+    mockTxGet
+      .mockResolvedValueOnce({ exists: true, data: () => payment })
+      .mockResolvedValueOnce({ exists: true, data: () => ({ ticketTypeId: "tt-1" }) })
+      .mockResolvedValueOnce({
+        exists: true,
+        data: () => ({ ticketTypes: [{ id: "tt-1", soldCount: 5 }] }),
+      });
 
     await service.refundPayment(payment.id, undefined, "Annulé par l'organisateur", organizer);
 
     expect(mockRunTransaction).toHaveBeenCalled();
     expect(mockProvider.refund).toHaveBeenCalledWith(payment.providerTransactionId, 5000);
-    // Transaction updates: payment + registration + event counter
+    // Transaction updates: payment + registration + event (single
+    // tx.update on event carries BOTH registeredCount-decrement AND the
+    // ticketTypes array-rebuild — P1-03 + P1-04 merge).
     expect(mockTxUpdate).toHaveBeenCalledTimes(3);
     expect(mockEventBus.emit).toHaveBeenCalledWith(
       "payment.refunded",
@@ -830,7 +844,14 @@ describe("PaymentService.refundPayment — concurrent-refund lock", () => {
     });
     mockPaymentRepo.findByIdOrThrow.mockResolvedValue(payment);
     mockProvider.refund.mockResolvedValue({ success: true, providerRefundId: "pr-1" });
-    mockTxGet.mockResolvedValueOnce({ exists: true, data: () => payment });
+    // P1-03 added regRef + eventRef reads inside the full-refund tx.
+    mockTxGet
+      .mockResolvedValueOnce({ exists: true, data: () => payment })
+      .mockResolvedValueOnce({ exists: true, data: () => ({ ticketTypeId: "tt-1" }) })
+      .mockResolvedValueOnce({
+        exists: true,
+        data: () => ({ ticketTypes: [{ id: "tt-1", soldCount: 5 }] }),
+      });
     mockPaymentRepo.findByIdOrThrow.mockResolvedValueOnce(payment);
 
     await service.refundPayment(payment.id, undefined, undefined, organizer);
@@ -926,7 +947,14 @@ describe("PaymentService.refundPayment — ledger", () => {
       .mockResolvedValueOnce(payment)
       .mockResolvedValueOnce({ ...payment, status: "refunded", refundedAmount: 5_000 });
     mockProvider.refund.mockResolvedValue({ success: true });
-    mockTxGet.mockResolvedValueOnce({ exists: true, data: () => payment });
+    // P1-03 added regRef + eventRef reads inside the full-refund tx.
+    mockTxGet
+      .mockResolvedValueOnce({ exists: true, data: () => payment })
+      .mockResolvedValueOnce({ exists: true, data: () => ({ ticketTypeId: "tt-1" }) })
+      .mockResolvedValueOnce({
+        exists: true,
+        data: () => ({ ticketTypes: [{ id: "tt-1", soldCount: 5 }] }),
+      });
 
     await service.refundPayment(payment.id, undefined, "Annulé par l'organisateur", organizer);
 
