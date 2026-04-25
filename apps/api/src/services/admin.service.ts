@@ -101,10 +101,21 @@ class AdminService extends BaseService {
   ): Readable {
     this.requirePermission(user, "platform:manage");
 
+    // Note: written without regex literals on purpose. The static
+    // index-coverage linter's brace-tracker doesn't understand regex
+    // literal syntax (`/.../`) and treats embedded `"` as string
+    // delimiters — when this helper used `/[",\n\r]/` the tracker
+    // never re-balanced and `csvCell`'s body was extended to the
+    // end of the file, dragging unrelated `db.collection(...)` calls
+    // into spurious raw-chunk matches that the linter then reported
+    // as missing indexes. Plain string includes() + split/join keep
+    // the tracker honest.
+    const NEEDS_QUOTE = ['"', ",", "\n", "\r"];
     const csvCell = (v: unknown): string => {
       if (v == null) return "";
       const s = String(v);
-      return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+      const needsQuote = NEEDS_QUOTE.some((c) => s.includes(c));
+      return needsQuote ? `"${s.split('"').join('""')}"` : s;
     };
     // PAGE_SIZE = 500 keeps each Firestore read small + caps max memory
     // per chunk while still being efficient (max 100 reads for 50k rows).
