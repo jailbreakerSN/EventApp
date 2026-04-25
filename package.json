@@ -22,6 +22,8 @@
     "types:build": "turbo build --filter=@teranga/shared-types",
     "audit:firestore-indexes": "tsx scripts/audit-firestore-indexes.ts",
     "audit:firestore-indexes:strict": "AUDIT_SUBSETS=1 tsx scripts/audit-firestore-indexes.ts",
+    "docs:openapi": "cd apps/api && tsx scripts/export-openapi.ts",
+    "docs:openapi:check": "cd apps/api && tsx scripts/export-openapi.ts --check",
     "notifications:status": "tsx scripts/generate-notification-catalog-status.ts",
     "notifications:check": "tsx scripts/check-notification-catalog-integrity.ts",
     "in-app:diff": "tsx scripts/diff-in-app-adapter-output.ts",
