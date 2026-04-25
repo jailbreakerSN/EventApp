@@ -70,15 +70,19 @@ describe("computeRegistrationAvailability", () => {
     ).toEqual({ state: "unavailable", reason: "event_full" });
   });
 
-  it("treats approval events at capacity as requires_approval (waitlist opens)", () => {
+  it("treats approval events at capacity as waitlist_open (B2 — Phase 7+)", () => {
     // Mirrors the server: with requiresApproval=true, filled capacity does
-    // not close registration — the organizer still accepts/rejects.
+    // not close registration — new entries land on the waitlist. Pre-B2
+    // this returned `requires_approval` and the UI couldn't distinguish
+    // "approval needed" from "waitlist". B2 introduces the dedicated
+    // `waitlist_open` state so the participant CTA can offer "Rejoindre
+    // la liste d'attente" instead of the bare "approval required".
     expect(
       computeRegistrationAvailability(
         { ...base(), maxAttendees: 10, registeredCount: 10, requiresApproval: true },
         NOW,
       ),
-    ).toEqual({ state: "requires_approval" });
+    ).toEqual({ state: "waitlist_open" });
   });
 
   it("ignores maxAttendees when it is null or zero", () => {

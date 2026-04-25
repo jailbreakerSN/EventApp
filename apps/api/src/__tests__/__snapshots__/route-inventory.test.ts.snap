@@ -130,6 +130,7 @@ DELETE /v1/events/:eventId/ticket-types/:ticketTypeId auth emailVerified perms=[
 PATCH /v1/events/:eventId/ticket-types/:ticketTypeId auth emailVerified perms=[event:update]
 POST /v1/events/:eventId/unpublish auth emailVerified perms=[event:publish]
 POST /v1/events/:eventId/upload-url auth emailVerified perms=[event:update]
+POST /v1/events/:eventId/waitlist/promote-batch auth emailVerified perms=[registration:approve]
 GET /v1/events/by-slug/:slug auth
 GET /v1/events/org/:orgId auth perms=[event:read]
 DELETE /v1/events/promo-codes/:promoCodeId auth emailVerified perms=[event:update]
@@ -218,6 +219,7 @@ DELETE /v1/registrations/:registrationId auth flags=[any(registration:cancel_any
 PATCH /v1/registrations/:registrationId auth emailVerified
 POST /v1/registrations/:registrationId/approve auth emailVerified perms=[registration:approve]
 POST /v1/registrations/:registrationId/cancel auth flags=[any(registration:cancel_any,registration:cancel_own)]
+GET /v1/registrations/:registrationId/waitlist-position auth perms=[registration:read_own]
 POST /v1/registrations/checkin auth perms=[checkin:scan]
 GET /v1/registrations/event/:eventId auth perms=[registration:read_all]
 GET /v1/registrations/me auth

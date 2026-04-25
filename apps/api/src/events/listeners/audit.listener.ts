@@ -467,6 +467,10 @@ export function registerAuditListeners(): void {
       organizationId: payload.organizationId,
       details: {
         cancelledRegistrationId: payload.cancelledRegistrationId,
+        // B2 — denormalise the tier scope onto the audit row so
+        // operators can answer "which tier is stuck" without joining
+        // back to the cancelled registration.
+        ...(payload.ticketTypeId ? { ticketTypeId: payload.ticketTypeId } : {}),
         reason: payload.reason,
       },
     });

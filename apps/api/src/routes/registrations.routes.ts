@@ -205,6 +205,43 @@ export const registrationRoutes: FastifyPluginAsync = async (fastify) => {
     },
   );
 
+  // ─── Waitlist position (B2 — Phase 7+) ───────────────────────────────────
+  // Surfaces "you're 5 / 12 in line" to a participant looking at their
+  // own waitlisted registration, plus organizers reading any of their
+  // org's registrations. Returns null when the registration is not
+  // currently waitlisted (no stale position on confirmed/cancelled docs).
+  fastify.get(
+    "/:registrationId/waitlist-position",
+    {
+      preHandler: [
+        authenticate,
+        // `registration:read_own` is the minimum bound — owners need it
+        // to read their own waitlist position. Organizers' read access
+        // for foreign registrations is enforced inside the service via
+        // `requireOrganizationAccess` + `registration:read_all`. Adding
+        // the route-level gate prevents any caller missing the basic
+        // read permission (e.g. a malformed API key with no scope) from
+        // reaching the service at all. Aligns with every other
+        // `/v1/registrations` read surface.
+        requirePermission("registration:read_own"),
+        validate({ params: ParamsWithRegistrationId }),
+      ],
+      schema: {
+        tags: ["Registrations"],
+        summary: "Get a participant's position on the waitlist (FIFO within ticket type)",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const { registrationId } = request.params as z.infer<typeof ParamsWithRegistrationId>;
+      const result = await registrationService.getWaitlistPosition(
+        registrationId,
+        request.user!,
+      );
+      return reply.send({ success: true, data: result });
+    },
+  );
+
   // ─── Check-in (QR Scan) ──────────────────────────────────────────────────
   fastify.post(
     "/checkin",

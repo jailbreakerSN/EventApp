@@ -375,6 +375,8 @@
       "registerFree": "Bindal sa tur ba neex",
       "registerPaid": "Bind sa tur — dale fi {price}",
       "approvalRequired": "Bindu bi laa ñu nangu ci ki ko bokkal.",
+      "joinWaitlist": "Bokk ci listu xaar",
+      "waitlistNotice": "Saalu bi fees na. Dañu lay xamal su am palaas.",
       "soldOut": "Fees",
       "full": "Fees",
       "unavailable": {

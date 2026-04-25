@@ -4,6 +4,8 @@ import { authenticate, requireEmailVerified, optionalAuth } from "@/middlewares/
 import { validate } from "@/middlewares/validate.middleware";
 import { requirePermission } from "@/middlewares/permission.middleware";
 import { eventService } from "@/services/event.service";
+import { registrationService } from "@/services/registration.service";
+import { eventRepository } from "@/repositories/event.repository";
 import { uploadService } from "@/services/upload.service";
 import {
   type CreateEventDto,
@@ -191,6 +193,61 @@ export const eventRoutes: FastifyPluginAsync = async (fastify) => {
     async (request, reply) => {
       const { eventId } = request.params as z.infer<typeof ParamsWithEventId>;
       const result = await eventService.publishSeries(eventId, request.user!);
+      return reply.send({ success: true, data: result });
+    },
+  );
+
+  // ─── Bulk-promote Waitlist (B2 — Phase 7+) ──────────────────────────────
+  // Replaces the backoffice's per-registration loop with a single
+  // round-trip. `count` caps at 100 (server-side guard); the typical
+  // organizer use case is "promote 5/10/all next" after raising
+  // `maxAttendees` or after a wave of cancellations. Optional
+  // `ticketTypeId` scopes promotions to a tier — without it, promotion
+  // walks the global FIFO across all tiers (oldest first).
+  fastify.post(
+    "/:eventId/waitlist/promote-batch",
+    {
+      preHandler: [
+        authenticate,
+        requireEmailVerified,
+        requirePermission("registration:approve"),
+        validate({
+          params: ParamsWithEventId,
+          body: z.object({
+            // Cap at 25 (down from 100 in early B2) so a single
+            // request can't trigger a 100-message burst on the email
+            // provider — see the senior review remediation note in
+            // `bulkPromoteWaitlisted`. Larger waitlist purges should
+            // be staged via the admin job runner.
+            count: z.coerce.number().int().min(1).max(25),
+            ticketTypeId: z.string().optional(),
+          }),
+        }),
+      ],
+      schema: {
+        tags: ["Events"],
+        summary: "Bulk-promote waitlisted registrations (FIFO, optionally per ticket type)",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const { eventId } = request.params as z.infer<typeof ParamsWithEventId>;
+      const { count, ticketTypeId } = request.body as {
+        count: number;
+        ticketTypeId?: string;
+      };
+      // Resolve the org id from the event so the service's
+      // requireOrganizationAccess gate doesn't have to take the
+      // eventId. Cheap one-doc read; keeps the service signature org-
+      // scoped (consistent with every other registration mutation).
+      const event = await eventRepository.findByIdOrThrow(eventId);
+      const result = await registrationService.bulkPromoteWaitlisted(
+        eventId,
+        event.organizationId,
+        request.user!,
+        count,
+        ticketTypeId,
+      );
       return reply.send({ success: true, data: result });
     },
   );

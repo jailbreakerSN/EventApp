@@ -233,6 +233,16 @@ export interface WaitlistPromotionFailedEvent extends BaseEventPayload {
   organizationId: string;
   /** The registration whose cancel triggered the promotion attempt. */
   cancelledRegistrationId: string;
+  /**
+   * B2 — the ticket-type slice the failed promotion was scoped to. Cancel-
+   * driven promotions are tier-aware (a freed VIP slot promotes a VIP
+   * waitlister, not a Standard one), so when a tier-scoped promotion
+   * fails the audit row needs the tier to answer "which tier's slot
+   * is stuck". Optional because bulk-promote failures may not have a
+   * specific tier (when the admin called bulk-promote without a
+   * `ticketTypeId` filter).
+   */
+  ticketTypeId?: string;
   /** Short reason string from the caught error. Not user-facing. */
   reason: string;
 }

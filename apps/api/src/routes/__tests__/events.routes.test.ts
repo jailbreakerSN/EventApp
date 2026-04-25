@@ -11,6 +11,28 @@ vi.mock("@/config/firebase", () => ({
   auth: {
     verifyIdToken: (...args: unknown[]) => mockVerifyIdToken(...args),
   },
+  // B2 PR — the waitlist bulk-promote route imports `eventRepository` +
+  // `registrationService`, which transitively pull `db` + `COLLECTIONS`
+  // via this module. Stubbing them keeps the route-level test focused
+  // on the auth/permission wiring without dragging in a full
+  // Firestore mock.
+  db: {},
+  COLLECTIONS: {
+    EVENTS: "events",
+    REGISTRATIONS: "registrations",
+  },
+}));
+
+vi.mock("@/repositories/event.repository", () => ({
+  eventRepository: {
+    findByIdOrThrow: vi.fn(),
+  },
+}));
+
+vi.mock("@/services/registration.service", () => ({
+  registrationService: {
+    bulkPromoteWaitlisted: vi.fn(),
+  },
 }));
 
 // ─── Mock event service ─────────────────────────────────────────────────────

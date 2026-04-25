@@ -375,6 +375,8 @@
       "registerPaid": "S'inscrire — à partir de {price}",
       "ctaRegister": "S'inscrire à l'événement",
       "approvalRequired": "Inscription soumise à approbation de l'organisateur.",
+      "joinWaitlist": "Rejoindre la liste d'attente",
+      "waitlistNotice": "L'événement est complet. Vous serez notifié(e) si une place se libère.",
       "soldOut": "Complet",
       "full": "Complet",
       "unavailable": {
