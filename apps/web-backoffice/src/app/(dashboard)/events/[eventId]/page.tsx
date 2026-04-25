@@ -77,7 +77,7 @@ import {
   useCreatePromoCode,
   useDeactivatePromoCode,
 } from "@/hooks/use-promo-codes";
-import { eventsApi, uploadsApi } from "@/lib/api-client";
+import { eventsApi, uploadsApi, registrationsApi } from "@/lib/api-client";
 import type {
   Event,
   CreateTicketTypeDto,
@@ -1211,7 +1211,7 @@ function RegistrationsTab({ eventId }: { eventId: string }) {
   const [statusFilter, setStatusFilter] = useState("");
   const limit = 15;
 
-  const { data, isLoading } = useEventRegistrations(eventId, {
+  const { data, isLoading, refetch: refetchRegistrations } = useEventRegistrations(eventId, {
     page,
     limit,
     status: statusFilter || undefined,
@@ -1263,21 +1263,31 @@ function RegistrationsTab({ eventId }: { eventId: string }) {
               Approuver tout ({registrations.filter((r) => r.status === "pending").length})
             </button>
           )}
-          {/* Bulk promote waitlisted */}
+          {/* Bulk promote waitlisted (B2 — single round-trip) */}
           {waitlistedCount > 0 && (
             <button
               onClick={async () => {
-                const waitlistedIds = registrations
-                  .filter((r) => r.status === "waitlisted")
-                  .map((r) => r.id);
-                for (const id of waitlistedIds) {
-                  try {
-                    await promote.mutateAsync(id);
-                  } catch {
-                    /* skip errors */
+                try {
+                  const result = await registrationsApi.bulkPromoteWaitlist(eventId, {
+                    count: Math.min(100, waitlistedCount),
+                  });
+                  const { promotedCount, skipped } = result.data;
+                  if (promotedCount === 0) {
+                    toast.info("Aucune inscription promue (déjà traitées ?)");
+                  } else if (skipped > 0) {
+                    toast.success(
+                      `${promotedCount} promue(s), ${skipped} ignorée(s) (changement d'état entre-temps)`,
+                    );
+                  } else {
+                    toast.success(`${promotedCount} inscription(s) promue(s)`);
                   }
+                  // Refresh the registrations list so the UI mirrors the new state.
+                  await refetchRegistrations();
+                } catch (err) {
+                  toast.error(
+                    err instanceof Error ? err.message : "Échec de la promotion en masse",
+                  );
                 }
-                toast.success(`${waitlistedIds.length} inscription(s) promue(s)`);
               }}
               disabled={promote.isPending}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 text-white rounded-lg text-xs font-medium hover:bg-amber-600 disabled:opacity-50"

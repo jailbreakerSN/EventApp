@@ -316,6 +316,28 @@ export const registrationsApi = {
 
   promote: (registrationId: string) =>
     api.patch<ApiResponse<Registration>>(`/v1/registrations/${registrationId}`, { status: "confirmed" }),
+
+  // B2 — server-side bulk promotion. Replaces the per-registration
+  // PATCH loop on the organizer's "Promouvoir tout" button. Optional
+  // `ticketTypeId` scopes promotion to a tier; without it walks the
+  // global waitlist FIFO. Server caps `count` at 100 and returns
+  // `{ promotedCount, skipped }` so the UI can surface partial wins.
+  bulkPromoteWaitlist: (
+    eventId: string,
+    body: { count: number; ticketTypeId?: string },
+  ) =>
+    api.post<ApiResponse<{ promotedCount: number; skipped: number }>>(
+      `/v1/events/${eventId}/waitlist/promote-batch`,
+      body,
+    ),
+
+  // B2 — fetch a participant's position on the waitlist for their
+  // own (or an organizer-readable) registration. Returns `null` when
+  // the registration isn't currently waitlisted.
+  getWaitlistPosition: (registrationId: string) =>
+    api.get<ApiResponse<{ position: number; total: number } | null>>(
+      `/v1/registrations/${registrationId}/waitlist-position`,
+    ),
 };
 
 export const checkinApi = {

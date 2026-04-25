@@ -23,6 +23,11 @@ export type RegistrationConflictReason = "duplicate_registration";
 export type RegistrationAvailability =
   | { state: "open" }
   | { state: "requires_approval" }
+  // B2 (Phase 7+) — event is at capacity but the organizer left
+  // `requiresApproval: true`, so registrations land on the waitlist
+  // instead of being rejected. UI surfaces this as "Rejoindre la liste
+  // d'attente" rather than "Complet".
+  | { state: "waitlist_open" }
   | { state: "unavailable"; reason: RegistrationUnavailableReason };
 
 interface AvailabilityInput {
@@ -73,7 +78,13 @@ export function computeRegistrationAvailability(
   if (isFull && !event.requiresApproval) {
     return { state: "unavailable", reason: "event_full" };
   }
-
+  // B2 — at capacity AND requiresApproval=true means new registrations
+  // go to the waitlist (per `RegistrationService.register`'s capacity
+  // gate). Return a dedicated state so the UI can offer the join-
+  // waitlist CTA instead of the bare "approval required" copy.
+  if (isFull && event.requiresApproval) {
+    return { state: "waitlist_open" };
+  }
   if (event.requiresApproval) {
     return { state: "requires_approval" };
   }

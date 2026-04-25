@@ -371,6 +371,8 @@
       "registerFree": "Register for free",
       "registerPaid": "Register — from {price}",
       "approvalRequired": "Registration subject to organizer approval.",
+      "joinWaitlist": "Join the waitlist",
+      "waitlistNotice": "The event is full. You'll be notified if a spot opens up.",
       "soldOut": "Sold out",
       "full": "Full",
       "unavailable": {

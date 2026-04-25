@@ -673,24 +673,23 @@ export default async function EventDetailPage({ params }: PageProps) {
                 <>
                   <Link
                     href={`/register/${event.id}`}
-                    className={`inline-flex h-12 w-full items-center justify-center gap-2 rounded-full px-6 text-sm font-semibold transition-colors ${
-                      isFull
-                        ? "pointer-events-none cursor-not-allowed bg-muted text-muted-foreground"
-                        : "bg-teranga-navy text-white hover:bg-teranga-navy/90 dark:bg-teranga-gold dark:text-teranga-navy dark:hover:bg-teranga-gold-light"
-                    }`}
-                    aria-disabled={isFull}
+                    className={`inline-flex h-12 w-full items-center justify-center gap-2 rounded-full px-6 text-sm font-semibold transition-colors bg-teranga-navy text-white hover:bg-teranga-navy/90 dark:bg-teranga-gold dark:text-teranga-navy dark:hover:bg-teranga-gold-light`}
                   >
-                    {isFull
-                      ? tDetail("full")
+                    {availability.state === "waitlist_open"
+                      ? tDetail("joinWaitlist")
                       : isFree
                         ? tDetail("registerFree")
                         : tDetail("ctaRegister")}
-                    {!isFull && <ArrowRight className="h-4 w-4" aria-hidden="true" />}
+                    <ArrowRight className="h-4 w-4" aria-hidden="true" />
                   </Link>
                   <p className="mt-2.5 text-center text-[11px] text-muted-foreground">
-                    {isFree ? tDetail("pricing.freeNoPayment") : tDetail("pricing.paymentSecured")}
+                    {availability.state === "waitlist_open"
+                      ? tDetail("waitlistNotice")
+                      : isFree
+                        ? tDetail("pricing.freeNoPayment")
+                        : tDetail("pricing.paymentSecured")}
                   </p>
-                  {event.requiresApproval && (
+                  {event.requiresApproval && availability.state !== "waitlist_open" && (
                     <p className="mt-1.5 text-center text-[11px] text-muted-foreground">
                       {tDetail("approvalRequired")}
                     </p>

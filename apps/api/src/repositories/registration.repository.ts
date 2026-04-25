@@ -84,17 +84,100 @@ export class RegistrationRepository extends BaseRepository<Registration> {
     return { data, lastDoc };
   }
 
-  async findOldestWaitlisted(eventId: string): Promise<Registration | null> {
-    const snap = await this.collection
+  /**
+   * Returns the oldest waitlisted registration for an event, optionally
+   * scoped to a specific `ticketTypeId`.
+   *
+   * Why scope by ticket type (B2): waitlists are PER-CAPACITY. When a
+   * confirmed VIP cancels, the freed slot belongs to VIP capacity — not
+   * to a Standard waitlister. Promoting across ticket types would
+   * over-allocate one tier and starve another. The cancel-driven
+   * promotion path always passes the cancelled registration's
+   * `ticketTypeId` so the waitlist FIFO is honoured WITHIN that tier.
+   *
+   * Manual organizer promotions (admin "promote one" UI) can pass
+   * `ticketTypeId: undefined` to fall back to the global FIFO — useful
+   * when an organizer wants to clear the oldest waitlister regardless
+   * of tier (e.g. emptying the waitlist after raising `maxAttendees`).
+   */
+  async findOldestWaitlisted(
+    eventId: string,
+    ticketTypeId?: string,
+  ): Promise<Registration | null> {
+    let q = this.collection
       .where("eventId", "==", eventId)
-      .where("status", "==", "waitlisted")
-      .orderBy("createdAt", "asc")
-      .limit(1)
-      .get();
+      .where("status", "==", "waitlisted") as FirebaseFirestore.Query<FirebaseFirestore.DocumentData>;
+    if (ticketTypeId) {
+      q = q.where("ticketTypeId", "==", ticketTypeId);
+    }
+    const snap = await q.orderBy("createdAt", "asc").limit(1).get();
 
     if (snap.empty) return null;
     const doc = snap.docs[0];
     return { id: doc.id, ...doc.data() } as Registration;
+  }
+
+  /**
+   * Returns up to `count` oldest-first waitlisted registrations for an
+   * event, optionally scoped to a ticket type. Used by the bulk-promote
+   * surface (B2) so the backoffice doesn't loop one-by-one through the
+   * single-promotion path. The caller must still run each promotion
+   * inside its own transaction — this query just selects the candidates.
+   */
+  async findOldestWaitlistedBatch(
+    eventId: string,
+    count: number,
+    ticketTypeId?: string,
+  ): Promise<Registration[]> {
+    let q = this.collection
+      .where("eventId", "==", eventId)
+      .where("status", "==", "waitlisted") as FirebaseFirestore.Query<FirebaseFirestore.DocumentData>;
+    if (ticketTypeId) {
+      q = q.where("ticketTypeId", "==", ticketTypeId);
+    }
+    const snap = await q.orderBy("createdAt", "asc").limit(count).get();
+    return snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }) as Registration);
+  }
+
+  /**
+   * Counts the number of waitlisted registrations strictly older than
+   * the given `createdAt` timestamp for the same `(eventId,
+   * ticketTypeId)` slice. The position the participant sees is this
+   * count plus one (so a position of 1 means "next in line"). Used to
+   * surface `waitlistPosition` on registration payloads (B2).
+   */
+  async countWaitlistedOlderThan(
+    eventId: string,
+    ticketTypeId: string,
+    createdAt: string,
+  ): Promise<number> {
+    const snap = await this.collection
+      .where("eventId", "==", eventId)
+      .where("ticketTypeId", "==", ticketTypeId)
+      .where("status", "==", "waitlisted")
+      .where("createdAt", "<", createdAt)
+      .count()
+      .get();
+    return snap.data().count;
+  }
+
+  /**
+   * Total waitlisted registrations on a given `(eventId, ticketTypeId)`
+   * slice — surfaced alongside `waitlistPosition` so participants see
+   * "5 / 12" rather than just their own rank. Used by the GET
+   * registration payload + the participant My Events list (B2).
+   */
+  async countWaitlistedTotal(
+    eventId: string,
+    ticketTypeId: string,
+  ): Promise<number> {
+    const snap = await this.collection
+      .where("eventId", "==", eventId)
+      .where("ticketTypeId", "==", ticketTypeId)
+      .where("status", "==", "waitlisted")
+      .count()
+      .get();
+    return snap.data().count;
   }
 
   async checkIn(

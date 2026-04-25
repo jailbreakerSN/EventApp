@@ -13,11 +13,14 @@ export { onUserCreated, onUserDeleted } from "./triggers/auth.triggers";
 // ─── Badge Triggers ───────────────────────────────────────────────────────────
 export { onBadgeCreated } from "./triggers/badge.triggers";
 
-// ─── Registration Triggers (auto badge generation + waitlist promotion) ──────
+// ─── Registration Triggers (auto badge generation only) ─────────────────────
+// `onRegistrationCancelled` was removed in the B2 (waitlist automation)
+// PR — the API service now owns waitlist promotion end-to-end so audit
+// + notifications flow through a single path. See
+// `apps/api/src/services/registration.service.ts#promoteNextWaitlisted`.
 export {
   onRegistrationCreated,
   onRegistrationApproved,
-  onRegistrationCancelled,
 } from "./triggers/registration.triggers";
 
 // ─── Check-in Triggers ───────────────────────────────────────────────────────
