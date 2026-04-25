@@ -34,6 +34,7 @@ import type { Firestore } from "firebase-admin/firestore";
 
 import { Dates, atOffset, CITIES } from "./config";
 import { EXPANSION_PARTICIPANT_UIDS, IDS } from "./ids";
+import { signSeedQrV3FromEvent } from "../lib/qr-signer";
 
 // ─── Deterministic PRNG (Mulberry32) ──────────────────────────────────────
 // 32-bit state; period 2^32. Sufficient for ~1 900 numbers across the
@@ -526,7 +527,10 @@ async function writeSyntheticRegistrations(
         participantName: `${first} ${last}`,
         participantEmail: `${first.toLowerCase()}.${last.toLowerCase()}.${ord}@example.com`,
         status: checkedIn ? "checked_in" : "confirmed",
-        qrCodeValue: `${regId}:${e.id}:${synUid}:demo:demo:demo-syn-${ord}`,
+        // H2 fix — sign a real v3 HMAC payload (mirrors the API signer).
+        // The previous fake `:demo:demo:demo-syn-NNNNN` failed every scan
+        // because it wasn't signed and `nb`/`na` weren't base36 ints.
+        qrCodeValue: signSeedQrV3FromEvent(regId, e.id, synUid, e.startDate, e.endDate),
         checkedInAt: checkedIn ? e.startDate : null,
         checkedInBy: checkedIn ? IDS.staffUser : null,
         notes: null,
