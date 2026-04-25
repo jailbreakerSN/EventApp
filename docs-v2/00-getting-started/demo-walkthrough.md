@@ -13,19 +13,19 @@ A scripted, 5-minute path through the seeded dataset. Hits every flagship featur
 
 ---
 
-## Demo personas (passwords: `Teranga2026!` for all)
+## Demo personas (password: `password123` for all seeded accounts)
 
 | Email | Role | Plan | Purpose |
 |-------|------|------|---------|
 | `admin@teranga.dev` | super-admin | n/a | Cross-org admin views, audit logs, feature flags |
-| `pro@teranga.dev` | organizer | **Pro** | Featured organizer, scaled events, paid tickets |
-| `starter@teranga.dev` | organizer | **Starter** | Single venue org, growing usage |
-| `free@teranga.dev` | organizer | **Free** | Near plan limit — exercises gating UX |
-| `enterprise@teranga.dev` | organizer | **Enterprise** | White-label, advanced analytics |
+| `organizer@teranga.dev` | organizer | **Pro** (Teranga Events SRL) | Featured organizer, scaled events, paid tickets |
+| `starter@teranga.dev` | organizer | **Starter** (Dakar Digital Hub) | Single venue org, growing usage |
+| `free@teranga.dev` | organizer | **Free** (Startup Dakar) | Near plan limit — exercises gating UX |
+| `enterprise@teranga.dev` | organizer | **Enterprise** (Sonatel) | White-label, advanced analytics |
 | `staff@teranga.dev` | staff (scanner) | n/a | Check-in dashboard, manual + scan |
 | `participant@teranga.dev` | participant | n/a | Discovery, registration, badge, feed |
 
-(Email aliases are stable across reseeds. The seed writes them via Auth emulator on first run.)
+(Email aliases + password are stable across reseeds. Source of truth: `scripts/seed/02-users.ts` — `PASSWORD = "password123"` constant.)
 
 ---
 
@@ -33,7 +33,7 @@ A scripted, 5-minute path through the seeded dataset. Hits every flagship featur
 
 ### 0. Setup (≤ 30 s)
 1. Tabs open: backoffice (3001), participant (3002), API docs (`http://localhost:3000/docs`).
-2. Sign in to backoffice as `pro@teranga.dev`.
+2. Sign in to backoffice as `organizer@teranga.dev` (Pro plan organizer for Teranga Events SRL).
 
 ### 1. Pro organizer dashboard (60 s)
 - **Events list**: ~25 events across past / live / upcoming, multi-city. Highlights: "Dakar Tech Summit 2026" (featured, 5 regs, paid VIP tier).
@@ -94,7 +94,7 @@ npm run seed:reset       # confirmation prompt; wipes Firestore
 npm run seed             # reload from scratch
 ```
 
-Sprint E ships `staging-reset.ts` covering Firestore + Auth + Storage with a 3-gate confirmation; until then `seed:reset` is Firestore-only and Auth users may collide on re-seed (workaround: clear the Auth emulator manually via `localhost:4000`).
+`seed:reset` (`scripts/seed-reset.ts`) covers **Firestore + Auth + Storage** with a 3-gate confirmation (env target → project ID → typed phrase) and a `--dry-run` mode. See `docs-v2/50-operations/staging-reset.md` for the full operator runbook.
 
 ---
 

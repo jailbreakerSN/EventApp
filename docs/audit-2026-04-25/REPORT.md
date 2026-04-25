@@ -19,14 +19,14 @@ branch: claude/docs-seed-overhaul
 
 | Axe | Note | Verdict |
 | --- | ---- | ------- |
-| Documentation `docs-v2/` (canonique, Diátaxis) | A− | 65 fichiers, 93 % exacts, 13 sans `status:` |
-| Documentation `docs/` (legacy) | C+ | 54 fichiers, 6 à archiver, 28 toujours actifs (runbooks, design-system, audits récents, delivery-plan) |
-| ADRs (`docs-v2/20-architecture/decisions/`) | A | 7 ADRs solides + template ADR-0000 ajouté ce sprint, 8 ADRs rétroactifs à backfill |
-| Schemas Firestore (53 collections) | B− | 0 schéma orphelin, mais 6 collections sans seed writer et 8 sans `match` block explicite |
-| Seed data (qualité narrative) | A | Noms wolof/français authentiques, 4 paliers de plan, dates cohérentes — gros trou : 0 traduction wolof, EN minimal |
-| Seed data (couverture) | B | 6 collections orphelines, `seed-reset.ts` ne touche **pas** le Storage |
-| OpenAPI exposé | F | Spec compilée mais **non publiée** dans le repo ni servie par le CDN |
-| Storybook `shared-ui` | F | Aucune story, 0 % de couverture visuelle |
+| Documentation `docs-v2/` (canonique, Diátaxis) | A− | 65 fichiers, 93 % exacts. **À l'audit** : 13 sans `status:` ; **Sprint B a backfilled 56 fichiers** (l'estimation initiale était basse). |
+| Documentation `docs/` (legacy) | C+ | 54 fichiers, 6 à archiver, 48 toujours actifs (runbooks, design-system, audits récents, delivery-plan). |
+| ADRs (`docs-v2/20-architecture/decisions/`) | A | 7 ADRs solides + template ADR-0000 ajouté ce sprint, **8 ADRs rétroactifs (0008-0015) shippés en Sprint B**. |
+| Schemas Firestore (53 collections) | B− | 0 schéma orphelin. **À l'audit** : 6 collections sans seed writer (`badgeTemplates`, `checkins`, `promoCodes`, `planCoupons`, `couponRedemptions`, `balanceTransactions`) et 8 sans `match` block explicite. **Sprint C ferme 5 (`adminJobRuns`, `announcements`, `couponRedemptions`, `featureFlags`, `planCoupons`)** ; **4 restent ouvertes** (`badgeTemplates`, `checkins`, `promoCodes`, `balanceTransactions`) — voir §5 pour le scope. Les 8 `match` blocks explicites sont shippés (commit `1e23dbf`). |
+| Seed data (qualité narrative) | A | Noms wolof/français authentiques, 4 paliers de plan, dates cohérentes. **Sprint D shippé** : ~80 events synthétiques (procéduraux) + i18n WO/EN sur les 22 events canoniques. |
+| Seed data (couverture) | B | 6 collections orphelines à l'audit ; **Sprint C ferme 5/6**. **Sprint E** étend `seed-reset.ts` à Firestore + Auth + Storage avec 3-gate confirmation + `--dry-run`. |
+| OpenAPI exposé | F→A | Spec compilée mais **non publiée** à l'audit. **Sprint B publie** `docs-v2/30-api/openapi/openapi.{json,yaml}` + CI freshness guard (`docs:openapi:check`). |
+| Storybook `shared-ui` | F→A | Aucune story à l'audit. **Sprint E pose** Storybook + 1 story par composant (~30 fichiers, 199 baselines visuelles). |
 
 **Quatre constats prioritaires** :
 
@@ -66,14 +66,14 @@ branch: claude/docs-seed-overhaul
 | **ARCHIVE** | 6 | Déplacer vers `docs/archive/2026-04/` |
 | **STALE** | 0 | — |
 
-**Liste ARCHIVE (Sprint B)** :
+**Liste ARCHIVE (shippée Sprint B, commit `82efbb1`)** — chaque fichier source a été déplacé vers `docs/archive/2026-04/<nouveau-nom>` :
 
-1. `docs/ux-ui-audit-2026-04-07.md` — superseded par `docs/design-system/audit-2026-04-13.md`
-2. `docs/delivery-plan/future-roadmap.md` — superseded par `docs/delivery-plan/wave-{1..10}-*.md` actuels
-3. `docs/delivery-plan/entitlement-model-design.md` — implémenté, plan-revenue-levers-design.md le supersede
-4. `docs/admin-overhaul/PLAN.md` — implémenté (admin shipped Sprint 4), garder uniquement FIDELITY-AUDIT
-5. `docs/system-audit-2026-04-17.md` — superseded par audit en cours (REPORT.md, présent doc)
-6. `docs/delivery-plan/plan-management-phase-7-plus.md` — fusionné dans wave-6-payments + wave-10
+1. `docs/ux-ui-audit-2026-04-07.md` → `docs/archive/2026-04/ux-ui-audit-2026-04-07.md` (superseded par `docs/design-system/audit-2026-04-13.md`)
+2. `docs/delivery-plan/future-roadmap.md` → `docs/archive/2026-04/delivery-plan-future-roadmap.md`
+3. `docs/delivery-plan/entitlement-model-design.md` → `docs/archive/2026-04/delivery-plan-entitlement-model-design.md`
+4. `docs/admin-overhaul/PLAN.md` → `docs/archive/2026-04/admin-overhaul-PLAN.md` (FIDELITY-AUDIT reste en place)
+5. `docs/system-audit-2026-04-17.md` → `docs/archive/2026-04/system-audit-2026-04-17.md` (superseded par ce REPORT.md)
+6. `docs/delivery-plan/plan-management-phase-7-plus.md` → `docs/archive/2026-04/delivery-plan-plan-management-phase-7-plus.md`
 
 **Notes**
 
@@ -126,7 +126,7 @@ Template ADR-0000 ajouté en début de sprint (`f4274a0`).
 | Catégorie | Nb | Détail |
 |-----------|----|--------|
 | Collections avec schéma + rules + seed | 39 | Sain |
-| Collections sans seed writer (orphelines fixtures) | 6 | `badgeTemplates`, `checkins`, `promoCodes`, `planCoupons`, `couponRedemptions`, `balanceTransactions` |
+| Collections sans seed writer (orphelines fixtures à l'audit) | 6 | `badgeTemplates`, `checkins`, `promoCodes`, `planCoupons`, `couponRedemptions`, `balanceTransactions` — **Sprint C ferme `planCoupons` + `couponRedemptions` ; les 4 autres restent ouvertes** (follow-up tracé). |
 | Collections sans `match` block (deny-all par défaut, OK mais non explicite) | 8 | `payouts`, `sessionBookmarks`, `featureFlags`, `receipts`, `subscriptions`, `notificationPreferences`, `counters`, `refundLocks` |
 | Collections runtime/operator-only (couvertes par `SEED_COVERAGE_WAIVER`) | 0 nouvelle | OK |
 | Schemas orphelins (Zod sans collection / collection sans Zod) | 0 | Sain |
@@ -180,62 +180,57 @@ Sprint D corrige tout ça en construisant 5–7 personae de démo + un walkthrou
 
 ---
 
-## 5 · Plan d'exécution Sprints B → E
+## 5 · Plan d'exécution Sprints B → E (livré)
 
 > **Décidé avec l'utilisateur** : exécution en série, sans pause de validation. Wipe Firestore + Auth + Storage. Pas de baseline snapshot. Dataset riche. Storybook in-scope (1 story par composant).
 
-### Sprint B — Documentation (livrables)
+> **État** : Sprints B → E **shippés** dans la même PR `claude/docs-seed-overhaul`. Ce qui suit décrit ce qui a été livré, pas ce qui reste à faire.
 
-1. **ADRs 0008-0015** dans `docs-v2/20-architecture/decisions/` (8 fichiers, format MADR, en suivant ADR-0000).
-2. **Frontmatter `status:`** ajouté aux 13 fichiers `docs-v2/` qui en manquent.
-3. **OpenAPI publication** :
-   - Build step `npm run docs:openapi` (export depuis Fastify Swagger).
-   - Output : `docs-v2/30-api/openapi/openapi.yaml` + `openapi.json`.
-   - CI guard : fail si la spec dérive de la source.
-4. **Per-package READMEs** : 8 fichiers (api, web-backoffice, web-participant, mobile, functions, shared-types, shared-ui, shared-config).
-5. **Diagrammes Mermaid** : architecture macro + flow registration→badge + flow check-in offline (dans `docs-v2/20-architecture/concepts/`).
-6. **Glossary** : `docs-v2/99-reference/glossary.md`.
-7. **Archive** : `docs/archive/2026-04/` reçoit les 6 fichiers identifiés en §1.2.
-8. **Audit registry update** : ce REPORT.md + index dans `docs-v2/99-reference/audits.md`.
+### Sprint B — Documentation ✅ shippé
 
-### Sprint C — Schémas & couverture
+1. **ADRs 0008-0015** créés dans `docs-v2/20-architecture/decisions/` (8 fichiers MADR, voir commit `5c9929a`).
+2. **Frontmatter `status:`** : **56 fichiers** docs-v2 backfilled (l'estimation initiale de 13 était basse — voir commit `1eb4700`).
+3. **OpenAPI publication** : `npm run docs:openapi` exporte depuis Fastify Swagger vers `docs-v2/30-api/openapi/openapi.{json,yaml}` ; CI guard `docs:openapi:check` (commit `63ef4a2`).
+4. **Per-package READMEs** : **7 nouveaux fichiers** (`packages/shared-ui/README.md` existait déjà — commit `9713379`).
+5. **Diagrammes Mermaid** : architecture macro + flow check-in offline + flow registration→badge dans `docs-v2/20-architecture/concepts/` (commit `6a1e6ea`).
+6. **Glossary** : ⚠ **NON shippé** — `docs-v2/99-reference/glossary.md` reste à créer (follow-up Sprint B).
+7. **Archive** : 6 fichiers déplacés vers `docs/archive/2026-04/` (commit `82efbb1`). Voir §1.2 pour la liste.
+8. **Audit registry** : ce REPORT.md + entrée dans `docs-v2/99-reference/audits.md` (commit `64e4143`).
 
-1. **6 seed writers** (`scripts/seed/08-badge-templates.ts`, `scripts/seed/09-checkins.ts`, `scripts/seed/10-promo-codes.ts`, `scripts/seed/11-plan-coupons.ts`, `scripts/seed/12-coupon-redemptions.ts`, `scripts/seed/13-balance-transactions.ts`).
-2. **CI guard `schema-coverage.test.ts`** : check chaque collection Firestore référencée dans `COLLECTIONS` a soit un schéma + writer, soit un waiver explicite.
-3. **Indexes audit script** : `scripts/audit-indexes.ts` qui compare `firestore.indexes.json` aux usages réels (regex sur les `.where(...).orderBy(...)`).
-4. **Rules `match` blocks explicites** pour les 8 collections silencieuses (au moins commentaire + `allow read, write: if false;` si Admin-only).
+### Sprint C — Schémas & couverture ✅ partiellement shippé
 
-### Sprint D — Seed v2 (rich dataset)
+1. **5 seed writers nouveaux** (`scripts/seed/08-admin-fixtures.ts` — admin jobs, announcements, plan coupons, coupon redemptions, feature flags ; commit `296bd9a`). ⚠ **4 collections de la liste initiale restent ouvertes** : `badgeTemplates`, `checkins`, `promoCodes`, `balanceTransactions` (follow-up). Le scope a évolué pour couvrir l'admin surface (priorité demo) plutôt que checkins/promos.
+2. **Coverage CI guard** : `scripts/check-seed-coverage.ts` (existait déjà ; ce sprint étend la liste de fichiers scannés à 08/09).
+3. **Indexes audit** : ⚠ Le nom prévu `scripts/audit-indexes.ts` n'a pas été créé ; le script existant `scripts/audit-firestore-indexes.ts` couvre déjà ce besoin. Rapport : `docs/audit-2026-04-25/INDEXES-AUDIT-FINDINGS.md`.
+4. **Rules `match` blocks explicites** : 8 nouveaux blocs documentés pour les collections server-only (`payouts`, `receipts`, `subscriptions`, `counters`, `refundLocks`, `featureFlags`, `notificationPreferences`, `sessionBookmarks` — commit `1e23dbf`). Tests rules suite ajoutés en revue post-Sprint A.
 
-1. **Volume cible** :
-   - 100 events (mix passé / présent / futur, 4 plans, 4 organisations).
-   - 2000 registrations (réparties pour atteindre les limites starter/pro et exposer la grace period).
-   - 50 sessions, 20 speakers, 10 sponsors.
-   - 200 check-ins (dont 30 offline-then-synced).
-   - 50 promo codes, 20 coupon redemptions.
-2. **i18n** : 100 % wolof + 100 % EN sur events.title / events.description / sessions.title.
-3. **5–7 personae démo** :
-   - `admin@teranga.dev` (super_admin)
-   - `pro@teranga.dev` (organizer pro plan)
-   - `starter@teranga.dev` (organizer starter plan)
-   - `free@teranga.dev` (organizer free plan, near-limit)
-   - `enterprise@teranga.dev` (organizer enterprise plan)
+### Sprint D — Seed v2 (rich dataset) ✅ shippé
+
+1. **Volume livré** :
+   - **22 events canoniques** (`scripts/seed/04-events.ts`) + **80 events synthétiques** procéduraux (`scripts/seed/09-rich-dataset.ts`) → **~102 events**.
+   - **~1 900 registrations synthétiques** (round-robin sur les 27 expansion participants pour éviter les `userId` dangling).
+   - Sessions, speakers, sponsors restent couplés aux 22 events canoniques (par design, voir docstring de `09-rich-dataset.ts`).
+   - 5 plan coupons + 4 coupon redemptions (commit `296bd9a`).
+2. **i18n** : **100 % FR/EN/WO** sur les 22 events canoniques (`scripts/seed/04-events-i18n.ts`) ET sur les 80 events synthétiques (`titleEn`/`titleWo`/`descriptionEn`/`descriptionWo`). Convention Wolof : code-switch avec emprunts français pour les termes tech ("conference", "festival", "marathon"), pure-Wolof pour le vocabulaire UX courant (`ndaje`, `njàngal`, `bés`, `guddi`).
+3. **Personae démo** (mots de passe = `password123` pour tous) :
+   - `admin@teranga.dev` (super_admin, cross-org)
+   - `organizer@teranga.dev` (organizer **Pro** — Teranga Events SRL)
+   - `starter@teranga.dev` (organizer **Starter** — Dakar Digital Hub)
+   - `free@teranga.dev` (organizer **Free** — Startup Dakar, plafond atteint)
+   - `enterprise@teranga.dev` (organizer **Enterprise** — Sonatel)
    - `staff@teranga.dev` (scanner)
    - `participant@teranga.dev` (participant cross-events)
-4. **Demo walkthrough** : `docs-v2/00-getting-started/demo-walkthrough.md` (scenarios sales + dev).
+4. **Demo walkthrough** : `docs-v2/00-getting-started/demo-walkthrough.md` (scénarios sales + dev, < 5 min — commit `3bad54b`).
 
-### Sprint E — Reset toolkit + Storybook
+### Sprint E — Reset toolkit + Storybook ✅ shippé
 
-1. **`scripts/staging-reset.ts`** :
-   - Couvre Firestore + Auth + Storage.
-   - **3-gate confirmation** (mot-clé environnement, projet ID, phrase typed-out).
-   - Mode `--dry-run` qui rapporte le volume sans écrire.
-2. **Runbook** : `docs-v2/50-operations/staging-reset.md`.
-3. **Storybook** :
-   - Bootstrap dans `packages/shared-ui/.storybook/`.
-   - **1 story par composant** (couverture complète, pas 3-5 canoniques).
-   - Tokens Teranga branchés via theme provider.
-   - CI build de Storybook (publication différée — Sprint E ne déploie pas).
+1. **`scripts/seed-reset.ts`** (nom de fichier maintenu — extension du fichier existant plutôt que création d'un `staging-reset.ts` séparé, commit `30db308`) :
+   - Couvre **Firestore + Auth + Storage**.
+   - **3-gate confirmation** : `SEED_RESET_CONFIRM=YES_RESET` + `CONFIRM_PROJECT=<id>` + `CONFIRM_PHRASE="RESET STAGING DATABASE NOW"` (gate 3b ajouté en revue post-Sprint A pour les targets non-emulator).
+   - Mode `--dry-run` (`npm run seed:reset:dry-run`) qui rapporte les volumes sans écrire.
+   - Workflow GitHub `.github/workflows/seed-staging.yml` câblé avec `CONFIRM_PHRASE` (correctif post-Sprint E).
+2. **Runbook** : `docs-v2/50-operations/staging-reset.md` (commit `30db308`).
+3. **Storybook** : bootstrap dans `packages/shared-ui/.storybook/`, **1 story par composant** (~30 fichiers, ~108 stories, 199 baselines visuelles — commit `206805e` + auto-baseline `e89a9d0`). Tokens Teranga branchés via `addon-themes`. CI build via `.github/workflows/shared-ui-quality.yml` (a11y + visual regression).
 
 ---
 

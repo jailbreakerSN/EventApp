@@ -55,7 +55,7 @@ eventBus.on('registration.created', notificationListener);
 eventBus.on('registration.created', counterListener);
 ```
 
-The bus is implemented with Node.js `EventEmitter` wrapped in a typed facade (`apps/api/src/events/event-bus.ts`). All event names and payloads are declared in `apps/api/src/events/events.types.ts` as a discriminated union.
+The bus is implemented with Node.js `EventEmitter` wrapped in a typed facade (`apps/api/src/events/event-bus.ts`). All event names and payloads are declared in `apps/api/src/events/domain-events.ts` as a discriminated union.
 
 ---
 
@@ -84,7 +84,7 @@ The bus is implemented with Node.js `EventEmitter` wrapped in a typed facade (`a
 ## Conventions
 
 - **Event name format:** `<aggregate>.<past-tense-verb>` — e.g. `registration.created`, `event.published`, `subscription.upgraded`.
-- **Payload shape:** Typed in `events.types.ts`. Always includes `aggregateId` and a request context snapshot (requestId, userId).
+- **Payload shape:** Typed in `domain-events.ts`. Always includes `aggregateId` and a request context snapshot (requestId, userId).
 - **Listener side effects must be idempotent.** Listeners can be retried (planned: Phase 2 retry queue).
 - **Never emit inside a transaction.** Emit AFTER `db.runTransaction()` resolves successfully — see ADR-0008 (audit trail) and CLAUDE.md.
 - **Audit listener is mandatory** for every mutation. The `domain-event-auditor` agent enforces this in CI.
@@ -116,6 +116,6 @@ The bus is implemented with Node.js `EventEmitter` wrapped in a typed facade (`a
 ## References
 
 - `apps/api/src/events/event-bus.ts` — typed bus facade.
-- `apps/api/src/events/events.types.ts` — discriminated union of event names and payloads.
-- `apps/api/src/events/audit.listener.ts` — audit log writer.
+- `apps/api/src/events/domain-events.ts` — discriminated union of event names and payloads.
+- `apps/api/src/events/listeners/audit.listener.ts` — audit log writer (one of several listeners under `events/listeners/`).
 - `.claude/agents/domain-event-auditor.md` — CI agent that flags missing emits.

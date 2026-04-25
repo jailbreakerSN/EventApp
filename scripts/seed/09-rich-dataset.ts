@@ -33,7 +33,7 @@
 import type { Firestore } from "firebase-admin/firestore";
 
 import { Dates, atOffset, CITIES } from "./config";
-import { IDS } from "./ids";
+import { EXPANSION_PARTICIPANT_UIDS, IDS } from "./ids";
 
 // ─── Deterministic PRNG (Mulberry32) ──────────────────────────────────────
 // 32-bit state; period 2^32. Sufficient for ~1 900 numbers across the
@@ -59,13 +59,43 @@ const pick = <T,>(arr: readonly T[]): T => {
 };
 
 // ─── Lookup pools ─────────────────────────────────────────────────────────
+//
+// Per-org synthetic-event BUDGET — must respect `maxEvents` from
+// PLAN_LIMITS once the canonical events in 04-events.ts are added on top.
+//
+// Canonical event counts per pool org (from 04-events.ts):
+//   • orgId            (pro)        — ~8 canonical events  (cap = ∞)
+//   • venueOrgId       (starter)    —  0 canonical events  (cap = 10)
+//   • enterpriseOrgId  (enterprise) — ~6 canonical events  (cap = ∞)
+//   • freeOrgId        (free)       —  3 canonical events  (cap = 3) → SATURATED
+//
+// The previous weighted-modulo distribution gave free ~8 synth events
+// and starter ~24 synth events, both way over their caps. Any test that
+// calls `event.create` against a saturated org would then fire
+// PlanLimitError. The hard budget below keeps each tier strictly within
+// `(maxEvents - canonicalCount)` so the seed is plan-correctness-safe.
+//
+// Budget total = TARGET_EVENTS so the procedural pass writes the same
+// total volume; only the distribution shifts.
+const ORG_BUDGET: ReadonlyArray<{
+  id: string;
+  plan: "free" | "starter" | "pro" | "enterprise";
+  budget: number;
+}> = [
+  { id: IDS.orgId, plan: "pro", budget: 45 }, // pro = ∞, takes the bulk
+  { id: IDS.venueOrgId, plan: "starter", budget: 10 }, // starter cap=10, canonical=0 → 10 OK
+  { id: IDS.enterpriseOrgId, plan: "enterprise", budget: 25 }, // enterprise = ∞
+  { id: IDS.freeOrgId, plan: "free", budget: 0 }, // free cap=3, canonical=3 → SATURATED
+];
 
-const ORG_POOL = [
-  { id: IDS.orgId, plan: "pro", weight: 4 },
-  { id: IDS.venueOrgId, plan: "starter", weight: 3 },
-  { id: IDS.enterpriseOrgId, plan: "enterprise", weight: 2 },
-  { id: IDS.freeOrgId, plan: "free", weight: 1 },
-] as const;
+// Build a flat assignment list so each generated event index maps to a
+// concrete org. `flatMap` preserves order so distribution is deterministic.
+const ORG_ASSIGNMENT: ReadonlyArray<{
+  id: string;
+  plan: "free" | "starter" | "pro" | "enterprise";
+}> = ORG_BUDGET.flatMap(({ id, plan, budget }) =>
+  Array(budget).fill({ id, plan }),
+);
 
 // Plan-aware reg-count bounds (mirrors PLAN_LIMITS so the seed never
 // exceeds maxParticipantsPerEvent).
@@ -225,8 +255,31 @@ const LAST_NAMES = [
 
 const CITY_KEYS = Object.keys(CITIES);
 
+// ─── Helpers ──────────────────────────────────────────────────────────────
+
+/**
+ * `draft` and `cancelled` events have no participants — the reg writer
+ * skips them. Use this guard wherever a count denorm is computed so
+ * dashboards don't show phantom seats.
+ */
+function hasRegistrations(e: { status: GeneratedEvent["status"] }): boolean {
+  return e.status === "published" || e.status === "completed";
+}
+
+/**
+ * Future-dated synthetic events (start in +1..+180d) need a sane
+ * `createdAt` so they still surface in `where("createdAt", "<=", now)`
+ * queries (audit log, "recently created" rails). Clamp to the smaller
+ * of `Dates.now` and `e.startDate`.
+ */
+function clampToPast(iso: string): string {
+  return iso < Dates.now ? iso : Dates.now;
+}
+
 // ─── Generators ───────────────────────────────────────────────────────────
 
+// Total synthetic event volume. Must equal `sum(ORG_BUDGET.budget)` so
+// each generated index maps 1:1 onto a budget slot without modulo wrap.
 const TARGET_EVENTS = 80;
 
 interface GeneratedEvent {
@@ -251,9 +304,10 @@ interface GeneratedEvent {
 }
 
 function generateEvent(index: number): GeneratedEvent {
-  // Org weighting via flat repetition.
-  const weighted = ORG_POOL.flatMap((o) => Array(o.weight).fill(o));
-  const org = weighted[index % weighted.length] as (typeof ORG_POOL)[number];
+  // Per-tier budget assignment (see ORG_BUDGET above for cap rationale).
+  // index 0..ORG_ASSIGNMENT.length-1 is dense; modulo wraps for safety
+  // when TARGET_EVENTS > sum(budgets).
+  const org = ORG_ASSIGNMENT[index % ORG_ASSIGNMENT.length]!;
 
   const theme = pick(EVENT_TITLE_THEMES);
   const cityKey = pick(CITY_KEYS);
@@ -344,7 +398,11 @@ async function writeSyntheticEvents(
         coverImageURL: null,
         bannerImageURL: null,
         category: e.category,
-        tags: ["synthetic", e.category, city.region ?? city.country],
+        // M2 fix — namespace the marker so search-facet UIs that strip
+        // `__seed:` prefixes don't surface "synthetic" as a discoverable
+        // tag chip in the participant app. Category + region remain
+        // user-facing.
+        tags: ["__seed:synthetic", e.category, city.region ?? city.country],
         format: e.format,
         status: e.status,
         location: {
@@ -357,6 +415,9 @@ async function writeSyntheticEvents(
         startDate: e.startDate,
         endDate: e.endDate,
         timezone: city.timezone,
+        // M1 — draft and cancelled events MUST NOT carry a non-zero
+        // registeredCount denorm. The reg-writer below skips them, so a
+        // non-zero counter would overcount in every dashboard tile.
         ticketTypes: [
           {
             id: e.ticketTypeId,
@@ -364,15 +425,15 @@ async function writeSyntheticEvents(
             description: "Billet standard (généré)",
             price: 0,
             currency: "XOF",
-            totalQuantity: e.registeredCount + 50,
-            soldCount: e.registeredCount,
+            totalQuantity: hasRegistrations(e) ? e.registeredCount + 50 : 50,
+            soldCount: hasRegistrations(e) ? e.registeredCount : 0,
             accessZoneIds: [],
             isVisible: true,
           },
         ],
         accessZones: [],
-        maxAttendees: e.registeredCount + 50,
-        registeredCount: e.registeredCount,
+        maxAttendees: hasRegistrations(e) ? e.registeredCount + 50 : 50,
+        registeredCount: hasRegistrations(e) ? e.registeredCount : 0,
         checkedInCount: 0,
         isPublic: e.status === "published",
         isFeatured: false,
@@ -385,9 +446,13 @@ async function writeSyntheticEvents(
           e.organizationPlan === "free" ? IDS.freeOrganizer : IDS.organizer,
         updatedBy:
           e.organizationPlan === "free" ? IDS.freeOrganizer : IDS.organizer,
-        createdAt: e.startDate,
-        updatedAt: e.startDate,
-        publishedAt: e.status === "published" ? e.startDate : null,
+        // M3 — clamp createdAt/updatedAt to a past date so future events
+        // still surface in `where("createdAt", "<=", now)` queries
+        // (audit log, "recently created" rails). Using `e.startDate`
+        // (which can be up to +180d) silently dropped half the dataset.
+        createdAt: clampToPast(e.startDate),
+        updatedAt: clampToPast(e.startDate),
+        publishedAt: e.status === "published" ? clampToPast(e.startDate) : null,
         archivedAt: null,
         qrKid: null,
         qrKidHistory: [],
@@ -437,7 +502,15 @@ async function writeSyntheticRegistrations(
       const first = pick(FIRST_NAMES);
       const last = pick(LAST_NAMES);
       const ord = String(participantCounter).padStart(5, "0");
-      const synUid = `participant-syn-${ord}`;
+      // H1 fix — round-robin REAL expansion participants (27 of them)
+      // rather than fabricating `participant-syn-NNNNN` UIDs that have
+      // no Auth user / no `users/` profile. The previous approach left
+      // ~1 800 dangling refs; every UI that joins registration → user
+      // (organizer attendee list, lead exports, audit) rendered blanks.
+      // Round-robin gives each real participant ~70 regs across the
+      // procedural pool, which is realistic for a power-user demo.
+      const synUid =
+        EXPANSION_PARTICIPANT_UIDS[participantCounter % EXPANSION_PARTICIPANT_UIDS.length]!;
       const regId = `reg-syn-${ord}`;
       // 1 in 6 of the past events have a check-in stamped — exercises
       // the dashboard's "checked in" filter without polluting future

@@ -28,41 +28,47 @@ The script is **idempotent** — re-running it is safe. It upserts entities by d
 
 ### Users
 
-| Email | Password | Persona | Plan |
-|---|---|---|---|
-| `admin@teranga.dev` | `teranga2026!` | Organizer + owner | Pro |
-| `organizer@teranga.dev` | `teranga2026!` | Organizer + owner | Starter |
-| `free@teranga.dev` | `teranga2026!` | Organizer + owner | Free |
-| `enterprise@teranga.dev` | `teranga2026!` | Organizer + owner | Enterprise |
-| `participant@teranga.dev` | `teranga2026!` | Participant | — |
-| `staff@teranga.dev` | `teranga2026!` | Staff (event-scoped) | — |
-| `speaker@teranga.dev` | `teranga2026!` | Speaker (event-scoped) | — |
-| `sponsor@teranga.dev` | `teranga2026!` | Sponsor (event-scoped) | — |
-| `super@teranga.dev` | `teranga2026!` | Super admin | — |
-| `qa-staff@teranga.dev` | `teranga2026!` | Multi-role test user | — |
+Source of truth: `scripts/seed/02-users.ts` (`PASSWORD = "password123"` constant — applies to **every** seed account).
+
+| Email | Persona | Plan / Org |
+|---|---|---|
+| `admin@teranga.dev` | Super admin (cross-org) | n/a |
+| `organizer@teranga.dev` | Organizer + owner | **Pro** — Teranga Events SRL |
+| `coorganizer@teranga.dev` | Co-organizer | Teranga Events SRL |
+| `starter@teranga.dev` | Organizer + owner | **Starter** — Dakar Digital Hub |
+| `free@teranga.dev` | Organizer + owner | **Free** — Startup Dakar |
+| `enterprise@teranga.dev` | Organizer + owner | **Enterprise** — Groupe Sonatel Events |
+| `venue@teranga.dev` | Venue manager | Dakar Venues & Hospitality |
+| `participant@teranga.dev` | Participant | — |
+| `participant2@teranga.dev` | Participant (second canonical) | — |
+| `speaker@teranga.dev` | Speaker (event-scoped) | — |
+| `sponsor@teranga.dev` | Sponsor (event-scoped) | — |
+| `staff@teranga.dev` | Staff (event-scoped scanner) | — |
+| `multirole@teranga.dev` | Organizer + speaker (multi-role test) | — |
+| `authonly@teranga.dev` | Auth-only (no roles assigned, edge case) | — |
+
+Plus ~27 expansion participants with deterministic emails like `<firstname>.<n>@teranga.dev` (see `EXPANSION_PARTICIPANT_UIDS` + `expansionParticipantEmail()`).
 
 ### Organizations
 
 | Name | Plan | Owner |
 |---|---|---|
-| Teranga Events SRL | pro | admin@teranga.dev |
-| Dakar Digital Hub | starter | organizer@teranga.dev |
-| Startup Dakar | free | free@teranga.dev |
-| Groupe Sonatel Events | enterprise | enterprise@teranga.dev |
+| Teranga Events SRL | pro | `organizer@teranga.dev` |
+| Dakar Digital Hub | starter | `starter@teranga.dev` |
+| Startup Dakar | free | `free@teranga.dev` |
+| Groupe Sonatel Events | enterprise | `enterprise@teranga.dev` |
+| Dakar Venues & Hospitality | starter | `venue@teranga.dev` |
 
 ### Events
 
-| Title | Status | Type | Org |
-|---|---|---|---|
-| DevConf Dakar 2026 | published | Paid (15 000 XOF) | Teranga Events SRL |
-| Hackathon OpenData | published | Free | Teranga Events SRL |
-| BarCamp Dakar | draft | Free | Dakar Digital Hub |
-| Workshop Design Thinking | cancelled | Free | Dakar Digital Hub |
+The seed writes **22 hand-crafted canonical events** (`scripts/seed/04-events.ts`) covering every category, format, plan tier, and lifecycle state — past / live / upcoming, draft / published / cancelled / archived, free / paid, in-person / online / hybrid. On top of that, **80 procedurally generated synthetic events** (`scripts/seed/09-rich-dataset.ts`) fan out across the same orgs while honouring `PLAN_LIMITS.maxEvents` (free org gets 0 synthetic — the 3 canonical free events already saturate the cap).
+
+Total: ~102 events, ~1 900 registrations (synthetic regs round-robin the 27 expansion participants so every join → user surface renders real data, not blanks).
 
 ### Other entities
 
 - 3 venues (1 approved, 1 pending, 1 suspended) — Dakar locations
-- 6 registrations (mix of confirmed, waitlisted)
+- 6 canonical registrations + ~1 900 synthetic
 - 2 badges (generated)
 - 4 sessions with speakers
 - 3 feed posts
@@ -70,17 +76,19 @@ The script is **idempotent** — re-running it is safe. It upserts entities by d
 - 5 notifications
 - 2 payments (1 succeeded, 1 pending)
 - 1 receipt
-- 3 subscriptions (for the 3 non-free orgs)
+- 7 subscriptions (sub-001 … sub-007 — see `06-social.ts`)
 - 2 speakers, 2 sponsors
 - 1 broadcast
+- 5 plan coupons + 4 coupon redemptions (see `08-admin-fixtures.ts`)
 - Audit logs for key actions
 
 ### QA fixtures (always upserted)
 
-Three additional users seeded on every deploy for CI/role-coverage tests:
-- `qa-staff@teranga.dev` — multi-role (staff + participant)
-- `qa-multirole@teranga.dev` — organizer + participant
-- `qa-authonly@teranga.dev` — no roles (auth edge case)
+`scripts/seed-qa-fixtures.ts` upserts three additional accounts on every deploy for CI/role-coverage tests. Same `password123`. The QA emails do NOT carry a `qa-` prefix:
+
+- `staff@teranga.dev` — staff role (event-scoped scanner) — also part of the canonical seed
+- `multirole@teranga.dev` — organizer + speaker (multi-role test)
+- `authonly@teranga.dev` — no roles (auth edge case)
 
 ---
 

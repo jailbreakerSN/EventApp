@@ -74,7 +74,7 @@ Firestore rules enforce this: `allow delete: if false;` on every collection that
 **Negative**
 
 - Storage cost grows monotonically. Mitigated by archival job that moves status:archived events older than 18 months to cold storage (Cloud Storage JSON dump) — planned, not yet shipped.
-- Every read path must remember to filter by status. Mitigated by repository-level helpers (`BaseRepository.findActive()`).
+- Every read path must remember to filter by status. Mitigation: `BaseRepository.softDelete(id, statusField, statusValue)` keeps every soft-delete consistent on the write side; on the read side, services apply the `where('status', '!=', 'archived')` filter explicitly per query (a `findActive()` repository helper is a tracked follow-up, not yet shipped).
 - Firestore composite indexes need a `status` field on most collections.
 
 **Follow-ups**
@@ -87,5 +87,5 @@ Firestore rules enforce this: `allow delete: if false;` on every collection that
 ## References
 
 - `apps/api/src/services/event.service.ts` — `archive()`, `cancel()` methods.
-- `apps/api/src/repositories/base.repository.ts` — `findActive()` helper.
+- `apps/api/src/repositories/base.repository.ts` — `softDelete(id, statusField, statusValue)` helper (the canonical write-path entry; a `findActive()` read helper is a tracked follow-up).
 - `infrastructure/firebase/firestore.rules` — `allow delete: if false;` patterns.

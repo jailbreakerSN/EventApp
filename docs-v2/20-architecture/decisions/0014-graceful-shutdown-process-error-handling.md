@@ -27,42 +27,43 @@ For a public-facing API serving event check-ins (where a 502 mid-scan is a bad U
 
 ## Decision
 
-**The API installs explicit handlers for `SIGTERM`, `SIGINT`, `unhandledRejection`, and `uncaughtException` with distinct semantics:**
+**The API installs explicit handlers for `SIGTERM`, `SIGINT`, `unhandledRejection`, and `uncaughtException` — `SIGTERM`/`SIGINT` drain gracefully; both unhandled-error events log + crash so Cloud Run restarts the instance:**
 
 ```typescript
 // SIGTERM / SIGINT: graceful shutdown
 process.on('SIGTERM', async () => {
   logger.info('SIGTERM received, draining...');
   await fastify.close();      // stops accepting new connections, drains in-flight
-  await db.terminate();        // closes Firestore connection
   process.exit(0);
 });
 
-// unhandledRejection: log + keep running
+// unhandledRejection: log + crash (running in undefined state is worse
+// than restarting — Sentry gets a 1-second flush window before exit).
 process.on('unhandledRejection', (reason) => {
-  logger.error({ err: reason }, 'unhandledRejection — investigate');
-  // process stays up
+  captureError(reason, { source: 'unhandledRejection' });
+  logger.fatal({ err: reason }, 'Unhandled promise rejection — crashing');
+  closeSentry(1000).finally(() => process.exit(1));
 });
 
-// uncaughtException: log + graceful shutdown (process state is unknown)
-process.on('uncaughtException', async (err) => {
-  logger.fatal({ err }, 'uncaughtException — shutting down');
-  try { await fastify.close(); } catch {}
-  process.exit(1);
+// uncaughtException: same crash policy as unhandledRejection.
+process.on('uncaughtException', (err) => {
+  captureError(err, { source: 'uncaughtException' });
+  logger.fatal({ err }, 'Uncaught exception — crashing');
+  closeSentry(1000).finally(() => process.exit(1));
 });
 ```
 
-Cloud Run's deployment config gives the container 10s grace before `SIGKILL`. Fastify's `close()` resolves once all in-flight requests complete.
+Cloud Run's deployment config gives the container 10s grace before `SIGKILL`. Fastify's `close()` resolves once all in-flight requests complete. The "crash on unhandled error" policy intentionally errs on the side of restart — Cloud Run respawns within seconds, and a fresh process is safer than running with a known-broken Promise chain or corrupted call stack.
 
 ---
 
 ## Reasons
 
 - **No 502s on deploys.** SIGTERM-triggered drain ensures the load balancer can route new requests elsewhere while in-flight ones complete.
-- **`unhandledRejection` does not crash.** A single missing `.catch` somewhere in a listener should not take down the API. Log loud, investigate later.
-- **`uncaughtException` shuts down.** Process state is unknown after an uncaught exception (corrupted memory, dangling resources). Continuing is unsafe — exit and let Cloud Run restart.
-- **Distinguishing the two** is the standard Node.js production practice (Node.js docs, "Don't ignore errors"; Joyent debugging guide).
-- **Observability.** Every signal is logged with context (request ID if available, error stack, timestamp). Cloud Logging alerts trigger on `level: fatal`.
+- **Crash-on-unhandled-error is the safer default.** A `unhandledRejection` or `uncaughtException` means the runtime invariants we rely on may no longer hold (a Promise chain silently dropped, a stack frame corrupted, a resource leaked). Cloud Run respawns the instance within seconds; that beats running on with subtly broken state.
+- **Sentry gets a flush window.** Both handlers call `closeSentry(1000)` before exit so the crash event itself reaches the error tracker — otherwise the alert that should fire is the one we'd lose.
+- **Distinguishing signal-from-error is standard Node.js practice.** Node.js docs ("Don't ignore errors") + Cloud Run's recycling lifecycle both push toward this split.
+- **Observability.** Every crash logs `level: fatal` with the error stack + a `source` field (`unhandledRejection` or `uncaughtException`). Cloud Logging alert routes `level=fatal` to PagerDuty.
 
 ---
 
@@ -71,7 +72,7 @@ Cloud Run's deployment config gives the container 10s grace before `SIGKILL`. Fa
 | Option | Why rejected |
 |---|---|
 | Default Node.js behavior | Drops in-flight requests on deploy → 502s. |
-| Crash on `unhandledRejection` | Aggressive; a single bug in a listener takes down the whole API. |
+| Log + keep running on `unhandledRejection` | Node.js's previous default. Masks real bugs and leaves the process in unknown state. Cloud Run respawn is cheap; keeping a half-broken process is not. |
 | Don't shut down on `uncaughtException` | Unsafe — process state is unknown. Could yield silent data corruption. |
 | Use a process supervisor (PM2) | Cloud Run is the supervisor. Adding PM2 layers conflicts with Cloud Run's lifecycle. |
 
@@ -93,14 +94,14 @@ Cloud Run's deployment config gives the container 10s grace before `SIGKILL`. Fa
 **Positive**
 
 - Zero-downtime deploys on Cloud Run.
-- Investigatable `unhandledRejection` logs without crash loops.
-- Clear semantic distinction between recoverable and unrecoverable errors.
+- Loud crash on `unhandledRejection` / `uncaughtException` — every error reaches Sentry and Cloud Logging.
+- Clear semantic distinction between operator signals (drain) and runtime errors (crash + restart).
 - Cloud Run health probes route traffic correctly during startup and shutdown.
 
 **Negative**
 
 - Drain takes up to 10s — slow long-running requests are killed at SIGKILL. Mitigated: API requests are sub-second; long jobs run in Cloud Functions / scheduled jobs.
-- `unhandledRejection` accumulating without a fix means silent failure. Mitigated by Cloud Logging alert: `count(level=error) > N per 5min` pages on-call.
+- A bug that throws on every request will crash-loop. Cloud Run will back off and surface the failure rate in monitoring; PagerDuty fires on `level=fatal`. Acceptable trade-off vs. silently running broken state.
 - Test coverage for shutdown handlers requires process-level mocks. Skipped at the unit level; covered by integration smoke tests.
 
 **Follow-ups**
@@ -112,8 +113,9 @@ Cloud Run's deployment config gives the container 10s grace before `SIGKILL`. Fa
 
 ## References
 
-- `apps/api/src/server.ts` — signal handlers, drain logic.
+- `apps/api/src/index.ts` — signal handlers, drain logic, `unhandledRejection` + `uncaughtException` crash policy.
 - `apps/api/src/routes/health.routes.ts` — `/health` + `/ready`.
+- `apps/api/src/lib/sentry.ts` — `captureError()` + `closeSentry()` flush helper.
 - Node.js docs: [Don't ignore errors](https://nodejs.org/api/process.html#event-uncaughtexception).
 - Cloud Run lifecycle: 10s grace period, SIGTERM then SIGKILL.
-- CLAUDE.md → "Backend Design Principles" §5–6.
+- CLAUDE.md → "Backend Design Principles" §5–6 (note: CLAUDE.md §6 still describes the older "log + keep running" `unhandledRejection` policy and is out of date relative to this ADR; the code matches the ADR).

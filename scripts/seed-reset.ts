@@ -112,30 +112,31 @@ const storage = getStorage(app);
  * batch write limit). In `--dry-run`, returns the count that WOULD be
  * deleted without writing.
  */
+/** Dry-run probe cap. Anything at the cap is reported as `"1200+"`. */
+const DRY_RUN_PROBE_LIMIT = 1200;
+
 async function processCollection(
   fs: Firestore,
   collection: string,
   batchSize = 500,
-): Promise<number> {
+): Promise<{ count: number; capped: boolean }> {
   if (DRY_RUN) {
-    // Dry-run: just count. Cap at 1 200 per collection to bound the
-    // emulator round-trip cost — anything bigger gets reported as
-    // "1 200+".
-    const probe = await fs.collection(collection).limit(1200).get();
-    return probe.size;
+    // Dry-run: just count. Cap to bound the emulator round-trip cost.
+    const probe = await fs.collection(collection).limit(DRY_RUN_PROBE_LIMIT).get();
+    return { count: probe.size, capped: probe.size >= DRY_RUN_PROBE_LIMIT };
   }
 
   let totalDeleted = 0;
   for (;;) {
     const snap = await fs.collection(collection).limit(batchSize).get();
-    if (snap.empty) return totalDeleted;
+    if (snap.empty) return { count: totalDeleted, capped: false };
 
     const batch = fs.batch();
     for (const doc of snap.docs) batch.delete(doc.ref);
     await batch.commit();
     totalDeleted += snap.size;
 
-    if (snap.size < batchSize) return totalDeleted;
+    if (snap.size < batchSize) return { count: totalDeleted, capped: false };
   }
 }
 
@@ -201,10 +202,12 @@ async function processStorage(): Promise<{ deleted: number; perPrefix: Record<st
       continue;
     }
 
-    // bucket.deleteFiles({ prefix }) would do the same thing in one
-    // round-trip, but iterating gives us per-file error visibility
-    // and predictable progress in long runs.
-    await Promise.all(files.map((f) => f.delete({ ignoreNotFound: true })));
+    // bucket.deleteFiles({ prefix }) handles pagination + per-call retries
+    // server-side and avoids bursting the GCS per-project QPS limit (the
+    // unbounded Promise.all approach used previously could 429 on a few
+    // thousand objects). Errors propagate so a partial failure is loud
+    // rather than silently dropped.
+    await bucket.deleteFiles({ prefix, force: false });
     total += files.length;
   }
   return { deleted: total, perPrefix };
@@ -221,10 +224,11 @@ async function reset(): Promise<void> {
 
   console.log("📦 Firestore collections:");
   for (const col of RESETTABLE_COLLECTIONS) {
-    const count = await processCollection(db, col);
+    const { count, capped } = await processCollection(db, col);
     if (count > 0) {
       const verb = DRY_RUN ? "would delete" : "deleted";
-      console.log(`  ✓ ${col.padEnd(28)} — ${verb} ${count} docs`);
+      const display = capped ? `${count}+` : `${count}`;
+      console.log(`  ✓ ${col.padEnd(28)} — ${verb} ${display} docs`);
     } else {
       console.log(`  · ${col.padEnd(28)} — empty`);
     }
@@ -260,6 +264,10 @@ async function reset(): Promise<void> {
 }
 
 reset().catch((err) => {
-  console.error("❌ Reset failed:", err);
+  // Print only the message, not the full error object — SDK errors can
+  // carry `details`, `cause`, or response payloads that include user
+  // emails / API tokens. Exit code carries the failure signal.
+  const msg = err instanceof Error ? err.message : String(err);
+  console.error("❌ Reset failed:", msg);
   process.exit(1);
 });

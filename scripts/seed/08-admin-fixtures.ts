@@ -283,7 +283,7 @@ const PLAN_COUPONS: PlanCouponFixture[] = [
     label: "Pro annuel — 50% la première année",
     discountType: "percentage",
     discountValue: 50,
-    appliedPlanIds: ["plan-pro"],
+    appliedPlanIds: ["pro"],
     appliedCycles: ["annual"],
     maxUses: 100,
     maxUsesPerOrg: 1,
@@ -301,7 +301,7 @@ const PLAN_COUPONS: PlanCouponFixture[] = [
     label: "Réduction fixe 5 000 XOF — Starter mensuel",
     discountType: "fixed",
     discountValue: 5000,
-    appliedPlanIds: ["plan-starter"],
+    appliedPlanIds: ["starter"],
     appliedCycles: ["monthly"],
     maxUses: null, // illimité
     maxUsesPerOrg: 3,
@@ -370,14 +370,30 @@ interface CouponRedemptionFixture {
   redeemedAt: string;
 }
 
+// IMPORTANT — subscription → org map (from 06-social.ts:1457+):
+//   sub-001 → venueOrgId    (Dakar Venues, starter)
+//   sub-002 → orgId         (Teranga Events, pro)
+//   sub-003 → enterpriseOrgId (Sonatel, enterprise)
+//   sub-004 → starterOrgId  (Dakar Digital Hub, starter)
+//   sub-005 → orgId         (Teranga Events, pro)
+//   sub-006 → freeOrgId     (Startup Dakar, free)
+//   sub-007 → enterpriseOrgId (Sonatel, enterprise)
+// `subscriptionId` MUST belong to `organizationId`, otherwise the admin
+// coupon-history drill-down renders scrambled rows. Plan IDs MUST match
+// `seed-plans.ts` doc IDs (`free` | `starter` | `pro` | `enterprise`),
+// not `plan-*` — `assertCouponApplies` does an `appliedPlanIds.includes(plan.id)`
+// equality check (see plan-coupon.service.ts:488). `coupon-pro-annual` has
+// `maxUsesPerOrg: 1` so we can only redeem it once per org — orgId is the
+// only pro-tier org, so redemption-003 stays on orgId+sub-005 (different
+// sub from redemption-001's sub-002).
 const COUPON_REDEMPTIONS: CouponRedemptionFixture[] = [
   {
     id: "redemption-001",
     couponId: "coupon-launch-2026",
     couponCode: "LAUNCH2026",
     organizationId: IDS.orgId, // Teranga Events SRL (pro)
-    subscriptionId: "sub-001",
-    planId: "plan-pro",
+    subscriptionId: "sub-002", // pro sub for orgId
+    planId: "pro",
     cycle: "monthly",
     discountType: "percentage",
     discountValue: 30,
@@ -392,8 +408,8 @@ const COUPON_REDEMPTIONS: CouponRedemptionFixture[] = [
     couponId: "coupon-launch-2026",
     couponCode: "LAUNCH2026",
     organizationId: IDS.venueOrgId, // Dakar Venues & Hospitality (starter)
-    subscriptionId: "sub-002",
-    planId: "plan-starter",
+    subscriptionId: "sub-001", // starter sub for venueOrgId
+    planId: "starter",
     cycle: "annual",
     discountType: "percentage",
     discountValue: 30,
@@ -407,32 +423,32 @@ const COUPON_REDEMPTIONS: CouponRedemptionFixture[] = [
     id: "redemption-003",
     couponId: "coupon-pro-annual",
     couponCode: "PRO-ANNUAL-50",
-    organizationId: IDS.enterpriseOrgId,
-    subscriptionId: "sub-004",
-    planId: "plan-pro",
+    organizationId: IDS.orgId, // Teranga Events SRL (pro) — only pro-tier org
+    subscriptionId: "sub-005", // pro sub for orgId (different from redemption-001's sub-002)
+    planId: "pro",
     cycle: "annual",
     discountType: "percentage",
     discountValue: 50,
     originalPriceXof: 299000,
     discountAppliedXof: 149500,
     finalPriceXof: 149500,
-    redeemedBy: IDS.enterpriseOrganizer,
+    redeemedBy: IDS.organizer,
     redeemedAt: twoDaysAgo,
   },
   {
     id: "redemption-004",
     couponId: "coupon-fixed-5000",
     couponCode: "FIXED5000",
-    organizationId: IDS.starterOrgId,
-    subscriptionId: "sub-005",
-    planId: "plan-starter",
+    organizationId: IDS.starterOrgId, // Dakar Digital Hub (starter)
+    subscriptionId: "sub-004", // starter sub for starterOrgId
+    planId: "starter",
     cycle: "monthly",
     discountType: "fixed",
     discountValue: 5000,
     originalPriceXof: 9900,
     discountAppliedXof: 5000,
     finalPriceXof: 4900,
-    redeemedBy: IDS.organizer,
+    redeemedBy: IDS.starterOrganizer,
     redeemedAt: yesterday,
   },
 ];

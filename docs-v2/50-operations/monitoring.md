@@ -1,6 +1,6 @@
 ---
 title: Monitoring & Observability
-status: shipped
+status: partial
 last_updated: 2026-04-25
 ---
 

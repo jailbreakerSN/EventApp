@@ -34,9 +34,11 @@ Default URL: [http://localhost:3001](http://localhost:3001).
 
 ## Routing
 
-- `/(public)/*` — login, signup, public landing.
+- `/(auth)/*` — login, signup, password recovery (unauthenticated entry surface).
 - `/(dashboard)/*` — authenticated organizer routes (events, registrations, members, organization, billing, ...).
 - `/(admin)/*` — super-admin routes; protected by `super_admin` role check.
+
+(Source of truth: `apps/web-backoffice/src/app/`. Route-group naming follows Next.js 14 App Router conventions.)
 
 ## Plan gating
 

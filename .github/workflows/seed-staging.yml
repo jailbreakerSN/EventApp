@@ -38,7 +38,13 @@ on:
 
 concurrency:
   group: seed-staging
-  cancel-in-progress: false
+  # Cancel any in-flight reset+seed when a second one is triggered. With
+  # `false` the second run queues behind the first, which means the seed
+  # step of run 2 starts writing while run 1's deletion loop is still
+  # running — leaving the database in an inconsistent half-deleted /
+  # half-seeded state. Cancelling in flight is the safer default for a
+  # destructive operation.
+  cancel-in-progress: true
 
 env:
   NODE_VERSION: '22'
@@ -55,9 +61,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check input
+        # Do NOT echo the actual `inputs.confirm` value in any failure
+        # path — operators occasionally type adjacent secrets / passwords
+        # into the wrong field, and Actions logs are retained. The error
+        # message intentionally states only the expected string.
+        env:
+          CONFIRM: ${{ inputs.confirm }}
         run: |
-          if [ "${{ inputs.confirm }}" != "RESET_AND_SEED_STAGING" ]; then
-            echo "::error::confirm input must be exactly 'RESET_AND_SEED_STAGING' (got: '${{ inputs.confirm }}')"
+          if [ "$CONFIRM" != "RESET_AND_SEED_STAGING" ]; then
+            echo "::error::confirm input must be exactly 'RESET_AND_SEED_STAGING'"
             exit 1
           fi
           echo "✓ Confirmation string matches."

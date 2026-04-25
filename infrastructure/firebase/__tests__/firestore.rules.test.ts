@@ -751,3 +751,218 @@ describe("Newsletter Subscribers", () => {
     await assertFails(db.collection("newsletterSubscribers").doc("new").set({ email: "x" }));
   });
 });
+
+// ─── Sprint C.3 — server-only collections (8 explicit deny / owner blocks) ──
+//
+// Each block below mirrors the rule structure in firestore.rules around
+// the `Server-only collections` comment. The point of these tests is NOT
+// to exercise business logic — these collections are entirely server-side
+// — but to catch a future regression where someone flips `if false` to
+// `if true` (or removes the explicit match block, falling back to the
+// catch-all default which would silently still deny but with weaker
+// auditability).
+
+describe("Sprint C.3 — Payouts (server-only)", () => {
+  beforeEach(async () => {
+    await seed("payouts", "pay-1", { orgId: "org-1", amount: 100 });
+  });
+
+  it("denies authenticated read", async () => {
+    const db = orgUser("alice", "org-1").firestore();
+    await assertFails(db.collection("payouts").doc("pay-1").get());
+  });
+
+  it("denies super_admin read (Admin SDK only)", async () => {
+    const db = superAdmin().firestore();
+    await assertFails(db.collection("payouts").doc("pay-1").get());
+  });
+
+  it("denies any client write", async () => {
+    const db = superAdmin().firestore();
+    await assertFails(db.collection("payouts").doc("new").set({ amount: 1 }));
+  });
+});
+
+describe("Sprint C.3 — Receipts (server-only)", () => {
+  beforeEach(async () => {
+    await seed("receipts", "rcp-1", { orgId: "org-1", total: 100 });
+  });
+
+  it("denies authenticated read (API only)", async () => {
+    const db = orgUser("alice", "org-1").firestore();
+    await assertFails(db.collection("receipts").doc("rcp-1").get());
+  });
+
+  it("denies any client write", async () => {
+    const db = superAdmin().firestore();
+    await assertFails(db.collection("receipts").doc("new").set({ total: 1 }));
+  });
+});
+
+describe("Sprint C.3 — Subscriptions (server-only)", () => {
+  beforeEach(async () => {
+    await seed("subscriptions", "sub-1", { orgId: "org-1", plan: "pro" });
+  });
+
+  it("denies org-owner read (clients use derived org doc — see ADR-0006)", async () => {
+    const db = orgUser("alice", "org-1").firestore();
+    await assertFails(db.collection("subscriptions").doc("sub-1").get());
+  });
+
+  it("denies any client write", async () => {
+    const db = superAdmin().firestore();
+    await assertFails(db.collection("subscriptions").doc("new").set({ plan: "free" }));
+  });
+});
+
+describe("Sprint C.3 — Counters (server-only, transactional)", () => {
+  beforeEach(async () => {
+    await seed("counters", "ctr-1", { value: 0 });
+  });
+
+  it("denies any client read", async () => {
+    const db = participant().firestore();
+    await assertFails(db.collection("counters").doc("ctr-1").get());
+  });
+
+  it("denies any client write (would defeat transactional invariants)", async () => {
+    const db = superAdmin().firestore();
+    await assertFails(db.collection("counters").doc("ctr-1").update({ value: 999 }));
+  });
+});
+
+describe("Sprint C.3 — Refund locks (server-only, short-lived)", () => {
+  it("denies any client read", async () => {
+    await seed("refundLocks", "lock-1", { acquiredAt: "2026-04-25T00:00:00Z" });
+    const db = superAdmin().firestore();
+    await assertFails(db.collection("refundLocks").doc("lock-1").get());
+  });
+
+  it("denies any client write", async () => {
+    const db = superAdmin().firestore();
+    await assertFails(db.collection("refundLocks").doc("new").set({ x: 1 }));
+  });
+});
+
+describe("Sprint C.3 — Feature flags (server-only)", () => {
+  beforeEach(async () => {
+    await seed("featureFlags", "wave3-launch", { enabled: true });
+  });
+
+  it("denies any client read (would let callers enumerate the flag inventory)", async () => {
+    const db = participant().firestore();
+    await assertFails(db.collection("featureFlags").doc("wave3-launch").get());
+  });
+
+  it("denies super_admin direct write (super-admin uses the admin route)", async () => {
+    const db = superAdmin().firestore();
+    await assertFails(
+      db.collection("featureFlags").doc("wave3-launch").update({ enabled: false }),
+    );
+  });
+});
+
+describe("Sprint C.3 — Notification preferences (owner-scoped)", () => {
+  const ALICE = "user-alice";
+  const BOB = "user-bob";
+
+  beforeEach(async () => {
+    await seed(`notificationPreferences`, ALICE, {
+      emailDigest: "daily",
+      smsTransactional: true,
+    });
+  });
+
+  it("allows owner to read their own preferences", async () => {
+    const db = authed(ALICE, { roles: ["participant"] }).firestore();
+    await assertSucceeds(db.collection("notificationPreferences").doc(ALICE).get());
+  });
+
+  it("allows owner to update their own preferences", async () => {
+    const db = authed(ALICE, { roles: ["participant"] }).firestore();
+    await assertSucceeds(
+      db.collection("notificationPreferences").doc(ALICE).update({ emailDigest: "weekly" }),
+    );
+  });
+
+  it("denies another user from reading the owner's preferences", async () => {
+    const db = authed(BOB, { roles: ["participant"] }).firestore();
+    await assertFails(db.collection("notificationPreferences").doc(ALICE).get());
+  });
+
+  it("denies organizer from reading a participant's preferences", async () => {
+    const db = orgUser("org-admin", "org-1").firestore();
+    await assertFails(db.collection("notificationPreferences").doc(ALICE).get());
+  });
+
+  it("denies create from any client (server-side signup hook owns creation)", async () => {
+    const db = authed("user-new", { roles: ["participant"] }).firestore();
+    await assertFails(
+      db.collection("notificationPreferences").doc("user-new").set({ emailDigest: "off" }),
+    );
+  });
+
+  it("denies delete from owner (soft-managed via prefs payload)", async () => {
+    const db = authed(ALICE, { roles: ["participant"] }).firestore();
+    await assertFails(db.collection("notificationPreferences").doc(ALICE).delete());
+  });
+});
+
+describe("Sprint C.3 — Session bookmarks (owner-scoped)", () => {
+  const ALICE = "user-alice";
+  const BOB = "user-bob";
+
+  beforeEach(async () => {
+    await seed("sessionBookmarks", "bm-alice-1", {
+      userId: ALICE,
+      sessionId: "session-1",
+    });
+  });
+
+  it("allows owner to read their own bookmarks", async () => {
+    const db = authed(ALICE, { roles: ["participant"] }).firestore();
+    await assertSucceeds(db.collection("sessionBookmarks").doc("bm-alice-1").get());
+  });
+
+  it("allows owner to create a bookmark with their userId", async () => {
+    const db = authed(ALICE, { roles: ["participant"] }).firestore();
+    await assertSucceeds(
+      db.collection("sessionBookmarks").doc("bm-alice-2").set({
+        userId: ALICE,
+        sessionId: "session-2",
+      }),
+    );
+  });
+
+  it("denies create with a different userId (impersonation)", async () => {
+    const db = authed(ALICE, { roles: ["participant"] }).firestore();
+    await assertFails(
+      db.collection("sessionBookmarks").doc("bm-bob").set({
+        userId: BOB,
+        sessionId: "session-3",
+      }),
+    );
+  });
+
+  it("allows owner to delete their own bookmark", async () => {
+    const db = authed(ALICE, { roles: ["participant"] }).firestore();
+    await assertSucceeds(db.collection("sessionBookmarks").doc("bm-alice-1").delete());
+  });
+
+  it("denies another user from reading a bookmark", async () => {
+    const db = authed(BOB, { roles: ["participant"] }).firestore();
+    await assertFails(db.collection("sessionBookmarks").doc("bm-alice-1").get());
+  });
+
+  it("denies update (bookmarks are create-or-delete only)", async () => {
+    const db = authed(ALICE, { roles: ["participant"] }).firestore();
+    await assertFails(
+      db.collection("sessionBookmarks").doc("bm-alice-1").update({ sessionId: "session-99" }),
+    );
+  });
+
+  it("denies organizer cross-org bookmark read", async () => {
+    const db = orgUser("org-admin", "org-1").firestore();
+    await assertFails(db.collection("sessionBookmarks").doc("bm-alice-1").get());
+  });
+});

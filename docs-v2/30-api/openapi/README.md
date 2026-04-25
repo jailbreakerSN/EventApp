@@ -47,7 +47,7 @@ The interactive `/docs` UI is **not exposed in production** to prevent unauthent
 
 - Spec format: **OpenAPI 3.0.3**.
 - Auth schemes: `BearerAuth` (Firebase ID token) and `ApiKeyAuth` (`terk_*` org API key — see [ADR-0013](../../20-architecture/decisions/0013-api-key-format-checksum-hashed.md)).
-- Number of paths: ~200 across `/v1/events`, `/v1/registrations`, `/v1/badges`, `/v1/checkins`, `/v1/admin`, `/v1/organizations`, plus a few unversioned health routes.
+- Number of paths: ~200 across `/v1/events`, `/v1/registrations`, `/v1/badges`, `/v1/events/{eventId}/checkins`, `/v1/admin`, `/v1/organizations`, plus a few unversioned health routes. (Check-in routes are nested under their parent event — there is no top-level `/v1/checkins` collection.)
 - Tags: `Events`, `Registrations`, `Badges`, `Users`, `Organizations`, `Admin`, `Coupons`, `Notifications`.
 
 ## Related references

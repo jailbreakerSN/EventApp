@@ -20,9 +20,15 @@ export const SEED_TARGET = (process.env.SEED_TARGET ?? "emulator") as "emulator"
 export const SEED_FORCE = process.env.SEED_FORCE === "true";
 export const SEED_RESET_CONFIRM = process.env.SEED_RESET_CONFIRM ?? "";
 
-// Default matches the historical seed target so existing local workflows
-// keep working without explicit env vars.
-export const PROJECT_ID = process.env.FIREBASE_PROJECT_ID ?? "teranga-app-990a8";
+// PROJECT_ID is OPTIONAL for emulator targets (the admin SDK ignores
+// the project id when emulator hosts are configured) but REQUIRED when
+// SEED_TARGET=staging. The previous default of `teranga-app-990a8` made
+// a missing env var silently target the staging project — fine for a
+// CI runner with the right SA key, dangerous for a dev machine where
+// the operator may be authenticated against a different project. The
+// explicit-required check below catches the misconfiguration loudly.
+export const PROJECT_ID =
+  process.env.FIREBASE_PROJECT_ID ?? (SEED_TARGET === "emulator" ? "teranga-app-990a8" : "");
 
 /**
  * Project IDs the seed / reset scripts are allowed to touch. Adding a new
@@ -56,6 +62,12 @@ export function assertSafeTarget(
 ): void {
   if (SEED_TARGET !== "emulator" && SEED_TARGET !== "staging") {
     throw new Error(`Invalid SEED_TARGET=${SEED_TARGET}. Must be "emulator" or "staging".`);
+  }
+  if (SEED_TARGET === "staging" && !process.env.FIREBASE_PROJECT_ID) {
+    throw new Error(
+      "FIREBASE_PROJECT_ID is required when SEED_TARGET=staging. " +
+        "Set it explicitly to the project you intend to seed/reset — never rely on a default.",
+    );
   }
   if (!SEED_ALLOW_LIST.has(PROJECT_ID)) {
     throw new Error(
