@@ -11,7 +11,6 @@ import {
 import { type Transaction } from "firebase-admin/firestore";
 import { db, COLLECTIONS } from "@/config/firebase";
 import { BaseService } from "./base.service";
-import { planRepository } from "@/repositories/plan.repository";
 import { type AuthUser } from "@/middlewares/auth.middleware";
 import { eventBus } from "@/events/event-bus";
 import { getRequestId } from "@/context/request-context";
