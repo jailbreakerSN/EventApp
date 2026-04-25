@@ -623,6 +623,88 @@ The platform is delivered in **10 waves** with a **web-first MVP strategy**. Mob
 - QR tests import directly from `src/services/qr-signing.ts` — no duplication needed
 - When services use `db.runTransaction()`, tests must mock `db` and `COLLECTIONS` from `@/config/firebase` and provide a mock transaction with `get`/`update` methods
 
+### Test Authoring Checklist (MANDATORY before opening a PR)
+
+Every Claude session that adds or modifies a service method, route, listener, hook, or component MUST run through this checklist. The full conventions, mock templates, and anti-patterns live in **`.claude/skills/teranga-testing/SKILL.md`** (auto-triggered on any test file edit). The mechanical enforcement runs via **`.claude/agents/test-coverage-reviewer.md`** — invoke it locally with `@test-coverage-reviewer` before pushing.
+
+#### The four mandatory cases per service method
+
+Every new service method ships with at least:
+
+1. **Happy path** — canonical success scenario; assert return value + side effects (eventBus emit, Firestore write).
+2. **Permission denial** — caller without the required permission gets `ForbiddenError` / "Permission manquante".
+3. **Org-access denial** — cross-org caller is rejected. Skip ONLY when the method is platform-wide by design (admin endpoints) and document the omission inline.
+4. **Error path** — at least one Firestore failure or invalid-state guard test.
+
+Plus, when applicable:
+
+- Mutation emits a domain event → assert `eventBus.emit` with the right name + payload.
+- Mutation runs in `db.runTransaction(...)` → assert `mockTxUpdate`/`mockTxSet` called inside the tx callback.
+- Mutation enforces a plan limit → assert `PlanLimitError` thrown on the over-limit branch.
+
+#### Routes
+
+For each new route, exercise:
+
+- ✅ Happy 200/201/204 with `{ success: true, data: ... }` body shape.
+- ✅ 401 unauthenticated.
+- ✅ 403 wrong role (for mutations).
+- ✅ 400 invalid body (when the route accepts a body).
+
+The deny-matrix in `apps/api/src/routes/__tests__/admin.routes.test.ts` is the canonical example — copy that structure.
+
+#### The 5 canonical mock patterns (memorise)
+
+| Pattern | When to use | Reference test |
+|---|---|---|
+| **Firestore tx mock** (`mockTxGet`/`mockTxUpdate`/`mockTxSet`) | Service uses `db.runTransaction()` | `event.service.test.ts` |
+| **eventBus emit mock** | Service emits domain events | `admin.service.test.ts` |
+| **Request context mock** (`getRequestId` / `getRequestContext` / `trackFirestoreReads`) | Service reads ALS context | Most service tests |
+| **AuthUser factory** (`buildAuthUser`/`buildSuperAdmin`/`buildOrganizerUser`) | Anywhere an AuthUser is needed | `factories.ts` |
+| **`fastify.inject()`** | Route-level integration tests | `admin.routes.test.ts` |
+
+Never hand-roll an AuthUser inline. Never use `clearAllMocks()` when you queued `mockResolvedValueOnce` — use `mockReset()` or you'll leak between tests.
+
+#### Snapshot tests — pin discipline
+
+Three load-bearing snapshots — refresh them in the SAME commit that changes the code:
+
+| Change | Snapshot to refresh |
+|---|---|
+| New admin route | `apps/api/src/__tests__/__snapshots__/route-inventory.test.ts.snap` |
+| Permission catalog edit | `apps/api/src/__tests__/__snapshots__/permission-matrix.test.ts.snap` |
+| `AuditAction` enum / shared-types schema | `packages/shared-types/src/__tests__/__snapshots__/contract-snapshots.test.ts.snap` |
+| New audit listener | `apps/api/src/events/__tests__/audit.listener.test.ts` (`EXPECTED_HANDLER_COUNT` constant + comment) |
+
+Update with `cd apps/api && npx vitest run -u <test-file>`. **Read the diff line-by-line** — never blindly accept a snapshot diff.
+
+#### Determinism rules (non-negotiable)
+
+- **Fix the clock** for age/window logic (`vi.setSystemTime(...)` in `beforeEach`, `vi.useRealTimers()` in `afterEach`).
+- **No `Math.random` / `crypto.randomUUID` / `nanoid`** without stubbing when the test asserts on output.
+- **No real network**, no real timers, no real `navigator.clipboard`, no emulator dependence in unit tests.
+- All tests must pass with zero external services running.
+
+#### Coverage gate before pushing
+
+```bash
+cd apps/api && npx vitest run        # all tests pass (currently 1598+)
+cd apps/api && npx tsc --noEmit       # typecheck clean
+cd apps/web-backoffice && npx tsc --noEmit
+```
+
+Then mentally tick:
+
+- [ ] Four mandatory cases per new service method
+- [ ] Four route cases (200 / 401 / 403 / 400)
+- [ ] Snapshots refreshed (route-inventory, permission-matrix, contract-snapshots, audit-listener count)
+- [ ] Mocks reset properly between tests
+- [ ] No hand-rolled AuthUser literals — only factories
+- [ ] Listener / hook / component templates followed
+- [ ] `@test-coverage-reviewer` agent invoked locally and reports `✅`
+
+If a row is unticked, **tick it before opening the PR**. The reviewer agents downstream (security / transactions / domain-events / plan-limits) audit the CODE, not the test coverage — `test-coverage-reviewer` is the only gate that catches "shipped without tests".
+
 ---
 
 ## Pre-Implementation Checklist
@@ -723,6 +805,7 @@ These are shared across the team and also run in CI via `.github/workflows/claud
 | `plan-limit-auditor`            | After changes to events, registrations, members, tickets, subscriptions |
 | `domain-event-auditor`          | After any mutation — confirms `eventBus.emit(...)` calls exist          |
 | `l10n-auditor`                  | After any UI change in `apps/web-*` or `apps/mobile/`                   |
+| `test-coverage-reviewer`        | After any service / route / listener / hook / component change — confirms the four mandatory test cases + snapshot refresh |
 
 These agents are read-only — they produce reports, never modify code. Each encodes a specific rule from this file; if the rule changes here, update the matching agent prompt.
 
@@ -764,6 +847,7 @@ For any substantial change (new feature, security fix, refactor), perform a self
 - `@domain-event-auditor` — runs §3
 - `@plan-limit-auditor` — when the change touches freemium-gated features
 - `@l10n-auditor` — when the change touches UI code
+- `@test-coverage-reviewer` — runs §4 (mechanically enforces the Test Authoring Checklist)
 
 The same agents can also be invoked on-demand via `.github/workflows/claude-review.yml` — a **manually-triggered** (`workflow_dispatch`) advisory workflow. Run it from **Actions → Claude AI Review → Run workflow** (pass the PR number) or via `gh workflow run claude-review.yml -f pr_number=<N>`. It's manual by design to stay cost-efficient; local runs are faster and free, so prefer them during development.
 
