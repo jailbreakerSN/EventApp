@@ -622,7 +622,8 @@ describe("Audit Listener", () => {
       // audit row per bulk-promote run.
       // Sprint-2 T2.2 — `event.restored` listener added.
       // Sprint-2 S1 — `event.series_cancelled` listener added.
-      const EXPECTED_HANDLER_COUNT = 96;
+      // Sprint-4 T3.2 — 3 scheduled_admin_op.* listeners added.
+      const EXPECTED_HANDLER_COUNT = 99;
 
       expect(registered).toHaveLength(EXPECTED_HANDLER_COUNT);
       // Each registered event name should be unique — a double

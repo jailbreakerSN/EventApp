@@ -43,6 +43,7 @@
  * tail of the `auditLogs` collection.
  */
 
+import crypto from "node:crypto";
 import { eventBus } from "@/events/event-bus";
 import { config } from "@/config";
 
@@ -131,7 +132,11 @@ export function registerSocAlertListeners(): void {
       organizationId: null,
       timestamp: new Date().toISOString(),
       summary: `Impersonation session opened (actor=${payload.actorUid} → target=${payload.targetUid}, expires=${payload.expiresAt})`,
-      requestId: "impersonation-event",
+      // UserImpersonatedEvent / UserImpersonationEndedEvent don't
+      // extend BaseEventPayload — synthesise a unique requestId so
+      // SOC tooling that dedupes on (action, requestId) can still
+      // distinguish back-to-back impersonation events.
+      requestId: crypto.randomUUID(),
     });
   });
 
@@ -146,7 +151,11 @@ export function registerSocAlertListeners(): void {
       organizationId: null,
       timestamp: new Date().toISOString(),
       summary: `Impersonation session closed (actor=${payload.actorUid} ended target=${payload.targetUid})`,
-      requestId: "impersonation-event",
+      // UserImpersonatedEvent / UserImpersonationEndedEvent don't
+      // extend BaseEventPayload — synthesise a unique requestId so
+      // SOC tooling that dedupes on (action, requestId) can still
+      // distinguish back-to-back impersonation events.
+      requestId: crypto.randomUUID(),
     });
   });
 

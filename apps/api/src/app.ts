@@ -146,38 +146,63 @@ export async function buildApp() {
     done();
   });
 
-  // ─── API Documentation (non-production) ──────────────────────────────────
-  if (config.NODE_ENV !== "production") {
-    await app.register(swagger, {
-      openapi: {
-        info: {
-          title: "Teranga API",
-          description:
-            "African Event Management Platform — REST API for events, registrations, badges, and users",
-          version: "0.1.0",
-          contact: { name: "Teranga Team", email: "dev@teranga.events" },
-        },
-        servers: [{ url: `http://localhost:${config.PORT}`, description: "Local dev" }],
-        components: {
-          securitySchemes: {
-            BearerAuth: {
-              type: "http",
-              scheme: "bearer",
-              bearerFormat: "Firebase JWT",
-              description: "Firebase ID token obtained via Firebase Auth SDK",
-            },
+  // ─── API Documentation ──────────────────────────────────────────────────
+  // Sprint-4 T3.3 closure — Swagger always-on so the OpenAPI spec
+  // is reachable in every environment via the admin-gated
+  // `/v1/admin/openapi.json` endpoint. The Swagger UI itself
+  // (interactive docs at `/docs`) stays non-production only so
+  // public traffic can't enumerate the surface without an admin
+  // session.
+  await app.register(swagger, {
+    openapi: {
+      info: {
+        title: "Teranga API",
+        description:
+          "African Event Management Platform — REST API for events, registrations, badges, and users",
+        version: "0.1.0",
+        contact: { name: "Teranga Team", email: "dev@teranga.events" },
+      },
+      servers: [
+        config.NODE_ENV === "production"
+          ? { url: "https://api.teranga.events", description: "Production" }
+          : { url: `http://localhost:${config.PORT}`, description: "Local dev" },
+      ],
+      components: {
+        securitySchemes: {
+          BearerAuth: {
+            type: "http",
+            scheme: "bearer",
+            bearerFormat: "Firebase JWT",
+            description: "Firebase ID token obtained via Firebase Auth SDK",
+          },
+          ApiKeyAuth: {
+            type: "http",
+            scheme: "bearer",
+            bearerFormat: "terk_<env>_<40chars>_<4chksum>",
+            description:
+              "Organization API key (T2.3). Issued via /admin/organizations/[id]?tab=api-keys.",
           },
         },
-        tags: [
-          { name: "Events", description: "Event CRUD and publishing" },
-          { name: "Registrations", description: "Registration, check-in, and QR validation" },
-          { name: "Badges", description: "Badge generation, templates, and offline sync" },
-          { name: "Users", description: "User profiles and FCM tokens" },
-          { name: "Organizations", description: "Multi-tenant organization management" },
-        ],
       },
-    });
+      tags: [
+        { name: "Events", description: "Event CRUD and publishing" },
+        { name: "Registrations", description: "Registration, check-in, and QR validation" },
+        { name: "Badges", description: "Badge generation, templates, and offline sync" },
+        { name: "Users", description: "User profiles and FCM tokens" },
+        { name: "Organizations", description: "Multi-tenant organization management" },
+        { name: "Admin", description: "Platform administration — super-admin only" },
+        { name: "Coupons", description: "Plan-level coupons + redemption" },
+        { name: "Notifications", description: "Notification settings + delivery dashboard" },
+      ],
+    },
+  });
 
+  if (config.NODE_ENV !== "production") {
+    // Interactive UI — non-production only. Operators in
+    // production reach the OpenAPI spec via the admin-gated JSON
+    // endpoint and import it into Postman / Bruno / their own
+    // tooling. Avoids accidental enumeration of the API surface
+    // by a curious unauthenticated visitor.
     await app.register(swaggerUi, {
       routePrefix: "/docs",
       uiConfig: { deepLinking: true },

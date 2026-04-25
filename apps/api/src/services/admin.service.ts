@@ -466,6 +466,8 @@ class AdminService extends BaseService {
     };
 
     const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const thirtyDaysAgoIso = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
 
     const [
       pendingVenues,
@@ -479,6 +481,9 @@ class AdminService extends BaseService {
       multiDeviceScans,
       eventsLive,
       stuckWaitlists,
+      eventVelocityAnomalies,
+      refundSpikes,
+      downgradeVolume,
     ] = await Promise.all([
       safeCount("venues.pending", async () => {
         const snap = await db
@@ -662,6 +667,71 @@ class AdminService extends BaseService {
         }
         return stuck.size;
       }),
+      // Sprint-4 T3.4 — event velocity anomaly. Counts orgs that
+      // created ≥ 6 events in the last 24h. The free plan caps
+      // at 3 active events so any org breaching 6 in a day is
+      // either trial-spamming, scripting, or onboarded a bulk
+      // import (third case = legitimate but worth surfacing).
+      // Reads from the `event.created` audit rows so we don't
+      // need a dedicated counter on each org.
+      safeCount("anomaly.event_velocity", async () => {
+        const snap = await db
+          .collection(COLLECTIONS.AUDIT_LOGS)
+          .where("action", "==", "event.created")
+          .where("timestamp", ">=", twentyFourHoursAgo)
+          .select("organizationId")
+          .limit(1000)
+          .get();
+        const byOrg = new Map<string, number>();
+        for (const doc of snap.docs) {
+          const row = doc.data() as { organizationId?: string };
+          if (!row.organizationId) continue;
+          byOrg.set(row.organizationId, (byOrg.get(row.organizationId) ?? 0) + 1);
+        }
+        let flagged = 0;
+        for (const count of byOrg.values()) {
+          if (count >= 6) flagged += 1;
+        }
+        return flagged;
+      }),
+      // Sprint-4 T3.4 — refund spike anomaly. Counts orgs that saw
+      // ≥ 3 refunds in the last 30 days. A normal org refunds
+      // sporadically (1-2 / month is benign); 3+ in 30d signals a
+      // problematic event (mass cancellation, dispute wave) that
+      // the customer-success team should chase before churn.
+      safeCount("anomaly.refund_spike", async () => {
+        const snap = await db
+          .collection(COLLECTIONS.AUDIT_LOGS)
+          .where("action", "==", "payment.refunded")
+          .where("timestamp", ">=", thirtyDaysAgoIso)
+          .select("organizationId")
+          .limit(1000)
+          .get();
+        const byOrg = new Map<string, number>();
+        for (const doc of snap.docs) {
+          const row = doc.data() as { organizationId?: string };
+          if (!row.organizationId) continue;
+          byOrg.set(row.organizationId, (byOrg.get(row.organizationId) ?? 0) + 1);
+        }
+        let flagged = 0;
+        for (const count of byOrg.values()) {
+          if (count >= 3) flagged += 1;
+        }
+        return flagged;
+      }),
+      // Sprint-4 T3.4 — downgrade volume anomaly. Raw count of
+      // `subscription.downgraded` audit rows in the last 7 days.
+      // Spikes correlate with churn campaigns or pricing
+      // backlash — finance + product own the response.
+      safeCount("anomaly.downgrade_volume", async () => {
+        const snap = await db
+          .collection(COLLECTIONS.AUDIT_LOGS)
+          .where("action", "==", "subscription.downgraded")
+          .where("timestamp", ">=", sevenDaysAgo)
+          .count()
+          .get();
+        return snap.data().count;
+      }),
     ]);
 
     const signals: Array<{
@@ -841,6 +911,49 @@ class AdminService extends BaseService {
           "Promotion de waitlist en échec sur les 24 dernières heures. Investiguer manuellement ou relancer.",
         count: stuckWaitlists,
         href: "/admin/audit?action=waitlist.promotion_failed",
+      });
+    }
+
+    // Sprint-4 T3.4 — anomaly widgets (velocity / refund / downgrade).
+    // Severity: warning by default (suspicious patterns, not
+    // confirmed incidents); operator drills via the deep-linked
+    // audit query.
+    if (eventVelocityAnomalies > 0) {
+      signals.push({
+        id: "anomaly.event_velocity",
+        category: "anomaly",
+        severity: "warning",
+        title: `${eventVelocityAnomalies} organisation${eventVelocityAnomalies > 1 ? "s" : ""} avec rythme de création anormal`,
+        description:
+          "≥ 6 événements créés en 24h. Signal scripting / trial-spam ou import en masse légitime.",
+        count: eventVelocityAnomalies,
+        href: "/admin/audit?action=event.created",
+      });
+    }
+
+    if (refundSpikes > 0) {
+      signals.push({
+        id: "anomaly.refund_spike",
+        category: "anomaly",
+        severity: "warning",
+        title: `${refundSpikes} organisation${refundSpikes > 1 ? "s" : ""} avec pic de remboursements`,
+        description:
+          "≥ 3 remboursements sur 30 jours. Investiguer la cause (annulation d'événement, dispute, fraude).",
+        count: refundSpikes,
+        href: "/admin/audit?action=payment.refunded",
+      });
+    }
+
+    if (downgradeVolume > 0) {
+      signals.push({
+        id: "anomaly.downgrade_volume",
+        category: "anomaly",
+        severity: "warning",
+        title: `${downgradeVolume} downgrade${downgradeVolume > 1 ? "s" : ""} d'abonnement (7j)`,
+        description:
+          "Volume de downgrades sur 7 jours. Surveiller si supérieur à la baseline pour détecter une vague de churn.",
+        count: downgradeVolume,
+        href: "/admin/audit?action=subscription.downgraded",
       });
     }
 
@@ -1458,6 +1571,131 @@ class AdminService extends BaseService {
       },
       { page: query.page, limit: query.limit },
     );
+  }
+
+  /**
+   * Sprint-4 T3.1 closure — time-travel timeline for one resource.
+   *
+   * Returns the audit log for a single (resourceType, resourceId)
+   * pair, optionally bounded by an `atIso` timestamp ("show me the
+   * state at this date"). The response carries:
+   *
+   *   - `rows`: every audit row touching the resource, sorted
+   *     ascending by `timestamp`, with the canonical fields plus
+   *     a `details` payload (when the original event embedded it).
+   *
+   *   - `reconstructable`: a per-field map indicating whether the
+   *     row's `details.before/after` shape is rich enough for the
+   *     UI to render an authoritative diff. When false, the UI
+   *     downgrades to "audit row recorded but pre-state not
+   *     captured" — honest UX, no fake reconstruction.
+   *
+   *   - `coverage`: forensic metadata so the operator knows whether
+   *     the audit retention window covered the requested date or
+   *     whether the data is older than what the system can prove.
+   *
+   * Permission: `platform:audit_read OR platform:manage` (read-
+   * only). Cross-org by design — investigating a customer's
+   * forensic timeline is the canonical use case.
+   */
+  async getResourceTimeline(
+    user: AuthUser,
+    params: {
+      resourceType: string;
+      resourceId: string;
+      atIso?: string;
+    },
+  ): Promise<{
+    resourceType: string;
+    resourceId: string;
+    atIso: string | null;
+    rows: Array<{
+      id: string;
+      action: string;
+      actorId: string;
+      actorRole: string | null;
+      timestamp: string;
+      details: Record<string, unknown> | null;
+      reconstructable: boolean;
+    }>;
+    coverage: {
+      oldestRowTimestamp: string | null;
+      newestRowTimestamp: string | null;
+      requestedDateInWindow: boolean | null;
+    };
+  }> {
+    this.requireAnyPermission(user, ["platform:audit_read", "platform:manage"]);
+
+    // Bounded scan — same 500-row budget as the rest of the admin
+    // observability surfaces. Most resources have far fewer audit
+    // rows; the cap is a safety rail. If a resource hits this
+    // ceiling, the operator should narrow via the time filter.
+    const snap = await db
+      .collection(COLLECTIONS.AUDIT_LOGS)
+      .where("resourceType", "==", params.resourceType)
+      .where("resourceId", "==", params.resourceId)
+      .orderBy("timestamp", "asc")
+      .limit(500)
+      .get();
+
+    const rows = snap.docs.map((doc) => {
+      const data = doc.data() as {
+        action?: string;
+        actorId?: string;
+        actorRole?: string | null;
+        timestamp?: string;
+        details?: Record<string, unknown> | null;
+      };
+      const details = data.details ?? null;
+      // `reconstructable` is true when the audit row carries enough
+      // information to render an authoritative before/after diff.
+      // The canonical signal is a `details.before` AND a
+      // `details.after` object — the state-snapshotting pattern
+      // we use on `event.updated`, `plan.updated`, etc. Rows that
+      // only carry a `changes: string[]` field-list are
+      // partially-reconstructable (the UI shows changed field
+      // names but not values). Pure-action rows
+      // (`event.published`, `event.archived`) have no diff state
+      // at all and surface as "transition" markers.
+      const reconstructable =
+        !!details &&
+        typeof details === "object" &&
+        "before" in details &&
+        "after" in details;
+      return {
+        id: doc.id,
+        action: data.action ?? "",
+        actorId: data.actorId ?? "",
+        actorRole: data.actorRole ?? null,
+        timestamp: data.timestamp ?? "",
+        details,
+        reconstructable,
+      };
+    });
+
+    // `atIso` filtering happens client-side — we always return the
+    // full window the API can prove, so the operator can scrub the
+    // timeline back and forth without a network round-trip per
+    // tick. The atIso parameter is just echoed back so the UI can
+    // pin the cursor without re-deriving it from query state.
+    const oldestRowTimestamp = rows.length > 0 ? rows[0].timestamp : null;
+    const newestRowTimestamp =
+      rows.length > 0 ? rows[rows.length - 1].timestamp : null;
+    const requestedDateInWindow = params.atIso
+      ? oldestRowTimestamp !== null && params.atIso >= oldestRowTimestamp
+      : null;
+
+    return {
+      resourceType: params.resourceType,
+      resourceId: params.resourceId,
+      atIso: params.atIso ?? null,
+      rows,
+      coverage: {
+        oldestRowTimestamp,
+        newestRowTimestamp,
+        requestedDateInWindow,
+      },
+    };
   }
 
   /**

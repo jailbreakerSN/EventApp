@@ -48,6 +48,7 @@ import {
   UserCog,
   Megaphone,
   Activity,
+  Clock,
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
@@ -103,6 +104,7 @@ const NAV: NavSection[] = [
       { href: "/admin/notifications", label: "Notifications", icon: Bell },
       { href: "/admin/webhooks", label: "Webhooks", icon: Webhook },
       { href: "/admin/jobs", label: "Jobs", icon: PlayCircle },
+      { href: "/admin/scheduled-ops", label: "Planifications", icon: Clock },
       { href: "/admin/feature-flags", label: "Feature flags", icon: Flag },
       { href: "/admin/api-keys", label: "Clés API", icon: KeyRound },
       { href: "/admin/cost", label: "Coût Firestore", icon: Activity },

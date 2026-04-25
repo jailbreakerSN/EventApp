@@ -148,3 +148,65 @@ export const AdminJobRunsQuerySchema = z.object({
   limit: z.coerce.number().int().positive().max(100).default(20),
 });
 export type AdminJobRunsQuery = z.infer<typeof AdminJobRunsQuerySchema>;
+
+
+// ─── Sprint-4 T3.2 — Scheduled admin operations ──────────────────────────
+//
+// Operators define recurring runs of registered admin jobs ("auto-
+// archive events completed > 90 days", "send a J-7 payment reminder
+// for events that still have pending registrations"). The schedule
+// itself is stored in Firestore; a Cloud Functions scheduled trigger
+// (every 5 min) wakes up, scans for `enabled=true AND nextRunAt <= now`
+// and dispatches each into the existing admin job runner.
+
+const CRON_FIELD = /^(\*|\d+|\d+-\d+|\*\/\d+|(?:\d+,)+\d+)$/;
+export const CronExpressionSchema = z
+  .string()
+  .min(7)
+  .max(80)
+  .refine(
+    (v) => {
+      const fields = v.trim().split(/\s+/);
+      if (fields.length !== 5) return false;
+      return fields.every((f) => CRON_FIELD.test(f));
+    },
+    { message: "cron must be 5 space-separated fields (m h dom mon dow)" },
+  );
+
+export const ScheduledAdminOpSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1).max(120),
+  jobKey: z.string().min(1).max(80),
+  jobInput: z.record(z.string(), z.unknown()).default({}),
+  cron: CronExpressionSchema,
+  timezone: z.string().min(1).max(80).default("Africa/Dakar"),
+  enabled: z.boolean().default(true),
+  nextRunAt: z.string().datetime(),
+  lastRunAt: z.string().datetime().nullable(),
+  lastRunRunId: z.string().nullable(),
+  lastRunStatus: AdminJobStatusSchema.nullable(),
+  createdBy: z.string().min(1),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+});
+export type ScheduledAdminOp = z.infer<typeof ScheduledAdminOpSchema>;
+
+export const CreateScheduledAdminOpSchema = z.object({
+  name: z.string().min(1).max(120),
+  jobKey: z.string().min(1).max(80),
+  jobInput: z.record(z.string(), z.unknown()).optional(),
+  cron: CronExpressionSchema,
+  timezone: z.string().min(1).max(80).optional(),
+  enabled: z.boolean().optional(),
+});
+export type CreateScheduledAdminOpDto = z.infer<typeof CreateScheduledAdminOpSchema>;
+
+export const UpdateScheduledAdminOpSchema = z.object({
+  name: z.string().min(1).max(120).optional(),
+  jobInput: z.record(z.string(), z.unknown()).optional(),
+  cron: CronExpressionSchema.optional(),
+  timezone: z.string().min(1).max(80).optional(),
+  enabled: z.boolean().optional(),
+});
+export type UpdateScheduledAdminOpDto = z.infer<typeof UpdateScheduledAdminOpSchema>;
+

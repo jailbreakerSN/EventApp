@@ -306,6 +306,47 @@ export function registerAuditListeners(): void {
     });
   });
 
+  // Sprint-4 T3.2 closure — scheduled admin operations CRUD.
+  eventBus.on("scheduled_admin_op.created", async (payload) => {
+    await auditService.log({
+      action: "scheduled_admin_op.created",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "scheduled_admin_op",
+      resourceId: payload.opId,
+      eventId: null,
+      organizationId: null,
+      details: { jobKey: payload.jobKey, cron: payload.cron },
+    });
+  });
+  eventBus.on("scheduled_admin_op.updated", async (payload) => {
+    await auditService.log({
+      action: "scheduled_admin_op.updated",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "scheduled_admin_op",
+      resourceId: payload.opId,
+      eventId: null,
+      organizationId: null,
+      details: { changes: payload.changes },
+    });
+  });
+  eventBus.on("scheduled_admin_op.deleted", async (payload) => {
+    await auditService.log({
+      action: "scheduled_admin_op.deleted",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "scheduled_admin_op",
+      resourceId: payload.opId,
+      eventId: null,
+      organizationId: null,
+      details: {},
+    });
+  });
+
   // Sprint-2 S1 closure — bulk cancel of an entire series.
   eventBus.on("event.series_cancelled", async (payload) => {
     await auditService.log({

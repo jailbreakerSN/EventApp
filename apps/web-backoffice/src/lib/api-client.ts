@@ -853,6 +853,34 @@ export const adminApi = {
   listEvents: (query: Partial<AdminEventQuery> = {}) =>
     api.get<PaginatedResponse<Event>>(`/v1/admin/events${buildQuery(query)}`),
 
+  // Sprint-4 T3.1 closure — time-travel timeline for any resource.
+  getResourceTimeline: (params: {
+    resourceType: string;
+    resourceId: string;
+    atIso?: string;
+  }) =>
+    api.get<
+      ApiResponse<{
+        resourceType: string;
+        resourceId: string;
+        atIso: string | null;
+        rows: Array<{
+          id: string;
+          action: string;
+          actorId: string;
+          actorRole: string | null;
+          timestamp: string;
+          details: Record<string, unknown> | null;
+          reconstructable: boolean;
+        }>;
+        coverage: {
+          oldestRowTimestamp: string | null;
+          newestRowTimestamp: string | null;
+          requestedDateInWindow: boolean | null;
+        };
+      }>
+    >(`/v1/admin/timeline${buildQuery(params)}`),
+
   // Phase 7+ B2 closure — waitlist health snapshot for one event.
   getEventWaitlistHealth: (eventId: string) =>
     api.get<
