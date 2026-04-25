@@ -47,6 +47,7 @@ import {
   ScrollText,
   UserCog,
   Megaphone,
+  Activity,
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
@@ -104,6 +105,7 @@ const NAV: NavSection[] = [
       { href: "/admin/jobs", label: "Jobs", icon: PlayCircle },
       { href: "/admin/feature-flags", label: "Feature flags", icon: Flag },
       { href: "/admin/api-keys", label: "Clés API", icon: KeyRound },
+      { href: "/admin/cost", label: "Coût Firestore", icon: Activity },
       { href: "/admin/audit", label: "Audit", icon: ScrollText },
     ],
   },

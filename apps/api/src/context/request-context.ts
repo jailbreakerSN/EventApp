@@ -10,6 +10,29 @@ export interface RequestContext {
   userId?: string;
   organizationId?: string;
   startTime: number;
+  /**
+   * Sprint-3 T4.2 — per-request Firestore read counter. Incremented
+   * by the BaseRepository read paths (`findById`, `findMany`,
+   * `count`, `paginatedQuery`, raw `db.collection().get()` chains
+   * via `trackRead`). Flushed once at request completion to
+   * `firestoreUsage/{orgId}_{YYYY-MM-DD}` so the cost dashboard can
+   * surface noisy orgs. Stays a running counter at the request
+   * level so each request flushes a single aggregate row instead
+   * of N writes for N reads.
+   */
+  firestoreReads?: number;
+}
+
+/**
+ * Sprint-3 T4.2 — increment the per-request Firestore read counter.
+ * Called from the BaseRepository read paths and from any ad-hoc
+ * `db.collection().get()` site that wants to be tracked. Safe
+ * outside a request context (no-op when there's no ALS frame).
+ */
+export function trackFirestoreReads(count: number = 1): void {
+  const ctx = asyncLocalStorage.getStore();
+  if (!ctx) return;
+  ctx.firestoreReads = (ctx.firestoreReads ?? 0) + count;
 }
 
 const asyncLocalStorage = new AsyncLocalStorage<RequestContext>();

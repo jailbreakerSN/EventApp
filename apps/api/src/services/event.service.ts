@@ -24,7 +24,7 @@ import { venueRepository } from "@/repositories/venue.repository";
 import { PLAN_LIMITS, PLAN_LIMIT_UNLIMITED, isAdminSystemRole } from "@teranga/shared-types";
 import { type PaginationParams, type PaginatedResult } from "@/repositories/base.repository";
 import { type AuthUser } from "@/middlewares/auth.middleware";
-import { ForbiddenError, ValidationError, PlanLimitError } from "@/errors/app-error";
+import { ForbiddenError, NotFoundError, ValidationError, PlanLimitError } from "@/errors/app-error";
 import { db } from "@/config/firebase";
 import { COLLECTIONS } from "@/config/firebase";
 import { BaseService } from "./base.service";
@@ -639,16 +639,22 @@ export class EventService extends BaseService {
     }
     this.requireOrganizationAccess(user, parent.organizationId);
 
-    const children = await db
-      .collection(COLLECTIONS.EVENTS)
-      .where("parentEventId", "==", parentEventId)
-      .get();
-
     const now = new Date().toISOString();
     let cancelledCount = 0;
     const cancelledChildIds: string[] = [];
 
+    // Sprint-2 review fix — children collection read MUST be inside
+    // the transaction so a child created or status-flipped between
+    // the read and the writes can't be silently missed. Firestore
+    // doesn't support `query.get()` directly on a `Transaction` —
+    // we use the standard pattern of `tx.get(query)` which re-reads
+    // the matching docs at transaction-commit time. The 500-write
+    // budget is bounded by the recurring-events 52-occurrence cap.
     await db.runTransaction(async (tx) => {
+      const childrenSnap = await tx.get(
+        db.collection(COLLECTIONS.EVENTS).where("parentEventId", "==", parentEventId),
+      );
+
       // Always flip the parent (even if it's `draft` — the anchor
       // doc never went public anyway, but cancelling it makes the
       // intent explicit in the audit log).
@@ -658,7 +664,7 @@ export class EventService extends BaseService {
         updatedBy: user.uid,
       });
 
-      for (const doc of children.docs) {
+      for (const doc of childrenSnap.docs) {
         const child = doc.data() as Event;
         if (child.status === "cancelled" || child.status === "archived") continue;
         tx.update(doc.ref, {
@@ -872,45 +878,62 @@ export class EventService extends BaseService {
   async restore(eventId: string, user: AuthUser): Promise<{ eventId: string }> {
     this.requirePermission(user, "event:delete");
 
-    const event = await eventRepository.findByIdOrThrow(eventId);
-    this.requireOrganizationAccess(user, event.organizationId);
+    // Pre-load the event for access + plan-limit checks. The
+    // authoritative state is re-read INSIDE the transaction below
+    // so a concurrent mutation between the pre-load and the commit
+    // can't slip through (T2.2 review fix — TOCTOU race on
+    // `status` between the pre-check and the write).
+    const preloaded = await eventRepository.findByIdOrThrow(eventId);
+    this.requireOrganizationAccess(user, preloaded.organizationId);
 
-    if (event.status !== "archived") {
-      throw new ValidationError(
-        "Seuls les événements archivés peuvent être restaurés.",
-      );
-    }
-
-    if (!event.archivedAt) {
-      // Legacy events archived before T2.2 don't carry the
-      // timestamp. We refuse the restore rather than guess: the
-      // organizer can re-create the event manually if it's truly
-      // needed. Documenting this here so a future migration that
-      // backfills `archivedAt` doesn't unblock surprise restores.
-      throw new ValidationError(
-        "Cet événement a été archivé avant l'introduction de la fenêtre de restauration. Veuillez le recréer manuellement si nécessaire.",
-      );
-    }
-
-    const archivedAtMs = new Date(event.archivedAt).getTime();
-    const ageMs = Date.now() - archivedAtMs;
-    const RESTORE_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
-    if (ageMs > RESTORE_WINDOW_MS) {
-      const daysAgo = Math.floor(ageMs / (24 * 60 * 60 * 1000));
-      throw new ValidationError(
-        `Fenêtre de restauration dépassée (archivé il y a ${daysAgo} jours, limite 30 jours).`,
-      );
-    }
+    // T2.2 plan-limit fix — restoring brings the event back to a
+    // status that counts against `maxEvents`. An organizer who
+    // archived to free a slot, then created a new event, then
+    // restored the old one would otherwise overshoot the cap.
+    // Mirrors `create` / `clone` exactly.
+    const org = await organizationRepository.findByIdOrThrow(preloaded.organizationId);
+    await this.checkEventLimit(org);
 
     const now = new Date().toISOString();
-    await eventRepository.update(eventId, {
-      status: "draft",
-      archivedAt: null,
-    } as Partial<Event>);
+    await db.runTransaction(async (tx) => {
+      const ref = db.collection(COLLECTIONS.EVENTS).doc(eventId);
+      const snap = await tx.get(ref);
+      if (!snap.exists) throw new NotFoundError("event", eventId);
+      const fresh = snap.data() as Event;
+
+      if (fresh.status !== "archived") {
+        throw new ValidationError(
+          "Seuls les événements archivés peuvent être restaurés.",
+        );
+      }
+      if (!fresh.archivedAt) {
+        // Legacy events archived before T2.2 don't carry the
+        // timestamp. Refuse rather than guess.
+        throw new ValidationError(
+          "Cet événement a été archivé avant l'introduction de la fenêtre de restauration. Veuillez le recréer manuellement si nécessaire.",
+        );
+      }
+      const archivedAtMs = new Date(fresh.archivedAt).getTime();
+      const ageMs = Date.now() - archivedAtMs;
+      const RESTORE_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+      if (ageMs > RESTORE_WINDOW_MS) {
+        const daysAgo = Math.floor(ageMs / (24 * 60 * 60 * 1000));
+        throw new ValidationError(
+          `Fenêtre de restauration dépassée (archivé il y a ${daysAgo} jours, limite 30 jours).`,
+        );
+      }
+
+      tx.update(ref, {
+        status: "draft",
+        archivedAt: null,
+        updatedAt: now,
+        updatedBy: user.uid,
+      });
+    });
 
     eventBus.emit("event.restored", {
       eventId,
-      organizationId: event.organizationId,
+      organizationId: preloaded.organizationId,
       actorId: user.uid,
       requestId: getRequestId(),
       timestamp: now,

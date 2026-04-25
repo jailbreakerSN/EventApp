@@ -378,7 +378,11 @@ describe("EventService.cancelSeries", () => {
       status: "published",
     });
     mockEventRepo.findByIdOrThrow.mockResolvedValue(parent);
-    mockChildrenGet.mockResolvedValue({
+    // Sprint-2 review fix — children read moved INSIDE the
+    // transaction. The mock now drives `mockTxGet` instead of the
+    // outside-tx `mockChildrenGet` (which is no longer hit by the
+    // happy path).
+    mockTxGet.mockResolvedValue({
       size: 4,
       docs: [
         { id: "c1", ref: { id: "c1" }, data: () => ({ status: "published" }) },

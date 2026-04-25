@@ -1,6 +1,8 @@
 import { type JobHandler } from "./types";
 import { pingHandler } from "./handlers/ping";
 import { pruneExpiredInvitesHandler } from "./handlers/prune-expired-invites";
+import { firestoreBackupHandler } from "./handlers/firestore-backup";
+import { firestoreRestoreHandler } from "./handlers/firestore-restore";
 
 /**
  * Registered admin-runner job handlers.
@@ -18,6 +20,9 @@ import { pruneExpiredInvitesHandler } from "./handlers/prune-expired-invites";
 const handlers = new Map<string, JobHandler>([
   [pingHandler.descriptor.jobKey, pingHandler as JobHandler],
   [pruneExpiredInvitesHandler.descriptor.jobKey, pruneExpiredInvitesHandler as JobHandler],
+  // Sprint-3 T4.3 closure — disaster-recovery surface.
+  [firestoreBackupHandler.descriptor.jobKey, firestoreBackupHandler as JobHandler],
+  [firestoreRestoreHandler.descriptor.jobKey, firestoreRestoreHandler as JobHandler],
 ]);
 
 export function getHandler(jobKey: string): JobHandler | null {

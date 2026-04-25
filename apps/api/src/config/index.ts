@@ -131,6 +131,37 @@ const envSchema = z.object({
   QR_MASTER: z.string().min(32, "QR_MASTER must be at least 32 characters").optional(),
   WEBHOOK_SECRET: z.string().min(16).default("dev-webhook-secret-change-in-prod"),
 
+  // ─── Sprint-3 T4.3 closure — Firestore backup target ──────────────────────
+  // GCS bucket where the `firestore-backup` admin job writes
+  // export prefixes. Unset = backup feature disabled (the job
+  // returns a clear error instead of running). Format expected by
+  // the Firestore Admin API: `gs://<bucket-name>` (no path
+  // suffix — the job appends a timestamped prefix per run).
+  // Operator action to enable: provision the bucket, grant the
+  // Cloud Run service account `roles/datastore.importExportAdmin`
+  // and `roles/storage.admin` (scoped to the bucket), then set
+  // this env var. Runbook in `docs/runbooks/backup-restore.md`.
+  FIRESTORE_BACKUP_BUCKET: z.preprocess(
+    (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
+    z
+      .string()
+      .regex(/^gs:\/\//, "FIRESTORE_BACKUP_BUCKET must start with gs://")
+      .optional(),
+  ),
+
+  // ─── Sprint-3 T4.1 closure — SOC alert webhook ────────────────────────────
+  // Optional. When set, the SOC alert listener posts a JSON payload to
+  // this URL on every critical audit action (role changes, subscription
+  // cancellations, API key issuance/rotation/revocation, impersonation
+  // sessions). Compatible with Slack incoming webhooks, PagerDuty
+  // events v2 (with the right Content-Type), Discord, etc. Empty
+  // string is normalised to `undefined` so CI / dev environments
+  // stay quiet without an explicit unset.
+  SOC_ALERT_WEBHOOK_URL: z.preprocess(
+    (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
+    z.string().url().optional(),
+  ),
+
   // ─── Observability (optional) ──────────────────────────────────────────────
   // GitHub Actions injects `${{ secrets.SENTRY_DSN }}` as an empty string when
   // the secret is unset — preprocess converts that back to undefined so the

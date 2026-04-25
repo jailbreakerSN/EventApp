@@ -594,23 +594,40 @@ describe("EventService.archive", () => {
 });
 
 // T2.2 closure — restore endpoint contract tests.
+//
+// Sprint-2 review hardening: `restore` now wraps the read-then-write
+// in `db.runTransaction(...)` and re-checks plan limits. The tests
+// drive both paths via the shared `mockTxGet` / `mockTxUpdate`
+// fixtures.
 describe("EventService.restore", () => {
+  const buildOrgWithRoom = () =>
+    buildOrganization({
+      id: "org-1",
+      // Room for many events so checkEventLimit doesn't throw in the
+      // happy path. plan: pro has -1 (unlimited).
+      plan: "pro",
+    });
+
   it("restores an archived event within the 30-day window to draft status", async () => {
     const user = buildOrganizerUser("org-1");
     const archivedAt = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString(); // 5 days ago
     const event = buildEvent({
+      id: "evt-restore-1",
       organizationId: "org-1",
       status: "archived",
       archivedAt,
     });
     mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
-    mockEventRepo.update.mockResolvedValue(undefined);
+    mockOrgRepo.findByIdOrThrow.mockResolvedValue(buildOrgWithRoom());
+    mockEventRepo.countActiveByOrganization.mockResolvedValue(0);
+    // tx.get(ref) returns the same archived row.
+    mockTxGet.mockResolvedValueOnce({ exists: true, data: () => event });
 
     const result = await service.restore(event.id, user);
 
     expect(result).toEqual({ eventId: event.id });
-    expect(mockEventRepo.update).toHaveBeenCalledWith(
-      event.id,
+    expect(mockTxUpdate).toHaveBeenCalledWith(
+      expect.anything(),
       expect.objectContaining({ status: "draft", archivedAt: null }),
     );
   });
@@ -619,11 +636,14 @@ describe("EventService.restore", () => {
     const user = buildOrganizerUser("org-1");
     const event = buildEvent({ organizationId: "org-1", status: "cancelled" });
     mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
+    mockOrgRepo.findByIdOrThrow.mockResolvedValue(buildOrgWithRoom());
+    mockEventRepo.countActiveByOrganization.mockResolvedValue(0);
+    mockTxGet.mockResolvedValueOnce({ exists: true, data: () => event });
 
     await expect(service.restore(event.id, user)).rejects.toThrow(
       /Seuls les événements archivés peuvent être restaurés/,
     );
-    expect(mockEventRepo.update).not.toHaveBeenCalled();
+    expect(mockTxUpdate).not.toHaveBeenCalled();
   });
 
   it("rejects restoring an event archived more than 30 days ago", async () => {
@@ -635,11 +655,14 @@ describe("EventService.restore", () => {
       archivedAt,
     });
     mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
+    mockOrgRepo.findByIdOrThrow.mockResolvedValue(buildOrgWithRoom());
+    mockEventRepo.countActiveByOrganization.mockResolvedValue(0);
+    mockTxGet.mockResolvedValueOnce({ exists: true, data: () => event });
 
     await expect(service.restore(event.id, user)).rejects.toThrow(
       /Fenêtre de restauration dépassée/,
     );
-    expect(mockEventRepo.update).not.toHaveBeenCalled();
+    expect(mockTxUpdate).not.toHaveBeenCalled();
   });
 
   it("rejects restoring a legacy archived event without archivedAt", async () => {
@@ -650,16 +673,41 @@ describe("EventService.restore", () => {
       archivedAt: null,
     });
     mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
+    mockOrgRepo.findByIdOrThrow.mockResolvedValue(buildOrgWithRoom());
+    mockEventRepo.countActiveByOrganization.mockResolvedValue(0);
+    mockTxGet.mockResolvedValueOnce({ exists: true, data: () => event });
 
     await expect(service.restore(event.id, user)).rejects.toThrow(
       /archivé avant l'introduction de la fenêtre/,
     );
-    expect(mockEventRepo.update).not.toHaveBeenCalled();
+    expect(mockTxUpdate).not.toHaveBeenCalled();
   });
 
   it("requires event:delete permission", async () => {
     const user = buildAuthUser({ roles: ["participant"] });
     await expect(service.restore("evt-1", user)).rejects.toThrow("Permission manquante");
+  });
+
+  // Sprint-2 review fix — restore must re-check `maxEvents` so a
+  // free-tier organizer who archived to free a slot, created a new
+  // event, and then tried to restore the old one is refused.
+  it("refuses when restoring would push the org over its plan's maxEvents", async () => {
+    const user = buildOrganizerUser("org-1");
+    const event = buildEvent({
+      organizationId: "org-1",
+      status: "archived",
+      archivedAt: new Date().toISOString(),
+    });
+    mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
+    mockOrgRepo.findByIdOrThrow.mockResolvedValue(
+      buildOrganization({ id: "org-1", plan: "free" }),
+    );
+    // Free plan caps at 3 active events; 3 already active means
+    // restore would push to 4.
+    mockEventRepo.countActiveByOrganization.mockResolvedValue(3);
+
+    await expect(service.restore(event.id, user)).rejects.toThrow(/limite|plan/i);
+    expect(mockTxUpdate).not.toHaveBeenCalled();
   });
 });
 

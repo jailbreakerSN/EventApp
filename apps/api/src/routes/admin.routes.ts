@@ -4,6 +4,7 @@ import { authenticate } from "@/middlewares/auth.middleware";
 import { validate } from "@/middlewares/validate.middleware";
 import { requireAnyPermission, requirePermission } from "@/middlewares/permission.middleware";
 import { adminService } from "@/services/admin.service";
+import { firestoreUsageService } from "@/services/firestore-usage.service";
 import { adminJobsService } from "@/services/admin-jobs.service";
 import { webhookEventsService } from "@/services/webhook-events.service";
 import { subscriptionService } from "@/services/subscription.service";
@@ -293,6 +294,63 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
       const data = await adminService.getRevenueCohorts(
         request.user!,
         request.query.months,
+      );
+      return reply.send({ success: true, data });
+    },
+  );
+
+  // ── Sprint-3 T4.2 — Firestore cost dashboard ─────────────────────────
+  // Top consumers + daily volume over a configurable window.
+  // Backed by `firestoreUsage/{orgId}_{day}` aggregates flushed by
+  // the request-tracking hook in `app.ts`. Read-only.
+  const FirestoreUsageQuery = z.object({
+    days: z.coerce.number().int().min(1).max(30).default(7),
+    topN: z.coerce.number().int().min(1).max(50).default(10),
+  });
+  fastify.get<{ Querystring: z.infer<typeof FirestoreUsageQuery> }>(
+    "/usage/firestore",
+    {
+      preHandler: [...readOnlyAdminPreHandler, validate({ query: FirestoreUsageQuery })],
+      schema: {
+        tags: ["Admin"],
+        summary: "Firestore read-volume dashboard (top consumers + daily totals)",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const data = await firestoreUsageService.getTopConsumers(request.user!, {
+        days: request.query.days,
+        topN: request.query.topN,
+      });
+      return reply.send({ success: true, data });
+    },
+  );
+
+  const FirestoreUsageOrgParams = z.object({ orgId: z.string().min(1).max(128) });
+  const FirestoreUsageOrgQuery = z.object({
+    days: z.coerce.number().int().min(1).max(30).default(30),
+  });
+  fastify.get<{
+    Params: z.infer<typeof FirestoreUsageOrgParams>;
+    Querystring: z.infer<typeof FirestoreUsageOrgQuery>;
+  }>(
+    "/usage/firestore/:orgId",
+    {
+      preHandler: [
+        ...readOnlyAdminPreHandler,
+        validate({ params: FirestoreUsageOrgParams, query: FirestoreUsageOrgQuery }),
+      ],
+      schema: {
+        tags: ["Admin"],
+        summary: "Firestore read-volume drill-down for one organisation",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const data = await firestoreUsageService.getOrgUsage(
+        request.user!,
+        request.params.orgId,
+        { days: request.query.days },
       );
       return reply.send({ success: true, data });
     },

@@ -12,6 +12,8 @@ import { runWithContext, enrichContext } from "@/context/request-context";
 import { registerNotificationListeners } from "@/events/listeners/notification.listener";
 import { registerNotificationDispatcherListeners } from "@/events/listeners/notification-dispatcher.listener";
 import { registerAuditListeners } from "@/events/listeners/audit.listener";
+import { registerSocAlertListeners } from "@/events/listeners/soc-alert.listener";
+import { flushFirestoreUsage } from "@/services/firestore-usage.service";
 import { registerEffectivePlanListeners } from "@/events/listeners/effective-plan.listener";
 import { registerEventDenormListeners } from "@/events/listeners/event-denorm.listener";
 import { captureError } from "@/observability/sentry";
@@ -128,6 +130,22 @@ export async function buildApp() {
     done();
   });
 
+  // ─── Sprint-3 T4.2 — Firestore read-volume flush ─────────────────────────
+  // Pushes the per-request `firestoreReads` counter into the
+  // `firestoreUsage/{orgId}_{day}` aggregate doc. Fire-and-forget:
+  // a write failure here must not block the response or surface to
+  // the caller, so we swallow + log to stderr only. Skipped when:
+  //   - the request had no organisation context (anonymous /
+  //     pre-auth probes)
+  //   - the request didn't actually read Firestore (rare — most
+  //     authed endpoints touch at least the user doc)
+  //   - the writer itself targets `firestoreUsage` (avoid an
+  //     infinite recursion of usage tracking the usage tracker)
+  app.addHook("onResponse", (_request, _reply, done) => {
+    void flushFirestoreUsage();
+    done();
+  });
+
   // ─── API Documentation (non-production) ──────────────────────────────────
   if (config.NODE_ENV !== "production") {
     await app.register(swagger, {
@@ -172,6 +190,9 @@ export async function buildApp() {
   registerAuditListeners();
   registerEffectivePlanListeners();
   registerEventDenormListeners();
+  // Sprint-3 T4.1 closure — fire-and-forget SOC alerts on critical
+  // audit actions. No-ops when SOC_ALERT_WEBHOOK_URL is unset.
+  registerSocAlertListeners();
 
   // ─── Routes ───────────────────────────────────────────────────────────────
   await registerRoutes(app);

@@ -582,7 +582,7 @@ function ApiKeyRow({
             aria-label={`Voir les statistiques d'usage de la clé ${apiKey.name}`}
           >
             <Activity className="h-3.5 w-3.5" aria-hidden="true" />
-            Stats
+            Statistiques
           </button>
           {isActive && (
             <>
