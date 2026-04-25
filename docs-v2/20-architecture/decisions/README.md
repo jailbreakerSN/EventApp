@@ -6,10 +6,15 @@ ADRs document the significant architectural decisions made during the developmen
 
 ---
 
+## Writing a new ADR
+
+Start from the [template](./0000-template.md). Each ADR is immutable once `Accepted` — to revise, write a new ADR that supersedes the old one and update the old ADR's `Status` to `Superseded by [ADR-NNNN](./NNNN-...md)`.
+
 ## Index
 
 | # | Title | Status | Date |
 |---|---|---|---|
+| [0000](./0000-template.md) | Template for new ADRs | n/a | n/a |
 | [0001](./0001-cloud-run-vs-functions.md) | API on Cloud Run instead of Cloud Functions | Accepted | 2026-01 |
 | [0002](./0002-zod-single-source-of-truth.md) | Zod schemas as single source of truth | Accepted | 2026-01 |
 | [0003](./0003-qr-v4-hkdf-design.md) | QR v4: HKDF-based per-event key derivation | Accepted | 2026-03 |
