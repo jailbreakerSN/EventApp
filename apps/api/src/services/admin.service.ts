@@ -101,10 +101,21 @@ class AdminService extends BaseService {
   ): Readable {
     this.requirePermission(user, "platform:manage");
 
+    // Note: written without regex literals on purpose. The static
+    // index-coverage linter's brace-tracker doesn't understand regex
+    // literal syntax (`/.../`) and treats embedded `"` as string
+    // delimiters — when this helper used `/[",\n\r]/` the tracker
+    // never re-balanced and `csvCell`'s body was extended to the
+    // end of the file, dragging unrelated `db.collection(...)` calls
+    // into spurious raw-chunk matches that the linter then reported
+    // as missing indexes. Plain string includes() + split/join keep
+    // the tracker honest.
+    const NEEDS_QUOTE = ['"', ",", "\n", "\r"];
     const csvCell = (v: unknown): string => {
       if (v == null) return "";
       const s = String(v);
-      return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+      const needsQuote = NEEDS_QUOTE.some((c) => s.includes(c));
+      return needsQuote ? `"${s.split('"').join('""')}"` : s;
     };
     // PAGE_SIZE = 500 keeps each Firestore read small + caps max memory
     // per chunk while still being efficient (max 100 reads for 50k rows).
@@ -467,6 +478,7 @@ class AdminService extends BaseService {
       signupAnomalies,
       multiDeviceScans,
       eventsLive,
+      stuckWaitlists,
     ] = await Promise.all([
       safeCount("venues.pending", async () => {
         const snap = await db
@@ -621,6 +633,34 @@ class AdminService extends BaseService {
           if (row.endDate >= nowIso) live++;
         }
         return live;
+      }),
+      // Phase 7+ B2 closure — stuck-waitlist signal. We count
+      // distinct events that produced a `waitlist.promotion_failed`
+      // audit row in the last 24h. That action fires when a
+      // cancel-driven promotion attempt exhausts retries OR a bulk
+      // promotion entry stalls — both are signs the organizer
+      // (or our retry loop) couldn't drain the waitlist
+      // automatically and a human should intervene.
+      //
+      // Counting distinct eventIds (rather than total failure rows)
+      // matches operator intuition: "how many events need looking
+      // at" is the actionable metric, not "how many failure
+      // attempts happened in total" which can spike for a single
+      // misconfigured event.
+      safeCount("waitlist.stuck", async () => {
+        const snap = await db
+          .collection(COLLECTIONS.AUDIT_LOGS)
+          .where("action", "==", "waitlist.promotion_failed")
+          .where("timestamp", ">=", twentyFourHoursAgo)
+          .select("resourceId")
+          .limit(500)
+          .get();
+        const stuck = new Set<string>();
+        for (const doc of snap.docs) {
+          const row = doc.data() as { resourceId?: string };
+          if (row.resourceId) stuck.add(row.resourceId);
+        }
+        return stuck.size;
       }),
     ]);
 
@@ -781,6 +821,26 @@ class AdminService extends BaseService {
           "Événements publiés dont la plage horaire est en cours. Surveiller la charge webhook + check-in.",
         count: eventsLive,
         href: "/admin/events?status=published",
+      });
+    }
+
+    // Phase 7+ B2 closure — surface stuck waitlists. Warning severity
+    // (not critical) because the underlying `waitlist.promotion_failed`
+    // can be transient (Firestore contention) and the retry loop
+    // usually self-heals. The deep-link points at the audit log
+    // filtered on the action so the operator sees which events
+    // failed + why (the audit row carries `failureKind` + `reason`
+    // in its details payload).
+    if (stuckWaitlists > 0) {
+      signals.push({
+        id: "waitlist.stuck",
+        category: "ops",
+        severity: "warning",
+        title: `${stuckWaitlists} événement${stuckWaitlists > 1 ? "s" : ""} avec liste d'attente bloquée`,
+        description:
+          "Promotion de waitlist en échec sur les 24 dernières heures. Investiguer manuellement ou relancer.",
+        count: stuckWaitlists,
+        href: "/admin/audit?action=waitlist.promotion_failed",
       });
     }
 
@@ -1389,9 +1449,216 @@ class AdminService extends BaseService {
   async listEvents(user: AuthUser, query: AdminEventQuery): Promise<PaginatedResult<Event>> {
     this.requirePermission(user, "platform:manage");
     return adminRepository.listAllEvents(
-      { q: query.q, status: query.status, organizationId: query.organizationId },
+      {
+        q: query.q,
+        status: query.status,
+        organizationId: query.organizationId,
+        isRecurringParent: query.isRecurringParent,
+        parentEventId: query.parentEventId,
+      },
       { page: query.page, limit: query.limit },
     );
+  }
+
+  /**
+   * A.3 closure — signup-cohort retention curve.
+   *
+   * For each of the last `months` calendar months (default 12), groups
+   * organisations by the YYYY-MM of their `createdAt` and returns:
+   *   - signupCount   : how many orgs joined in that cohort
+   *   - retainedNow   : how many of those orgs still hold an
+   *                     `active` subscription today
+   *   - retentionPct  : retainedNow / signupCount (0 when 0/0)
+   *
+   * Implementation note — the response is NOT a true month-by-month
+   * matrix (which would require subscription history reconstruction
+   * from audit logs). It's a "current retention" curve, the most
+   * actionable signal we can compute from current state alone:
+   *   "of the orgs that signed up N months ago, what fraction are
+   *    still paying us today?"
+   *
+   * Two bounded reads in parallel: the orgs collection filtered on
+   * `createdAt >= startMonthIso` (cap 2000), and the active
+   * subscriptions index (cap 2000). For Teranga's current scale
+   * (tens to low hundreds of orgs / month) both fit easily; the cap
+   * is a safety rail rather than a routine throttle.
+   *
+   * Permission: `platform:audit_read` OR `platform:manage`. Read-only.
+   */
+  async getRevenueCohorts(
+    user: AuthUser,
+    months: number,
+  ): Promise<{
+    cohorts: Array<{
+      cohortMonth: string;
+      signupCount: number;
+      retainedNow: number;
+      retentionPct: number;
+    }>;
+    computedAt: string;
+  }> {
+    this.requireAnyPermission(user, ["platform:audit_read", "platform:manage"]);
+
+    // Hard cap on the lookback window. 24 months is more than enough
+    // for any retention conversation a Sales / CS team needs today
+    // and keeps the read tiny. Negative or zero defaults to 12.
+    const lookback = Math.max(1, Math.min(24, Math.floor(months) || 12));
+    const now = new Date();
+    const cohortStart = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - lookback + 1, 1, 0, 0, 0, 0),
+    );
+    const startIso = cohortStart.toISOString();
+
+    const [orgsSnap, subsSnap] = await Promise.all([
+      db
+        .collection(COLLECTIONS.ORGANIZATIONS)
+        .where("createdAt", ">=", startIso)
+        .select("createdAt")
+        .limit(2000)
+        .get(),
+      db
+        .collection(COLLECTIONS.SUBSCRIPTIONS)
+        .where("status", "==", "active")
+        .select("organizationId")
+        .limit(2000)
+        .get(),
+    ]);
+
+    // Build the "currently active" org set from the subscription
+    // snapshot. We don't dedupe per-org because the sub query already
+    // filters on `status: active` and an org should hold at most one
+    // active subscription at a time (enforced by `subscription.service`
+    // upgrade/cancel transactions).
+    const activeOrgIds = new Set<string>();
+    for (const doc of subsSnap.docs) {
+      const sub = doc.data() as { organizationId?: string };
+      if (sub.organizationId) activeOrgIds.add(sub.organizationId);
+    }
+
+    // Group orgs into YYYY-MM cohorts. We slice the ISO string
+    // directly rather than `new Date()`-parsing each row — string
+    // comparison is faster and avoids any local-time pitfalls
+    // (createdAt is stored as UTC ISO 8601 throughout the platform).
+    const cohortMap = new Map<string, { signupCount: number; retainedNow: number }>();
+    for (const doc of orgsSnap.docs) {
+      const data = doc.data() as { createdAt?: string };
+      const orgId = doc.id;
+      if (!data.createdAt) continue;
+      const cohortMonth = data.createdAt.slice(0, 7); // "YYYY-MM"
+      const entry = cohortMap.get(cohortMonth) ?? { signupCount: 0, retainedNow: 0 };
+      entry.signupCount += 1;
+      if (activeOrgIds.has(orgId)) entry.retainedNow += 1;
+      cohortMap.set(cohortMonth, entry);
+    }
+
+    // Always emit a row per month in the lookback window so the UI
+    // can render an even axis even when a month has zero signups.
+    const cohorts: Array<{
+      cohortMonth: string;
+      signupCount: number;
+      retainedNow: number;
+      retentionPct: number;
+    }> = [];
+    for (let offset = 0; offset < lookback; offset += 1) {
+      const monthDate = new Date(
+        Date.UTC(cohortStart.getUTCFullYear(), cohortStart.getUTCMonth() + offset, 1),
+      );
+      const cohortMonth = monthDate.toISOString().slice(0, 7);
+      const stats = cohortMap.get(cohortMonth) ?? { signupCount: 0, retainedNow: 0 };
+      cohorts.push({
+        cohortMonth,
+        signupCount: stats.signupCount,
+        retainedNow: stats.retainedNow,
+        retentionPct:
+          stats.signupCount > 0 ? stats.retainedNow / stats.signupCount : 0,
+      });
+    }
+
+    return {
+      cohorts,
+      computedAt: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * Phase 7+ B2 closure — waitlist health snapshot for one event.
+   *
+   * Returns the four counts an operator wants when an event surfaces
+   * on the "stuck waitlist" inbox card:
+   *   - `waitlistedCount`    — current pending demand
+   *   - `promotedCount30d`   — successful drains in the last 30 days
+   *   - `failureCount30d`    — promotion attempts that exhausted retries
+   *   - `lastPromotedAt`     — timestamp of the most recent successful promotion (null if never)
+   *
+   * Read-only; no side effects. All four reads run in parallel
+   * (`Promise.all`) so the round-trip stays under a single
+   * Firestore RTT for the operator.
+   *
+   * Permission: `platform:manage` (admin-only). Cross-org by
+   * design — this is the platform admin's investigation surface,
+   * organizers reach the same data via their own /events/:id
+   * waitlist tools.
+   */
+  async getWaitlistHealth(
+    user: AuthUser,
+    eventId: string,
+  ): Promise<{
+    eventId: string;
+    waitlistedCount: number;
+    promotedCount30d: number;
+    failureCount30d: number;
+    lastPromotedAt: string | null;
+  }> {
+    this.requirePermission(user, "platform:manage");
+
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+
+    const [waitlistedCount, promotedCount30d, failureCount30d, lastPromotedSnap] =
+      await Promise.all([
+        db
+          .collection(COLLECTIONS.REGISTRATIONS)
+          .where("eventId", "==", eventId)
+          .where("status", "==", "waitlisted")
+          .count()
+          .get()
+          .then((s) => s.data().count),
+        db
+          .collection(COLLECTIONS.AUDIT_LOGS)
+          .where("action", "==", "waitlist.promoted")
+          .where("resourceId", "==", eventId)
+          .where("timestamp", ">=", thirtyDaysAgo)
+          .count()
+          .get()
+          .then((s) => s.data().count),
+        db
+          .collection(COLLECTIONS.AUDIT_LOGS)
+          .where("action", "==", "waitlist.promotion_failed")
+          .where("resourceId", "==", eventId)
+          .where("timestamp", ">=", thirtyDaysAgo)
+          .count()
+          .get()
+          .then((s) => s.data().count),
+        db
+          .collection(COLLECTIONS.AUDIT_LOGS)
+          .where("action", "==", "waitlist.promoted")
+          .where("resourceId", "==", eventId)
+          .orderBy("timestamp", "desc")
+          .select("timestamp")
+          .limit(1)
+          .get(),
+      ]);
+
+    const lastPromotedAt = lastPromotedSnap.empty
+      ? null
+      : ((lastPromotedSnap.docs[0].data() as { timestamp?: string }).timestamp ?? null);
+
+    return {
+      eventId,
+      waitlistedCount,
+      promotedCount30d,
+      failureCount30d,
+      lastPromotedAt,
+    };
   }
 
   // ── Venue Oversight ───────────────────────────────────────────────────

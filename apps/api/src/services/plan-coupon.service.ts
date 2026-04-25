@@ -3,6 +3,8 @@ import {
   type CreatePlanCouponDto,
   type UpdatePlanCouponDto,
   type AdminCouponQuery,
+  type AdminCouponRedemptionsQuery,
+  type CouponRedemption,
   type ValidateCouponResponse,
   type BillingCycle,
   type Plan,
@@ -153,6 +155,92 @@ class PlanCouponService extends BaseService {
       requestId: getRequestId(),
       timestamp: now,
     });
+  }
+
+  /**
+   * Phase 7+ closure — list a coupon's redemption history with
+   * aggregate analytics. Powers `/admin/coupons/:couponId` redemption
+   * tab + future MRR-impact dashboard.
+   *
+   * Returns the paginated redemptions slice ordered by most-recent
+   * first, plus an aggregate envelope:
+   *   - `totalRedemptions`        — total count (independent of page)
+   *   - `totalDiscountAppliedXof` — sum of `discountAppliedXof`
+   *                                 across ALL redemptions of this
+   *                                 coupon (computed from a separate
+   *                                 capped scan; bounded at 500 rows
+   *                                 to stay cheap)
+   *
+   * Permission: `platform:manage` only — same gate as the rest of
+   * the admin coupon endpoints. No org-scoped access.
+   */
+  async listRedemptions(
+    couponId: string,
+    query: AdminCouponRedemptionsQuery,
+    user: AuthUser,
+  ): Promise<{
+    couponId: string;
+    redemptions: PaginatedResult<CouponRedemption>;
+    aggregates: {
+      totalRedemptions: number;
+      totalDiscountAppliedXof: number;
+    };
+  }> {
+    this.requirePermission(user, "platform:manage");
+
+    // Existence check — surfaces a clean 404 instead of returning
+    // an empty list silently when an admin mistypes a coupon id.
+    const couponSnap = await db.collection(COLLECTIONS.PLAN_COUPONS).doc(couponId).get();
+    if (!couponSnap.exists) throw new NotFoundError("PlanCoupon", couponId);
+
+    const baseQuery = db
+      .collection(COLLECTIONS.COUPON_REDEMPTIONS)
+      .where("couponId", "==", couponId);
+
+    const [countSnap, pageSnap, totalsSnap] = await Promise.all([
+      baseQuery.count().get(),
+      baseQuery
+        .orderBy("redeemedAt", "desc")
+        .offset((query.page - 1) * query.limit)
+        .limit(query.limit)
+        .get(),
+      // Capped at 500 rows (matches the rest of the admin
+      // observability budget). For coupons with > 500 redemptions
+      // we under-report the total discount sum; the response carries
+      // `totalRedemptions` so the UI can flag the truncation
+      // explicitly. In practice no coupon is expected to scale
+      // beyond a few hundred redemptions before it's archived and
+      // replaced, so the cap is theoretical.
+      baseQuery.select("discountAppliedXof").limit(500).get(),
+    ]);
+
+    const total = countSnap.data().count;
+    const data = pageSnap.docs.map((d) => d.data() as CouponRedemption);
+
+    let totalDiscountAppliedXof = 0;
+    for (const doc of totalsSnap.docs) {
+      const row = doc.data() as { discountAppliedXof?: number };
+      if (typeof row.discountAppliedXof === "number") {
+        totalDiscountAppliedXof += row.discountAppliedXof;
+      }
+    }
+
+    return {
+      couponId,
+      redemptions: {
+        data,
+        meta: {
+          page: query.page,
+          limit: query.limit,
+          total,
+          totalPages: Math.max(1, Math.ceil(total / query.limit)),
+        },
+      },
+      aggregates: {
+        totalRedemptions: total,
+        totalDiscountAppliedXof,
+      },
+    };
   }
 
   async list(

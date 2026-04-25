@@ -37,6 +37,7 @@ import {
 import type { Organization } from "@teranga/shared-types";
 import { organizationsApi, adminApi } from "@/lib/api-client";
 import { EntityDetailLayout } from "@/components/admin/entity-detail-layout";
+import { ApiKeysTab } from "@/components/admin/api-keys-tab";
 import { useErrorHandler } from "@/hooks/use-error-handler";
 
 // ─── Page ────────────────────────────────────────────────────────────────────
@@ -205,6 +206,11 @@ export default function AdminOrganizationDetailPage() {
           id: "subscription",
           label: "Abonnement",
           render: () => <SubscriptionTab org={org} />,
+        },
+        {
+          id: "api-keys",
+          label: "Clés API",
+          render: () => <ApiKeysTab orgId={org.id} orgName={org.name} />,
         },
         {
           id: "audit",

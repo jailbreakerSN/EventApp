@@ -90,6 +90,10 @@ const mockAdminService = {
   listSubscriptions: vi.fn(),
   listInvites: vi.fn(),
   listAuditLogs: vi.fn(),
+  // Phase 7+ B2 closure — waitlist health snapshot for an event.
+  getWaitlistHealth: vi.fn(),
+  // A.3 closure — signup-cohort retention curve.
+  getRevenueCohorts: vi.fn(),
 };
 
 const mockSubscriptionService = {
@@ -279,6 +283,10 @@ const ORGANIZER_DENIED_MATRIX: Array<{
   { method: "PATCH", url: "/v1/admin/organizations/org-1/verify", body: {} },
   { method: "PATCH", url: "/v1/admin/organizations/org-1/status", body: { isActive: false } },
   { method: "GET", url: "/v1/admin/events" },
+  // Phase 7+ B2 closure — waitlist health snapshot endpoint.
+  { method: "GET", url: "/v1/admin/events/evt-1/waitlist-health" },
+  // A.3 closure — signup-cohort retention curve.
+  { method: "GET", url: "/v1/admin/revenue/cohorts" },
   { method: "GET", url: "/v1/admin/venues" },
   { method: "GET", url: "/v1/admin/payments" },
   { method: "GET", url: "/v1/admin/subscriptions" },
@@ -334,6 +342,61 @@ describe("Admin routes — unauthenticated rejection", () => {
       expect(res.statusCode).toBe(401);
     });
   }
+});
+
+// A.1 closure — sanity check the read-only/mutation split using a
+// support-style admin role. `platform:support` already holds
+// `platform:audit_read` in the role catalogue, so a support agent
+// has the exact same access pattern a future "audit-read-only" role
+// would have once we drop the `platform:manage` safety net. The
+// snapshot test (`route-inventory.test.ts`) is the canonical record
+// of which gate each route uses; this block guards a representative
+// pair against accidental reversion.
+describe("Admin routes — readOnlyAdminPreHandler vs mutation gate (A.1)", () => {
+  it("GET /events does NOT 403 for a platform:support caller", async () => {
+    mockVerifyIdToken.mockResolvedValueOnce({
+      uid: "support-1",
+      email: "support@teranga.dev",
+      email_verified: true,
+      roles: ["platform:support"],
+    });
+    mockAdminService.listEvents.mockResolvedValueOnce({
+      data: [],
+      meta: { page: 1, limit: 20, total: 0, totalPages: 0 },
+    });
+
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/admin/events",
+      headers: authHeader,
+    });
+    expect(res.statusCode).toBe(200);
+  });
+
+  it("PATCH /users/:userId/roles still rejects platform:support (mutation gate kept on platform:manage)", async () => {
+    // Symmetry check: mutations stay on `platform:manage`. The day
+    // we drop the safety net from `platform:support` this test will
+    // start asserting 403 on its own narrow grant — that's exactly
+    // the boundary we want enforced.
+    mockVerifyIdToken.mockResolvedValueOnce({
+      uid: "support-2",
+      email: "support2@teranga.dev",
+      email_verified: true,
+      // Bare audit-read holder: no roles array maps to it today, but
+      // sending the permission inline still lets the middleware
+      // exercise the requireAnyPermission path independently of the
+      // role catalogue.
+      roles: ["participant"],
+      permissions: ["platform:audit_read"],
+    });
+    const res = await app.inject({
+      method: "PATCH",
+      url: "/v1/admin/users/u-1/roles",
+      headers: authHeader,
+      payload: { roles: ["organizer"] },
+    });
+    expect(res.statusCode).toBe(403);
+  });
 });
 
 describe("Admin routes — super_admin happy paths", () => {

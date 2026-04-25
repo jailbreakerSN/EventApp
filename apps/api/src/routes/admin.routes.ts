@@ -56,26 +56,37 @@ const ParamsOrgId = z.object({ orgId: z.string() });
 // Each endpoint picks the narrowest applicable gate:
 //
 //   - `adminPreHandler`          → `platform:manage`
-//     Reserved for routes whose effect crosses every operator surface
-//     (users lifecycle, org lifecycle, moderation, feature flags,
-//     impersonation, broad config). No narrow equivalent in the
-//     capability catalogue today.
+//     Reserved for **mutations** whose effect crosses every operator
+//     surface (user roles/status, org verify/status, feature-flag
+//     upsert, announcement publish, impersonation start, job trigger,
+//     webhook replay, notification config). Same as before.
 //
 //   - `financeAdminPreHandler`   → `subscription:override` OR `platform:manage`
 //     Plan assignment + per-org subscription overrides. Accessible by
 //     `platform:finance` alongside `super_admin` / `platform:super_admin`.
 //
-//   - `auditReadAdminPreHandler` → `profile:read_any` OR `platform:manage`
-//     Audit log READ endpoint. Every `platform:*` role the capability
-//     catalogue grants `profile:read_any` to (support, ops, security,
-//     finance) can read the log — they ALL need post-hoc visibility.
-//     Writes to `auditLogs` never reach a public route.
+//   - `auditReadAdminPreHandler` → `platform:audit_read` OR `platform:manage`
+//     Audit log READ endpoint. Same role set as `readOnlyAdminPreHandler`
+//     but kept as a separate identifier so its intent stays legible.
 //
-// This is the T4.1 tightening made real: `platform:manage` is still the
-// safety net, but finance-critical + audit surfaces now accept the
-// narrow permissions too. Further migrations (e.g. `platform:ops` on
-// jobs/webhooks) require ops-design review first — tracked as a
-// follow-up.
+//   - `readOnlyAdminPreHandler`  → `platform:audit_read` OR `platform:manage`
+//     A.1 closure (Phase 7+ post-overhaul). EVERY admin GET surface
+//     used to require `platform:manage`, even though the actual data
+//     read is the same set the audit log already exposes (org list,
+//     event list, etc). Migrating reads to `platform:audit_read`
+//     pays down the per-route tightening debt without breaking
+//     super_admin: every existing admin role today still carries
+//     `platform:manage` as a safety-net (see permissions.types.ts),
+//     so no reachable caller loses access. The day a future PR drops
+//     `platform:manage` from `platform:support` / `:ops` / `:security`
+//     these routes already accept the narrower permission and a
+//     support agent keeps reading the org list. Writes / mutations
+//     remain pinned to `platform:manage` until each lot has its
+//     dedicated tightening review.
+//
+// Further migrations (e.g. dedicated `platform:ops:*` permissions for
+// jobs/webhooks/feature-flags mutations) require ops-design review
+// first — tracked as a follow-up.
 
 export const adminRoutes: FastifyPluginAsync = async (fastify) => {
   const adminPreHandler = [authenticate, requirePermission("platform:manage")];
@@ -87,13 +98,23 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
     authenticate,
     requireAnyPermission(["platform:audit_read", "platform:manage"]),
   ];
+  // A.1 closure — generic read-only gate for cross-org admin GETs.
+  // Same permission set as `auditReadAdminPreHandler` (the audit log
+  // is the canonical "I can see everything" surface, so any admin
+  // role with audit-read can also see the listings that audit
+  // entries refer to). Kept as a distinct binding so future
+  // narrower roles (e.g. read-only-finance) have a single edit site.
+  const readOnlyAdminPreHandler = [
+    authenticate,
+    requireAnyPermission(["platform:audit_read", "platform:manage"]),
+  ];
 
   // ── Platform Stats ──────────────────────────────────────────────────────
 
   fastify.get(
     "/stats",
     {
-      preHandler: adminPreHandler,
+      preHandler: readOnlyAdminPreHandler,
       schema: {
         tags: ["Admin"],
         summary: "Get platform-wide statistics",
@@ -117,7 +138,7 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get(
     "/feature-flags",
     {
-      preHandler: adminPreHandler,
+      preHandler: readOnlyAdminPreHandler,
       schema: {
         tags: ["Admin"],
         summary: "List all platform feature flags",
@@ -206,7 +227,7 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get(
     "/revenue",
     {
-      preHandler: adminPreHandler,
+      preHandler: readOnlyAdminPreHandler,
       schema: {
         tags: ["Admin"],
         summary: "Platform revenue snapshot (MRR / ARR / breakdown)",
@@ -251,6 +272,32 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
     },
   );
 
+  // A.3 closure — signup-cohort retention curve. Read-only;
+  // `?months=N` selects the lookback window (default 12, max 24).
+  // Returns a per-month row covering the full window so the UI
+  // axis stays evenly spaced even on quiet months.
+  const RevenueCohortsQuery = z.object({
+    months: z.coerce.number().int().min(1).max(24).default(12),
+  });
+  fastify.get<{ Querystring: z.infer<typeof RevenueCohortsQuery> }>(
+    "/revenue/cohorts",
+    {
+      preHandler: [...readOnlyAdminPreHandler, validate({ query: RevenueCohortsQuery })],
+      schema: {
+        tags: ["Admin"],
+        summary: "Signup cohort retention curve (current retention by signup month)",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const data = await adminService.getRevenueCohorts(
+        request.user!,
+        request.query.months,
+      );
+      return reply.send({ success: true, data });
+    },
+  );
+
   // ── Announcements (Phase D closure — platform banners) ────────────────
   // Super-admins publish short-lived messages visible as banners
   // across the platform. Backed by the `announcements` collection;
@@ -268,7 +315,7 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get(
     "/announcements",
     {
-      preHandler: adminPreHandler,
+      preHandler: readOnlyAdminPreHandler,
       schema: { tags: ["Admin"], summary: "List announcements", security: [{ BearerAuth: [] }] },
     },
     async (_request, reply) => {
@@ -337,7 +384,7 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get(
     "/jobs",
     {
-      preHandler: adminPreHandler,
+      preHandler: readOnlyAdminPreHandler,
       schema: {
         tags: ["Admin"],
         summary: "List registered admin job handlers",
@@ -354,7 +401,7 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get(
     "/jobs/runs",
     {
-      preHandler: [...adminPreHandler, validate({ query: AdminJobRunsQuerySchema })],
+      preHandler: [...readOnlyAdminPreHandler, validate({ query: AdminJobRunsQuerySchema })],
       schema: {
         tags: ["Admin"],
         summary: "List admin job runs (history)",
@@ -373,7 +420,7 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get(
     "/jobs/runs/:runId",
     {
-      preHandler: [...adminPreHandler, validate({ params: ParamsRunId })],
+      preHandler: [...readOnlyAdminPreHandler, validate({ params: ParamsRunId })],
       schema: {
         tags: ["Admin"],
         summary: "Get a single admin job run",
@@ -438,7 +485,7 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get(
     "/webhooks",
     {
-      preHandler: [...adminPreHandler, validate({ query: AdminWebhookEventsQuerySchema })],
+      preHandler: [...readOnlyAdminPreHandler, validate({ query: AdminWebhookEventsQuerySchema })],
       schema: {
         tags: ["Admin"],
         summary: "List webhook events (paginated, filterable)",
@@ -456,7 +503,7 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get(
     "/webhooks/:webhookId",
     {
-      preHandler: [...adminPreHandler, validate({ params: ParamsWebhookId })],
+      preHandler: [...readOnlyAdminPreHandler, validate({ params: ParamsWebhookId })],
       schema: {
         tags: ["Admin"],
         summary: "Get a single webhook event",
@@ -544,7 +591,7 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get(
     "/inbox",
     {
-      preHandler: adminPreHandler,
+      preHandler: readOnlyAdminPreHandler,
       schema: {
         tags: ["Admin"],
         summary: "Aggregated admin inbox signals (moderation, billing, ops…)",
@@ -572,7 +619,7 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get(
     "/search",
     {
-      preHandler: adminPreHandler,
+      preHandler: readOnlyAdminPreHandler,
       schema: {
         tags: ["Admin"],
         summary: "Cross-object search for the admin command palette",
@@ -597,7 +644,7 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get(
     "/users",
     {
-      preHandler: [...adminPreHandler, validate({ query: AdminUserQuerySchema })],
+      preHandler: [...readOnlyAdminPreHandler, validate({ query: AdminUserQuerySchema })],
       schema: {
         tags: ["Admin"],
         summary: "List all platform users",
@@ -692,7 +739,7 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get(
     "/users/:userId",
     {
-      preHandler: [...adminPreHandler, validate({ params: ParamsUserId })],
+      preHandler: [...readOnlyAdminPreHandler, validate({ params: ParamsUserId })],
       schema: {
         tags: ["Admin"],
         summary: "Get a single admin user row (with JWT drift check)",
@@ -774,7 +821,7 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get(
     "/organizations",
     {
-      preHandler: [...adminPreHandler, validate({ query: AdminOrgQuerySchema })],
+      preHandler: [...readOnlyAdminPreHandler, validate({ query: AdminOrgQuerySchema })],
       schema: {
         tags: ["Admin"],
         summary: "List all organizations",
@@ -853,7 +900,7 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get(
     "/events",
     {
-      preHandler: [...adminPreHandler, validate({ query: AdminEventQuerySchema })],
+      preHandler: [...readOnlyAdminPreHandler, validate({ query: AdminEventQuerySchema })],
       schema: {
         tags: ["Admin"],
         summary: "List all events (cross-organization)",
@@ -869,6 +916,30 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
     },
   );
 
+  // Phase 7+ B2 closure — waitlist health for one event. Powers the
+  // <WaitlistTab> on /admin/events/:eventId. Read-only, four
+  // parallel `count()` queries → returns under one Firestore RTT.
+  // `eventId` is bounded at 128 chars (Firestore document-id ceiling)
+  // so an oversized path segment is rejected before any read fires.
+  const WaitlistHealthParams = z.object({
+    eventId: z.string().min(1).max(128),
+  });
+  fastify.get<{ Params: z.infer<typeof WaitlistHealthParams> }>(
+    "/events/:eventId/waitlist-health",
+    {
+      preHandler: [...readOnlyAdminPreHandler, validate({ params: WaitlistHealthParams })],
+      schema: {
+        tags: ["Admin"],
+        summary: "Waitlist health snapshot for an event (admin observability)",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const data = await adminService.getWaitlistHealth(request.user!, request.params.eventId);
+      return reply.send({ success: true, data });
+    },
+  );
+
   // ── Venues ──────────────────────────────────────────────────────────────
   // Moderation surface for /admin/venues. Unlike public `/v1/venues`,
   // this endpoint surfaces every status (pending / approved / suspended
@@ -877,7 +948,7 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get(
     "/venues",
     {
-      preHandler: [...adminPreHandler, validate({ query: AdminVenueQuerySchema })],
+      preHandler: [...readOnlyAdminPreHandler, validate({ query: AdminVenueQuerySchema })],
       schema: {
         tags: ["Admin"],
         summary: "List venues across every status (admin moderation view)",
@@ -901,7 +972,7 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get(
     "/payments",
     {
-      preHandler: [...adminPreHandler, validate({ query: AdminPaymentQuerySchema })],
+      preHandler: [...readOnlyAdminPreHandler, validate({ query: AdminPaymentQuerySchema })],
       schema: {
         tags: ["Admin"],
         summary: "List payments across every organisation (finance ops view)",
@@ -925,7 +996,7 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get(
     "/subscriptions",
     {
-      preHandler: [...adminPreHandler, validate({ query: AdminSubscriptionQuerySchema })],
+      preHandler: [...readOnlyAdminPreHandler, validate({ query: AdminSubscriptionQuerySchema })],
       schema: {
         tags: ["Admin"],
         summary: "List subscriptions across every organisation",
@@ -950,7 +1021,7 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get(
     "/invites",
     {
-      preHandler: [...adminPreHandler, validate({ query: AdminInviteQuerySchema })],
+      preHandler: [...readOnlyAdminPreHandler, validate({ query: AdminInviteQuerySchema })],
       schema: {
         tags: ["Admin"],
         summary: "List organisation invites across every org (admin platform view)",

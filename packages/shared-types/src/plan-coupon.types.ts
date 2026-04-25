@@ -171,6 +171,19 @@ export const AdminCouponQuerySchema = z.object({
 
 export type AdminCouponQuery = z.infer<typeof AdminCouponQuerySchema>;
 
+// ─── Admin redemptions query (Phase 7+ closure — coupon analytics) ───────
+//
+// Powers GET /v1/admin/coupons/:couponId/redemptions, the per-coupon
+// drill-down used by the redemption-history tab on the admin coupon
+// detail page. Paginated; defaults match the rest of the admin list
+// surfaces (20 rows, page 1).
+export const AdminCouponRedemptionsQuerySchema = z.object({
+  page: z.coerce.number().int().positive().default(1),
+  limit: z.coerce.number().int().positive().max(100).default(20),
+});
+
+export type AdminCouponRedemptionsQuery = z.infer<typeof AdminCouponRedemptionsQuerySchema>;
+
 // ─── Utility — compute applied discount (pure function) ─────────────────
 //
 // Deterministic XOF math: percentage rounds DOWN to the nearest integer

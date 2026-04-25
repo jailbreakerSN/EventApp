@@ -699,6 +699,47 @@ describe("AdminService.listEvents", () => {
       expect.objectContaining({ page: 1, limit: 20 }),
     );
   });
+
+  // Phase 7+ B1 closure — recurring-event series filters round-trip
+  // through the service so /admin/events?isRecurringParent=true and
+  // /admin/events?parentEventId=X land on the right repository call.
+  it("forwards isRecurringParent filter to repository", async () => {
+    const admin = buildSuperAdmin();
+    mockAdminRepo.listAllEvents.mockResolvedValue({
+      data: [],
+      meta: { page: 1, limit: 20, total: 0, totalPages: 0 },
+    });
+
+    await adminService.listEvents(admin, {
+      page: 1,
+      limit: 20,
+      isRecurringParent: true,
+    });
+
+    expect(mockAdminRepo.listAllEvents).toHaveBeenCalledWith(
+      expect.objectContaining({ isRecurringParent: true }),
+      expect.objectContaining({ page: 1, limit: 20 }),
+    );
+  });
+
+  it("forwards parentEventId filter to repository (children listing)", async () => {
+    const admin = buildSuperAdmin();
+    mockAdminRepo.listAllEvents.mockResolvedValue({
+      data: [],
+      meta: { page: 1, limit: 20, total: 0, totalPages: 0 },
+    });
+
+    await adminService.listEvents(admin, {
+      page: 1,
+      limit: 100,
+      parentEventId: "parent-evt-1",
+    });
+
+    expect(mockAdminRepo.listAllEvents).toHaveBeenCalledWith(
+      expect.objectContaining({ parentEventId: "parent-evt-1" }),
+      expect.objectContaining({ page: 1, limit: 100 }),
+    );
+  });
 });
 
 // ── listAuditLogs ────────────────────────────────────────────────────────

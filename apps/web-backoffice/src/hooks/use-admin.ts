@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { adminApi } from "@/lib/api-client";
+import { adminApi, apiKeysApi } from "@/lib/api-client";
 import type {
   AdminUserQuery,
   AdminOrgQuery,
@@ -15,6 +15,8 @@ import type {
   AdminCouponQuery,
   CreatePlanCouponDto,
   UpdatePlanCouponDto,
+  CreateApiKeyRequest,
+  RotateApiKeyRequest,
 } from "@teranga/shared-types";
 
 // ─── Stats ──────────────────────────────────────────────────────────────────
@@ -104,6 +106,19 @@ export function useAdminEvents(params: Partial<AdminEventQuery> = {}) {
   return useQuery({
     queryKey: ["admin", "events", params],
     queryFn: () => adminApi.listEvents(params),
+  });
+}
+
+// Phase 7+ B2 closure — waitlist health snapshot for an event.
+// Powers the <WaitlistTab> on /admin/events/:eventId. Read-only;
+// 30s stale time so re-rendering the tab doesn't re-fetch on every
+// breadcrumb click.
+export function useAdminEventWaitlistHealth(eventId: string | undefined) {
+  return useQuery({
+    queryKey: ["admin", "events", eventId, "waitlist-health"],
+    queryFn: () => adminApi.getEventWaitlistHealth(eventId!),
+    enabled: !!eventId,
+    staleTime: 30_000,
   });
 }
 
@@ -287,6 +302,22 @@ export function useArchiveCoupon() {
   });
 }
 
+// Phase 7+ closure — coupon redemption history hook. Used on the
+// `/admin/coupons/[couponId]` redemption tab. Page is the only
+// volatile dimension; we fold it into the queryKey so flipping pages
+// doesn't trash the existing cache.
+export function useAdminCouponRedemptions(
+  couponId: string | undefined,
+  params: { page?: number; limit?: number } = {},
+) {
+  return useQuery({
+    queryKey: ["admin", "coupons", "redemptions", couponId, params],
+    queryFn: () => adminApi.listCouponRedemptions(couponId!, params),
+    enabled: !!couponId,
+    staleTime: 30_000,
+  });
+}
+
 // ─── Per-org subscription assign (Phase 5: admin override) ──────────────────
 
 export function useAdminOrgSubscription(orgId: string | undefined) {
@@ -307,6 +338,59 @@ export function useAssignPlan() {
       qc.invalidateQueries({
         queryKey: ["admin", "organizations", "subscription", variables.orgId],
       });
+    },
+  });
+}
+
+// ─── API keys (A.2 closure — per-org issuance UI) ───────────────────────────
+//
+// Wraps the existing `apiKeysApi` (which targets the per-org backend
+// at `/v1/organizations/:orgId/api-keys`) into the standard tanstack
+// hook shape used by every other admin tab. The key contract here is
+// that `create` / `rotate` return the plaintext exactly ONCE on
+// success — callers MUST hand the secret to the operator immediately
+// (modal dialog) and never persist it. The hooks deliberately don't
+// cache `data` on the mutations so React Query never accidentally
+// re-exposes the plaintext on a tab re-render.
+
+export function useOrgApiKeys(orgId: string | undefined) {
+  return useQuery({
+    queryKey: ["admin", "organizations", "api-keys", orgId],
+    queryFn: () => apiKeysApi.list(orgId!, { page: 1, limit: 50 }),
+    enabled: !!orgId,
+    // No stale time — we want fresh state after issue/rotate/revoke.
+    staleTime: 0,
+  });
+}
+
+export function useCreateOrgApiKey(orgId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (dto: CreateApiKeyRequest) => apiKeysApi.create(orgId, dto),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin", "organizations", "api-keys", orgId] });
+    },
+  });
+}
+
+export function useRotateOrgApiKey(orgId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ apiKeyId, dto }: { apiKeyId: string; dto: RotateApiKeyRequest }) =>
+      apiKeysApi.rotate(orgId, apiKeyId, dto),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin", "organizations", "api-keys", orgId] });
+    },
+  });
+}
+
+export function useRevokeOrgApiKey(orgId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ apiKeyId, reason }: { apiKeyId: string; reason?: string }) =>
+      apiKeysApi.revoke(orgId, apiKeyId, reason),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["admin", "organizations", "api-keys", orgId] });
     },
   });
 }
