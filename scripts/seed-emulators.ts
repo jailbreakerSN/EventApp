@@ -57,6 +57,7 @@ import { seedActivity } from "./seed/05-activity";
 import { seedSocial } from "./seed/06-social";
 import { seedInvites } from "./seed/07-invites";
 import { seedAdminFixtures } from "./seed/08-admin-fixtures";
+import { seedRichDataset } from "./seed/09-rich-dataset";
 
 const app = initializeApp({ projectId: PROJECT_ID });
 const auth = getAuth(app);
@@ -259,6 +260,24 @@ async function seed() {
       `  ✓ admin fixtures seeded — ${a.adminJobRuns} job runs, ${a.announcements} announcements, ` +
         `${a.planCoupons} plan coupons (${a.couponRedemptions} redemptions), ` +
         `${a.featureFlags} feature flags`,
+    );
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 5d. RICH DATASET (Sprint D — procedural events + registrations)
+  // ═══════════════════════════════════════════════════════════════════════════
+  //
+  // Brings the seed total from ~22 events / ~90 regs up to ~100 events /
+  // ~2 000 regs so admin dashboards, calendar grids, and plan-limit
+  // visualisations look real out of the box. Deterministic generator
+  // (Mulberry32 seeded with 0xC0FFEE), schema-faithful, plan-tier
+  // aware. See scripts/seed/09-rich-dataset.ts.
+
+  console.log("\n📊 Seeding rich procedural dataset (~80 events, ~1 900 regs)...");
+  {
+    const r = await seedRichDataset(db);
+    console.log(
+      `  ✓ rich dataset seeded — ${r.events} synthetic events, ${r.registrations} registrations`,
     );
   }
 

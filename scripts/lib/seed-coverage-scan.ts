@@ -65,6 +65,7 @@ export const SEED_SCRIPT_FILES: string[] = [
   path.join(REPO_ROOT, "scripts/seed/06-social.ts"),
   path.join(REPO_ROOT, "scripts/seed/07-invites.ts"),
   path.join(REPO_ROOT, "scripts/seed/08-admin-fixtures.ts"),
+  path.join(REPO_ROOT, "scripts/seed/09-rich-dataset.ts"),
   path.join(REPO_ROOT, "scripts/seed/config.ts"),
 ];
 
