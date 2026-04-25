@@ -126,7 +126,7 @@ Template ADR-0000 ajouté en début de sprint (`f4274a0`).
 | Catégorie | Nb | Détail |
 |-----------|----|--------|
 | Collections avec schéma + rules + seed | 39 | Sain |
-| Collections sans seed writer (orphelines fixtures à l'audit) | 6 | `badgeTemplates`, `checkins`, `promoCodes`, `planCoupons`, `couponRedemptions`, `balanceTransactions` — **Sprint C ferme `planCoupons` + `couponRedemptions` ; les 4 autres restent ouvertes** (follow-up tracé). |
+| Collections sans seed writer (à l'audit) | 6 | `badgeTemplates`, `checkins`, `promoCodes`, `planCoupons`, `couponRedemptions`, `balanceTransactions` — **toutes shippées** : `planCoupons` + `couponRedemptions` via `08-admin-fixtures.ts` (Sprint C, commit `296bd9a`) ; `badgeTemplates`, `checkins`, `promoCodes`, `balanceTransactions` via `05-activity.ts` (déjà couvert au moment de l'audit, comptage initial erroné). Coverage CI : `npm run seed:check` rapporte **41/53** avec writer, 18 waivés, 0 reset-only. |
 | Collections sans `match` block (deny-all par défaut, OK mais non explicite) | 8 | `payouts`, `sessionBookmarks`, `featureFlags`, `receipts`, `subscriptions`, `notificationPreferences`, `counters`, `refundLocks` |
 | Collections runtime/operator-only (couvertes par `SEED_COVERAGE_WAIVER`) | 0 nouvelle | OK |
 | Schemas orphelins (Zod sans collection / collection sans Zod) | 0 | Sain |
@@ -193,13 +193,13 @@ Sprint D corrige tout ça en construisant 5–7 personae de démo + un walkthrou
 3. **OpenAPI publication** : `npm run docs:openapi` exporte depuis Fastify Swagger vers `docs-v2/30-api/openapi/openapi.{json,yaml}` ; CI guard `docs:openapi:check` (commit `63ef4a2`).
 4. **Per-package READMEs** : **7 nouveaux fichiers** (`packages/shared-ui/README.md` existait déjà — commit `9713379`).
 5. **Diagrammes Mermaid** : architecture macro + flow check-in offline + flow registration→badge dans `docs-v2/20-architecture/concepts/` (commit `6a1e6ea`).
-6. **Glossary** : ⚠ **NON shippé** — `docs-v2/99-reference/glossary.md` reste à créer (follow-up Sprint B).
+6. **Glossary** : `docs-v2/10-product/glossary.md` (26 termes — A à W ; le path initialement prévu en `99-reference/` a été placé en `10-product/` car le glossaire est principalement orienté produit/domaine, pas API/référence technique).
 7. **Archive** : 6 fichiers déplacés vers `docs/archive/2026-04/` (commit `82efbb1`). Voir §1.2 pour la liste.
 8. **Audit registry** : ce REPORT.md + entrée dans `docs-v2/99-reference/audits.md` (commit `64e4143`).
 
 ### Sprint C — Schémas & couverture ✅ partiellement shippé
 
-1. **5 seed writers nouveaux** (`scripts/seed/08-admin-fixtures.ts` — admin jobs, announcements, plan coupons, coupon redemptions, feature flags ; commit `296bd9a`). ⚠ **4 collections de la liste initiale restent ouvertes** : `badgeTemplates`, `checkins`, `promoCodes`, `balanceTransactions` (follow-up). Le scope a évolué pour couvrir l'admin surface (priorité demo) plutôt que checkins/promos.
+1. **5 seed writers nouveaux** (`scripts/seed/08-admin-fixtures.ts` — admin jobs, announcements, plan coupons, coupon redemptions, feature flags ; commit `296bd9a`). Les 4 autres collections initialement listées comme orphelines (`badgeTemplates`, `checkins`, `promoCodes`, `balanceTransactions`) étaient **déjà couvertes** par `05-activity.ts` au moment de l'audit — comptage initial erroné. **Coverage finale : 41/53 collections avec writer, 18 waivées, 0 reset-only.**
 2. **Coverage CI guard** : `scripts/check-seed-coverage.ts` (existait déjà ; ce sprint étend la liste de fichiers scannés à 08/09).
 3. **Indexes audit** : ⚠ Le nom prévu `scripts/audit-indexes.ts` n'a pas été créé ; le script existant `scripts/audit-firestore-indexes.ts` couvre déjà ce besoin. Rapport : `docs/audit-2026-04-25/INDEXES-AUDIT-FINDINGS.md`.
 4. **Rules `match` blocks explicites** : 8 nouveaux blocs documentés pour les collections server-only (`payouts`, `receipts`, `subscriptions`, `counters`, `refundLocks`, `featureFlags`, `notificationPreferences`, `sessionBookmarks` — commit `1e23dbf`). Tests rules suite ajoutés en revue post-Sprint A.

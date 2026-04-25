@@ -90,6 +90,6 @@ The Zod schemas in `@teranga/shared-types` use `z.string().datetime()` to valida
 
 ## References
 
-- ISO 8601 string fields are declared **per file** as `z.string().datetime()` rather than via a shared `IsoDateTimeSchema` export — see e.g. `packages/shared-types/src/api.types.ts`, `audit.types.ts`, `event.types.ts`. The convention is the contract; a centralised export is a tracked follow-up so a single rule change can be enforced via static-analysis if drift appears.
+- `packages/shared-types/src/common.types.ts` — `IsoDateTimeSchema = z.string().datetime()` (the canonical export, re-exported via `packages/shared-types/src/index.ts`). New code SHOULD prefer this import. ~170 historical `z.string().datetime()` literals across `api.types.ts`, `audit.types.ts`, `event.types.ts`, etc. remain acceptable — the convention is the contract; the shared export means a future tightening (e.g. `.datetime({ offset: true })`) is a one-line edit rather than a 170-call codemod.
 - `apps/api/src/services/qr-signing.ts` — uses base36 epoch ms internally for QR payload size, but converts back to ISO when surfacing notBefore/notAfter.
 - CLAUDE.md → "Firestore" section: "Timestamps: Always ISO 8601 strings".
