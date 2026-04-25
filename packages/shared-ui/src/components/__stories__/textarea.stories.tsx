@@ -23,8 +23,13 @@ export default meta;
 
 type Story = StoryObj<typeof Textarea>;
 
+// Bare-component stories add `aria-label` so they pass axe's `label` rule
+// in isolation. Real apps should wrap `<Textarea>` in a `<FormField>` — see
+// the `InsideFormField` showcase below for the canonical pattern.
+
 export const Empty: Story = {
   args: {
+    "aria-label": "Description de l'événement (démo)",
     placeholder: "Décrivez votre événement en quelques lignes...",
     rows: 5,
   },
@@ -32,6 +37,7 @@ export const Empty: Story = {
 
 export const Filled: Story = {
   args: {
+    "aria-label": "Description pré-remplie (démo)",
     defaultValue:
       "Le plus grand événement tech d'Afrique de l'Ouest. Deux jours de conférences, ateliers et networking avec les meilleurs talents tech du continent.",
     rows: 5,
@@ -40,6 +46,7 @@ export const Filled: Story = {
 
 export const Disabled: Story = {
   args: {
+    "aria-label": "Description verrouillée (démo)",
     defaultValue: "Description verrouillée par le modèle d'événement.",
     disabled: true,
     rows: 3,
@@ -48,6 +55,7 @@ export const Disabled: Story = {
 
 export const ReadOnly: Story = {
   args: {
+    "aria-label": "Description en lecture seule (démo)",
     defaultValue:
       "Ce texte provient du serveur et n'est pas modifiable depuis cette interface.",
     readOnly: true,

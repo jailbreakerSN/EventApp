@@ -24,9 +24,15 @@ export default meta;
 
 type Story = StoryObj<typeof Select>;
 
+// Bare-component stories add `aria-label` so they pass axe's `select-name`
+// rule in isolation. In real apps, callers should wrap `<Select>` in a
+// `<FormField label="…">` (see the `InsideFormField` showcase below) — the
+// label association is the primary a11y pattern. The aria-label here is a
+// story-level shortcut that documents the variant being demonstrated.
+
 export const Default: Story = {
   render: () => (
-    <Select defaultValue="dakar">
+    <Select aria-label="Ville (démo)" defaultValue="dakar">
       <option value="dakar">Dakar</option>
       <option value="thies">Thiès</option>
       <option value="saint-louis">Saint-Louis</option>
@@ -37,7 +43,7 @@ export const Default: Story = {
 
 export const WithPlaceholder: Story = {
   render: () => (
-    <Select defaultValue="">
+    <Select aria-label="Ville avec placeholder (démo)" defaultValue="">
       <option value="" disabled>
         — Sélectionnez une ville —
       </option>
@@ -51,7 +57,7 @@ export const WithPlaceholder: Story = {
 
 export const Disabled: Story = {
   render: () => (
-    <Select disabled defaultValue="dakar">
+    <Select aria-label="Ville verrouillée (démo)" disabled defaultValue="dakar">
       <option value="dakar">Dakar (verrouillé)</option>
       <option value="thies">Thiès</option>
     </Select>
@@ -60,7 +66,7 @@ export const Disabled: Story = {
 
 export const WithGroups: Story = {
   render: () => (
-    <Select defaultValue="dakar">
+    <Select aria-label="Ville groupée par pays (démo)" defaultValue="dakar">
       <optgroup label="Sénégal">
         <option value="dakar">Dakar</option>
         <option value="thies">Thiès</option>
