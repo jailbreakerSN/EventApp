@@ -226,8 +226,11 @@ export const AdminEventQuerySchema = z.object({
   // anchors, `parentEventId=<id>` returns the children of one
   // series. Sending both yields children of that series only,
   // which is harmless: parents always carry parentEventId=null.
+  // `parentEventId` is bounded at 128 chars (Firestore document-id
+  // ceiling) so an attacker can't pump arbitrary-length strings
+  // through the query planner.
   isRecurringParent: zStringBoolean().optional(),
-  parentEventId: z.string().optional(),
+  parentEventId: z.string().max(128).optional(),
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().positive().max(100).default(20),
 });

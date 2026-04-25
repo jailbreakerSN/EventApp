@@ -872,10 +872,15 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
   // Phase 7+ B2 closure — waitlist health for one event. Powers the
   // <WaitlistTab> on /admin/events/:eventId. Read-only, four
   // parallel `count()` queries → returns under one Firestore RTT.
-  fastify.get<{ Params: { eventId: string } }>(
+  // `eventId` is bounded at 128 chars (Firestore document-id ceiling)
+  // so an oversized path segment is rejected before any read fires.
+  const WaitlistHealthParams = z.object({
+    eventId: z.string().min(1).max(128),
+  });
+  fastify.get<{ Params: z.infer<typeof WaitlistHealthParams> }>(
     "/events/:eventId/waitlist-health",
     {
-      preHandler: adminPreHandler,
+      preHandler: [...adminPreHandler, validate({ params: WaitlistHealthParams })],
       schema: {
         tags: ["Admin"],
         summary: "Waitlist health snapshot for an event (admin observability)",
