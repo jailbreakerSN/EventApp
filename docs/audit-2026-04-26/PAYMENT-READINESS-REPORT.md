@@ -9,7 +9,7 @@ branch: claude/payments-phase-0-audit
 
 # Payment surface — Phase-0 readiness report
 
-> **Mission.** Produce an honest baseline of the existing payment surface BEFORE we extend it with PayDunya (aggregator), Wave + Orange Money split-payment to organizers, and SaaS subscription billing. The audit drives Phase 1's hardening backlog and locks the architectural decisions for Phases 2–6.
+> **Mission.** Produce an honest baseline of the existing payment surface BEFORE we extend it with PayDunya (aggregator), Wave + Orange Money via Teranga's single PayDunya merchant account, and SaaS subscription billing. The audit drives Phase 1's hardening backlog and locks the architectural decisions for Phases 2–6.
 
 > **Method.** Three parallel deep-reviews (code-quality, security, atomicity) on the existing 2 085 LOC payment surface, plus an industry-state-of-the-art comparison and a STRIDE threat model. Read-only audit — no source code modified during Phase 0.
 
@@ -33,7 +33,7 @@ These are the answers we picked for the 6 open questions surfaced in the initial
 |---|---|---|
 | **D1** | Aggregator-first via **PayDunya**, swappable to direct providers via the existing `PaymentProvider` interface. | Senegal-native aggregator, FCFA-native, native Wave + OM, ~1.5% fee. Direct-swap stays a one-class change. |
 | **D2** | **Both tickets + SaaS subscriptions**, designed together, shipped incrementally (tickets Phase 1-3, subscriptions Phase 4). | They share 80 % of primitives; designing for both prevents a re-architecture at month 6. |
-| **D3** | **Org-direct split-payment** (provider splits at-source: `org_share` to the organizer's mobile-money merchant, `platform_fee` to Teranga, in one transaction). | No merchant-of-record liability; no escheatment; no payout reconciliation lag. |
+| **D3** | **Platform-collected via a single Teranga PayDunya merchant account; scheduled payouts to organizers via the existing `payout.service.ts`.** Customer pays → funds land in Teranga's PayDunya → batched payout to the organizer's Wave / OM / bank account on Teranga's payout schedule. | Onboarding friction is the killer in WAEMU markets — per-org PayDunya KYC blocks adoption. Same pattern as Eventbrite, Festicket, Yengo. Teranga becomes merchant of record (compliance burden manageable at our scale; BCEAO regulates the mobile-money operators themselves, not platforms reselling tickets paid via those rails). Existing `payout.service.ts` already implements the org-payout sweep. |
 | **D4** | **Refund window:** until event start + 24 h grace. **Authority:** organizer-initiated by default; auto-refund on event cancellation; participant self-service deferred to Phase 6. | Industry standard for ticketing; self-service is fraud-prone without dispute mediation. |
 | **D5** | **XOF-only v1**; EUR via Stripe added as a separate provider in a later phase. | Single-currency = no FX, no dual-pricing, no complex reporting. Multi-currency is a 1-week add. |
 | **D6** | **Mobile-money push-payment first** (near-zero chargeback). Card dispute workflow deferred to the Stripe phase. | Match the actual risk profile of WAEMU mobile money. |
@@ -283,6 +283,8 @@ For each threat we identify the attack surface in the payment subsystem, the exi
 
 **Status.** Provider interface defines `verifyWebhook(rawBody, headers): boolean`. Coverage of the four points above is verified by the security audit (§2).
 
+**Per D3 (platform-collected):** ONE webhook URL serves all orgs (`POST /v1/payments/webhook/paydunya`) with ONE Teranga-owned HMAC secret. Org dispatch happens by `providerTransactionId` lookup → `Payment.organizationId`. No org-namespaced webhooks needed (no per-org PayDunya account = no per-org HMAC secret to rotate). This drops the previously-considered H7 "org-namespaced webhook" hardening task: it would only have been required under the org-direct split-payment model we rejected.
+
 ### 3.2 — Tampering (modify amount mid-flight)
 
 **Surface.** `POST /v1/payments` accepts a request body. If `amount` is in the body, an attacker can pay 100 XOF for a 25 000 XOF VIP ticket.
@@ -352,11 +354,26 @@ For each threat we identify the attack surface in the payment subsystem, the exi
 - Every status flip is inside `db.runTransaction()`. The transaction reads the current status, asserts the expected source state, writes the target state + ledger row + counter increment **in the same transaction**.
 - If the transaction's read sees an unexpected source state (e.g. already `succeeded`), it returns no-op rather than re-writing.
 
+### 3.9 — Merchant-of-record / escheatment / dormant funds (NEW — D3 implication)
+
+**Surface.** Under D3 (platform-collected), Teranga holds customer funds in transit. Three failure modes the architecture must address before launch — none are coding tasks; they are **legal + ops policy** questions that need documented runbooks.
+
+| Failure mode | What can go wrong | Required policy |
+|---|---|---|
+| **Event cancelled, organizer unreachable** | Customers paid; refunds need to be issued; the org's payout destination is silent or invalid. Funds sit in Teranga's PayDunya balance with no clear owner. | 12-month hold → Teranga issues refunds directly to participants (using their original payment instrument). After 24 months of inactivity, residual balance escheats per Senegalese consumer-protection guidance (BCEAO consultation required). |
+| **Refund target unreachable** | Participant refunded; their Wave / OM number is closed; refund bounces back to Teranga's balance. | Hold for 90 days, attempt redelivery via support; after 90 days mark the refund `unclaimed` and surface in the super-admin dashboard for manual intervention. Never silently absorb. |
+| **Chargeback liability** | Card-payment dispute (Phase 6+ when Stripe ships); customer charges back; we've already paid the org. | Two-stage payout + reserve: hold X% of every card payment for the chargeback window (typically 90 days); only that reserved portion is at risk if the org has been paid out and a chargeback hits. Mobile-money has near-zero chargeback risk so this is card-specific. |
+| **Tax / receipt issuance** | Teranga is merchant-of-record on the customer's bank/mobile-money statement → Teranga issues the customer receipt. | Receipt template (FR/EN/WO) names Teranga Events SRL as merchant; itemises the org's event title; carries the legal mention "réservé via la plateforme Teranga Events". |
+
+**Status.** **Phase-6 blocker.** None of the above need to land before Phase 1-5 hardening / integration / UI work. But all four MUST have documented runbooks before the sandbox→live cutover at Phase 6.5. Tracked as a separate workstream that runs in parallel with engineering Phase 1-5; legal/ops owner needed.
+
 ---
 
 ## 4 · Reconciliation strategy
 
-The provider's dashboard is the source of truth — not our database. A complete reconciliation strategy has four moving parts:
+The provider's dashboard is the source of truth — not our database. **Under D3 (platform-collected), reconciliation is now safety-of-funds-critical, not just operational hygiene** — Teranga holds customer funds in transit, so any drift between PayDunya's view of the world and ours directly maps to "money we owe but don't know about" or "money we paid out twice". Alert thresholds tightened accordingly.
+
+A complete reconciliation strategy has four moving parts:
 
 ### 4.1 — Daily bulk reconciliation
 
@@ -366,7 +383,7 @@ The provider's dashboard is the source of truth — not our database. A complete
 
 - `reconciliation_runs/{runId}` — a single doc per run with `status: ok|drift|error`, `providerTotal`, `localTotal`, `driftCount`, `driftIds[]`.
 - `reconciliation_drifts/{driftId}` — one doc per discrepancy: missing locally, missing at provider, status mismatch, amount mismatch.
-- Alert (PagerDuty `level=warning`) when `driftCount > 0`. Alert (`level=critical`) when `driftCount > 0.1 % of providerTotal`.
+- **Alert thresholds (tightened for D3 platform-collected):** PagerDuty `level=warning` on **any** drift (`driftCount > 0`) with on-call response within **1 hour**. `level=critical` on `driftCount > 0.05 % of providerTotal` OR on **any** amount-mismatch finding (an amount mismatch on a single payment is a money-loss signal regardless of count). Drift below 0.01 % of providerTotal must be resolved within 24 h; everything else is investigated immediately.
 
 **Why daily, not real-time.** Real-time reconciliation against the provider creates a sustained read load on the provider's API and increases our infrastructure cost without proportional value — the webhook + retry queue catches the vast majority of drift in under 5 minutes.
 
@@ -384,13 +401,23 @@ The provider's dashboard is the source of truth — not our database. A complete
 
 ### 4.4 — Settlement report
 
-**What.** Daily CSV export per organization with `gross / fees / net / payout_date / payout_status`. Emailed to the org's finance contact at 03:00 Africa/Dakar.
+**What.** Daily CSV export per organization with `gross / platform_fee / net_owed_to_org / payout_status / next_payout_eta`. Emailed to the org's finance contact at 03:00 Africa/Dakar.
 
-**Why.** Organizers' accounting teams need a daily view of "what came in" — independent of the platform UI.
+**Why.** Under D3 (platform-collected) the org doesn't see the customer payment land in their account — they only see Teranga's batched payout arrive 1-3 days later. The settlement report bridges that opacity: every gross payment, every Teranga fee, every refund, and the resulting net-payable, attributed to a specific payout date. Organizers' accounting teams need this to reconcile their own books against ours.
+
+### 4.5 — Org payout schedule + reserve policy (NEW — D3 implication)
+
+**What.** Customer payments land in Teranga's PayDunya balance immediately. Org payouts are released on a schedule (default: T+3 weekdays from `payment.completedAt`, configurable per-org). For paid events, payout is held until **event end + 24 h** to absorb refund spikes during the event window. The 24-h post-event hold is the org-level equivalent of a card-payment reserve.
+
+**Why.** Refund liability sits on Teranga; releasing payouts before the refund window closes creates a clawback need. The post-event hold removes that risk by ensuring the org can't cash out money that may need to be refunded.
+
+**Override.** Super-admin can override the hold per-event (e.g. a multi-day festival where the org needs cash flow before day 1 ends). Override emits a domain event for audit; the override flag is surfaced on the payout doc.
 
 ---
 
 ## 5 · Subscription billing design (Phase 4)
+
+**Per D3 (platform-collected):** organizers pay their SaaS subscription fees (`9 900 / 29 900 XOF / mo`) to Teranga's PayDunya account — same merchant account that collects ticket payments. No separate billing relationship. The flow is symmetric to ticket payments minus the org-payout step (subscription revenue stays with Teranga).
 
 Mobile money has **no native recurring authorization** (unlike Stripe's saved card / SEPA mandate). PayDunya works around this with two patterns:
 
@@ -513,8 +540,8 @@ Phase 2 (PayDunya integration) starts on a known-clean foundation.
 | **Phase 2** | PayDunya provider implementation behind `PaymentProvider` interface; hosted-checkout redirect flow; webhook signature verification; sandbox end-to-end test | 1.5 weeks |
 | **Phase 3** | Reconciliation: daily job + retry queue + manual replay + settlement report | 1 week |
 | **Phase 4** | SaaS subscription billing on top of the same PayDunya provider; reminder-driven renewal; state machine + grace period | 1.5 weeks |
-| **Phase 5** | UI: participant payment-method picker, organizer payments + refund console, super-admin reconciliation drift viewer; full FR/EN/WO coverage | 1.5 weeks |
-| **Phase 6** | Independent security review by `@security-reviewer` agent + production hardening checklist + sandbox→live cutover with org-level feature flag | 1 week |
+| **Phase 5** | UI: participant payment-method picker, organizer payments + refund console, **simplified org onboarding form (3 fields: payout destination type / account number / recipient name — NO PayDunya KYC redirect per D3)**, super-admin reconciliation drift viewer; full FR/EN/WO coverage | 1.5 weeks |
+| **Phase 6** | Independent security review + production hardening checklist + **§3.9 escheatment + chargeback + receipt-issuance runbooks** + sandbox→live cutover with org-level feature flag | 1 week + parallel legal/ops workstream |
 
 **Total calendar:** 7-9 weeks for one engineer + reviewer.
 
@@ -547,7 +574,7 @@ Phase 2 (PayDunya integration) starts on a known-clean foundation.
 - BNPL ("buy now, pay later") integrations.
 - Cryptocurrency / stablecoin payments.
 - Recurring credit-card subscriptions (deferred to Stripe phase).
-- Marketplace seller-onboarding / KYC for organizers (provider handles via their merchant onboarding).
+- Marketplace seller-onboarding / KYC for organizers (per D3, Teranga is the only PayDunya merchant; orgs only provide a payout destination — Wave / OM / bank account).
 - Subscription proration / plan-mid-cycle changes (Phase 4 supports plan changes only at renewal boundary; mid-cycle proration is a Phase 4.5 follow-up).
 - Multi-currency display (XOF-only v1; EUR display + FX conversion is a Phase 5+ option).
 - Tax / VAT computation (Senegal does not currently apply VAT to event tickets; revisit when expanding to a VAT jurisdiction).
@@ -559,7 +586,9 @@ Phase 2 (PayDunya integration) starts on a known-clean foundation.
 | Risk | Mitigation |
 |---|---|
 | PayDunya outage during a peak event registration window | Composite-key rate limit + retry queue absorbs short outages. For prolonged outages, fallback to manual ticket issuance via super-admin console. |
-| Reconciliation drift > 0.1 % | Daily job + PagerDuty alert + manual replay console. SLA: drift below 0.1 % within 24 h. |
+| Reconciliation drift > 0 (D3 tightened threshold) | Daily job + PagerDuty `level=warning` on any drift, `level=critical` on amount-mismatch OR > 0.05 % drift. SLA: 1 h response, 24 h resolution. |
+| **Merchant-of-record posture (D3)** — Teranga visible on customer's bank/MoMo statement; chargeback notices arrive at Teranga; refund liability sits on Teranga | Three-pronged mitigation: (a) post-event payout hold (event end + 24 h) absorbs refund spikes before paying the org out; (b) reserve % on card payments when Stripe ships (mobile money has near-zero chargeback so phase 1-4 unaffected); (c) §3.9 runbooks define escheatment / unreachable-org / unclaimed-refund policy. |
+| **Org payout-destination invalid** — operator typo'd Wave merchant number; payout bounces back into Teranga balance | Validation at org-onboarding time (PayDunya provides a "verify recipient" probe API). On payout failure, surface in super-admin dashboard within 1 h; auto-retry every 24 h for 7 days; escalate to support after 7 failed retries. |
 | Subscription saved-token expiration (12 mo) | Renewal reminder switches to manual checkout link 7 days before token expiry. |
 | Provider fee change without notice | Fee values are env vars (`PAYDUNYA_FEE_PCT`), not hardcoded. Post-change re-run of historical reconciliation flags affected payments. |
 | Senegalese consumer-protection regulator inquiry | Audit log on every state transition + 7-year retention on `payments` + `auditLogs` (super-admin can soft-archive but never hard-delete). |
