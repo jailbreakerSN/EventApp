@@ -356,14 +356,14 @@ For each threat we identify the attack surface in the payment subsystem, the exi
 
 ### 3.9 — Merchant-of-record / escheatment / dormant funds (NEW — D3 implication)
 
-**Surface.** Under D3 (platform-collected), Teranga holds customer funds in transit. Three failure modes the architecture must address before launch — none are coding tasks; they are **legal + ops policy** questions that need documented runbooks.
+**Surface.** Under D3 (platform-collected), Teranga holds customer funds in transit. **Four scenarios** the architecture must address before launch — three failure modes plus a tax/receipt-issuance compliance obligation. None are coding tasks; they are **legal + ops policy** questions that need documented runbooks.
 
-| Failure mode | What can go wrong | Required policy |
+| Scenario | What's at stake | Required policy |
 |---|---|---|
 | **Event cancelled, organizer unreachable** | Customers paid; refunds need to be issued; the org's payout destination is silent or invalid. Funds sit in Teranga's PayDunya balance with no clear owner. | 12-month hold → Teranga issues refunds directly to participants (using their original payment instrument). After 24 months of inactivity, residual balance escheats per Senegalese consumer-protection guidance (BCEAO consultation required). |
 | **Refund target unreachable** | Participant refunded; their Wave / OM number is closed; refund bounces back to Teranga's balance. | Hold for 90 days, attempt redelivery via support; after 90 days mark the refund `unclaimed` and surface in the super-admin dashboard for manual intervention. Never silently absorb. |
 | **Chargeback liability** | Card-payment dispute (Phase 6+ when Stripe ships); customer charges back; we've already paid the org. | Two-stage payout + reserve: hold X% of every card payment for the chargeback window (typically 90 days); only that reserved portion is at risk if the org has been paid out and a chargeback hits. Mobile-money has near-zero chargeback risk so this is card-specific. |
-| **Tax / receipt issuance** | Teranga is merchant-of-record on the customer's bank/mobile-money statement → Teranga issues the customer receipt. | Receipt template (FR/EN/WO) names Teranga Events SRL as merchant; itemises the org's event title; carries the legal mention "réservé via la plateforme Teranga Events". |
+| **Tax / receipt issuance** (compliance obligation, not a failure mode) | Teranga is merchant-of-record on the customer's bank / mobile-money statement → Teranga issues the customer receipt. | Receipt template (FR/EN/WO) names Teranga Events SRL as merchant; itemises the org's event title; carries the legal mention "réservé via la plateforme Teranga Events". |
 
 **Status.** **Phase-6 blocker.** None of the above need to land before Phase 1-5 hardening / integration / UI work. But all four MUST have documented runbooks before the sandbox→live cutover at Phase 6.5. Tracked as a separate workstream that runs in parallel with engineering Phase 1-5; legal/ops owner needed.
 
