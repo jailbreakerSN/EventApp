@@ -107,6 +107,19 @@ export function useAdminEvents(params: Partial<AdminEventQuery> = {}) {
   });
 }
 
+// Phase 7+ B2 closure — waitlist health snapshot for an event.
+// Powers the <WaitlistTab> on /admin/events/:eventId. Read-only;
+// 30s stale time so re-rendering the tab doesn't re-fetch on every
+// breadcrumb click.
+export function useAdminEventWaitlistHealth(eventId: string | undefined) {
+  return useQuery({
+    queryKey: ["admin", "events", eventId, "waitlist-health"],
+    queryFn: () => adminApi.getEventWaitlistHealth(eventId!),
+    enabled: !!eventId,
+    staleTime: 30_000,
+  });
+}
+
 // ─── Venues (admin moderation surface) ──────────────────────────────────────
 // Use this hook on /admin/venues, NOT `useVenues()`. The latter calls the
 // public endpoint which is hardcoded to approved-only and silently drops
@@ -284,6 +297,22 @@ export function useArchiveCoupon() {
   return useMutation({
     mutationFn: (couponId: string) => adminApi.archiveCoupon(couponId),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["admin", "coupons"] }),
+  });
+}
+
+// Phase 7+ closure — coupon redemption history hook. Used on the
+// `/admin/coupons/[couponId]` redemption tab. Page is the only
+// volatile dimension; we fold it into the queryKey so flipping pages
+// doesn't trash the existing cache.
+export function useAdminCouponRedemptions(
+  couponId: string | undefined,
+  params: { page?: number; limit?: number } = {},
+) {
+  return useQuery({
+    queryKey: ["admin", "coupons", "redemptions", couponId, params],
+    queryFn: () => adminApi.listCouponRedemptions(couponId!, params),
+    enabled: !!couponId,
+    staleTime: 30_000,
   });
 }
 

@@ -869,6 +869,25 @@ export const adminRoutes: FastifyPluginAsync = async (fastify) => {
     },
   );
 
+  // Phase 7+ B2 closure — waitlist health for one event. Powers the
+  // <WaitlistTab> on /admin/events/:eventId. Read-only, four
+  // parallel `count()` queries → returns under one Firestore RTT.
+  fastify.get<{ Params: { eventId: string } }>(
+    "/events/:eventId/waitlist-health",
+    {
+      preHandler: adminPreHandler,
+      schema: {
+        tags: ["Admin"],
+        summary: "Waitlist health snapshot for an event (admin observability)",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const data = await adminService.getWaitlistHealth(request.user!, request.params.eventId);
+      return reply.send({ success: true, data });
+    },
+  );
+
   // ── Venues ──────────────────────────────────────────────────────────────
   // Moderation surface for /admin/venues. Unlike public `/v1/venues`,
   // this endpoint surfaces every status (pending / approved / suspended

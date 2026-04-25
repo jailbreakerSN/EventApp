@@ -2,9 +2,13 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { Badge, QueryError, Spinner } from "@teranga/shared-ui";
-import { History } from "lucide-react";
-import { useAdminPlan, useAdminOrganizations } from "@/hooks/use-admin";
+import { Badge, Card, CardContent, QueryError, Spinner } from "@teranga/shared-ui";
+import { History, Tag } from "lucide-react";
+import {
+  useAdminPlan,
+  useAdminOrganizations,
+  useAdminCoupons,
+} from "@/hooks/use-admin";
 import { PlanForm } from "@/components/plans/PlanForm";
 import { EntityDetailLayout, type EntityTab } from "@/components/admin/entity-detail-layout";
 
@@ -84,6 +88,11 @@ export default function AdminEditPlanPage() {
       label: "Organisations assignées",
       render: () => <OverridesTab planKey={plan.key} />,
     },
+    {
+      id: "coupons",
+      label: "Coupons",
+      render: () => <CouponsTab planId={plan.id} />,
+    },
   ];
 
   return (
@@ -106,6 +115,97 @@ export default function AdminEditPlanPage() {
       tabs={tabs}
       defaultTabId="overview"
     />
+  );
+}
+
+// ─── Coupons tab ───────────────────────────────────────────────────────────
+
+function CouponsTab({ planId }: { planId: string }) {
+  // Phase 7+ closure — surfaces coupons that target this plan version.
+  // The list endpoint already accepts `planId`; we leverage the
+  // existing array-contains index on `appliedPlanIds`. Empty state is
+  // common (most plans have no coupon attached) so we render it
+  // explicitly instead of an empty table.
+  const { data, isLoading, isError, error, refetch } = useAdminCoupons({
+    planId,
+    limit: 50,
+    page: 1,
+  });
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-8" role="status" aria-live="polite">
+        <Spinner />
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <QueryError
+        title="Impossible de charger les coupons"
+        message={error instanceof Error ? error.message : undefined}
+        onRetry={() => refetch()}
+      />
+    );
+  }
+
+  const coupons = data?.data ?? [];
+
+  if (coupons.length === 0) {
+    return (
+      <Card>
+        <CardContent className="flex flex-col items-center gap-2 p-10 text-center">
+          <Tag className="h-8 w-8 text-muted-foreground" aria-hidden="true" />
+          <div className="text-sm font-semibold text-foreground">Aucun coupon</div>
+          <div className="max-w-sm text-xs text-muted-foreground">
+            Aucun coupon ne cible ce plan. Créez-en un depuis{" "}
+            <Link href="/admin/coupons/new" className="text-teranga-gold hover:underline">
+              /admin/coupons/new
+            </Link>
+            .
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <p className="text-xs text-muted-foreground">
+        {coupons.length} coupon{coupons.length > 1 ? "s" : ""} ciblant ce plan. Inclut les coupons
+        archivés ; le statut est affiché à droite.
+      </p>
+      <div className="divide-y divide-border rounded-xl border border-border">
+        {coupons.map((coupon) => (
+          <Link
+            key={coupon.id}
+            href={`/admin/coupons/${encodeURIComponent(coupon.id)}`}
+            className="flex items-center justify-between gap-3 p-3 transition-colors hover:bg-muted/50"
+          >
+            <div className="min-w-0">
+              <p className="truncate font-mono text-sm font-medium text-foreground">
+                {coupon.code}
+              </p>
+              <p className="truncate text-xs text-muted-foreground">
+                {coupon.label ?? "—"} · {coupon.usedCount.toLocaleString("fr-FR")} utilisation
+                {coupon.usedCount > 1 ? "s" : ""}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Badge variant="outline" className="text-[10px]">
+                {coupon.discountType === "percentage"
+                  ? `-${coupon.discountValue}%`
+                  : `-${coupon.discountValue.toLocaleString("fr-FR")} XOF`}
+              </Badge>
+              <Badge variant={coupon.isActive ? "success" : "neutral"}>
+                {coupon.isActive ? "Actif" : "Archivé"}
+              </Badge>
+            </div>
+          </Link>
+        ))}
+      </div>
+    </div>
   );
 }
 

@@ -10,6 +10,7 @@ import {
   CreatePlanCouponSchema,
   UpdatePlanCouponSchema,
   AdminCouponQuerySchema,
+  AdminCouponRedemptionsQuerySchema,
   ValidateCouponRequestSchema,
   isAdminSystemRole,
 } from "@teranga/shared-types";
@@ -119,6 +120,31 @@ export const adminCouponRoutes: FastifyPluginAsync = async (fastify) => {
       const { couponId } = request.params as z.infer<typeof ParamsWithCouponId>;
       await planCouponService.archive(couponId, request.user!);
       return reply.status(204).send();
+    },
+  );
+
+  // Phase 7+ closure — coupon redemption history. Read-only,
+  // paginated. Pairs with the redemption tab on
+  // `/admin/coupons/:couponId` to give operators the per-org
+  // drill-down without exposing the cross-coupon redemption table.
+  fastify.get(
+    "/:couponId/redemptions",
+    {
+      preHandler: [
+        ...preHandler,
+        validate({ params: ParamsWithCouponId, query: AdminCouponRedemptionsQuerySchema }),
+      ],
+      schema: {
+        tags: ["Admin", "Coupons"],
+        summary: "List a coupon's redemption history (paginated, with aggregates)",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const { couponId } = request.params as z.infer<typeof ParamsWithCouponId>;
+      const query = request.query as z.infer<typeof AdminCouponRedemptionsQuerySchema>;
+      const data = await planCouponService.listRedemptions(couponId, query, request.user!);
+      return reply.send({ success: true, data });
     },
   );
 };

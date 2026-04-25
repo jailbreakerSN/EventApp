@@ -113,7 +113,26 @@ class AdminRepository {
   // ── Events ──────────────────────────────────────────────────────────────
 
   async listAllEvents(
-    filters: { q?: string; status?: string; organizationId?: string },
+    filters: {
+      q?: string;
+      status?: string;
+      organizationId?: string;
+      /**
+       * Phase 7+ B1 closure — surface recurring-event series in the
+       * admin events list. When `true`, restrict to anchor docs
+       * (`isRecurringParent === true`); when omitted, behaves as
+       * before (parents AND children mixed in chronological order,
+       * which matches how operators have always seen the list).
+       */
+      isRecurringParent?: boolean;
+      /**
+       * Phase 7+ B1 closure — when set, restrict to children of the
+       * given series anchor. Used by `<SeriesTab>` on the event
+       * detail page to render the occurrences inline without a
+       * dedicated children endpoint.
+       */
+      parentEventId?: string;
+    },
     pagination: PaginationParams,
   ): Promise<PaginatedResult<Event>> {
     const clauses: WhereClause[] = [];
@@ -122,6 +141,16 @@ class AdminRepository {
     }
     if (filters.organizationId) {
       clauses.push({ field: "organizationId", op: "==", value: filters.organizationId });
+    }
+    if (filters.isRecurringParent !== undefined) {
+      clauses.push({
+        field: "isRecurringParent",
+        op: "==",
+        value: filters.isRecurringParent,
+      });
+    }
+    if (filters.parentEventId) {
+      clauses.push({ field: "parentEventId", op: "==", value: filters.parentEventId });
     }
     return this.paginatedQuery<Event>(COLLECTIONS.EVENTS, clauses, pagination);
   }

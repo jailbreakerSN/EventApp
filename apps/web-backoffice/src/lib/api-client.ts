@@ -106,6 +106,8 @@ import type {
   CreatePlanCouponDto,
   UpdatePlanCouponDto,
   AdminCouponQuery,
+  AdminCouponRedemptionsQuery,
+  CouponRedemption,
   ValidateCouponRequest,
   ValidateCouponResponse,
 } from "@teranga/shared-types";
@@ -836,6 +838,18 @@ export const adminApi = {
   listEvents: (query: Partial<AdminEventQuery> = {}) =>
     api.get<PaginatedResponse<Event>>(`/v1/admin/events${buildQuery(query)}`),
 
+  // Phase 7+ B2 closure — waitlist health snapshot for one event.
+  getEventWaitlistHealth: (eventId: string) =>
+    api.get<
+      ApiResponse<{
+        eventId: string;
+        waitlistedCount: number;
+        promotedCount30d: number;
+        failureCount30d: number;
+        lastPromotedAt: string | null;
+      }>
+    >(`/v1/admin/events/${encodeURIComponent(eventId)}/waitlist-health`),
+
   // Admin venue moderation surface — surfaces every status (pending /
   // approved / suspended / archived). The public `venuesApi.listPublic`
   // is approved-only by design and silently drops the `status` filter,
@@ -892,6 +906,24 @@ export const adminApi = {
     api.patch<ApiResponse<PlanCoupon>>(`/v1/admin/coupons/${couponId}`, dto),
   archiveCoupon: (couponId: string) =>
     api.delete(`/v1/admin/coupons/${couponId}`),
+  // Phase 7+ closure — coupon redemption history + aggregates.
+  // Powers the redemption tab on /admin/coupons/[couponId].
+  // The inner `redemptions` envelope mirrors the API service's
+  // `PaginatedResult<T>` shape (data + meta) — we don't reuse the
+  // top-level `PaginatedResponse<T>` here because it expects the
+  // success/data/meta fields at the same root, whereas this
+  // endpoint nests them under a wider analytics envelope.
+  listCouponRedemptions: (couponId: string, query: Partial<AdminCouponRedemptionsQuery> = {}) =>
+    api.get<
+      ApiResponse<{
+        couponId: string;
+        redemptions: {
+          data: CouponRedemption[];
+          meta: { page: number; limit: number; total: number; totalPages: number };
+        };
+        aggregates: { totalRedemptions: number; totalDiscountAppliedXof: number };
+      }>
+    >(`/v1/admin/coupons/${couponId}/redemptions${buildQuery(query)}`),
   validateCoupon: (
     planId: string,
     organizationId: string,

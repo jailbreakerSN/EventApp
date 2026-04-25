@@ -467,6 +467,7 @@ class AdminService extends BaseService {
       signupAnomalies,
       multiDeviceScans,
       eventsLive,
+      stuckWaitlists,
     ] = await Promise.all([
       safeCount("venues.pending", async () => {
         const snap = await db
@@ -621,6 +622,34 @@ class AdminService extends BaseService {
           if (row.endDate >= nowIso) live++;
         }
         return live;
+      }),
+      // Phase 7+ B2 closure — stuck-waitlist signal. We count
+      // distinct events that produced a `waitlist.promotion_failed`
+      // audit row in the last 24h. That action fires when a
+      // cancel-driven promotion attempt exhausts retries OR a bulk
+      // promotion entry stalls — both are signs the organizer
+      // (or our retry loop) couldn't drain the waitlist
+      // automatically and a human should intervene.
+      //
+      // Counting distinct eventIds (rather than total failure rows)
+      // matches operator intuition: "how many events need looking
+      // at" is the actionable metric, not "how many failure
+      // attempts happened in total" which can spike for a single
+      // misconfigured event.
+      safeCount("waitlist.stuck", async () => {
+        const snap = await db
+          .collection(COLLECTIONS.AUDIT_LOGS)
+          .where("action", "==", "waitlist.promotion_failed")
+          .where("timestamp", ">=", twentyFourHoursAgo)
+          .select("resourceId")
+          .limit(500)
+          .get();
+        const stuck = new Set<string>();
+        for (const doc of snap.docs) {
+          const row = doc.data() as { resourceId?: string };
+          if (row.resourceId) stuck.add(row.resourceId);
+        }
+        return stuck.size;
       }),
     ]);
 
@@ -781,6 +810,26 @@ class AdminService extends BaseService {
           "Événements publiés dont la plage horaire est en cours. Surveiller la charge webhook + check-in.",
         count: eventsLive,
         href: "/admin/events?status=published",
+      });
+    }
+
+    // Phase 7+ B2 closure — surface stuck waitlists. Warning severity
+    // (not critical) because the underlying `waitlist.promotion_failed`
+    // can be transient (Firestore contention) and the retry loop
+    // usually self-heals. The deep-link points at the audit log
+    // filtered on the action so the operator sees which events
+    // failed + why (the audit row carries `failureKind` + `reason`
+    // in its details payload).
+    if (stuckWaitlists > 0) {
+      signals.push({
+        id: "waitlist.stuck",
+        category: "ops",
+        severity: "warning",
+        title: `${stuckWaitlists} événement${stuckWaitlists > 1 ? "s" : ""} avec liste d'attente bloquée`,
+        description:
+          "Promotion de waitlist en échec sur les 24 dernières heures. Investiguer manuellement ou relancer.",
+        count: stuckWaitlists,
+        href: "/admin/audit?action=waitlist.promotion_failed",
       });
     }
 
@@ -1389,9 +1438,96 @@ class AdminService extends BaseService {
   async listEvents(user: AuthUser, query: AdminEventQuery): Promise<PaginatedResult<Event>> {
     this.requirePermission(user, "platform:manage");
     return adminRepository.listAllEvents(
-      { q: query.q, status: query.status, organizationId: query.organizationId },
+      {
+        q: query.q,
+        status: query.status,
+        organizationId: query.organizationId,
+        isRecurringParent: query.isRecurringParent,
+        parentEventId: query.parentEventId,
+      },
       { page: query.page, limit: query.limit },
     );
+  }
+
+  /**
+   * Phase 7+ B2 closure — waitlist health snapshot for one event.
+   *
+   * Returns the four counts an operator wants when an event surfaces
+   * on the "stuck waitlist" inbox card:
+   *   - `waitlistedCount`    — current pending demand
+   *   - `promotedCount30d`   — successful drains in the last 30 days
+   *   - `failureCount30d`    — promotion attempts that exhausted retries
+   *   - `lastPromotedAt`     — timestamp of the most recent successful promotion (null if never)
+   *
+   * Read-only; no side effects. All four reads run in parallel
+   * (`Promise.all`) so the round-trip stays under a single
+   * Firestore RTT for the operator.
+   *
+   * Permission: `platform:manage` (admin-only). Cross-org by
+   * design — this is the platform admin's investigation surface,
+   * organizers reach the same data via their own /events/:id
+   * waitlist tools.
+   */
+  async getWaitlistHealth(
+    user: AuthUser,
+    eventId: string,
+  ): Promise<{
+    eventId: string;
+    waitlistedCount: number;
+    promotedCount30d: number;
+    failureCount30d: number;
+    lastPromotedAt: string | null;
+  }> {
+    this.requirePermission(user, "platform:manage");
+
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+
+    const [waitlistedCount, promotedCount30d, failureCount30d, lastPromotedSnap] =
+      await Promise.all([
+        db
+          .collection(COLLECTIONS.REGISTRATIONS)
+          .where("eventId", "==", eventId)
+          .where("status", "==", "waitlisted")
+          .count()
+          .get()
+          .then((s) => s.data().count),
+        db
+          .collection(COLLECTIONS.AUDIT_LOGS)
+          .where("action", "==", "waitlist.promoted")
+          .where("resourceId", "==", eventId)
+          .where("timestamp", ">=", thirtyDaysAgo)
+          .count()
+          .get()
+          .then((s) => s.data().count),
+        db
+          .collection(COLLECTIONS.AUDIT_LOGS)
+          .where("action", "==", "waitlist.promotion_failed")
+          .where("resourceId", "==", eventId)
+          .where("timestamp", ">=", thirtyDaysAgo)
+          .count()
+          .get()
+          .then((s) => s.data().count),
+        db
+          .collection(COLLECTIONS.AUDIT_LOGS)
+          .where("action", "==", "waitlist.promoted")
+          .where("resourceId", "==", eventId)
+          .orderBy("timestamp", "desc")
+          .select("timestamp")
+          .limit(1)
+          .get(),
+      ]);
+
+    const lastPromotedAt = lastPromotedSnap.empty
+      ? null
+      : ((lastPromotedSnap.docs[0].data() as { timestamp?: string }).timestamp ?? null);
+
+    return {
+      eventId,
+      waitlistedCount,
+      promotedCount30d,
+      failureCount30d,
+      lastPromotedAt,
+    };
   }
 
   // ── Venue Oversight ───────────────────────────────────────────────────

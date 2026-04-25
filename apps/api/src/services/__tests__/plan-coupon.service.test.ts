@@ -18,6 +18,10 @@ const mockQuery = {
   orderBy: vi.fn().mockReturnThis(),
   offset: vi.fn().mockReturnThis(),
   limit: vi.fn().mockReturnThis(),
+  // `select(...)` is used by listRedemptions to pull the
+  // discountAppliedXof projection — return the chain so subsequent
+  // `.limit(...).get()` calls land on the same fluent stub.
+  select: vi.fn().mockReturnThis(),
   count: vi.fn().mockReturnValue({ get: vi.fn().mockResolvedValue({ data: () => ({ count: 0 }) }) }),
   get: vi.fn(),
 };
@@ -386,5 +390,98 @@ describe("PlanCouponService — admin CRUD", () => {
       expect.anything(),
       expect.objectContaining({ isActive: false }),
     );
+  });
+});
+
+// ─── listRedemptions (Phase 7+ closure — coupon analytics) ───────────────
+
+describe("PlanCouponService.listRedemptions", () => {
+  const admin = buildSuperAdmin();
+
+  it("rejects non-super_admin callers", async () => {
+    const participant = buildAuthUser({ roles: ["participant"] });
+    await expect(
+      planCouponService.listRedemptions("TEST2026", { page: 1, limit: 20 }, participant),
+    ).rejects.toThrow(/Permission manquante/);
+  });
+
+  it("throws NotFoundError when the coupon doesn't exist", async () => {
+    mockCouponDoc.get.mockResolvedValueOnce({ exists: false });
+    await expect(
+      planCouponService.listRedemptions("MISSING", { page: 1, limit: 20 }, admin),
+    ).rejects.toThrow(/PlanCoupon/);
+  });
+
+  it("returns paginated redemptions + aggregate discount sum", async () => {
+    // Coupon existence probe.
+    mockCouponDoc.get.mockResolvedValueOnce({ exists: true });
+
+    // Three queries fire in parallel:
+    //   1. count() → total redemptions (here: 2)
+    //   2. paginated get() → page rows
+    //   3. capped get() → discountAppliedXof projection
+    // Reset the count() chain so we can return a non-zero total
+    // exactly once, and queue the two get() responses on the
+    // shared mockQuery in the order Promise.all resolves them.
+    mockQuery.count.mockReturnValueOnce({
+      get: vi.fn().mockResolvedValueOnce({ data: () => ({ count: 2 }) }),
+    });
+    mockQuery.get
+      .mockResolvedValueOnce({
+        docs: [
+          {
+            data: () => ({
+              id: "redeem-1",
+              couponId: "TEST2026",
+              couponCode: "TEST2026",
+              organizationId: "org-A",
+              subscriptionId: "sub-1",
+              planId: "plan-pro",
+              discountType: "percentage",
+              discountValue: 25,
+              originalPriceXof: 30_000,
+              discountAppliedXof: 7_500,
+              finalPriceXof: 22_500,
+              redeemedBy: "user-1",
+              redeemedAt: "2026-04-25T10:00:00.000Z",
+            }),
+          },
+          {
+            data: () => ({
+              id: "redeem-2",
+              couponId: "TEST2026",
+              couponCode: "TEST2026",
+              organizationId: "org-B",
+              subscriptionId: "sub-2",
+              planId: "plan-pro",
+              discountType: "percentage",
+              discountValue: 25,
+              originalPriceXof: 30_000,
+              discountAppliedXof: 7_500,
+              finalPriceXof: 22_500,
+              redeemedBy: "user-2",
+              redeemedAt: "2026-04-24T10:00:00.000Z",
+            }),
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        docs: [
+          { data: () => ({ discountAppliedXof: 7_500 }) },
+          { data: () => ({ discountAppliedXof: 7_500 }) },
+        ],
+      });
+
+    const result = await planCouponService.listRedemptions(
+      "TEST2026",
+      { page: 1, limit: 20 },
+      admin,
+    );
+
+    expect(result.couponId).toBe("TEST2026");
+    expect(result.redemptions.data).toHaveLength(2);
+    expect(result.redemptions.meta.total).toBe(2);
+    expect(result.aggregates.totalRedemptions).toBe(2);
+    expect(result.aggregates.totalDiscountAppliedXof).toBe(15_000);
   });
 });

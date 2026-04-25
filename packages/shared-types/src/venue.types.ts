@@ -220,6 +220,14 @@ export const AdminEventQuerySchema = z.object({
   q: z.string().max(200).optional(),
   status: z.string().optional(),
   organizationId: z.string().optional(),
+  // Filters for the recurring-events admin surface (Phase 7+ B1
+  // closure). Mutually-exclusive in practice but the schema does
+  // NOT enforce that — `isRecurringParent=true` returns parent
+  // anchors, `parentEventId=<id>` returns the children of one
+  // series. Sending both yields children of that series only,
+  // which is harmless: parents always carry parentEventId=null.
+  isRecurringParent: zStringBoolean().optional(),
+  parentEventId: z.string().optional(),
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().positive().max(100).default(20),
 });

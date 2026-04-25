@@ -90,6 +90,8 @@ const mockAdminService = {
   listSubscriptions: vi.fn(),
   listInvites: vi.fn(),
   listAuditLogs: vi.fn(),
+  // Phase 7+ B2 closure — waitlist health snapshot for an event.
+  getWaitlistHealth: vi.fn(),
 };
 
 const mockSubscriptionService = {
@@ -279,6 +281,8 @@ const ORGANIZER_DENIED_MATRIX: Array<{
   { method: "PATCH", url: "/v1/admin/organizations/org-1/verify", body: {} },
   { method: "PATCH", url: "/v1/admin/organizations/org-1/status", body: { isActive: false } },
   { method: "GET", url: "/v1/admin/events" },
+  // Phase 7+ B2 closure — waitlist health snapshot endpoint.
+  { method: "GET", url: "/v1/admin/events/evt-1/waitlist-health" },
   { method: "GET", url: "/v1/admin/venues" },
   { method: "GET", url: "/v1/admin/payments" },
   { method: "GET", url: "/v1/admin/subscriptions" },

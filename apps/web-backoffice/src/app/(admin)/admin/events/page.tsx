@@ -19,7 +19,7 @@ import {
   StatusPill,
   type StatusPillTone,
 } from "@teranga/shared-ui";
-import { ChevronLeft, ChevronRight, Eye, Users, Building } from "lucide-react";
+import { ChevronLeft, ChevronRight, Eye, Users, Building, Repeat } from "lucide-react";
 import { useAdminEvents, useAdminOrganizations } from "@/hooks/use-admin";
 import { useTranslations } from "next-intl";
 
@@ -53,11 +53,16 @@ export default function AdminEventsPage() {
   const router = useRouter();
   const [page, setPage] = useState(1);
   const [status, setStatus] = useState("");
+  // Phase 7+ B1 closure — admin filter pill that restricts the list
+  // to recurring-event series anchors. Off by default to preserve the
+  // existing "all events mixed" view operators are used to.
+  const [seriesOnly, setSeriesOnly] = useState(false);
 
   const { data, isLoading } = useAdminEvents({
     page,
     limit: 20,
     ...(status ? { status } : {}),
+    ...(seriesOnly ? { isRecurringParent: true } : {}),
   });
 
   const events = data?.data ?? [];
@@ -97,21 +102,40 @@ export default function AdminEventsPage() {
         size="hero"
         as="h1"
         action={
-          <div className="w-full sm:w-56">
-            <Select
-              value={status}
-              onChange={(e) => {
-                setStatus(e.target.value);
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setSeriesOnly((v) => !v);
                 setPage(1);
               }}
-              aria-label="Filtrer par statut"
+              aria-pressed={seriesOnly}
+              aria-label={seriesOnly ? "Désactiver le filtre séries" : "Afficher uniquement les séries récurrentes"}
+              className={
+                seriesOnly
+                  ? "inline-flex items-center gap-1.5 rounded-md border border-teranga-gold bg-teranga-gold/10 px-3 py-1.5 text-sm font-medium text-teranga-gold transition-colors"
+                  : "inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted"
+              }
             >
-              {STATUS_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </Select>
+              <Repeat className="h-3.5 w-3.5" aria-hidden="true" />
+              Séries uniquement
+            </button>
+            <div className="w-full sm:w-56">
+              <Select
+                value={status}
+                onChange={(e) => {
+                  setStatus(e.target.value);
+                  setPage(1);
+                }}
+                aria-label="Filtrer par statut"
+              >
+                {STATUS_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </Select>
+            </div>
           </div>
         }
       />
@@ -135,15 +159,40 @@ export default function AdminEventsPage() {
                   key: "title",
                   header: "Titre",
                   primary: true,
-                  render: (event) => (
-                    <Link
-                      href={`/admin/events/${encodeURIComponent(event.id as string)}`}
-                      onClick={(e) => e.stopPropagation()}
-                      className="font-medium text-foreground hover:text-primary hover:underline"
-                    >
-                      {event.title as string}
-                    </Link>
-                  ),
+                  render: (event) => {
+                    const isParent = (event.isRecurringParent as boolean) === true;
+                    const isChild = !!(event.parentEventId as string | null | undefined);
+                    return (
+                      <div className="flex items-center gap-2 min-w-0">
+                        <Link
+                          href={`/admin/events/${encodeURIComponent(event.id as string)}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="truncate font-medium text-foreground hover:text-primary hover:underline"
+                        >
+                          {event.title as string}
+                        </Link>
+                        {isParent && (
+                          <span
+                            className="inline-flex items-center gap-0.5 rounded-full border border-teranga-gold/40 bg-teranga-gold/10 px-1.5 py-0.5 text-[10px] font-semibold text-teranga-gold"
+                            aria-label="Anchor d'une série récurrente"
+                            title="Anchor d'une série récurrente"
+                          >
+                            <Repeat className="h-2.5 w-2.5" aria-hidden="true" />
+                            Série
+                          </span>
+                        )}
+                        {isChild && !isParent && (
+                          <span
+                            className="rounded-full border border-border bg-muted px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground"
+                            aria-label="Occurrence d'une série récurrente"
+                            title="Occurrence d'une série récurrente"
+                          >
+                            Occurrence
+                          </span>
+                        )}
+                      </div>
+                    );
+                  },
                 },
                 {
                   key: "organization",
