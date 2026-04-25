@@ -4,8 +4,8 @@ import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
 import swagger from "@fastify/swagger";
 import swaggerUi from "@fastify/swagger-ui";
-import crypto from "crypto";
 import { config } from "@/config/index";
+import { rateLimitKeyFor, rateLimitMaxFor } from "@/middlewares/rate-limit.middleware";
 import { registerRoutes } from "@/routes/index";
 import { AppError } from "@/errors/app-error";
 import { runWithContext, enrichContext } from "@/context/request-context";
@@ -61,17 +61,17 @@ export async function buildApp() {
     credentials: true,
   });
 
+  // Composite-key rate limit (ADR-0015). `keyGenerator` returns
+  // `apikey:<hashPrefix>` / `user:<uid>` / `ip:<req.ip>` based on the
+  // request's auth state; `max` adapts to the key space so integrators
+  // (`apikey:*` → 600/min) get higher throughput than authenticated
+  // humans (`user:*` → 120/min) and unauthenticated traffic (`ip:*` →
+  // 30/min). Per-route stricter overrides on `/auth/*` and
+  // `/registrations/checkin` come in via each route's `config.rateLimit`.
   await app.register(rateLimit, {
-    max: config.RATE_LIMIT_MAX,
+    max: rateLimitMaxFor,
     timeWindow: config.RATE_LIMIT_WINDOW_MS,
-    keyGenerator: (req) => {
-      // Hash the token to avoid leaking JWT content into logs/metrics
-      const token = req.headers.authorization;
-      if (token?.startsWith("Bearer ")) {
-        return crypto.createHash("sha256").update(token).digest("hex").slice(0, 32);
-      }
-      return req.ip;
-    },
+    keyGenerator: rateLimitKeyFor,
   });
 
   // ─── Content-Type Enforcement ─────────────────────────────────────────────

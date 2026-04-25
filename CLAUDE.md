@@ -792,6 +792,7 @@ These security patterns were established during the Wave 1 review and MUST be ma
 | API key checksum gate    | 4-char HMAC checksum rejects typos before any Firestore read                | `parseApiKey()`               |
 | Trust proxy              | `trustProxy: true` on Fastify so `req.ip` is the real client, not the proxy | `apps/api/src/app.ts`         |
 | Auth middleware safety   | `authenticateApiKey` wrapped in try/catch so Firestore outage can't crash   | `auth.middleware.ts`          |
+| Composite-key rate limit | 3-tier budget — `apikey:*` 600/min, `user:*` 120/min, `ip:*` 30/min — plus per-route overrides on `/auth/*` + `/registrations/checkin`. JWT payload decoded (no signature verify) in the key generator so forged tokens land in their own bucket. See ADR-0015. | `rate-limit.middleware.ts`    |
 
 ---
 
