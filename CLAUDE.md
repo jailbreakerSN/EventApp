@@ -177,6 +177,31 @@ Other packages import from `@teranga/shared-types` and depend on the compiled ou
 
 ---
 
+## Quality bar — no minimalism
+
+**MANDATORY for every task.** When delivering tests, stories, fixtures, docs, or any artefact where a "minimal version" and a "complete version" are both possible, **always default to complete**. Do NOT pick the simplest, shortest, or most-reductive option just to ship faster.
+
+What "complete" looks like:
+
+| Artefact | Minimal (avoid) | Complete (required) |
+|----------|-----------------|---------------------|
+| Storybook story | One `Default` export | Default + every meaningful prop variant + a11y / loading / error / disabled states + a `Showcase` story that demonstrates real usage in context |
+| Service test | Happy path only | The four mandatory cases (happy / permission / org-access / error) + transaction assertions + domain-event emit assertion when applicable |
+| Doc page | Skeleton with TODOs | Full prose with examples, failure modes, related references, and operator-actionable instructions |
+| Seed fixture | Single example record | Realistic state diversity (active / archived / cancelled / expired) with cross-references that exercise downstream queries |
+| README | Title + dev command | Tech stack + architecture link + scripts table + deployment notes + pitfalls section |
+| Migration script | Forward-only | Forward + dry-run + rollback notes + audit log entry |
+
+**Why this rule exists.** Minimal artefacts pass review but ship as TODOs in disguise. They look done, get merged, and immediately rot — every reader has to add the missing variants on demand, often without context. Complete artefacts pay the "completeness tax" once at write-time and amortise it forever.
+
+**The ONLY exceptions:**
+
+1. **The user explicitly asks for a stub / placeholder** (e.g. "scaffold this, we'll fill it in later").
+2. **The artefact is genuinely a one-shot** (e.g. a hotfix touching one line), where extra variants would be noise.
+3. **Type-system or framework constraints** make additional variants impossible (rare).
+
+If you find yourself thinking "I'll just do the minimum here," **stop and add the missing variants**. If they're truly out of scope, document the gap explicitly in the PR description as a follow-up — never silently ship the minimum.
+
 ## Coding Standards
 
 ### TypeScript (API, Functions, Web, Shared Types)
