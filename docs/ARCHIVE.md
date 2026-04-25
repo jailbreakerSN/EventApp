@@ -27,8 +27,14 @@ The new `docs-v2/` documentation was derived directly from source code analysis 
 |---|---|
 | `agenda-publish-design.md` | Design notes for the event publish flow |
 | `badge-journey-review-2026-04-20.md` | QR badge credential journey review (historically accurate — see `docs-v2/20-architecture/concepts/qr-v4-and-offline-sync.md` for current state) |
-| `system-audit-2026-04-17.md` | Security and architecture audit post-Wave 1 |
-| `ux-ui-audit-2026-04-07.md` | UX/UI audit findings |
+
+### `archive/2026-04/`
+
+Files explicitly archived in the Sprint B audit (April 2026). See [`archive/2026-04/README.md`](./archive/2026-04/README.md) for the index, including the previously-listed `system-audit-2026-04-17.md` and `ux-ui-audit-2026-04-07.md`.
+
+### `audit-2026-04-25/`
+
+Comprehensive documentation, schemas & seed data audit. See [`audit-2026-04-25/REPORT.md`](./audit-2026-04-25/REPORT.md). Linked from the [audit registry in `docs-v2/99-reference/audits.md`](../docs-v2/99-reference/audits.md).
 
 ### `delivery-plan/`
 
