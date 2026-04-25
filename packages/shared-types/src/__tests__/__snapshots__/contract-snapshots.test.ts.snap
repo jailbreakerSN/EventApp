@@ -804,6 +804,7 @@ exports[`shared-types contract snapshots > AuditLogEntrySchema shape is stable 1
           "venue.reactivated",
           "venue.suspended",
           "venue.updated",
+          "waitlist.bulk_promoted",
           "waitlist.promoted",
           "waitlist.promotion_failed",
         ],
@@ -3401,6 +3402,15 @@ exports[`shared-types contract snapshots > OrganizationSchema shape is stable 1`
                 "kind": "boolean",
               },
             },
+            "waitlist": {
+              "required": false,
+              "shape": {
+                "inner": {
+                  "kind": "boolean",
+                },
+                "kind": "optional",
+              },
+            },
             "whiteLabel": {
               "required": true,
               "shape": {
@@ -4512,6 +4522,18 @@ exports[`shared-types contract snapshots > SubscriptionSchema shape is stable 1`
                         "kind": "optional",
                       },
                     },
+                    "waitlist": {
+                      "required": false,
+                      "shape": {
+                        "inner": {
+                          "inner": {
+                            "kind": "boolean",
+                          },
+                          "kind": "optional",
+                        },
+                        "kind": "optional",
+                      },
+                    },
                     "whiteLabel": {
                       "required": false,
                       "shape": {
@@ -4856,6 +4878,18 @@ exports[`shared-types contract snapshots > SubscriptionSchema shape is stable 1`
                                 "shape": {
                                   "inner": {
                                     "kind": "boolean",
+                                  },
+                                  "kind": "optional",
+                                },
+                              },
+                              "waitlist": {
+                                "required": false,
+                                "shape": {
+                                  "inner": {
+                                    "inner": {
+                                      "kind": "boolean",
+                                    },
+                                    "kind": "optional",
                                   },
                                   "kind": "optional",
                                 },

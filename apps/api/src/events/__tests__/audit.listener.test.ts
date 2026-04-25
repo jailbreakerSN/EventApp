@@ -616,7 +616,11 @@ describe("Audit Listener", () => {
       // Phase 7+ item #B1 added two recurring-series handlers
       // (`event.series_created` / `.series_published`) so audit queries
       // can tell bulk-series ops apart from single-event creates.
-      const EXPECTED_HANDLER_COUNT = 93;
+      // B2 follow-up added the `waitlist.bulk_promoted` aggregate
+      // handler — the per-entry `waitlist.promoted` events drive
+      // notification dispatch, this aggregate gives ops a single
+      // audit row per bulk-promote run.
+      const EXPECTED_HANDLER_COUNT = 94;
 
       expect(registered).toHaveLength(EXPECTED_HANDLER_COUNT);
       // Each registered event name should be unique — a double

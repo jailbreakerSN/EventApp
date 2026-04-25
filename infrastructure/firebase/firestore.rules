@@ -167,10 +167,22 @@ service cloud.firestore {
       // Super admin can read all
       allow read: if isSuperAdmin();
 
-      // Participants register themselves — validated in API but guard here too
-      allow create: if isAuthenticated()
-                    && request.resource.data.userId == currentUid()
-                    && request.resource.data.status in ['confirmed', 'pending', 'waitlisted'];
+      // B2 follow-up — registration creation is API-only.
+      // Pre-fix the rule allowed any authenticated participant to write
+      // a registration directly with `status: ['confirmed', 'pending',
+      // 'waitlisted']`, bypassing every server-side guard:
+      //   - Plan participant-per-event cap (free=50, starter=200, pro=2000)
+      //   - Event-level + ticket-type capacity check
+      //   - Email verification on paid tickets
+      //   - HMAC QR code signing (no qrCodeValue → badge unprintable)
+      //   - registeredCount counter increment (capacity drift)
+      //   - waitlist plan-feature gate (free orgs would self-grant waitlist)
+      // The API uses the Admin SDK and is exempt from these rules; an
+      // org-wide audit (B2 senior review) confirmed no client code does
+      // direct registration writes (web-participant, web-backoffice, and
+      // the Flutter mobile app all route through the API). Locking the
+      // create path closes the gap without breaking any client flow.
+      allow create: if false;
 
       // Participant can only cancel their own registration
       allow update: if isOwnerOf(resource.data.userId)

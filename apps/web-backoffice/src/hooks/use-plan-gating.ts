@@ -42,7 +42,10 @@ export function usePlanGating() {
   const usage: PlanUsage | undefined = usageData?.data;
 
   function canUse(feature: PlanFeature): boolean {
-    return features[feature];
+    // Truthy compare so optional flags (e.g. `waitlist` introduced in
+    // B2 follow-up) read as `false` for legacy denorm snapshots that
+    // pre-date the field, matching the safe-default the API uses.
+    return Boolean(features[feature]);
   }
 
   function checkLimit(resource: "events" | "members"): LimitCheck {

@@ -25,6 +25,11 @@ export const AuditActionSchema = z.enum([
   "badge.bulk_generated",
   "waitlist.promoted",
   "waitlist.promotion_failed",
+  // B2 follow-up — aggregate row emitted by bulk-promote, alongside one
+  // `waitlist.promoted` per successful entry. Lets ops dashboards
+  // answer "which organisers ran bulk promotions, when, with what
+  // tier scope" without aggregating per-entry events.
+  "waitlist.bulk_promoted",
   "ticket_type.added",
   "ticket_type.updated",
   "ticket_type.removed",

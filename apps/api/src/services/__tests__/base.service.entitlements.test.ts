@@ -292,3 +292,62 @@ describe("BaseService — legacy helpers still work unchanged", () => {
     );
   });
 });
+
+// ─── hasPlanFeature (B2 follow-up — non-throwing variant) ─────────────────
+// The waitlist gate in registration.service.register() needs to branch on
+// the feature flag without catching `PlanLimitError` (its rejection path
+// is `EventFullError`, not the plan-limit family). `hasPlanFeature` is
+// the non-throwing read that supports that.
+
+class HasFeatureService extends BaseService {
+  public callHasPlanFeature(
+    org: Organization,
+    feature: Parameters<BaseService["requirePlanFeature"]>[1],
+  ): boolean {
+    return this.hasPlanFeature(org, feature);
+  }
+}
+const hasFeatureService = new HasFeatureService();
+
+describe("BaseService.hasPlanFeature", () => {
+  it("returns true when effectiveFeatures has the flag set", () => {
+    const org = buildOrg();
+    expect(hasFeatureService.callHasPlanFeature(org, "qrScanning")).toBe(true);
+  });
+
+  it("returns false when effectiveFeatures has the flag explicitly off", () => {
+    const org = buildOrg({
+      effectiveFeatures: {
+        ...buildOrg().effectiveFeatures!,
+        smsNotifications: false,
+      },
+    });
+    expect(hasFeatureService.callHasPlanFeature(org, "smsNotifications")).toBe(false);
+  });
+
+  it("returns false when the flag is undefined (legacy / pre-denorm orgs)", () => {
+    // The new `waitlist` flag was added after denorm shipped; legacy
+    // orgs that haven't been re-projected won't have it. The helper
+    // must treat `undefined` as `false` (the safe default that matches
+    // the free-tier value) — surfacing an undefined as "permitted"
+    // would silently regress the gate to free-tier orgs.
+    const baseFeatures = buildOrg().effectiveFeatures!;
+    const features = { ...baseFeatures };
+    delete (features as Record<string, unknown>).waitlist;
+    const org = buildOrg({ effectiveFeatures: features });
+    expect(hasFeatureService.callHasPlanFeature(org, "waitlist")).toBe(false);
+  });
+
+  it("falls back to PLAN_LIMITS[org.plan] when effectiveFeatures is missing", () => {
+    // Pre-denorm orgs have `org.effectiveFeatures` undefined; the
+    // resolver falls back to the static PLAN_LIMITS table. Pro plan
+    // includes waitlist=true so the read should be true.
+    const org = buildOrg({ plan: "pro", effectiveFeatures: undefined });
+    expect(hasFeatureService.callHasPlanFeature(org, "waitlist")).toBe(true);
+  });
+
+  it("free plan correctly reports waitlist=false in the legacy fallback", () => {
+    const org = buildOrg({ plan: "free", effectiveFeatures: undefined });
+    expect(hasFeatureService.callHasPlanFeature(org, "waitlist")).toBe(false);
+  });
+});
