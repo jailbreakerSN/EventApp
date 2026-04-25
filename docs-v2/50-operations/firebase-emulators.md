@@ -1,3 +1,9 @@
+---
+title: Firebase Emulators
+status: shipped
+last_updated: 2026-04-25
+---
+
 # Firebase Emulators
 
 > **Status: shipped** — All services run locally via Firebase Emulator Suite.

@@ -1,3 +1,9 @@
+---
+title: Roadmap
+status: planned
+last_updated: 2026-04-25
+---
+
 # Roadmap
 
 > **Status: current as of April 2026.** Inferred from codebase state + delivery plan. Features marked shipped are verified in code; planned dates are estimates.

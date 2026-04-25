@@ -1,3 +1,9 @@
+---
+title: Cookbook: Adding a Domain Event
+status: shipped
+last_updated: 2026-04-25
+---
+
 # Cookbook: Adding a Domain Event
 
 ---

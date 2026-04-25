@@ -37,17 +37,14 @@ import { initializeApp, getApps } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
 
-const SEED_TARGET = process.env.SEED_TARGET ?? "emulator";
-const PROJECT_ID = process.env.FIREBASE_PROJECT_ID ?? "teranga-app-990a8";
+import { assertSafeTarget, configureEmulatorHosts, PROJECT_ID, SEED_TARGET } from "./seed/config";
 
-if (SEED_TARGET === "emulator") {
-  if (!process.env.FIRESTORE_EMULATOR_HOST) {
-    process.env.FIRESTORE_EMULATOR_HOST = "localhost:8080";
-  }
-  if (!process.env.FIREBASE_AUTH_EMULATOR_HOST) {
-    process.env.FIREBASE_AUTH_EMULATOR_HOST = "localhost:9099";
-  }
-}
+// SECURITY: assertSafeTarget MUST run before initializeApp so a typo'd
+// FIREBASE_PROJECT_ID (e.g. teranga-events-prod) is rejected before the
+// admin SDK opens any connection. This script writes users with hardcoded
+// dev passwords ("password123") — accidental prod write would be a P0.
+assertSafeTarget();
+configureEmulatorHosts();
 
 interface Fixture {
   uid: string;

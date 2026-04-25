@@ -102,10 +102,21 @@ function DataTable<T extends Record<string, unknown>>({
   // Row-level interaction props. `onRowClick` drives all three inputs
   // (mouse, keyboard, ARIA). Shared between the desktop `<tr>` and the
   // mobile card so both layouts offer the same affordance.
+  //
+  // We deliberately do NOT set `role="button"` on the row, even when
+  // it's clickable. Two reasons:
+  //   1. `aria-selected` (set below for keyboard cursor tracking) is
+  //      legal on the native `<tr>` role but NOT on `role="button"` —
+  //      axe `aria-allowed-attr` flags critical otherwise.
+  //   2. Action columns (`stopRowNavigation: true`) typically contain
+  //      buttons or links; nesting interactive controls inside a
+  //      `role="button"` row trips axe `nested-interactive` (serious).
+  // Native <tr> + tabIndex + onClick/onKeyDown still gives keyboard +
+  // mouse interactivity. Each row should also expose a primary action
+  // (link or button) inside a cell as the AT-discoverable entry point.
   const rowInteractionProps = (item: T) =>
     onRowClick
       ? {
-          role: "button" as const,
           tabIndex: 0,
           onClick: () => onRowClick(item),
           onKeyDown: (e: React.KeyboardEvent<HTMLElement>) => {

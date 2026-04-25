@@ -122,6 +122,24 @@ jobs:
         run: npx eslint apps/api/src/ --max-warnings 0
       - name: Type-check
         run: npm run type-check --workspace=apps/api
+      # Sprint B.3 — OpenAPI freshness guard. Boots the Fastify app
+      # in a headless mode (no Firestore calls), exports the Swagger
+      # spec, and diffs against the committed artefact at
+      # docs-v2/30-api/openapi/. Fails CI if a route was added or
+      # changed without regenerating the spec. Run locally with
+      # `npm run docs:openapi` to refresh.
+      - name: OpenAPI artefact is fresh
+        env:
+          NODE_ENV: development
+          LOG_LEVEL: silent
+          FIREBASE_PROJECT_ID: teranga-docs-build
+          FIREBASE_STORAGE_BUCKET: teranga-docs-build.appspot.com
+          GOOGLE_APPLICATION_CREDENTIALS: ""
+          CORS_ORIGINS: "http://localhost:3001"
+          QR_SECRET: ci-docs-build-secret-minimum-32-chars-please
+          RESEND_API_KEY: re_docs_build_placeholder
+          EMAIL_FROM: docs@teranga.events
+        run: npm run docs:openapi:check
 
   # ─── API: Tests ──────────────────────────────────────────────────────────
   api-test:

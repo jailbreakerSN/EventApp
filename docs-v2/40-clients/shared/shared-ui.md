@@ -1,3 +1,9 @@
+---
+title: @teranga/shared-ui
+status: shipped
+last_updated: 2026-04-25
+---
+
 # @teranga/shared-ui
 
 > **Status: shipped** — Used by both web-backoffice and web-participant.

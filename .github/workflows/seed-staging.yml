@@ -6,7 +6,7 @@ name: Seed staging (manual reset + re-seed)
 # on every push, whereas this one is destructive and must be invoked
 # explicitly by a human.
 #
-# Safety rails (all four MUST align or the workflow aborts):
+# Safety rails (all five MUST align or the workflow aborts):
 #   1. `workflow_dispatch` only — no push / schedule triggers.
 #   2. A typed confirmation input: the operator must spell out the exact
 #      string `RESET_AND_SEED_STAGING` to proceed.
@@ -17,6 +17,9 @@ name: Seed staging (manual reset + re-seed)
 #      the allow-list in scripts/seed/config.ts (production is NOT in
 #      the allow-list) and refuse any reset that doesn't set
 #      SEED_RESET_CONFIRM=YES_RESET + CONFIRM_PROJECT=<project-id>.
+#   5. seed-reset.ts gate 3b — non-emulator targets additionally require
+#      CONFIRM_PHRASE="RESET STAGING DATABASE NOW" (Sprint E hardening).
+#      Documented in docs-v2/50-operations/staging-reset.md.
 #
 # Usage: Actions → "Seed staging (manual reset + re-seed)" → Run workflow.
 
@@ -35,7 +38,13 @@ on:
 
 concurrency:
   group: seed-staging
-  cancel-in-progress: false
+  # Cancel any in-flight reset+seed when a second one is triggered. With
+  # `false` the second run queues behind the first, which means the seed
+  # step of run 2 starts writing while run 1's deletion loop is still
+  # running — leaving the database in an inconsistent half-deleted /
+  # half-seeded state. Cancelling in flight is the safer default for a
+  # destructive operation.
+  cancel-in-progress: true
 
 env:
   NODE_VERSION: '22'
@@ -52,9 +61,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check input
+        # Do NOT echo the actual `inputs.confirm` value in any failure
+        # path — operators occasionally type adjacent secrets / passwords
+        # into the wrong field, and Actions logs are retained. The error
+        # message intentionally states only the expected string.
+        env:
+          CONFIRM: ${{ inputs.confirm }}
         run: |
-          if [ "${{ inputs.confirm }}" != "RESET_AND_SEED_STAGING" ]; then
-            echo "::error::confirm input must be exactly 'RESET_AND_SEED_STAGING' (got: '${{ inputs.confirm }}')"
+          if [ "$CONFIRM" != "RESET_AND_SEED_STAGING" ]; then
+            echo "::error::confirm input must be exactly 'RESET_AND_SEED_STAGING'"
             exit 1
           fi
           echo "✓ Confirmation string matches."
@@ -102,11 +117,15 @@ jobs:
       - name: Build shared-types
         run: npx turbo build --filter=@teranga/shared-types
       - name: Run reset script
+        # Gate 3b (non-emulator) requires CONFIRM_PHRASE — see seed-reset.ts
+        # and docs-v2/50-operations/staging-reset.md. Without it the script
+        # throws before any Firestore / Auth / Storage write.
         env:
           SEED_TARGET: staging
           FIREBASE_PROJECT_ID: ${{ needs.setup.outputs.project_id }}
           SEED_RESET_CONFIRM: YES_RESET
           CONFIRM_PROJECT: ${{ needs.setup.outputs.project_id }}
+          CONFIRM_PHRASE: 'RESET STAGING DATABASE NOW'
         run: npx tsx scripts/seed-reset.ts
 
   # ─── Re-seed (always runs; depends on reset when reset was requested) ────

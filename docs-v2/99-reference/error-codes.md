@@ -1,3 +1,9 @@
+---
+title: API Error Codes Reference
+status: shipped
+last_updated: 2026-04-25
+---
+
 # API Error Codes Reference
 
 > All error responses from the Teranga API follow a consistent envelope. This document lists every error code, its HTTP status, the typed error class that produces it, and when each code is emitted.

@@ -1,3 +1,9 @@
+---
+title: API Reference
+status: shipped
+last_updated: 2026-04-25
+---
+
 # API Reference
 
 > **Status: shipped** — Fastify REST API running on Cloud Run. All routes are versioned under `/v1/`.

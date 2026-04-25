@@ -22,6 +22,7 @@ import type { Firestore } from "firebase-admin/firestore";
 
 import { Dates } from "./config";
 import { IDS } from "./ids";
+import { signSeedQrV3 } from "../lib/qr-signer";
 import { EXPANSION_PARTICIPANTS } from "./02-users";
 import { EXPANSION_EVENT_DENORM, findTicketType } from "./04-events";
 
@@ -49,10 +50,17 @@ const {
 // v3 QR validity window baked into the signed payload. For seed data we use
 // a wide range (yesterday → one year out) so demo registrations stay
 // scannable across all seeded events without rewriting fixtures per event.
-// The `demo-hmac-sig-*` signatures are placeholders — the verifier will
-// reject them at scan time just as it did with the pre-v3 seed strings.
-const seedNotBeforeBase36 = Math.floor(Date.now() - 86_400_000).toString(36);
-const seedNotAfterBase36 = Math.floor(Date.now() + 365 * 86_400_000).toString(36);
+//
+// QR signing — every fixture below now produces a REAL v3 HMAC signature
+// via `signSeedQrV3()` (mirrors `apps/api/src/services/qr-signing.ts`).
+// In emulator mode both signer and scanner default to the same
+// `DEV_QR_SECRET`, so seeded badges scan successfully end-to-end.
+// Previous behaviour: every QR carried a placeholder `demo-hmac-sig-*`
+// signature that the scan path rejected (broken demo).
+const seedNotBeforeMs = Date.now() - 86_400_000;
+const seedNotAfterMs = Date.now() + 365 * 86_400_000;
+const signSeedQr = (regId: string, eventId: string, userId: string): string =>
+  signSeedQrV3(regId, eventId, userId, seedNotBeforeMs, seedNotAfterMs);
 
 // ─── Registrations ─────────────────────────────────────────────────────────
 // Denormalised event metadata copied onto each registration. The API
@@ -115,7 +123,7 @@ const LEGACY_REGISTRATIONS: SeedRegistration[] = [
     participantName: "Aminata Fall",
     participantEmail: "participant@teranga.dev",
     status: "confirmed",
-    qrCodeValue: `${IDS.reg1}:${IDS.conference}:${IDS.participant1}:${seedNotBeforeBase36}:${seedNotAfterBase36}:demo-hmac-sig-001`,
+    qrCodeValue: signSeedQr(IDS.reg1, IDS.conference, IDS.participant1),
     checkedInAt: oneHourAgo,
     checkedInBy: IDS.organizer,
     notes: null,
@@ -130,7 +138,7 @@ const LEGACY_REGISTRATIONS: SeedRegistration[] = [
     participantName: "Ousmane Ndiaye",
     participantEmail: "participant2@teranga.dev",
     status: "confirmed",
-    qrCodeValue: `${IDS.reg2}:${IDS.conference}:${IDS.participant2}:${seedNotBeforeBase36}:${seedNotAfterBase36}:demo-hmac-sig-002`,
+    qrCodeValue: signSeedQr(IDS.reg2, IDS.conference, IDS.participant2),
     checkedInAt: null,
     checkedInBy: null,
     notes: null,
@@ -145,7 +153,7 @@ const LEGACY_REGISTRATIONS: SeedRegistration[] = [
     participantName: "Ibrahima Gueye",
     participantEmail: "speaker@teranga.dev",
     status: "confirmed",
-    qrCodeValue: `${IDS.reg3}:${IDS.conference}:${IDS.speakerUser}:${seedNotBeforeBase36}:${seedNotAfterBase36}:demo-hmac-sig-003`,
+    qrCodeValue: signSeedQr(IDS.reg3, IDS.conference, IDS.speakerUser),
     checkedInAt: null,
     checkedInBy: null,
     notes: "Intervenant",
@@ -160,7 +168,7 @@ const LEGACY_REGISTRATIONS: SeedRegistration[] = [
     participantName: "Aissatou Ba",
     participantEmail: "sponsor@teranga.dev",
     status: "confirmed",
-    qrCodeValue: `${IDS.reg4}:${IDS.conference}:${IDS.sponsorUser}:${seedNotBeforeBase36}:${seedNotAfterBase36}:demo-hmac-sig-004`,
+    qrCodeValue: signSeedQr(IDS.reg4, IDS.conference, IDS.sponsorUser),
     checkedInAt: null,
     checkedInBy: null,
     notes: "Sponsor TechCorp",
@@ -193,7 +201,7 @@ const LEGACY_REGISTRATIONS: SeedRegistration[] = [
     participantName: "Ousmane Ndiaye",
     participantEmail: "participant2@teranga.dev",
     status: "confirmed",
-    qrCodeValue: `${IDS.reg6}:${IDS.paidEvent}:${IDS.participant2}:${seedNotBeforeBase36}:${seedNotAfterBase36}:demo-hmac-sig-006`,
+    qrCodeValue: signSeedQr(IDS.reg6, IDS.paidEvent, IDS.participant2),
     checkedInAt: null,
     checkedInBy: null,
     notes: null,
@@ -417,7 +425,7 @@ function materialiseExpansionRegs(): SeedRegistration[] {
       participantName: participant.displayName,
       participantEmail: participant.email,
       status: checkedIn ? "checked_in" : "confirmed",
-      qrCodeValue: `${id}:${entry.eventId}:${participant.uid}:${seedNotBeforeBase36}:${seedNotAfterBase36}:demo-hmac-exp-${ord}`,
+      qrCodeValue: signSeedQr(id, entry.eventId, participant.uid),
       checkedInAt,
       checkedInBy: checkedIn ? IDS.staffUser : null,
       notes,
@@ -475,14 +483,14 @@ async function writeBadges(db: Firestore): Promise<number> {
       registrationId: IDS.reg1,
       eventId: IDS.conference,
       userId: IDS.participant1,
-      qrCodeValue: `${IDS.reg1}:${IDS.conference}:${IDS.participant1}:${seedNotBeforeBase36}:${seedNotAfterBase36}:demo-hmac-sig-001`,
+      qrCodeValue: signSeedQr(IDS.reg1, IDS.conference, IDS.participant1),
     },
     {
       id: "badge-002",
       registrationId: IDS.reg2,
       eventId: IDS.conference,
       userId: IDS.participant2,
-      qrCodeValue: `${IDS.reg2}:${IDS.conference}:${IDS.participant2}:${seedNotBeforeBase36}:${seedNotAfterBase36}:demo-hmac-sig-002`,
+      qrCodeValue: signSeedQr(IDS.reg2, IDS.conference, IDS.participant2),
     },
   ];
   await Promise.all(

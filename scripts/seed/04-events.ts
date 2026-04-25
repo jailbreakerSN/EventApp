@@ -23,6 +23,7 @@
 import type { Firestore } from "firebase-admin/firestore";
 
 import { Dates } from "./config";
+import { CANONICAL_EVENT_I18N } from "./04-events-i18n";
 import { IDS } from "./ids";
 
 const {
@@ -1520,7 +1521,13 @@ export function findTicketType(eventId: string, ticketTypeId: string): SeedTicke
 // ─── Seed ────────────────────────────────────────────────────────────────
 
 export async function seedEvents(db: Firestore): Promise<number> {
-  const all = [...LEGACY_EVENTS, ...EXPANSION_EVENTS];
+  // Merge canonical EN + WO i18n mirrors at write-time. Source records stay
+  // FR-only and byte-stable; translations live in `04-events-i18n.ts` so
+  // proofread diffs don't churn the protected legacy fixtures.
+  const all = [...LEGACY_EVENTS, ...EXPANSION_EVENTS].map((event) => {
+    const i18n = CANONICAL_EVENT_I18N[event.id];
+    return i18n ? { ...event, ...i18n } : event;
+  });
 
   await Promise.all(all.map((event) => db.collection("events").doc(event.id).set(event)));
 

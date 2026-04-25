@@ -1,3 +1,9 @@
+---
+title: Nice-to-Have Features
+status: planned
+last_updated: 2026-04-25
+---
+
 # Nice-to-Have Features
 
 > Features that would strengthen the platform and improve retention, but are not blocking production launch or core feature parity. Ordered by strategic value.

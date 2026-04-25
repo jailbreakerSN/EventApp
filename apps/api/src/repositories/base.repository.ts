@@ -184,6 +184,35 @@ export class BaseRepository<T extends { id: string }> {
     });
   }
 
+  /**
+   * Read-side counterpart of `softDelete()`. Wraps `findMany()` with a
+   * default exclusion list so callers that "want every active record"
+   * stop having to remember the soft-delete contract on every call.
+   *
+   * Defaults exclude `archived` AND `cancelled` because both are
+   * soft-delete tombstones in the Teranga model (events are
+   * `cancelled`, organizations / venues are `archived`). Pass
+   * `excludeStatuses` to override per call site.
+   *
+   * Implements ADR-0008 §"Conventions" and removes the cite to a missing
+   * helper that previously appeared in the ADR text.
+   */
+  async findActive(
+    filters: WhereClause[] = [],
+    pagination?: PaginationParams,
+    options: { statusField?: string; excludeStatuses?: string[] } = {},
+  ): Promise<PaginatedResult<T>> {
+    const { statusField = "status", excludeStatuses = ["archived", "cancelled"] } = options;
+    // Firestore `not-in` accepts up to 10 values — sufficient for the
+    // current soft-delete tombstone vocabulary. Single-value form uses
+    // `!=` for index-friendliness.
+    const statusFilter: WhereClause =
+      excludeStatuses.length === 1
+        ? { field: statusField, op: "!=", value: excludeStatuses[0] }
+        : { field: statusField, op: "not-in", value: excludeStatuses };
+    return this.findMany([...filters, statusFilter], pagination);
+  }
+
   async increment(id: string, field: string, amount = 1): Promise<void> {
     await this.collection.doc(id).update({
       [field]: FieldValue.increment(amount),

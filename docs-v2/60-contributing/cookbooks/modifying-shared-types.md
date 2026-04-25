@@ -1,3 +1,9 @@
+---
+title: Cookbook: Modifying Shared Types
+status: shipped
+last_updated: 2026-04-25
+---
+
 # Cookbook: Modifying Shared Types
 
 Changes to `packages/shared-types/` are high-impact — they affect the API, both web apps, and indirectly the Flutter app. Follow this process for every modification.

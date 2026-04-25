@@ -1,3 +1,9 @@
+---
+title: Web Back-office
+status: shipped
+last_updated: 2026-04-25
+---
+
 # Web Back-office
 
 > **Status: ~85% shipped** — Core event management, check-in, analytics, badges, and communications are functional. Billing/payments UI is scaffolded.

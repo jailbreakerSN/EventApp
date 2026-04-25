@@ -1,3 +1,9 @@
+---
+title: Firestore Collections Reference
+status: shipped
+last_updated: 2026-04-25
+---
+
 # Firestore Collections Reference
 
 > Quick-lookup index of every Firestore collection in the platform. Collection name constants are defined in `apps/api/src/config/firebase.ts` (API) and `apps/functions/src/utils/admin.ts` (Cloud Functions). Always use the `COLLECTIONS` constant — never hardcode string names.

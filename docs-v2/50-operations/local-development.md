@@ -1,3 +1,9 @@
+---
+title: Local Development Guide
+status: shipped
+last_updated: 2026-04-25
+---
+
 # Local Development Guide
 
 > See [Getting Started → Local Setup](../00-getting-started/01-local-setup.md) for the initial setup. This page covers the day-to-day development loop.

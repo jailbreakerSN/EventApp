@@ -1,3 +1,9 @@
+---
+title: Events API
+status: shipped
+last_updated: 2026-04-25
+---
+
 # Events API
 
 > **Status: shipped**

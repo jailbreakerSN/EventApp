@@ -1,3 +1,9 @@
+---
+title: @teranga/shared-types
+status: shipped
+last_updated: 2026-04-25
+---
+
 # @teranga/shared-types
 
 > **Status: shipped** — Single source of truth for all data shapes.

@@ -1,3 +1,9 @@
+---
+title: Venues API
+status: shipped
+last_updated: 2026-04-25
+---
+
 # Venues API
 
 > **Status: shipped**

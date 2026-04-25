@@ -1,3 +1,9 @@
+---
+title: Run Your First Check-In (QR + Offline Sync)
+status: shipped
+last_updated: 2026-04-25
+---
+
 # Run Your First Check-In (QR + Offline Sync)
 
 > **Status: shipped** — QR v4 signing and offline sync are fully implemented.

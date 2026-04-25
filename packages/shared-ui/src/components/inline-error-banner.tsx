@@ -122,7 +122,12 @@ export function InlineErrorBanner({
             </p>
           )}
         </div>
-        {onDismiss && (
+        {/* The DismissProps type pairs onDismiss with dismissLabel at compile
+            time. At runtime, Storybook's actions addon auto-injects onDismiss
+            from the argTypesRegex without a label, which would render an
+            unlabelled icon button (axe `button-name`). Guard at runtime so
+            the button only appears when the caller provides BOTH. */}
+        {onDismiss && dismissLabel && (
           <button
             type="button"
             onClick={onDismiss}

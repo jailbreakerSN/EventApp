@@ -1,3 +1,9 @@
+---
+title: Security Checklist
+status: shipped
+last_updated: 2026-04-25
+---
+
 # Security Checklist
 
 Run these checks before every PR that touches API services, routes, Firestore rules, or file uploads.

@@ -1,3 +1,9 @@
+---
+title: Monitoring & Observability
+status: partial
+last_updated: 2026-04-25
+---
+
 # Monitoring & Observability
 
 > **Status: partial** — Sentry and structured logging are wired. Alerting and dashboards are planned.

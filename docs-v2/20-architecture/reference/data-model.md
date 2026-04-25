@@ -1,3 +1,9 @@
+---
+title: Data Model — Firestore Collections
+status: shipped
+last_updated: 2026-04-25
+---
+
 # Data Model — Firestore Collections
 
 > **Status: shipped** — All collections listed here are implemented. See also [99-reference/collections.md](../../99-reference/collections.md) for a quick-lookup index.

@@ -1,3 +1,9 @@
+---
+title: Cookbook: Adding a New API Route
+status: shipped
+last_updated: 2026-04-25
+---
+
 # Cookbook: Adding a New API Route
 
 A step-by-step guide for adding a new endpoint to the Fastify API.

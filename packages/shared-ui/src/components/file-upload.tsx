@@ -130,6 +130,7 @@ function FileUpload({
         onChange={handleInputChange}
         className="sr-only"
         tabIndex={-1}
+        aria-label={dropzoneLabel}
       />
 
       {error && <p className="mt-2 text-sm text-destructive">{error}</p>}

@@ -1,3 +1,9 @@
+---
+title: Freemium Model
+status: shipped
+last_updated: 2026-04-25
+---
+
 # Freemium Model
 
 > **Status: shipped** — Plan enforcement is live. Dynamic plan catalog (Phase 2–6 migration) is in progress.

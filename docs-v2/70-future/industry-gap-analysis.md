@@ -1,3 +1,9 @@
+---
+title: Industry Gap Analysis
+status: planned
+last_updated: 2026-04-25
+---
+
 # Industry Gap Analysis
 
 > Analysis against leading event management platforms as of April 2026. Status reflects Teranga's current implementation.

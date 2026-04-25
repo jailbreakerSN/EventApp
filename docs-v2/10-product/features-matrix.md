@@ -1,3 +1,9 @@
+---
+title: Feature Matrix
+status: shipped
+last_updated: 2026-04-25
+---
+
 # Feature Matrix
 
 > **Status legend:** ✅ shipped · ⚠ partial · 🔲 stub · 📅 planned

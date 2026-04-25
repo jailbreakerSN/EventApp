@@ -1,3 +1,9 @@
+---
+title: QR v4 Signing & Offline Sync Encryption
+status: shipped
+last_updated: 2026-04-25
+---
+
 # QR v4 Signing & Offline Sync Encryption
 
 > **Status: shipped** — QR v4 is the default for all new events. Offline sync encryption is available on request (`?encrypted=v1`).

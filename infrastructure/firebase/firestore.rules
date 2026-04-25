@@ -773,6 +773,74 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // ─── Sprint C.3 (Sprint-A audit closure) — Server-only collections ────
+    // Eight collections that were previously covered only by the
+    // top-level deny-all default. Making the deny explicit here keeps
+    // operator/audit reviews honest: a future reader doesn't have to
+    // infer "no match block = denied". Every entry below is intentional
+    // and has its rationale inline.
+
+    // Payouts — money-out ledger. Admin SDK only writes; reads go through
+    // the API for org-scoped access + super-admin cross-org views.
+    match /payouts/{payoutId} {
+      allow read, write: if false;
+    }
+
+    // Receipts — invoice trail. Admin SDK writes only; client read goes
+    // through the API which handles org-scoping and audit logging.
+    match /receipts/{receiptId} {
+      allow read, write: if false;
+    }
+
+    // Subscriptions — billing state per org. The API is the only writer
+    // and reader; clients read derived plan info via the org doc
+    // (effectiveLimits / effectiveFeatures) — see ADR-0006.
+    match /subscriptions/{subId} {
+      allow read, write: if false;
+    }
+
+    // Counters — atomic increments only via Firestore transactions on the
+    // API server. Direct client access would defeat the transactional
+    // invariants (registration counts, badge counts).
+    match /counters/{counterId} {
+      allow read, write: if false;
+    }
+
+    // Refund locks — in-flight refund serialisation locks created and
+    // released inside the refund transaction. Lifecycle is short-lived
+    // (sub-second). Never seeded, never client-accessed.
+    match /refundLocks/{lockId} {
+      allow read, write: if false;
+    }
+
+    // Feature flags — platform-wide toggles. Read goes through the API
+    // (`useFeatureFlag` hook + the future server-side evaluator); writes
+    // are super-admin-only via the admin routes. Direct client read
+    // would let any caller enumerate the entire flag inventory.
+    match /featureFlags/{flagKey} {
+      allow read, write: if false;
+    }
+
+    // Notification preferences — user-scoped opt-in/opt-out. Owner can
+    // read + update their own document; nobody else (incl. organizers)
+    // can. The doc id IS the user id, which keeps the rule trivial.
+    match /notificationPreferences/{userId} {
+      allow read: if isAuthenticated() && request.auth.uid == userId;
+      allow update: if isAuthenticated() && request.auth.uid == userId;
+      allow create: if false; // created server-side on first user signup
+      allow delete: if false; // soft-managed via prefs payload
+    }
+
+    // Session bookmarks — user's saved sessions. Owner reads + writes
+    // their own bookmarks. Other users (and organizers) cannot see who
+    // bookmarked what.
+    match /sessionBookmarks/{bookmarkId} {
+      allow read: if isAuthenticated() && request.auth.uid == resource.data.userId;
+      allow create: if isAuthenticated() && request.auth.uid == request.resource.data.userId;
+      allow delete: if isAuthenticated() && request.auth.uid == resource.data.userId;
+      allow update: if false; // bookmarks are create-or-delete only
+    }
+
     // ─── Plan Catalog ──────────────────────────────────────────────────────
     // Superadmin-managed catalog of subscription plans. Any authenticated
     // user can read published (public, non-archived) plans so the billing

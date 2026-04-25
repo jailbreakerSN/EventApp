@@ -1,3 +1,9 @@
+---
+title: Local Setup
+status: shipped
+last_updated: 2026-04-25
+---
+
 # Local Setup
 
 > **Status: shipped** — Reflects the working dev environment as of April 2026.

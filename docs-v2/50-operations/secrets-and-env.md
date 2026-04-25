@@ -1,3 +1,9 @@
+---
+title: Secrets & Environment Variables
+status: shipped
+last_updated: 2026-04-25
+---
+
 # Secrets & Environment Variables
 
 > **Status: shipped** — All variables documented below are required for a running system.

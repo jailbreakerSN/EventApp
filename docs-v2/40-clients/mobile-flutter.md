@@ -1,3 +1,9 @@
+---
+title: Mobile App (Flutter)
+status: planned
+last_updated: 2026-04-25
+---
+
 # Mobile App (Flutter)
 
 > **Status: ~30% shipped** — Auth and event discovery are wired. Registration, badge, scanner, feed, and profile are page shells with providers not fully connected.
