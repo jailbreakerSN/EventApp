@@ -260,6 +260,36 @@ export function registerAuditListeners(): void {
     });
   });
 
+  // ── Recurring events (Phase 7+ item #B1) ────────────────────────────────
+
+  eventBus.on("event.series_created", async (payload) => {
+    await auditService.log({
+      action: "event.series_created",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "event",
+      resourceId: payload.parentEventId,
+      eventId: payload.parentEventId,
+      organizationId: payload.organizationId,
+      details: { occurrenceCount: payload.occurrenceCount },
+    });
+  });
+
+  eventBus.on("event.series_published", async (payload) => {
+    await auditService.log({
+      action: "event.series_published",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "event",
+      resourceId: payload.parentEventId,
+      eventId: payload.parentEventId,
+      organizationId: payload.organizationId,
+      details: { publishedCount: payload.publishedCount },
+    });
+  });
+
   // ── Organization Events ─────────────────────────────────────────────────
 
   eventBus.on("organization.created", async (payload) => {
@@ -989,6 +1019,53 @@ export function registerAuditListeners(): void {
     });
   });
 
+  // ── Plan Coupons (Phase 7+ item #7) ────────────────────────────────────
+  // Super-admin-only surface; all coupons are platform-scoped so
+  // organizationId stays null on the audit row. Redemptions are audited
+  // via the CouponRedemption doc itself.
+
+  eventBus.on("plan_coupon.created", async (payload) => {
+    await auditService.log({
+      action: "plan_coupon.created",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "plan_coupon",
+      resourceId: payload.couponId,
+      eventId: null,
+      organizationId: null,
+      details: { code: payload.code },
+    });
+  });
+
+  eventBus.on("plan_coupon.updated", async (payload) => {
+    await auditService.log({
+      action: "plan_coupon.updated",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "plan_coupon",
+      resourceId: payload.couponId,
+      eventId: null,
+      organizationId: null,
+      details: { changes: payload.changes },
+    });
+  });
+
+  eventBus.on("plan_coupon.archived", async (payload) => {
+    await auditService.log({
+      action: "plan_coupon.archived",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "plan_coupon",
+      resourceId: payload.couponId,
+      eventId: null,
+      organizationId: null,
+      details: {},
+    });
+  });
+
   // ── Subscription lifecycle (Phase 4c) ──────────────────────────────────
 
   eventBus.on("subscription.change_scheduled", async (payload) => {
@@ -1058,6 +1135,15 @@ export function registerAuditListeners(): void {
       details: {
         previousPlan: payload.previousPlan,
         newPlan: payload.newPlan,
+        // Phase 7+ item #7 — denorm the applied coupon (if any) onto the
+        // audit row so "which upgrades used coupon X" queries don't need
+        // a join against couponRedemptions. Absent = no coupon.
+        ...(payload.appliedCoupon
+          ? {
+              appliedCouponCode: payload.appliedCoupon.code,
+              appliedCouponDiscountXof: payload.appliedCoupon.discountXof,
+            }
+          : {}),
       },
     });
   });

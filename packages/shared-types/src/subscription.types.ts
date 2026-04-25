@@ -57,6 +57,24 @@ export const SubscriptionSchema = z.object({
   // daily rollover job applies the scheduled flip. Upgrading, immediate
   // downgrading, and the revert endpoint all clear it by writing `null`.
   scheduledChange: ScheduledChangeSchema.nullable().optional(),
+  // ── Applied coupon (Phase 7+ item #7) ────────────────────────────────────
+  // Denormalised reference to the coupon redemption that reduced this
+  // subscription's price. `null` / absent when no coupon was used.
+  // Full redemption audit trail lives in the `couponRedemptions`
+  // collection; this field is a convenience shortcut for the billing
+  // UI + audit listeners. The coupon doc itself is authoritative for
+  // `code` / `discountType` / `discountValue` at the time of redemption
+  // (snapshot-on-redeem — editing a coupon later never retroactively
+  // changes already-redeemed subscriptions).
+  appliedCoupon: z
+    .object({
+      couponId: z.string(),
+      code: z.string(),
+      discountXof: z.number().int().nonnegative(),
+      redeemedAt: z.string().datetime(),
+    })
+    .nullable()
+    .optional(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 });
@@ -112,6 +130,16 @@ export const UpgradePlanSchema = z.object({
   // an `annualPriceXof` — the service rejects annual upgrades on plans that
   // only offer monthly.
   cycle: BillingCycleSchema.optional(),
+  // Phase 7+ item #7: optional coupon code. When present, the service
+  // validates + applies the coupon inside the upgrade transaction
+  // (atomic with the subscription + org denorm writes). Uppercase
+  // convention enforced by `PlanCouponCodeSchema`.
+  couponCode: z
+    .string()
+    .min(3)
+    .max(50)
+    .regex(/^[A-Z0-9_-]+$/)
+    .optional(),
 });
 
 export type UpgradePlanDto = z.infer<typeof UpgradePlanSchema>;

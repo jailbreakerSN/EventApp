@@ -187,6 +187,32 @@ export interface EventClonedEvent extends BaseEventPayload {
   organizationId: string;
 }
 
+/**
+ * Phase 7+ item #B1 — emitted by `EventService.createSeries()` after the
+ * parent + child docs commit. Distinct from `event.created` (which is
+ * also emitted for the parent for dashboard parity) so audit queries
+ * can tell "created a recurring series of N" apart from "created a
+ * single event". `occurrenceCount` is the CHILD count — the parent is
+ * the anchor and doesn't count toward the series size.
+ */
+export interface EventSeriesCreatedEvent extends BaseEventPayload {
+  parentEventId: string;
+  organizationId: string;
+  occurrenceCount: number;
+}
+
+/**
+ * Phase 7+ item #B1 — emitted by `EventService.publishSeries()` after
+ * parent + all children flip to `status: "published"`. `publishedCount`
+ * is the number of CHILDREN that were flipped (parent + children all
+ * transitioned together in one tx; parent is not counted here).
+ */
+export interface EventSeriesPublishedEvent extends BaseEventPayload {
+  parentEventId: string;
+  organizationId: string;
+  publishedCount: number;
+}
+
 export interface WaitlistPromotedEvent extends BaseEventPayload {
   registrationId: string;
   eventId: string;
@@ -919,6 +945,22 @@ export interface SubscriptionUpgradedEvent extends BaseEventPayload {
   organizationId: string;
   previousPlan: string;
   newPlan: string;
+  /**
+   * Phase 7+ item #7 — snapshot of the plan coupon redeemed alongside
+   * the upgrade (null/absent when no coupon was applied). Carried on
+   * the event payload so downstream listeners (audit, future webhook
+   * + billing analytics) can distinguish coupon upgrades without
+   * re-reading the subscription doc. The canonical audit trail is the
+   * `couponRedemptions` collection + the `subscription.appliedCoupon`
+   * denorm field — this payload is a convenience echo for listeners
+   * that don't want to take a Firestore dependency.
+   */
+  appliedCoupon?: {
+    couponId: string;
+    code: string;
+    discountXof: number;
+    finalPriceXof: number;
+  } | null;
 }
 
 export interface SubscriptionDowngradedEvent extends BaseEventPayload {
@@ -1000,6 +1042,9 @@ export interface DomainEventMap {
   "event.cancelled": EventCancelledEvent;
   "event.archived": EventArchivedEvent;
   "event.cloned": EventClonedEvent;
+  // Recurring events (Phase 7+ item #B1)
+  "event.series_created": EventSeriesCreatedEvent;
+  "event.series_published": EventSeriesPublishedEvent;
   "waitlist.promoted": WaitlistPromotedEvent;
   "waitlist.promotion_failed": WaitlistPromotionFailedEvent;
   "ticket_type.added": TicketTypeAddedEvent;
@@ -1150,6 +1195,12 @@ export interface DomainEventMap {
   "api_key.revoked": ApiKeyRevokedEvent;
   "api_key.rotated": ApiKeyRotatedEvent;
   "api_key.verified": ApiKeyVerifiedEvent;
+  // Plan coupons (Phase 7+ item #7) — redemption itself is captured on
+  // the subscription doc + couponRedemptions collection; we only emit
+  // lifecycle signals here (create / update / archive).
+  "plan_coupon.created": PlanCouponCreatedEvent;
+  "plan_coupon.updated": PlanCouponUpdatedEvent;
+  "plan_coupon.archived": PlanCouponArchivedEvent;
 }
 
 /** Phase 4 — emitted by adminService.startImpersonation(). */
@@ -1216,6 +1267,31 @@ export interface AdminWebhookReplayedEvent {
   webhookEventId: string;
   provider: string;
   providerTransactionId: string;
+}
+
+// ─── Plan Coupons (Phase 7+ item #7) ─────────────────────────────────────
+
+/**
+ * Emitted by PlanCouponService.create() after the doc commits.
+ * Super-admin-only surface; audit listener maps to `plan_coupon.created`.
+ * Redemptions are audited via the CouponRedemption doc itself (one row
+ * per redeem inside the upgrade transaction), so there's no separate
+ * `plan_coupon.redeemed` event — the subscription.upgraded payload
+ * carries `appliedCoupon` instead.
+ */
+export interface PlanCouponCreatedEvent extends BaseEventPayload {
+  couponId: string;
+  code: string;
+}
+
+export interface PlanCouponUpdatedEvent extends BaseEventPayload {
+  couponId: string;
+  /** Whitelist of changed keys (never values — label/scope can be sensitive). */
+  changes: string[];
+}
+
+export interface PlanCouponArchivedEvent extends BaseEventPayload {
+  couponId: string;
 }
 
 // ─── API keys (T2.3) ─────────────────────────────────────────────────────

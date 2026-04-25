@@ -159,4 +159,14 @@ export const COLLECTIONS = {
   // we NEVER store plaintext. Rules deny-all — Admin SDK writes only,
   // no client access path.
   API_KEYS: "apiKeys",
+  // Plan-level coupons (Phase 7+ item #7). Code lookup via case-sensitive
+  // doc id (code is uppercase-only per `PlanCouponCodeSchema`, so a
+  // single query hits the right doc). `appliedPlanIds` / `appliedCycles`
+  // scope + `expiresAt` / `maxUses` gates are all enforced inside the
+  // upgrade transaction — see `plan-coupon.service.ts`.
+  PLAN_COUPONS: "planCoupons",
+  // Redemption audit trail + per-org cap enforcement. One doc per
+  // successful redemption. Queried by `(organizationId, couponId)` to
+  // enforce `maxUsesPerOrg`. Server-only at the rules layer.
+  COUPON_REDEMPTIONS: "couponRedemptions",
 } as const;

@@ -271,6 +271,12 @@ export const RESETTABLE_COLLECTIONS = [
   "balanceTransactions",
   "payments",
   "promoCodes",
+  // Phase 7+ item #7 — plan-level coupon promo codes + their redemption
+  // audit trail. Reset in staging so demo coupons don't bleed across
+  // runs; redemption docs are append-only at runtime so a fresh start
+  // keeps usage caps clean.
+  "planCoupons",
+  "couponRedemptions",
   // Structure
   "badges",
   "registrations",

@@ -315,15 +315,24 @@ export type UpdatePlanDto = z.infer<typeof UpdatePlanSchema>;
 export const SubscriptionOverridesSchema = z.object({
   limits: PlanLimitsValueSchema.partial().optional(),
   features: PlanFeaturesSchema.partial().optional(),
-  // Per-org entitlement override — intentionally omitted from this
-  // foundation PR to keep the shared-types contract snapshot narrow
-  // during rollout. The resolver already projects legacy `limits` /
-  // `features` overrides into entitlement space (see
-  // `apps/api/src/services/effective-plan.ts`), so the merged
-  // `effectiveEntitlements` map stays consistent with the 14 legacy
-  // enforcement call sites. A follow-up PR can add an explicit
-  // `entitlements` field here when a real per-org metered-override
-  // use case lands.
+  // ── Per-org entitlement override (Phase 7+ item #2 — A1 follow-up) ──
+  //
+  // Super-admin can attach arbitrary entitlement key → entitlement value
+  // overrides on top of the plan's own entitlements. Precedence (applied
+  // in `effective-plan.ts`):
+  //   1. Plan entitlements (base)
+  //   2. Legacy `limits` / `features` overrides (projected into
+  //      entitlement space)
+  //   3. `entitlements` overrides (this field) — WIN on key collisions.
+  //
+  // Typed as a loose record to keep the shared-types contract snapshot
+  // narrow (mirrors the same pattern used for
+  // `OrganizationSchema.effectiveEntitlements`). Strict validation
+  // against `EntitlementMapSchema` happens at the service layer via
+  // `EntitlementMapSchema.safeParse(overrides.entitlements)` — see
+  // `apps/api/src/services/subscription.service.ts` assignPlan + the
+  // admin UI's client-side guard in `AssignPlanDialog.tsx`.
+  entitlements: z.record(z.string(), z.unknown()).optional(),
   priceXof: z.number().int().min(0).optional(),
   notes: z.string().max(500).optional(),
   validUntil: z.string().datetime().nullable().optional(),

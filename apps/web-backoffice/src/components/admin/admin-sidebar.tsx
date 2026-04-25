@@ -37,6 +37,7 @@ import {
   CreditCard,
   Receipt,
   Coins,
+  Tag,
   TrendingUp,
   Bell,
   Webhook,
@@ -89,6 +90,7 @@ const NAV: NavSection[] = [
     label: "Billing",
     items: [
       { href: "/admin/plans", label: "Plans", icon: CreditCard },
+      { href: "/admin/coupons", label: "Coupons", icon: Tag },
       { href: "/admin/subscriptions", label: "Abonnements", icon: Receipt },
       { href: "/admin/payments", label: "Paiements", icon: Coins },
       { href: "/admin/revenue", label: "Revenus", icon: TrendingUp },

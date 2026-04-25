@@ -108,7 +108,21 @@ service cloud.firestore {
                     // matching HKDF key, and mint forged valid v4 QRs.
                     // Rotation must flow exclusively through
                     // `POST /v1/events/:eventId/qr-key/rotate` (Admin SDK).
-                    && immutableOnUpdate(['createdBy', 'organizationId', 'qrKid', 'qrKidHistory']);
+                    // Phase 7+ item #B1 — series-anchor fields (`isRecurringParent`,
+                    // `parentEventId`, `occurrenceIndex`) are server-stamped at create
+                    // time and MUST stay immutable. Otherwise a compromised client
+                    // could flip a parent's `isRecurringParent: false` to leak the
+                    // anchor onto participant discovery, or set `parentEventId` on
+                    // an unrelated event to attach it to a foreign series.
+                    && immutableOnUpdate([
+                      'createdBy',
+                      'organizationId',
+                      'qrKid',
+                      'qrKidHistory',
+                      'isRecurringParent',
+                      'parentEventId',
+                      'occurrenceIndex',
+                    ]);
 
       // Soft-delete only — set status to 'archived'
       allow delete: if false;
@@ -494,6 +508,33 @@ service cloud.firestore {
       allow create: if false;
       allow update: if false;
       allow delete: if false;
+    }
+
+    // ─── Plan Coupons (Phase 7+ item #7) ────────────────────────────────────
+    // Subscription / plan-level promo codes. Super-admin only at the rules
+    // layer — create/update/archive flow through the API
+    // (planCouponService), never a direct client write. Reads are denied
+    // to clients too: the billing UI consumes the admin list endpoint
+    // (platform:manage) for management and the
+    // `/v1/plans/:planId/validate-coupon` endpoint for the dry-run preview.
+    // There is NO read path where an org could enumerate coupons to find
+    // a discount they aren't supposed to know about.
+    match /planCoupons/{couponId} {
+      allow read: if isSuperAdmin();
+      allow create, update, delete: if false;
+    }
+
+    // ─── Coupon Redemptions (Phase 7+ item #7) ──────────────────────────────
+    // Append-only audit trail of coupon redemptions. One doc per successful
+    // redeem. Written transactionally alongside the subscription upgrade
+    // by the API — never by a client. Super-admin reads for forensics;
+    // orgs can read their own redemptions (denorm lives on the
+    // subscription.appliedCoupon field too, so most UI needs don't hit
+    // this collection directly).
+    match /couponRedemptions/{redemptionId} {
+      allow read: if isSuperAdmin()
+                  || (isAuthenticated() && belongsToOrg(resource.data.organizationId));
+      allow create, update, delete: if false;
     }
 
     // ─── Invites ────────────────────────────────────────────────────────────

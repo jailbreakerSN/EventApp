@@ -208,9 +208,77 @@ export const EventSchema = z.object({
       }),
     )
     .default([]),
+  // ─── Recurring events (Phase 7+ item #B1) ──────────────────────────────
+  // Series pattern: organizers create a "parent" event that carries the
+  // `recurrenceRule`. The create-event path generates N child events
+  // (one per occurrence, `parentEventId` = parent's id, stable
+  // `occurrenceIndex` for ordering). Children are plain Event docs in
+  // every other respect — registrations, badges, scan policies all
+  // attach per-occurrence.
+  //
+  // Why parent+children instead of virtual occurrences:
+  //   - Registrations stay per-occurrence (no aggregate migration).
+  //   - Participant discovery queries plain events by date (no expand-at-read).
+  //   - Cancelling one week without touching others falls out for free.
+  //   - Plan quota math is honest: each occurrence counts toward maxEvents.
+  //
+  // The parent is INVISIBLE to participants by default (filter
+  // `isRecurringParent !== true` on public surfaces). Organizer UI
+  // shows it as the series "anchor" for bulk actions.
+  isRecurringParent: z.boolean().default(false).optional(),
+  // Opaque reference to the parent when this doc is an occurrence.
+  // Null/absent on parents and on one-off (non-recurring) events.
+  parentEventId: z.string().nullable().optional(),
+  // Chronological position inside the series (0-indexed). Absent on
+  // parents and on one-offs. Stable across subsequent edits — if the
+  // organizer cancels an occurrence we keep the index unchanged so
+  // downstream references (ticket receipts, audit logs) still match.
+  occurrenceIndex: z.number().int().nonnegative().nullable().optional(),
+  // Rule carried ONLY on parents (and echoed on children for convenience
+  // in the UI — the children won't regenerate from it). See
+  // RecurrenceRuleSchema below.
+  recurrenceRule: z
+    .object({
+      freq: z.enum(["daily", "weekly", "monthly"]),
+      interval: z.number().int().positive().default(1),
+      byDay: z
+        .array(z.enum(["MO", "TU", "WE", "TH", "FR", "SA", "SU"]))
+        .optional(),
+      byMonthDay: z.array(z.number().int().min(1).max(31)).optional(),
+      // Either `until` (inclusive upper bound, ISO datetime) OR `count`
+      // (explicit occurrence count). At least one MUST be present; the
+      // service caps total occurrences at RECURRENCE_MAX_OCCURRENCES so
+      // plan-quota math stays legible and runaway rules can't create
+      // thousands of events.
+      until: z.string().datetime().nullable().optional(),
+      count: z.number().int().positive().max(52).nullable().optional(),
+    })
+    .nullable()
+    .optional(),
 });
 
 export type Event = z.infer<typeof EventSchema>;
+
+// ─── Recurrence rule helper export ────────────────────────────────────────
+// Surfaced separately so the create DTO + the recurrence service can both
+// reuse the validated shape without re-opening the Event schema.
+export const RecurrenceRuleSchema = z.object({
+  freq: z.enum(["daily", "weekly", "monthly"]),
+  interval: z.number().int().positive().default(1),
+  byDay: z.array(z.enum(["MO", "TU", "WE", "TH", "FR", "SA", "SU"])).optional(),
+  byMonthDay: z.array(z.number().int().min(1).max(31)).optional(),
+  until: z.string().datetime().nullable().optional(),
+  count: z.number().int().positive().max(52).nullable().optional(),
+});
+export type RecurrenceRule = z.infer<typeof RecurrenceRuleSchema>;
+
+/**
+ * Hard cap on generated occurrences per series. Matches the MVP limit:
+ * weekly for a year (52). The service enforces this even if the rule
+ * doesn't carry an explicit `count` so `until: null + freq: daily` can't
+ * create 365 children in one click.
+ */
+export const RECURRENCE_MAX_OCCURRENCES = 52;
 
 export const CreateEventSchema = EventSchema.omit({
   id: true,
@@ -231,12 +299,25 @@ export const CreateEventSchema = EventSchema.omit({
   // "single"); organizers flip it via a dedicated `setScanPolicy`
   // service method once the event is live.
   scanPolicy: true,
+  // Server-owned: parents get flipped on inside the recurrence branch of
+  // `event.service.create`; children never receive `isRecurringParent`.
+  // `parentEventId` + `occurrenceIndex` are also stamped by the service.
+  isRecurringParent: true,
+  parentEventId: true,
+  occurrenceIndex: true,
 });
 
 export type CreateEventDto = z.infer<typeof CreateEventSchema>;
 
 export const UpdateEventSchema = CreateEventSchema.partial().omit({
   organizationId: true,
+  // Phase 7+ item #B1 — series is sealed at create time. Mutating the
+  // rule on an existing parent would decouple the stored metadata from
+  // the actual child docs (which never regenerate from the rule). If a
+  // future feature regenerates occurrences from the stored rule, an
+  // attacker-supplied patch could inject a malicious schedule. Safer
+  // to reject the mutation at the schema boundary.
+  recurrenceRule: true,
 });
 
 export type UpdateEventDto = z.infer<typeof UpdateEventSchema>;

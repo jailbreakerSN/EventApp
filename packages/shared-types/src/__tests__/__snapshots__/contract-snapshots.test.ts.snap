@@ -725,6 +725,8 @@ exports[`shared-types contract snapshots > AuditLogEntrySchema shape is stable 1
           "event.created",
           "event.published",
           "event.qr_key_rotated",
+          "event.series_created",
+          "event.series_published",
           "event.unpublished",
           "event.updated",
           "fcm.token_registered",
@@ -765,6 +767,9 @@ exports[`shared-types contract snapshots > AuditLogEntrySchema shape is stable 1
           "plan.archived",
           "plan.created",
           "plan.updated",
+          "plan_coupon.archived",
+          "plan_coupon.created",
+          "plan_coupon.updated",
           "push.clicked",
           "push.displayed",
           "receipt.generated",
@@ -1602,6 +1607,115 @@ exports[`shared-types contract snapshots > CreateEventSchema shape is stable 1`]
         "kind": "string",
       },
     },
+    "recurrenceRule": {
+      "required": false,
+      "shape": {
+        "inner": {
+          "inner": {
+            "fields": {
+              "byDay": {
+                "required": false,
+                "shape": {
+                  "inner": {
+                    "element": {
+                      "kind": "enum",
+                      "values": [
+                        "FR",
+                        "MO",
+                        "SA",
+                        "SU",
+                        "TH",
+                        "TU",
+                        "WE",
+                      ],
+                    },
+                    "kind": "array",
+                  },
+                  "kind": "optional",
+                },
+              },
+              "byMonthDay": {
+                "required": false,
+                "shape": {
+                  "inner": {
+                    "element": {
+                      "checks": [
+                        "int",
+                        "max",
+                        "min",
+                      ],
+                      "kind": "number",
+                    },
+                    "kind": "array",
+                  },
+                  "kind": "optional",
+                },
+              },
+              "count": {
+                "required": false,
+                "shape": {
+                  "inner": {
+                    "inner": {
+                      "checks": [
+                        "int",
+                        "max",
+                        "min",
+                      ],
+                      "kind": "number",
+                    },
+                    "kind": "nullable",
+                  },
+                  "kind": "optional",
+                },
+              },
+              "freq": {
+                "required": true,
+                "shape": {
+                  "kind": "enum",
+                  "values": [
+                    "daily",
+                    "monthly",
+                    "weekly",
+                  ],
+                },
+              },
+              "interval": {
+                "required": false,
+                "shape": {
+                  "hasDefault": true,
+                  "inner": {
+                    "checks": [
+                      "int",
+                      "min",
+                    ],
+                    "kind": "number",
+                  },
+                  "kind": "default",
+                },
+              },
+              "until": {
+                "required": false,
+                "shape": {
+                  "inner": {
+                    "inner": {
+                      "checks": [
+                        "datetime",
+                      ],
+                      "kind": "string",
+                    },
+                    "kind": "nullable",
+                  },
+                  "kind": "optional",
+                },
+              },
+            },
+            "kind": "object",
+          },
+          "kind": "nullable",
+        },
+        "kind": "optional",
+      },
+    },
     "requiresApproval": {
       "required": false,
       "shape": {
@@ -2145,6 +2259,19 @@ exports[`shared-types contract snapshots > EventSchema shape is stable 1`] = `
         "kind": "default",
       },
     },
+    "isRecurringParent": {
+      "required": false,
+      "shape": {
+        "inner": {
+          "hasDefault": true,
+          "inner": {
+            "kind": "boolean",
+          },
+          "kind": "default",
+        },
+        "kind": "optional",
+      },
+    },
     "location": {
       "required": true,
       "shape": {
@@ -2247,10 +2374,38 @@ exports[`shared-types contract snapshots > EventSchema shape is stable 1`] = `
         "kind": "optional",
       },
     },
+    "occurrenceIndex": {
+      "required": false,
+      "shape": {
+        "inner": {
+          "inner": {
+            "checks": [
+              "int",
+              "min",
+            ],
+            "kind": "number",
+          },
+          "kind": "nullable",
+        },
+        "kind": "optional",
+      },
+    },
     "organizationId": {
       "required": true,
       "shape": {
         "kind": "string",
+      },
+    },
+    "parentEventId": {
+      "required": false,
+      "shape": {
+        "inner": {
+          "inner": {
+            "kind": "string",
+          },
+          "kind": "nullable",
+        },
+        "kind": "optional",
       },
     },
     "publishedAt": {
@@ -2314,6 +2469,115 @@ exports[`shared-types contract snapshots > EventSchema shape is stable 1`] = `
           "kind": "array",
         },
         "kind": "default",
+      },
+    },
+    "recurrenceRule": {
+      "required": false,
+      "shape": {
+        "inner": {
+          "inner": {
+            "fields": {
+              "byDay": {
+                "required": false,
+                "shape": {
+                  "inner": {
+                    "element": {
+                      "kind": "enum",
+                      "values": [
+                        "FR",
+                        "MO",
+                        "SA",
+                        "SU",
+                        "TH",
+                        "TU",
+                        "WE",
+                      ],
+                    },
+                    "kind": "array",
+                  },
+                  "kind": "optional",
+                },
+              },
+              "byMonthDay": {
+                "required": false,
+                "shape": {
+                  "inner": {
+                    "element": {
+                      "checks": [
+                        "int",
+                        "max",
+                        "min",
+                      ],
+                      "kind": "number",
+                    },
+                    "kind": "array",
+                  },
+                  "kind": "optional",
+                },
+              },
+              "count": {
+                "required": false,
+                "shape": {
+                  "inner": {
+                    "inner": {
+                      "checks": [
+                        "int",
+                        "max",
+                        "min",
+                      ],
+                      "kind": "number",
+                    },
+                    "kind": "nullable",
+                  },
+                  "kind": "optional",
+                },
+              },
+              "freq": {
+                "required": true,
+                "shape": {
+                  "kind": "enum",
+                  "values": [
+                    "daily",
+                    "monthly",
+                    "weekly",
+                  ],
+                },
+              },
+              "interval": {
+                "required": false,
+                "shape": {
+                  "hasDefault": true,
+                  "inner": {
+                    "checks": [
+                      "int",
+                      "min",
+                    ],
+                    "kind": "number",
+                  },
+                  "kind": "default",
+                },
+              },
+              "until": {
+                "required": false,
+                "shape": {
+                  "inner": {
+                    "inner": {
+                      "checks": [
+                        "datetime",
+                      ],
+                      "kind": "string",
+                    },
+                    "kind": "nullable",
+                  },
+                  "kind": "optional",
+                },
+              },
+            },
+            "kind": "object",
+          },
+          "kind": "nullable",
+        },
+        "kind": "optional",
       },
     },
     "registeredCount": {
@@ -3991,6 +4255,51 @@ exports[`shared-types contract snapshots > RegistrationStatusSchema shape is sta
 exports[`shared-types contract snapshots > SubscriptionSchema shape is stable 1`] = `
 {
   "fields": {
+    "appliedCoupon": {
+      "required": false,
+      "shape": {
+        "inner": {
+          "inner": {
+            "fields": {
+              "code": {
+                "required": true,
+                "shape": {
+                  "kind": "string",
+                },
+              },
+              "couponId": {
+                "required": true,
+                "shape": {
+                  "kind": "string",
+                },
+              },
+              "discountXof": {
+                "required": true,
+                "shape": {
+                  "checks": [
+                    "int",
+                    "min",
+                  ],
+                  "kind": "number",
+                },
+              },
+              "redeemedAt": {
+                "required": true,
+                "shape": {
+                  "checks": [
+                    "datetime",
+                  ],
+                  "kind": "string",
+                },
+              },
+            },
+            "kind": "object",
+          },
+          "kind": "nullable",
+        },
+        "kind": "optional",
+      },
+    },
     "assignedAt": {
       "required": false,
       "shape": {
@@ -4093,6 +4402,21 @@ exports[`shared-types contract snapshots > SubscriptionSchema shape is stable 1`
       "shape": {
         "inner": {
           "fields": {
+            "entitlements": {
+              "required": false,
+              "shape": {
+                "inner": {
+                  "key": {
+                    "kind": "string",
+                  },
+                  "kind": "record",
+                  "value": {
+                    "kind": "unknown",
+                  },
+                },
+                "kind": "optional",
+              },
+            },
             "features": {
               "required": false,
               "shape": {
@@ -4426,6 +4750,21 @@ exports[`shared-types contract snapshots > SubscriptionSchema shape is stable 1`
                 "shape": {
                   "inner": {
                     "fields": {
+                      "entitlements": {
+                        "required": false,
+                        "shape": {
+                          "inner": {
+                            "key": {
+                              "kind": "string",
+                            },
+                            "kind": "record",
+                            "value": {
+                              "kind": "unknown",
+                            },
+                          },
+                          "kind": "optional",
+                        },
+                      },
                       "features": {
                         "required": false,
                         "shape": {

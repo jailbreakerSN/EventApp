@@ -95,16 +95,21 @@ export default function BillingPage() {
     setSelectedCycle(cycle);
   };
 
-  const handleConfirmChange = async () => {
+  const handleConfirmChange = async (opts?: { couponCode?: string }) => {
     if (!selectedPlan) return;
     const isUpgrade = PLAN_ORDER.indexOf(selectedPlan) > PLAN_ORDER.indexOf(plan);
     setMutationError(null);
     try {
       if (isUpgrade) {
-        await upgradePlan.mutateAsync({ plan: selectedPlan, cycle: selectedCycle });
+        await upgradePlan.mutateAsync({
+          plan: selectedPlan,
+          cycle: selectedCycle,
+          couponCode: opts?.couponCode,
+        });
         const cycleLabel = selectedCycle === "annual" ? " (annuel)" : "";
+        const couponLabel = opts?.couponCode ? ` avec le coupon ${opts.couponCode}` : "";
         toast.success(
-          `Plan mis à niveau vers ${getPlanDisplay(selectedPlan, planCatalog).name.fr}${cycleLabel}`,
+          `Plan mis à niveau vers ${getPlanDisplay(selectedPlan, planCatalog).name.fr}${cycleLabel}${couponLabel}`,
         );
       } else {
         // Default: schedule at currentPeriodEnd (prepaid rights honored).
@@ -364,6 +369,7 @@ export default function BillingPage() {
         <UpgradePreview
           currentPlan={plan}
           targetPlan={selectedPlan}
+          targetCycle={selectedCycle}
           onConfirm={handleConfirmChange}
           onCancel={() => setSelectedPlan(null)}
           isPending={upgradePlan.isPending || downgradePlan.isPending}

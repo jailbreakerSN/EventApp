@@ -170,6 +170,31 @@ export const eventRoutes: FastifyPluginAsync = async (fastify) => {
     },
   );
 
+  // ─── Publish Series (Phase 7+ item #B1) ─────────────────────────────────
+  // Publishes a recurring-event series: parent + every child
+  // atomically. Requires `event:publish`. Rejects non-parent event ids.
+  fastify.post(
+    "/:eventId/publish-series",
+    {
+      preHandler: [
+        authenticate,
+        requireEmailVerified,
+        requirePermission("event:publish"),
+        validate({ params: ParamsWithEventId }),
+      ],
+      schema: {
+        tags: ["Events"],
+        summary: "Publish a recurring event series (parent + all children)",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const { eventId } = request.params as z.infer<typeof ParamsWithEventId>;
+      const result = await eventService.publishSeries(eventId, request.user!);
+      return reply.send({ success: true, data: result });
+    },
+  );
+
   // ─── Unpublish Event ─────────────────────────────────────────────────────
   fastify.post(
     "/:eventId/unpublish",

@@ -21,8 +21,10 @@ import { useTranslations } from "next-intl";
 import { useErrorHandler, type ResolvedError } from "@/hooks/use-error-handler";
 import {
   AssignPlanSchema,
+  EntitlementMapSchema,
   PLAN_LIMIT_UNLIMITED,
   type AssignPlanDto,
+  type EntitlementMap,
   type Organization,
   type Plan,
   type PlanFeatures,
@@ -81,6 +83,9 @@ interface FormValues {
   priceXof: number;
   validUntil: string; // empty → no validUntil
   notes: string;
+  // A1 — explicit per-key entitlement overrides (JSON MVP).
+  // Empty string → no entitlement override (legacy path).
+  entitlementsJson: string;
 }
 
 // ─── Dialog ─────────────────────────────────────────────────────────────
@@ -89,6 +94,10 @@ export function AssignPlanDialog({ open, org, onClose }: AssignPlanDialogProps) 
   const plansQuery = useAdminPlans({ includeArchived: false });
   const assignPlan = useAssignPlan();
   const [submitError, setSubmitError] = useState<ResolvedError | null>(null);
+  // A1 — inline error for the entitlement override JSON textarea.
+  // Null = no error; string = current validation error to render under
+  // the field. Cleared on successful parse inside onSubmit.
+  const [entitlementsJsonError, setEntitlementsJsonError] = useState<string | null>(null);
   const { resolve: resolveError } = useErrorHandler();
   const tErrors = useTranslations("errors");
   const tErrorActions = useTranslations("errors.actions");
@@ -120,6 +129,7 @@ export function AssignPlanDialog({ open, org, onClose }: AssignPlanDialogProps) 
       priceXof: 0,
       validUntil: "",
       notes: "",
+      entitlementsJson: "",
     };
   }, [plans]);
 
@@ -161,13 +171,51 @@ export function AssignPlanDialog({ open, org, onClose }: AssignPlanDialogProps) 
       if (v.enabled) features[k as FeatureKey] = v.value;
     }
 
+    // ── A1 — parse + strict-validate the entitlement override JSON.
+    // Empty textarea → no override. Malformed JSON / Zod rejection
+    // block submit with an inline error (admin never submits garbage).
+    let entitlementsOverride: EntitlementMap | undefined;
+    const rawEntitlementsJson = values.entitlementsJson.trim();
+    if (rawEntitlementsJson) {
+      try {
+        const parsed = JSON.parse(rawEntitlementsJson);
+        const zodResult = EntitlementMapSchema.safeParse(parsed);
+        if (!zodResult.success) {
+          const first = zodResult.error.issues[0];
+          setEntitlementsJsonError(
+            first
+              ? `${first.path.join(".") || "(root)"}: ${first.message}`
+              : "JSON invalide",
+          );
+          return;
+        }
+        setEntitlementsJsonError(null);
+        if (Object.keys(zodResult.data).length > 0) {
+          entitlementsOverride = zodResult.data;
+        }
+      } catch (err) {
+        setEntitlementsJsonError(
+          `JSON malformé : ${err instanceof Error ? err.message : String(err)}`,
+        );
+        return;
+      }
+    } else {
+      setEntitlementsJsonError(null);
+    }
+
     const hasLimitOverride = Object.keys(limits).length > 0;
     const hasFeatureOverride = Object.keys(features).length > 0;
     const hasPriceOverride = values.overridePrice;
     const hasValidUntil = !!values.validUntil;
     const hasNotes = !!values.notes.trim();
+    const hasEntitlementOverride = !!entitlementsOverride;
     const hasAnyOverride =
-      hasLimitOverride || hasFeatureOverride || hasPriceOverride || hasValidUntil || hasNotes;
+      hasLimitOverride ||
+      hasFeatureOverride ||
+      hasPriceOverride ||
+      hasValidUntil ||
+      hasNotes ||
+      hasEntitlementOverride;
 
     const dto: AssignPlanDto = hasAnyOverride
       ? {
@@ -175,6 +223,7 @@ export function AssignPlanDialog({ open, org, onClose }: AssignPlanDialogProps) 
           overrides: {
             ...(hasLimitOverride ? { limits } : {}),
             ...(hasFeatureOverride ? { features } : {}),
+            ...(hasEntitlementOverride ? { entitlements: entitlementsOverride } : {}),
             ...(hasPriceOverride ? { priceXof: values.priceXof } : {}),
             ...(hasNotes ? { notes: values.notes.trim() } : {}),
             ...(hasValidUntil ? { validUntil: new Date(values.validUntil).toISOString() } : {}),
@@ -394,6 +443,40 @@ export function AssignPlanDialog({ open, org, onClose }: AssignPlanDialogProps) 
                 rows={2}
                 placeholder="ex: Deal négocié avec Sonatel pour l'édition 2026"
                 {...register("notes")}
+              />
+            </FormField>
+
+            {/* A1 — entitlement override (super-admin JSON editor).
+                MVP surface: super-admins can override any entitlement
+                key per-org, layered on top of the plan's own
+                entitlements. Strict client-side Zod validation blocks
+                submit; the server runs the same check. Empty = no
+                override (legacy path). */}
+            <FormField
+              label="Entitlements personnalisés (avancé)"
+              hint={
+                "JSON — clés `feature.*` / `quota.*` / `tiered.*`. " +
+                "Laisser vide pour conserver les entitlements du plan. " +
+                "Voir le placeholder pour un exemple."
+              }
+              htmlFor="entitlementsJson"
+              error={entitlementsJsonError ?? undefined}
+            >
+              <Textarea
+                id="entitlementsJson"
+                rows={6}
+                className="font-mono text-xs"
+                placeholder={`{\n  "feature.smsNotifications": { "kind": "boolean", "value": true }\n}`}
+                {...register("entitlementsJson")}
+                onChange={(e) => {
+                  register("entitlementsJson").onChange(e);
+                  // Clear the error as soon as the admin starts editing
+                  // again — otherwise a stale message persists after they
+                  // fix the issue.
+                  if (entitlementsJsonError) setEntitlementsJsonError(null);
+                }}
+                aria-invalid={entitlementsJsonError != null}
+                aria-describedby={entitlementsJsonError ? "entitlementsJson-error" : undefined}
               />
             </FormField>
           </div>
