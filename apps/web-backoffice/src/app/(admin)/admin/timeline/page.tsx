@@ -137,7 +137,7 @@ export default function AdminTimelinePage() {
           </BreadcrumbItem>
           <BreadcrumbSeparator />
           <BreadcrumbItem>
-            <BreadcrumbPage>Time-travel</BreadcrumbPage>
+            <BreadcrumbPage>Chronologie</BreadcrumbPage>
           </BreadcrumbItem>
         </BreadcrumbList>
       </Breadcrumb>
