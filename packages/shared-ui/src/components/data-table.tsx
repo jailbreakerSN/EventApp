@@ -1,9 +1,17 @@
 "use client";
 
 import * as React from "react";
+import { ChevronDown, ChevronsUpDown, ChevronUp } from "lucide-react";
 import { cn } from "../lib/utils";
 import { Skeleton } from "./skeleton";
 import { EmptyState } from "./empty-state";
+
+export type SortDirection = "asc" | "desc";
+
+export interface DataTableSortState {
+  field: string;
+  dir: SortDirection;
+}
 
 export interface DataTableColumn<T> {
   key: string;
@@ -27,6 +35,22 @@ export interface DataTableColumn<T> {
    * Industry precedent: Stripe Dashboard, Linear, Notion.
    */
   stopRowNavigation?: boolean;
+  /**
+   * V2 — sortable header. When true, the header becomes a button that
+   * cycles through none → asc → desc → none on click. Pair with the
+   * `sort` and `onToggleSort` props on DataTable. The sort key sent to
+   * the parent is `sortField ?? key`. Doctrine: every column whose
+   * underlying field is indexable on the server SHOULD be sortable.
+   */
+  sortable?: boolean;
+  /** Server-side sort key. Defaults to `key`. */
+  sortField?: string;
+  /** V2 — text alignment. Defaults to "left". */
+  align?: "left" | "right" | "center";
+  /** V2 — sticky on desktop scroll. Use sparingly (1 col left, 1 col right max). */
+  sticky?: "left" | "right";
+  /** V2 — accessible name for icon-only columns. */
+  ariaLabel?: string;
 }
 
 export interface DataTableProps<T> extends React.HTMLAttributes<HTMLDivElement> {
@@ -76,6 +100,23 @@ export interface DataTableProps<T> extends React.HTMLAttributes<HTMLDivElement> 
    * cursor so j/k after a hover keeps a coherent context.
    */
   onRowHover?: (rowIndex: number) => void;
+  /**
+   * V2 — controlled sort state. Pair with `onToggleSort`. The doctrine
+   * mandates server-side sort for admin tables; pass the value from
+   * `useTableState` and route the toggle back to it.
+   */
+  sort?: DataTableSortState | null;
+  onToggleSort?: (sortField: string) => void;
+  /**
+   * V2 — sticky thead on vertical scroll. Default: true. Disable for
+   * tables embedded inside a card with its own scroll context.
+   */
+  stickyHeader?: boolean;
+  /**
+   * V2 — row density. "comfortable" matches v1 spacing; "compact" trims
+   * to py-2 px-3 + text-sm for power-user views.
+   */
+  density?: "compact" | "comfortable";
 }
 
 function DataTable<T extends Record<string, unknown>>({
@@ -89,8 +130,64 @@ function DataTable<T extends Record<string, unknown>>({
   onRowClick,
   activeRowIndex = -1,
   onRowHover,
+  sort,
+  onToggleSort,
+  stickyHeader = true,
+  density = "comfortable",
   ...props
 }: DataTableProps<T>) {
+  const padCell = density === "compact" ? "px-3 py-2" : "px-4 py-3";
+  const fontSize = density === "compact" ? "text-sm" : "text-sm";
+  const headerHeight = density === "compact" ? "h-9" : "h-10";
+
+  const alignClass = (col: DataTableColumn<T>): string =>
+    col.align === "right" ? "text-right" : col.align === "center" ? "text-center" : "text-left";
+
+  const stickyCellClass = (col: DataTableColumn<T>): string =>
+    col.sticky === "left"
+      ? "sticky left-0 z-[1] bg-card shadow-[1px_0_0_0_var(--border)]"
+      : col.sticky === "right"
+        ? "sticky right-0 z-[1] bg-card shadow-[-1px_0_0_0_var(--border)]"
+        : "";
+
+  const renderHeaderContent = (col: DataTableColumn<T>): React.ReactNode => {
+    if (!col.sortable || !onToggleSort) return col.header;
+    const sortField = col.sortField ?? col.key;
+    const isActive = sort?.field === sortField;
+    const dir = isActive ? sort.dir : null;
+    const ariaLabel =
+      typeof col.header === "string"
+        ? `Trier par ${col.header}${dir === "asc" ? " (croissant)" : dir === "desc" ? " (décroissant)" : ""}`
+        : col.ariaLabel ?? "Trier la colonne";
+
+    const Icon = dir === "asc" ? ChevronUp : dir === "desc" ? ChevronDown : ChevronsUpDown;
+
+    return (
+      <button
+        type="button"
+        onClick={() => onToggleSort(sortField)}
+        aria-label={ariaLabel}
+        className={cn(
+          "inline-flex items-center gap-1.5 font-medium hover:text-foreground transition-colors",
+          "focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-sm",
+          isActive && "text-foreground",
+        )}
+      >
+        <span>{col.header}</span>
+        <Icon
+          className={cn("h-3.5 w-3.5 shrink-0", isActive ? "opacity-100" : "opacity-40")}
+          aria-hidden="true"
+        />
+      </button>
+    );
+  };
+
+  const ariaSortValue = (col: DataTableColumn<T>): "ascending" | "descending" | "none" | undefined => {
+    if (!col.sortable) return undefined;
+    const sortField = col.sortField ?? col.key;
+    if (sort?.field !== sortField) return "none";
+    return sort.dir === "asc" ? "ascending" : "descending";
+  };
   const primaryCol = columns.find((c) => c.primary) ?? columns[0];
   const detailCols = responsiveCards
     ? columns.filter((c) => c !== primaryCol && !c.hideOnMobile)
@@ -158,25 +255,37 @@ function DataTable<T extends Record<string, unknown>>({
           aria-rowcount={data.length}
           aria-colcount={columns.length}
         >
-          <thead className="bg-muted/50">
+          <thead
+            className={cn(
+              "bg-muted/50",
+              stickyHeader && "sticky top-0 z-[2]",
+            )}
+          >
             <tr>
               {columns.map((col) => (
                 <th
                   key={col.key}
                   scope="col"
-                  className="h-10 px-4 text-left align-middle font-medium text-muted-foreground whitespace-nowrap"
+                  aria-sort={ariaSortValue(col)}
+                  aria-label={typeof col.header === "string" ? undefined : col.ariaLabel}
+                  className={cn(
+                    headerHeight,
+                    "px-4 align-middle font-medium text-muted-foreground whitespace-nowrap",
+                    alignClass(col),
+                    stickyCellClass(col),
+                  )}
                 >
-                  {col.header}
+                  {renderHeaderContent(col)}
                 </th>
               ))}
             </tr>
           </thead>
-          <tbody>
+          <tbody className={fontSize}>
             {loading
               ? Array.from({ length: 5 }).map((_, rowIdx) => (
                   <tr key={rowIdx} className="border-t border-border">
                     {columns.map((col) => (
-                      <td key={col.key} className="px-4 py-3">
+                      <td key={col.key} className={cn(padCell, stickyCellClass(col))}>
                         <Skeleton className="h-4 w-3/4" />
                       </td>
                     ))}
@@ -191,11 +300,6 @@ function DataTable<T extends Record<string, unknown>>({
                       <tr
                         key={rowIdx}
                         {...interaction}
-                        // B2 — when a page-level keyboard nav hook
-                        // owns the cursor, expose it to assistive
-                        // tech via `aria-selected` and the
-                        // `data-active` attribute used by the
-                        // theming layer.
                         aria-selected={onRowClick ? isActive : undefined}
                         data-active={isActive || undefined}
                         onMouseEnter={onRowHover ? () => onRowHover(rowIdx) : undefined}
@@ -208,7 +312,12 @@ function DataTable<T extends Record<string, unknown>>({
                         {columns.map((col) => (
                           <td
                             key={col.key}
-                            className="px-4 py-3 text-foreground align-middle"
+                            className={cn(
+                              padCell,
+                              "text-foreground align-middle",
+                              alignClass(col),
+                              stickyCellClass(col),
+                            )}
                             {...cellClickGuard(col)}
                           >
                             {renderCellValue(col, item)}

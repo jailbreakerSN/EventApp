@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
+import * as React from "react";
 import { Badge } from "../badge";
 import { Button } from "../button";
 import { DataTable } from "../data-table";
@@ -177,5 +178,81 @@ export const ResponsiveCards: Story = {
       ]}
       data={data}
     />
+  ),
+};
+
+export const SortableColumns: Story = {
+  name: "V2: sortable headers (controlled)",
+  render: () => {
+    const SortablePreview = (): JSX.Element => {
+      const [sort, setSort] = React.useState<{ field: string; dir: "asc" | "desc" } | null>({
+        field: "name",
+        dir: "asc",
+      });
+      const toggle = (field: string): void => {
+        setSort((current) => {
+          if (current?.field !== field) return { field, dir: "asc" };
+          if (current.dir === "asc") return { field, dir: "desc" };
+          return null;
+        });
+      };
+      const sorted = React.useMemo(() => {
+        if (!sort) return data;
+        const sign = sort.dir === "asc" ? 1 : -1;
+        return [...data].sort((a, b) => {
+          const av = (a as Record<string, unknown>)[sort.field] as string;
+          const bv = (b as Record<string, unknown>)[sort.field] as string;
+          return av > bv ? sign : av < bv ? -sign : 0;
+        });
+      }, [sort]);
+      return (
+        <DataTable<Reg>
+          aria-label="Liste triable"
+          sort={sort}
+          onToggleSort={toggle}
+          columns={[
+            { key: "name", header: "Nom", primary: true, sortable: true },
+            { key: "email", header: "Email", sortable: true },
+            { key: "status", header: "Statut", render: (r) => statusBadge(r.status) },
+          ]}
+          data={sorted}
+        />
+      );
+    };
+    return <SortablePreview />;
+  },
+};
+
+export const CompactDensity: Story = {
+  name: "V2: compact density",
+  render: () => (
+    <DataTable<Reg>
+      aria-label="Liste compacte"
+      density="compact"
+      columns={[
+        { key: "name", header: "Nom", primary: true },
+        { key: "email", header: "Email" },
+        { key: "status", header: "Statut", render: (r) => statusBadge(r.status) },
+      ]}
+      data={data}
+    />
+  ),
+};
+
+export const StickyHeaderShowcase: Story = {
+  name: "V2: sticky header on tall scroll",
+  render: () => (
+    <div style={{ maxHeight: 280, overflow: "auto" }}>
+      <DataTable<Reg>
+        aria-label="Sticky header"
+        stickyHeader
+        columns={[
+          { key: "name", header: "Nom", primary: true, sortable: true },
+          { key: "email", header: "Email" },
+          { key: "status", header: "Statut", render: (r) => statusBadge(r.status) },
+        ]}
+        data={[...data, ...data, ...data, ...data, ...data]}
+      />
+    </div>
   ),
 };
