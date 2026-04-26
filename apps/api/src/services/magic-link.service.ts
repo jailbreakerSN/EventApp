@@ -30,6 +30,7 @@ import { createHmac, timingSafeEqual, createHash } from "crypto";
 import { BaseService } from "./base.service";
 import { db, COLLECTIONS } from "@/config/firebase";
 import { eventRepository } from "@/repositories/event.repository";
+import { organizationRepository } from "@/repositories/organization.repository";
 import { eventBus } from "@/events/event-bus";
 import { getRequestId } from "@/context/request-context";
 import { ForbiddenError, NotFoundError, ValidationError } from "@/errors/app-error";
@@ -63,6 +64,18 @@ class MagicLinkService extends BaseService {
     const event = await eventRepository.findByIdOrThrow(dto.eventId);
     this.requireOrganizationAccess(user, event.organizationId);
 
+    // Speaker / sponsor portals are pro+ plan features per CLAUDE.md.
+    // Issuing a magic link is the primary mechanism for handing out
+    // portal access, so the gate lives on the issue path. The verify
+    // path stays open — once a token is minted, downgrading the plan
+    // doesn't invalidate links that are already in transit (better
+    // UX than punishing already-invited speakers).
+    const org = await organizationRepository.findByIdOrThrow(event.organizationId);
+    this.requirePlanFeature(
+      org,
+      dto.role === "speaker" ? "speakerPortal" : "sponsorPortal",
+    );
+
     const ttlHours = dto.ttlHours ?? DEFAULT_TTL_HOURS;
     const now = new Date();
     const expiresAt = new Date(now.getTime() + ttlHours * 60 * 60 * 1000);
@@ -89,6 +102,11 @@ class MagicLinkService extends BaseService {
     };
     await db.collection(COLLECTIONS.MAGIC_LINKS).doc(tokenHash).set(record);
 
+    // Privacy: do NOT include `recipientEmail` in the domain event
+    // payload — the audit row gets `tokenHash` only, and an
+    // investigator with `magic_link:read` can join to the
+    // `magicLinks/{tokenHash}` doc to retrieve the recipient. Keeps
+    // PII out of the immutable audit log per CLAUDE.md.
     eventBus.emit("magic_link.issued", {
       actorId: user.uid,
       requestId: getRequestId(),
@@ -98,7 +116,6 @@ class MagicLinkService extends BaseService {
       resourceId: dto.resourceId,
       eventId: dto.eventId,
       organizationId: event.organizationId,
-      recipientEmail: dto.recipientEmail.toLowerCase(),
       expiresAt: expiresAt.toISOString(),
     });
 

@@ -22,6 +22,7 @@ import { BaseService } from "./base.service";
 import { db, COLLECTIONS } from "@/config/firebase";
 import { eventRepository } from "@/repositories/event.repository";
 import { paymentRepository } from "@/repositories/payment.repository";
+import { payoutRepository } from "@/repositories/payout.repository";
 import { broadcastRepository } from "@/repositories/broadcast.repository";
 import { eventBus } from "@/events/event-bus";
 import { getRequestId } from "@/context/request-context";
@@ -114,19 +115,44 @@ class PostEventReportService extends BaseService {
 
   /**
    * Organizer-initiated payout request from the post-event surface.
-   * Computes the period from the event's first → last succeeded
-   * payment (capped to `now`) and delegates to the shared payout
-   * service so the ledger sweep stays atomic.
    *
-   * Emits `payout.requested` AFTER the payout is created, so the
-   * audit log distinguishes the organizer-initiated path from the
-   * admin or scheduled-job paths (both of which emit only
-   * `payout.created`).
+   * Period bounds:
+   *   - `periodFrom` = MAX(`existingPayouts[].periodTo`) + 1 ms when
+   *     the event already has payouts; otherwise MIN(succeeded
+   *     payment's `completedAt`). This avoids overlapping with prior
+   *     payouts so the inner `payoutService.createPayout` lock-key
+   *     idempotency stays meaningful, and the ledger-sweep delta
+   *     captures only un-paid-out succeeded payments.
+   *   - `periodTo` = now.
+   *
+   * The actual write goes through `payoutService.createPayout`, which
+   * (post-merge with develop's payments overhaul):
+   *   - Re-reads payments inside the transaction (race-safe).
+   *   - Sums totals from the LEDGER (balanceTransactions), not the
+   *     payment array, so refunds racing the outer read are absorbed.
+   *   - Skips already-`paid_out` ledger entries (defense-in-depth on
+   *     top of the period filtering above).
+   *   - Enforces the `paidTickets` plan feature.
+   *   - Aborts cleanly with `ValidationError` when there's no fresh
+   *     net to pay out.
+   *
+   * Emits `payout.requested` AFTER the underlying service committed
+   * its `payout.created` event, so the audit timeline shows BOTH
+   * rows — the generic creation row from the shared service plus the
+   * organizer-initiated marker that lets ops dashboards distinguish
+   * "operator clicked Demander le versement" from "admin / cron
+   * triggered the payout".
    */
   async requestPayout(eventId: string, user: AuthUser): Promise<Payout> {
     this.requirePermission(user, "payout:create");
     const event = await eventRepository.findByIdOrThrow(eventId);
     this.requireOrganizationAccess(user, event.organizationId);
+
+    // Snapshot prior payouts on the event to compute a delta-only
+    // period. Single read; we don't need a transaction here because
+    // `payoutService.createPayout`'s own lock-key + ledger sweep
+    // makes the actual write race-safe.
+    const existingPayouts = await payoutRepository.findByEvent(eventId);
 
     const { data: payments } = await paymentRepository.findByEvent(
       eventId,
@@ -134,13 +160,12 @@ class PostEventReportService extends BaseService {
       { page: 1, limit: 10000 },
     );
     if (payments.length === 0) {
-      throw new ValidationError("Aucun paiement confirmé : impossible de demander un versement.");
+      throw new ValidationError(
+        "Aucun paiement confirmé : impossible de demander un versement.",
+      );
     }
-    // Compute the smallest enclosing period — `payout.service` filters
-    // payments by `[periodFrom, periodTo]` so we want bounds that
-    // capture every succeeded payment for this event.
-    const completedAts = payments.map((p) => p.completedAt ?? p.createdAt);
-    const periodFrom = completedAts.reduce((a, b) => (a < b ? a : b));
+
+    const periodFrom = computePayoutPeriodFrom(payments, existingPayouts);
     const periodTo = new Date().toISOString();
 
     const payout = await payoutService.createPayout(eventId, periodFrom, periodTo, user);
@@ -163,6 +188,35 @@ class PostEventReportService extends BaseService {
 }
 
 // ─── Pure helpers (exported for tests) ────────────────────────────────────
+
+/**
+ * Compute the lower bound of the payout period so it never overlaps a
+ * prior payout. Pure helper — no Firestore, no clock dependency.
+ *
+ * Rules:
+ *   - When `existingPayouts` is empty, return MIN(`completedAt` of
+ *     succeeded payments). This captures every dollar the event has
+ *     ever seen — sound for the first payout of the event.
+ *   - When prior payouts exist, return MAX(`periodTo`) of the most
+ *     recent payout, advanced by 1 ms so the inclusive `<=` filter
+ *     in `payoutService.createPayout` doesn't double-count the
+ *     boundary payment. The 1 ms offset works because Firestore ISO
+ *     timestamps carry millisecond precision.
+ */
+export function computePayoutPeriodFrom(
+  payments: ReadonlyArray<{ completedAt?: string | null; createdAt: string }>,
+  existingPayouts: ReadonlyArray<{ periodTo: string }>,
+): string {
+  if (existingPayouts.length > 0) {
+    const latestPeriodTo = existingPayouts
+      .map((p) => p.periodTo)
+      .reduce((a, b) => (a > b ? a : b));
+    const ms = new Date(latestPeriodTo).getTime() + 1;
+    return new Date(ms).toISOString();
+  }
+  const completedAts = payments.map((p) => p.completedAt ?? p.createdAt);
+  return completedAts.reduce((a, b) => (a < b ? a : b));
+}
 
 /**
  * `true` once the event's end is in the past. We use `endDate` if

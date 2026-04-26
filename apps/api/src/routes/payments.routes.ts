@@ -191,11 +191,14 @@ export const paymentRoutes: FastifyPluginAsync = async (fastify) => {
   // route. We strip the query string first so an attacker can't
   // smuggle `/webhook/` via `?ref=/webhook/x`, and we anchor on a
   // slash boundary so `mock-checkout-webhook` (hypothetical sibling
-  // path) wouldn't match. Used by both the JSON parser AND the
+  // path) wouldn't match. Matches both `/webhook/` (payments) and
+  // `/webhooks/` (WhatsApp + future plural-namespace routes) so
+  // every webhook endpoint gets a consistent rawBody attachment for
+  // HMAC verification. Used by both the JSON parser AND the
   // form-encoded parser to keep their scopes consistent.
   const isWebhookRequest = (req: FastifyRequest): boolean => {
     const path = (req.url ?? "").split("?")[0];
-    return /\/webhook(?:\/|$)/.test(path);
+    return /\/webhooks?(?:\/|$)/.test(path);
   };
 
   fastify.addContentTypeParser(

@@ -25,6 +25,9 @@ const hoisted = vi.hoisted(() => ({
   setMock: vi.fn(),
   updateMock: vi.fn(),
   emitMock: vi.fn(),
+  // Configurable plan for the speakerPortal / sponsorPortal gate.
+  // Default `pro` so happy-path tests don't need to opt-in.
+  orgPlan: "pro" as "free" | "starter" | "pro" | "enterprise",
 }));
 
 function setStoredDoc(value: typeof hoisted.storedDoc): void {
@@ -55,6 +58,19 @@ vi.mock("@/repositories/event.repository", () => ({
   },
 }));
 
+// O10 plan-gate: issue() now requires `speakerPortal` / `sponsorPortal`
+// (pro+). The plan is configurable via `hoisted.orgPlan` so the
+// PlanLimitError test below can flip it to `free`. Default = `pro`
+// for the happy paths.
+vi.mock("@/repositories/organization.repository", () => ({
+  organizationRepository: {
+    findByIdOrThrow: vi.fn(async (id: string) => ({
+      id,
+      plan: hoisted.orgPlan,
+    })),
+  },
+}));
+
 vi.mock("@/events/event-bus", () => ({
   eventBus: { emit: hoisted.emitMock },
 }));
@@ -69,6 +85,7 @@ beforeEach(() => {
   process.env.QR_SECRET = "test-secret-1234567890abcdef";
   vi.clearAllMocks();
   setStoredDoc(null);
+  hoisted.orgPlan = "pro";
 });
 
 afterEach(() => {
@@ -241,17 +258,21 @@ describe("magicLinkService.issue", () => {
     // Persist via Firestore set.
     expect(hoisted.setMock).toHaveBeenCalledTimes(1);
 
-    // Email is normalised to lower-case + emit carries it for audit.
+    // Email is normalised to lower-case on the persisted record.
     expect(result.record.recipientEmail).toBe("speaker@example.com");
+
+    // Privacy: the audit emit MUST NOT carry recipientEmail —
+    // forensic lookup goes via the Firestore doc keyed on tokenHash.
     expect(hoisted.emitMock).toHaveBeenCalledWith(
       "magic_link.issued",
       expect.objectContaining({
         role: "speaker",
         eventId: "evt-1",
         organizationId: "org-1",
-        recipientEmail: "speaker@example.com",
       }),
     );
+    const issuedCall = hoisted.emitMock.mock.calls.find((c) => c[0] === "magic_link.issued");
+    expect(issuedCall![1]).not.toHaveProperty("recipientEmail");
   });
 
   it("rejects callers without event:update (permission denial)", async () => {
@@ -283,6 +304,42 @@ describe("magicLinkService.issue", () => {
         otherOrg,
       ),
     ).rejects.toBeInstanceOf(ForbiddenError);
+    expect(hoisted.setMock).not.toHaveBeenCalled();
+  });
+
+  it("throws PlanLimitError on a free-plan org for role=speaker (speakerPortal gate)", async () => {
+    const { PlanLimitError } = await import("@/errors/app-error");
+    hoisted.orgPlan = "free";
+    const user = buildOrganizerUser("org-1");
+    await expect(
+      magicLinkService.issue(
+        {
+          role: "speaker",
+          resourceId: "spk-1",
+          eventId: "evt-1",
+          recipientEmail: "x@example.com",
+        },
+        user,
+      ),
+    ).rejects.toBeInstanceOf(PlanLimitError);
+    expect(hoisted.setMock).not.toHaveBeenCalled();
+  });
+
+  it("throws PlanLimitError on a free-plan org for role=sponsor (sponsorPortal gate)", async () => {
+    const { PlanLimitError } = await import("@/errors/app-error");
+    hoisted.orgPlan = "free";
+    const user = buildOrganizerUser("org-1");
+    await expect(
+      magicLinkService.issue(
+        {
+          role: "sponsor",
+          resourceId: "spn-1",
+          eventId: "evt-1",
+          recipientEmail: "x@example.com",
+        },
+        user,
+      ),
+    ).rejects.toBeInstanceOf(PlanLimitError);
     expect(hoisted.setMock).not.toHaveBeenCalled();
   });
 });

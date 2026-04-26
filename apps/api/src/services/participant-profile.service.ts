@@ -100,36 +100,63 @@ class ParticipantProfileService extends BaseService {
 
     const id = this.docId(organizationId, userId);
     const ref = db.collection(COLLECTIONS.PARTICIPANT_PROFILES).doc(id);
-    const snap = await ref.get();
-    const now = new Date().toISOString();
 
-    const existing = snap.exists ? (snap.data() as ParticipantProfile) : null;
-    const nextTags = dto.tags ? dedupeAndSortTags(dto.tags) : (existing?.tags ?? []);
-    const nextNotes = dto.notes !== undefined ? dto.notes : (existing?.notes ?? null);
-    const notesChanged = dto.notes !== undefined && dto.notes !== existing?.notes;
-    const tagsChanged =
-      dto.tags !== undefined && JSON.stringify(nextTags) !== JSON.stringify(existing?.tags ?? []);
+    // Read-then-write must be atomic. Two organizers editing the same
+    // participant's tags would otherwise race — the second writer's
+    // tag list would silently overwrite the first's. The transaction
+    // also serialises notes updates so `notesChanged` stays accurate.
+    const { next, notesChanged, idempotent, existing } = await db.runTransaction(
+      async (tx) => {
+        const snap = await tx.get(ref);
+        const existingDoc = snap.exists ? (snap.data() as ParticipantProfile) : null;
+        const now = new Date().toISOString();
 
-    if (!notesChanged && !tagsChanged && existing) {
-      return existing; // no-op idempotent return
-    }
+        const nextTags = dto.tags
+          ? dedupeAndSortTags(dto.tags)
+          : (existingDoc?.tags ?? []);
+        const nextNotes =
+          dto.notes !== undefined ? dto.notes : (existingDoc?.notes ?? null);
+        const notesChangedInner =
+          dto.notes !== undefined && dto.notes !== existingDoc?.notes;
+        const tagsChanged =
+          dto.tags !== undefined &&
+          JSON.stringify(nextTags) !== JSON.stringify(existingDoc?.tags ?? []);
 
-    const next: ParticipantProfile = {
-      id,
-      organizationId,
-      userId,
-      tags: nextTags,
-      notes: nextNotes,
-      createdAt: existing?.createdAt ?? now,
-      updatedAt: now,
-    };
-    await ref.set(next);
+        if (!notesChangedInner && !tagsChanged && existingDoc) {
+          return {
+            next: existingDoc,
+            notesChanged: false,
+            idempotent: true,
+            existing: existingDoc,
+          };
+        }
+
+        const nextDoc: ParticipantProfile = {
+          id,
+          organizationId,
+          userId,
+          tags: nextTags,
+          notes: nextNotes,
+          createdAt: existingDoc?.createdAt ?? now,
+          updatedAt: now,
+        };
+        tx.set(ref, nextDoc);
+        return {
+          next: nextDoc,
+          notesChanged: notesChangedInner,
+          idempotent: false,
+          existing: existingDoc,
+        };
+      },
+    );
+
+    if (idempotent) return existing!;
 
     eventBus.emit("participant_profile.updated", {
       ...eventEnvelope(user.uid),
       organizationId,
       userId,
-      tags: nextTags,
+      tags: next.tags,
       notesChanged,
     });
 
@@ -171,31 +198,46 @@ class ParticipantProfileService extends BaseService {
     const addSet = new Set(dto.addTags);
     const removeSet = new Set(dto.removeTags);
 
+    // Each per-participant read-modify-write must run inside its own
+    // transaction so concurrent bulk-tag jobs (or a concurrent single
+    // update via `update()`) cannot lose a tag delta. We loop
+    // sequentially: the operator action is rate-limited and bounded
+    // to ≤ 100 participants by the route Zod schema, so a serial
+    // tx-per-row is well within Firestore's per-tx budget.
     for (const userId of userIds) {
       const id = this.docId(organizationId, userId);
       const ref = db.collection(COLLECTIONS.PARTICIPANT_PROFILES).doc(id);
-      const snap = await ref.get();
-      const existing = snap.exists ? (snap.data() as ParticipantProfile) : null;
-      const merged = applyTagDelta(existing?.tags ?? [], addSet, removeSet);
-      if (existing && JSON.stringify(merged) === JSON.stringify(existing.tags ?? [])) {
-        continue; // no-op for this participant
-      }
-      const now = new Date().toISOString();
-      const next: ParticipantProfile = {
-        id,
-        organizationId,
-        userId,
-        tags: merged,
-        notes: existing?.notes ?? null,
-        createdAt: existing?.createdAt ?? now,
-        updatedAt: now,
-      };
-      await ref.set(next);
+
+      const { next, applied: appliedThisRow } = await db.runTransaction(
+        async (tx) => {
+          const snap = await tx.get(ref);
+          const existing = snap.exists ? (snap.data() as ParticipantProfile) : null;
+          const merged = applyTagDelta(existing?.tags ?? [], addSet, removeSet);
+          if (existing && JSON.stringify(merged) === JSON.stringify(existing.tags ?? [])) {
+            return { next: null, applied: false }; // no-op for this participant
+          }
+          const now = new Date().toISOString();
+          const nextDoc: ParticipantProfile = {
+            id,
+            organizationId,
+            userId,
+            tags: merged,
+            notes: existing?.notes ?? null,
+            createdAt: existing?.createdAt ?? now,
+            updatedAt: now,
+          };
+          tx.set(ref, nextDoc);
+          return { next: nextDoc, applied: true };
+        },
+      );
+
+      if (!appliedThisRow || !next) continue;
+
       eventBus.emit("participant_profile.updated", {
         ...eventEnvelope(user.uid),
         organizationId,
         userId,
-        tags: merged,
+        tags: next.tags,
         notesChanged: false,
       });
       applied += 1;

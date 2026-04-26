@@ -36,7 +36,11 @@ import { usePlanGating } from "@/hooks/use-plan-gating";
 import { usePermissions } from "@/hooks/use-permissions";
 import { UsageMeter } from "@/components/plan/UsageMeter";
 import { usePlansCatalogMap, getPlanDisplay } from "@/hooks/use-plans-catalog";
-import { useTranslations } from "next-intl";
+// `useTranslations` import removed: this file ships hardcoded French
+// strings consistent with the rest of the organizer-overhaul (O1-O10)
+// pattern. The next-intl migration is tracked as a separate
+// cross-cutting effort. Earlier the import + a dead hook call lived
+// here as a placeholder; cleaned during the senior review pass.
 
 const COLLAPSED_KEY = "teranga:organizer:sidebar:collapsed";
 
@@ -300,8 +304,6 @@ function SidebarPlanWidgetGate() {
 }
 
 function SidebarPlanWidget() {
-  const _t = useTranslations("common");
-  void _t;
   const { plan, checkLimit, isNearLimit } = usePlanGating();
   const { map: catalog } = usePlansCatalogMap();
   const display = getPlanDisplay(plan, catalog);
@@ -318,7 +320,7 @@ function SidebarPlanWidget() {
               href="/organization/billing"
               className="inline-flex items-center gap-0.5 text-[10px] text-secondary hover:text-secondary/80 transition-colors"
             >
-              Upgrade <ArrowUpRight className="h-2.5 w-2.5" />
+              Évoluer <ArrowUpRight className="h-2.5 w-2.5" />
             </Link>
           )}
         </div>

@@ -44,14 +44,17 @@ describe("formatPaymentMethod", () => {
 });
 
 describe("formatPaymentStatus", () => {
-  it("maps known statuses to FR labels", () => {
+  it("maps the 6 PaymentStatus values to FR labels", () => {
+    // Mirror of PaymentStatusSchema in @teranga/shared-types.
+    expect(formatPaymentStatus("pending")).toBe("En attente");
+    expect(formatPaymentStatus("processing")).toBe("En cours");
     expect(formatPaymentStatus("succeeded")).toBe("Succès");
     expect(formatPaymentStatus("failed")).toBe("Échec");
-    expect(formatPaymentStatus("pending")).toBe("En attente");
     expect(formatPaymentStatus("refunded")).toBe("Remboursé");
+    expect(formatPaymentStatus("expired")).toBe("Expiré");
   });
 
-  it("returns the raw value on unknown status", () => {
+  it("returns the raw value on unknown status (forward-compat, no throw)", () => {
     expect(formatPaymentStatus("disputed")).toBe("disputed");
   });
 });

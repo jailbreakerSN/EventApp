@@ -23,6 +23,7 @@
 import { BaseService } from "./base.service";
 import { db, COLLECTIONS } from "@/config/firebase";
 import { eventRepository } from "@/repositories/event.repository";
+import { organizationRepository } from "@/repositories/organization.repository";
 import { paymentRepository } from "@/repositories/payment.repository";
 import { eventBus } from "@/events/event-bus";
 import { getRequestId } from "@/context/request-context";
@@ -43,6 +44,14 @@ class CohortExportService extends BaseService {
     this.requirePermission(user, "registration:export");
     const event = await eventRepository.findByIdOrThrow(eventId);
     this.requireOrganizationAccess(user, event.organizationId);
+
+    // CSV export is a starter+ plan feature per CLAUDE.md. Gate
+    // here in addition to the `registration:export` permission so a
+    // free-tier organizer who somehow holds the permission still
+    // gets a clean PlanLimitError instead of an unexpected
+    // download. Mirrors the gate pattern in `payout.service.ts`.
+    const org = await organizationRepository.findByIdOrThrow(event.organizationId);
+    this.requirePlanFeature(org, "csvExport");
 
     const now = new Date();
     const isFinal = isEventFinal(event, now);

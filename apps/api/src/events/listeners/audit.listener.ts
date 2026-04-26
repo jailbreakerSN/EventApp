@@ -1855,6 +1855,11 @@ export function registerAuditListeners(): void {
   // ── Phase O6 — WhatsApp opt-in lifecycle (Meta-required consent log) ──
 
   eventBus.on("whatsapp.opt_in.granted", async (payload) => {
+    // Privacy: do NOT persist `phoneE164` in the audit log (PII).
+    // The phone number lives on the `whatsappOptIns/{id}` doc — an
+    // investigator with `whatsapp:read` joins from `resourceId =
+    // userId` + `organizationId` to retrieve it on demand. Same
+    // treatment as the magic-link recipient email.
     await auditService.log({
       action: "whatsapp.opt_in.granted",
       actorId: payload.actorId,
@@ -1865,13 +1870,14 @@ export function registerAuditListeners(): void {
       eventId: null,
       organizationId: payload.organizationId,
       details: {
-        phoneE164: payload.phoneE164,
         reGrant: payload.reGrant,
       },
     });
   });
 
   eventBus.on("whatsapp.opt_in.revoked", async (payload) => {
+    // Privacy: do NOT persist `phoneE164` here either (PII). Lookup
+    // via the `whatsappOptIns` doc when needed.
     await auditService.log({
       action: "whatsapp.opt_in.revoked",
       actorId: payload.actorId,
@@ -1881,9 +1887,7 @@ export function registerAuditListeners(): void {
       resourceId: payload.userId,
       eventId: null,
       organizationId: payload.organizationId,
-      details: {
-        phoneE164: payload.phoneE164,
-      },
+      details: {},
     });
   });
 
@@ -2093,8 +2097,10 @@ export function registerAuditListeners(): void {
   });
 
   eventBus.on("magic_link.issued", async (payload) => {
-    // Privacy: we record the recipientEmail (forensic — who received
-    // the link) and the tokenHash (NEVER the plaintext token).
+    // Privacy: we record the tokenHash (NEVER the plaintext token) +
+    // role + expiry. The recipient email is intentionally omitted —
+    // it lives on the magicLinks/{tokenHash} Firestore doc for
+    // forensic lookups, but doesn't enter the immutable audit log.
     await auditService.log({
       action: "magic_link.issued",
       actorId: payload.actorId,
@@ -2106,7 +2112,6 @@ export function registerAuditListeners(): void {
       organizationId: payload.organizationId,
       details: {
         role: payload.role,
-        recipientEmail: payload.recipientEmail,
         expiresAt: payload.expiresAt,
       },
     });

@@ -30,6 +30,19 @@ vi.mock("@/config/firebase", () => ({
       })),
     })),
     getAll: (...refs: unknown[]) => hoisted.getAllMock(...refs),
+    // Service-level transaction wrapper. The mock callback drives a
+    // tx whose `get` returns the stored doc and whose `set` records
+    // the next snapshot via the same `setMock`. Mirrors the pattern
+    // used by `incident.service.test.ts`.
+    runTransaction: vi.fn(async (cb: (tx: unknown) => unknown) => {
+      const tx = {
+        get: async () => hoisted.storedDoc ?? { exists: false, data: () => undefined },
+        set: (_ref: unknown, value: unknown) => {
+          hoisted.setMock(value);
+        },
+      };
+      return cb(tx);
+    }),
   },
   COLLECTIONS: {
     PARTICIPANT_PROFILES: "participantProfiles",

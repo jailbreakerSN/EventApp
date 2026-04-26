@@ -32,7 +32,15 @@ export function formatPaymentMethod(method: string): string {
   }
 }
 
-/** Pretty-print a payment status enum value. */
+/**
+ * Pretty-print a payment status enum value.
+ *
+ * Mirrors `PaymentStatusSchema` in `@teranga/shared-types` —
+ * 6 states: pending / processing / succeeded / failed / refunded /
+ * expired. Forward-compat: unknown values fall through to the raw
+ * key (no throw) so a future provider state surfaces in the UI
+ * unobtrusively rather than crashing the table.
+ */
 export function formatPaymentStatus(status: string): string {
   switch (status) {
     case "succeeded":
@@ -41,8 +49,12 @@ export function formatPaymentStatus(status: string): string {
       return "Échec";
     case "pending":
       return "En attente";
+    case "processing":
+      return "En cours";
     case "refunded":
       return "Remboursé";
+    case "expired":
+      return "Expiré";
     default:
       return status;
   }

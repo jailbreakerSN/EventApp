@@ -134,6 +134,9 @@ function Td({
 }
 
 function StatusPill({ status }: { status: string }) {
+  // Tone mapping for the 6 PaymentStatus values + a muted fallback for
+  // forward-compat (any future provider state lands on the muted tone
+  // instead of throwing).
   const tone =
     status === "succeeded"
       ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400"
@@ -141,7 +144,13 @@ function StatusPill({ status }: { status: string }) {
         ? "bg-red-500/15 text-red-700 dark:text-red-400"
         : status === "refunded"
           ? "bg-amber-500/15 text-amber-700 dark:text-amber-400"
-          : "bg-muted text-muted-foreground";
+          : status === "expired"
+            ? "bg-slate-500/15 text-slate-700 dark:text-slate-400"
+            : status === "processing"
+              ? "bg-sky-500/15 text-sky-700 dark:text-sky-400"
+              : status === "pending"
+                ? "bg-sky-500/15 text-sky-700 dark:text-sky-400"
+                : "bg-muted text-muted-foreground";
   return (
     <span
       className={cn(

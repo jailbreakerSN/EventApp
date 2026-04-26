@@ -63,38 +63,59 @@ class WhatsappOptInService extends BaseService {
     const id = this.docId(user.uid, input.organizationId);
     const ref = db.collection(COLLECTIONS.WHATSAPP_OPT_INS).doc(id);
 
-    const now = new Date().toISOString();
-    const existingSnap = await ref.get();
-    const existing = existingSnap.exists ? (existingSnap.data() as WhatsappOptIn) : null;
+    // Read-then-write must be atomic. A double-tap on the consent
+    // form would otherwise let two concurrent grants both observe
+    // `existing.status === "revoked"` and both stamp a fresh
+    // `acceptedAt` — a legally questionable artifact for a CCPA /
+    // GDPR consent record.
+    const { next, idempotent, reGrant } = await db.runTransaction(async (tx) => {
+      const existingSnap = await tx.get(ref);
+      const existing = existingSnap.exists
+        ? (existingSnap.data() as WhatsappOptIn)
+        : null;
 
-    if (existing && existing.status === "opted_in" && existing.phoneE164 === input.phoneE164) {
-      // Idempotent re-grant — same phone, already opted in.
-      return existing;
-    }
+      if (
+        existing &&
+        existing.status === "opted_in" &&
+        existing.phoneE164 === input.phoneE164
+      ) {
+        return { next: existing, idempotent: true, reGrant: false };
+      }
 
-    const next: WhatsappOptIn = {
-      id,
-      userId: user.uid,
-      organizationId: input.organizationId,
-      phoneE164: input.phoneE164,
-      status: "opted_in",
-      acceptedAt: now,
-      revokedAt: null,
-      createdAt: existing?.createdAt ?? now,
-      updatedAt: now,
-    };
+      const now = new Date().toISOString();
+      const nextDoc: WhatsappOptIn = {
+        id,
+        userId: user.uid!,
+        organizationId: input.organizationId,
+        phoneE164: input.phoneE164,
+        status: "opted_in",
+        acceptedAt: now,
+        revokedAt: null,
+        createdAt: existing?.createdAt ?? now,
+        updatedAt: now,
+      };
+      tx.set(ref, nextDoc);
+      return {
+        next: nextDoc,
+        idempotent: false,
+        reGrant: existing?.status === "revoked",
+      };
+    });
 
-    await ref.set(next);
+    if (idempotent) return next;
 
     // Emit on the SAME event for both first-time grant and re-opt: the
     // legal artifact in both cases is "consent is now active". The
     // listener wires it to the audit log.
+    //
+    // Privacy: the phone number is intentionally NOT in the payload —
+    // it lives on the persisted `whatsappOptIns/{id}` doc and never
+    // enters the audit row. CLAUDE.md PII rule.
     eventBus.emit("whatsapp.opt_in.granted", {
       ...eventEnvelope(user.uid),
       userId: user.uid,
       organizationId: input.organizationId,
-      phoneE164: input.phoneE164,
-      reGrant: existing?.status === "revoked",
+      reGrant,
     });
 
     return next;
@@ -106,30 +127,40 @@ class WhatsappOptInService extends BaseService {
     const id = this.docId(user.uid, organizationId);
     const ref = db.collection(COLLECTIONS.WHATSAPP_OPT_INS).doc(id);
 
-    const snap = await ref.get();
-    if (!snap.exists) {
-      throw new NotFoundError("Aucun opt-in WhatsApp à révoquer pour cette organisation.");
-    }
-    const existing = snap.data() as WhatsappOptIn;
-    if (existing.status === "revoked") {
-      // Idempotent — return the existing revoked doc.
-      return existing;
-    }
+    // Read-then-write atomic. The idempotency short-circuit check
+    // alone doesn't close the race — two concurrent revocations
+    // could both observe `status !== "revoked"` and both stamp a
+    // fresh `revokedAt`.
+    const { next, idempotent } = await db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) {
+        throw new NotFoundError(
+          "Aucun opt-in WhatsApp à révoquer pour cette organisation.",
+        );
+      }
+      const existing = snap.data() as WhatsappOptIn;
+      if (existing.status === "revoked") {
+        return { next: existing, idempotent: true };
+      }
+      const now = new Date().toISOString();
+      const nextDoc: WhatsappOptIn = {
+        ...existing,
+        status: "revoked",
+        revokedAt: now,
+        updatedAt: now,
+      };
+      tx.set(ref, nextDoc);
+      return { next: nextDoc, idempotent: false };
+    });
 
-    const now = new Date().toISOString();
-    const next: WhatsappOptIn = {
-      ...existing,
-      status: "revoked",
-      revokedAt: now,
-      updatedAt: now,
-    };
-    await ref.set(next);
+    if (idempotent) return next;
 
+    // Privacy: phone number stays out of the audit payload (see
+    // grant() for rationale). The persisted opt-in doc keeps it.
     eventBus.emit("whatsapp.opt_in.revoked", {
       ...eventEnvelope(user.uid),
       userId: user.uid,
       organizationId,
-      phoneE164: existing.phoneE164,
     });
 
     return next;

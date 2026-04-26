@@ -40,7 +40,15 @@ export const liveOpsRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get(
     "/:eventId/live/stats",
     {
-      preHandler: [authenticate, validate({ params: ParamsWithEventId })],
+      preHandler: [
+        authenticate,
+        // Defense-in-depth: the service also enforces this permission.
+        // Gating at the route layer keeps the route-inventory contract
+        // explicit ("every authenticated GET that reads org-scoped data
+        // declares its permission").
+        requirePermission("checkin:view_log"),
+        validate({ params: ParamsWithEventId }),
+      ],
       schema: {
         tags: ["LiveOps"],
         summary: "Aggregated live dashboard stats (scan rate, queue, no-show, staff online)",
@@ -81,7 +89,11 @@ export const liveOpsRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get(
     "/:eventId/live/incidents",
     {
-      preHandler: [authenticate, validate({ params: ParamsWithEventId, query: IncidentListQuery })],
+      preHandler: [
+        authenticate,
+        requirePermission("checkin:view_log"),
+        validate({ params: ParamsWithEventId, query: IncidentListQuery }),
+      ],
       schema: {
         tags: ["LiveOps"],
         summary: "List recent incidents",
@@ -146,7 +158,11 @@ export const liveOpsRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get(
     "/:eventId/live/staff-messages",
     {
-      preHandler: [authenticate, validate({ params: ParamsWithEventId, query: StaffMessageQuery })],
+      preHandler: [
+        authenticate,
+        requirePermission("checkin:scan"),
+        validate({ params: ParamsWithEventId, query: StaffMessageQuery }),
+      ],
       schema: {
         tags: ["LiveOps"],
         summary: "List recent staff radio messages (cold-start fallback)",

@@ -38,6 +38,19 @@ vi.mock("@/config/firebase", () => ({
         set: hoisted.setMock,
       })),
     })),
+    // grant() / revoke() now run inside db.runTransaction so the
+    // read-then-write is atomic. The mock plays the callback against
+    // a tx whose `get` returns the stored doc and whose `set`
+    // records via `setMock` — same pattern as `incident.service.test`.
+    runTransaction: vi.fn(async (cb: (tx: unknown) => unknown) => {
+      const tx = {
+        get: async () => hoisted.storedDoc ?? { exists: false, data: () => undefined },
+        set: (_ref: unknown, value: unknown) => {
+          hoisted.setMock(value);
+        },
+      };
+      return cb(tx);
+    }),
   },
   COLLECTIONS: {
     WHATSAPP_OPT_INS: "whatsappOptIns",
@@ -82,10 +95,15 @@ describe("whatsappOptInService.grant — happy path + idempotency", () => {
       expect.objectContaining({
         userId: "u-1",
         organizationId: "org-1",
-        phoneE164: "+221700000000",
         reGrant: false,
       }),
     );
+    // Privacy: phone number MUST NOT be in the audit-bound payload —
+    // it lives on the persisted `whatsappOptIns/{id}` doc only.
+    const grantCall = emitMock.mock.calls.find(
+      (c: unknown[]) => c[0] === "whatsapp.opt_in.granted",
+    );
+    expect(grantCall![1]).not.toHaveProperty("phoneE164");
   });
 
   it("is idempotent when re-granted with the SAME phone — no Firestore write, no event", async () => {

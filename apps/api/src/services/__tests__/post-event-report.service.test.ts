@@ -3,6 +3,7 @@ import {
   computeAttendance,
   computeCommsPerformance,
   computeDemographics,
+  computePayoutPeriodFrom,
   isEventFinal,
 } from "../post-event-report.service";
 import type { Broadcast, Event, Registration, UserProfile } from "@teranga/shared-types";
@@ -239,5 +240,49 @@ describe("computeCommsPerformance", () => {
     expect(sms.count).toBe(100);
     // Sorted DESC by count.
     expect(out.perChannel[0].key).toBe("email");
+  });
+});
+
+describe("computePayoutPeriodFrom — delta-only payout windows", () => {
+  // Adapter helper: only the fields the function reads.
+  const pmt = (completedAt: string | null, createdAt: string) => ({
+    completedAt,
+    createdAt,
+  });
+
+  it("returns the MIN completedAt when no prior payout exists", () => {
+    const out = computePayoutPeriodFrom(
+      [
+        pmt("2026-04-26T10:00:00.000Z", "2026-04-26T09:50:00.000Z"),
+        pmt("2026-04-26T11:00:00.000Z", "2026-04-26T10:50:00.000Z"),
+        pmt(null, "2026-04-26T08:00:00.000Z"), // never completed → fall back to createdAt
+      ],
+      [],
+    );
+    expect(out).toBe("2026-04-26T08:00:00.000Z");
+  });
+
+  it("advances 1 ms past the latest prior payout's periodTo", () => {
+    const out = computePayoutPeriodFrom(
+      [pmt("2026-04-26T10:00:00.000Z", "2026-04-26T09:50:00.000Z")],
+      [
+        { periodTo: "2026-04-26T12:00:00.000Z" },
+        { periodTo: "2026-04-26T15:00:00.000Z" },
+        { periodTo: "2026-04-26T11:00:00.000Z" },
+      ],
+    );
+    // MAX(periodTo) = 15:00:00 → +1ms = 15:00:00.001
+    expect(out).toBe("2026-04-26T15:00:00.001Z");
+  });
+
+  it("ignores the payment list when prior payouts exist (delta-only semantic)", () => {
+    // Even if payments include rows older than the latest payout's
+    // periodTo, the period-from must NOT regress — otherwise the
+    // ledger sweep would attempt to re-pay-out already-paid entries.
+    const out = computePayoutPeriodFrom(
+      [pmt("2024-01-01T00:00:00.000Z", "2024-01-01T00:00:00.000Z")],
+      [{ periodTo: "2026-04-26T15:00:00.000Z" }],
+    );
+    expect(out).toBe("2026-04-26T15:00:00.001Z");
   });
 });

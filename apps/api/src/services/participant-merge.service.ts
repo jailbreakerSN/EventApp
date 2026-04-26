@@ -131,43 +131,61 @@ class ParticipantMergeService extends BaseService {
       throw new ConflictError("Impossible de fusionner un participant avec lui-même.");
     }
 
-    // List secondary's registrations + both profiles ahead of the
-    // transaction so the tx callback is fast (Firestore tx have a
-    // ~30s budget; chunking the list reads outside the tx is the
-    // safer default).
-    const secondaryRegsSnap = await db
-      .collection(COLLECTIONS.REGISTRATIONS)
-      .where("organizationId", "==", organizationId)
-      .where("userId", "==", secondaryUserId)
-      .get();
-
     const primaryProfileId = `${organizationId}_${primaryUserId}`;
     const secondaryProfileId = `${organizationId}_${secondaryUserId}`;
-    const profilesSnap = await db.getAll(
-      db.collection(COLLECTIONS.PARTICIPANT_PROFILES).doc(primaryProfileId),
-      db.collection(COLLECTIONS.PARTICIPANT_PROFILES).doc(secondaryProfileId),
-    );
-    const primaryProfile = profilesSnap[0].exists
-      ? (profilesSnap[0].data() as ParticipantProfile)
-      : null;
-    const secondaryProfile = profilesSnap[1].exists
-      ? (profilesSnap[1].data() as ParticipantProfile)
-      : null;
+    const primaryProfileRef = db
+      .collection(COLLECTIONS.PARTICIPANT_PROFILES)
+      .doc(primaryProfileId);
+    const secondaryProfileRef = db
+      .collection(COLLECTIONS.PARTICIPANT_PROFILES)
+      .doc(secondaryProfileId);
 
-    const mergedTags = mergeTagLists(primaryProfile?.tags ?? [], secondaryProfile?.tags ?? []);
-
+    // All reads + writes happen INSIDE the transaction so Firestore
+    // detects conflicts on every doc the merge touches. A concurrent
+    // write to either profile or to one of the secondary's
+    // registrations will abort + retry the tx (Admin SDK does the
+    // retry transparently). The cost is a slightly heavier tx
+    // callback; the merge is an operator-driven low-frequency action,
+    // not a hot path.
     let registrationsMoved = 0;
     await db.runTransaction(async (tx) => {
-      // Re-point each registration. Inside the tx so the count is
-      // exact even under concurrent writes.
+      // ── READ PHASE (Firestore tx invariant: reads before writes) ──
+
+      // 1. Profiles (deterministic doc ids → tx.get).
+      const profilesSnap = await tx.getAll(primaryProfileRef, secondaryProfileRef);
+      const primaryProfile = profilesSnap[0].exists
+        ? (profilesSnap[0].data() as ParticipantProfile)
+        : null;
+      const secondaryProfile = profilesSnap[1].exists
+        ? (profilesSnap[1].data() as ParticipantProfile)
+        : null;
+
+      // 2. Secondary's registrations — must run inside the tx so a
+      //    concurrent registration creation re-points correctly (or
+      //    aborts the tx).
+      const secondaryRegsSnap = await tx.get(
+        db
+          .collection(COLLECTIONS.REGISTRATIONS)
+          .where("organizationId", "==", organizationId)
+          .where("userId", "==", secondaryUserId),
+      );
+
+      // ── WRITE PHASE ─────────────────────────────────────────────
+
+      const mergedTags = mergeTagLists(
+        primaryProfile?.tags ?? [],
+        secondaryProfile?.tags ?? [],
+      );
+      const now = new Date().toISOString();
+
+      // Re-point each registration.
       for (const doc of secondaryRegsSnap.docs) {
-        tx.update(doc.ref, { userId: primaryUserId, updatedAt: new Date().toISOString() });
+        tx.update(doc.ref, { userId: primaryUserId, updatedAt: now });
         registrationsMoved += 1;
       }
 
       // Upsert the primary profile with merged tags.
-      const now = new Date().toISOString();
-      tx.set(db.collection(COLLECTIONS.PARTICIPANT_PROFILES).doc(primaryProfileId), {
+      tx.set(primaryProfileRef, {
         id: primaryProfileId,
         organizationId,
         userId: primaryUserId,
@@ -177,15 +195,14 @@ class ParticipantMergeService extends BaseService {
         updatedAt: now,
       } satisfies ParticipantProfile);
 
-      // Archive the secondary profile so it never resurfaces in dedup
-      // detection (the marker `mergedInto` is checked by future
-      // detection runs to skip already-merged users).
+      // Archive the secondary profile (clear tags but keep the doc
+      // so future dedup detection skips already-merged users).
       if (secondaryProfile) {
-        tx.set(db.collection(COLLECTIONS.PARTICIPANT_PROFILES).doc(secondaryProfileId), {
+        tx.set(secondaryProfileRef, {
           ...secondaryProfile,
           tags: [],
           notes: secondaryProfile.notes,
-          updatedAt: new Date().toISOString(),
+          updatedAt: now,
         });
       }
     });

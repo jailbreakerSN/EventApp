@@ -122,12 +122,12 @@ POST /v1/events/:eventId/feed/:postId/pin auth emailVerified perms=[feed:moderat
 POST /v1/events/:eventId/feed/upload-url auth emailVerified perms=[feed:create_post]
 GET /v1/events/:eventId/health auth
 POST /v1/events/:eventId/live/emergency-broadcast auth emailVerified perms=[broadcast:send]
-GET /v1/events/:eventId/live/incidents auth
+GET /v1/events/:eventId/live/incidents auth perms=[checkin:view_log]
 POST /v1/events/:eventId/live/incidents auth emailVerified perms=[checkin:scan]
 PATCH /v1/events/:eventId/live/incidents/:incidentId auth emailVerified perms=[event:update]
-GET /v1/events/:eventId/live/staff-messages auth
+GET /v1/events/:eventId/live/staff-messages auth perms=[checkin:scan]
 POST /v1/events/:eventId/live/staff-messages auth emailVerified perms=[checkin:scan]
-GET /v1/events/:eventId/live/stats auth
+GET /v1/events/:eventId/live/stats auth perms=[checkin:view_log]
 GET /v1/events/:eventId/post-event/cohort.csv auth perms=[registration:export]
 POST /v1/events/:eventId/post-event/payout-request auth emailVerified perms=[payout:create]
 GET /v1/events/:eventId/post-event/reconciliation auth perms=[payout:read]

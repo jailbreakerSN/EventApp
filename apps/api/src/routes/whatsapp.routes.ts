@@ -22,6 +22,7 @@ import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import { authenticate } from "@/middlewares/auth.middleware";
 import { validate } from "@/middlewares/validate.middleware";
+import { whatsappWebhookSignature } from "@/middlewares/whatsapp-webhook-signature.middleware";
 import { whatsappOptInService } from "@/services/whatsapp-opt-in.service";
 import { db, COLLECTIONS } from "@/config/firebase";
 import { eventBus } from "@/events/event-bus";
@@ -94,19 +95,22 @@ export const whatsappPublicRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post(
     "/webhooks/delivery",
     {
-      preHandler: [validate({ body: WhatsappDeliveryWebhookSchema })],
+      // Signature verification runs BEFORE Zod validation so a
+      // malformed body from an unauthorised caller is rejected with
+      // 403 instead of 400 — denies signal to attackers probing the
+      // endpoint shape. The middleware is fail-OPEN when
+      // WHATSAPP_APP_SECRET is unset (dev / mock-transport posture)
+      // and fail-CLOSED in production. The path matches
+      // `/webhooks/` (plural) so the JSON content-type parser
+      // registered in payments.routes.ts attaches `rawBody` for the
+      // HMAC-SHA256 compute.
+      preHandler: [whatsappWebhookSignature, validate({ body: WhatsappDeliveryWebhookSchema })],
       schema: {
         tags: ["WhatsApp"],
         summary: "Receive Meta WhatsApp delivery status updates",
       },
     },
     async (request, reply) => {
-      // NOTE: production must verify Meta's `X-Hub-Signature-256`
-      // header here. Until the Meta Business homologation lands,
-      // the route is wired to the mock transport and the body
-      // schema validation is the only gate. The shape of the
-      // signature middleware is documented in
-      // docs/organizer-overhaul/O6-WHATSAPP.md §"Webhook security".
       const dto = request.body as z.infer<typeof WhatsappDeliveryWebhookSchema>;
       const ctx = getRequestContext();
       const requestId = ctx?.requestId ?? "unknown";

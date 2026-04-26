@@ -96,6 +96,34 @@ describe("computeReconciliation — grouping by (method, status)", () => {
     expect(out.totals.paidRegistrations).toBe(1);
   });
 
+  it("excludes 'processing' + 'expired' payments from the financial totals (Phase-2 states)", () => {
+    // Develop's payments overhaul introduced two new PaymentStatus
+    // values: 'processing' (user redirected to provider, awaiting
+    // callback) and 'expired' (TTL elapsed). Neither contributes to
+    // revenue — they MUST stay out of the financial totals while
+    // remaining visible as rows in the reconciliation matrix.
+    const payments: Payment[] = [
+      makePayment({ id: "p1", status: "succeeded", amount: 10_000 }),
+      makePayment({
+        id: "p2",
+        status: "processing",
+        amount: 5_000,
+        registrationId: "reg-2",
+      }),
+      makePayment({
+        id: "p3",
+        status: "expired",
+        amount: 7_000,
+        registrationId: "reg-3",
+      }),
+    ];
+    const out = computeReconciliation(payments);
+    expect(out.rows.find((r) => r.status === "processing")).toBeDefined();
+    expect(out.rows.find((r) => r.status === "expired")).toBeDefined();
+    expect(out.totals.grossAmount).toBe(10_000);
+    expect(out.totals.paidRegistrations).toBe(1);
+  });
+
   it("counts distinct registrationIds in paidRegistrations (not retries)", () => {
     const payments: Payment[] = [
       // Retry on the same registration → 1 paid registration, not 2.

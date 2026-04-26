@@ -1571,11 +1571,17 @@ export interface ApiKeyVerifiedEvent extends BaseEventPayload {
 
 // ─── Phase O6 — WhatsApp opt-in lifecycle + delivery failures ──────────────
 
+/**
+ * Privacy: the audit-bound payload intentionally OMITS the phone
+ * number. The phone lives on the `whatsappOptIns/{userId_orgId}`
+ * doc; an investigator with `whatsapp:read` joins from
+ * `(userId, organizationId)` to retrieve it on demand. Mirror of
+ * the magic-link recipient-email handling — PII does not enter the
+ * immutable audit log per CLAUDE.md.
+ */
 export interface WhatsappOptInGrantedEvent extends BaseEventPayload {
   userId: string;
   organizationId: string;
-  /** E.164 phone number captured at consent. */
-  phoneE164: string;
   /** True when the participant re-grants after a previous revoke. */
   reGrant: boolean;
 }
@@ -1583,7 +1589,6 @@ export interface WhatsappOptInGrantedEvent extends BaseEventPayload {
 export interface WhatsappOptInRevokedEvent extends BaseEventPayload {
   userId: string;
   organizationId: string;
-  phoneE164: string;
 }
 
 export interface WhatsappDeliveryFailedEvent extends BaseEventPayload {
@@ -1719,9 +1724,13 @@ export interface EventClonedFromTemplateEvent extends BaseEventPayload {
 }
 
 /**
- * Phase O10 — magic-link issued. We log the recipient email + token
- * hash but NEVER the plaintext token (privacy + security). The
- * recipient email is forensically valuable for "who got the link".
+ * Phase O10 — magic-link issued. The audit payload carries the
+ * `tokenHash` (Firestore doc id of the persisted record) but NOT the
+ * recipient email or the plaintext token — both are PII / credentials
+ * that don't belong in the immutable audit log per CLAUDE.md. An
+ * investigator with `magic_link:read` joins from the audit row's
+ * `resourceId = tokenHash` to the `magicLinks/{tokenHash}` doc to
+ * retrieve the recipient email when forensics actually need it.
  */
 export interface MagicLinkIssuedEvent extends BaseEventPayload {
   tokenHash: string;
@@ -1729,7 +1738,6 @@ export interface MagicLinkIssuedEvent extends BaseEventPayload {
   resourceId: string;
   eventId: string;
   organizationId: string;
-  recipientEmail: string;
   expiresAt: string;
 }
 

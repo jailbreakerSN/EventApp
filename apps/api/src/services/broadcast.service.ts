@@ -26,12 +26,17 @@ export class BroadcastService extends BaseService {
     const event = await eventRepository.findByIdOrThrow(dto.eventId);
     this.requireOrganizationAccess(user, event.organizationId);
 
-    // Gate the SMS channel behind `smsNotifications` (pro+). Fail-fast
-    // before the broadcast record is created so the org is not charged
-    // for a partial send that skipped SMS silently.
-    if (dto.channels.includes("sms")) {
+    // Gate the premium channels (SMS / WhatsApp) behind their plan
+    // features. Fail-fast before the broadcast record is created so
+    // the org is not charged for a partial send that silently skipped
+    // a channel. Fetch the org once if either gated channel is in
+    // play — both gates use the same Org doc.
+    const needsSms = dto.channels.includes("sms");
+    const needsWhatsapp = dto.channels.includes("whatsapp");
+    if (needsSms || needsWhatsapp) {
       const org = await organizationRepository.findByIdOrThrow(event.organizationId);
-      this.requirePlanFeature(org, "smsNotifications");
+      if (needsSms) this.requirePlanFeature(org, "smsNotifications");
+      if (needsWhatsapp) this.requirePlanFeature(org, "whatsappNotifications");
     }
 
     const now = new Date().toISOString();
