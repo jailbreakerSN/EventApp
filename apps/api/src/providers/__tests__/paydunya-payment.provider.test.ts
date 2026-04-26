@@ -210,19 +210,23 @@ describe("PayDunyaPaymentProvider.initiate", () => {
     const { ProviderError } = await import("@/errors/app-error");
     const provider = new PayDunyaPaymentProvider();
 
-    await expect(
-      provider.initiate({
+    let caught: unknown;
+    try {
+      await provider.initiate({
         paymentId: "pay_retry",
         amount: 5000,
         currency: "XOF",
         description: "test",
         callbackUrl: "https://x",
         returnUrl: "https://x",
-      }),
-    ).rejects.toMatchObject({
-      providerCode: "50",
-      retriable: true,
-    } as Partial<InstanceType<typeof ProviderError>>);
+      });
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(ProviderError);
+    const e = caught as InstanceType<typeof ProviderError>;
+    expect(e.providerCode).toBe("50");
+    expect(e.retriable).toBe(true);
 
     stderrSpy.mockRestore();
   });

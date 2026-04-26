@@ -15,7 +15,6 @@ import { config } from "@/config";
 import {
   InitiatePaymentSchema,
   PaymentWebhookSchema,
-  PaymentMethodSchema,
   RefundPaymentSchema,
   PaymentQuerySchema,
   WebhookProviderSchema,
