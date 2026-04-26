@@ -78,14 +78,19 @@ const SECTIONS: readonly SectionLink[] = [
 ];
 
 /**
- * Returns true when the current pathname is one of the legacy
- * full-screen routes that should NOT be wrapped by the standard
- * event chrome. The check-in surfaces fall here so the scan UI
- * keeps the entire viewport.
+ * Returns true when the current pathname is one of the routes that
+ * should NOT be wrapped by the standard event chrome:
+ *   - `/checkin` + `/checkin/*` — scan UI keeps the entire viewport.
+ *   - `/live`                  — Phase O8 floor-ops control room
+ *                                bypasses the chrome too (operators
+ *                                stay focused on the live dashboard).
  */
 function isFullScreenRoute(pathname: string, eventId: string): boolean {
   return (
-    pathname === `/events/${eventId}/checkin` || pathname.startsWith(`/events/${eventId}/checkin/`)
+    pathname === `/events/${eventId}/checkin` ||
+    pathname.startsWith(`/events/${eventId}/checkin/`) ||
+    pathname === `/events/${eventId}/live` ||
+    pathname.startsWith(`/events/${eventId}/live/`)
   );
 }
 

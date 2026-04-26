@@ -18,10 +18,13 @@
 
 import { useParams } from "next/navigation";
 import Link from "next/link";
+import { useMemo } from "react";
 import { Card, CardContent, Skeleton } from "@teranga/shared-ui";
-import { CheckCircle2, ArrowRight, AlertTriangle } from "lucide-react";
+import { CheckCircle2, ArrowRight, AlertTriangle, Radio } from "lucide-react";
 import { EventHealthCard } from "@/components/event-health/EventHealthCard";
 import { useEventHealth } from "@/hooks/use-event-health";
+import { useEvent } from "@/hooks/use-events";
+import { liveWindowState } from "@/lib/live-window";
 import { cn } from "@/lib/utils";
 
 const COMPONENT_CTA: Record<string, { href: (id: string) => string; ctaLabel: string }> = {
@@ -58,6 +61,8 @@ const COMPONENT_CTA: Record<string, { href: (id: string) => string; ctaLabel: st
 export default function EventOverviewPage() {
   const { eventId } = useParams<{ eventId: string }>();
   const { data: snapshot, isLoading } = useEventHealth(eventId);
+  const { data: eventResp } = useEvent(eventId ?? "");
+  const event = eventResp?.data;
 
   // Priority actions = un-earned components, sorted by weight DESC
   // (impact-first). Capped at 5 so the panel stays scannable.
@@ -68,9 +73,72 @@ export default function EventOverviewPage() {
         .slice(0, 5)
     : [];
 
+  // J-0 ±6 h gate for the "Lancer le mode live" entry point. We do
+  // NOT hide the button outside the window — we just disable it and
+  // explain why so operators don't think the feature is missing.
+  const liveState = useMemo(() => {
+    if (!event) return "before" as const;
+    return liveWindowState(event.startDate, event.endDate ?? null, new Date());
+  }, [event]);
+
+  const liveEnabled = liveState === "live" && event?.status === "published";
+
   return (
     <div className="space-y-6">
       <EventHealthCard eventId={eventId} />
+
+      {/* Live event mode entry point */}
+      {event?.status === "published" && (
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div className="flex items-start gap-3">
+                <span
+                  className={cn(
+                    "inline-flex h-9 w-9 items-center justify-center rounded-full",
+                    liveEnabled
+                      ? "bg-red-500/15 text-red-600 dark:text-red-400"
+                      : "bg-muted text-muted-foreground",
+                  )}
+                  aria-hidden="true"
+                >
+                  <Radio className={cn("h-4 w-4", liveEnabled && "motion-safe:animate-pulse")} />
+                </span>
+                <div>
+                  <p className="text-sm font-semibold">Mode live (Floor Ops)</p>
+                  <p className="text-xs text-muted-foreground">
+                    {liveState === "live"
+                      ? "Tableau de bord temps réel : scans, file, incidents, radio staff."
+                      : liveState === "before"
+                        ? "Disponible 6 heures avant le début de l'événement."
+                        : "L'événement est terminé. Le mode live n'est plus utile."}
+                  </p>
+                </div>
+              </div>
+              {liveEnabled ? (
+                <Link
+                  href={`/events/${eventId}/live`}
+                  className="inline-flex items-center gap-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-medium px-4 py-2"
+                >
+                  <Radio className="h-4 w-4" aria-hidden="true" />
+                  Lancer le mode live
+                </Link>
+              ) : (
+                <button
+                  type="button"
+                  disabled
+                  aria-disabled="true"
+                  title={liveState === "before" ? "Disponible J-0 ± 6 h" : "Événement terminé"}
+                  className="inline-flex items-center gap-2 rounded-lg bg-muted text-muted-foreground text-sm font-medium px-4 py-2 cursor-not-allowed"
+                >
+                  <Radio className="h-4 w-4" aria-hidden="true" />
+                  Lancer le mode live
+                </button>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardContent className="p-6">

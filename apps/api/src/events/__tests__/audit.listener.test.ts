@@ -627,7 +627,10 @@ describe("Audit Listener", () => {
       // opt_in.revoked, delivery.failed).
       // Phase O7 — 2 participant ops listeners added
       // (participant_profile.updated, participant.merged).
-      const EXPECTED_HANDLER_COUNT = 104;
+      // Phase O8 — 5 floor-ops listeners added (incident.created /
+      // .updated / .resolved + emergency_broadcast.sent +
+      // staff_message.posted).
+      const EXPECTED_HANDLER_COUNT = 109;
 
       expect(registered).toHaveLength(EXPECTED_HANDLER_COUNT);
       // Each registered event name should be unique — a double

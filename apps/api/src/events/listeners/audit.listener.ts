@@ -1813,6 +1813,86 @@ export function registerAuditListeners(): void {
     });
   });
 
+  // ── Phase O8 — Live Event Mode (Floor Ops) ─────────────────────────────
+
+  eventBus.on("incident.created", async (payload) => {
+    await auditService.log({
+      action: "incident.created",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "event",
+      resourceId: payload.incidentId,
+      eventId: payload.eventId,
+      organizationId: payload.organizationId,
+      details: { kind: payload.kind, severity: payload.severity },
+    });
+  });
+
+  eventBus.on("incident.updated", async (payload) => {
+    await auditService.log({
+      action: "incident.updated",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "event",
+      resourceId: payload.incidentId,
+      eventId: payload.eventId,
+      organizationId: payload.organizationId,
+      details: payload.changes,
+    });
+  });
+
+  eventBus.on("incident.resolved", async (payload) => {
+    await auditService.log({
+      action: "incident.resolved",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "event",
+      resourceId: payload.incidentId,
+      eventId: payload.eventId,
+      organizationId: payload.organizationId,
+      details: { durationMs: payload.durationMs },
+    });
+  });
+
+  eventBus.on("emergency_broadcast.sent", async (payload) => {
+    await auditService.log({
+      action: "emergency_broadcast.sent",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "event",
+      resourceId: payload.eventId,
+      eventId: payload.eventId,
+      organizationId: payload.organizationId,
+      details: {
+        reason: payload.reason,
+        channels: payload.channels,
+        recipientCount: payload.recipientCount,
+        dispatchedCount: payload.dispatchedCount,
+      },
+    });
+  });
+
+  eventBus.on("staff_message.posted", async (payload) => {
+    // Privacy: we audit the FACT a message was posted (forensic trail)
+    // without persisting the body. The messageId is enough to retrieve
+    // the row during a moderation review.
+    await auditService.log({
+      action: "staff_message.posted",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "event",
+      resourceId: payload.eventId,
+      eventId: payload.eventId,
+      organizationId: payload.organizationId,
+      details: { messageId: payload.messageId },
+    });
+  });
+
   // ── Subscription Override (Phase 5 — admin per-org assign) ─────────────
 
   eventBus.on("subscription.overridden", async (payload) => {

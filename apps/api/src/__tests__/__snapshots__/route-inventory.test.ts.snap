@@ -119,6 +119,13 @@ POST /v1/events/:eventId/feed/:postId/like auth emailVerified perms=[feed:read]
 POST /v1/events/:eventId/feed/:postId/pin auth emailVerified perms=[feed:moderate]
 POST /v1/events/:eventId/feed/upload-url auth emailVerified perms=[feed:create_post]
 GET /v1/events/:eventId/health auth
+POST /v1/events/:eventId/live/emergency-broadcast auth emailVerified perms=[broadcast:send]
+GET /v1/events/:eventId/live/incidents auth
+POST /v1/events/:eventId/live/incidents auth emailVerified perms=[checkin:scan]
+PATCH /v1/events/:eventId/live/incidents/:incidentId auth emailVerified perms=[event:update]
+GET /v1/events/:eventId/live/staff-messages auth
+POST /v1/events/:eventId/live/staff-messages auth emailVerified perms=[checkin:scan]
+GET /v1/events/:eventId/live/stats auth
 GET /v1/events/:eventId/promo-codes auth perms=[event:read]
 POST /v1/events/:eventId/promo-codes auth emailVerified perms=[event:update]
 POST /v1/events/:eventId/promo-codes/validate none
@@ -246,6 +253,8 @@ PATCH /v1/registrations/:registrationId auth emailVerified
 POST /v1/registrations/:registrationId/approve auth emailVerified perms=[registration:approve]
 POST /v1/registrations/:registrationId/cancel auth flags=[any(registration:cancel_any,registration:cancel_own)]
 GET /v1/registrations/:registrationId/waitlist-position auth perms=[registration:read_own]
+POST /v1/registrations/bulk-approve auth emailVerified perms=[registration:approve]
+POST /v1/registrations/bulk-cancel auth emailVerified perms=[registration:cancel_any]
 POST /v1/registrations/checkin auth perms=[checkin:scan]
 GET /v1/registrations/event/:eventId auth perms=[registration:read_all]
 GET /v1/registrations/me auth

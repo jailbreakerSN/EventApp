@@ -92,6 +92,13 @@ export const COLLECTIONS = {
   // One doc per (organizationId, userId) pair; deterministic id makes
   // get-by-key O(1) and ties cleanly to per-org Firestore rules.
   PARTICIPANT_PROFILES: "participantProfiles",
+  // Phase O8 — Live Event Mode (Floor Ops).
+  //   - INCIDENTS:     operator-logged signalements per event.
+  //   - STAFF_MESSAGES: in-event chat ("staff radio"), per event.
+  // Both collections are event-scoped via `eventId` field; rules
+  // restrict reads to organizers/co-organizers/staff of that event.
+  INCIDENTS: "incidents",
+  STAFF_MESSAGES: "staffMessages",
   SPEAKERS: "speakers",
   SPONSORS: "sponsors",
   SPONSOR_LEADS: "sponsorLeads",

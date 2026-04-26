@@ -200,6 +200,12 @@ export const AuditActionSchema = z.enum([
   // (registrations re-pointed, secondary archived).
   "participant_profile.updated",
   "participant.merged",
+  // Phase O8 — Live Event Mode (Floor Ops).
+  "incident.created",
+  "incident.updated",
+  "incident.resolved",
+  "emergency_broadcast.sent",
+  "staff_message.posted",
 ]);
 
 export type AuditAction = z.infer<typeof AuditActionSchema>;

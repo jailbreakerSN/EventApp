@@ -1314,6 +1314,12 @@ export interface DomainEventMap {
   // Phase O7 — Participant ops
   "participant_profile.updated": ParticipantProfileUpdatedEvent;
   "participant.merged": ParticipantMergedEvent;
+  // Phase O8 — Live Event Mode (Floor Ops)
+  "incident.created": IncidentCreatedEvent;
+  "incident.updated": IncidentUpdatedEvent;
+  "incident.resolved": IncidentResolvedEvent;
+  "emergency_broadcast.sent": EmergencyBroadcastSentEvent;
+  "staff_message.posted": StaffMessagePostedEvent;
   // Plan coupons (Phase 7+ item #7) — redemption itself is captured on
   // the subscription doc + couponRedemptions collection; we only emit
   // lifecycle signals here (create / update / archive).
@@ -1510,6 +1516,53 @@ export interface ParticipantMergedEvent extends BaseEventPayload {
   secondaryUserId: string;
   /** Number of registrations re-pointed from secondary → primary. */
   registrationsMoved: number;
+}
+
+// ─── Phase O8 — Live Event Mode (Floor Ops) ──────────────────────────────
+
+export interface IncidentCreatedEvent extends BaseEventPayload {
+  incidentId: string;
+  eventId: string;
+  organizationId: string;
+  kind: string;
+  severity: string;
+}
+
+export interface IncidentUpdatedEvent extends BaseEventPayload {
+  incidentId: string;
+  eventId: string;
+  organizationId: string;
+  changes: Record<string, unknown>;
+}
+
+export interface IncidentResolvedEvent extends BaseEventPayload {
+  incidentId: string;
+  eventId: string;
+  organizationId: string;
+  /** Time in ms between createdAt and resolvedAt — useful for SLA. */
+  durationMs: number;
+}
+
+export interface EmergencyBroadcastSentEvent extends BaseEventPayload {
+  eventId: string;
+  organizationId: string;
+  /** Operator-supplied reason captured at send time. */
+  reason: string;
+  channels: string[];
+  recipientCount: number;
+  dispatchedCount: number;
+}
+
+/**
+ * Phase O8 — Forensic trail for the per-event staff radio. We record
+ * the message id, NOT the body — the body is private chat between
+ * staff during a live event and shouldn't leak into long-term audit.
+ * The id is enough to retrieve the message during an investigation.
+ */
+export interface StaffMessagePostedEvent extends BaseEventPayload {
+  messageId: string;
+  eventId: string;
+  organizationId: string;
 }
 
 export type DomainEventName = keyof DomainEventMap;
