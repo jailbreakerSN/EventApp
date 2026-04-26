@@ -301,9 +301,7 @@ export class PlanService extends BaseService {
       //     existing; omit when existing is null/undefined.
       ...(() => {
         const next: EntitlementMap | null | undefined =
-          "entitlements" in versionPatch
-            ? versionPatch.entitlements
-            : existing.entitlements;
+          "entitlements" in versionPatch ? versionPatch.entitlements : existing.entitlements;
         return next ? { entitlements: next } : {};
       })(),
       isSystem: existing.isSystem,
@@ -485,20 +483,40 @@ export class PlanService extends BaseService {
     const subs = allSubs.data;
 
     const now = new Date();
+
+    // W10-P4 — was a serial loop with two awaits per subscription
+    // (organizationRepository.findById + eventRepository.
+    // countActiveByOrganization). At 1 000 subs that's 2 000 sequential
+    // round-trips and a hard timeout for the super-admin preview.
+    //
+    // Refactor: batch the org reads via batchGet (chunked at 100,
+    // matches Firestore's getAll cap) and parallelise the active-event
+    // counts. Mirrors `admin.service.ts:2147`. Order preserved by
+    // building a Map<orgId, org> + zipping back over `subs`.
+    const orgIds = Array.from(new Set(subs.map((s) => s.organizationId)));
+    const orgs = await organizationRepository.batchGet(orgIds);
+    const orgById = new Map(orgs.map((org) => [org.id, org]));
+
+    const activeEventCounts = new Map(
+      await Promise.all(
+        Array.from(orgById.keys()).map(
+          async (orgId): Promise<readonly [string, number]> => [
+            orgId,
+            await eventRepository.countActiveByOrganization(orgId),
+          ],
+        ),
+      ),
+    );
+
     const affected: PreviewAffectedOrg[] = [];
 
     for (const sub of subs) {
-      const org = await organizationRepository.findById(sub.organizationId);
+      const org = orgById.get(sub.organizationId);
       if (!org) continue;
 
-      // Resolve the hypothetical effective plan honouring the sub's own
-      // overrides (so an org with `overrides.limits.maxEvents: 50` isn't
-      // flagged when the new base cap drops to 5).
       const effective = resolveEffective(hypothetical, sub.overrides, now);
 
-      // Current usage: read denormalised fields first; fall back to live
-      // counts only when we have to. Keeps the preview cheap at scale.
-      const activeEvents = await eventRepository.countActiveByOrganization(org.id);
+      const activeEvents = activeEventCounts.get(org.id) ?? 0;
       const memberCount = org.memberIds?.length ?? 0;
 
       const violations: string[] = [];
