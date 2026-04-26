@@ -355,7 +355,16 @@
       "filterByDate": "Filt ci bés",
       "filterByPrice": "Filt ci njëg",
       "reset": "Delwal filt yi",
-      "clear": "Fomm"
+      "clear": "Fomm",
+      "filters": "Filt yi",
+      "openFilters": "Ubbi filt yi",
+      "activeFilterCount": "{count, plural, one {# filt bu jëfe} other {# filt yu jëfe}}",
+      "sort": {
+        "label": "Tëj",
+        "soonest": "Bés — yu ñëw ci njëkk",
+        "newest": "Yu ñu génn ci yiisi",
+        "alphabetical": "Ci tëralin alfabet"
+      }
     },
     "detail": {
       "featured": "Yu jiitu",

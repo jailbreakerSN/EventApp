@@ -1347,10 +1347,24 @@ export class EventService extends BaseService {
         : query.tags.split(",").map((t) => t.trim())
       : undefined;
 
+    // Normalise category to an array so the multi-select branch is uniform.
+    // The Zod preprocess already splits comma-separated strings, so we only
+    // need to wrap the single-string case here. Empty arrays mean "no
+    // category filter" — same as undefined.
+    const categoryArray: EventCategory[] | undefined = (() => {
+      const c = query.category;
+      if (c === undefined) return undefined;
+      if (Array.isArray(c)) return c.length > 0 ? c : undefined;
+      return [c as EventCategory];
+    })();
+
     const searchToken = pickSearchToken(query.q);
 
     const filters: EventSearchFilters = {
-      category: query.category,
+      // Multi-select category is resolved post-fetch (see § Backend
+      // primitives in data-listing.md). Single category goes to Firestore
+      // as a `==` equality so the index path stays canonical.
+      category: categoryArray && categoryArray.length === 1 ? categoryArray[0] : undefined,
       format: query.format,
       organizationId: query.organizationId,
       isFeatured: query.isFeatured,
@@ -1368,6 +1382,16 @@ export class EventService extends BaseService {
       orderBy: query.orderBy,
       orderDir: query.orderDir,
     });
+
+    // Multi-category post-fetch filter (page-bounded, O(limit)). Only fires
+    // when 2+ categories are selected; single-category went to Firestore
+    // already and matches every row by definition.
+    if (categoryArray && categoryArray.length > 1) {
+      const wanted = new Set<EventCategory>(categoryArray);
+      result.data = result.data.filter((e) => wanted.has(e.category as EventCategory));
+      result.meta.total = result.data.length;
+      result.meta.totalPages = Math.ceil(result.data.length / query.limit);
+    }
 
     // Price filter — ticketTypes is a nested array, not natively Firestore-queryable.
     // free = no ticket types OR at least one with price === 0
