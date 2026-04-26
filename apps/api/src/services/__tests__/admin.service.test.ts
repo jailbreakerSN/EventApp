@@ -67,6 +67,10 @@ vi.mock("@/config/firebase", () => ({
     setCustomUserClaims: vi.fn().mockResolvedValue(undefined),
     updateUser: vi.fn().mockResolvedValue(undefined),
     getUser: vi.fn().mockResolvedValue({ customClaims: {} }),
+    // P0.6 — listUsers batches Auth fetches via getUsers([{uid}]). The mock
+    // mirrors the firebase-admin shape: { users: UserRecord[], notFound: [] }.
+    // Tests configure per-call return via mockResolvedValueOnce.
+    getUsers: vi.fn().mockResolvedValue({ users: [], notFound: [] }),
     // Phase 4 — impersonation mints a custom token. The mock returns a
     // stable string so tests can assert what flows to the UI.
     createCustomToken: vi.fn().mockResolvedValue("mock-custom-token"),
@@ -245,8 +249,14 @@ describe("AdminService.listUsers", () => {
       data: [{ ...BASE_PROFILE, roles: ["organizer"], organizationId: "org-1" }],
       meta: { page: 1, limit: 20, total: 1, totalPages: 1 },
     });
-    vi.mocked(auth.getUser).mockResolvedValueOnce({
-      customClaims: { roles: ["organizer"], organizationId: "org-1" },
+    vi.mocked(auth.getUsers).mockResolvedValueOnce({
+      users: [
+        {
+          uid: BASE_PROFILE.uid,
+          customClaims: { roles: ["organizer"], organizationId: "org-1" },
+        },
+      ],
+      notFound: [],
     } as never);
 
     const result = await adminService.listUsers(admin, { page: 1, limit: 20 });
@@ -267,10 +277,16 @@ describe("AdminService.listUsers", () => {
       data: [{ ...BASE_PROFILE, roles: ["organizer"], organizationId: "org-1" }],
       meta: { page: 1, limit: 20, total: 1, totalPages: 1 },
     });
-    vi.mocked(auth.getUser).mockResolvedValueOnce({
-      // JWT still carries the old participant role — the classic
-      // mid-failure drift PR #65 aims to heal. Guard ensures we surface it.
-      customClaims: { roles: ["participant"], organizationId: "org-1" },
+    vi.mocked(auth.getUsers).mockResolvedValueOnce({
+      users: [
+        {
+          uid: BASE_PROFILE.uid,
+          // JWT still carries the old participant role — the classic
+          // mid-failure drift PR #65 aims to heal. Guard ensures we surface it.
+          customClaims: { roles: ["participant"], organizationId: "org-1" },
+        },
+      ],
+      notFound: [],
     } as never);
 
     const result = await adminService.listUsers(admin, { page: 1, limit: 20 });
@@ -288,8 +304,14 @@ describe("AdminService.listUsers", () => {
       data: [{ ...BASE_PROFILE, roles: ["organizer", "participant"] }],
       meta: { page: 1, limit: 20, total: 1, totalPages: 1 },
     });
-    vi.mocked(auth.getUser).mockResolvedValueOnce({
-      customClaims: { roles: ["participant", "organizer"] },
+    vi.mocked(auth.getUsers).mockResolvedValueOnce({
+      users: [
+        {
+          uid: BASE_PROFILE.uid,
+          customClaims: { roles: ["participant", "organizer"] },
+        },
+      ],
+      notFound: [],
     } as never);
 
     const result = await adminService.listUsers(admin, { page: 1, limit: 20 });
@@ -297,19 +319,44 @@ describe("AdminService.listUsers", () => {
     expect(result.data[0].claimsMatch?.roles).toBe(true);
   });
 
-  it("returns claimsMatch=null when the Auth record can't be fetched", async () => {
+  it("returns claimsMatch=null when the Auth record is missing in the batch (P0.6)", async () => {
     // Auth-record-missing (user deleted in Auth, doc lingers) — UI
     // treats this as drift too so the admin notices the orphan.
+    // Under the batched path the row simply doesn't appear in `users[]`.
     const admin = buildSuperAdmin();
     mockAdminRepo.listAllUsers.mockResolvedValue({
       data: [BASE_PROFILE],
       meta: { page: 1, limit: 20, total: 1, totalPages: 1 },
     });
-    vi.mocked(auth.getUser).mockRejectedValueOnce(new Error("user-not-found"));
+    vi.mocked(auth.getUsers).mockResolvedValueOnce({
+      users: [],
+      notFound: [{ uid: BASE_PROFILE.uid }],
+    } as never);
 
     const result = await adminService.listUsers(admin, { page: 1, limit: 20 });
 
     expect(result.data[0].claimsMatch).toBeNull();
+  });
+
+  it("calls auth.getUsers exactly once per page regardless of row count (P0.6)", async () => {
+    const admin = buildSuperAdmin();
+    const profiles = Array.from({ length: 20 }, (_, i) => ({
+      ...BASE_PROFILE,
+      uid: `user-${i}`,
+    }));
+    mockAdminRepo.listAllUsers.mockResolvedValue({
+      data: profiles,
+      meta: { page: 1, limit: 20, total: 20, totalPages: 1 },
+    });
+    vi.mocked(auth.getUsers).mockResolvedValueOnce({
+      users: profiles.map((p) => ({ uid: p.uid, customClaims: {} })),
+      notFound: [],
+    } as never);
+
+    await adminService.listUsers(admin, { page: 1, limit: 20 });
+
+    expect(auth.getUsers).toHaveBeenCalledTimes(1);
+    expect(auth.getUser).not.toHaveBeenCalled();
   });
 
   it("skips the drift signal for fresh users whose claims haven't propagated yet", async () => {
@@ -324,8 +371,9 @@ describe("AdminService.listUsers", () => {
       data: [justCreated],
       meta: { page: 1, limit: 20, total: 1, totalPages: 1 },
     });
-    vi.mocked(auth.getUser).mockResolvedValueOnce({
-      customClaims: undefined, // trigger hasn't set claims yet
+    vi.mocked(auth.getUsers).mockResolvedValueOnce({
+      users: [{ uid: justCreated.uid, customClaims: undefined }], // trigger hasn't set claims yet
+      notFound: [],
     } as never);
 
     const result = await adminService.listUsers(admin, { page: 1, limit: 20 });
@@ -351,8 +399,9 @@ describe("AdminService.listUsers", () => {
       data: [old],
       meta: { page: 1, limit: 20, total: 1, totalPages: 1 },
     });
-    vi.mocked(auth.getUser).mockResolvedValueOnce({
-      customClaims: {},
+    vi.mocked(auth.getUsers).mockResolvedValueOnce({
+      users: [{ uid: old.uid, customClaims: {} }],
+      notFound: [],
     } as never);
 
     const result = await adminService.listUsers(admin, { page: 1, limit: 20 });

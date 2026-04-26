@@ -2680,6 +2680,19 @@ exports[`shared-types contract snapshots > EventSchema shape is stable 1`] = `
         "kind": "default",
       },
     },
+    "searchKeywords": {
+      "required": false,
+      "shape": {
+        "hasDefault": true,
+        "inner": {
+          "element": {
+            "kind": "string",
+          },
+          "kind": "array",
+        },
+        "kind": "default",
+      },
+    },
     "shortDescription": {
       "required": false,
       "shape": {

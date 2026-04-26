@@ -32,6 +32,7 @@ import { eventBus } from "@/events/event-bus";
 import { getRequestId } from "@/context/request-context";
 import { generateEventKid } from "./qr-signing";
 import { generateOccurrences } from "./recurrence.service";
+import { buildEventSearchKeywords, pickSearchToken } from "./_shared/search-keywords";
 
 // ─── Slug generation ─────────────────────────────────────────────────────────
 
@@ -131,6 +132,11 @@ export class EventService extends BaseService {
       venueName: venueName ?? dto.venueName ?? null,
       registeredCount: 0,
       checkedInCount: 0,
+      searchKeywords: buildEventSearchKeywords({
+        title: dto.title,
+        tags: dto.tags ?? [],
+        location: dto.location,
+      }),
       // Mint a fresh v4 signing-key id at event create. All newly-issued
       // badges for this event will sign with HKDF(QR_MASTER, eventId, kid);
       // rotation replaces `qrKid` and pushes the old value to
@@ -232,6 +238,11 @@ export class EventService extends BaseService {
         venueName: venueName ?? dto.venueName ?? null,
         registeredCount: 0,
         checkedInCount: 0,
+        searchKeywords: buildEventSearchKeywords({
+          title: dto.title,
+          tags: dto.tags ?? [],
+          location: dto.location,
+        }),
         qrKid: generateEventKid(),
         qrKidHistory: [],
         scanPolicy: "single",
@@ -255,6 +266,11 @@ export class EventService extends BaseService {
       venueName: venueName ?? dto.venueName ?? null,
       registeredCount: 0,
       checkedInCount: 0,
+      searchKeywords: buildEventSearchKeywords({
+        title: dto.title,
+        tags: dto.tags ?? [],
+        location: dto.location,
+      }),
       qrKid: generateEventKid(),
       qrKidHistory: [],
       scanPolicy: "single",
@@ -462,6 +478,18 @@ export class EventService extends BaseService {
       ...dto,
       updatedBy: user.uid,
     };
+
+    // Refresh searchKeywords[] when any indexable field changes. The helper
+    // is cheap (≤ 200 entries) so we recompute over the full record rather
+    // than try to merge in place — guarantees the field always reflects the
+    // post-write state of (title, tags, location).
+    if (dto.title !== undefined || dto.tags !== undefined || dto.location !== undefined) {
+      updateData.searchKeywords = buildEventSearchKeywords({
+        title: dto.title ?? event.title,
+        tags: dto.tags ?? event.tags ?? [],
+        location: dto.location ?? event.location,
+      });
+    }
 
     if (dto.venueId !== undefined && dto.venueId !== event.venueId) {
       if (dto.venueId) {
@@ -1278,6 +1306,11 @@ export class EventService extends BaseService {
       maxAttendees: source.maxAttendees ?? null,
       registeredCount: 0,
       checkedInCount: 0,
+      searchKeywords: buildEventSearchKeywords({
+        title,
+        tags: source.tags ?? [],
+        location: source.location,
+      }),
       // Fresh kid for the cloned event — never reuse the source event's
       // signing key, even if the clone is otherwise identical.
       qrKid: generateEventKid(),
@@ -1314,6 +1347,8 @@ export class EventService extends BaseService {
         : query.tags.split(",").map((t) => t.trim())
       : undefined;
 
+    const searchToken = pickSearchToken(query.q);
+
     const filters: EventSearchFilters = {
       category: query.category,
       format: query.format,
@@ -1324,6 +1359,7 @@ export class EventService extends BaseService {
       city: query.city,
       country: query.country,
       tags,
+      searchToken: searchToken ?? undefined,
     };
 
     const result = await eventRepository.search(filters, {
@@ -1333,12 +1369,17 @@ export class EventService extends BaseService {
       orderDir: query.orderDir,
     });
 
-    // Client-side title prefix filter (Firestore lacks full-text search)
-    if (query.q) {
-      const q = query.q.toLowerCase();
-      result.data = result.data.filter(
-        (e) => e.title.toLowerCase().includes(q) || e.description?.toLowerCase().includes(q),
-      );
+    // Price filter — ticketTypes is a nested array, not natively Firestore-queryable.
+    // free = no ticket types OR at least one with price === 0
+    // paid = at least one ticket type AND all have price > 0
+    if (query.price) {
+      result.data = result.data.filter((e) => {
+        const types = e.ticketTypes ?? [];
+        if (query.price === "free") {
+          return types.length === 0 || types.some((t) => t.price === 0);
+        }
+        return types.length > 0 && types.every((t) => t.price > 0);
+      });
       result.meta.total = result.data.length;
       result.meta.totalPages = Math.ceil(result.data.length / query.limit);
     }

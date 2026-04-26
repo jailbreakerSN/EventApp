@@ -144,3 +144,91 @@ describe("BaseRepository.softDelete — W10-P4 race-free contract", () => {
     await expect(repo.softDelete("missing-doc")).rejects.toBeInstanceOf(NotFoundError);
   });
 });
+
+describe("BaseRepository.findMany — soft-delete default (P0.4)", () => {
+  // Build a self-contained query mock that records every `where` call so we
+  // can assert the soft-delete filter is/isn't injected. We bypass the
+  // module-level mock because the existing `collectionMock` only stubs the
+  // doc() path used by update/softDelete tests.
+  function makeQueryMock(): {
+    whereCalls: Array<[string, string, unknown]>;
+    rebind: () => void;
+  } {
+    const whereCalls: Array<[string, string, unknown]> = [];
+    const queryShape = {
+      where: vi.fn((field: string, op: string, value: unknown) => {
+        whereCalls.push([field, op, value]);
+        return queryShape;
+      }),
+      orderBy: vi.fn(() => queryShape),
+      offset: vi.fn(() => queryShape),
+      limit: vi.fn(() => queryShape),
+      get: vi.fn(async () => ({ docs: [], size: 0 })),
+      count: vi.fn(() => ({ get: async () => ({ data: () => ({ count: 0 }) }) })),
+    };
+
+    const rebind = (): void => {
+      // Rebind both the doc() collection (already stubbed for update tests)
+      // and the where() collection used by findMany.
+      (collectionMock as unknown as { where: typeof queryShape.where }).where =
+        queryShape.where;
+      (collectionMock as unknown as { orderBy: typeof queryShape.orderBy }).orderBy =
+        queryShape.orderBy;
+      (collectionMock as unknown as { offset: typeof queryShape.offset }).offset =
+        queryShape.offset;
+      (collectionMock as unknown as { limit: typeof queryShape.limit }).limit =
+        queryShape.limit;
+      (collectionMock as unknown as { get: typeof queryShape.get }).get = queryShape.get;
+      (collectionMock as unknown as { count: typeof queryShape.count }).count = queryShape.count;
+    };
+
+    return { whereCalls, rebind };
+  }
+
+  class SoftDeleteRepo extends BaseRepository<ThingShape> {
+    protected override readonly softDeleteConfig = {
+      field: "status",
+      tombstones: ["archived", "cancelled"] as const,
+    };
+    constructor() {
+      super("things", "thing");
+    }
+  }
+
+  class PlainRepo extends BaseRepository<ThingShape> {
+    constructor() {
+      super("things", "thing");
+    }
+  }
+
+  it("injects a not-in tombstone filter by default when softDelete config is set", async () => {
+    const { whereCalls, rebind } = makeQueryMock();
+    rebind();
+    await new SoftDeleteRepo().findMany([{ field: "type", op: "==", value: "event" }]);
+
+    const tombstoneCall = whereCalls.find(([f]) => f === "status");
+    expect(tombstoneCall).toBeDefined();
+    expect(tombstoneCall?.[1]).toBe("not-in");
+    expect(tombstoneCall?.[2]).toEqual(["archived", "cancelled"]);
+  });
+
+  it("skips the tombstone filter when caller passes includeArchived: true", async () => {
+    const { whereCalls, rebind } = makeQueryMock();
+    rebind();
+    await new SoftDeleteRepo().findMany(
+      [{ field: "type", op: "==", value: "event" }],
+      undefined,
+      { includeArchived: true },
+    );
+
+    expect(whereCalls.find(([f]) => f === "status")).toBeUndefined();
+  });
+
+  it("never injects when softDelete config is not set", async () => {
+    const { whereCalls, rebind } = makeQueryMock();
+    rebind();
+    await new PlainRepo().findMany([{ field: "type", op: "==", value: "event" }]);
+
+    expect(whereCalls.find(([f]) => f === "status")).toBeUndefined();
+  });
+});

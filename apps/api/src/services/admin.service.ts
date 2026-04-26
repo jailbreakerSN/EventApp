@@ -4,6 +4,7 @@ import { adminRepository } from "@/repositories/admin.repository";
 import { venueRepository } from "@/repositories/venue.repository";
 import { planRepository } from "@/repositories/plan.repository";
 import { db, auth, COLLECTIONS } from "@/config/firebase";
+import type { UserRecord } from "firebase-admin/auth";
 import { eventBus } from "@/events/event-bus";
 import { getRequestId } from "@/context/request-context";
 import { NotFoundError, ForbiddenError } from "@/errors/app-error";
@@ -1305,19 +1306,36 @@ class AdminService extends BaseService {
     this.requireAnyPermission(user, ["platform:audit_read", "platform:manage"]);
     const page = await adminRepository.listAllUsers(
       { q: query.q, role: query.role, isActive: query.isActive },
-      { page: query.page, limit: query.limit },
+      {
+        page: query.page,
+        limit: query.limit,
+        orderBy: query.orderBy ?? "createdAt",
+        orderDir: query.orderDir ?? "desc",
+      },
     );
 
-    // Enrich each row with a JWT ↔ Firestore drift check. Admin UI
-    // displays a visible warning on rows where the two disagree so
-    // operators don't apply mutations against stale state (see the
-    // `AdminUserRow` type comment in shared-types). Bounded cardinality
-    // — admin table pages at 20 rows — so N+1 `auth.getUser` is
-    // acceptable. Batching via `auth.getUsers([...])` would be cleaner
-    // but firebase-admin's batch identifier interface is clunky for
-    // our pagination pattern; defer until this becomes a latency issue.
-    const enriched = await Promise.all(
-      page.data.map(async (u): Promise<AdminUserRow> => this.attachClaimsMatch(u)),
+    // P0.6 — batch the JWT ↔ Firestore drift check via auth.getUsers([uids])
+    // instead of N independent auth.getUser(uid) calls. Firebase Admin SDK
+    // accepts up to 100 identifiers per batch; admin table page size is 20
+    // so a single batch covers every page.
+    if (page.data.length === 0) {
+      return page as PaginatedResult<AdminUserRow>;
+    }
+
+    const identifiers = page.data.map((u) => ({ uid: u.uid }));
+    let recordsByUid = new Map<string, UserRecord>();
+    try {
+      const batch = await auth.getUsers(identifiers);
+      recordsByUid = new Map(batch.users.map((r) => [r.uid, r]));
+      // batch.notFound contains identifiers that lack an Auth record — we
+      // surface those rows with claimsMatch: null per attachClaimsMatch.
+    } catch {
+      // Auth SDK outage: every row gets claimsMatch: null. The admin UI
+      // already renders this case as "drift unknown" and stays operable.
+    }
+
+    const enriched: AdminUserRow[] = page.data.map((profile) =>
+      this.computeClaimsMatch(profile, recordsByUid.get(profile.uid) ?? null),
     );
 
     return { ...page, data: enriched };
@@ -1331,6 +1349,25 @@ class AdminService extends BaseService {
    * transient Admin SDK failure — both worth surfacing visually).
    */
   private async attachClaimsMatch(profile: UserProfile): Promise<AdminUserRow> {
+    let record: UserRecord | null = null;
+    try {
+      record = await auth.getUser(profile.uid);
+    } catch {
+      record = null;
+    }
+    return this.computeClaimsMatch(profile, record);
+  }
+
+  /**
+   * Pure (sync) variant of attachClaimsMatch that takes a pre-fetched Auth
+   * record. The async wrapper above keeps the single-fetch /admin/users/:uid
+   * path simple; the batched listUsers path uses this directly to avoid N+1.
+   *
+   * `record === null` means "Auth fetch failed or user is missing in Auth"
+   * — we still return the row with claimsMatch: null so the admin UI can
+   * surface the warning badge instead of hiding the row.
+   */
+  private computeClaimsMatch(profile: UserProfile, record: UserRecord | null): AdminUserRow {
     const base: Omit<AdminUserRow, "claimsMatch"> = {
       uid: profile.uid,
       email: profile.email,
@@ -1348,47 +1385,41 @@ class AdminService extends BaseService {
       updatedAt: profile.updatedAt,
     };
 
-    try {
-      const record = await auth.getUser(profile.uid);
-      const rawClaims = record.customClaims;
-      const claims = (rawClaims ?? {}) as Record<string, unknown>;
-
-      // Fresh-user grace window: if Auth has NO custom claims set yet
-      // (undefined or empty object) AND the Firestore doc was created
-      // less than CLAIMS_PROPAGATION_GRACE_MS ago, treat the two as in
-      // sync. Rationale: the onUserCreated Cloud Function trigger sets
-      // the initial claims asynchronously, so a brand-new account that
-      // hasn't had its first claim-write yet will otherwise light up
-      // a false-positive drift pill every single time. We don't want
-      // operators to develop habituation to a warning they should
-      // actually act on.
-      const claimsAreEmpty = rawClaims == null || Object.keys(claims).length === 0;
-      const createdAtMs = new Date(profile.createdAt).getTime();
-      const withinGraceWindow =
-        Number.isFinite(createdAtMs) && Date.now() - createdAtMs < CLAIMS_PROPAGATION_GRACE_MS;
-      if (claimsAreEmpty && withinGraceWindow) {
-        return {
-          ...base,
-          claimsMatch: { roles: true, organizationId: true, orgRole: true },
-        };
-      }
-
-      const claimRoles = (claims.roles as string[] | undefined) ?? [];
-      const claimOrgId = (claims.organizationId as string | null | undefined) ?? null;
-      const claimOrgRole = (claims.orgRole as string | null | undefined) ?? null;
-
-      const match: ClaimsMatch = {
-        roles: arraysEqualAsSet(profile.roles, claimRoles),
-        organizationId: (profile.organizationId ?? null) === claimOrgId,
-        orgRole: (profile.orgRole ?? null) === claimOrgRole,
-      };
-      return { ...base, claimsMatch: match };
-    } catch {
-      // Auth fetch failed — surface visually via claimsMatch: null
-      // rather than hiding the row or throwing. The admin can still
-      // operate on the row and will see the warning badge.
+    if (!record) {
       return { ...base, claimsMatch: null };
     }
+
+    const rawClaims = record.customClaims;
+    const claims = (rawClaims ?? {}) as Record<string, unknown>;
+
+    // Fresh-user grace window: if Auth has NO custom claims set yet
+    // (undefined or empty object) AND the Firestore doc was created
+    // less than CLAIMS_PROPAGATION_GRACE_MS ago, treat the two as in
+    // sync. Rationale: the onUserCreated Cloud Function trigger sets
+    // the initial claims asynchronously, so a brand-new account that
+    // hasn't had its first claim-write yet will otherwise light up
+    // a false-positive drift pill every single time.
+    const claimsAreEmpty = rawClaims == null || Object.keys(claims).length === 0;
+    const createdAtMs = new Date(profile.createdAt).getTime();
+    const withinGraceWindow =
+      Number.isFinite(createdAtMs) && Date.now() - createdAtMs < CLAIMS_PROPAGATION_GRACE_MS;
+    if (claimsAreEmpty && withinGraceWindow) {
+      return {
+        ...base,
+        claimsMatch: { roles: true, organizationId: true, orgRole: true },
+      };
+    }
+
+    const claimRoles = (claims.roles as string[] | undefined) ?? [];
+    const claimOrgId = (claims.organizationId as string | null | undefined) ?? null;
+    const claimOrgRole = (claims.orgRole as string | null | undefined) ?? null;
+
+    const match: ClaimsMatch = {
+      roles: arraysEqualAsSet(profile.roles, claimRoles),
+      organizationId: (profile.organizationId ?? null) === claimOrgId,
+      orgRole: (profile.orgRole ?? null) === claimOrgRole,
+    };
+    return { ...base, claimsMatch: match };
   }
 
   async updateUserRoles(user: AuthUser, targetUserId: string, roles: string[]): Promise<void> {
@@ -1566,7 +1597,12 @@ class AdminService extends BaseService {
     this.requireAnyPermission(user, ["platform:audit_read", "platform:manage"]);
     return adminRepository.listAllOrganizations(
       { q: query.q, plan: query.plan, isVerified: query.isVerified, isActive: query.isActive },
-      { page: query.page, limit: query.limit },
+      {
+        page: query.page,
+        limit: query.limit,
+        orderBy: query.orderBy ?? "createdAt",
+        orderDir: query.orderDir ?? "desc",
+      },
     );
   }
 

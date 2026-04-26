@@ -62,6 +62,7 @@ export default async function EventsPage({ searchParams }: EventsPageProps) {
       city: params.city,
       dateFrom: dateRange.dateFrom,
       dateTo: dateRange.dateTo,
+      price: params.price === "free" || params.price === "paid" ? params.price : undefined,
       page,
       limit: 12,
       orderBy: "startDate",

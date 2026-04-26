@@ -31,6 +31,35 @@ name: Deploy to Production
 #     `NEXT_PUBLIC_CSP_ENFORCE=true` (per the Wave 10 W10-P2 ramp).
 #   - Skips `seed-staging` + `backfill-ledger` jobs from the staging
 #     workflow — those would corrupt prod data.
+#
+# ─── One-shot prod runbooks (operator action) ──────────────────────────────
+# These don't run automatically because this workflow doesn't own the
+# corresponding deploy step in prod (Firestore indexes/rules + web hosting
+# go through a separate workflow). Run from a workstation with the prod SA
+# credentials AFTER the corresponding pre-requisite has landed.
+#
+#   1. data-listing doctrine searchKeywords backfill
+#      Pre-requisite: composite index on
+#      `events(searchKeywords array-contains, status, isPublic, startDate)`
+#      is live in production (see infrastructure/firebase/firestore.indexes.json
+#      + `docs/design-system/data-listing.md`). Verify in the Firebase
+#      console → Firestore → Indexes that the index status is `Enabled`
+#      (Firestore takes 5-30 min to backfill the index after deploy).
+#
+#      DRY-RUN preview (prints first 10 diffs, writes nothing):
+#        SEED_TARGET=production FIREBASE_PROJECT_ID=teranga-events-prod \
+#          DRY_RUN=1 npx tsx scripts/backfill-event-search-keywords.ts
+#
+#      Apply (idempotent — re-running on already-backfilled events is a no-op):
+#        SEED_TARGET=production FIREBASE_PROJECT_ID=teranga-events-prod \
+#          npx tsx scripts/backfill-event-search-keywords.ts
+#
+#      Post-backfill smoke (manual): open the production participant URL with
+#      `/events?q=Sénégal` and `/events?q=atelier&page=2` to verify accent-
+#      folding and honest pagination, and the backoffice
+#      `/admin/users?users.q=foo` to verify nuqs URL persistence on refresh.
+#      The staging deploy CI (deploy-staging.yml) runs the equivalent
+#      automated smoke probes after every staging deploy.
 
 on:
   workflow_dispatch:

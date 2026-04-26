@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   useAdminCoupons,
   useArchiveCoupon,
 } from "@/hooks/use-admin";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import {
   Card,
   CardContent,
@@ -51,12 +52,24 @@ function formatUses(coupon: PlanCoupon): string {
 
 export default function AdminCouponsPage() {
   const [onlyActive, setOnlyActive] = useState(false);
-  const { data, isLoading } = useAdminCoupons(
-    onlyActive ? { isActive: true } : {},
-  );
+  const [page, setPage] = useState(1);
+  const limit = 20;
+
+  // Reset to page 1 whenever the filter changes — otherwise the user could
+  // sit on page 4 of the unfiltered list while flipping the active toggle.
+  useEffect(() => {
+    setPage(1);
+  }, [onlyActive]);
+
+  const { data, isLoading } = useAdminCoupons({
+    isActive: onlyActive ? true : undefined,
+    page,
+    limit,
+  });
   const archive = useArchiveCoupon();
 
   const coupons: PlanCoupon[] = data?.data ?? [];
+  const meta = data?.meta ?? { page: 1, limit, total: 0, totalPages: 1 };
 
   const handleArchive = (coupon: PlanCoupon) => {
     if (!window.confirm(`Archiver le coupon « ${coupon.code} » ?`)) return;
@@ -227,6 +240,42 @@ export default function AdminCouponsPage() {
           />
         </CardContent>
       </Card>
+
+      {meta.totalPages > 1 ? (
+        <nav
+          aria-label="Pagination des coupons"
+          className="flex items-center justify-between gap-3 pt-2"
+        >
+          <p className="text-sm text-muted-foreground" aria-current="page">
+            Page {meta.page} sur {meta.totalPages} ({meta.total} coupon
+            {meta.total > 1 ? "s" : ""})
+          </p>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={meta.page <= 1 || isLoading}
+              aria-label="Page précédente"
+            >
+              <ChevronLeft className="h-4 w-4" />
+              Précédent
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setPage((p) => p + 1)}
+              disabled={meta.page >= meta.totalPages || isLoading}
+              aria-label="Page suivante"
+            >
+              Suivant
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </nav>
+      ) : null}
     </div>
   );
 }

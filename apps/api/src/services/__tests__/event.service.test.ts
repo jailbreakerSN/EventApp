@@ -5,6 +5,7 @@ import {
   type UpdateEventDto,
   type CreateTicketTypeDto,
   type Location,
+  type TicketType,
 } from "@teranga/shared-types";
 import {
   buildAuthUser,
@@ -183,6 +184,47 @@ describe("EventService.create", () => {
     const dto = { organizationId: "org-1", title: "Test" } as unknown as CreateEventDto;
 
     await expect(service.create(dto, user)).rejects.toThrow("Permission manquante");
+  });
+
+  it("computes accent-folded searchKeywords[] from title, tags, and location on create", async () => {
+    const user = buildOrganizerUser("org-1");
+    const dto = {
+      organizationId: "org-1",
+      title: "Conférence Sénégal Tech",
+      description: "n/a",
+      category: "conference" as const,
+      format: "in_person" as const,
+      status: "draft" as const,
+      startDate: new Date(Date.now() + 86400000).toISOString(),
+      endDate: new Date(Date.now() + 2 * 86400000).toISOString(),
+      timezone: "Africa/Dakar",
+      location: { name: "CICAD", address: "Diamniadio", city: "Thiès", country: "SN" },
+      isPublic: true,
+      isFeatured: false,
+      requiresApproval: false,
+      ticketTypes: [],
+      accessZones: [],
+      tags: ["fintech"],
+      maxAttendees: null,
+      shortDescription: null,
+      coverImageURL: null,
+      bannerImageURL: null,
+      templateId: null,
+    };
+
+    mockOrgRepo.findByIdOrThrow.mockResolvedValue(org);
+    mockEventRepo.create.mockResolvedValue(buildEvent({ organizationId: "org-1" }));
+
+    await service.create(dto as unknown as CreateEventDto, user);
+
+    const createCall = mockEventRepo.create.mock.calls[0]?.[0] as { searchKeywords: string[] };
+    expect(createCall.searchKeywords).toEqual(expect.arrayContaining(["co", "con", "conf", "conference"]));
+    expect(createCall.searchKeywords).toEqual(expect.arrayContaining(["se", "senegal"]));
+    expect(createCall.searchKeywords).toEqual(expect.arrayContaining(["fi", "fintech"]));
+    expect(createCall.searchKeywords).toEqual(expect.arrayContaining(["th", "thies"]));
+    expect(createCall.searchKeywords).toEqual(expect.arrayContaining(["sn"]));
+    // Cap respected
+    expect(createCall.searchKeywords.length).toBeLessThanOrEqual(200);
   });
 
   it("rejects if user does not belong to the organization", async () => {
@@ -991,17 +1033,13 @@ describe("EventService.search", () => {
     );
   });
 
-  it("filters results by title when q is provided", async () => {
-    const events = [
-      buildEvent({ title: "Teranga Fest" }),
-      buildEvent({ title: "Dakar Tech Summit" }),
-    ];
+  it("derives searchToken from q and forwards it to the repository", async () => {
     mockEventRepo.search.mockResolvedValue({
-      data: events,
-      meta: { page: 1, limit: 20, total: 2, totalPages: 1 },
+      data: [],
+      meta: { page: 1, limit: 20, total: 0, totalPages: 0 },
     });
 
-    const result = await service.search({
+    await service.search({
       q: "teranga",
       page: 1,
       limit: 20,
@@ -1009,8 +1047,178 @@ describe("EventService.search", () => {
       orderDir: "asc",
     });
 
-    expect(result.data).toHaveLength(1);
-    expect(result.data[0].title).toBe("Teranga Fest");
+    expect(mockEventRepo.search).toHaveBeenCalledWith(
+      expect.objectContaining({ searchToken: "teranga" }),
+      expect.any(Object),
+    );
+  });
+
+  it("normalises q (accent-folding + lowercase) before forwarding searchToken", async () => {
+    mockEventRepo.search.mockResolvedValue({
+      data: [],
+      meta: { page: 1, limit: 20, total: 0, totalPages: 0 },
+    });
+
+    await service.search({
+      q: "Sénégal",
+      page: 1,
+      limit: 20,
+      orderBy: "startDate",
+      orderDir: "asc",
+    });
+
+    expect(mockEventRepo.search).toHaveBeenCalledWith(
+      expect.objectContaining({ searchToken: "senegal" }),
+      expect.any(Object),
+    );
+  });
+
+  it("omits searchToken when q is empty / whitespace-only", async () => {
+    mockEventRepo.search.mockResolvedValue({
+      data: [],
+      meta: { page: 1, limit: 20, total: 0, totalPages: 0 },
+    });
+
+    await service.search({
+      q: "   ",
+      page: 1,
+      limit: 20,
+      orderBy: "startDate",
+      orderDir: "asc",
+    });
+
+    const filtersArg = mockEventRepo.search.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(filtersArg.searchToken).toBeUndefined();
+  });
+
+  it("clamps long search tokens to the 15-char prefix index width", async () => {
+    mockEventRepo.search.mockResolvedValue({
+      data: [],
+      meta: { page: 1, limit: 20, total: 0, totalPages: 0 },
+    });
+
+    await service.search({
+      q: "supercalifragilisticexpialidocious",
+      page: 1,
+      limit: 20,
+      orderBy: "startDate",
+      orderDir: "asc",
+    });
+
+    expect(mockEventRepo.search).toHaveBeenCalledWith(
+      expect.objectContaining({ searchToken: "supercalifragil" }),
+      expect.any(Object),
+    );
+  });
+
+  it("propagates meta.warnings from the repository to the caller (P0.5)", async () => {
+    mockEventRepo.search.mockResolvedValue({
+      data: [],
+      meta: {
+        page: 1,
+        limit: 20,
+        total: 0,
+        totalPages: 0,
+        warnings: ["TAGS_TRUNCATED:30 (received 42)"],
+      },
+    });
+
+    const result = await service.search({
+      tags: Array.from({ length: 42 }, (_, i) => `tag-${i}`),
+      page: 1,
+      limit: 20,
+      orderBy: "startDate",
+      orderDir: "asc",
+    });
+
+    expect(result.meta.warnings).toEqual(["TAGS_TRUNCATED:30 (received 42)"]);
+  });
+
+  describe("price filter", () => {
+    const ticket = (overrides: Partial<TicketType>): TicketType => ({
+      id: overrides.id ?? "tt",
+      name: overrides.name ?? "Standard",
+      price: overrides.price ?? 0,
+      currency: "XOF",
+      totalQuantity: 100,
+      soldCount: 0,
+      accessZoneIds: [],
+      isVisible: true,
+      ...overrides,
+    });
+
+    const freeEvt = buildEvent({
+      title: "Free Workshop",
+      ticketTypes: [ticket({ id: "t1", price: 0 })],
+    });
+    const paidEvt = buildEvent({
+      title: "Paid Conference",
+      ticketTypes: [ticket({ id: "t2", price: 5000 })],
+    });
+    const mixedEvt = buildEvent({
+      title: "Mixed",
+      ticketTypes: [
+        ticket({ id: "t3", name: "VIP", price: 10000 }),
+        ticket({ id: "t4", name: "Free seat", price: 0 }),
+      ],
+    });
+    const noTicketEvt = buildEvent({ title: "No tickets yet", ticketTypes: [] });
+
+    it("price=free keeps events with at least one zero-priced ticket and ticketless events", async () => {
+      mockEventRepo.search.mockResolvedValue({
+        data: [freeEvt, paidEvt, mixedEvt, noTicketEvt],
+        meta: { page: 1, limit: 20, total: 4, totalPages: 1 },
+      });
+
+      const result = await service.search({
+        price: "free",
+        page: 1,
+        limit: 20,
+        orderBy: "startDate",
+        orderDir: "asc",
+      });
+
+      expect(result.data.map((e) => e.title)).toEqual([
+        "Free Workshop",
+        "Mixed",
+        "No tickets yet",
+      ]);
+      expect(result.meta.total).toBe(3);
+    });
+
+    it("price=paid keeps only events whose ticket types are all priced", async () => {
+      mockEventRepo.search.mockResolvedValue({
+        data: [freeEvt, paidEvt, mixedEvt, noTicketEvt],
+        meta: { page: 1, limit: 20, total: 4, totalPages: 1 },
+      });
+
+      const result = await service.search({
+        price: "paid",
+        page: 1,
+        limit: 20,
+        orderBy: "startDate",
+        orderDir: "asc",
+      });
+
+      expect(result.data.map((e) => e.title)).toEqual(["Paid Conference"]);
+      expect(result.meta.total).toBe(1);
+    });
+
+    it("absent price filter leaves results untouched", async () => {
+      mockEventRepo.search.mockResolvedValue({
+        data: [freeEvt, paidEvt],
+        meta: { page: 1, limit: 20, total: 2, totalPages: 1 },
+      });
+
+      const result = await service.search({
+        page: 1,
+        limit: 20,
+        orderBy: "startDate",
+        orderDir: "asc",
+      });
+
+      expect(result.data).toHaveLength(2);
+    });
   });
 });
 

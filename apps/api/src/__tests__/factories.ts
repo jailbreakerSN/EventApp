@@ -118,6 +118,7 @@ export function buildEvent(overrides: Partial<Event> = {}): Event {
     checkedInCount: 0,
     isPublic: true,
     isFeatured: false,
+    searchKeywords: [],
     venueId: null,
     venueName: null,
     requiresApproval: false,

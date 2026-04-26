@@ -132,6 +132,13 @@ export const AdminUserQuerySchema = z.object({
   isActive: zStringBoolean().optional(),
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().positive().max(100).default(20),
+  /**
+   * Per-route sort whitelist (data-listing doctrine § Backend primitives).
+   * Only fields backed by a Firestore index are accepted; anything else
+   * yields a 400 from Zod.
+   */
+  orderBy: z.enum(["createdAt", "displayName", "email"]).optional(),
+  orderDir: z.enum(["asc", "desc"]).optional(),
 });
 
 export type AdminUserQuery = z.infer<typeof AdminUserQuerySchema>;
@@ -190,6 +197,13 @@ export const AdminOrgQuerySchema = z.object({
   isActive: zStringBoolean().optional(),
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().positive().max(100).default(20),
+  /**
+   * Per-route sort whitelist (data-listing doctrine). Backed by the
+   * organizations composite indexes that already pair plan / verified
+   * status with the relevant order field.
+   */
+  orderBy: z.enum(["createdAt", "name", "plan"]).optional(),
+  orderDir: z.enum(["asc", "desc"]).optional(),
 });
 
 export type AdminOrgQuery = z.infer<typeof AdminOrgQuerySchema>;
