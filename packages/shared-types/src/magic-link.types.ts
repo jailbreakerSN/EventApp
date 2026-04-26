@@ -6,18 +6,15 @@
  * token that grants temporary scoped access ("edit your speaker bio
  * for event X") without forcing the recipient to create an account.
  *
- * Token format (HMAC-SHA256, base64url, no JWT lib dependency):
+ * Token format (HMAC-SHA256, hex-encoded, no JWT lib dependency):
  *
- *     v1.<role>.<resourceId>.<eventId>.<expiresAtBase36>.<sig8>
+ *     v1.<role>.<resourceId>.<eventId>.<expiresAtBase36>.<sig64>
  *
- * Example:
- *     v1.speaker.spk-7c2.evt-9.lqxqz.5e0a3b1c
- *
- * The signature is the truncated HMAC of the prefix
- * (`<role>.<resourceId>.<eventId>.<expiresAtBase36>`), 8 hex chars
- * (32 bits) — enough to defeat random guessing without bloating the
- * URL. We use `crypto.timingSafeEqual` on the verifier side, mirror
- * of the QR signing pattern.
+ * The signature is the full 64-hex-char HMAC-SHA256 digest (no
+ * truncation) over the prefix
+ * `<role>.<resourceId>.<eventId>.<expiresAtBase36>` — same security
+ * standard as QR badges (see CLAUDE.md Security Hardening
+ * Checklist). We use `crypto.timingSafeEqual` on the verifier side.
  *
  * TTL: 48 hours by default (configurable). Exceeded → 410 Gone.
  *

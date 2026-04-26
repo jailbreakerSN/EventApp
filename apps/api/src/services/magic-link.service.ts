@@ -10,10 +10,11 @@
  *
  *     v1.<role>.<resourceId>.<eventId>.<expiresAtBase36>.<sig>
  *
- * The signature is HMAC-SHA256 over the prefix
- * (`<role>.<resourceId>.<eventId>.<expiresAtBase36>`), 16 hex chars
- * (64 bits — defends against random guess + collision while keeping
- * the URL ≤ 200 chars).
+ * The signature is the FULL HMAC-SHA256 digest (64 hex chars / 256
+ * bits) over the prefix (`<role>.<resourceId>.<eventId>.<expiresAtBase36>`).
+ * No truncation — same security bar as the QR signing pattern
+ * documented in CLAUDE.md. URL length stays bounded under 250 chars
+ * for typical resource ids, well within RFC 7230 practical limits.
  *
  * Single-use: NO. The link stays valid for the full TTL window so
  * the recipient can come back to fix typos. Revocation is the one
@@ -41,7 +42,10 @@ import type {
 } from "@teranga/shared-types";
 
 const DEFAULT_TTL_HOURS = 48;
-const SIG_LENGTH_HEX = 16;
+// Full HMAC-SHA256 digest length in hex (256 bits / 4 bits per hex char).
+// CLAUDE.md mandates "full 64-char HMAC, no truncation" for signed
+// credentials — same standard as QR badges.
+const SIG_LENGTH_HEX = 64;
 const TOKEN_VERSION = "v1";
 
 class MagicLinkService extends BaseService {
@@ -157,7 +161,19 @@ class MagicLinkService extends BaseService {
     };
   }
 
-  /** Organizer-driven revoke. Idempotent — re-revoking is a no-op. */
+  /**
+   * Organizer-driven revoke. Idempotent — re-revoking is a no-op.
+   *
+   * Concurrent revokes by two organizers race the read+set: both see
+   * `revokedAt: null`, both write `revokedAt = now(~)`, last-write-
+   * wins (timestamps differ by milliseconds, no security delta), and
+   * both emit `magic_link.revoked`. The duplicate audit row is
+   * accepted as benign — there's no counter, no ledger, no plan-
+   * limit gate, and the idempotency short-circuit below catches the
+   * common single-revoke path. A transaction would only be worth
+   * adding if the audit listener fans out to an outbound side
+   * effect (webhook, notification) where double-firing is harmful.
+   */
   async revoke(tokenHash: string, user: AuthUser): Promise<MagicLink> {
     this.requirePermission(user, "event:update");
     const ref = db.collection(COLLECTIONS.MAGIC_LINKS).doc(tokenHash);
@@ -215,10 +231,9 @@ export function signToken(args: {
 }): string {
   const expiresBase36 = args.expiresAt.getTime().toString(36);
   const prefix = `${TOKEN_VERSION}.${args.role}.${args.resourceId}.${args.eventId}.${expiresBase36}`;
-  const sig = createHmac("sha256", getSecret())
-    .update(prefix)
-    .digest("hex")
-    .slice(0, SIG_LENGTH_HEX);
+  // Full 64-hex-char HMAC-SHA256 — no truncation. See CLAUDE.md
+  // Security Hardening Checklist.
+  const sig = createHmac("sha256", getSecret()).update(prefix).digest("hex");
   return `${prefix}.${sig}`;
 }
 
@@ -236,13 +251,11 @@ export function parseToken(token: string): ParsedToken | null {
   if (!Number.isFinite(expiresMs) || expiresMs <= 0) return null;
 
   // Constant-time signature compare — same pattern as the QR codes.
+  // No truncation: full 64-char HMAC-SHA256 digest.
   const prefix = `${version}.${role}.${resourceId}.${eventId}.${expiresBase36}`;
   let expectedSig: string;
   try {
-    expectedSig = createHmac("sha256", getSecret())
-      .update(prefix)
-      .digest("hex")
-      .slice(0, SIG_LENGTH_HEX);
+    expectedSig = createHmac("sha256", getSecret()).update(prefix).digest("hex");
   } catch {
     return null;
   }

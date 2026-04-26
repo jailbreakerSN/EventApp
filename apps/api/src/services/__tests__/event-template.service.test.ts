@@ -1,10 +1,55 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { ForbiddenError, NotFoundError } from "@/errors/app-error";
+import { buildAuthUser, buildOrganizerUser } from "@/__tests__/factories";
+import { EVENT_TEMPLATES, findTemplate, resolveTemplateEndDate } from "@teranga/shared-types";
+
+// Hoisted mocks for the integration tests below — the hoisted block
+// runs before any vi.mock factory so we can wire shared spies that
+// the service captures at module-load time.
+const hoisted = vi.hoisted(() => ({
+  emitMock: vi.fn(),
+  createEventMock: vi.fn(),
+  createSessionMock: vi.fn(),
+}));
+
+vi.mock("@/events/event-bus", () => ({
+  eventBus: { emit: hoisted.emitMock },
+}));
+
+vi.mock("../event.service", () => ({
+  eventService: { create: hoisted.createEventMock },
+}));
+
+vi.mock("../session.service", () => ({
+  sessionService: { create: hoisted.createSessionMock },
+}));
+
+vi.mock("@/context/request-context", () => ({
+  getRequestContext: () => ({ requestId: "test-request-id" }),
+  getRequestId: () => "test-request-id",
+  trackFirestoreReads: vi.fn(),
+}));
+
 import {
+  eventTemplateService,
   materialiseTicketTypes,
   materialiseSessions,
   materialiseCommsBlueprint,
 } from "../event-template.service";
-import { EVENT_TEMPLATES, findTemplate, resolveTemplateEndDate } from "@teranga/shared-types";
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  // Default: eventService.create returns a freshly-minted event row.
+  hoisted.createEventMock.mockResolvedValue({
+    id: "evt-new",
+    organizationId: "org-1",
+    title: "Mon atelier",
+    status: "draft",
+    startDate: "2026-04-26T10:00:00.000Z",
+    endDate: "2026-04-26T14:00:00.000Z",
+  });
+  hoisted.createSessionMock.mockResolvedValue({ id: "sess-new" });
+});
 
 // ─── Event template catalog + materialisation helpers ─────────────────────
 //
@@ -134,5 +179,128 @@ describe("materialiseCommsBlueprint", () => {
     const out = materialiseCommsBlueprint(template, "2026-04-26T10:00:00.000Z");
     const reminder7d = out.find((b) => b.title.includes("Rappel J-7"));
     expect(reminder7d?.scheduledAt).toBe("2026-04-19T10:00:00.000Z");
+  });
+});
+
+// ─── Service integration — list() + cloneFromTemplate() ──────────────────
+
+describe("eventTemplateService.list", () => {
+  it("returns the catalog for callers with event:create", () => {
+    const user = buildOrganizerUser("org-1");
+    const out = eventTemplateService.list(user);
+    expect(out).toHaveLength(EVENT_TEMPLATES.length);
+  });
+
+  it("rejects callers without event:create (permission denial)", () => {
+    const participant = buildAuthUser({
+      roles: ["participant"],
+      organizationId: "org-1",
+    });
+    expect(() => eventTemplateService.list(participant)).toThrow(ForbiddenError);
+  });
+});
+
+describe("eventTemplateService.cloneFromTemplate", () => {
+  it("delegates to eventService.create and emits event.cloned_from_template (happy path)", async () => {
+    const user = buildOrganizerUser("org-1");
+    const result = await eventTemplateService.cloneFromTemplate(
+      {
+        templateId: "workshop",
+        title: "Mon atelier",
+        startDate: "2026-04-26T10:00:00.000Z",
+        organizationId: "org-1",
+      },
+      user,
+    );
+
+    expect(result.event.id).toBe("evt-new");
+    expect(result.templateId).toBe("workshop");
+    expect(hoisted.createEventMock).toHaveBeenCalledTimes(1);
+    // The workshop template ships exactly 1 session.
+    expect(hoisted.createSessionMock).toHaveBeenCalledTimes(1);
+    expect(result.sessionsAdded).toBe(1);
+
+    // Domain event emit is mandatory per CLAUDE.md.
+    expect(hoisted.emitMock).toHaveBeenCalledWith(
+      "event.cloned_from_template",
+      expect.objectContaining({
+        templateId: "workshop",
+        eventId: "evt-new",
+        organizationId: "org-1",
+        sessionsAdded: 1,
+      }),
+    );
+  });
+
+  it("rejects callers without event:create (permission denial)", async () => {
+    const participant = buildAuthUser({
+      roles: ["participant"],
+      organizationId: "org-1",
+    });
+    await expect(
+      eventTemplateService.cloneFromTemplate(
+        {
+          templateId: "workshop",
+          title: "Mon atelier",
+          startDate: "2026-04-26T10:00:00.000Z",
+          organizationId: "org-1",
+        },
+        participant,
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenError);
+    // Should never reach eventService.create on a permission-denial.
+    expect(hoisted.createEventMock).not.toHaveBeenCalled();
+  });
+
+  it("throws NotFoundError when the templateId is unknown", async () => {
+    const user = buildOrganizerUser("org-1");
+    await expect(
+      eventTemplateService.cloneFromTemplate(
+        {
+          templateId: "made-up-template-id",
+          title: "X",
+          startDate: "2026-04-26T10:00:00.000Z",
+          organizationId: "org-1",
+        },
+        user,
+      ),
+    ).rejects.toBeInstanceOf(NotFoundError);
+    expect(hoisted.createEventMock).not.toHaveBeenCalled();
+  });
+
+  it("tolerates per-session creation failures (partial materialisation)", async () => {
+    // The conference template ships 4 sessions. Make session #2 throw.
+    hoisted.createSessionMock.mockReset();
+    let call = 0;
+    hoisted.createSessionMock.mockImplementation(async () => {
+      call += 1;
+      if (call === 2) throw new Error("Firestore write failed");
+      return { id: `sess-${call}` };
+    });
+    hoisted.createEventMock.mockResolvedValueOnce({
+      id: "evt-conf",
+      organizationId: "org-1",
+      title: "Conf 2026",
+      status: "draft",
+      startDate: "2026-04-26T10:00:00.000Z",
+      endDate: "2026-04-26T18:00:00.000Z",
+    });
+
+    const user = buildOrganizerUser("org-1");
+    const result = await eventTemplateService.cloneFromTemplate(
+      {
+        templateId: "conference",
+        title: "Conf 2026",
+        startDate: "2026-04-26T10:00:00.000Z",
+        organizationId: "org-1",
+      },
+      user,
+    );
+    // Expect 3 successful out of 4 (one threw mid-loop).
+    expect(result.sessionsAdded).toBe(3);
+    expect(hoisted.emitMock).toHaveBeenCalledWith(
+      "event.cloned_from_template",
+      expect.objectContaining({ sessionsAdded: 3 }),
+    );
   });
 });
