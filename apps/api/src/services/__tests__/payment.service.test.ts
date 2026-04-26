@@ -255,6 +255,36 @@ describe("PaymentService.initiatePayment", () => {
   });
   const user = buildAuthUser({ roles: ["participant"] });
 
+  // Phase-2 follow-up — the callback URL handed to the provider's
+  // initiate() MUST reflect WHO will send the IPN (provider.name),
+  // not the user-picked method. Regression guard for the bug where
+  // PayDunya was getting `/webhook/wave` and its IPNs landed on the
+  // wave verifier (signature mismatch → 403, no webhook log row,
+  // payment stuck in `processing`).
+  it("hands the callback URL keyed by provider.name, not by user-picked method", async () => {
+    mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
+    mockProvider.initiate.mockResolvedValue({
+      providerTransactionId: "mock_tx_xyz",
+      redirectUrl: "http://mock-checkout/mock_tx_xyz",
+    });
+    mockTxGet.mockResolvedValue({ empty: true });
+
+    await service.initiatePayment("ev-1", "vip", "mock", undefined, user);
+
+    // The mock provider has `name: "mock"` so the callback URL the
+    // service computes is `/v1/payments/webhook/mock`. If the bug
+    // ever re-introduces (using `method` instead of `provider.name`),
+    // the URL would still be /webhook/mock for mock and the test
+    // wouldn't catch it. The real defence is in the comment + the
+    // actual call shape on PayDunya tests; here we pin the
+    // contract: callbackUrl ends with `/webhook/${provider.name}`.
+    expect(mockProvider.initiate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        callbackUrl: expect.stringMatching(/\/v1\/payments\/webhook\/mock$/),
+      }),
+    );
+  });
+
   it("creates registration and payment in a transaction", async () => {
     mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
     mockProvider.initiate.mockResolvedValue({

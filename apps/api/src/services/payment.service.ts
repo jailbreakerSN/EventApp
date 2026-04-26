@@ -355,7 +355,23 @@ export class PaymentService extends BaseService {
         )
       : signQrPayload(regId, eventId, user.uid, qrWindow.notBefore, qrWindow.notAfter);
 
-    const callbackUrl = paymentWebhookUrl(method);
+    // Resolve the provider HERE (not later) so the callback URL we
+    // hand to the provider matches the route that ITS verifyWebhook
+    // will run on. The webhook URL discriminator is the SOURCE
+    // provider (who POSTs the IPN), not the user-picked method:
+    //   - method="wave" + PAYDUNYA_ENABLED → provider.name="paydunya"
+    //     → callback URL must be /v1/payments/webhook/paydunya so
+    //     the PayDunya verifyWebhook runs on the inbound IPN.
+    //   - method="wave" + LEGACY_PROVIDER → provider.name="wave"
+    //     → callback URL is /v1/payments/webhook/wave (Wave's HMAC
+    //     verifier runs).
+    // Phase-2 follow-up: the previous shape used `method` directly,
+    // which sent PayDunya the URL `/webhook/wave`. PayDunya's IPN
+    // landed there, our wave verifier rejected it (signature scheme
+    // mismatch), and the webhook event row was never recorded — the
+    // payment stayed in `processing` indefinitely.
+    const provider = getProvider(method);
+    const callbackUrl = paymentWebhookUrl(provider.name);
     const defaultReturnUrl = paymentReturnUrl(eventId, payId);
     const finalReturnUrl = returnUrl ? assertAllowedReturnUrl(returnUrl) : defaultReturnUrl;
 
@@ -494,7 +510,9 @@ export class PaymentService extends BaseService {
     }
 
     // ── Provider call (outside any tx — long network call) ──
-    const provider = getProvider(method);
+    // `provider` was resolved above (before callback URL construction).
+    // Re-using the same instance here so the registry lookup is done
+    // exactly once per initiate call.
     let providerResult: { providerTransactionId: string; redirectUrl: string };
     try {
       providerResult = await provider.initiate({
