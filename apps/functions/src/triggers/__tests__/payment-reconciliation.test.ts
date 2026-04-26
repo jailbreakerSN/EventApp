@@ -49,17 +49,27 @@ const handler = onPaymentReconciliation as unknown as () => Promise<void>;
 
 const ORIG_API_URL = process.env.API_BASE_URL;
 const ORIG_SECRET = process.env.INTERNAL_DISPATCH_SECRET;
+const ORIG_PROJECT = process.env.GCLOUD_PROJECT;
 const ORIG_FETCH = global.fetch;
 
 beforeEach(() => {
   vi.clearAllMocks();
   process.env.API_BASE_URL = "https://api.staging.example/";
   process.env.INTERNAL_DISPATCH_SECRET = "test-shared-secret-128bit-padding";
+  // Default to production for the happy path; env-guard tests below
+  // override per-case. Without this the recently-added env guard would
+  // short-circuit every existing test as "non-production".
+  process.env.GCLOUD_PROJECT = "teranga-events-prod";
 });
 
 afterEach(() => {
   process.env.API_BASE_URL = ORIG_API_URL;
   process.env.INTERNAL_DISPATCH_SECRET = ORIG_SECRET;
+  if (ORIG_PROJECT === undefined) {
+    delete process.env.GCLOUD_PROJECT;
+  } else {
+    process.env.GCLOUD_PROJECT = ORIG_PROJECT;
+  }
   global.fetch = ORIG_FETCH;
 });
 
@@ -71,7 +81,13 @@ describe("onPaymentReconciliation — cron trigger", () => {
       text: async () =>
         JSON.stringify({
           success: true,
-          data: { scanned: 5, finalizedSucceeded: 2, finalizedFailed: 1, stillPending: 2, errored: 0 },
+          data: {
+            scanned: 5,
+            finalizedSucceeded: 2,
+            finalizedFailed: 1,
+            stillPending: 2,
+            errored: 0,
+          },
         }),
     });
     global.fetch = fetchMock as unknown as typeof fetch;
@@ -146,9 +162,7 @@ describe("onPaymentReconciliation — cron trigger", () => {
 
     await handler();
 
-    expect(mockLogger.error).toHaveBeenCalledWith(
-      expect.stringContaining("timed out"),
-    );
+    expect(mockLogger.error).toHaveBeenCalledWith(expect.stringContaining("timed out"));
   });
 
   it("logs an unknown error category for non-AbortError network failures", async () => {
@@ -160,6 +174,39 @@ describe("onPaymentReconciliation — cron trigger", () => {
     expect(mockLogger.error).toHaveBeenCalledWith(
       expect.stringContaining("API call failed"),
       expect.objectContaining({ err: "ECONNREFUSED" }),
+    );
+  });
+
+  // ─── Env guard ─────────────────────────────────────────────────────────
+  // The cron is suppressed in staging + dev so it doesn't burn provider
+  // verify quota against a near-empty database. Same job logic stays
+  // available to operators via /admin/jobs (jobKey: reconcile-payments).
+
+  it("short-circuits with INFO log in staging — no fetch attempt", async () => {
+    process.env.GCLOUD_PROJECT = "teranga-app-990a8";
+    const fetchMock = vi.fn();
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await handler();
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(mockLogger.info).toHaveBeenCalledWith(
+      "payment.reconciliation: skipped (non-production env)",
+      expect.objectContaining({ env: "staging" }),
+    );
+  });
+
+  it("short-circuits in development (unset GCLOUD_PROJECT) — no fetch attempt", async () => {
+    delete process.env.GCLOUD_PROJECT;
+    const fetchMock = vi.fn();
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    await handler();
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(mockLogger.info).toHaveBeenCalledWith(
+      "payment.reconciliation: skipped (non-production env)",
+      expect.objectContaining({ env: "development" }),
     );
   });
 });

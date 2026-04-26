@@ -1,65 +1,36 @@
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { logger } from "firebase-functions/v2";
-import type { Query, DocumentSnapshot } from "firebase-admin/firestore";
-import { db, COLLECTIONS } from "../utils/admin";
+import { getTerangaEnv, shouldSkipScheduledJobInThisEnv } from "../utils/env";
 
 // ─── Balance release scheduled job (Phase Finance) ───────────────────────────
 //
-// Graduates `balanceTransactions` entries from `status: "pending"` to
-// `status: "available"` once their `availableOn` window has elapsed.
+// Hourly cron that graduates `balanceTransactions` entries from
+// `status: "pending"` to `status: "available"` once their `availableOn`
+// window has elapsed.
 //
 // Why this exists:
 //   The /finance page promises "Libéré 7j après la fin de l'événement"
-//   (see apps/web-backoffice/src/app/(dashboard)/finance/page.tsx). Without
+//   (apps/web-backoffice/src/app/(dashboard)/finance/page.tsx). Without
 //   this job, pending entries never graduate — the operator sees their
-//   funds locked indefinitely. The release window itself is computed at
+//   funds locked indefinitely. The release window is computed at
 //   payment-succeeded time by `computeAvailableOn()` in
 //   apps/api/src/config/finance.ts and stored on each ledger entry.
 //
-// Design:
-//   - Single global query on `(status, availableOn)` — no per-org loop on
-//     the scan side. Cheap because the index is selective: only `pending`
-//     rows past their release date are scanned, and the population shrinks
-//     with every run.
-//   - Cursor-paginated batched writes (max 500 ops per Firestore batch).
-//     Idempotent: re-running with no due entries is a no-op.
-//   - One audit row per organization per run, aggregating the count + net
-//     amount released. We deliberately DON'T write one audit row per
-//     ledger entry — the entries themselves are the audit trail; the
-//     scheduler row exists to give Cloud Logging + the admin /audit grid
-//     a single "settlement happened" anchor per org per run.
+// Architecture:
+//   This trigger is a thin scheduler wrapper. The actual sweep + audit
+//   logic lives in the API at apps/api/src/jobs/handlers/release-available-funds.ts
+//   (function `runReleaseSweep`), called both by:
+//     1. The internal endpoint `/v1/internal/balance/release-available`
+//        (this trigger's HTTP target).
+//     2. The admin runner via /admin/jobs (jobKey:
+//        `release-available-funds`) — for staging where this cron is
+//        disabled, or post-incident catch-up runs in production.
+//   Single source of truth on the API side; this trigger just fires it.
 //
-// Race + idempotency:
-//   The transition is `pending → available`. Refunds skip pending (they
-//   write `status: available` directly). Payouts read `available` and
-//   flip to `paid_out`, NEVER touching `pending`. No other writer can
-//   contend on a `pending` row, so a non-transactional batched update is
-//   safe. If the same row were somehow returned by two concurrent
-//   scheduler runs, the second update would set `status` to the same
-//   value — a harmless no-op.
-//
-// Schedule:
-//   Hourly. The release window is multi-day, so a daily cadence would
-//   delay funds by up to 24h past their unlock time. Hourly costs ~24
-//   small queries/day across the platform — negligible. Aligns with how
-//   Stripe surfaces "available balance" to merchants in near-real-time.
-
-/** Firestore batch cap — 500 operations / commit. */
-const BATCH_SIZE = 500;
-
-/**
- * Hard cap on entries processed in a single run, defending against an
- * accumulated backlog (or a fixture explosion in dev). At BATCH_SIZE
- * 500 and ~50ms per commit, 50_000 entries fit comfortably within the
- * 540s timeout while leaving headroom for audit-log writes.
- */
-const MAX_ENTRIES_PER_RUN = 50_000;
-
-interface ReleasedEntry {
-  id: string;
-  organizationId: string;
-  amount: number;
-}
+// Env policy:
+//   In staging + dev the cron short-circuits with an INFO log. The same
+//   job logic remains available via /admin/jobs for manual triggering.
+//   See apps/functions/src/utils/env.ts.
 
 export const releaseAvailableFunds = onSchedule(
   {
@@ -71,138 +42,82 @@ export const releaseAvailableFunds = onSchedule(
     timeoutSeconds: 540,
   },
   async () => {
-    const start = Date.now();
-    const now = new Date(start);
-    const nowIso = now.toISOString();
-
-    const released = await sweepPendingEntries(nowIso);
-
-    if (released.length === 0) {
-      logger.info("Balance release: no entries due", { nowIso });
+    // Env guard — staging + dev short-circuit. Operators trigger this
+    // manually via /admin/jobs in non-prod environments.
+    if (shouldSkipScheduledJobInThisEnv("release-available-funds")) {
+      logger.info("balance.release: skipped (non-production env)", {
+        env: getTerangaEnv(),
+      });
       return;
     }
 
-    const auditRows = await writeReleaseAuditLogs(released, nowIso);
+    const apiBaseUrl = process.env.API_BASE_URL;
+    const secret = process.env.INTERNAL_DISPATCH_SECRET;
 
-    logger.info("Balance release complete", {
-      nowIso,
-      released: released.length,
-      organizations: auditRows,
-      durationMs: Date.now() - start,
-    });
+    if (!apiBaseUrl || !secret) {
+      logger.warn("balance.release: missing API_BASE_URL or INTERNAL_DISPATCH_SECRET", {
+        hasUrl: Boolean(apiBaseUrl),
+        hasSecret: Boolean(secret),
+      });
+      return;
+    }
+
+    const url = `${apiBaseUrl.replace(/\/$/, "")}/v1/internal/balance/release-available`;
+
+    // Client-side timeout bounded BELOW the function's 540s budget so the
+    // log emission has headroom even if Cloud Run takes its time. The
+    // sweep is a write-bound operation: at BATCH_SIZE 500 and ~50ms per
+    // commit, 50_000 entries finish in ~5 minutes — 480s gives that case
+    // 30s of headroom while pre-empting pathologically slow Firestore.
+    const controller = new AbortController();
+    const timeoutHandle = setTimeout(() => controller.abort(), 480_000);
+
+    const start = Date.now();
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Internal-Dispatch-Secret": secret,
+        },
+        // Empty body → endpoint defaults (asOf = now, maxEntries = 50_000).
+        body: JSON.stringify({}),
+        signal: controller.signal,
+      });
+
+      const text = await response.text();
+      let payload: unknown = null;
+      try {
+        payload = JSON.parse(text);
+      } catch {
+        // non-JSON response (e.g. 502 from upstream) — log raw body bounded.
+      }
+
+      if (!response.ok) {
+        logger.error("balance.release: API returned non-2xx", {
+          status: response.status,
+          body: text.slice(0, 1000),
+        });
+        return;
+      }
+
+      const data = (payload as { data?: { released?: number; organizationsAudited?: number } })
+        ?.data;
+      logger.info("balance.release: sweep complete", {
+        released: data?.released ?? 0,
+        organizationsAudited: data?.organizationsAudited ?? 0,
+        durationMs: Date.now() - start,
+      });
+    } catch (err) {
+      if (err instanceof Error && err.name === "AbortError") {
+        logger.error("balance.release: API call timed out (480s)");
+      } else {
+        logger.error("balance.release: API call failed", {
+          err: err instanceof Error ? err.message : String(err),
+        });
+      }
+    } finally {
+      clearTimeout(timeoutHandle);
+    }
   },
 );
-
-/**
- * Find every `pending` entry whose `availableOn` is <= now and flip it to
- * `available` in batched writes of BATCH_SIZE. Returns the list of
- * (id, organizationId, amount) so the caller can build per-org audit rows.
- *
- * Pagination: each commit removes the page's docs from the candidate
- * pool (their `status` is no longer `pending`), so the next iteration's
- * query naturally returns the next-oldest batch. A cursor on
- * `availableOn` is unnecessary AND would risk skipping rows if commits
- * race with new writes elsewhere.
- */
-async function sweepPendingEntries(nowIso: string): Promise<ReleasedEntry[]> {
-  const released: ReleasedEntry[] = [];
-  let lastDoc: DocumentSnapshot | undefined;
-
-  while (released.length < MAX_ENTRIES_PER_RUN) {
-    let query: Query = db
-      .collection(COLLECTIONS.BALANCE_TRANSACTIONS)
-      .where("status", "==", "pending")
-      .where("availableOn", "<=", nowIso)
-      .orderBy("availableOn", "asc")
-      .limit(BATCH_SIZE);
-    if (lastDoc) query = query.startAfter(lastDoc);
-
-    const snap = await query.get();
-    if (snap.empty) break;
-
-    const batch = db.batch();
-    for (const doc of snap.docs) {
-      const data = doc.data() as {
-        organizationId: string;
-        amount: number;
-      };
-      batch.update(doc.ref, { status: "available" });
-      released.push({
-        id: doc.id,
-        organizationId: data.organizationId,
-        amount: typeof data.amount === "number" ? data.amount : 0,
-      });
-    }
-    await batch.commit();
-
-    if (snap.size < BATCH_SIZE) break;
-    lastDoc = snap.docs[snap.docs.length - 1];
-  }
-
-  if (released.length >= MAX_ENTRIES_PER_RUN) {
-    // Backlog larger than a single run can drain. The next hourly run
-    // will continue from where this one stopped (the cap is on count,
-    // not time) — log a warning so operators notice if this becomes
-    // chronic and need to size up the job.
-    logger.warn(
-      "Balance release hit MAX_ENTRIES_PER_RUN cap; backlog will drain over future runs",
-      {
-        cap: MAX_ENTRIES_PER_RUN,
-      },
-    );
-  }
-
-  return released;
-}
-
-/**
- * Aggregate released entries by organizationId and write one audit row
- * per org. The row carries the count + signed net amount (sum across
- * all kinds — payment credits net of platform_fee debits) + a capped
- * sample of entry IDs for forensics. Sample is capped at 50 to keep
- * the audit doc under Firestore's 1 MiB limit even on pathological orgs.
- *
- * Returns the number of organizations audited (one row each).
- */
-async function writeReleaseAuditLogs(released: ReleasedEntry[], nowIso: string): Promise<number> {
-  const byOrg = new Map<string, ReleasedEntry[]>();
-  for (const r of released) {
-    const arr = byOrg.get(r.organizationId) ?? [];
-    arr.push(r);
-    byOrg.set(r.organizationId, arr);
-  }
-
-  // Audit writes use a single batched commit per BATCH_SIZE orgs. Most
-  // runs touch only a handful of orgs so this is usually a single batch.
-  const orgs = [...byOrg.entries()];
-  for (let i = 0; i < orgs.length; i += BATCH_SIZE) {
-    const slice = orgs.slice(i, i + BATCH_SIZE);
-    const batch = db.batch();
-    for (const [orgId, entries] of slice) {
-      const netAmount = entries.reduce((sum, e) => sum + e.amount, 0);
-      const sampleEntryIds = entries.slice(0, 50).map((e) => e.id);
-
-      const auditRef = db.collection(COLLECTIONS.AUDIT_LOGS).doc();
-      batch.set(auditRef, {
-        action: "balance_transaction.released",
-        actorId: "system:balance-release-scheduler",
-        actorDisplayName: null,
-        requestId: `balance-release-${nowIso}`,
-        timestamp: nowIso,
-        resourceType: "organization",
-        resourceId: orgId,
-        eventId: null,
-        organizationId: orgId,
-        details: {
-          count: entries.length,
-          netAmount,
-          sampleEntryIds,
-          truncated: entries.length > sampleEntryIds.length,
-        },
-      });
-    }
-    await batch.commit();
-  }
-
-  return byOrg.size;
-}

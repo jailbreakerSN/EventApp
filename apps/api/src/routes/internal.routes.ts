@@ -188,9 +188,19 @@ export const internalRoutes: FastifyPluginAsync = async (fastify) => {
   const ReconcileBody = z
     .object({
       /** Lower bound — payments newer than this are skipped. Min 1 min so IPN has headroom. */
-      windowMinMs: z.number().int().min(60 * 1000).max(60 * 60 * 1000).optional(),
+      windowMinMs: z
+        .number()
+        .int()
+        .min(60 * 1000)
+        .max(60 * 60 * 1000)
+        .optional(),
       /** Upper bound — payments older than this are left for onPaymentTimeout. */
-      windowMaxMs: z.number().int().positive().max(60 * 60 * 1000).optional(),
+      windowMaxMs: z
+        .number()
+        .int()
+        .positive()
+        .max(60 * 60 * 1000)
+        .optional(),
       /** Max payments processed per invocation. Hard ceiling 200. */
       batchSize: z.number().int().positive().max(200).optional(),
     })
@@ -200,9 +210,7 @@ export const internalRoutes: FastifyPluginAsync = async (fastify) => {
     // bypassing the operational "give the IPN a chance" intent.
     .refine(
       (b) =>
-        b.windowMinMs === undefined ||
-        b.windowMaxMs === undefined ||
-        b.windowMinMs < b.windowMaxMs,
+        b.windowMinMs === undefined || b.windowMaxMs === undefined || b.windowMinMs < b.windowMaxMs,
       { message: "windowMinMs must be strictly less than windowMaxMs" },
     );
 
@@ -261,6 +269,59 @@ export const internalRoutes: FastifyPluginAsync = async (fastify) => {
       });
 
       return reply.status(200).send({ success: true, data: stats });
+    },
+  );
+
+  // ── Balance release sweep (Phase Finance) ──────────────────────────────
+  // Cron-fired endpoint that the hourly `releaseAvailableFunds` Cloud
+  // Function calls (with the X-Internal-Dispatch-Secret). Shares
+  // `runReleaseSweep` with the admin /admin/jobs runner so the two
+  // trigger paths can never drift.
+  //
+  // Authorisation, rate-limiting, fail-closed-404 semantics: identical
+  // to /payments/reconcile above. The secret guard runs FIRST so
+  // unauthenticated probes can't oracle the endpoint via response codes.
+  //
+  // Body is intentionally narrow: cron always runs with default args,
+  // but supports `asOf` / `maxEntries` for emergency catch-up runs.
+  const ReleaseAvailableBody = z
+    .object({
+      asOf: z.string().datetime().optional(),
+      maxEntries: z.coerce.number().int().positive().max(50_000).optional(),
+    })
+    .strict();
+
+  fastify.post(
+    "/balance/release-available",
+    {
+      config: {
+        rateLimit: {
+          max: 30,
+          timeWindow: "1 minute",
+        },
+      },
+      preHandler: [internalSecretGuard, validate({ body: ReleaseAvailableBody })],
+      schema: {
+        hide: true,
+        summary: "Internal — release pending balance entries past their availableOn window",
+      },
+    },
+    async (request, reply) => {
+      const body = request.body as z.infer<typeof ReleaseAvailableBody>;
+
+      // Lazy import to mirror the /payments/reconcile pattern and dodge
+      // the same circular-require risk (handler module imports config +
+      // firestore at module-init).
+      const { runReleaseSweep } = await import("@/jobs/handlers/release-available-funds");
+      const result = await runReleaseSweep(
+        {
+          ...(body.asOf !== undefined ? { asOf: body.asOf } : {}),
+          ...(body.maxEntries !== undefined ? { maxEntries: body.maxEntries } : {}),
+        },
+        { runId: `system:cron-${Date.now()}` },
+      );
+
+      return reply.status(200).send({ success: true, data: result });
     },
   );
 };

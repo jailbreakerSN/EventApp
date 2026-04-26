@@ -4,6 +4,8 @@ import { pruneExpiredInvitesHandler } from "./handlers/prune-expired-invites";
 import { firestoreBackupHandler } from "./handlers/firestore-backup";
 import { firestoreRestoreHandler } from "./handlers/firestore-restore";
 import { expireStalePaymentsHandler } from "./handlers/expire-stale-payments";
+import { releaseAvailableFundsHandler } from "./handlers/release-available-funds";
+import { reconcilePaymentsHandler } from "./handlers/reconcile-payments";
 
 /**
  * Registered admin-runner job handlers.
@@ -28,6 +30,16 @@ const handlers = new Map<string, JobHandler>([
   // assigned" gap by giving operators a deterministic way to flip
   // long-stale pending/processing payments to expired.
   [expireStalePaymentsHandler.descriptor.jobKey, expireStalePaymentsHandler as JobHandler],
+  // Phase Finance — same logic as the hourly `releaseAvailableFunds`
+  // Cloud Function, exposed under the runner so staging operators
+  // (where the cron is env-disabled) and post-incident catch-ups in
+  // production can both trigger it manually.
+  [releaseAvailableFundsHandler.descriptor.jobKey, releaseAvailableFundsHandler as JobHandler],
+  // ADR-0018 Phase 3 — same logic as the 10-min `onPaymentReconciliation`
+  // Cloud Function, exposed under the runner so operators can drain an
+  // IPN-miss backlog on demand (or test reconciliation in staging where
+  // the cron is env-disabled).
+  [reconcilePaymentsHandler.descriptor.jobKey, reconcilePaymentsHandler as JobHandler],
 ]);
 
 export function getHandler(jobKey: string): JobHandler | null {

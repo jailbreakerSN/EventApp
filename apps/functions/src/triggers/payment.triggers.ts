@@ -2,6 +2,7 @@ import { onDocumentWritten } from "firebase-functions/v2/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { logger } from "firebase-functions/v2";
 import { db, messaging, COLLECTIONS } from "../utils/admin";
+import { getTerangaEnv, shouldSkipScheduledJobInThisEnv } from "../utils/env";
 
 /**
  * Payment timeout — auto-expires payments stuck without resolution.
@@ -106,8 +107,7 @@ export const onPaymentTimeout = onSchedule(
 
           tx.update(doc.ref, {
             status: "expired",
-            failureReason:
-              "Paiement expiré : aucun retour fournisseur après le délai imparti",
+            failureReason: "Paiement expiré : aucun retour fournisseur après le délai imparti",
             updatedAt: txNow,
           });
 
@@ -115,9 +115,7 @@ export const onPaymentTimeout = onSchedule(
           // pending_payment. registeredCount is NOT decremented because
           // pending_payment never incremented it (Phase 1 P1-04 invariant).
           if (freshData.registrationId) {
-            const regRef = db
-              .collection(COLLECTIONS.REGISTRATIONS)
-              .doc(freshData.registrationId);
+            const regRef = db.collection(COLLECTIONS.REGISTRATIONS).doc(freshData.registrationId);
             const reg = await tx.get(regRef);
             const regStatus = (reg.data() as { status?: string } | undefined)?.status;
             // Defense: never overwrite a registration that somehow became
@@ -455,6 +453,17 @@ export const onPaymentReconciliation = onSchedule(
     timeoutSeconds: 120,
   },
   async () => {
+    // Env guard — staging + dev short-circuit. The same job logic
+    // remains available via /admin/jobs (jobKey: reconcile-payments)
+    // for manual triggering when an operator needs to test the IPN
+    // recovery path without spinning a real cron.
+    if (shouldSkipScheduledJobInThisEnv("reconcile-payments")) {
+      logger.info("payment.reconciliation: skipped (non-production env)", {
+        env: getTerangaEnv(),
+      });
+      return;
+    }
+
     const apiBaseUrl = process.env.API_BASE_URL;
     const secret = process.env.INTERNAL_DISPATCH_SECRET;
 
