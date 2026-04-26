@@ -44,6 +44,14 @@ export interface PaginatedResult<T> {
     limit: number;
     total: number;
     totalPages: number;
+    /**
+     * Non-blocking signals from the backend about partial-result situations.
+     * Clients ignore these for backwards compatibility; UIs that know about
+     * a code render an inline notice. Canonical channel for soft-failure
+     * cases like silent truncation. See `docs/design-system/data-listing.md`
+     * § Backend primitives — Response shape.
+     */
+    warnings?: string[];
   };
 }
 

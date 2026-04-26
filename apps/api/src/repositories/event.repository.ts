@@ -178,18 +178,27 @@ export class EventRepository extends BaseRepository<Event> {
     // searchKeywords + tags both consume the single array-membership slot
     // Firestore offers per query. searchToken (derived from `q`) wins when
     // both are present — full-text intent dominates tag faceting.
+    const warnings: string[] = [];
     if (filters.searchToken) {
       whereFilters.push({
         field: "searchKeywords",
         op: "array-contains",
         value: filters.searchToken,
       });
+      if (filters.tags && filters.tags.length > 0) {
+        warnings.push("TAGS_IGNORED_DUE_TO_SEARCH");
+      }
     } else if (filters.tags && filters.tags.length > 0) {
-      // Firestore array-contains-any: find events matching ANY of the tags (max 30)
+      // Firestore array-contains-any caps at 30 values; over that, we slice
+      // and emit a warning so the client can surface "résultats partiels".
+      const tagSlice = filters.tags.slice(0, 30);
+      if (filters.tags.length > 30) {
+        warnings.push(`TAGS_TRUNCATED:30 (received ${filters.tags.length})`);
+      }
       whereFilters.push({
         field: "tags",
         op: "array-contains-any",
-        value: filters.tags.slice(0, 30),
+        value: tagSlice,
       });
     }
 
@@ -207,6 +216,7 @@ export class EventRepository extends BaseRepository<Event> {
     // Same rationale + same filter as `findPublished()`.
     return {
       ...result,
+      meta: warnings.length > 0 ? { ...result.meta, warnings } : result.meta,
       data: result.data.filter((e) => !e.isRecurringParent),
     };
   }

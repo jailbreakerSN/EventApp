@@ -1111,6 +1111,29 @@ describe("EventService.search", () => {
     );
   });
 
+  it("propagates meta.warnings from the repository to the caller (P0.5)", async () => {
+    mockEventRepo.search.mockResolvedValue({
+      data: [],
+      meta: {
+        page: 1,
+        limit: 20,
+        total: 0,
+        totalPages: 0,
+        warnings: ["TAGS_TRUNCATED:30 (received 42)"],
+      },
+    });
+
+    const result = await service.search({
+      tags: Array.from({ length: 42 }, (_, i) => `tag-${i}`),
+      page: 1,
+      limit: 20,
+      orderBy: "startDate",
+      orderDir: "asc",
+    });
+
+    expect(result.meta.warnings).toEqual(["TAGS_TRUNCATED:30 (received 42)"]);
+  });
+
   describe("price filter", () => {
     const ticket = (overrides: Partial<TicketType>): TicketType => ({
       id: overrides.id ?? "tt",
