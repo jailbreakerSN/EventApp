@@ -37,4 +37,5 @@ export * from "./webhook-events.types";
 export * from "./api-keys.types";
 export * from "./plan-coupon.types";
 export * from "./utils/zod";
+export * from "./utils/normalize";
 export * from "./common.types";

@@ -186,6 +186,47 @@ describe("EventService.create", () => {
     await expect(service.create(dto, user)).rejects.toThrow("Permission manquante");
   });
 
+  it("computes accent-folded searchKeywords[] from title, tags, and location on create", async () => {
+    const user = buildOrganizerUser("org-1");
+    const dto = {
+      organizationId: "org-1",
+      title: "Conférence Sénégal Tech",
+      description: "n/a",
+      category: "conference" as const,
+      format: "in_person" as const,
+      status: "draft" as const,
+      startDate: new Date(Date.now() + 86400000).toISOString(),
+      endDate: new Date(Date.now() + 2 * 86400000).toISOString(),
+      timezone: "Africa/Dakar",
+      location: { name: "CICAD", address: "Diamniadio", city: "Thiès", country: "SN" },
+      isPublic: true,
+      isFeatured: false,
+      requiresApproval: false,
+      ticketTypes: [],
+      accessZones: [],
+      tags: ["fintech"],
+      maxAttendees: null,
+      shortDescription: null,
+      coverImageURL: null,
+      bannerImageURL: null,
+      templateId: null,
+    };
+
+    mockOrgRepo.findByIdOrThrow.mockResolvedValue(org);
+    mockEventRepo.create.mockResolvedValue(buildEvent({ organizationId: "org-1" }));
+
+    await service.create(dto as unknown as CreateEventDto, user);
+
+    const createCall = mockEventRepo.create.mock.calls[0]?.[0] as { searchKeywords: string[] };
+    expect(createCall.searchKeywords).toEqual(expect.arrayContaining(["co", "con", "conf", "conference"]));
+    expect(createCall.searchKeywords).toEqual(expect.arrayContaining(["se", "senegal"]));
+    expect(createCall.searchKeywords).toEqual(expect.arrayContaining(["fi", "fintech"]));
+    expect(createCall.searchKeywords).toEqual(expect.arrayContaining(["th", "thies"]));
+    expect(createCall.searchKeywords).toEqual(expect.arrayContaining(["sn"]));
+    // Cap respected
+    expect(createCall.searchKeywords.length).toBeLessThanOrEqual(200);
+  });
+
   it("rejects if user does not belong to the organization", async () => {
     const user = buildOrganizerUser("org-other");
     const dto = {
@@ -992,17 +1033,13 @@ describe("EventService.search", () => {
     );
   });
 
-  it("filters results by title when q is provided", async () => {
-    const events = [
-      buildEvent({ title: "Teranga Fest" }),
-      buildEvent({ title: "Dakar Tech Summit" }),
-    ];
+  it("derives searchToken from q and forwards it to the repository", async () => {
     mockEventRepo.search.mockResolvedValue({
-      data: events,
-      meta: { page: 1, limit: 20, total: 2, totalPages: 1 },
+      data: [],
+      meta: { page: 1, limit: 20, total: 0, totalPages: 0 },
     });
 
-    const result = await service.search({
+    await service.search({
       q: "teranga",
       page: 1,
       limit: 20,
@@ -1010,8 +1047,68 @@ describe("EventService.search", () => {
       orderDir: "asc",
     });
 
-    expect(result.data).toHaveLength(1);
-    expect(result.data[0].title).toBe("Teranga Fest");
+    expect(mockEventRepo.search).toHaveBeenCalledWith(
+      expect.objectContaining({ searchToken: "teranga" }),
+      expect.any(Object),
+    );
+  });
+
+  it("normalises q (accent-folding + lowercase) before forwarding searchToken", async () => {
+    mockEventRepo.search.mockResolvedValue({
+      data: [],
+      meta: { page: 1, limit: 20, total: 0, totalPages: 0 },
+    });
+
+    await service.search({
+      q: "Sénégal",
+      page: 1,
+      limit: 20,
+      orderBy: "startDate",
+      orderDir: "asc",
+    });
+
+    expect(mockEventRepo.search).toHaveBeenCalledWith(
+      expect.objectContaining({ searchToken: "senegal" }),
+      expect.any(Object),
+    );
+  });
+
+  it("omits searchToken when q is empty / whitespace-only", async () => {
+    mockEventRepo.search.mockResolvedValue({
+      data: [],
+      meta: { page: 1, limit: 20, total: 0, totalPages: 0 },
+    });
+
+    await service.search({
+      q: "   ",
+      page: 1,
+      limit: 20,
+      orderBy: "startDate",
+      orderDir: "asc",
+    });
+
+    const filtersArg = mockEventRepo.search.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(filtersArg.searchToken).toBeUndefined();
+  });
+
+  it("clamps long search tokens to the 15-char prefix index width", async () => {
+    mockEventRepo.search.mockResolvedValue({
+      data: [],
+      meta: { page: 1, limit: 20, total: 0, totalPages: 0 },
+    });
+
+    await service.search({
+      q: "supercalifragilisticexpialidocious",
+      page: 1,
+      limit: 20,
+      orderBy: "startDate",
+      orderDir: "asc",
+    });
+
+    expect(mockEventRepo.search).toHaveBeenCalledWith(
+      expect.objectContaining({ searchToken: "supercalifragil" }),
+      expect.any(Object),
+    );
   });
 
   describe("price filter", () => {

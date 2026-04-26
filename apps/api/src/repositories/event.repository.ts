@@ -30,6 +30,16 @@ export interface EventSearchFilters {
   city?: string;
   country?: string;
   tags?: string[];
+  /**
+   * Single normalised token for full-text-style filtering against
+   * `searchKeywords[]` via Firestore `array-contains`. Caller must derive
+   * via `pickSearchToken()` so the same normalisation pipeline runs at
+   * write and read time. Mutually exclusive with `tags` at query time —
+   * Firestore allows only one array-membership operator per query, so
+   * when both are present this filter wins (caller is responsible for
+   * deciding the override; the repository does not silently fall back).
+   */
+  searchToken?: string;
 }
 
 export class EventRepository extends BaseRepository<Event> {
@@ -134,7 +144,7 @@ export class EventRepository extends BaseRepository<Event> {
   ): Promise<PaginatedResult<Event>> {
     const whereFilters: Array<{
       field: string;
-      op: "==" | ">=" | "<=" | "array-contains-any";
+      op: "==" | ">=" | "<=" | "array-contains" | "array-contains-any";
       value: unknown;
     }> = [
       { field: "status", op: "==", value: "published" },
@@ -165,7 +175,16 @@ export class EventRepository extends BaseRepository<Event> {
     if (filters.country) {
       whereFilters.push({ field: "location.country", op: "==", value: filters.country });
     }
-    if (filters.tags && filters.tags.length > 0) {
+    // searchKeywords + tags both consume the single array-membership slot
+    // Firestore offers per query. searchToken (derived from `q`) wins when
+    // both are present — full-text intent dominates tag faceting.
+    if (filters.searchToken) {
+      whereFilters.push({
+        field: "searchKeywords",
+        op: "array-contains",
+        value: filters.searchToken,
+      });
+    } else if (filters.tags && filters.tags.length > 0) {
       // Firestore array-contains-any: find events matching ANY of the tags (max 30)
       whereFilters.push({
         field: "tags",
