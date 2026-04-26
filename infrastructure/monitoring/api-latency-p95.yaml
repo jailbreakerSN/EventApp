@@ -1,0 +1,36 @@
+# Cloud Monitoring alert — API request latency p95 (Wave 10 / W10-P3).
+#
+# Fires when the per-route p95 exceeds 1.5 s for 10 minutes. The SLO
+# target is < 800 ms; 1.5 s is the actionable-but-not-spammy
+# threshold. Routes to Slack #prod-incidents (warn).
+#
+# Source: `teranga_http_request_duration_seconds` histogram scraped
+# from `/metrics`. Prometheus's histogram_quantile + rate operators
+# compute the p95 server-side.
+
+displayName: "API: p95 latency ≥ 1.5s (10m sustained)"
+documentation:
+  content: |
+    p95 request latency is exceeding 1.5 s over a rolling 10 min
+    window. The SLO target is p95 < 800 ms.
+
+    Triage steps:
+      1. Open `dashboards/api-overview.json` and identify the slowest
+         route (the histogram is labelled by route).
+      2. Check Cloud Run instance count + concurrency saturation.
+      3. If Firestore read volume spiked, check `firestoreUsage`.
+    Runbook: docs/runbooks/incident-response.md § Latency.
+  mimeType: text/markdown
+combiner: OR
+enabled: true
+conditions:
+  - displayName: "p95 latency over 1.5s for 10 minutes"
+    conditionPrometheusQueryLanguage:
+      query: |
+        histogram_quantile(0.95,
+          sum(rate(teranga_http_request_duration_seconds_bucket[10m])) by (le)
+        ) > 1.5
+      duration: 600s
+      evaluationInterval: 60s
+alertStrategy:
+  autoClose: 1800s

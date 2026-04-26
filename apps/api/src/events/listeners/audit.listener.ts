@@ -1918,6 +1918,16 @@ export function registerAuditListeners(): void {
   });
 
   eventBus.on("whatsapp.delivery.failed", async (payload) => {
+    // PII policy (W10-P2 / S4): the WhatsApp recipient is a raw E.164
+    // phone number — the same kind of data we already strip from
+    // `whatsapp.opt_in.granted` / `revoked`. Persist the last-4 digits
+    // only so the audit row stays useful for "did the failure cluster
+    // on a single MNO" triage without the audit log carrying PII.
+    // Investigators join `messageId` (resourceId) → whatsappDeliveryLog
+    // for the full recipient when needed; that join is itself audit-
+    // tracked.
+    const recipient = typeof payload.recipient === "string" ? payload.recipient : "";
+    const recipientLast4 = recipient.length >= 4 ? recipient.slice(-4) : "****";
     await auditService.log({
       action: "whatsapp.delivery.failed",
       actorId: payload.actorId,
@@ -1928,7 +1938,7 @@ export function registerAuditListeners(): void {
       eventId: null,
       organizationId: null,
       details: {
-        recipient: payload.recipient,
+        recipientLast4,
         errorCode: payload.errorCode,
         errorMessage: payload.errorMessage,
       },

@@ -17,6 +17,8 @@ import { flushFirestoreUsage } from "@/services/firestore-usage.service";
 import { registerEffectivePlanListeners } from "@/events/listeners/effective-plan.listener";
 import { registerEventDenormListeners } from "@/events/listeners/event-denorm.listener";
 import { captureError, setSentryUser } from "@/observability/sentry";
+import { recordHttpResponse, recordBusinessEvent } from "@/observability/metrics";
+import { eventBus } from "@/events/event-bus";
 // Side-effect import: registers the email channel adapter on the
 // NotificationDispatcherService so catalog-driven sends work out of the
 // box. No exported bindings used here; the import statement is the wiring.
@@ -218,6 +220,10 @@ export async function buildApp() {
   });
 
   // ─── Request Timing ──────────────────────────────────────────────────────
+  // Logs the response + records the histogram + counter on the
+  // Prometheus registry so /metrics + Cloud Monitoring scrape pick it
+  // up. The route label is the Fastify route TEMPLATE (`/v1/events/:id`)
+  // not the request URL — keeps cardinality bounded.
   app.addHook("onResponse", (request, reply, done) => {
     request.log.info(
       {
@@ -228,6 +234,14 @@ export async function buildApp() {
       },
       "request completed",
     );
+
+    recordHttpResponse({
+      method: request.method,
+      route: request.routeOptions?.url,
+      statusCode: reply.statusCode,
+      responseTimeMs: reply.elapsedTime,
+    });
+
     done();
   });
 
@@ -308,6 +322,33 @@ export async function buildApp() {
       routePrefix: "/docs",
       uiConfig: { deepLinking: true },
     });
+  }
+
+  // ─── Business-event metrics tap (W10-P3) ─────────────────────────────────
+  // Generic listener that increments the `business_event_total`
+  // Prometheus counter for every emitted domain event. We only tap a
+  // curated allow-list of business-significant events to keep the
+  // counter cardinality bounded. Adding a new event name here is
+  // cheap; emitting it through the bus then puts it on the dashboard.
+  const METRICS_OBSERVED_EVENTS = [
+    "registration.created",
+    "registration.cancelled",
+    "checkin.completed",
+    "event.published",
+    "event.cancelled",
+    "badge.generated",
+    "badge.bulk_generated",
+    "payment.succeeded",
+    "payment.failed",
+    "broadcast.sent",
+    "emergency_broadcast.sent",
+    "magic_link.issued",
+    "magic_link.used",
+    "subscription.upgraded",
+    "subscription.downgraded",
+  ] as const;
+  for (const eventName of METRICS_OBSERVED_EVENTS) {
+    eventBus.on(eventName, () => recordBusinessEvent(eventName));
   }
 
   // ─── Domain Event Listeners ───────────────────────────────────────────────

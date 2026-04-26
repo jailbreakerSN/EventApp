@@ -1,0 +1,176 @@
+{
+  "displayName": "Teranga — API Overview (Wave 10 / W10-P3)",
+  "_doc": "Cloud Monitoring dashboard JSON. Provisioned via gcloud. Edit this file (not the console). Two-row layout — RED metrics (request rate / error rate / duration) on top, business KPIs (registrations, scans, badges) on the bottom strip.",
+  "mosaicLayout": {
+    "columns": 12,
+    "tiles": [
+      {
+        "width": 6,
+        "height": 4,
+        "widget": {
+          "title": "Request rate (per second, by status class)",
+          "xyChart": {
+            "dataSets": [
+              {
+                "timeSeriesQuery": {
+                  "prometheusQuery": "sum by (status_code) (rate(teranga_http_requests_total[1m]))"
+                },
+                "plotType": "STACKED_AREA"
+              }
+            ],
+            "yAxis": { "label": "req/s" }
+          }
+        }
+      },
+      {
+        "xPos": 6,
+        "width": 6,
+        "height": 4,
+        "widget": {
+          "title": "5xx error rate (% of total)",
+          "xyChart": {
+            "dataSets": [
+              {
+                "timeSeriesQuery": {
+                  "prometheusQuery": "sum(rate(teranga_http_requests_total{status_code=~\"5..\"}[5m])) / sum(rate(teranga_http_requests_total[5m]))"
+                },
+                "plotType": "LINE"
+              }
+            ],
+            "thresholds": [{ "value": 0.01, "color": "RED" }]
+          }
+        }
+      },
+      {
+        "yPos": 4,
+        "width": 12,
+        "height": 4,
+        "widget": {
+          "title": "Request duration p50 / p95 / p99",
+          "xyChart": {
+            "dataSets": [
+              {
+                "timeSeriesQuery": {
+                  "prometheusQuery": "histogram_quantile(0.5, sum(rate(teranga_http_request_duration_seconds_bucket[5m])) by (le))"
+                },
+                "plotType": "LINE",
+                "legendTemplate": "p50"
+              },
+              {
+                "timeSeriesQuery": {
+                  "prometheusQuery": "histogram_quantile(0.95, sum(rate(teranga_http_request_duration_seconds_bucket[5m])) by (le))"
+                },
+                "plotType": "LINE",
+                "legendTemplate": "p95"
+              },
+              {
+                "timeSeriesQuery": {
+                  "prometheusQuery": "histogram_quantile(0.99, sum(rate(teranga_http_request_duration_seconds_bucket[5m])) by (le))"
+                },
+                "plotType": "LINE",
+                "legendTemplate": "p99"
+              }
+            ],
+            "thresholds": [
+              { "value": 0.8, "color": "YELLOW" },
+              { "value": 1.5, "color": "RED" }
+            ]
+          }
+        }
+      },
+      {
+        "yPos": 8,
+        "width": 4,
+        "height": 4,
+        "widget": {
+          "title": "Registrations / hour",
+          "xyChart": {
+            "dataSets": [
+              {
+                "timeSeriesQuery": {
+                  "prometheusQuery": "sum(rate(teranga_business_event_total{event=\"registration.created\"}[5m])) * 3600"
+                },
+                "plotType": "LINE"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "yPos": 8,
+        "xPos": 4,
+        "width": 4,
+        "height": 4,
+        "widget": {
+          "title": "Check-ins / hour",
+          "xyChart": {
+            "dataSets": [
+              {
+                "timeSeriesQuery": {
+                  "prometheusQuery": "sum(rate(teranga_business_event_total{event=\"checkin.completed\"}[5m])) * 3600"
+                },
+                "plotType": "LINE"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "yPos": 8,
+        "xPos": 8,
+        "width": 4,
+        "height": 4,
+        "widget": {
+          "title": "Badges generated / hour",
+          "xyChart": {
+            "dataSets": [
+              {
+                "timeSeriesQuery": {
+                  "prometheusQuery": "sum(rate(teranga_business_event_total{event=~\"badge.(generated|bulk_generated)\"}[5m])) * 3600"
+                },
+                "plotType": "LINE"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "yPos": 12,
+        "width": 6,
+        "height": 4,
+        "widget": {
+          "title": "Event-loop lag (s)",
+          "xyChart": {
+            "dataSets": [
+              {
+                "timeSeriesQuery": {
+                  "prometheusQuery": "teranga_nodejs_eventloop_lag_seconds"
+                },
+                "plotType": "LINE"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "yPos": 12,
+        "xPos": 6,
+        "width": 6,
+        "height": 4,
+        "widget": {
+          "title": "Resident memory (MB)",
+          "xyChart": {
+            "dataSets": [
+              {
+                "timeSeriesQuery": {
+                  "prometheusQuery": "teranga_process_resident_memory_bytes / (1024 * 1024)"
+                },
+                "plotType": "LINE"
+              }
+            ]
+          }
+        }
+      }
+    ]
+  }
+}

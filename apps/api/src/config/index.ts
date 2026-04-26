@@ -204,10 +204,7 @@ const envSchema = z.object({
   // must not also forge SOC alerts.
   SOC_ALERT_WEBHOOK_SECRET: z.preprocess(
     (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
-    z
-      .string()
-      .min(32, "SOC_ALERT_WEBHOOK_SECRET must be at least 32 characters")
-      .optional(),
+    z.string().min(32, "SOC_ALERT_WEBHOOK_SECRET must be at least 32 characters").optional(),
   ),
 
   // ─── Observability (optional) ──────────────────────────────────────────────
@@ -217,6 +214,15 @@ const envSchema = z.object({
   SENTRY_DSN: z.preprocess(
     (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
     z.string().url().optional(),
+  ),
+
+  // Wave 10 / W10-P3 — shared secret for the Prometheus `/metrics`
+  // scrape. Set in production to gate the endpoint; unset locally to
+  // simplify dev. The production deploy workflow fails build if this
+  // is missing in prod. Constant-time compared at the route handler.
+  METRICS_AUTH_TOKEN: z.preprocess(
+    (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
+    z.string().min(16).optional(),
   ),
 
   // ─── Notification system rollout flag (Phase 1) ──────────────────────────

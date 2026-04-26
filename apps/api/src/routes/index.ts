@@ -37,10 +37,14 @@ import { balanceRoutes } from "./balance.routes";
 import { meRoutes } from "./me.routes";
 import { apiKeysRoutes } from "./api-keys.routes";
 import { announcementsRoutes } from "./announcements.routes";
+import { metricsRoutes } from "./metrics.routes";
 
 export async function registerRoutes(app: FastifyInstance) {
   // ── Health & Readiness (no auth, no rate limit) ──────────────────────────
   await app.register(healthRoutes);
+
+  // ── Prometheus scrape (token-gated, no auth) — W10-P3 ────────────────────
+  await app.register(metricsRoutes);
 
   // ── API v1 ───────────────────────────────────────────────────────────────
   await app.register(eventRoutes, { prefix: "/v1/events" });

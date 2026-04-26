@@ -2,6 +2,7 @@
 
 exports[`route inventory > matches the snapshot 1`] = `
 "GET /health none
+GET /metrics none
 GET /ready none
 GET /v1/admin/announcements auth flags=[any(platform:audit_read,platform:manage)]
 POST /v1/admin/announcements auth perms=[platform:manage]

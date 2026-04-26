@@ -74,7 +74,6 @@ describe("Pino redact contract (W10-P1)", () => {
         headers: {
           authorization: "Bearer eyJhbGciOiJSUzI1NiIs.SECRET",
           cookie: "session=ABC123; __Secure-token=DEF",
-          "x-api-key": "terk_prod_LIVE_KEY_DO_NOT_LOG",
           "user-agent": "Mozilla/5.0",
         },
       },
@@ -84,9 +83,29 @@ describe("Pino redact contract (W10-P1)", () => {
     expect(log).toContain("[REDACTED]");
     expect(log).not.toContain("eyJhbGciOiJSUzI1NiIs.SECRET");
     expect(log).not.toContain("session=ABC123");
-    expect(log).not.toContain("terk_prod_LIVE_KEY_DO_NOT_LOG");
     // Non-sensitive headers must pass through.
     expect(log).toContain("Mozilla/5.0");
+  });
+
+  it("redacts the x-api-key header in isolation (Pino bracket-notation contract)", () => {
+    // Targeted assertion: log ONLY the x-api-key header so the
+    // [REDACTED] presence on the line proves the bracket-notation
+    // path was applied. Without this isolation, a future Pino
+    // version that silently dropped bracket-notation support could
+    // pass the broader "redacts headers" test on the back of
+    // authorization / cookie alone.
+    const { stream, lines } = captureLogs();
+    const logger = buildLogger(stream);
+
+    logger.info({
+      req: {
+        headers: { "x-api-key": "terk_prod_LIVE_KEY_DO_NOT_LOG" },
+      },
+    });
+
+    const log = lines[0];
+    expect(log).not.toContain("terk_prod_LIVE_KEY_DO_NOT_LOG");
+    expect(log).toContain("[REDACTED]");
   });
 
   it("redacts Set-Cookie response headers", () => {

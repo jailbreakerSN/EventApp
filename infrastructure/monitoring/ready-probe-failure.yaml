@@ -1,0 +1,38 @@
+# Cloud Monitoring alert — /ready probe failure (Wave 10 / W10-P3).
+#
+# Fires when the API's `/ready` probe (which checks Firestore listCollections)
+# fails for 2 minutes. Cloud Run uses the same probe to gate routing, so a
+# sustained failure means the instance is being kept out of the load
+# balancer — propagation latency before users notice can be ~1-2 min.
+# Alert sooner than that.
+
+displayName: "API: /ready probe failing (2m sustained)"
+documentation:
+  content: |
+    The `/ready` probe has been failing for 2 minutes. Cloud Run is no
+    longer routing traffic to the failing instance(s). If ALL instances
+    are failing readiness, the API is effectively down.
+
+    Triage:
+      1. Check Cloud Run service health page for the count of unhealthy
+         instances.
+      2. `gcloud run services describe teranga-api` for the latest revision.
+      3. If a recent deploy introduced the regression, pin to the previous
+         revision via `gcloud run services update-traffic`.
+      4. Firestore IAM / network outage? Check Google Cloud Status.
+    Runbook: docs/runbooks/incident-response.md § Ready probe.
+  mimeType: text/markdown
+combiner: OR
+enabled: true
+conditions:
+  - displayName: "Cloud Run readiness probe failing"
+    conditionMatchedLog:
+      filter: |
+        resource.type="cloud_run_revision"
+        resource.labels.service_name="teranga-api"
+        httpRequest.requestUrl=~".*/ready$"
+        httpRequest.status>=500
+alertStrategy:
+  notificationRateLimit:
+    period: 120s # at most one notification every 2 minutes
+  autoClose: 600s
