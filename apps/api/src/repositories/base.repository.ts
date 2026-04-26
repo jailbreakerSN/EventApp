@@ -69,8 +69,10 @@ export interface WhereClause {
  * explicitly passes `{ includeArchived: true }`.
  *
  * Defaults to `null` (no implicit exclusion) for backwards compatibility.
- * Sub-repositories opt in by setting `protected readonly softDelete = …` in
- * their constructor body or as a class field initialiser.
+ * Sub-repositories opt in by setting `protected readonly softDeleteConfig = …`
+ * in their constructor body or as a class field initialiser. The field name
+ * MUST stay distinct from the `softDelete(id)` method below — Vitest /
+ * TypeScript don't catch the field-shadows-method bug at compile time.
  *
  * See `docs/design-system/data-listing.md` § Backend primitives.
  */
@@ -82,7 +84,7 @@ export interface SoftDeleteConfig {
 export class BaseRepository<T extends { id: string }> {
   protected collection: CollectionReference<DocumentData>;
   protected resourceName: string;
-  protected readonly softDelete: SoftDeleteConfig | null = null;
+  protected readonly softDeleteConfig: SoftDeleteConfig | null = null;
 
   constructor(collectionName: string, resourceName?: string) {
     this.collection = db.collection(collectionName);
@@ -135,8 +137,8 @@ export class BaseRepository<T extends { id: string }> {
       // `includeArchived: true`. Defends against archived rows leaking
       // into list endpoints whose authors forgot to use `findActive()`.
       const effectiveFilters = [...filters];
-      if (this.softDelete && !options.includeArchived) {
-        const { field, tombstones } = this.softDelete;
+      if (this.softDeleteConfig && !options.includeArchived) {
+        const { field, tombstones } = this.softDeleteConfig;
         if (tombstones.length === 1) {
           effectiveFilters.push({ field, op: "!=", value: tombstones[0] });
         } else if (tombstones.length > 1) {

@@ -960,6 +960,49 @@ jobs:
           FIREBASE_PROJECT_ID: ${{ needs.setup.outputs.project_id }}
         run: npx tsx scripts/backfill-balance-ledger.ts
 
+  # ─── Backfill events.searchKeywords[] (data-listing doctrine P0.2) ───────
+  # Adds the denormalised searchKeywords[] field to every existing event
+  # document, so participant /events?q=Sénégal returns pre-doctrine events
+  # too. Mirrors the backfill-ledger pattern: depends on deploy-firebase so
+  # the matching composite index is live before the script writes the
+  # field, and runs every deploy because the script is idempotent (recompute
+  # → diff → no-op when already in sync).
+  #
+  # The dry-run step prints the first 10 diffs to the GitHub Actions log
+  # before the real run — a senior-eyes audit point that doesn't gate the
+  # deploy (continue-on-error not used because dry-run can't fail unless
+  # ADC is broken, in which case the real run would fail too).
+  backfill-search-keywords:
+    name: Backfill events.searchKeywords (data-listing doctrine)
+    runs-on: ubuntu-latest
+    needs: [setup, deploy-firebase, seed-staging]
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - name: Build shared-types
+        # Required because the backfill script imports buildSearchKeywords
+        # from @teranga/shared-types/utils/normalize.
+        run: npx turbo build --filter=@teranga/shared-types
+      - name: Dry-run preview (first 10 diffs)
+        env:
+          SEED_TARGET: staging
+          FIREBASE_PROJECT_ID: ${{ needs.setup.outputs.project_id }}
+          DRY_RUN: "1"
+        run: npx tsx scripts/backfill-event-search-keywords.ts
+      - name: Apply backfill
+        env:
+          SEED_TARGET: staging
+          FIREBASE_PROJECT_ID: ${{ needs.setup.outputs.project_id }}
+        run: npx tsx scripts/backfill-event-search-keywords.ts
+
   # ─── Post-deploy smoke test ──────────────────────────────────────────────
   # Replaces the former 10-minute uptime cron: we only probe once after the
   # CD pipeline completes, which is enough signal in dev/staging and avoids
@@ -977,6 +1020,7 @@ jobs:
         seed-staging,
         seed-qa-fixtures,
         backfill-ledger,
+        backfill-search-keywords,
       ]
     environment: staging
     permissions:
@@ -1031,6 +1075,19 @@ jobs:
           check "API /ready" "${API_URL}/ready" 200
           check "Backoffice /" "$BACKOFFICE_URL" 200
           check "Participant /" "$PARTICIPANT_URL" 200
+
+          # ── Data-listing doctrine smoke (PR #206 / data-listing.md) ─────
+          # Three URLs that exercise the doctrine end-to-end: accent-folded
+          # search (Sénégal must reach the same backend tokenisation as
+          # senegal), honest pagination past page 1 on a text query, and
+          # nuqs-driven URL state on an admin page (hits the SSR shell —
+          # the JS-driven URL persistence is verified separately by the
+          # admin-probe step). All three are public (200 unauthenticated)
+          # because the participant /events page SSRs publicly and the
+          # backoffice auth gate renders 200 then client-redirects.
+          check "Discovery /events?q=Sénégal" "${PARTICIPANT_URL}/events?q=S%C3%A9n%C3%A9gal" 200
+          check "Discovery /events?q=atelier&page=2" "${PARTICIPANT_URL}/events?q=atelier&page=2" 200
+          check "Backoffice /admin/users?users.q=foo" "${BACKOFFICE_URL}/admin/users?users.q=foo" 200
 
           {
             echo "fail=$FAIL"

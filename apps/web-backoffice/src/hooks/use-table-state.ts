@@ -41,8 +41,10 @@ export interface UseTableStateOptions<TFilters extends Record<string, unknown>> 
   };
   /** Whitelist of sortable fields. Anything outside falls back to defaults.sort. */
   sortableFields: readonly string[];
-  /** Whitelist of filter keys + their nuqs parsers. */
-  filterParsers: { [K in keyof TFilters]: Parser<TFilters[K]> };
+  /** Whitelist of filter keys + their nuqs parsers. Parsers produce the
+   *  non-nullable type; absent filters are represented as `undefined` in
+   *  the resulting `filters` object (nuqs's `null` is mapped to undefined). */
+  filterParsers: { [K in keyof TFilters]: Parser<NonNullable<TFilters[K]>> };
   /** Debounce delay for `q` only, in ms. Default 300. */
   debounceMs?: number;
 }
@@ -125,7 +127,6 @@ export function useTableState<TFilters extends Record<string, unknown>>(
       acc[k(String(key))] = options.filterParsers[key] as Parser<unknown>;
     }
     return acc;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [namespace]);
 
   const [rawFilters, setFiltersUrl] = useQueryStates(filterMap, {
@@ -140,13 +141,11 @@ export function useTableState<TFilters extends Record<string, unknown>>(
       if (value !== null && value !== undefined) out[String(key)] = value;
     }
     return out as TFilters;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rawFilters]);
 
   // ── sort ─────────────────────────────────────────────────────────────
   const sortFieldParser = useMemo(
     () => parseAsStringEnum([...options.sortableFields]),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [options.sortableFields.join("|")],
   );
   const sortDirParser = useMemo(() => parseAsStringEnum(["asc", "desc"]), []);
@@ -157,9 +156,10 @@ export function useTableState<TFilters extends Record<string, unknown>>(
   );
 
   const sort: SortState | null = useMemo(() => {
-    if (sortField && sortDir) return { field: sortField, dir: sortDir };
+    if (sortField && (sortDir === "asc" || sortDir === "desc")) {
+      return { field: sortField, dir: sortDir };
+    }
     return defaultSort;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sortField, sortDir]);
 
   // ── page + pageSize ──────────────────────────────────────────────────
@@ -176,7 +176,6 @@ export function useTableState<TFilters extends Record<string, unknown>>(
     const fromUrl = pageSize;
     if (fromUrl && isPageSize(fromUrl)) return fromUrl;
     return readPageSizeLS(namespace || "default", defaultPageSize);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   });
 
   useEffect(() => {
@@ -196,7 +195,6 @@ export function useTableState<TFilters extends Record<string, unknown>>(
       n++;
     }
     return n;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rawFilters]);
 
   // ── setters ──────────────────────────────────────────────────────────
@@ -205,7 +203,6 @@ export function useTableState<TFilters extends Record<string, unknown>>(
       setQUrl({ [k("q")]: next });
       setPageUrl({ [k("page")]: 1, [k("pageSize")]: hydratedPageSize });
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [hydratedPageSize, namespace],
   );
 
@@ -214,7 +211,6 @@ export function useTableState<TFilters extends Record<string, unknown>>(
       setFiltersUrl({ [k(String(key))]: value === undefined ? null : value });
       setPageUrl({ [k("page")]: 1, [k("pageSize")]: hydratedPageSize });
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [hydratedPageSize, namespace],
   );
 
@@ -231,7 +227,6 @@ export function useTableState<TFilters extends Record<string, unknown>>(
       });
       setPageUrl({ [k("page")]: 1, [k("pageSize")]: hydratedPageSize });
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [options.sortableFields.join("|"), hydratedPageSize, namespace],
   );
 
@@ -239,7 +234,6 @@ export function useTableState<TFilters extends Record<string, unknown>>(
     (next: number) => {
       setPageUrl({ [k("page")]: Math.max(1, next), [k("pageSize")]: hydratedPageSize });
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [hydratedPageSize, namespace],
   );
 
@@ -249,7 +243,6 @@ export function useTableState<TFilters extends Record<string, unknown>>(
       setHydratedPageSize(next);
       setPageUrl({ [k("page")]: 1, [k("pageSize")]: next });
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [namespace],
   );
 
@@ -263,7 +256,6 @@ export function useTableState<TFilters extends Record<string, unknown>>(
     setSortUrl({ [k("sortField")]: null, [k("sortDir")]: null });
     setPageUrl({ [k("page")]: null, [k("pageSize")]: null });
     setHydratedPageSize(defaultPageSize);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [namespace, defaultPageSize]);
 
   return {

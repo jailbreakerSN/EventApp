@@ -186,7 +186,7 @@ describe("BaseRepository.findMany — soft-delete default (P0.4)", () => {
   }
 
   class SoftDeleteRepo extends BaseRepository<ThingShape> {
-    protected override readonly softDelete = {
+    protected override readonly softDeleteConfig = {
       field: "status",
       tombstones: ["archived", "cancelled"] as const,
     };

@@ -142,78 +142,109 @@ export class EventRepository extends BaseRepository<Event> {
     filters: EventSearchFilters,
     pagination: PaginationParams,
   ): Promise<PaginatedResult<Event>> {
-    const whereFilters: Array<{
+    // Firestore allows only one array-membership operator per query, so
+    // searchKeywords (full-text) and tags (faceting) are MUTUALLY exclusive.
+    // We dispatch into two separate query helpers so the static index audit
+    // sees two distinct query shapes — combining them in one builder caused
+    // the auditor to compute a (impossible) maximal shape with both array
+    // operators present. searchToken always wins when both are supplied.
+    const warnings: string[] = [];
+    if (filters.searchToken) {
+      if (filters.tags && filters.tags.length > 0) {
+        warnings.push("TAGS_IGNORED_DUE_TO_SEARCH");
+      }
+      const result = await this.searchByKeyword(filters, pagination);
+      return this.attachWarningsAndStripParents(result, warnings);
+    }
+
+    if (filters.tags && filters.tags.length > 30) {
+      warnings.push(`TAGS_TRUNCATED:30 (received ${filters.tags.length})`);
+    }
+    const result = await this.searchByTagsOrFilters(filters, pagination);
+    return this.attachWarningsAndStripParents(result, warnings);
+  }
+
+  /**
+   * searchKeywords[] array-contains branch. Used when `q` resolves to a
+   * non-empty token via pickSearchToken. Disjoint from searchByTagsOrFilters:
+   * the static index auditor sees this branch's where() chain in isolation,
+   * so the maximal index it requires is composable with `searchKeywords`
+   * alone.
+   */
+  private async searchByKeyword(
+    filters: EventSearchFilters,
+    pagination: PaginationParams,
+  ): Promise<PaginatedResult<Event>> {
+    const wheres: Array<{
       field: string;
-      op: "==" | ">=" | "<=" | "array-contains" | "array-contains-any";
+      op: "==" | ">=" | "<=" | "array-contains";
       value: unknown;
     }> = [
       { field: "status", op: "==", value: "published" },
       { field: "isPublic", op: "==", value: true },
     ];
-
-    if (filters.category) {
-      whereFilters.push({ field: "category", op: "==", value: filters.category });
-    }
-    if (filters.format) {
-      whereFilters.push({ field: "format", op: "==", value: filters.format });
-    }
-    if (filters.organizationId) {
-      whereFilters.push({ field: "organizationId", op: "==", value: filters.organizationId });
-    }
-    if (filters.isFeatured !== undefined) {
-      whereFilters.push({ field: "isFeatured", op: "==", value: filters.isFeatured });
-    }
-    if (filters.dateFrom) {
-      whereFilters.push({ field: "startDate", op: ">=", value: filters.dateFrom });
-    }
-    if (filters.dateTo) {
-      whereFilters.push({ field: "startDate", op: "<=", value: filters.dateTo });
-    }
-    if (filters.city) {
-      whereFilters.push({ field: "location.city", op: "==", value: filters.city });
-    }
-    if (filters.country) {
-      whereFilters.push({ field: "location.country", op: "==", value: filters.country });
-    }
-    // searchKeywords + tags both consume the single array-membership slot
-    // Firestore offers per query. searchToken (derived from `q`) wins when
-    // both are present — full-text intent dominates tag faceting.
-    const warnings: string[] = [];
-    if (filters.searchToken) {
-      whereFilters.push({
-        field: "searchKeywords",
-        op: "array-contains",
-        value: filters.searchToken,
-      });
-      if (filters.tags && filters.tags.length > 0) {
-        warnings.push("TAGS_IGNORED_DUE_TO_SEARCH");
-      }
-    } else if (filters.tags && filters.tags.length > 0) {
-      // Firestore array-contains-any caps at 30 values; over that, we slice
-      // and emit a warning so the client can surface "résultats partiels".
-      const tagSlice = filters.tags.slice(0, 30);
-      if (filters.tags.length > 30) {
-        warnings.push(`TAGS_TRUNCATED:30 (received ${filters.tags.length})`);
-      }
-      whereFilters.push({
-        field: "tags",
-        op: "array-contains-any",
-        value: tagSlice,
-      });
-    }
-
-    const result = await this.findMany(whereFilters, {
+    if (filters.category) wheres.push({ field: "category", op: "==", value: filters.category });
+    if (filters.format) wheres.push({ field: "format", op: "==", value: filters.format });
+    if (filters.organizationId) wheres.push({ field: "organizationId", op: "==", value: filters.organizationId });
+    if (filters.isFeatured !== undefined) wheres.push({ field: "isFeatured", op: "==", value: filters.isFeatured });
+    if (filters.dateFrom) wheres.push({ field: "startDate", op: ">=", value: filters.dateFrom });
+    if (filters.dateTo) wheres.push({ field: "startDate", op: "<=", value: filters.dateTo });
+    if (filters.city) wheres.push({ field: "location.city", op: "==", value: filters.city });
+    if (filters.country) wheres.push({ field: "location.country", op: "==", value: filters.country });
+    wheres.push({ field: "searchKeywords", op: "array-contains", value: filters.searchToken });
+    return this.findMany(wheres, {
       ...pagination,
       orderBy: pagination.orderBy ?? "startDate",
       orderDir: pagination.orderDir ?? "asc",
     });
-    // Phase 7+ item #B1 — defense-in-depth filter. Recurring-series
-    // parents (`isRecurringParent: true`) are organizational anchors, not
-    // registerable events. They should never reach a participant search
-    // surface; `publishSeries` already keeps them as `status: "draft"` so
-    // the where-clause above normally excludes them, but this post-filter
-    // catches any legacy or data-repair path that leaves one published.
-    // Same rationale + same filter as `findPublished()`.
+  }
+
+  /**
+   * tags array-contains-any branch (or no array filter when tags is empty).
+   * Disjoint from searchByKeyword. Tags array is sliced to 30 to respect
+   * Firestore's array-contains-any cardinality cap; the caller emits the
+   * TAGS_TRUNCATED warning when the original array overflowed.
+   */
+  private async searchByTagsOrFilters(
+    filters: EventSearchFilters,
+    pagination: PaginationParams,
+  ): Promise<PaginatedResult<Event>> {
+    const wheres: Array<{
+      field: string;
+      op: "==" | ">=" | "<=" | "array-contains-any";
+      value: unknown;
+    }> = [
+      { field: "status", op: "==", value: "published" },
+      { field: "isPublic", op: "==", value: true },
+    ];
+    if (filters.category) wheres.push({ field: "category", op: "==", value: filters.category });
+    if (filters.format) wheres.push({ field: "format", op: "==", value: filters.format });
+    if (filters.organizationId) wheres.push({ field: "organizationId", op: "==", value: filters.organizationId });
+    if (filters.isFeatured !== undefined) wheres.push({ field: "isFeatured", op: "==", value: filters.isFeatured });
+    if (filters.dateFrom) wheres.push({ field: "startDate", op: ">=", value: filters.dateFrom });
+    if (filters.dateTo) wheres.push({ field: "startDate", op: "<=", value: filters.dateTo });
+    if (filters.city) wheres.push({ field: "location.city", op: "==", value: filters.city });
+    if (filters.country) wheres.push({ field: "location.country", op: "==", value: filters.country });
+    if (filters.tags && filters.tags.length > 0) {
+      wheres.push({ field: "tags", op: "array-contains-any", value: filters.tags.slice(0, 30) });
+    }
+    return this.findMany(wheres, {
+      ...pagination,
+      orderBy: pagination.orderBy ?? "startDate",
+      orderDir: pagination.orderDir ?? "asc",
+    });
+  }
+
+  // Phase 7+ item #B1 — defense-in-depth filter. Recurring-series parents
+  // (`isRecurringParent: true`) are organizational anchors, not registerable
+  // events. They should never reach a participant search surface; the
+  // service's `publishSeries` already keeps them as `status: "draft"` so the
+  // where-clause excludes them, but this post-filter catches any legacy
+  // path that leaves one published. Mirrors `findPublished()`.
+  private attachWarningsAndStripParents(
+    result: PaginatedResult<Event>,
+    warnings: string[],
+  ): PaginatedResult<Event> {
     return {
       ...result,
       meta: warnings.length > 0 ? { ...result.meta, warnings } : result.meta,
