@@ -8,12 +8,23 @@
  *
  * See `docs/design-system/data-listing.md` § Frontend primitives.
  */
+
+// Combining diacritical marks block: U+0300..U+036F. NFD-decomposed accents
+// land in this range, which we strip to fold "Sénégal" → "senegal".
+const COMBINING_DIACRITICS = /[̀-ͯ]/g;
+
+// Typographic apostrophes unified to ASCII '. Listed explicitly so the source
+// stays ASCII-safe and the intent is auditable: U+2018 LEFT SINGLE QUOTATION
+// MARK, U+2019 RIGHT SINGLE QUOTATION MARK, U+02BC MODIFIER LETTER APOSTROPHE,
+// U+0027 APOSTROPHE.
+const TYPOGRAPHIC_APOSTROPHES = /[‘’ʼ']/g;
+
 export function normalizeFr(input: string): string {
   return input
     .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
+    .replace(COMBINING_DIACRITICS, "")
     .toLowerCase()
-    .replace(/[‘’ʼ']/g, "'")
+    .replace(TYPOGRAPHIC_APOSTROPHES, "'")
     .replace(/\s+/g, " ")
     .trim();
 }
