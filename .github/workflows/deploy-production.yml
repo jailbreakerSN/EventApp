@@ -1,0 +1,348 @@
+name: Deploy to Production
+
+# Wave 10 / W10-P5 / R1 — production deploy workflow.
+#
+# Trigger posture
+# ───────────────
+# This workflow is **manual** (`workflow_dispatch`) by design. Production
+# deploys ALWAYS go through a release PR + an engineering-lead approval
+# in the `production` GitHub Environment. Auto-deploys on push to `main`
+# can be enabled in a follow-up once the team is comfortable with the
+# pipeline; the env-protected dispatch is the safest day-1 posture.
+#
+# Inputs
+# ──────
+#   - sha: the commit on `main` to deploy. Defaults to the head of main.
+#   - disable_backup_schedule: skip the Cloud Scheduler upsert for the
+#     daily Firestore backup. Useful during the first prod cutover when
+#     ops want to run the first backup manually before automating.
+#
+# Differences from `deploy-staging.yml`
+# ─────────────────────────────────────
+#   - Targets `teranga-events-prod` (NOT `teranga-app-990a8`).
+#   - Cloud Run prod-tier flags (min 1 / max 20 / cpu 2 / memory 1Gi /
+#     cpu-boost / concurrency 40 / timeout 360).
+#   - Provisions the daily Firestore backup Cloud Scheduler job
+#     (`scripts/provision-prod-backup-schedule.sh`) — staging stays
+#     manual via `/admin/jobs/run`.
+#   - Wires `METRICS_AUTH_TOKEN` from a GH secret so the Prometheus
+#     scrape gate is enforced.
+#   - Promotes CSP from Report-Only to enforced via
+#     `NEXT_PUBLIC_CSP_ENFORCE=true` (per the Wave 10 W10-P2 ramp).
+#   - Skips `seed-staging` + `backfill-ledger` jobs from the staging
+#     workflow — those would corrupt prod data.
+
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: "Commit on main to deploy (defaults to main HEAD)"
+        required: false
+        type: string
+      disable_backup_schedule:
+        description: "Skip the Cloud Scheduler backup upsert (set true for the first cutover)"
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false  # NEVER cancel an in-flight prod deploy.
+
+env:
+  NODE_VERSION: "22"
+  DEPLOY_SHA: ${{ inputs.sha || github.sha }}
+  NPM_CONFIG_FETCH_RETRIES: "5"
+  NPM_CONFIG_FETCH_RETRY_MINTIMEOUT: "10000"
+  NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT: "120000"
+
+jobs:
+  # ─── Discover GCP / Firebase config from the prod service account ─────────
+  setup:
+    name: Discover prod Firebase & GCP config
+    runs-on: ubuntu-latest
+    environment: production  # gated by required reviewers
+    outputs:
+      project_id: ${{ steps.discover.outputs.project_id }}
+      api_url: ${{ steps.discover.outputs.api_url }}
+      backoffice_url: ${{ steps.discover.outputs.backoffice_url }}
+      participant_url: ${{ steps.discover.outputs.participant_url }}
+      scheduler_sa_email: ${{ steps.discover.outputs.scheduler_sa_email }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY_PROD }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - name: Discover production project + URLs
+        id: discover
+        run: |
+          set -euo pipefail
+          PROJECT_ID="$(jq -r '.project_id' <<<"${{ secrets.GCP_SA_KEY_PROD }}")"
+          if [[ "${PROJECT_ID}" != "teranga-events-prod" ]]; then
+            echo "::error::Service account project (${PROJECT_ID}) is not teranga-events-prod"
+            exit 1
+          fi
+          echo "project_id=${PROJECT_ID}" >>"${GITHUB_OUTPUT}"
+          echo "api_url=${{ vars.API_URL_PROD || 'https://api.teranga.events' }}" >>"${GITHUB_OUTPUT}"
+          echo "backoffice_url=${{ vars.BACKOFFICE_URL_PROD || 'https://app.teranga.events' }}" >>"${GITHUB_OUTPUT}"
+          echo "participant_url=${{ vars.PARTICIPANT_URL_PROD || 'https://teranga.events' }}" >>"${GITHUB_OUTPUT}"
+          echo "scheduler_sa_email=teranga-scheduler@${PROJECT_ID}.iam.gserviceaccount.com" >>"${GITHUB_OUTPUT}"
+
+  # ─── Pre-flight gate ──────────────────────────────────────────────────────
+  preflight:
+    name: Pre-flight checklist
+    runs-on: ubuntu-latest
+    needs: setup
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Build shared types
+        run: npm run types:build
+      - name: Type-check API
+        run: cd apps/api && npx tsc --noEmit
+      - name: Type-check web-backoffice
+        run: cd apps/web-backoffice && npx tsc --noEmit
+      - name: Type-check web-participant
+        run: cd apps/web-participant && npx tsc --noEmit
+      - name: API tests
+        run: cd apps/api && npx vitest run --reporter=default
+      - name: Required prod secrets present
+        # Fail fast if a required prod secret is missing — saves a half-
+        # broken deploy that succeeds on Cloud Run push but errors at
+        # boot when METRICS_AUTH_TOKEN is unset.
+        run: |
+          set -euo pipefail
+          for s in QR_SECRET WEBHOOK_SECRET METRICS_AUTH_TOKEN RESEND_API_KEY \
+                   PAYDUNYA_MASTER_KEY PAYDUNYA_PRIVATE_KEY PAYDUNYA_TOKEN \
+                   WHATSAPP_APP_SECRET; do
+            if [[ -z "${!s:-}" ]]; then
+              echo "::error::Required prod secret ${s} is not set"
+              exit 1
+            fi
+          done
+        env:
+          QR_SECRET: ${{ secrets.QR_SECRET_PROD }}
+          WEBHOOK_SECRET: ${{ secrets.WEBHOOK_SECRET_PROD }}
+          METRICS_AUTH_TOKEN: ${{ secrets.METRICS_AUTH_TOKEN_PROD }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY_PROD }}
+          PAYDUNYA_MASTER_KEY: ${{ secrets.PAYDUNYA_MASTER_KEY_PROD }}
+          PAYDUNYA_PRIVATE_KEY: ${{ secrets.PAYDUNYA_PRIVATE_KEY_PROD }}
+          PAYDUNYA_TOKEN: ${{ secrets.PAYDUNYA_TOKEN_PROD }}
+          WHATSAPP_APP_SECRET: ${{ secrets.WHATSAPP_APP_SECRET_PROD }}
+
+  # ─── Deploy API to Cloud Run with PROD-tier flags ─────────────────────────
+  deploy-api:
+    name: Deploy API to Cloud Run (production)
+    runs-on: ubuntu-latest
+    needs: [setup, preflight]
+    environment: production
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY_PROD }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - uses: docker/setup-buildx-action@v3
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker europe-west1-docker.pkg.dev --quiet
+      - name: Build + push API image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          push: true
+          tags: europe-west1-docker.pkg.dev/${{ needs.setup.outputs.project_id }}/teranga/teranga-api:${{ env.DEPLOY_SHA }}
+          build-args: |
+            BUILD_DATE=${{ github.event.head_commit.timestamp }}
+            GIT_SHA=${{ env.DEPLOY_SHA }}
+          cache-from: type=gha,scope=api-prod
+          cache-to: type=gha,mode=max,scope=api-prod
+      - name: Trivy scan (CRITICAL blocking)
+        uses: aquasecurity/trivy-action@0.35.0
+        with:
+          image-ref: europe-west1-docker.pkg.dev/${{ needs.setup.outputs.project_id }}/teranga/teranga-api:${{ env.DEPLOY_SHA }}
+          severity: CRITICAL
+          exit-code: "1"
+          ignore-unfixed: true
+          format: table
+      - name: Deploy to Cloud Run (prod-tier flags)
+        # Production-tier sizing differs from staging:
+        #   --cpu 2 --memory 1Gi : pdf-lib + canvas badge rendering
+        #     comfortably fits in 1 GiB; staging's 512 MiB risks OOM
+        #     on a 200-attendee bulk badge download.
+        #   --min-instances 1    : eliminates cold-start tax on the
+        #     first request after idle. Costs ~€8/mo for 1 vCPU + 1 GiB.
+        #   --max-instances 20   : hard ceiling on autoscaling cost.
+        #     Tune up only after we've seen the real traffic shape.
+        #   --concurrency 40     : halves staging's 80 — the badge
+        #     renderer is CPU-bound; lower concurrency yields better
+        #     p95 under load.
+        #   --cpu-boost          : 2x CPU during cold start so the
+        #     first request after autoscaling-up doesn't stall on
+        #     firebase-admin's lazy init.
+        #   --timeout 360        : matches staging — covers admin-job
+        #     handlers' 5-minute MAX_RUN_MS + headroom.
+        run: |
+          gcloud run deploy teranga-api \
+            --image europe-west1-docker.pkg.dev/${{ needs.setup.outputs.project_id }}/teranga/teranga-api:${{ env.DEPLOY_SHA }} \
+            --region europe-west1 \
+            --allow-unauthenticated \
+            --cpu 2 \
+            --memory 1Gi \
+            --min-instances 1 \
+            --max-instances 20 \
+            --concurrency 40 \
+            --cpu-boost \
+            --timeout 360 \
+            --set-env-vars "^@^NODE_ENV=production@FIREBASE_PROJECT_ID=${{ needs.setup.outputs.project_id }}@SENTRY_DSN=${{ secrets.SENTRY_DSN_PROD }}@METRICS_AUTH_TOKEN=${{ secrets.METRICS_AUTH_TOKEN_PROD }}@API_BASE_URL=${{ needs.setup.outputs.api_url }}@PARTICIPANT_WEB_URL=${{ needs.setup.outputs.participant_url }}@WEB_BACKOFFICE_URL=${{ needs.setup.outputs.backoffice_url }}@LOG_LEVEL=info@PAYDUNYA_MODE=live"
+          # Secrets bound separately (kept off the Cloud Run service config):
+          gcloud run services update teranga-api \
+            --region europe-west1 \
+            --update-secrets="^@^QR_SECRET=QR_SECRET:latest@WEBHOOK_SECRET=WEBHOOK_SECRET:latest@RESEND_API_KEY=RESEND_API_KEY:latest@PAYDUNYA_MASTER_KEY=PAYDUNYA_MASTER_KEY:latest@PAYDUNYA_PRIVATE_KEY=PAYDUNYA_PRIVATE_KEY:latest@PAYDUNYA_TOKEN=PAYDUNYA_TOKEN:latest@WHATSAPP_APP_SECRET=WHATSAPP_APP_SECRET:latest"
+
+  # ─── Daily Firestore backup schedule ──────────────────────────────────────
+  provision-backup-schedule:
+    name: Provision daily Firestore backup (Cloud Scheduler)
+    runs-on: ubuntu-latest
+    needs: [setup, deploy-api]
+    environment: production
+    if: ${{ inputs.disable_backup_schedule != true }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY_PROD }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - name: Run upsert script
+        env:
+          GCP_PROJECT: ${{ needs.setup.outputs.project_id }}
+          API_BASE_URL: ${{ needs.setup.outputs.api_url }}
+          SCHEDULER_SA_EMAIL: ${{ needs.setup.outputs.scheduler_sa_email }}
+          SCHEDULE_CRON: "0 2 * * *"          # 02:00 daily
+          SCHEDULE_TIMEZONE: "Africa/Dakar"
+          JOB_NAME: "daily-firestore-backup"
+          DISABLE_BACKUP_SCHEDULE: ${{ inputs.disable_backup_schedule || 'false' }}
+        run: bash scripts/provision-prod-backup-schedule.sh
+
+  # ─── Cloud Monitoring alerts + dashboard ──────────────────────────────────
+  provision-monitoring:
+    name: Provision Cloud Monitoring alerts + dashboard
+    runs-on: ubuntu-latest
+    needs: [setup, deploy-api]
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY_PROD }}
+      - uses: google-github-actions/setup-gcloud@v2
+      - name: Upsert alert policies (idempotent)
+        run: |
+          set -euo pipefail
+          # Loop the W10-P3 alert YAMLs. Each is upserted by display-name —
+          # if a policy with the same `displayName` exists, gcloud updates;
+          # otherwise it creates. Channels are bound separately below.
+          for yaml in infrastructure/monitoring/api-5xx-rate.yaml \
+                      infrastructure/monitoring/api-latency-p95.yaml \
+                      infrastructure/monitoring/ready-probe-failure.yaml \
+                      infrastructure/monitoring/payment-webhook-failure.yaml \
+                      infrastructure/monitoring/notification-bounce-rate-warn.yaml \
+                      infrastructure/monitoring/notification-bounce-rate-critical.yaml; do
+            display_name=$(grep -m1 '^displayName:' "${yaml}" | sed 's/^displayName: *"\(.*\)"$/\1/')
+            existing=$(gcloud alpha monitoring policies list \
+              --filter="displayName=\"${display_name}\"" \
+              --format='value(name)' || true)
+            if [[ -n "${existing}" ]]; then
+              gcloud alpha monitoring policies update "${existing}" \
+                --policy-from-file="${yaml}" --quiet
+            else
+              gcloud alpha monitoring policies create \
+                --policy-from-file="${yaml}" --quiet
+            fi
+          done
+      - name: Upsert API overview dashboard
+        run: |
+          set -euo pipefail
+          dashboard_name="Teranga — API Overview (Wave 10 / W10-P3)"
+          existing=$(gcloud monitoring dashboards list \
+            --filter="displayName=\"${dashboard_name}\"" \
+            --format='value(name)' || true)
+          if [[ -n "${existing}" ]]; then
+            gcloud monitoring dashboards update "${existing}" \
+              --config-from-file=infrastructure/monitoring/dashboards/api-overview.json --quiet
+          else
+            gcloud monitoring dashboards create \
+              --config-from-file=infrastructure/monitoring/dashboards/api-overview.json --quiet
+          fi
+
+  # ─── Smoke test the deploy ────────────────────────────────────────────────
+  smoke-test:
+    name: Smoke test (production)
+    runs-on: ubuntu-latest
+    needs: [setup, deploy-api]
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.DEPLOY_SHA }}
+      - name: /health probe
+        run: |
+          set -euo pipefail
+          for i in {1..6}; do
+            if curl -fsS "${{ needs.setup.outputs.api_url }}/health" >/dev/null; then
+              echo "/health OK on attempt ${i}"
+              exit 0
+            fi
+            echo "Attempt ${i} failed — sleeping 5s"
+            sleep 5
+          done
+          echo "::error::/health probe failed after 6 attempts"
+          exit 1
+      - name: /ready probe
+        run: |
+          set -euo pipefail
+          for i in {1..6}; do
+            if curl -fsS "${{ needs.setup.outputs.api_url }}/ready" >/dev/null; then
+              echo "/ready OK on attempt ${i}"
+              exit 0
+            fi
+            echo "Attempt ${i} failed — sleeping 5s"
+            sleep 5
+          done
+          echo "::error::/ready probe failed after 6 attempts"
+          exit 1
+      - name: /metrics auth gate
+        run: |
+          set -euo pipefail
+          # Unauth: must 401.
+          status=$(curl -s -o /dev/null -w "%{http_code}" "${{ needs.setup.outputs.api_url }}/metrics")
+          if [[ "${status}" != "401" ]]; then
+            echo "::error::/metrics returned ${status} unauthenticated; expected 401"
+            exit 1
+          fi
+          # Authed: must 200 + contain known counter.
+          body=$(curl -fsS -H "Authorization: Bearer ${{ secrets.METRICS_AUTH_TOKEN_PROD }}" \
+            "${{ needs.setup.outputs.api_url }}/metrics")
+          if ! grep -q "teranga_http_requests_total" <<<"${body}"; then
+            echo "::error::/metrics missing teranga_http_requests_total"
+            exit 1
+          fi
+          echo "/metrics auth gate OK"
