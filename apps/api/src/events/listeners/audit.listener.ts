@@ -1336,6 +1336,29 @@ export function registerAuditListeners(): void {
     });
   });
 
+  // Phase 2 follow-up — explicit expiration distinct from `payment.failed`.
+  // Two trigger paths converge on this audit row:
+  //   - reason="timeout"        → auto-expirer cron (>TTL)
+  //   - reason="user_cancelled" → user-initiated cancel of pending_payment
+  // The dispatcher renders different copy per reason; the audit row
+  // keeps both branches queryable from /admin/audit.
+  eventBus.on("payment.expired", async (payload) => {
+    await auditService.log({
+      action: "payment.expired",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "payment",
+      resourceId: payload.paymentId,
+      eventId: payload.eventId,
+      organizationId: payload.organizationId,
+      details: {
+        registrationId: payload.registrationId,
+        reason: payload.reason,
+      },
+    });
+  });
+
   eventBus.on("payment.refunded", async (payload) => {
     await auditService.log({
       action: "payment.refunded",

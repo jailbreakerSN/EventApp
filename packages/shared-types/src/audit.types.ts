@@ -62,6 +62,12 @@ export const AuditActionSchema = z.enum([
   "payment.succeeded",
   "payment.failed",
   "payment.refunded",
+  // Phase 2 follow-up — explicit expiration of a payment, either by
+  // the auto-expirer cron (timeout > TTL) or by user-initiated cancel
+  // of a pending_payment registration. Distinct from `payment.failed`
+  // (provider rejection) so the audit grid can filter "expired" vs
+  // "rejected" cleanly.
+  "payment.expired",
   // Phase-1 audit follow-up — refund customer-notification + provider-
   // failure variants emit dedicated events for the dispatcher; the
   // audit trail logs them as distinct rows so post-incident analysis

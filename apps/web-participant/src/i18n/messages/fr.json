@@ -464,7 +464,10 @@
     "savedOfflineToast": "Badge sauvegardé hors ligne ⚡",
     "savedOfflineChip": "Sauvegardé hors ligne",
     "saveOfflineError": "Impossible de sauvegarder hors ligne. Réessayez.",
-    "cachedNotice": "Vous êtes hors ligne. Ce badge est affiché depuis le cache local."
+    "cachedNotice": "Vous êtes hors ligne. Ce badge est affiché depuis le cache local.",
+    "kicker": "— BADGE",
+    "registrationNotFoundKicker": "— INTROUVABLE",
+    "badgeUnavailableKicker": "— BADGE INDISPONIBLE"
   },
   "registerFlow": {
     "subtitle": "Inscription",
@@ -489,6 +492,28 @@
       "pending_payment": "en attente de paiement",
       "waitlisted": "en liste d'attente",
       "checked_in": "enregistrée (check-in effectué)"
+    },
+    "pendingPayment": {
+      "title": "Paiement à finaliser",
+      "description": "Votre inscription est en attente : terminez le paiement pour la confirmer. Vous pouvez reprendre la session de paiement ouverte ou l'annuler pour réessayer.",
+      "resumeCta": "Reprendre le paiement",
+      "cancelCta": "Annuler & réessayer",
+      "cancelConfirm": "Annuler l'inscription en attente ? Vous pourrez vous inscrire à nouveau immédiatement après.",
+      "cancelSuccess": "Inscription annulée. Vous pouvez maintenant vous inscrire à nouveau.",
+      "noPaymentLinkedError": "Cette inscription n'est associée à aucun paiement. Annulez-la et réessayez.",
+      "resumeFailed": "Impossible de reprendre le paiement. Annulez et réessayez."
+    },
+    "pendingApproval": {
+      "title": "En attente de validation",
+      "description": "L'organisateur examine votre inscription. Vous serez notifié(e) dès qu'elle sera confirmée."
+    },
+    "waitlisted": {
+      "title": "Sur liste d'attente",
+      "description": "Vous êtes sur la liste d'attente. Si une place se libère, vous serez automatiquement promu(e)."
+    },
+    "checkedIn": {
+      "title": "Vous êtes déjà entré(e)",
+      "description": "Votre badge a déjà été scanné à l'entrée de l'événement."
     },
     "selectHeading": "Choisissez votre billet",
     "soldOut": "Épuisé",
@@ -630,6 +655,20 @@
     "cancel": "Annuler",
     "cancelled": "Annulé",
     "cancelledSuccess": "Inscription annulée avec succès.",
+    "resumePayment": "Reprendre le paiement",
+    "abandonPayment": "Abandonner",
+    "abandonedSuccess": "Inscription abandonnée. Vous pouvez vous réinscrire à tout moment.",
+    "pendingPaymentNotice": "Votre inscription est en attente de paiement.",
+    "abandonDialog": {
+      "title": "Abandonner ce paiement ?",
+      "description": "Votre inscription provisoire sera annulée. Vous pourrez vous réinscrire à tout moment tant qu'il reste des places.",
+      "confirm": "Oui, abandonner",
+      "cancel": "Non, continuer"
+    },
+    "errors": {
+      "paymentIdMissing": "Impossible de reprendre ce paiement : référence introuvable. Veuillez recharger la page.",
+      "noRedirectUrl": "Le fournisseur de paiement n'a pas renvoyé d'URL. Veuillez réessayer dans quelques instants."
+    },
     "viewToggleAria": "Basculer entre la vue liste et la vue calendrier",
     "viewList": "Liste",
     "viewCalendar": "Calendrier",

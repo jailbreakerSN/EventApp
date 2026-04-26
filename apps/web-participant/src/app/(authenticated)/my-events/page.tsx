@@ -8,6 +8,7 @@ import {
   CalendarDays,
   Check,
   ExternalLink,
+  Hourglass,
   LayoutList,
   ListOrdered,
   LogOut,
@@ -24,7 +25,12 @@ import {
 import { toast } from "sonner";
 import { useMutation, useQueries, useQueryClient } from "@tanstack/react-query";
 import { useLocale, useTranslations } from "next-intl";
-import { useMyRegistrations, useCancelRegistration } from "@/hooks/use-registrations";
+import {
+  useMyRegistrations,
+  useCancelRegistration,
+  useCancelPendingRegistration,
+} from "@/hooks/use-registrations";
+import { useResumePayment } from "@/hooks/use-payments";
 import { useAuth } from "@/hooks/use-auth";
 import { eventsApi, paymentsApi } from "@/lib/api-client";
 import {
@@ -78,8 +84,11 @@ export default function MyEventsPage() {
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const { data, isLoading, error } = useMyRegistrations({ page, limit: 20 });
   const cancelMutation = useCancelRegistration();
+  const cancelPendingMutation = useCancelPendingRegistration();
+  const resumePaymentMutation = useResumePayment();
   const queryClient = useQueryClient();
   const [cancelTarget, setCancelTarget] = useState<string | null>(null);
+  const [abandonTarget, setAbandonTarget] = useState<string | null>(null);
   const [refundTarget, setRefundTarget] = useState<{
     registrationId: string;
     paymentId: string;
@@ -167,6 +176,37 @@ export default function MyEventsPage() {
       await refundMutation.mutateAsync(refundTarget.paymentId);
     } finally {
       setRefundTarget(null);
+    }
+  };
+
+  const handleAbandonPending = async () => {
+    if (!abandonTarget) return;
+    try {
+      await cancelPendingMutation.mutateAsync(abandonTarget);
+      setMutationError(null);
+      toast.success(t("abandonedSuccess"));
+    } catch (err: unknown) {
+      setMutationError(resolveError(err));
+    } finally {
+      setAbandonTarget(null);
+    }
+  };
+
+  const handleResumePayment = async (paymentId: string | undefined) => {
+    if (!paymentId) {
+      setMutationError(resolveError(new Error(t("errors.paymentIdMissing"))));
+      return;
+    }
+    try {
+      const res = await resumePaymentMutation.mutateAsync(paymentId);
+      const redirectUrl = (res as { data?: { redirectUrl?: string } })?.data?.redirectUrl;
+      if (redirectUrl) {
+        window.location.href = redirectUrl;
+      } else {
+        setMutationError(resolveError(new Error(t("errors.noRedirectUrl"))));
+      }
+    } catch (err: unknown) {
+      setMutationError(resolveError(err));
     }
   };
 
@@ -297,12 +337,26 @@ export default function MyEventsPage() {
         variant: "outline",
       });
     }
-    if (reg?.status === "confirmed" && reg?.qrCodeValue) {
+    if (reg && (reg.status === "confirmed" || reg.status === "checked_in") && reg.qrCodeValue) {
       acts.push({
         label: t("badge"),
         icon: <QrCode className="h-4 w-4" />,
         href: `/my-events/${reg.id}/badge`,
         variant: "outline",
+      });
+    }
+    if (reg?.status === "pending_payment") {
+      acts.push({
+        label: t("resumePayment"),
+        icon: <Hourglass className="h-4 w-4" />,
+        onClick: () => handleResumePayment(reg.paymentId),
+        variant: "primary",
+      });
+      acts.push({
+        label: t("abandonPayment"),
+        icon: <XCircle className="h-4 w-4" />,
+        onClick: () => setAbandonTarget(reg.id),
+        variant: "danger",
       });
     }
     if (reg && ["confirmed", "pending"].includes(reg.status)) {
@@ -502,14 +556,19 @@ export default function MyEventsPage() {
                     t={t}
                     canCancel={["confirmed", "pending"].includes(reg.status)}
                     isWaitlisted={reg.status === "waitlisted"}
+                    isPendingPayment={reg.status === "pending_payment"}
                     showRefund={canRequestRefund(reg)}
                     onCancel={() => setCancelTarget(reg.id)}
+                    onAbandon={() => setAbandonTarget(reg.id)}
+                    onResume={() => handleResumePayment(reg.paymentId)}
                     onRefund={() => {
                       if (reg.paymentId) {
                         setRefundTarget({ registrationId: reg.id, paymentId: reg.paymentId });
                       }
                     }}
                     isCancelling={cancelMutation.isPending}
+                    isAbandoning={cancelPendingMutation.isPending}
+                    isResuming={resumePaymentMutation.isPending}
                     isRefunding={refundMutation.isPending}
                   />
                 );
@@ -639,6 +698,17 @@ export default function MyEventsPage() {
         cancelLabel={t("refundDialog.cancel")}
         variant="default"
       />
+
+      <ConfirmDialog
+        open={abandonTarget !== null}
+        onConfirm={handleAbandonPending}
+        onCancel={() => setAbandonTarget(null)}
+        title={t("abandonDialog.title")}
+        description={t("abandonDialog.description")}
+        confirmLabel={t("abandonDialog.confirm")}
+        cancelLabel={t("abandonDialog.cancel")}
+        variant="danger"
+      />
     </div>
   );
 }
@@ -652,10 +722,15 @@ function UpcomingRow({
   t,
   canCancel,
   isWaitlisted,
+  isPendingPayment,
   showRefund,
   onCancel,
+  onAbandon,
+  onResume,
   onRefund,
   isCancelling,
+  isAbandoning,
+  isResuming,
   isRefunding,
 }: {
   reg: Registration & { paymentId?: string; waitlistPosition?: number };
@@ -664,10 +739,15 @@ function UpcomingRow({
   t: ReturnType<typeof useTranslations<"myEvents">>;
   canCancel: boolean;
   isWaitlisted: boolean;
+  isPendingPayment: boolean;
   showRefund: boolean;
   onCancel: () => void;
+  onAbandon: () => void;
+  onResume: () => void;
   onRefund: () => void;
   isCancelling: boolean;
+  isAbandoning: boolean;
+  isResuming: boolean;
   isRefunding: boolean;
 }) {
   const statusKey = (reg.status as StatusKey) in STATUS_TONES ? (reg.status as StatusKey) : null;
@@ -725,13 +805,35 @@ function UpcomingRow({
         </div>
 
         <div className="flex flex-col justify-center gap-2 border-t p-5 md:border-l md:border-t-0">
-          {reg.status === "confirmed" && reg.qrCodeValue && (
+          {/* Badge is the primary action — visible only when the registration
+              is in a state where the QR is meaningful (confirmed → entry
+              ticket, checked_in → proof of attendance). NEVER for
+              pending_payment, pending, waitlisted, cancelled, refunded. */}
+          {(reg.status === "confirmed" || reg.status === "checked_in") && reg.qrCodeValue && (
             <Link href={`/my-events/${reg.id}/badge`}>
               <Button className="w-full rounded-full bg-teranga-navy text-white hover:bg-teranga-navy/90 dark:bg-teranga-gold dark:text-teranga-navy dark:hover:bg-teranga-gold-light">
                 <QrCode className="mr-1.5 h-4 w-4" aria-hidden="true" />
                 {t("badge")}
               </Button>
             </Link>
+          )}
+          {/* pending_payment — primary action is RESUME PAYMENT. Secondary
+              action is ABANDON, which atomically expires the placeholder
+              registration + payment so the user can re-register cleanly. */}
+          {isPendingPayment && (
+            <>
+              <Button
+                onClick={onResume}
+                disabled={isResuming}
+                className="w-full rounded-full bg-teranga-gold text-teranga-navy hover:bg-teranga-gold-light"
+              >
+                <Hourglass className="mr-1.5 h-4 w-4" aria-hidden="true" />
+                {t("resumePayment")}
+              </Button>
+              <p className="text-center text-[11px] text-muted-foreground">
+                {t("pendingPaymentNotice")}
+              </p>
+            </>
           )}
           <Link href={`/events/${reg.eventSlug ?? reg.eventId}`}>
             <Button variant="outline" size="sm" className="w-full rounded-full">
@@ -778,6 +880,18 @@ function UpcomingRow({
             >
               <XCircle className="mr-1.5 h-4 w-4" aria-hidden="true" />
               {t("cancel")}
+            </Button>
+          )}
+          {isPendingPayment && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onAbandon}
+              disabled={isAbandoning}
+              className="w-full rounded-full text-destructive hover:bg-destructive/10 hover:text-destructive"
+            >
+              <XCircle className="mr-1.5 h-4 w-4" aria-hidden="true" />
+              {t("abandonPayment")}
             </Button>
           )}
           {reg.status === "cancelled" && (

@@ -24,9 +24,17 @@ import {
 import { QRCodeSVG } from "qrcode.react";
 import { toast } from "sonner";
 import { useLocale, useTranslations } from "next-intl";
-import { eventsApi, registrationsApi } from "@/lib/api-client";
-import { useRegister } from "@/hooks/use-registrations";
-import { useInitiatePayment, useValidatePromoCode } from "@/hooks/use-payments";
+import { eventsApi } from "@/lib/api-client";
+import {
+  useRegister,
+  useMyRegistrationForEvent,
+  useCancelPendingRegistration,
+} from "@/hooks/use-registrations";
+import {
+  useInitiatePayment,
+  useResumePayment,
+  useValidatePromoCode,
+} from "@/hooks/use-payments";
 import {
   Button,
   EmptyStateEditorial,
@@ -54,6 +62,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useErrorHandler, type ResolvedError } from "@/hooks/use-error-handler";
 import { PushPermissionBanner } from "@/components/push-permission-banner";
 import { AddToHomeScreenBanner } from "@/components/add-to-home-screen-banner";
+import { ExistingRegistrationView } from "./existing-registration-view";
 
 type Step = "select" | "confirm" | "success";
 type StepNum = 1 | 2 | 3;
@@ -156,28 +165,25 @@ export default function RegisterPage() {
     staleTime: 5 * 60_000,
   });
 
-  // Preflight against the user's existing registrations so we never let
-  // them submit a request that the server will reject with 409 CONFLICT
-  // (duplicate_registration). Tight `staleTime` + refetch-on-focus
-  // keeps the check honest when the user opens the page in a new tab
-  // after registering elsewhere — without it, the cached "no existing
-  // registration" answer races the server and produces the silent-toast
-  // loop that error-handling.md was written to kill.
-  const { data: myRegsData, isLoading: regsLoading } = useQuery({
-    queryKey: ["my-registrations-check", eventId],
-    queryFn: () => registrationsApi.getMyRegistrations({ limit: 100 }),
-    staleTime: 5_000,
-    refetchOnWindowFocus: true,
-  });
-
   const registerMutation = useRegister();
   const paymentMutation = useInitiatePayment();
+  // Phase B-2 / B-3 — mutations for the pending_payment lifecycle:
+  //   resume  → re-launch the existing PayDunya checkout session
+  //   cancel  → abort the stuck registration so the user can retry
+  const resumeMutation = useResumePayment();
+  const cancelPendingMutation = useCancelPendingRegistration();
 
   const event = (eventData as { data?: Event })?.data as Event | undefined;
-  const myRegs = (myRegsData as { data?: Registration[] })?.data as Registration[] | undefined;
-  const existingRegistration = myRegs?.find(
-    (r) => r.eventId === eventId && r.status !== "cancelled",
-  );
+  // Phase B-1 — dedicated lookup for THIS event. Replaces the prior
+  // `myRegs?.find(...)` filter which scanned the whole user history
+  // every render and didn't differentiate cancelled vs terminal
+  // states. The dedicated endpoint is server-side filtered and
+  // re-fetches on window focus so a payment confirmed in another
+  // tab updates the CTA without manual refresh.
+  const { data: myRegForEventData, isLoading: regsLoading } =
+    useMyRegistrationForEvent(eventId);
+  const existingRegistration =
+    (myRegForEventData as { data?: Registration | null })?.data ?? null;
 
   const isPaidTicket = selectedTicket && selectedTicket.price > 0;
   const isSubmitting = registerMutation.isPending || paymentMutation.isPending;
@@ -376,59 +382,80 @@ export default function RegisterPage() {
   }
 
   if (existingRegistration) {
-    const statusKey = existingRegistration.status as StatusKey;
-    const statusLabel = [
-      "confirmed",
-      "pending",
-      "pending_payment",
-      "waitlisted",
-      "checked_in",
-    ].includes(statusKey)
-      ? tStatus(statusKey)
-      : existingRegistration.status;
-
     return (
-      <div className="mx-auto max-w-xl px-6 py-12 lg:px-8">
-        <button
-          onClick={() => router.back()}
-          className="mb-6 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-        >
-          <ArrowLeft className="h-3.5 w-3.5" />
-          {t("backToEvent")}
-        </button>
-        <h1 className="font-serif-display text-3xl font-semibold tracking-[-0.02em]">
-          {event.title}
-        </h1>
-        <div className="mt-8 rounded-tile border bg-card p-8 text-center">
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-teranga-green/10">
-            <Check className="h-10 w-10 text-teranga-green" strokeWidth={2.5} />
-          </div>
-          <h2 className="font-serif-display mt-4 text-xl font-semibold">
-            {t("alreadyRegistered")}
-          </h2>
-          <p className="mt-2 text-muted-foreground">{t("statusPrefix", { status: statusLabel })}</p>
-          {existingRegistration.qrCodeValue && (
-            <div className="mt-6 inline-block rounded-card bg-white p-4 shadow-md">
-              <QRCodeSVG
-                value={existingRegistration.qrCodeValue}
-                size={180}
-                level="M"
-                includeMargin
-              />
-            </div>
-          )}
-          <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center">
-            <Link href={`/my-events/${existingRegistration.id}/badge`}>
-              <Button variant="outline">{t("viewBadge")}</Button>
-            </Link>
-            <Link href="/my-events">
-              <Button className="bg-teranga-navy text-white hover:bg-teranga-navy/90">
-                {t("myRegistrations")}
-              </Button>
-            </Link>
-          </div>
-        </div>
-      </div>
+      <ExistingRegistrationView
+        registration={existingRegistration}
+        event={event}
+        onBack={() => router.back()}
+        onResumePayment={async () => {
+          if (!existingRegistration.paymentId) {
+            toast.error(t("pendingPayment.noPaymentLinkedError"));
+            return;
+          }
+          try {
+            const result = await resumeMutation.mutateAsync(existingRegistration.paymentId);
+            const url = (result as { data?: { redirectUrl?: string } })?.data?.redirectUrl;
+            if (url) {
+              window.location.href = url;
+            } else {
+              toast.error(t("pendingPayment.resumeFailed"));
+            }
+          } catch (err) {
+            const resolved = resolveError(err);
+            toast.error(resolved.title);
+          }
+        }}
+        onCancelPending={async () => {
+          if (
+            !window.confirm(t("pendingPayment.cancelConfirm"))
+          ) {
+            return;
+          }
+          try {
+            await cancelPendingMutation.mutateAsync(existingRegistration.id);
+            toast.success(t("pendingPayment.cancelSuccess"));
+            // Force the lookup to refetch immediately so the page
+            // re-renders with the standard ticket grid (status now
+            // = cancelled, hook returns null).
+            queryClient.invalidateQueries({
+              queryKey: ["my-registration-for-event", eventId],
+            });
+          } catch (err) {
+            const resolved = resolveError(err);
+            toast.error(resolved.title);
+          }
+        }}
+        isResumeBusy={resumeMutation.isPending}
+        isCancelBusy={cancelPendingMutation.isPending}
+        translations={{
+          backToEvent: t("backToEvent"),
+          alreadyRegistered: t("alreadyRegistered"),
+          statusPrefix: (status: string) => t("statusPrefix", { status }),
+          viewBadge: t("viewBadge"),
+          myRegistrations: t("myRegistrations"),
+          pendingTitle: t("pendingPayment.title"),
+          pendingDescription: t("pendingPayment.description"),
+          resumeCta: t("pendingPayment.resumeCta"),
+          cancelCta: t("pendingPayment.cancelCta"),
+          checkedInTitle: t("checkedIn.title"),
+          checkedInDescription: t("checkedIn.description"),
+          waitlistedTitle: t("waitlisted.title"),
+          waitlistedDescription: t("waitlisted.description"),
+          pendingApprovalTitle: t("pendingApproval.title"),
+          pendingApprovalDescription: t("pendingApproval.description"),
+          statusLabel: (() => {
+            const k = existingRegistration.status as StatusKey;
+            const known: StatusKey[] = [
+              "confirmed",
+              "pending",
+              "pending_payment",
+              "waitlisted",
+              "checked_in",
+            ];
+            return known.includes(k) ? tStatus(k) : existingRegistration.status;
+          })(),
+        }}
+      />
     );
   }
 

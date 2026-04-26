@@ -380,6 +380,14 @@ export const RegistrationSchema = z.object({
   accessZoneId: z.string().nullable().optional(), // zone scanned at
   notes: z.string().nullable().optional(),
   promotedFromWaitlistAt: z.string().datetime().nullable().optional(),
+  // Phase B-1 — denormalized id of the linked Payment doc for paid
+  // registrations. Set when `initiatePayment` creates the placeholder
+  // Payment + Registration pair (Phase 1 P1-07 two-phase pattern).
+  // Null for free-ticket registrations (no Payment doc exists). Lets
+  // the participant web app trigger a "Resume payment" action without
+  // a separate query — the field is immutable post-creation, so it's
+  // safe to denormalize.
+  paymentId: z.string().nullable().optional(),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
 });

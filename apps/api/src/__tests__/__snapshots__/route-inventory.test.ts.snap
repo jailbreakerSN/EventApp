@@ -209,6 +209,7 @@ POST /v1/organizations/:orgId/subscription/revert-scheduled auth emailVerified p
 POST /v1/organizations/:orgId/subscription/upgrade auth emailVerified perms=[organization:manage_billing]
 GET /v1/organizations/:orgId/usage auth perms=[organization:read]
 POST /v1/payments/:paymentId/refund auth emailVerified perms=[payment:refund]
+POST /v1/payments/:paymentId/resume auth emailVerified perms=[payment:initiate]
 GET /v1/payments/:paymentId/status auth perms=[payment:read_own]
 GET /v1/payments/event/:eventId auth perms=[payment:read_all]
 GET /v1/payments/event/:eventId/summary auth perms=[payment:view_reports]
@@ -233,10 +234,12 @@ DELETE /v1/registrations/:registrationId auth flags=[any(registration:cancel_any
 PATCH /v1/registrations/:registrationId auth emailVerified
 POST /v1/registrations/:registrationId/approve auth emailVerified perms=[registration:approve]
 POST /v1/registrations/:registrationId/cancel auth flags=[any(registration:cancel_any,registration:cancel_own)]
+POST /v1/registrations/:registrationId/cancel-pending auth perms=[registration:cancel_own]
 GET /v1/registrations/:registrationId/waitlist-position auth perms=[registration:read_own]
 POST /v1/registrations/checkin auth perms=[checkin:scan]
 GET /v1/registrations/event/:eventId auth perms=[registration:read_all]
 GET /v1/registrations/me auth
+GET /v1/registrations/me/event/:eventId auth perms=[registration:read_own]
 GET /v1/users/:userId auth emailVerified perms=[profile:read_any]
 GET /v1/users/me auth
 PATCH /v1/users/me auth

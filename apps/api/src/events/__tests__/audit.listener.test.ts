@@ -630,7 +630,10 @@ describe("Audit Listener", () => {
       // (`refund.issued` + `refund.failed` + `payment.bulk_expired` = +3.)
       // Phase-2 audit follow-up — `payment.tampering_attempted`
       // handler closes the security-trail gap on rejected IPNs.
-      const EXPECTED_HANDLER_COUNT = 103;
+      // Phase-2 follow-up #2 — `payment.expired` handler tracks
+      // both the auto-timeout cron AND the user-initiated cancel
+      // of pending_payment registrations.
+      const EXPECTED_HANDLER_COUNT = 104;
 
       expect(registered).toHaveLength(EXPECTED_HANDLER_COUNT);
       // Each registered event name should be unique — a double

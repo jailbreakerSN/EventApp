@@ -19,6 +19,7 @@ import {
   ValidationError,
   ConflictError,
   DuplicateRegistrationError,
+  ForbiddenError,
   NotFoundError,
   ProviderError,
   RegistrationClosedError,
@@ -355,7 +356,23 @@ export class PaymentService extends BaseService {
         )
       : signQrPayload(regId, eventId, user.uid, qrWindow.notBefore, qrWindow.notAfter);
 
-    const callbackUrl = paymentWebhookUrl(method);
+    // Resolve the provider HERE (not later) so the callback URL we
+    // hand to the provider matches the route that ITS verifyWebhook
+    // will run on. The webhook URL discriminator is the SOURCE
+    // provider (who POSTs the IPN), not the user-picked method:
+    //   - method="wave" + PAYDUNYA_ENABLED → provider.name="paydunya"
+    //     → callback URL must be /v1/payments/webhook/paydunya so
+    //     the PayDunya verifyWebhook runs on the inbound IPN.
+    //   - method="wave" + LEGACY_PROVIDER → provider.name="wave"
+    //     → callback URL is /v1/payments/webhook/wave (Wave's HMAC
+    //     verifier runs).
+    // Phase-2 follow-up: the previous shape used `method` directly,
+    // which sent PayDunya the URL `/webhook/wave`. PayDunya's IPN
+    // landed there, our wave verifier rejected it (signature scheme
+    // mismatch), and the webhook event row was never recorded — the
+    // payment stayed in `processing` indefinitely.
+    const provider = getProvider(method);
+    const callbackUrl = paymentWebhookUrl(provider.name);
     const defaultReturnUrl = paymentReturnUrl(eventId, payId);
     const finalReturnUrl = returnUrl ? assertAllowedReturnUrl(returnUrl) : defaultReturnUrl;
 
@@ -438,6 +455,11 @@ export class PaymentService extends BaseService {
         checkedInBy: null,
         accessZoneId: null,
         notes: null,
+        // Phase B-1 — denormalize the linked Payment id so the
+        // participant web app can trigger "Resume payment" without
+        // a separate query. Immutable post-creation; safe to
+        // denormalize.
+        paymentId: payId,
         createdAt: now,
         updatedAt: now,
       };
@@ -494,7 +516,9 @@ export class PaymentService extends BaseService {
     }
 
     // ── Provider call (outside any tx — long network call) ──
-    const provider = getProvider(method);
+    // `provider` was resolved above (before callback URL construction).
+    // Re-using the same instance here so the registry lookup is done
+    // exactly once per initiate call.
     let providerResult: { providerTransactionId: string; redirectUrl: string };
     try {
       providerResult = await provider.initiate({
@@ -938,6 +962,91 @@ export class PaymentService extends BaseService {
       this.requireOrganizationAccess(user, payment.organizationId);
     }
     return toPaymentClientView(payment);
+  }
+
+  /**
+   * Phase B-2 — Resume a payment that's stuck in `processing` (user
+   * came back from PayDunya without completing, then re-clicks
+   * "Compléter mon paiement"). Returns the existing redirectUrl so
+   * the user can finish the same checkout session.
+   *
+   * Behaviour matrix:
+   *   - status=processing AND redirectUrl set       → return it
+   *   - status=processing AND redirectUrl missing   → 422 (placeholder
+   *     stuck — operator action required)
+   *   - status=succeeded                            → 409 (already paid)
+   *   - status=failed/refunded/expired              → 422 (cancel +
+   *     re-register from scratch via cancelPending)
+   *   - status=pending (Phase-1 placeholder)        → 422 (initiate
+   *     phase 2 didn't complete; cancel + retry)
+   *
+   * Permission: `payment:initiate` (same as the original initiate)
+   * + owner-only (other people don't get to inspect a payment's
+   * checkout URL even if they have payment:read_all).
+   *
+   * Idempotent: re-calling within the PayDunya invoice TTL (24 h
+   * per provider) returns the same redirectUrl. After that, the
+   * upstream session may have expired — the handler doesn't
+   * re-validate the URL with the provider here (would slow the
+   * happy path); the participant's browser sees a PayDunya error
+   * if the session is gone, and they can fall back to cancel +
+   * re-register.
+   */
+  async resumePayment(
+    paymentId: string,
+    user: AuthUser,
+  ): Promise<{ paymentId: string; redirectUrl: string; status: PaymentStatus }> {
+    this.requirePermission(user, "payment:initiate");
+    const payment = await paymentRepository.findByIdOrThrow(paymentId);
+
+    // Owner-only — other users (even with payment:read_all) don't get
+    // to fetch a checkout URL that's tied to someone else's flow.
+    if (payment.userId !== user.uid) {
+      throw new ForbiddenError(
+        "Vous ne pouvez reprendre que vos propres paiements en cours",
+      );
+    }
+
+    if (payment.status === "succeeded") {
+      throw new ConflictError("Ce paiement est déjà confirmé", {
+        reason: "already_succeeded",
+      });
+    }
+
+    if (
+      payment.status === "failed" ||
+      payment.status === "refunded" ||
+      payment.status === "expired"
+    ) {
+      throw new ValidationError(
+        "Ce paiement ne peut plus être repris — annulez l'inscription en attente et réessayez.",
+        { reason: "terminal_status", status: payment.status },
+      );
+    }
+
+    if (payment.status === "pending") {
+      // The Phase-1 P1-07 placeholder never completed tx2 of initiate
+      // (provider call didn't return). The redirectUrl is null — we
+      // can't resume blindly. The user must cancel + re-register.
+      throw new ValidationError(
+        "Ce paiement n'a pas pu être démarré chez le fournisseur. Annulez l'inscription en attente et réessayez.",
+        { reason: "initiate_incomplete" },
+      );
+    }
+
+    // status === "processing"
+    if (!payment.redirectUrl) {
+      throw new ValidationError(
+        "Ce paiement n'a pas d'URL de redirection valide. Annulez l'inscription en attente et réessayez.",
+        { reason: "missing_redirect_url" },
+      );
+    }
+
+    return {
+      paymentId: payment.id,
+      redirectUrl: payment.redirectUrl,
+      status: payment.status,
+    };
   }
 
   /**

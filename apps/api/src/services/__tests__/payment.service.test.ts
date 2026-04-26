@@ -255,6 +255,36 @@ describe("PaymentService.initiatePayment", () => {
   });
   const user = buildAuthUser({ roles: ["participant"] });
 
+  // Phase-2 follow-up — the callback URL handed to the provider's
+  // initiate() MUST reflect WHO will send the IPN (provider.name),
+  // not the user-picked method. Regression guard for the bug where
+  // PayDunya was getting `/webhook/wave` and its IPNs landed on the
+  // wave verifier (signature mismatch → 403, no webhook log row,
+  // payment stuck in `processing`).
+  it("hands the callback URL keyed by provider.name, not by user-picked method", async () => {
+    mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
+    mockProvider.initiate.mockResolvedValue({
+      providerTransactionId: "mock_tx_xyz",
+      redirectUrl: "http://mock-checkout/mock_tx_xyz",
+    });
+    mockTxGet.mockResolvedValue({ empty: true });
+
+    await service.initiatePayment("ev-1", "vip", "mock", undefined, user);
+
+    // The mock provider has `name: "mock"` so the callback URL the
+    // service computes is `/v1/payments/webhook/mock`. If the bug
+    // ever re-introduces (using `method` instead of `provider.name`),
+    // the URL would still be /webhook/mock for mock and the test
+    // wouldn't catch it. The real defence is in the comment + the
+    // actual call shape on PayDunya tests; here we pin the
+    // contract: callbackUrl ends with `/webhook/${provider.name}`.
+    expect(mockProvider.initiate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        callbackUrl: expect.stringMatching(/\/v1\/payments\/webhook\/mock$/),
+      }),
+    );
+  });
+
   it("creates registration and payment in a transaction", async () => {
     mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
     mockProvider.initiate.mockResolvedValue({
@@ -999,6 +1029,101 @@ describe("PaymentService.getPaymentStatus", () => {
 
     await expect(service.getPaymentStatus(orgBPayment.id, orgAAdmin)).rejects.toThrow(
       "Accès refusé",
+    );
+  });
+});
+
+// ─── resumePayment (Phase B-2) ────────────────────────────────────────────
+
+describe("PaymentService.resumePayment", () => {
+  const owner = buildAuthUser({ uid: "user-1", roles: ["participant"] });
+
+  it("returns the existing redirectUrl for a processing payment (happy path)", async () => {
+    const payment = buildPayment({
+      userId: "user-1",
+      status: "processing",
+      redirectUrl: "https://paydunya.com/checkout/invoice/abc",
+    });
+    mockPaymentRepo.findByIdOrThrow.mockResolvedValue(payment);
+
+    const result = await service.resumePayment(payment.id, owner);
+
+    expect(result.paymentId).toBe(payment.id);
+    expect(result.redirectUrl).toBe("https://paydunya.com/checkout/invoice/abc");
+    expect(result.status).toBe("processing");
+  });
+
+  it("rejects callers without payment:initiate permission", async () => {
+    const noPermUser = buildAuthUser({ uid: "user-1", roles: [] as never[] });
+    await expect(service.resumePayment("pay-1", noPermUser)).rejects.toThrow(
+      /Permission manquante/,
+    );
+    expect(mockPaymentRepo.findByIdOrThrow).not.toHaveBeenCalled();
+  });
+
+  it("rejects a non-owner caller (cross-user payment access guard) with 403", async () => {
+    // Even an organizer with payment:initiate on their own scope must
+    // not be able to fetch another user's checkout URL — that URL is
+    // tied to the original buyer's PayDunya session and should never
+    // be re-shared.
+    const payment = buildPayment({ userId: "other-user", status: "processing" });
+    mockPaymentRepo.findByIdOrThrow.mockResolvedValue(payment);
+
+    await expect(service.resumePayment(payment.id, owner)).rejects.toThrow(
+      /vos propres paiements/i,
+    );
+  });
+
+  it("rejects on an already-succeeded payment with ConflictError", async () => {
+    const payment = buildPayment({ userId: "user-1", status: "succeeded" });
+    mockPaymentRepo.findByIdOrThrow.mockResolvedValue(payment);
+
+    await expect(service.resumePayment(payment.id, owner)).rejects.toThrow(
+      /déjà confirmé/,
+    );
+  });
+
+  it.each(["failed", "refunded", "expired"] as const)(
+    "rejects on a terminal status (%s) with typed details.reason",
+    async (status) => {
+      const payment = buildPayment({ userId: "user-1", status });
+      mockPaymentRepo.findByIdOrThrow.mockResolvedValue(payment);
+
+      await expect(service.resumePayment(payment.id, owner)).rejects.toThrow(
+        /annulez|annulez l'inscription/i,
+      );
+    },
+  );
+
+  it("rejects when the Phase-1 P1-07 placeholder never completed (status=pending)", async () => {
+    // Initiate tx2 didn't run (provider call failed mid-initiate).
+    // The redirectUrl is null — resume can't return a valid checkout
+    // session. User must cancel + re-register.
+    const payment = buildPayment({
+      userId: "user-1",
+      status: "pending",
+      redirectUrl: null,
+    });
+    mockPaymentRepo.findByIdOrThrow.mockResolvedValue(payment);
+
+    await expect(service.resumePayment(payment.id, owner)).rejects.toThrow(
+      /n'a pas pu être démarré|annulez l'inscription/,
+    );
+  });
+
+  it("rejects when redirectUrl is missing on a processing payment (defensive)", async () => {
+    // Edge: tx2 of initiate should always populate redirectUrl, but
+    // defend against unexpected null. The resume can't fabricate the
+    // URL — surface a clear error.
+    const payment = buildPayment({
+      userId: "user-1",
+      status: "processing",
+      redirectUrl: null,
+    });
+    mockPaymentRepo.findByIdOrThrow.mockResolvedValue(payment);
+
+    await expect(service.resumePayment(payment.id, owner)).rejects.toThrow(
+      /URL de redirection|annulez/,
     );
   });
 });

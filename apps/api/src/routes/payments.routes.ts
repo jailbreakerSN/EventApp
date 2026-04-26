@@ -607,6 +607,43 @@ export const paymentRoutes: FastifyPluginAsync = async (fastify) => {
     },
   );
 
+  // ─── Phase B-2 — Resume an in-flight payment ─────────────────────────────
+  // User came back from the PayDunya hosted page without completing
+  // (closed the tab, network blip, distracted). The payment is in
+  // status=processing with the original redirectUrl still valid.
+  // This endpoint returns that redirectUrl so the participant web
+  // app can re-launch the same checkout session — no double-charge,
+  // no orphan Payment, no new PayDunya invoice.
+  //
+  // The service-layer guards reject the resume on any non-resumable
+  // status (succeeded, failed, refunded, expired, pending), each
+  // with a typed `details.reason` so the UI can render targeted
+  // copy. Cf. `PaymentService.resumePayment` for the full matrix.
+  //
+  // Permission: `payment:initiate` (same as the original initiate).
+  // Owner-only — see the service-layer check.
+  fastify.post(
+    "/:paymentId/resume",
+    {
+      preHandler: [
+        authenticate,
+        requireEmailVerified,
+        requirePermission("payment:initiate"),
+        validate({ params: ParamsWithPaymentId }),
+      ],
+      schema: {
+        tags: ["Payments"],
+        summary: "Resume an in-flight payment (return existing redirectUrl)",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const { paymentId } = request.params as z.infer<typeof ParamsWithPaymentId>;
+      const result = await paymentService.resumePayment(paymentId, request.user!);
+      return reply.send({ success: true, data: result });
+    },
+  );
+
   // ─── List Event Payments (organizer) ──────────────────────────────────────
   fastify.get(
     "/event/:eventId",

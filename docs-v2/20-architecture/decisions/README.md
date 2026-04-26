@@ -30,3 +30,5 @@ Start from the [template](./0000-template.md). Each ADR is immutable once `Accep
 | [0013](./0013-api-key-format-checksum-hashed.md) | API key format `terk_*` with checksum + SHA-256 hashed storage | Accepted | 2026-04 |
 | [0014](./0014-graceful-shutdown-process-error-handling.md) | Graceful shutdown + process-level error handling | Accepted | 2026-04 |
 | [0015](./0015-trust-proxy-auth-aware-rate-limit.md) | Trust proxy + auth-aware rate limiting | Accepted | 2026-04 |
+| [0016](./0016-runtime-secrets-via-secret-manager.md) | Runtime secrets via GCP Secret Manager | Accepted | 2026-04 |
+| [0017](./0017-registration-payment-state-machine.md) | Registration / Payment state machine | Accepted | 2026-04 |
