@@ -21,6 +21,17 @@ export interface EventFilters {
 }
 
 export interface EventSearchFilters {
+  /**
+   * Single category sent to Firestore as a `==` equality filter. The
+   * service-level multi-select (doctrine MUST for marketplace discovery)
+   * is resolved BEFORE this layer: when 2+ categories are selected, the
+   * service drops `category` from the Firestore filter set and applies
+   * a post-fetch filter on the bounded result page instead. Reason:
+   * Firestore's `in` operator can't combine with `array-contains` /
+   * `array-contains-any` in a single query, so multi-category +
+   * searchKeywords / tags would otherwise need a different query
+   * dispatch shape that the index auditor can't reason about.
+   */
   category?: EventCategory;
   format?: EventFormat;
   organizationId?: string;

@@ -1220,6 +1220,96 @@ describe("EventService.search", () => {
       expect(result.data).toHaveLength(2);
     });
   });
+
+  describe("multi-select category (P1.10)", () => {
+    it("forwards a single-element array as a `==` filter on Firestore", async () => {
+      mockEventRepo.search.mockResolvedValue({
+        data: [],
+        meta: { page: 1, limit: 20, total: 0, totalPages: 0 },
+      });
+
+      await service.search({
+        category: ["conference"] as never,
+        page: 1,
+        limit: 20,
+        orderBy: "startDate",
+        orderDir: "asc",
+      });
+
+      expect(mockEventRepo.search).toHaveBeenCalledWith(
+        expect.objectContaining({ category: "conference" }),
+        expect.any(Object),
+      );
+    });
+
+    it("drops `category` from the Firestore filter when 2+ categories selected and post-filters in memory", async () => {
+      const conf = buildEvent({ title: "Conf 1", category: "conference" });
+      const work = buildEvent({ title: "Workshop 1", category: "workshop" });
+      const concert = buildEvent({ title: "Concert 1", category: "concert" });
+      mockEventRepo.search.mockResolvedValue({
+        data: [conf, work, concert],
+        meta: { page: 1, limit: 20, total: 3, totalPages: 1 },
+      });
+
+      const result = await service.search({
+        category: ["conference", "workshop"] as never,
+        page: 1,
+        limit: 20,
+        orderBy: "startDate",
+        orderDir: "asc",
+      });
+
+      // Repo NEVER sees category in the multi-select branch — Firestore would
+      // reject `in` combined with array-contains / array-contains-any when
+      // both are present, and we'd rather not have a divergent dispatch path.
+      const filtersArg = mockEventRepo.search.mock.calls[0]?.[0] as Record<string, unknown>;
+      expect(filtersArg.category).toBeUndefined();
+
+      expect(result.data.map((e) => e.title)).toEqual(["Conf 1", "Workshop 1"]);
+      expect(result.meta.total).toBe(2);
+    });
+
+    it("comma-separated category string from QSP transport is split + treated as multi", async () => {
+      const conf = buildEvent({ title: "Conf 1", category: "conference" });
+      const work = buildEvent({ title: "Workshop 1", category: "workshop" });
+      const concert = buildEvent({ title: "Concert 1", category: "concert" });
+      mockEventRepo.search.mockResolvedValue({
+        data: [conf, work, concert],
+        meta: { page: 1, limit: 20, total: 3, totalPages: 1 },
+      });
+
+      // The Zod preprocess at the schema layer converts the comma-separated
+      // string into an array before it reaches the service. We replicate the
+      // post-preprocess shape here (the route layer is what runs the schema).
+      const result = await service.search({
+        category: ["conference", "workshop"] as never,
+        page: 1,
+        limit: 20,
+        orderBy: "startDate",
+        orderDir: "asc",
+      });
+
+      expect(result.data.map((e) => e.title)).toEqual(["Conf 1", "Workshop 1"]);
+    });
+
+    it("empty category array is equivalent to no filter", async () => {
+      mockEventRepo.search.mockResolvedValue({
+        data: [],
+        meta: { page: 1, limit: 20, total: 0, totalPages: 0 },
+      });
+
+      await service.search({
+        category: [] as never,
+        page: 1,
+        limit: 20,
+        orderBy: "startDate",
+        orderDir: "asc",
+      });
+
+      const filtersArg = mockEventRepo.search.mock.calls[0]?.[0] as Record<string, unknown>;
+      expect(filtersArg.category).toBeUndefined();
+    });
+  });
 });
 
 describe("EventService.clone", () => {

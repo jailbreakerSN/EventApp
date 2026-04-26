@@ -351,7 +351,16 @@
       "filterByDate": "Filter by date",
       "filterByPrice": "Filter by price",
       "reset": "Reset filters",
-      "clear": "Clear"
+      "clear": "Clear",
+      "filters": "Filters",
+      "openFilters": "Open filters",
+      "activeFilterCount": "{count, plural, one {# active filter} other {# active filters}}",
+      "sort": {
+        "label": "Sort",
+        "soonest": "Date — soonest first",
+        "newest": "Recently published",
+        "alphabetical": "Alphabetical"
+      }
     },
     "detail": {
       "featured": "Featured",

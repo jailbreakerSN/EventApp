@@ -406,7 +406,23 @@ export type Registration = z.infer<typeof RegistrationSchema>;
 
 export const EventSearchQuerySchema = z.object({
   q: z.string().max(200).optional(), // title prefix search
-  category: EventCategorySchema.optional(),
+  /**
+   * One or more categories. Accepts:
+   *   - a single enum value (backward-compatible with single-select clients)
+   *   - an array of enum values (multi-select discovery, doctrine MUST)
+   *   - a comma-separated string ("conference,workshop") for QSP transport
+   *
+   * The repository translates a multi-value array to Firestore `in`
+   * (max 30 values, ample for the 11-category catalog), single value
+   * stays `==`. Same shape conventions as `tags`.
+   */
+  category: z
+    .preprocess((v) => {
+      if (typeof v !== "string") return v;
+      if (!v.includes(",")) return v;
+      return v.split(",").map((s) => s.trim()).filter(Boolean);
+    }, z.union([EventCategorySchema, z.array(EventCategorySchema).min(1).max(30)]))
+    .optional(),
   format: EventFormatSchema.optional(),
   city: z.string().optional(),
   country: z.string().length(2).optional(),

@@ -25,6 +25,12 @@ export async function generateMetadata(): Promise<Metadata> {
 interface EventsPageProps {
   searchParams: Promise<{
     q?: string;
+    /**
+     * One or many categories. Comma-separated when multiple
+     * ("conference,workshop") — the backend Zod preprocess splits and
+     * validates. URL-shareable: a Slack link to a multi-category view
+     * still lands the recipient on the same filtered grid.
+     */
     category?: string;
     format?: string;
     city?: string;
@@ -32,6 +38,10 @@ interface EventsPageProps {
     dateFrom?: string;
     dateTo?: string;
     price?: string;
+    /** Sort field — whitelisted to startDate / createdAt / title at the API. */
+    sortField?: string;
+    /** Sort direction — asc or desc. */
+    sortDir?: string;
     page?: string;
   }>;
 }
@@ -55,6 +65,16 @@ export default async function EventsPage({ searchParams }: EventsPageProps) {
 
   let result;
   try {
+    // category arrives as comma-separated when multi-select is active;
+    // forwarded verbatim — the backend Zod preprocess splits it into an
+    // array and validates against EventCategorySchema.
+    const sortField =
+      params.sortField === "startDate" ||
+      params.sortField === "createdAt" ||
+      params.sortField === "title"
+        ? params.sortField
+        : "startDate";
+    const sortDir = params.sortDir === "desc" ? "desc" : "asc";
     result = await serverEventsApi.search({
       q: params.q,
       category: params.category as never,
@@ -65,8 +85,8 @@ export default async function EventsPage({ searchParams }: EventsPageProps) {
       price: params.price === "free" || params.price === "paid" ? params.price : undefined,
       page,
       limit: 12,
-      orderBy: "startDate",
-      orderDir: "asc",
+      orderBy: sortField,
+      orderDir: sortDir,
     });
   } catch {
     result = { data: [], meta: { page: 1, limit: 12, total: 0, totalPages: 0 } };

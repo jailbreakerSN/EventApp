@@ -111,7 +111,7 @@ Non-negotiable rules. Anything below "MUST" is a code-review blocker; "SHOULD" i
 1. Search bar is hero-prominent, sticky on mobile, has an autocomplete dropdown with: top suggestions, recent searches (localStorage, max 5), categorical hints.
 2. Active filters render as removable chips above the result grid; a "Tout effacer" button is visible whenever ≥ 1 filter is active.
 3. Sort is user-choosable: pertinence (default), date, popularité, prix, proximité (when geoloc available).
-4. Mobile: filters open in a Radix-Dialog-backed bottom sheet with a live preview count ("Voir 14 événements") and an "Appliquer" CTA.
+4. Mobile: filters open in a native-`<dialog>`-backed bottom sheet with a live preview count ("Voir 14 événements") and an "Appliquer" CTA.
 5. Result count is announced via `aria-live="polite"` on every change.
 6. Empty state suggests **specifically which filter to relax**, never a generic "rien trouvé".
 7. URL state is shareable end-to-end (already done on `/events`, must remain so).
@@ -152,7 +152,7 @@ Non-negotiable rules. Anything below "MUST" is a code-review blocker; "SHOULD" i
 | **Cursor**          | A stable opaque token (`startAfter` doc snapshot, base64-encoded) used for streams and large discovery sets.                                   |
 | **Empty state**     | The canonical "nothing to show" UI — distinct copy for "no data" vs "no match", per [`error-handling.md`](./error-handling.md).                |
 | **Bulk action**     | An operation applied to a multi-selected row set, gated behind a confirmation dialog and audited row-by-row server-side.                       |
-| **Bottom sheet**    | A modal that slides up from the bottom on mobile. Backed by Radix `Dialog` with the `bottom-sheet` variant.                                    |
+| **Bottom sheet**    | A modal that slides up from the bottom on mobile. Backed by the native `<dialog>` element (focus trap + ESC + backdrop for free, no extra dep). |
 
 ---
 
@@ -310,7 +310,7 @@ export function normalizeFr(input: string): string {
 
 ### `<FiltersBottomSheet>` — mobile filter pattern
 
-Lives in `packages/shared-ui/src/components/filters-bottom-sheet.tsx`. Backed by Radix `Dialog` with a `bottom-sheet` variant (slides up, dismisses by drag-down or tap-outside).
+Lives in `packages/shared-ui/src/components/filters-bottom-sheet.tsx`. Composed from `<BottomSheet>` (sibling primitive at `bottom-sheet.tsx`), which in turn wraps the native HTML `<dialog>` element. `showModal()` provides the focus trap, ESC dismissal, and `::backdrop` pseudo-element with no third-party dependency.
 
 **Structure:**
 
@@ -331,7 +331,7 @@ Lives in `packages/shared-ui/src/components/filters-bottom-sheet.tsx`. Backed by
 
 1. **Live count** — the "Voir N résultats" CTA reflects the result count for the **pending** filter state, computed via the same query the page uses. While loading, label is "Voir …".
 2. **Apply on close** — changes are not committed to the URL until the user taps "Voir N résultats" or dismisses the sheet via the close button. Drag-down dismiss applies pending changes (mirrors iOS conventions).
-3. **Focus trap** — Radix `Dialog` provides this. The first focusable element is the close button; tab cycles within the sheet.
+3. **Focus trap** — native `<dialog>.showModal()` provides this. The first focusable element is the close button; tab cycles within the sheet.
 4. **Triggered by** — a `<FilterTrigger>` button in the sticky search bar, labelled "Filtres" with an `activeFilterCount` badge.
 
 ### Accessibility contract — list pages
@@ -343,7 +343,7 @@ Lives in `packages/shared-ui/src/components/filters-bottom-sheet.tsx`. Backed by
 | Filter chip (active)             | `<button aria-label="Retirer le filtre <name>">`. Pressing `Backspace` or `Delete` on chip removes it.             |
 | Result region                    | `aria-live="polite"`. Count announcement: "14 événements trouvés".                                                 |
 | Pagination                       | `<nav aria-label="Pagination">`. Current page: `aria-current="page"`. Disabled buttons: `aria-disabled="true"`.    |
-| Bottom sheet                     | Radix `Dialog` (handles `role`, `aria-modal`, focus trap automatically).                                           |
+| Bottom sheet                     | Native `<dialog>` via `<BottomSheet>` (handles `role`, `aria-modal`, focus trap, backdrop automatically).         |
 | Empty state                      | `role="status"` for "no match"; nothing extra for "no data".                                                       |
 | Bulk action bar                  | `role="region" aria-label="Actions groupées sur N éléments"`.                                                      |
 
@@ -804,7 +804,7 @@ P0 lands on this branch, in the order above. P0.2 unlocks the rest of the doctri
 | P1.2  | Implement `useTableState` hook (admin + participant mirrors).                              | `apps/web-backoffice/src/hooks/use-table-state.ts`, `apps/web-participant/src/hooks/use-table-state.ts`. |
 | P1.3  | Upgrade `<DataTable>` to v2: sortable headers, `aria-sort`, sticky header, density.        | `packages/shared-ui/src/components/data-table.tsx`. Stories + a11y tests refreshed.                   |
 | P1.4  | Build `<FilterBar>`, `<FilterChip>`, `<FilterMenu>`, `<DateRangeFilter>`, `<MultiSelectFilter>`. | `packages/shared-ui/src/components/filter-bar.tsx` and friends. Stories + tests.                      |
-| P1.5  | Build `<FiltersBottomSheet>` (mobile).                                                     | `packages/shared-ui/src/components/filters-bottom-sheet.tsx`. Radix Dialog backed.                    |
+| P1.5  | Build `<BottomSheet>` + `<FiltersBottomSheet>` (mobile).                                  | `packages/shared-ui/src/components/bottom-sheet.tsx` + `filters-bottom-sheet.tsx`. Native `<dialog>` backed. |
 | P1.6  | `normalizeFr` helper + tests.                                                              | `packages/shared-types/src/utils/normalize.ts`. Test fixtures from § Frontend primitives.             |
 | P1.7  | Migrate Wave 1 pages (3 PRs): `/events` participant, `/admin/users`, `/admin/organizations`. | Migration checklist ticks. PR template links to this doc.                                             |
 
@@ -839,6 +839,7 @@ Decisions made by this doctrine, with the why. New decisions append; existing on
 | 2026-04-26 | Firestore `searchKeywords[]` + `array-contains`, not Typesense.                                | Solves C2/C3/no-prefix without external dependency. We re-evaluate at 50 k events or when fuzzy/typo-tolerance is requested.       |
 | 2026-04-26 | Saved views gated to Pro/Enterprise organisers + super-admins.                                 | Personal-productivity feature; aligns with the freemium contract; super-admins always get them as platform tooling.                |
 | 2026-04-26 | Bottom sheet via Radix `Dialog` with `bottom-sheet` variant, not a third-party library.        | Radix is already in the bundle; the variant is a CSS animation; consistent with the rest of the design system.                     |
+| 2026-04-27 | **Amended**: bottom sheet is backed by the native HTML `<dialog>` element, not Radix.           | Audit during P1.10 implementation found Radix is NOT a shared-ui dependency — only `lucide-react`, `clsx`, `class-variance-authority`, `sonner`, `tailwind-merge`. The existing `<Dialog>` primitive already uses native `<dialog>` + `showModal()` for focus trap / ESC / backdrop. Same pattern reused in `<BottomSheet>` keeps shared-ui dep-light and consistent. The doctrine's UX contract (slide-up on mobile, centered modal on `md:`+, sticky header / footer, focus trap, ESC dismissal) is honoured identically — only the implementation detail changed. |
 | 2026-04-26 | Three archetypes (admin / discovery / stream) — each with distinct toolbar, sort, pagination.  | A single "table doctrine" was the shortcut that produced the audit. Distinct rules per archetype are the only way to stop drift.   |
 | 2026-04-26 | Streams expose **no** user-chosen sort.                                                        | Chronological order is the contract of a stream; offering sort breaks the "read upstream then read downstream" mental model.       |
 | 2026-04-26 | Page-numbered for admin tables; cursor for streams; cursor for discovery > 1 000 expected matches. | Page numbers are a UX affordance ("X sur Y"); cursors are honest at scale. Pick by archetype, not by gut.                          |
