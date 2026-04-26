@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { parseAsString } from "nuqs";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import {
@@ -10,8 +11,8 @@ import {
   useUpdateOrgStatus,
 } from "@/hooks/use-admin";
 import { useBulkSelection } from "@/hooks/use-bulk-selection";
-import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { useRowKeyboardNav } from "@/hooks/use-row-keyboard-nav";
+import { useTableState } from "@/hooks/use-table-state";
 import { BulkActionBar } from "@/components/admin/bulk-action-bar";
 import { SavedViewsBar } from "@/components/admin/saved-views-bar";
 import { toast } from "sonner";
@@ -32,6 +33,8 @@ import {
   BreadcrumbSeparator,
   SectionHeader,
   StatusPill,
+  ResultCount,
+  PageSizeSelector,
 } from "@teranga/shared-ui";
 import { Search, ShieldCheck, Ban, CheckCircle, XCircle, Sparkles } from "lucide-react";
 import type { Organization } from "@teranga/shared-types";
@@ -92,31 +95,39 @@ export default function AdminOrganizationsPage() {
   // `admin.service.ts:getInboxSignals`) actually applies the filter.
   // Accepts "true" / "false" strings; anything else falls back to the
   // unfiltered "" empty state.
+  // Inbox-deep-link bridge: still honour the legacy ?isVerified=… landed
+  // by admin.service.getInboxSignals. We seed the URL hook with the value
+  // on first paint, then useTableState owns the URL from that point on.
   const searchParams = useSearchParams();
   const rawVerified = searchParams?.get("isVerified");
   const initialVerified = rawVerified === "true" || rawVerified === "false" ? rawVerified : "";
-  const [search, setSearch] = useState("");
-  const debouncedSearch = useDebouncedValue(search, 300);
-  const [planFilter, setPlanFilter] = useState("");
-  const [verifiedFilter, setVerifiedFilter] = useState(initialVerified);
-  const [page, setPage] = useState(1);
-  const limit = 20;
 
-  // Reset to page 1 whenever a filter or the debounced query changes.
-  useEffect(() => {
-    setPage(1);
-  }, [debouncedSearch, planFilter, verifiedFilter]);
+  const t = useTableState<{ plan?: string; isVerified?: string }>({
+    urlNamespace: "orgs",
+    defaults: {
+      sort: { field: "createdAt", dir: "desc" },
+      pageSize: 25,
+      filters: { isVerified: initialVerified || undefined },
+    },
+    sortableFields: ["createdAt", "name", "plan"] as const,
+    filterParsers: { plan: parseAsString, isVerified: parseAsString },
+  });
 
   const { data, isLoading } = useAdminOrganizations({
-    q: debouncedSearch || undefined,
-    plan: planFilter || undefined,
-    isVerified: verifiedFilter === "" ? undefined : verifiedFilter === "true",
-    page,
-    limit,
+    q: t.debouncedQ || undefined,
+    plan: t.filters.plan || undefined,
+    isVerified:
+      t.filters.isVerified === undefined || t.filters.isVerified === ""
+        ? undefined
+        : t.filters.isVerified === "true",
+    page: t.page,
+    limit: t.pageSize,
+    orderBy: t.sort?.field as "createdAt" | "name" | "plan" | undefined,
+    orderDir: t.sort?.dir,
   });
 
   const organizations: Organization[] = data?.data ?? [];
-  const meta = data?.meta ?? { page: 1, limit, total: 0, totalPages: 1 };
+  const meta = data?.meta ?? { page: 1, limit: t.pageSize, total: 0, totalPages: 1 };
 
   // B2 — row keyboard nav. Same pattern as /admin/users.
   const { activeIndex, setActiveIndex } = useRowKeyboardNav({
@@ -216,23 +227,31 @@ export default function AdminOrganizationsPage() {
       {/* T3.2 — Saved views chip bar. */}
       <SavedViewsBar surfaceKey="admin-organizations" />
 
-      {/* Filters */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
-        <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="Rechercher par nom..."
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              setPage(1);
-            }}
-            className="pl-9"
-            aria-label="Rechercher des organisations"
-          />
+      {/* Filters — wired through useTableState (URL-persistent). */}
+      <div className="space-y-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div className="relative max-w-md flex-1">
+            <Search
+              className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground pointer-events-none"
+              aria-hidden="true"
+            />
+            <Input
+              type="search"
+              role="searchbox"
+              placeholder="Rechercher par nom..."
+              value={t.q}
+              onChange={(e) => t.setQ(e.target.value)}
+              className="pl-9"
+              aria-label="Rechercher des organisations"
+            />
+          </div>
+          <div className="flex items-center gap-3 shrink-0">
+            <ResultCount total={meta.total} loading={isLoading} />
+            <PageSizeSelector value={t.pageSize} onChange={t.setPageSize} />
+          </div>
         </div>
 
-        <div className="flex gap-3">
+        <div className="flex flex-wrap items-end gap-3">
           <div>
             <label
               htmlFor="plan-filter"
@@ -242,11 +261,8 @@ export default function AdminOrganizationsPage() {
             </label>
             <Select
               id="plan-filter"
-              value={planFilter}
-              onChange={(e) => {
-                setPlanFilter(e.target.value);
-                setPage(1);
-              }}
+              value={t.filters.plan ?? ""}
+              onChange={(e) => t.setFilter("plan", e.target.value || undefined)}
               aria-label="Filtrer par plan"
             >
               {PLAN_OPTIONS.map((opt) => (
@@ -262,16 +278,13 @@ export default function AdminOrganizationsPage() {
               htmlFor="verified-filter"
               className="mb-1 block text-xs font-medium text-muted-foreground"
             >
-              Verification
+              Vérification
             </label>
             <Select
               id="verified-filter"
-              value={verifiedFilter}
-              onChange={(e) => {
-                setVerifiedFilter(e.target.value);
-                setPage(1);
-              }}
-              aria-label="Filtrer par statut de verification"
+              value={t.filters.isVerified ?? ""}
+              onChange={(e) => t.setFilter("isVerified", e.target.value || undefined)}
+              aria-label="Filtrer par statut de vérification"
             >
               {VERIFIED_OPTIONS.map((opt) => (
                 <option key={opt.value} value={opt.value}>
@@ -280,6 +293,18 @@ export default function AdminOrganizationsPage() {
               ))}
             </Select>
           </div>
+
+          {t.activeFilterCount > 0 || t.q ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={t.reset}
+              className="text-muted-foreground hover:text-foreground self-end"
+            >
+              Tout effacer
+            </Button>
+          ) : null}
         </div>
       </div>
 
@@ -288,7 +313,11 @@ export default function AdminOrganizationsPage() {
         <CardContent className="p-0">
           <DataTable<Organization & Record<string, unknown>>
             aria-label="Liste des organisations"
-            emptyMessage="Aucune organisation trouvee"
+            emptyMessage={
+              t.activeFilterCount > 0 || t.q
+                ? "Aucun résultat — essayez d'élargir les filtres."
+                : "Aucune organisation trouvée"
+            }
             responsiveCards
             loading={isLoading}
             data={organizations as (Organization & Record<string, unknown>)[]}
@@ -297,6 +326,8 @@ export default function AdminOrganizationsPage() {
             onRowClick={(o) => router.push(`/admin/organizations/${encodeURIComponent(o.id)}`)}
             activeRowIndex={activeIndex}
             onRowHover={setActiveIndex}
+            sort={t.sort}
+            onToggleSort={t.toggleSort}
             columns={
               [
                 {
@@ -331,6 +362,8 @@ export default function AdminOrganizationsPage() {
                   key: "name",
                   header: "Nom",
                   primary: true,
+                  sortable: true,
+                  sortField: "name",
                   render: (org) => (
                     <div>
                       <Link
@@ -351,6 +384,8 @@ export default function AdminOrganizationsPage() {
                 {
                   key: "plan",
                   header: "Plan",
+                  sortable: true,
+                  sortField: "plan",
                   render: (org) => (
                     <Badge variant={PLAN_BADGE_VARIANTS[org.plan] ?? "neutral"}>
                       {PLAN_LABELS[org.plan] ?? org.plan}
@@ -472,9 +507,12 @@ export default function AdminOrganizationsPage() {
       </BulkActionBar>
 
       {/* Pagination */}
-      {!isLoading && meta.totalPages > 1 && (
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-muted-foreground">
+      {!isLoading && meta.totalPages > 1 ? (
+        <nav
+          aria-label="Pagination des organisations"
+          className="flex items-center justify-between"
+        >
+          <p className="text-sm text-muted-foreground" aria-current="page">
             Page {meta.page} sur {meta.totalPages} ({meta.total} organisation
             {meta.total > 1 ? "s" : ""})
           </p>
@@ -482,24 +520,24 @@ export default function AdminOrganizationsPage() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page <= 1}
-              aria-label="Page precedente"
+              onClick={() => t.setPage(Math.max(1, t.page - 1))}
+              disabled={t.page <= 1}
+              aria-label="Page précédente"
             >
-              Precedent
+              Précédent
             </Button>
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setPage((p) => Math.min(meta.totalPages, p + 1))}
-              disabled={page >= meta.totalPages}
+              onClick={() => t.setPage(Math.min(meta.totalPages, t.page + 1))}
+              disabled={t.page >= meta.totalPages}
               aria-label="Page suivante"
             >
               Suivant
             </Button>
           </div>
-        </div>
-      )}
+        </nav>
+      ) : null}
 
       {/* Assign-plan dialog (Phase 5: per-org override) */}
       {assignTarget && (

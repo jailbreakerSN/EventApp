@@ -1597,7 +1597,12 @@ class AdminService extends BaseService {
     this.requireAnyPermission(user, ["platform:audit_read", "platform:manage"]);
     return adminRepository.listAllOrganizations(
       { q: query.q, plan: query.plan, isVerified: query.isVerified, isActive: query.isActive },
-      { page: query.page, limit: query.limit },
+      {
+        page: query.page,
+        limit: query.limit,
+        orderBy: query.orderBy ?? "createdAt",
+        orderDir: query.orderDir ?? "desc",
+      },
     );
   }
 
