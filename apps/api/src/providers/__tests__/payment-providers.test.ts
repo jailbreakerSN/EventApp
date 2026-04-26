@@ -140,6 +140,140 @@ describe("WavePaymentProvider", () => {
     expect(result.success).toBe(true);
     expect(result.providerRefundId).toBe("refund_123");
   });
+
+  // ── P1-19 (audit M7) — typed RefundFailureReason mapping ────────────────
+  // Wave's refund API returns both an HTTP status AND a body-level
+  // `code` slug. The provider must map both to the discriminated
+  // `RefundFailureReason` union so the operator dashboard can render
+  // disambiguated copy + a "retry" affordance for the retriable cases.
+  it("maps Wave 'refund-already-issued' to reason='already_refunded' — P1-19", async () => {
+    const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 422,
+      text: async () =>
+        JSON.stringify({ code: "refund-already-issued", message: "Already refunded" }),
+    });
+
+    const { WavePaymentProvider } = await import("../wave-payment.provider");
+    const provider = new WavePaymentProvider();
+
+    const result = await provider.refund("wave_already", 1000);
+    expect(result.success).toBe(false);
+    expect(result.reason).toBe("already_refunded");
+    expect(result.providerCode).toBe("refund-already-issued");
+
+    stderrSpy.mockRestore();
+  });
+
+  it("maps Wave 'insufficient-balance' to reason='insufficient_funds' — P1-19", async () => {
+    const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 402,
+      text: async () =>
+        JSON.stringify({ code: "insufficient-balance", message: "Wallet empty" }),
+    });
+
+    const { WavePaymentProvider } = await import("../wave-payment.provider");
+    const provider = new WavePaymentProvider();
+
+    const result = await provider.refund("wave_low", 1000);
+    expect(result.reason).toBe("insufficient_funds");
+    expect(result.providerCode).toBe("insufficient-balance");
+
+    stderrSpy.mockRestore();
+  });
+
+  it("maps Wave 'checkout-session-not-found' to reason='transaction_not_found' — P1-19", async () => {
+    const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 404,
+      text: async () =>
+        JSON.stringify({
+          code: "checkout-session-not-found",
+          message: "no such tx",
+        }),
+    });
+
+    const { WavePaymentProvider } = await import("../wave-payment.provider");
+    const provider = new WavePaymentProvider();
+
+    const result = await provider.refund("wave_missing", 1000);
+    expect(result.reason).toBe("transaction_not_found");
+
+    stderrSpy.mockRestore();
+  });
+
+  it("falls through HTTP 404 (no body code) to reason='transaction_not_found' — P1-19", async () => {
+    const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 404,
+      text: async () => "Not found", // plain text, not JSON
+    });
+
+    const { WavePaymentProvider } = await import("../wave-payment.provider");
+    const provider = new WavePaymentProvider();
+
+    const result = await provider.refund("wave_missing_plaintext", 1000);
+    expect(result.reason).toBe("transaction_not_found");
+    // No body code surfaces (Wave returned plain text, not JSON).
+    expect(result.providerCode).toBeUndefined();
+
+    stderrSpy.mockRestore();
+  });
+
+  it("falls through unknown HTTP 5xx to reason='provider_error' — P1-19", async () => {
+    const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 500,
+      text: async () => "<html>Wave 500</html>",
+    });
+
+    const { WavePaymentProvider } = await import("../wave-payment.provider");
+    const provider = new WavePaymentProvider();
+
+    const result = await provider.refund("wave_500", 1000);
+    expect(result.reason).toBe("provider_error");
+
+    stderrSpy.mockRestore();
+  });
+
+  it("maps fetch AbortError (timeout) to reason='network_timeout' — P1-19", async () => {
+    const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    mockFetch.mockImplementationOnce(async () => {
+      const e = new Error("The operation was aborted");
+      e.name = "AbortError";
+      throw e;
+    });
+
+    const { WavePaymentProvider } = await import("../wave-payment.provider");
+    const provider = new WavePaymentProvider();
+
+    const result = await provider.refund("wave_timeout", 1000);
+    expect(result.success).toBe(false);
+    expect(result.reason).toBe("network_timeout");
+
+    stderrSpy.mockRestore();
+  });
+
+  it("maps generic network failure to reason='provider_error' — P1-19", async () => {
+    const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    mockFetch.mockImplementationOnce(async () => {
+      throw new TypeError("fetch failed: ENOTFOUND");
+    });
+
+    const { WavePaymentProvider } = await import("../wave-payment.provider");
+    const provider = new WavePaymentProvider();
+
+    const result = await provider.refund("wave_dns", 1000);
+    expect(result.reason).toBe("provider_error");
+
+    stderrSpy.mockRestore();
+  });
 });
 
 // ─── Orange Money Provider ──────────────────────────────────────────────────
@@ -561,6 +695,137 @@ describe("OrangeMoneyPaymentProvider — OAuth token cache expiry boundary", () 
     // the grace and uses `data.expires_in * 1000` directly, the second
     // initiate would reuse the still-live token and oauthCalls would
     // be 1 — this assertion catches that regression.
+    expect(oauthCalls).toBe(2);
+  });
+
+  // ── P1-20 (audit M8) — Promise-based memoization (request coalescing) ────
+  it("coalesces concurrent initiate() calls onto a single OAuth fetch — P1-20", async () => {
+    // Regression guard for P1-20: 10 concurrent `initiate()` calls
+    // arriving while the OAuth cache is empty MUST trigger exactly
+    // ONE OAuth fetch — the second through tenth callers await the
+    // SAME in-flight promise instead of each launching their own
+    // fetch and racing to overwrite the cache. Without this fix, a
+    // burst of registrations under load wastes the OAuth quota
+    // (Orange's API rate-limits us for "credentialing abuse" past a
+    // threshold) and pollutes the cache with a token that may
+    // already be revoked by the time the first user pays.
+
+    let oauthCalls = 0;
+    let resolveOauth: (value: { access_token: string; expires_in: number }) => void = () => {};
+    const oauthDeferred = new Promise<{ access_token: string; expires_in: number }>((r) => {
+      resolveOauth = r;
+    });
+    mockFetch.mockImplementation(async (url: string) => {
+      if (String(url).includes("oauth")) {
+        oauthCalls++;
+        // Hold the OAuth response open so concurrent callers all
+        // arrive in the cache-miss branch before ANY of them sees a
+        // resolved cache. Without this gate, the first caller could
+        // race-win and populate the cache before #2..#10 enter
+        // `getAccessToken` — which would mask the bug.
+        const payload = await oauthDeferred;
+        return { ok: true, json: async () => payload };
+      }
+      return {
+        ok: true,
+        json: async () => ({
+          pay_token: "om_concurrent",
+          payment_url: "https://om.test/concurrent",
+          notif_token: "nt",
+        }),
+      };
+    });
+
+    const { OrangeMoneyPaymentProvider, __resetOmTokenCacheForTests } = await import(
+      "../orange-money-payment.provider"
+    );
+    __resetOmTokenCacheForTests();
+    const provider = new OrangeMoneyPaymentProvider();
+
+    // Fire 10 concurrent initiates BEFORE releasing the OAuth deferred.
+    const calls = Array.from({ length: 10 }, (_, i) =>
+      provider.initiate({
+        paymentId: `p-${i}`,
+        amount: 1000,
+        currency: "XOF",
+        description: "",
+        callbackUrl: "",
+        returnUrl: "",
+      }),
+    );
+
+    // All 10 callers should now be parked inside `getAccessToken`,
+    // awaiting the SAME `inflightTokenPromise`. Releasing the deferred
+    // resolves the single OAuth call; each initiate then proceeds to
+    // its own payment fetch.
+    resolveOauth({ access_token: "tok_coalesced", expires_in: 3600 });
+
+    await Promise.all(calls);
+
+    // Exactly ONE OAuth fetch despite 10 concurrent callers. The
+    // remaining 10 fetches are the per-call payment initiations.
+    expect(oauthCalls).toBe(1);
+    // 1 OAuth + 10 payments = 11 total fetches.
+    expect(mockFetch).toHaveBeenCalledTimes(11);
+  });
+
+  it("clears the in-flight promise on OAuth failure so the next caller retries — P1-20", async () => {
+    // Regression guard: if the in-flight promise is NOT cleared on
+    // rejection, every subsequent caller would inherit the same
+    // failure forever (cached failure mode). The fix releases the
+    // slot in `finally` so the next caller starts a fresh fetch.
+
+    let oauthCalls = 0;
+    mockFetch.mockImplementation(async (url: string) => {
+      if (String(url).includes("oauth")) {
+        oauthCalls++;
+        if (oauthCalls === 1) {
+          return { ok: false, status: 503, text: async () => "OAuth down" };
+        }
+        return { ok: true, json: async () => ({ access_token: "tok_recovered", expires_in: 3600 }) };
+      }
+      return {
+        ok: true,
+        json: async () => ({
+          pay_token: "om_recover",
+          payment_url: "https://om.test/recover",
+          notif_token: "nt",
+        }),
+      };
+    });
+
+    const { OrangeMoneyPaymentProvider, __resetOmTokenCacheForTests } = await import(
+      "../orange-money-payment.provider"
+    );
+    __resetOmTokenCacheForTests();
+    const provider = new OrangeMoneyPaymentProvider();
+
+    // First call rejects (OAuth 503).
+    await expect(
+      provider.initiate({
+        paymentId: "p-fail",
+        amount: 1000,
+        currency: "XOF",
+        description: "",
+        callbackUrl: "",
+        returnUrl: "",
+      }),
+    ).rejects.toThrow();
+    expect(oauthCalls).toBe(1);
+
+    // Second call (post-failure) MUST start a fresh OAuth fetch and
+    // succeed. If the rejected promise were cached, it would replay
+    // forever and the second call would also reject with the cached
+    // error — never recovering until process restart.
+    const result = await provider.initiate({
+      paymentId: "p-recover",
+      amount: 1000,
+      currency: "XOF",
+      description: "",
+      callbackUrl: "",
+      returnUrl: "",
+    });
+    expect(result.providerTransactionId).toBe("om_recover");
     expect(oauthCalls).toBe(2);
   });
 });

@@ -987,6 +987,86 @@ describe("PaymentService.refundPayment", () => {
       service.refundPayment(payment.id, undefined, undefined, organizer),
     ).rejects.toThrow(/remboursements automatiques|portail marchand/);
   });
+
+  // ── P1-19 (audit M7) — disambiguated French copy per RefundFailureReason ─
+  // Each branch of the discriminated union MUST surface a distinct
+  // operator-actionable message + the typed reason on `details.reason`
+  // for the backoffice UI to render targeted retry / reconciliation
+  // affordances.
+  it.each([
+    {
+      reason: "insufficient_funds" as const,
+      regex: /solde marchand insuffisant|réapprovisionnement/,
+    },
+    {
+      reason: "already_refunded" as const,
+      regex: /déjà été remboursé|réconciliez/,
+    },
+    {
+      reason: "transaction_not_found" as const,
+      regex: /retrouve pas la transaction|support technique/,
+    },
+    {
+      reason: "network_timeout" as const,
+      regex: /n'a pas répondu|Réessayez/,
+    },
+    {
+      reason: "provider_error" as const,
+      regex: /refusé par le fournisseur|tableau de bord/,
+    },
+  ])(
+    "surfaces a disambiguated French message for reason='$reason' — P1-19",
+    async ({ reason, regex }) => {
+      const payment = buildPayment({
+        status: "succeeded",
+        organizationId: orgId,
+        amount: 5000,
+        refundedAmount: 0,
+        method: "wave",
+      });
+      mockPaymentRepo.findByIdOrThrow.mockResolvedValue(payment);
+      mockProvider.refund.mockResolvedValue({
+        success: false,
+        reason,
+        providerCode: "test-code",
+      });
+
+      await expect(
+        service.refundPayment(payment.id, undefined, undefined, organizer),
+      ).rejects.toThrow(regex);
+
+      // The error MUST also emit `refund.failed` with the typed reason
+      // so the dispatcher routes to the right notification template.
+      expect(mockEventBus.emit).toHaveBeenCalledWith(
+        "refund.failed",
+        expect.objectContaining({
+          paymentId: payment.id,
+          failureReason: reason,
+        }),
+      );
+    },
+  );
+
+  it("falls back to provider_error message when reason is missing — P1-19", async () => {
+    // Belt-and-suspenders for the RefundFailureReason invariant
+    // (every provider failure MUST tag a reason). If a provider
+    // forgets, we fall back to the provider_error copy and emit
+    // `refund.failed` with `failureReason: "provider_refused"` so
+    // the dashboard alarm fires.
+    const payment = buildPayment({
+      status: "succeeded",
+      organizationId: orgId,
+      amount: 5000,
+      refundedAmount: 0,
+      method: "wave",
+    });
+    mockPaymentRepo.findByIdOrThrow.mockResolvedValue(payment);
+    mockProvider.refund.mockResolvedValue({ success: false }); // no reason
+
+    await expect(
+      service.refundPayment(payment.id, undefined, undefined, organizer),
+    ).rejects.toThrow(/refusé par le fournisseur/);
+  });
 });
 
 // ─── Concurrent-refund lock (Q1a, post-audit) ─────────────────────────────

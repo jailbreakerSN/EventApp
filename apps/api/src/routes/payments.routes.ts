@@ -695,17 +695,39 @@ export const paymentRoutes: FastifyPluginAsync = async (fastify) => {
     );
 
     // ─── Mock Checkout Callback (internal) ────────────────────────────────────
+    //
+    // P1-16 (audit M6) — Zod validation on params + body. Without it,
+    // any caller on staging with a known `txId` could send arbitrary
+    // shapes that `simulateCallback` would silently process. The
+    // validate middleware enforces:
+    //   - txId is a non-empty string ≤ 128 chars (matches the mock
+    //     provider's internal id format and bounds memory usage),
+    //   - body is exactly `{ success: boolean }` — no extra fields,
+    //     strict-mode prevents future drift from accidentally
+    //     promoting a typo into a working payload.
+    const MockCheckoutParams = z.object({
+      txId: z.string().min(1).max(128),
+    });
+    const MockCheckoutCompleteBody = z
+      .object({
+        success: z.boolean(),
+      })
+      .strict();
+
     fastify.post(
       "/mock-checkout/:txId/complete",
       {
+        preHandler: [
+          validate({ params: MockCheckoutParams, body: MockCheckoutCompleteBody }),
+        ],
         schema: {
           tags: ["Payments"],
           summary: "Complete mock checkout (dev only)",
         },
       },
       async (request, reply) => {
-        const { txId } = request.params as ParamsWithTxId;
-        const body = request.body as { success: boolean };
+        const { txId } = request.params as z.infer<typeof MockCheckoutParams>;
+        const body = request.body as z.infer<typeof MockCheckoutCompleteBody>;
         const state = MockPaymentProvider.simulateCallback(txId, body.success);
         if (!state) {
           return reply.status(404).send({

@@ -34,14 +34,41 @@ const OM_MERCHANT_KEY = process.env.ORANGE_MONEY_MERCHANT_KEY ?? "";
 // because it's not a client credential — it's a shared symmetric token.
 const OM_NOTIF_TOKEN = process.env.ORANGE_MONEY_NOTIF_TOKEN ?? "";
 
-// Cache OAuth token in memory
+// ─── OAuth token cache (P1-20) ─────────────────────────────────────────────
+//
+// P1-20 (audit M8) — Promise-based memoization (request coalescing).
+//
+// The previous shape stored a resolved string (`cachedToken.value`)
+// AFTER the fetch returned. Two concurrent `initiate()` calls hitting
+// the cache when it was empty / expired both saw `null` and both
+// triggered an OAuth fetch — wasting the auth quota and racing for
+// who got to overwrite `cachedToken` last.
+//
+// The new shape stores an in-flight Promise. Concurrent callers
+// arriving while the fetch is pending await the SAME promise and
+// receive the same token. The promise is only set to `null` when:
+//   1. it resolves, and we've stored the resolved token in
+//      `cachedToken` for future reads, OR
+//   2. it rejects — we clear it so the next caller retries from
+//      scratch instead of inheriting the failure.
+//
+// Token TTL is read from the OAuth response (`expires_in`) with a
+// 60 s safety margin so the cache invalidates BEFORE the provider
+// considers it expired (clock skew + retry tolerance).
 let cachedToken: { value: string; expiresAt: number } | null = null;
+let inflightTokenPromise: Promise<string> | null = null;
 
-async function getAccessToken(): Promise<string> {
-  if (cachedToken && Date.now() < cachedToken.expiresAt) {
-    return cachedToken.value;
-  }
+/**
+ * Test seam — clears both the resolved cache and the in-flight
+ * promise. Lets concurrency tests run from a known empty state
+ * without touching module internals.
+ */
+export function __resetOmTokenCacheForTests(): void {
+  cachedToken = null;
+  inflightTokenPromise = null;
+}
 
+async function fetchOauthToken(): Promise<string> {
   const credentials = Buffer.from(`${OM_CLIENT_ID}:${OM_CLIENT_SECRET}`).toString("base64");
   const response = await fetch("https://api.orange.com/oauth/v3/token", {
     method: "POST",
@@ -76,8 +103,28 @@ async function getAccessToken(): Promise<string> {
     value: data.access_token,
     expiresAt: Date.now() + (data.expires_in - 60) * 1000, // refresh 60s early
   };
-
   return cachedToken.value;
+}
+
+async function getAccessToken(): Promise<string> {
+  if (cachedToken && Date.now() < cachedToken.expiresAt) {
+    return cachedToken.value;
+  }
+  // Coalesce concurrent callers onto a single in-flight fetch.
+  // First caller starts the fetch + stashes the promise; subsequent
+  // callers find the promise and `await` it directly. On settle (success
+  // or failure) we clear `inflightTokenPromise` so the NEXT cache-miss
+  // starts a fresh fetch instead of replaying the resolved promise.
+  if (!inflightTokenPromise) {
+    inflightTokenPromise = (async () => {
+      try {
+        return await fetchOauthToken();
+      } finally {
+        inflightTokenPromise = null;
+      }
+    })();
+  }
+  return inflightTokenPromise;
 }
 
 export class OrangeMoneyPaymentProvider implements PaymentProvider {

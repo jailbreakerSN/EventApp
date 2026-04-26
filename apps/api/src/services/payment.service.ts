@@ -27,7 +27,10 @@ import { BaseService } from "./base.service";
 import { signQrPayload, signQrPayloadV4, computeValidityWindow } from "./qr-signing";
 import { eventBus } from "@/events/event-bus";
 import { getRequestId } from "@/context/request-context";
-import { type PaymentProvider } from "@/providers/payment-provider.interface";
+import {
+  type PaymentProvider,
+  type RefundResult,
+} from "@/providers/payment-provider.interface";
 import { mockPaymentProvider } from "@/providers/mock-payment.provider";
 import { wavePaymentProvider } from "@/providers/wave-payment.provider";
 import { orangeMoneyPaymentProvider } from "@/providers/orange-money-payment.provider";
@@ -145,6 +148,43 @@ function assertAllowedReturnUrl(returnUrl: string): string {
   }
   return returnUrl;
 }
+
+// ─── Refund failure messages (P1-19) ────────────────────────────────────────
+//
+// Maps the typed `RefundFailureReason` discriminator (declared in
+// `payment-provider.interface.ts`) to French operator-facing copy.
+// Each branch carries the actionable guidance the operator needs —
+// not a generic "Le remboursement a été refusé" placeholder.
+//
+// The map MUST stay exhaustive: TypeScript's `Record<RefundFailureReason,
+// string>` type checks the keys, but the contract is stricter — every
+// new reason added to the union MUST land in this map BEFORE the
+// shared interface ships, or the operator falls back to the
+// `provider_error` copy and loses the disambiguation we just paid
+// for upstream.
+import type { RefundFailureReason } from "@/providers/payment-provider.interface";
+
+const REFUND_FAILURE_MESSAGES: Record<RefundFailureReason, string> = {
+  manual_refund_required:
+    "Ce fournisseur de paiement ne prend pas en charge les remboursements automatiques. " +
+    "Contactez votre point de vente Orange Money ou effectuez le remboursement manuel " +
+    "depuis le portail marchand. Marquez ensuite l'inscription comme annulée.",
+  insufficient_funds:
+    "Le remboursement a échoué : solde marchand insuffisant. " +
+    "Vérifiez votre portefeuille Wave / Orange Money et réessayez après réapprovisionnement.",
+  already_refunded:
+    "Le fournisseur indique que ce paiement a déjà été remboursé. " +
+    "Vérifiez le portail marchand et réconciliez l'inscription manuellement si nécessaire.",
+  transaction_not_found:
+    "Le fournisseur ne retrouve pas la transaction d'origine. " +
+    "Contactez le support technique — le remboursement automatique n'est pas possible.",
+  network_timeout:
+    "Le fournisseur n'a pas répondu à temps. Réessayez dans quelques instants ; " +
+    "si le problème persiste, contactez le support.",
+  provider_error:
+    "Le remboursement a été refusé par le fournisseur. " +
+    "Consultez le tableau de bord d'incidents pour plus de détails.",
+};
 
 // ─── PaymentClientView projection (P1-09 / P1-12) ──────────────────────────
 //
@@ -883,7 +923,7 @@ export class PaymentService extends BaseService {
 
     // Call provider refund
     const provider = getProvider(payment.method);
-    let result: { success: boolean; reason?: string };
+    let result: RefundResult;
     try {
       result = await provider.refund(payment.providerTransactionId!, refundAmount);
     } catch (err) {
@@ -911,19 +951,20 @@ export class PaymentService extends BaseService {
         timestamp: failureNow,
       });
 
-      // Surface the specific reason when the provider tags it. Orange
-      // Money in particular never supports programmatic refunds — the
-      // operator has to process the refund via their OM merchant
-      // portal, so a generic "provider refused" error would be
-      // misleading and unhelpful.
-      if (result.reason === "manual_refund_required") {
-        throw new ValidationError(
-          "Ce fournisseur de paiement ne prend pas en charge les remboursements automatiques. " +
-            "Contactez votre point de vente Orange Money ou effectuez le remboursement manuel " +
-            "depuis le portail marchand. Marquez ensuite l'inscription comme annulée.",
-        );
-      }
-      throw new ValidationError("Le remboursement a été refusé par le fournisseur");
+      // P1-19 (audit M7) — surface a disambiguated, operator-actionable
+      // message per reason. Falls back to the generic placeholder for
+      // un-tagged failures (which is now an alarm condition: per the
+      // RefundFailureReason invariant, every provider refund failure
+      // MUST tag the reason). The `details.reason` payload mirrors the
+      // discriminated union so the backoffice UI can render targeted
+      // copy + a "retry" affordance for `network_timeout`.
+      throw new ValidationError(
+        REFUND_FAILURE_MESSAGES[result.reason ?? "provider_error"],
+        {
+          reason: result.reason ?? "provider_error",
+          providerCode: result.providerCode,
+        },
+      );
     }
 
     const now = new Date().toISOString();
