@@ -28,6 +28,8 @@
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from "vitest";
 import Fastify, { type FastifyInstance } from "fastify";
 import { createHash } from "node:crypto";
+import qs from "qs";
+import type * as PaymentServiceModule from "@/services/payment.service";
 import { paymentRoutes } from "../payments.routes";
 
 // ─── Forge fixture — known MasterKey + matching hash ────────────────────────
@@ -53,7 +55,7 @@ const { mockHandleWebhook, mockRecord, mockMarkOutcome } = vi.hoisted(() => ({
 vi.mock("@/services/payment.service", async () => {
   // Keep the real getProviderForWebhook so the route resolves to the
   // real PayDunya provider and exercises real verifyWebhook.
-  const actual = await vi.importActual<typeof import("@/services/payment.service")>(
+  const actual = await vi.importActual<typeof PaymentServiceModule>(
     "@/services/payment.service",
   );
   return {
@@ -392,8 +394,6 @@ describe("PayDunya IPN — forensic end-to-end pipeline", () => {
     };
     // qs.stringify({ data }) → `data%5Bhash%5D=...&data%5Binvoice%5D%5Btoken%5D=...`
     // (which is exactly the variant-2 wire format).
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const qs = require("qs") as typeof import("qs");
     return qs.stringify({ data });
   }
 
