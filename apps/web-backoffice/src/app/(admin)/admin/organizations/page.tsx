@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import {
@@ -10,6 +10,7 @@ import {
   useUpdateOrgStatus,
 } from "@/hooks/use-admin";
 import { useBulkSelection } from "@/hooks/use-bulk-selection";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { useRowKeyboardNav } from "@/hooks/use-row-keyboard-nav";
 import { BulkActionBar } from "@/components/admin/bulk-action-bar";
 import { SavedViewsBar } from "@/components/admin/saved-views-bar";
@@ -95,13 +96,19 @@ export default function AdminOrganizationsPage() {
   const rawVerified = searchParams?.get("isVerified");
   const initialVerified = rawVerified === "true" || rawVerified === "false" ? rawVerified : "";
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search, 300);
   const [planFilter, setPlanFilter] = useState("");
   const [verifiedFilter, setVerifiedFilter] = useState(initialVerified);
   const [page, setPage] = useState(1);
   const limit = 20;
 
+  // Reset to page 1 whenever a filter or the debounced query changes.
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, planFilter, verifiedFilter]);
+
   const { data, isLoading } = useAdminOrganizations({
-    q: search || undefined,
+    q: debouncedSearch || undefined,
     plan: planFilter || undefined,
     isVerified: verifiedFilter === "" ? undefined : verifiedFilter === "true",
     page,

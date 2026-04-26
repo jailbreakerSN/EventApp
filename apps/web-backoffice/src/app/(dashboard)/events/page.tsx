@@ -1,6 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
+import { normalizeFr } from "@teranga/shared-types";
 import Link from "next/link";
 import type { EventCategory } from "@teranga/shared-types";
 import { useEvents } from "@/hooks/use-events";
@@ -37,9 +39,16 @@ const CATEGORY_OPTIONS = [
 
 export default function EventsPage() {
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search, 300);
   const [category, setCategory] = useState("");
   const [page, setPage] = useState(1);
   const limit = 10;
+
+  // Reset to page 1 when filters change so the user is never stranded on a
+  // page that the new filter set doesn't reach.
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, category]);
 
   const { data, isLoading, isError, refetch } = useEvents({
     page,
@@ -54,15 +63,16 @@ export default function EventsPage() {
   const meta = data?.meta;
   const totalPages = meta?.totalPages ?? 1;
 
-  // Title search stays client-side: Firestore doesn't do full-text search
-  // natively, and our dataset is small enough per page that a substring
-  // match over the current page is acceptable. Switch to Algolia /
-  // Typesense the day the "search misses results on page 2" complaint
-  // arrives.
-  const events = allEvents.filter((event) => {
-    const matchesSearch = !search || event.title.toLowerCase().includes(search.toLowerCase());
-    return matchesSearch;
-  });
+  // Title search stays client-side per the doctrine for organiser-scoped
+  // event listings: bounded cardinality (≤ plan max), and the per-page
+  // result set is already small. Substring match is normalizeFr-folded so
+  // "senegal" matches "Sénégal". This page will graduate to a server-side
+  // searchKeywords[] query when the org-events listByOrganization endpoint
+  // gets the same treatment as public /events (P2).
+  const normalizedNeedle = debouncedSearch ? normalizeFr(debouncedSearch) : "";
+  const events = normalizedNeedle
+    ? allEvents.filter((event) => normalizeFr(event.title).includes(normalizedNeedle))
+    : allEvents;
 
   return (
     <div>

@@ -10,6 +10,7 @@ import {
   useUpdateUserStatus,
 } from "@/hooks/use-admin";
 import { useBulkSelection } from "@/hooks/use-bulk-selection";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { useRowKeyboardNav } from "@/hooks/use-row-keyboard-nav";
 import { BulkActionBar } from "@/components/admin/bulk-action-bar";
 import { SavedViewsBar } from "@/components/admin/saved-views-bar";
@@ -212,12 +213,19 @@ export default function AdminUsersPage() {
   void tCommon;
   const router = useRouter();
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search, 300);
   const [roleFilter, setRoleFilter] = useState("");
   const [page, setPage] = useState(1);
   const limit = 20;
 
+  // Reset to page 1 when the debounced query changes — otherwise the user
+  // could land on page 4 of an old result set with a new query string.
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch, roleFilter]);
+
   const { data, isLoading } = useAdminUsers({
-    q: search || undefined,
+    q: debouncedSearch || undefined,
     role: roleFilter || undefined,
     page,
     limit,
