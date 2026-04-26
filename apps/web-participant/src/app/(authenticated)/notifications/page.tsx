@@ -1,27 +1,43 @@
 "use client";
 
-import { useState } from "react";
+import { parseAsBoolean } from "nuqs";
 import { AlertTriangle, Bell, CheckCheck, Circle, RotateCcw } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import { useNotifications, useMarkAsRead, useMarkAllAsRead } from "@/hooks/use-notifications";
+import { useTableState } from "@/hooks/use-table-state";
 import { intlLocale } from "@/lib/intl-locale";
-import {
-  Button,
-  EmptyStateEditorial,
-  SectionHeader,
-} from "@teranga/shared-ui";
+import { Button, EmptyStateEditorial, SectionHeader } from "@teranga/shared-ui";
 import type { Notification } from "@teranga/shared-types";
+
+const PAGE_SIZE = 20;
 
 export default function NotificationsPage() {
   const t = useTranslations("notifications");
   const locale = useLocale();
   const regional = intlLocale(locale);
-  const [page, setPage] = useState(1);
-  const [unreadOnly, setUnreadOnly] = useState(false);
 
-  const { data, isLoading, isError, refetch } = useNotifications({ page, limit: 20, unreadOnly });
+  // W5 stream archetype migration — useTableState owns URL state for the
+  // unreadOnly toggle + page index. Stream contract: chronological is
+  // forced (sortableFields: []), no user-chosen sort offered.
+  // shallow:true (default) is correct here — the page is a Client
+  // Component that fetches via React Query, the queryKey reacts to URL
+  // changes automatically.
+  const ts = useTableState<{ unreadOnly?: boolean }>({
+    urlNamespace: "notifs",
+    defaults: { sort: null, pageSize: 25 },
+    sortableFields: [],
+    filterParsers: { unreadOnly: parseAsBoolean },
+  });
+
+  const unreadOnly = !!ts.filters.unreadOnly;
+  const { data, isLoading, isError, refetch } = useNotifications({
+    page: ts.page,
+    limit: PAGE_SIZE,
+    unreadOnly,
+  });
   const notifications = data?.data ?? [];
   const total = data?.meta?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   const markAsRead = useMarkAsRead();
   const markAllAsRead = useMarkAllAsRead();
@@ -36,7 +52,12 @@ export default function NotificationsPage() {
         as="h1"
         action={
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={() => setUnreadOnly(!unreadOnly)}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => ts.setFilter("unreadOnly", unreadOnly ? undefined : true)}
+              aria-pressed={unreadOnly}
+            >
               {unreadOnly ? t("filterAll") : t("filterUnread")}
             </Button>
             <Button
@@ -66,7 +87,7 @@ export default function NotificationsPage() {
           }
         />
       ) : isLoading ? (
-        <div className="space-y-2">
+        <div className="space-y-2" role="status" aria-label={t("title")}>
           {[1, 2, 3, 4, 5].map((i) => (
             <div key={i} className="animate-pulse rounded-lg border p-4">
               <div className="flex items-start gap-3">
@@ -85,6 +106,13 @@ export default function NotificationsPage() {
           icon={Bell}
           kicker="— AUCUNE NOTIFICATION"
           title={unreadOnly ? t("emptyUnread") : t("empty")}
+          action={
+            unreadOnly ? (
+              <Button variant="outline" onClick={() => ts.reset()}>
+                {t("filterAll")}
+              </Button>
+            ) : undefined
+          }
         />
       ) : (
         <div className="space-y-2">
@@ -122,29 +150,34 @@ export default function NotificationsPage() {
         </div>
       )}
 
-      {total > 20 && (
-        <div className="mt-6 flex items-center justify-center gap-3">
+      {totalPages > 1 ? (
+        <nav
+          aria-label="Pagination des notifications"
+          className="mt-6 flex items-center justify-center gap-3"
+        >
           <Button
             variant="outline"
             size="sm"
-            disabled={page <= 1}
-            onClick={() => setPage(page - 1)}
+            disabled={ts.page <= 1}
+            onClick={() => ts.setPage(Math.max(1, ts.page - 1))}
+            aria-label={t("paginationPrev")}
           >
             {t("paginationPrev")}
           </Button>
-          <span className="text-sm text-muted-foreground">
-            {t("paginationOf", { page, total: Math.ceil(total / 20) })}
+          <span className="text-sm text-muted-foreground" aria-current="page">
+            {t("paginationOf", { page: ts.page, total: totalPages })}
           </span>
           <Button
             variant="outline"
             size="sm"
-            disabled={page * 20 >= total}
-            onClick={() => setPage(page + 1)}
+            disabled={ts.page >= totalPages}
+            onClick={() => ts.setPage(ts.page + 1)}
+            aria-label={t("paginationNext")}
           >
             {t("paginationNext")}
           </Button>
-        </div>
-      )}
+        </nav>
+      ) : null}
     </div>
   );
 }

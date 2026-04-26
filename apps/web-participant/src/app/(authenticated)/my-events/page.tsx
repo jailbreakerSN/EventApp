@@ -1,6 +1,8 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { parseAsStringEnum, useQueryStates } from "nuqs";
+import { useTableState } from "@/hooks/use-table-state";
 import Link from "next/link";
 import {
   ArrowRight,
@@ -79,10 +81,41 @@ export default function MyEventsPage() {
   const locale = useLocale();
   const regional = intlLocale(locale);
   const { user } = useAuth();
-  const [page, setPage] = useState(1);
-  const [tab, setTab] = useState<TabId>("upcoming");
-  const [viewMode, setViewMode] = useState<ViewMode>("list");
-  const { data, isLoading, error } = useMyRegistrations({ page, limit: 20 });
+
+  // W5 migration — useTableState owns the page index. Tab + viewMode are
+  // UI discriminators (which view to render) not result filters; they
+  // live in their own useQueryStates slot so they don't inflate
+  // activeFilterCount and the URL stays human-readable
+  // (?tab=past&view=calendar). The page index resets to 1 whenever tab
+  // or viewMode changes — out-of-bounds protection when the underlying
+  // dataset shape shifts.
+  const ts = useTableState({
+    urlNamespace: "regs",
+    defaults: { sort: null, pageSize: 25 },
+    sortableFields: [],
+    filterParsers: {},
+  });
+  const [{ tab, view: viewMode }, setViewState] = useQueryStates(
+    {
+      tab: parseAsStringEnum<TabId>(["upcoming", "past", "saved"]).withDefault("upcoming"),
+      view: parseAsStringEnum<ViewMode>(["list", "calendar"]).withDefault("list"),
+    },
+    { history: "replace", shallow: true },
+  );
+  const setTab = (next: TabId): void => {
+    void setViewState({ tab: next === "upcoming" ? null : next });
+  };
+  const setViewMode = (next: ViewMode): void => {
+    void setViewState({ view: next === "list" ? null : next });
+  };
+  // Page reset on tab / viewMode change — tabs surface different data
+  // subsets, page N of "upcoming" doesn't map to anything in "past".
+  useEffect(() => {
+    if (ts.page !== 1) ts.setPage(1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, viewMode]);
+
+  const { data, isLoading, error } = useMyRegistrations({ page: ts.page, limit: 20 });
   const cancelMutation = useCancelRegistration();
   const cancelPendingMutation = useCancelPendingRegistration();
   const resumePaymentMutation = useResumePayment();
@@ -651,31 +684,37 @@ export default function MyEventsPage() {
       )}
 
       {/* Pagination */}
-      {meta && meta.totalPages > 1 && tab === "upcoming" && (
-        <div className="mt-8 flex items-center justify-center gap-2">
+      {meta && meta.totalPages > 1 && tab === "upcoming" ? (
+        <nav
+          aria-label="Pagination de mes événements"
+          className="mt-8 flex items-center justify-center gap-2"
+        >
           <Button
             variant="outline"
             size="sm"
-            disabled={page <= 1}
-            onClick={() => setPage(page - 1)}
+            disabled={ts.page <= 1}
+            onClick={() => ts.setPage(Math.max(1, ts.page - 1))}
             className="rounded-full"
           >
             {t("paginationPrev")}
           </Button>
-          <span className="flex items-center text-sm text-muted-foreground">
-            {t("paginationOf", { page, total: meta.totalPages })}
+          <span
+            className="flex items-center text-sm text-muted-foreground"
+            aria-current="page"
+          >
+            {t("paginationOf", { page: ts.page, total: meta.totalPages })}
           </span>
           <Button
             variant="outline"
             size="sm"
-            disabled={page >= meta.totalPages}
-            onClick={() => setPage(page + 1)}
+            disabled={ts.page >= meta.totalPages}
+            onClick={() => ts.setPage(ts.page + 1)}
             className="rounded-full"
           >
             {t("paginationNext")}
           </Button>
-        </div>
-      )}
+        </nav>
+      ) : null}
 
       <ConfirmDialog
         open={cancelTarget !== null}
