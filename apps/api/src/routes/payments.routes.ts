@@ -3,6 +3,7 @@ import { z } from "zod";
 import { authenticate, requireEmailVerified } from "@/middlewares/auth.middleware";
 import { validate } from "@/middlewares/validate.middleware";
 import { requirePermission } from "@/middlewares/permission.middleware";
+import { webhookIpAllowlist } from "@/middlewares/webhook-ip-allowlist.middleware";
 import {
   paymentService,
   signWebhookPayload,
@@ -157,12 +158,23 @@ export const paymentRoutes: FastifyPluginAsync = async (fastify) => {
       const { eventId, ticketTypeId, method, returnUrl } = request.body as z.infer<
         typeof InitiatePaymentSchema
       >;
+      // P1-06 (audit C1) — Idempotency-Key header. Industry-standard
+      // shape (Stripe / Adyen): a UUID per intent, replayed verbatim
+      // on automatic retry. The service falls back to a server-
+      // synthesised key if the header is absent (60 s bucket; see
+      // payment.service.ts).
+      const rawIk = request.headers["idempotency-key"];
+      const idempotencyKey =
+        typeof rawIk === "string" && rawIk.trim().length > 0 && rawIk.trim().length <= 255
+          ? rawIk.trim()
+          : undefined;
       const result = await paymentService.initiatePayment(
         eventId,
         ticketTypeId,
         method,
         returnUrl,
         request.user!,
+        { idempotencyKey },
       );
       return reply.status(201).send({ success: true, data: result });
     },
@@ -219,7 +231,18 @@ export const paymentRoutes: FastifyPluginAsync = async (fastify) => {
           timeWindow: "1 minute",
         },
       },
-      preHandler: [validate({ params: ParamsWithProvider, body: PaymentWebhookSchema })],
+      // P1-15 (audit H6) — IP allowlist runs BEFORE the validate
+      // preHandler so a request from outside the provider's documented
+      // webhook CIDRs gets rejected with a 403 before its body is
+      // parsed, the HMAC is computed, or any Firestore read fires.
+      // Defence-in-depth: a leaked HMAC secret stays useless without
+      // network-layer access. Fail-open if the env var for this
+      // provider is unset (dev / staging posture); fail-closed when
+      // operators have pinned the allowlist.
+      preHandler: [
+        webhookIpAllowlist,
+        validate({ params: ParamsWithProvider, body: PaymentWebhookSchema }),
+      ],
       schema: {
         tags: ["Payments"],
         summary: "Payment provider webhook callback (per-provider signature verification)",
@@ -672,17 +695,39 @@ export const paymentRoutes: FastifyPluginAsync = async (fastify) => {
     );
 
     // ─── Mock Checkout Callback (internal) ────────────────────────────────────
+    //
+    // P1-16 (audit M6) — Zod validation on params + body. Without it,
+    // any caller on staging with a known `txId` could send arbitrary
+    // shapes that `simulateCallback` would silently process. The
+    // validate middleware enforces:
+    //   - txId is a non-empty string ≤ 128 chars (matches the mock
+    //     provider's internal id format and bounds memory usage),
+    //   - body is exactly `{ success: boolean }` — no extra fields,
+    //     strict-mode prevents future drift from accidentally
+    //     promoting a typo into a working payload.
+    const MockCheckoutParams = z.object({
+      txId: z.string().min(1).max(128),
+    });
+    const MockCheckoutCompleteBody = z
+      .object({
+        success: z.boolean(),
+      })
+      .strict();
+
     fastify.post(
       "/mock-checkout/:txId/complete",
       {
+        preHandler: [
+          validate({ params: MockCheckoutParams, body: MockCheckoutCompleteBody }),
+        ],
         schema: {
           tags: ["Payments"],
           summary: "Complete mock checkout (dev only)",
         },
       },
       async (request, reply) => {
-        const { txId } = request.params as ParamsWithTxId;
-        const body = request.body as { success: boolean };
+        const { txId } = request.params as z.infer<typeof MockCheckoutParams>;
+        const body = request.body as z.infer<typeof MockCheckoutCompleteBody>;
         const state = MockPaymentProvider.simulateCallback(txId, body.success);
         if (!state) {
           return reply.status(404).send({

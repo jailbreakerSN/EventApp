@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import {
   type Payment,
+  type PaymentClientView,
   type PaymentStatus,
   type PaymentMethod,
   type PaymentSummary,
@@ -10,6 +11,7 @@ import {
 } from "@teranga/shared-types";
 import { paymentRepository } from "@/repositories/payment.repository";
 import { eventRepository } from "@/repositories/event.repository";
+import { organizationRepository } from "@/repositories/organization.repository";
 import { db, COLLECTIONS } from "@/config/firebase";
 import { FieldValue } from "@/repositories/transaction.helper";
 import { type AuthUser } from "@/middlewares/auth.middleware";
@@ -18,6 +20,7 @@ import {
   ConflictError,
   DuplicateRegistrationError,
   NotFoundError,
+  ProviderError,
   RegistrationClosedError,
   EventFullError,
 } from "@/errors/app-error";
@@ -25,7 +28,10 @@ import { BaseService } from "./base.service";
 import { signQrPayload, signQrPayloadV4, computeValidityWindow } from "./qr-signing";
 import { eventBus } from "@/events/event-bus";
 import { getRequestId } from "@/context/request-context";
-import { type PaymentProvider } from "@/providers/payment-provider.interface";
+import {
+  type PaymentProvider,
+  type RefundResult,
+} from "@/providers/payment-provider.interface";
 import { mockPaymentProvider } from "@/providers/mock-payment.provider";
 import { wavePaymentProvider } from "@/providers/wave-payment.provider";
 import { orangeMoneyPaymentProvider } from "@/providers/orange-money-payment.provider";
@@ -144,6 +150,70 @@ function assertAllowedReturnUrl(returnUrl: string): string {
   return returnUrl;
 }
 
+// ─── Refund failure messages (P1-19) ────────────────────────────────────────
+//
+// Maps the typed `RefundFailureReason` discriminator (declared in
+// `payment-provider.interface.ts`) to French operator-facing copy.
+// Each branch carries the actionable guidance the operator needs —
+// not a generic "Le remboursement a été refusé" placeholder.
+//
+// The map MUST stay exhaustive: TypeScript's `Record<RefundFailureReason,
+// string>` type checks the keys, but the contract is stricter — every
+// new reason added to the union MUST land in this map BEFORE the
+// shared interface ships, or the operator falls back to the
+// `provider_error` copy and loses the disambiguation we just paid
+// for upstream.
+import type { RefundFailureReason } from "@/providers/payment-provider.interface";
+
+const REFUND_FAILURE_MESSAGES: Record<RefundFailureReason, string> = {
+  manual_refund_required:
+    "Ce fournisseur de paiement ne prend pas en charge les remboursements automatiques. " +
+    "Contactez votre point de vente Orange Money ou effectuez le remboursement manuel " +
+    "depuis le portail marchand. Marquez ensuite l'inscription comme annulée.",
+  insufficient_funds:
+    "Le remboursement a échoué : solde marchand insuffisant. " +
+    "Vérifiez votre portefeuille Wave / Orange Money et réessayez après réapprovisionnement.",
+  already_refunded:
+    "Le fournisseur indique que ce paiement a déjà été remboursé. " +
+    "Vérifiez le portail marchand et réconciliez l'inscription manuellement si nécessaire.",
+  transaction_not_found:
+    "Le fournisseur ne retrouve pas la transaction d'origine. " +
+    "Contactez le support technique — le remboursement automatique n'est pas possible.",
+  network_timeout:
+    "Le fournisseur n'a pas répondu à temps. Réessayez dans quelques instants ; " +
+    "si le problème persiste, contactez le support.",
+  provider_error:
+    "Le remboursement a été refusé par le fournisseur. " +
+    "Consultez le tableau de bord d'incidents pour plus de détails.",
+};
+
+// ─── PaymentClientView projection (P1-09 / P1-12) ──────────────────────────
+//
+// Strips two provider-internal fields from any `Payment` before it crosses
+// a public surface:
+//
+//   - `providerMetadata` — raw provider response (OM `notif_token`,
+//     customer phone numbers, internal correlation IDs, …).
+//   - `callbackUrl` — internal webhook URL that reveals our infra
+//     topology and lets a malicious caller bypass our rate-limit by
+//     posting directly to the URL.
+//
+// Every public service method that returns payment data MUST funnel
+// through this helper. The only path allowed to expose the raw shape
+// is the super-admin platform listing, which renders the metadata
+// behind a redaction helper.
+//
+// Snapshot-test enforced: `payment.service.test.ts` →
+// "PaymentClientView projection — no provider internals leak".
+export function toPaymentClientView(payment: Payment): PaymentClientView {
+  const {
+    providerMetadata: _providerMetadata,
+    callbackUrl: _callbackUrl,
+    ...rest
+  } = payment;
+  return rest as PaymentClientView;
+}
+
 // ─── Service ────────────────────────────────────────────────────────────────
 
 export class PaymentService extends BaseService {
@@ -159,11 +229,30 @@ export class PaymentService extends BaseService {
     method: PaymentMethod,
     returnUrl: string | undefined,
     user: AuthUser,
+    opts: { idempotencyKey?: string } = {},
   ): Promise<{ paymentId: string; redirectUrl: string }> {
     this.requirePermission(user, "payment:initiate");
 
-    // ── Read event ──
+    // ── Read event (needed to derive organizationId for the plan gate) ──
     const event = await eventRepository.findByIdOrThrow(eventId);
+
+    // ── P1-13 (audit H1) — paidTickets plan-feature gate at payment init ──
+    // Money-of-record enforcement at the payment layer. Event creation
+    // already enforces this at event.service.ts; we re-enforce here so a
+    // free / starter org that downgrades AFTER creating a paid event can
+    // never collect real money via this code path.
+    //
+    // Audit follow-up: gate fires immediately after the event lookup
+    // (the only doc read REQUIRED to derive `organizationId`) and
+    // BEFORE any other state-derived branch — event-status check,
+    // ticket validation, capacity guard. A free/starter org never
+    // exercises ticket business logic for a paid ticket, even on
+    // events the operator created before downgrading. The earlier
+    // shape ran the event-status + ticket-validation branches
+    // first; the fix preserves the spec ("BEFORE any other state
+    // change").
+    const org = await organizationRepository.findByIdOrThrow(event.organizationId);
+    this.requirePlanFeature(org, "paidTickets");
 
     if (event.status !== "published") {
       const reason =
@@ -195,15 +284,12 @@ export class PaymentService extends BaseService {
       throw new EventFullError(eventId);
     }
 
-    // ── Prepare references and provider call ──
+    // ── Prepare references ──
     const now = new Date().toISOString();
     const regRef = db.collection(COLLECTIONS.REGISTRATIONS).doc();
     const payRef = db.collection(COLLECTIONS.PAYMENTS).doc();
     const regId = regRef.id;
     const payId = payRef.id;
-    // QR signing: v4 (per-event `kid` + HKDF-derived key) when the event
-    // has migrated to the new signing scheme; v3 fallback for legacy
-    // events whose docs predate the `qrKid` field.
     const qrWindow = computeValidityWindow(event.startDate, event.endDate);
     const qrCodeValue = event.qrKid
       ? signQrPayloadV4(
@@ -216,27 +302,64 @@ export class PaymentService extends BaseService {
         )
       : signQrPayload(regId, eventId, user.uid, qrWindow.notBefore, qrWindow.notAfter);
 
-    // Webhook path encodes the provider so the endpoint can route to
-    // the correct signature verifier without a query-string sniff.
     const callbackUrl = paymentWebhookUrl(method);
     const defaultReturnUrl = paymentReturnUrl(eventId, payId);
     const finalReturnUrl = returnUrl ? assertAllowedReturnUrl(returnUrl) : defaultReturnUrl;
 
-    // Get provider and initiate (outside transaction — provider call is idempotent)
-    const provider = getProvider(method);
-    const { providerTransactionId, redirectUrl } = await provider.initiate({
-      paymentId: payId,
-      amount: ticketType.price,
-      currency: "XOF",
-      description: `Inscription : ${event.title} — ${ticketType.name}`,
-      callbackUrl,
-      returnUrl: finalReturnUrl,
-      method,
-    });
+    // ── P1-06 (audit C1) — Idempotency key resolution ──
+    // Client SHOULD pass an `Idempotency-Key` header (UUID per intent).
+    // If absent, we synthesise a deterministic fingerprint covering
+    // (userId, eventId, ticketTypeId, method) with a 60 s time bucket
+    // — gives near-immediate retry coverage for legacy clients without
+    // creating long-tail dedupe (after 60 s the user clicking buy
+    // again is a deliberate new intent).
+    const idemKeySource =
+      opts.idempotencyKey?.trim() ||
+      `synth:${user.uid}:${eventId}:${ticketTypeId}:${method}:${Math.floor(Date.now() / 60_000)}`;
+    const idemDocId = crypto.createHash("sha256").update(idemKeySource).digest("hex").slice(0, 32);
+    const idemRef = db.collection(COLLECTIONS.PAYMENT_IDEMPOTENCY_KEYS).doc(idemDocId);
 
-    // ── Atomic: check duplicate + create registration + payment ──
-    await db.runTransaction(async (tx) => {
-      // Re-check for duplicate inside transaction to prevent race conditions
+    // ── P1-07 (audit H2) — Two-phase pattern, Phase 1 ──
+    // tx1: idempotency check + duplicate-reg check + placeholder
+    //      Payment + placeholder Registration. Provider session does
+    //      NOT yet exist; we have a local record to attach it to.
+    // After tx1 commits → outside-tx provider.initiate() call.
+    // tx2: update placeholder Payment with the real
+    //      providerTransactionId + redirectUrl.
+    type Phase1 =
+      | { kind: "replayed"; paymentId: string; redirectUrl: string }
+      | { kind: "fresh"; payment: Payment };
+    const phase1: Phase1 = await db.runTransaction(async (tx) => {
+      // Idempotency: same key within 24h returns the cached payment.
+      const existingIdem = await tx.get(idemRef);
+      if (existingIdem.exists) {
+        const cached = existingIdem.data() as {
+          paymentId: string;
+          redirectUrl?: string;
+        };
+        // Read the cached Payment to surface its current redirectUrl
+        // (Phase 2 may have populated it after the idempotency doc
+        // was first written).
+        const cachedPayRef = db.collection(COLLECTIONS.PAYMENTS).doc(cached.paymentId);
+        const cachedPaySnap = await tx.get(cachedPayRef);
+        if (cachedPaySnap.exists) {
+          const cachedPay = cachedPaySnap.data() as Payment;
+          return {
+            kind: "replayed",
+            paymentId: cached.paymentId,
+            redirectUrl: cachedPay.redirectUrl ?? cached.redirectUrl ?? "",
+          };
+        }
+        // Idempotency claim exists but the Payment doesn't — orphaned
+        // claim from a prior crash. Fall through to the fresh branch
+        // and OVERWRITE the claim below (`tx.set(idemRef, ...)`
+        // overwrites by default). Operator-perceived behaviour: the
+        // retry succeeds, no duplicate created.
+      }
+
+      // Re-check for duplicate inside the transaction to prevent race
+      // conditions (a different IK on the same user + event = a
+      // genuinely new attempt that needs the dup guard).
       const dupeSnap = await tx.get(
         db
           .collection(COLLECTIONS.REGISTRATIONS)
@@ -266,7 +389,10 @@ export class PaymentService extends BaseService {
         updatedAt: now,
       };
 
-      const payment: Payment = {
+      // Placeholder payment: providerTransactionId + redirectUrl
+      // populated in Phase 2. status='pending' (not 'processing')
+      // until the provider session is confirmed.
+      const placeholder: Payment = {
         id: payId,
         registrationId: regId,
         eventId,
@@ -275,9 +401,9 @@ export class PaymentService extends BaseService {
         amount: ticketType.price,
         currency: "XOF",
         method,
-        providerTransactionId,
-        status: "processing",
-        redirectUrl,
+        providerTransactionId: null,
+        status: "pending",
+        redirectUrl: null,
         callbackUrl,
         returnUrl: finalReturnUrl,
         providerMetadata: null,
@@ -290,7 +416,98 @@ export class PaymentService extends BaseService {
       } as Payment;
 
       tx.set(regRef, registration);
-      tx.set(payRef, payment);
+      tx.set(payRef, placeholder);
+      // Idempotency claim: write AFTER reg + payment so the cached
+      // `paymentId` always points to a doc that exists.
+      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+      tx.set(idemRef, {
+        paymentId: payId,
+        userId: user.uid,
+        eventId,
+        ticketTypeId,
+        method,
+        createdAt: now,
+        expiresAt,
+        // Stored so a future audit / forensics surface can see whether
+        // this was a client-supplied IK or a server-synthesised one.
+        keySource: opts.idempotencyKey ? "client" : "synthetic",
+      });
+
+      return { kind: "fresh", payment: placeholder };
+    });
+
+    if (phase1.kind === "replayed") {
+      return { paymentId: phase1.paymentId, redirectUrl: phase1.redirectUrl };
+    }
+
+    // ── Provider call (outside any tx — long network call) ──
+    const provider = getProvider(method);
+    let providerResult: { providerTransactionId: string; redirectUrl: string };
+    try {
+      providerResult = await provider.initiate({
+        paymentId: payId,
+        amount: ticketType.price,
+        currency: "XOF",
+        description: `Inscription : ${event.title} — ${ticketType.name}`,
+        callbackUrl,
+        returnUrl: finalReturnUrl,
+        method,
+      });
+    } catch (err) {
+      // P1-07 recovery — mark the placeholder Payment as `failed` so
+      // the org dashboard surfaces a clear "provider rejected" state
+      // rather than an orphan `pending` record. The reconciliation
+      // job (Phase 3) double-checks any `pending` records older than
+      // 5 min via `provider.verify()`.
+      //
+      // Phase-1 audit follow-up: ONLY `ProviderError` is allowed to
+      // surface its message into `Payment.failureReason` — that
+      // message is the sanitised French copy from `app-error.ts`
+      // (e.g. "Le fournisseur de paiement « wave » a répondu avec
+      // une erreur (502)"). Raw Node.js network errors
+      // (`connect ECONNREFUSED 10.0.0.1:443`, `fetch failed`,
+      // `AbortError`) MUST NOT reach the wire because:
+      //   1. failureReason ends up on `getPaymentStatus` and
+      //      `listEventPayments` responses (it's NOT in the
+      //      PaymentClientView omit set).
+      //   2. The raw message can leak our infra IPs, internal
+      //      hostnames, or DNS topology to the participant /
+      //      organizer dashboard.
+      // The sanitised fallback covers timeouts and DNS failures
+      // with operator-actionable French copy. The full underlying
+      // error stays on stderr via `provider-error-logger` (P1-11).
+      const failureReason =
+        err instanceof ProviderError
+          ? err.message.slice(0, 500)
+          : "Erreur réseau lors de la connexion au fournisseur — réessayez dans quelques instants";
+      await db
+        .collection(COLLECTIONS.PAYMENTS)
+        .doc(payId)
+        .update({
+          status: "failed" satisfies PaymentStatus,
+          failureReason,
+          updatedAt: new Date().toISOString(),
+        })
+        .catch(() => {
+          // Update best-effort; the placeholder will be picked up by
+          // the reconciliation sweep if this update fails.
+        });
+      throw err;
+    }
+
+    // ── P1-07 Phase 2: update placeholder with real provider data ──
+    await db.runTransaction(async (tx) => {
+      const update: Partial<Payment> = {
+        providerTransactionId: providerResult.providerTransactionId,
+        status: "processing" satisfies PaymentStatus,
+        redirectUrl: providerResult.redirectUrl,
+        updatedAt: new Date().toISOString(),
+      };
+      tx.update(payRef, update);
+      // Refresh idempotency cache with the redirectUrl so a retry
+      // within the 24 h window returns the right URL even if it
+      // arrives between Phase 1 and Phase 2.
+      tx.update(idemRef, { redirectUrl: providerResult.redirectUrl });
     });
 
     eventBus.emit("payment.initiated", {
@@ -305,7 +522,7 @@ export class PaymentService extends BaseService {
       timestamp: now,
     });
 
-    return { paymentId: payId, redirectUrl };
+    return { paymentId: payId, redirectUrl: providerResult.redirectUrl };
   }
 
   /**
@@ -336,6 +553,17 @@ export class PaymentService extends BaseService {
     const now = new Date().toISOString();
 
     if (providerStatus === "succeeded") {
+      // ── P1-08 (audit H3) — wasNewlySucceeded flag ──────────────────
+      // Concurrent webhook retries from Wave / OM (2-5 deliveries
+      // within seconds) used to fire `payment.succeeded` once per
+      // invocation that reached the emit, even when the inner-tx
+      // idempotency guard correctly prevented the LEDGER from being
+      // double-written. That double-emitted notifications, audit
+      // rows, and `registration.confirmed` cascades.
+      //
+      // Capture the actual-transition signal from inside the
+      // transaction; emit only when the tx truly flipped status.
+      let wasNewlySucceeded = false;
       // ── Confirm payment + registration atomically ──
       await db.runTransaction(async (tx) => {
         // Re-read payment inside transaction for true idempotency
@@ -352,6 +580,8 @@ export class PaymentService extends BaseService {
         ) {
           return;
         }
+
+        wasNewlySucceeded = true;
 
         const regRef = db.collection(COLLECTIONS.REGISTRATIONS).doc(payment.registrationId);
         const regSnap = await tx.get(regRef);
@@ -377,20 +607,32 @@ export class PaymentService extends BaseService {
           updatedAt: now,
         });
 
-        // Increment event registeredCount
-        tx.update(eventRef, {
+        // P1-04 (audit H5) — merge the two `tx.update(eventRef, ...)`
+        // calls into one. Firestore merges sequential updates on the
+        // same ref within a tx, but the previous split-into-two pattern
+        // was fragile — any future code that introduces a third update
+        // would silently lose fields if the field set overlapped.
+        //
+        // The `ticketTypes` array rewrite is computed from the
+        // transactional read at `eventSnap`, so the write is consistent
+        // with the read. INVARIANT: `ticketTypes[].soldCount` MUST
+        // ONLY ever be mutated inside a Firestore transaction whose
+        // read of the parent event doc is inside the same tx.
+        // Any future non-transactional path that touches
+        // `ticketTypes[]` will silently drop concurrent increments.
+        // (Phase-3 candidate: model ticketTypes as a subcollection so
+        // FieldValue.increment can target nested fields.)
+        const eventUpdate: Record<string, unknown> = {
           registeredCount: FieldValue.increment(1),
           updatedAt: now,
-        });
-
-        // Increment ticketType.soldCount
+        };
         if (eventData) {
           const reg = regSnap.data() as Registration;
-          const updatedTicketTypes = eventData.ticketTypes.map((tt) =>
+          eventUpdate.ticketTypes = eventData.ticketTypes.map((tt) =>
             tt.id === reg.ticketTypeId ? { ...tt, soldCount: tt.soldCount + 1 } : tt,
           );
-          tx.update(eventRef, { ticketTypes: updatedTicketTypes });
         }
+        tx.update(eventRef, eventUpdate);
 
         // ── Ledger entries ─────────────────────────────────────────────
         // Writes `payment` (+amount) + `platform_fee` (−fee) inside the
@@ -440,18 +682,28 @@ export class PaymentService extends BaseService {
         }
       });
 
-      eventBus.emit("payment.succeeded", {
-        paymentId: payment.id,
-        registrationId: payment.registrationId,
-        eventId: payment.eventId,
-        organizationId: payment.organizationId,
-        amount: payment.amount,
-        actorId: payment.userId,
-        requestId: getRequestId(),
-        timestamp: now,
-      });
+      // P1-08 — fire only on the actual `processing → succeeded`
+      // transition (suppressed on no-op retries that hit the inner-tx
+      // idempotency guard). Without this gate, listeners would be
+      // notified multiple times per single payment.
+      if (wasNewlySucceeded) {
+        eventBus.emit("payment.succeeded", {
+          paymentId: payment.id,
+          registrationId: payment.registrationId,
+          eventId: payment.eventId,
+          organizationId: payment.organizationId,
+          amount: payment.amount,
+          actorId: payment.userId,
+          requestId: getRequestId(),
+          timestamp: now,
+        });
+      }
     } else {
       // ── Payment failed — atomic update of payment + registration ──
+      // P1-08 — same wasNewlyFailed gate as the success path so a
+      // duplicate `failed` webhook doesn't double-fire the failure
+      // notification cascade.
+      let wasNewlyFailed = false;
       await db.runTransaction(async (tx) => {
         const payRef = db.collection(COLLECTIONS.PAYMENTS).doc(payment.id);
         const paySnap = await tx.get(payRef);
@@ -465,6 +717,8 @@ export class PaymentService extends BaseService {
         ) {
           return;
         }
+
+        wasNewlyFailed = true;
 
         const regRef = db.collection(COLLECTIONS.REGISTRATIONS).doc(payment.registrationId);
 
@@ -481,6 +735,7 @@ export class PaymentService extends BaseService {
         });
       });
 
+      if (!wasNewlyFailed) return;
       eventBus.emit("payment.failed", {
         paymentId: payment.id,
         registrationId: payment.registrationId,
@@ -495,19 +750,42 @@ export class PaymentService extends BaseService {
 
   /**
    * Get payment status (for polling from frontend).
+   *
+   * Returns a projected `PaymentClientView` (no `providerMetadata`,
+   * no `callbackUrl`) — the raw `Payment` shape is reserved for the
+   * super-admin platform-management surface, which has its own
+   * redaction helper. P1-09 (audit C3).
+   *
+   * P1-14 (audit cross-org IDOR) — `requireOrganizationAccess` runs
+   * for EVERY non-owner caller, including system-admin roles whose
+   * roles claim might list multiple orgs. The previous shape only
+   * gated `payment:read_all` callers, leaving an org-A admin with a
+   * payment:read_all + cross-org event scope able to read org-B
+   * payments. The new flow:
+   *
+   *   1. owner short-circuit (`payment.userId === user.uid`)
+   *   2. super-admin short-circuit (`platform:manage` implies all)
+   *   3. otherwise: require `payment:read_all` AND
+   *      `requireOrganizationAccess(payment.organizationId)`.
    */
-  async getPaymentStatus(paymentId: string, user: AuthUser): Promise<Payment> {
+  async getPaymentStatus(paymentId: string, user: AuthUser): Promise<PaymentClientView> {
     this.requirePermission(user, "payment:read_own");
     const payment = await paymentRepository.findByIdOrThrow(paymentId);
-    if (payment.userId !== user.uid && !user.roles.some(isAdminSystemRole)) {
+    const isOwner = payment.userId === user.uid;
+    const isSuperAdmin = user.roles.some(isAdminSystemRole);
+    if (!isOwner && !isSuperAdmin) {
       this.requirePermission(user, "payment:read_all");
       this.requireOrganizationAccess(user, payment.organizationId);
     }
-    return payment;
+    return toPaymentClientView(payment);
   }
 
   /**
    * List payments for an event (organizer view).
+   *
+   * Returns projected `PaymentClientView[]` so the org-admin dashboard
+   * never has to know about `providerMetadata` / `callbackUrl`. The
+   * pagination meta is forwarded unchanged. P1-09.
    */
   async listEventPayments(
     eventId: string,
@@ -518,7 +796,11 @@ export class PaymentService extends BaseService {
     this.requirePermission(user, "payment:read_all");
     const event = await eventRepository.findByIdOrThrow(eventId);
     this.requireOrganizationAccess(user, event.organizationId);
-    return paymentRepository.findByEvent(eventId, filters, pagination);
+    const result = await paymentRepository.findByEvent(eventId, filters, pagination);
+    return {
+      data: result.data.map(toPaymentClientView),
+      meta: result.meta,
+    };
   }
 
   /**
@@ -600,26 +882,78 @@ export class PaymentService extends BaseService {
     // Lock is released after the DB transaction commits (success path) or
     // after provider failure (catch path). A stale-sweep job can purge
     // anything older than the provider timeout (30 s) as a safety net.
+    // P1-02 (audit M1) — Refund lock with TTL-based stale recovery.
+    //
+    // The lock prevents two concurrent refund flows from both calling
+    // the provider. It's released inside the success-path transaction
+    // (`tx.delete(lockRef)` at the end of `runTransaction`) so the
+    // lock lifecycle is tied to DB commit, not provider success.
+    //
+    // The remaining failure mode is process crash between
+    // `lockRef.create()` here and either the provider call or the tx —
+    // the lock would otherwise stay forever and block every subsequent
+    // refund on this payment. Mitigations:
+    //
+    //   1. `expiresAt` = now + 5 min on the lock doc. The provider
+    //      timeout is 30 s and the tx commits in seconds, so any
+    //      lock older than 5 min is conclusively stale.
+    //   2. TTL policy on `expiresAt` (configured in
+    //      firestore.indexes.json TTL section) — Firestore auto-purges
+    //      docs whose TTL field is in the past, free + zero-ops.
+    //   3. Defensive recovery on 409: if the existing lock is stale,
+    //      a concurrent transaction replaces it and retries the create.
+    //      Bounds worst-case operator-perceived stuck time to 5 min
+    //      even if the TTL purge is delayed.
     const lockRef = db.collection(COLLECTIONS.REFUND_LOCKS).doc(paymentId);
-    try {
+    const lockTtlMs = 5 * 60 * 1000;
+    const lockNow = new Date();
+    const lockExpiresAt = new Date(lockNow.getTime() + lockTtlMs);
+    const tryAcquireLock = async () => {
       await lockRef.create({
         paymentId,
         refundAmount,
         actorId: user.uid,
-        createdAt: new Date().toISOString(),
+        createdAt: lockNow.toISOString(),
+        expiresAt: lockExpiresAt.toISOString(),
       });
+    };
+    try {
+      await tryAcquireLock();
     } catch (err: unknown) {
       if (err && typeof err === "object" && "code" in err && err.code === 6) {
-        throw new ConflictError(
-          "Un remboursement est déjà en cours pour ce paiement. Réessayez dans quelques secondes.",
-        );
+        // Stale-lock recovery — atomically replace any lock whose
+        // `expiresAt` is already in the past. Concurrent recoverers
+        // contend on the same tx; the loser sees a fresh lock and 409s.
+        const recovered = await db.runTransaction(async (tx) => {
+          const existing = await tx.get(lockRef);
+          if (!existing.exists) return false;
+          const data = existing.data() as { expiresAt?: string };
+          const exp = data.expiresAt ? new Date(data.expiresAt).getTime() : 0;
+          if (exp > Date.now()) return false; // genuine in-flight lock — give up
+          tx.delete(lockRef);
+          tx.create(lockRef, {
+            paymentId,
+            refundAmount,
+            actorId: user.uid,
+            createdAt: lockNow.toISOString(),
+            expiresAt: lockExpiresAt.toISOString(),
+            recoveredFromStale: true,
+          });
+          return true;
+        });
+        if (!recovered) {
+          throw new ConflictError(
+            "Un remboursement est déjà en cours pour ce paiement. Réessayez dans quelques secondes.",
+          );
+        }
+      } else {
+        throw err;
       }
-      throw err;
     }
 
     // Call provider refund
     const provider = getProvider(payment.method);
-    let result: { success: boolean; reason?: string };
+    let result: RefundResult;
     try {
       result = await provider.refund(payment.providerTransactionId!, refundAmount);
     } catch (err) {
@@ -647,19 +981,20 @@ export class PaymentService extends BaseService {
         timestamp: failureNow,
       });
 
-      // Surface the specific reason when the provider tags it. Orange
-      // Money in particular never supports programmatic refunds — the
-      // operator has to process the refund via their OM merchant
-      // portal, so a generic "provider refused" error would be
-      // misleading and unhelpful.
-      if (result.reason === "manual_refund_required") {
-        throw new ValidationError(
-          "Ce fournisseur de paiement ne prend pas en charge les remboursements automatiques. " +
-            "Contactez votre point de vente Orange Money ou effectuez le remboursement manuel " +
-            "depuis le portail marchand. Marquez ensuite l'inscription comme annulée.",
-        );
-      }
-      throw new ValidationError("Le remboursement a été refusé par le fournisseur");
+      // P1-19 (audit M7) — surface a disambiguated, operator-actionable
+      // message per reason. Falls back to the generic placeholder for
+      // un-tagged failures (which is now an alarm condition: per the
+      // RefundFailureReason invariant, every provider refund failure
+      // MUST tag the reason). The `details.reason` payload mirrors the
+      // discriminated union so the backoffice UI can render targeted
+      // copy + a "retry" affordance for `network_timeout`.
+      throw new ValidationError(
+        REFUND_FAILURE_MESSAGES[result.reason ?? "provider_error"],
+        {
+          reason: result.reason ?? "provider_error",
+          providerCode: result.providerCode,
+        },
+      );
     }
 
     const now = new Date().toISOString();
@@ -678,12 +1013,31 @@ export class PaymentService extends BaseService {
     //   3. Lock release is inside this transaction — tied to the DB
     //      commit, so a retry on contention doesn't release a lock that
     //      still protects an in-flight provider call.
+    // P1-17 (audit M4) — capture audit attribution fields from inside
+    // the transaction so the `payment.refunded` / `refund.issued`
+    // emits draw from `freshPayment`, not the stale outer snapshot.
+    // The fields (registrationId / eventId / organizationId) are
+    // immutable on payments in practice, so this is defence-in-depth
+    // — but it standardises the "audit-row-from-tx-state" pattern
+    // already followed by `handleWebhook` and `appendLedgerEntry`.
     let isFullRefund = false;
+    let auditAttribution: {
+      registrationId: string;
+      eventId: string;
+      organizationId: string;
+      userId: string;
+    } | null = null;
     await db.runTransaction(async (tx) => {
       const payRef = db.collection(COLLECTIONS.PAYMENTS).doc(paymentId);
       const paySnap = await tx.get(payRef);
       if (!paySnap.exists) throw new NotFoundError("Payment", paymentId);
       const freshPayment = paySnap.data() as Payment;
+      auditAttribution = {
+        registrationId: freshPayment.registrationId,
+        eventId: freshPayment.eventId,
+        organizationId: freshPayment.organizationId,
+        userId: freshPayment.userId,
+      };
 
       // Re-validate against fresh state — a concurrent refund may have
       // completed between the outer read and this transaction.
@@ -708,17 +1062,68 @@ export class PaymentService extends BaseService {
       });
 
       if (isFullRefund) {
+        // P1-03 (audit H4) — Full refund must decrement BOTH
+        // `event.registeredCount` AND the per-ticket-type `soldCount`,
+        // in the SAME transaction. Decrementing only `registeredCount`
+        // (the previous behaviour) caused a slow-burn drift between
+        // the event-level counter and `sum(ticketTypes[].soldCount)`,
+        // which surfaced as spurious `EventFullError`s on subsequent
+        // registrations because the per-ticket-type counter was
+        // artificially inflated.
+        //
+        // We read the registration to recover the original
+        // `ticketTypeId`, then read the event to mutate its
+        // `ticketTypes` array. Both reads happen here — Firestore tx
+        // semantics require all reads before any writes.
         const regRef = db.collection(COLLECTIONS.REGISTRATIONS).doc(freshPayment.registrationId);
+        const eventRef = db.collection(COLLECTIONS.EVENTS).doc(freshPayment.eventId);
+
+        // Reads (must precede writes per Firestore tx rules).
+        const [regSnap, eventSnap] = await Promise.all([tx.get(regRef), tx.get(eventRef)]);
+        if (!regSnap.exists) {
+          throw new NotFoundError("Registration", freshPayment.registrationId);
+        }
+        if (!eventSnap.exists) {
+          throw new NotFoundError("Event", freshPayment.eventId);
+        }
+        const reg = regSnap.data() as { ticketTypeId?: string };
+        const eventData = eventSnap.data() as {
+          ticketTypes?: Array<{ id: string; soldCount?: number }>;
+        };
+
+        // Defensive: rebuild the ticketTypes array with the matching
+        // type's soldCount decremented (clamped at 0 — never negative).
+        // We don't use `FieldValue.increment` on the nested field
+        // because `ticketTypes` is stored as a Firestore array, not a
+        // map; nested-field increment requires map-typed parents.
+        // The array-rebuild pattern is safe here because we're inside
+        // a tx whose read at `eventSnap` is consistent with this
+        // write — see P1-04 for the parallel hardening on the
+        // webhook-success path that uses the same pattern.
+        let updatedTicketTypes: typeof eventData.ticketTypes;
+        if (Array.isArray(eventData.ticketTypes) && reg.ticketTypeId) {
+          const targetId = reg.ticketTypeId;
+          updatedTicketTypes = eventData.ticketTypes.map((tt) =>
+            tt.id === targetId
+              ? { ...tt, soldCount: Math.max(0, (tt.soldCount ?? 0) - 1) }
+              : tt,
+          );
+        }
+
+        // Writes — registration cancel + event counter decrement +
+        // ticketTypes array rebuild, all in one tx.update on each ref.
         tx.update(regRef, {
           status: "cancelled",
           updatedAt: now,
         });
-
-        const eventRef = db.collection(COLLECTIONS.EVENTS).doc(freshPayment.eventId);
-        tx.update(eventRef, {
+        const eventUpdate: Record<string, unknown> = {
           registeredCount: FieldValue.increment(-1),
           updatedAt: now,
-        });
+        };
+        if (updatedTicketTypes) {
+          eventUpdate.ticketTypes = updatedTicketTypes;
+        }
+        tx.update(eventRef, eventUpdate);
       }
 
       // ── Ledger entry ───────────────────────────────────────────────────
@@ -754,15 +1159,32 @@ export class PaymentService extends BaseService {
       tx.delete(lockRef);
     });
 
+    // P1-17 (audit M4) — `auditAttribution` is captured inside the tx
+    // above so the audit / notification events draw from the
+    // transactional re-read instead of the stale outer snapshot.
+    // The non-null assertion is safe: the tx either commits and
+    // populates `auditAttribution` or throws, in which case we never
+    // reach this code path.
+    /* istanbul ignore next */
+    if (!auditAttribution) {
+      throw new Error("auditAttribution missing — tx state was not captured");
+    }
+    const attribution = auditAttribution as {
+      registrationId: string;
+      eventId: string;
+      organizationId: string;
+      userId: string;
+    };
+
     // Generic audit / state-transition event — fires on every successful
     // refund regardless of template routing. Kept so audit consumers,
     // accounting exports, and the admin-facing timeline don't have to
     // track the new refund-specific events.
     eventBus.emit("payment.refunded", {
       paymentId,
-      registrationId: payment.registrationId,
-      eventId: payment.eventId,
-      organizationId: payment.organizationId,
+      registrationId: attribution.registrationId,
+      eventId: attribution.eventId,
+      organizationId: attribution.organizationId,
       amount: refundAmount,
       reason,
       actorId: user.uid,
@@ -777,9 +1199,9 @@ export class PaymentService extends BaseService {
     // with distinct copy without branching off `payment.refunded`.
     eventBus.emit("refund.issued", {
       paymentId,
-      registrationId: payment.registrationId,
-      eventId: payment.eventId,
-      organizationId: payment.organizationId,
+      registrationId: attribution.registrationId,
+      eventId: attribution.eventId,
+      organizationId: attribution.organizationId,
       amount: refundAmount,
       reason,
       actorId: user.uid,

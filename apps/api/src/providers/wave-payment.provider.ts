@@ -7,6 +7,8 @@ import {
   type RefundResult,
   type VerifyWebhookParams,
 } from "./payment-provider.interface";
+import { ProviderError } from "@/errors/app-error";
+import { logProviderError } from "./provider-error-logger";
 
 /**
  * Wave Mobile Money payment provider.
@@ -45,8 +47,23 @@ export class WavePaymentProvider implements PaymentProvider {
     });
 
     if (!response.ok) {
-      const body = await response.text();
-      throw new Error(`Wave API error (${response.status}): ${body}`);
+      // P1-11 — body logged out-of-band via `logProviderError` so it
+      // never reaches the user-facing `Error.message`. The previous
+      // shape concatenated the body into the message and bubbled it
+      // through the global Fastify error handler, exposing Wave's
+      // internal traces to anyone who could trigger a 4xx/5xx.
+      const body = await response.text().catch(() => "");
+      logProviderError({
+        providerName: "wave",
+        operation: "initiate",
+        httpStatus: response.status,
+        body,
+        paymentId: params.paymentId,
+      });
+      throw new ProviderError({
+        providerName: "wave",
+        httpStatus: response.status,
+      });
     }
 
     const data = (await response.json()) as {
@@ -89,21 +106,61 @@ export class WavePaymentProvider implements PaymentProvider {
   }
 
   async refund(providerTransactionId: string, amount: number): Promise<RefundResult> {
-    const response = await fetch(`${WAVE_API_URL}/refunds`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${WAVE_API_KEY}`,
-      },
-      body: JSON.stringify({
-        checkout_session_id: providerTransactionId,
-        amount: String(amount),
-      }),
-      signal: AbortSignal.timeout(30_000),
-    });
+    // P1-19 (audit M7) — map Wave HTTP status + body codes to the
+    // typed `RefundFailureReason` union. Operators see a
+    // disambiguated message (network timeout → retry, insufficient
+    // funds → top up wallet, already refunded → reconcile) instead
+    // of the generic "Le remboursement a été refusé par le fournisseur"
+    // placeholder. Body is logged out-of-band via `logProviderError`
+    // so it never reaches the user-facing surface (P1-11 contract).
+    let response: Response;
+    try {
+      response = await fetch(`${WAVE_API_URL}/refunds`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${WAVE_API_KEY}`,
+        },
+        body: JSON.stringify({
+          checkout_session_id: providerTransactionId,
+          amount: String(amount),
+        }),
+        signal: AbortSignal.timeout(30_000),
+      });
+    } catch (err: unknown) {
+      // Network-layer failure (DNS, TLS, abort on timeout). The fetch
+      // spec emits `name === "AbortError"` (or `TimeoutError` on Node
+      // ≥ 22) for `AbortSignal.timeout`. Either way the right
+      // disambiguation is `network_timeout` — retriable from the
+      // operator dashboard.
+      const isTimeout =
+        err && typeof err === "object" && "name" in err &&
+        (err.name === "AbortError" || err.name === "TimeoutError");
+      logProviderError({
+        providerName: "wave",
+        operation: "refund",
+        httpStatus: 0,
+        body: err instanceof Error ? `${err.name}: ${err.message}` : String(err),
+      });
+      return {
+        success: false,
+        reason: isTimeout ? "network_timeout" : "provider_error",
+      };
+    }
 
     if (!response.ok) {
-      return { success: false };
+      const body = await response.text().catch(() => "");
+      logProviderError({
+        providerName: "wave",
+        operation: "refund",
+        httpStatus: response.status,
+        body,
+      });
+      return {
+        success: false,
+        reason: mapWaveRefundReason(response.status, body),
+        providerCode: extractWaveErrorCode(body),
+      };
     }
 
     const data = (await response.json()) as { id: string };
@@ -148,6 +205,56 @@ function verifyHmacHex(secret: string, body: string, signature: string): boolean
   const expected = crypto.createHmac("sha256", secret).update(body).digest("hex");
   if (expected.length !== signature.length) return false;
   return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature));
+}
+
+// ─── Wave refund error mapping (P1-19) ──────────────────────────────────────
+//
+// Wave's refund API uses both HTTP status AND a body-level `code` slug.
+// Sample error payloads observed in sandbox + reported by community
+// integrators (no public catalog exists, so the mapping is pinned to
+// what we've seen — the default falls through to `provider_error`):
+//
+//   {"code":"refund-already-issued","message":"…"}      → already_refunded
+//   {"code":"insufficient-balance","message":"…"}        → insufficient_funds
+//   {"code":"checkout-session-not-found","message":"…"}  → transaction_not_found
+//   {"code":"checkout-not-eligible-for-refund","…"}      → already_refunded (covers expired window)
+//
+// HTTP status disambiguation (no body code): 404 → not-found, others
+// fall through to `provider_error`.
+
+import type { RefundFailureReason } from "./payment-provider.interface";
+
+const WAVE_CODE_TO_REASON: Record<string, RefundFailureReason> = {
+  "refund-already-issued": "already_refunded",
+  "checkout-not-eligible-for-refund": "already_refunded",
+  "insufficient-balance": "insufficient_funds",
+  "insufficient-funds": "insufficient_funds",
+  "checkout-session-not-found": "transaction_not_found",
+  "refund-not-found": "transaction_not_found",
+};
+
+function mapWaveRefundReason(status: number, body: string): RefundFailureReason {
+  const code = extractWaveErrorCode(body);
+  if (code && WAVE_CODE_TO_REASON[code]) {
+    return WAVE_CODE_TO_REASON[code];
+  }
+  if (status === 404) return "transaction_not_found";
+  if (status === 408) return "network_timeout";
+  return "provider_error";
+}
+
+function extractWaveErrorCode(body: string): string | undefined {
+  if (!body) return undefined;
+  try {
+    const parsed = JSON.parse(body) as { code?: unknown };
+    if (typeof parsed.code === "string" && parsed.code.length > 0 && parsed.code.length <= 128) {
+      return parsed.code;
+    }
+  } catch {
+    // Not JSON — Wave occasionally returns plain-text error pages on
+    // 5xx. Surface no providerCode in that case.
+  }
+  return undefined;
 }
 
 export const wavePaymentProvider = new WavePaymentProvider();

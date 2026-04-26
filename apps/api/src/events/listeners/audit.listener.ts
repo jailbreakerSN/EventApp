@@ -1354,6 +1354,85 @@ export function registerAuditListeners(): void {
     });
   });
 
+  // ── Phase-1 audit follow-up — refund.issued + refund.failed ──
+  // These events are emitted alongside `payment.refunded` (success
+  // path) and ON the failure path. Without dedicated audit handlers,
+  // the failure path leaves zero audit rows: a provider rejection
+  // (Wave returned `insufficient_funds`, OM said `manual refund
+  // required`) silently disappears from the trail. The dedicated
+  // rows let post-incident analysis distinguish:
+  //   - `payment.refunded`: domain state transition (the canonical
+  //     audit row for the refund).
+  //   - `refund.issued`:    customer-facing notification dispatch
+  //     hint — the user's email/SMS template was triggered.
+  //   - `refund.failed`:    money touched the provider but the
+  //     refund itself didn't land. THIS is the row ops needs when
+  //     reconciling after a provider outage.
+  eventBus.on("refund.issued", async (payload) => {
+    await auditService.log({
+      action: "refund.issued",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "payment",
+      resourceId: payload.paymentId,
+      eventId: payload.eventId,
+      organizationId: payload.organizationId,
+      details: {
+        registrationId: payload.registrationId,
+        amount: payload.amount,
+        reason: payload.reason ?? null,
+      },
+    });
+  });
+
+  eventBus.on("refund.failed", async (payload) => {
+    await auditService.log({
+      action: "refund.failed",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "payment",
+      resourceId: payload.paymentId,
+      eventId: payload.eventId,
+      organizationId: payload.organizationId,
+      details: {
+        registrationId: payload.registrationId,
+        amount: payload.amount,
+        failureReason: payload.failureReason,
+      },
+    });
+  });
+
+  // ── P1-21 — payment.bulk_expired ──
+  // Emitted per committed batch by the `expire-stale-payments` admin
+  // job. One audit row per batch (not per row) — the row carries the
+  // `count` so the trail captures bulk mutations without ballooning.
+  // `actorUid` (not `actorId`) on this payload mirrors the
+  // `invite.bulk_expired` shape used by other bulk-job events.
+  eventBus.on("payment.bulk_expired", async (payload) => {
+    await auditService.log({
+      action: "payment.bulk_expired",
+      actorId: payload.actorUid,
+      // Bulk-job events have no HTTP request id (the trigger is the
+      // job runner, not a public route). The runId IS the equivalent
+      // traceability handle, so we prefix it `job:` and pass it as
+      // the requestId — keeps the audit row queryable by trace.
+      requestId: `job:${payload.runId}`,
+      timestamp: payload.processedAt,
+      resourceType: "payment",
+      resourceId: payload.runId,
+      eventId: null,
+      organizationId: null,
+      details: {
+        jobKey: payload.jobKey,
+        runId: payload.runId,
+        count: payload.count,
+        cutoffIso: payload.cutoffIso,
+      },
+    });
+  });
+
   // ── Member role change ────────────────────────────────────────────────
   // Distinct from user.role_changed (admin → global roles): this is the
   // org-scoped membership role update (owner/admin/member → organizer etc).

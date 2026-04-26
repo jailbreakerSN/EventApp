@@ -63,14 +63,24 @@ vi.mock("@/services/payment.service", () => ({
   getProviderForWebhook: () => mockProvider,
 }));
 
-vi.mock("@/providers/mock-payment.provider", () => ({
-  MockPaymentProvider: class {
-    name = "mock";
-    verifyWebhook() {
-      return true;
-    }
-  },
-}));
+vi.mock("@/providers/mock-payment.provider", () => {
+  // P1-16 — mock-checkout /complete route tests need the static
+  // `simulateCallback` to be controllable per-test. We expose a vi.fn
+  // so tests can pin the return value and assert it was (or was NOT)
+  // called depending on whether Zod accepted the body.
+  const simulateCallback = vi.fn();
+  return {
+    MockPaymentProvider: class {
+      name = "mock";
+      verifyWebhook() {
+        return true;
+      }
+      static simulateCallback = simulateCallback;
+      static getState = vi.fn();
+    },
+    __mockSimulateCallback: simulateCallback,
+  };
+});
 
 // T2.1 — webhook events log + replay service. Payment webhook route
 // now calls `.record()` before handling + `.markOutcome()` after. We
@@ -187,12 +197,18 @@ describe("POST /v1/payments/initiate", () => {
       },
     });
     expect(res.statusCode).toBe(201);
+    // Service signature, post-P1-06: (eventId, ticketTypeId, method,
+    // returnUrl, user, opts). The route reads `Idempotency-Key` from
+    // headers and threads it through the `opts` bag — `undefined`
+    // here because this test doesn't set the header (the synthetic
+    // fingerprint takes over server-side).
     expect(mockPaymentService.initiatePayment).toHaveBeenCalledWith(
       "evt-1",
       "t1",
       "mock",
       "http://localhost:3002/return",
       expect.objectContaining({ uid: "participant-1" }),
+      expect.objectContaining({ idempotencyKey: undefined }),
     );
   });
 });
@@ -237,6 +253,95 @@ describe("POST /v1/payments/webhook/:provider", () => {
     });
     expect(res.statusCode).toBe(400);
     expect(mockPaymentService.handleWebhook).not.toHaveBeenCalled();
+  });
+});
+
+// ─── P1-16 (audit M6) — Zod validation on mock-checkout /complete ────────
+//
+// Dev-only route, but staging shares the code path whenever the real
+// provider keys are unset (mock fallback). Without Zod validation, an
+// attacker on staging with a known `txId` could send any body shape
+// and `simulateCallback` would silently process it. The validate
+// middleware enforces:
+//   - txId: non-empty string ≤ 128 chars
+//   - body: exactly { success: boolean }, strict (no extra fields)
+
+describe("POST /v1/payments/mock-checkout/:txId/complete (P1-16)", () => {
+  it("400 when body is empty", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/payments/mock-checkout/mock_tx_1/complete",
+      payload: {},
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it("400 when 'success' is missing", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/payments/mock-checkout/mock_tx_2/complete",
+      payload: { other: true },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it("400 when 'success' is not a boolean", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/payments/mock-checkout/mock_tx_3/complete",
+      payload: { success: "yes" },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it("400 when extra fields are sent (strict mode)", async () => {
+    // Strict mode rejects unknown keys so a malicious caller can't
+    // smuggle `{ success: true, txId: "other-tx" }` to confuse a future
+    // handler that opportunistically reads from the body.
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/payments/mock-checkout/mock_tx_4/complete",
+      payload: { success: true, sneaky: "value" },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it("404 with valid body when txId doesn't match a known mock state", async () => {
+    // Valid Zod-shaped body — Zod passes, then the route asks the mock
+    // provider for the state and gets `null`. 404 is the right
+    // response shape for an unknown txId (matches /webhook/:provider
+    // for unknown providers).
+    const { __mockSimulateCallback } = (await import(
+      "@/providers/mock-payment.provider"
+    )) as unknown as { __mockSimulateCallback: ReturnType<typeof vi.fn> };
+    __mockSimulateCallback.mockReturnValue(null);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/payments/mock-checkout/mock_tx_unknown/complete",
+      payload: { success: true },
+    });
+    expect(res.statusCode).toBe(404);
+    expect(__mockSimulateCallback).toHaveBeenCalledWith("mock_tx_unknown", true);
+  });
+
+  it("200 with valid body and a known txId", async () => {
+    const { __mockSimulateCallback } = (await import(
+      "@/providers/mock-payment.provider"
+    )) as unknown as { __mockSimulateCallback: ReturnType<typeof vi.fn> };
+    __mockSimulateCallback.mockReturnValue({ status: "succeeded" });
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/payments/mock-checkout/mock_tx_ok/complete",
+      payload: { success: false },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(JSON.parse(res.body)).toEqual({
+      success: true,
+      data: { status: "succeeded" },
+    });
+    expect(__mockSimulateCallback).toHaveBeenCalledWith("mock_tx_ok", false);
   });
 });
 

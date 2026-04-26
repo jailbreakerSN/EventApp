@@ -31,16 +31,64 @@ export interface VerifyResult {
   metadata?: Record<string, unknown>;
 }
 
+/**
+ * Discriminated reasons a provider can return when a refund fails.
+ * P1-19 (audit M7) — extended from the original
+ * `manual_refund_required | provider_error` pair so the operator
+ * sees an actionable message (network blip vs. fund issue vs.
+ * unsupported operation) instead of the generic "provider refused"
+ * placeholder.
+ *
+ * Mapping contract:
+ *   - `manual_refund_required` — provider does not support
+ *     programmatic refunds (Orange Money is the canonical case).
+ *     Operator must use the merchant portal.
+ *   - `insufficient_funds` — provider rejected because the merchant
+ *     account has no balance to refund from. Rare but observed on
+ *     Wave when the merchant wallet has been swept by a payout
+ *     between succeeded → refund.
+ *   - `already_refunded` — provider says the source transaction is
+ *     already fully refunded (most often a stale lock or a manual
+ *     refund applied via the portal). Service should reconcile.
+ *   - `transaction_not_found` — provider cannot locate the source
+ *     transaction id. Usually a stale `providerTransactionId` after
+ *     a provider migration; operator must check the original payment.
+ *   - `network_timeout` — fetch timed out before the provider replied.
+ *     Retriable; the operator dashboard surfaces a "retry" affordance.
+ *   - `provider_error` — anything else (5xx, parsing error, unknown
+ *     code). Not retriable from the API path; the operator is paged
+ *     via the dashboard alert.
+ *
+ * INVARIANT: every refund failure path MUST set `reason`. The service
+ * layer's "Le remboursement a été refusé par le fournisseur" fallback
+ * is a debugging fallback only — never the primary signal.
+ */
+export type RefundFailureReason =
+  | "manual_refund_required"
+  | "insufficient_funds"
+  | "already_refunded"
+  | "transaction_not_found"
+  | "network_timeout"
+  | "provider_error";
+
 export interface RefundResult {
   success: boolean;
   providerRefundId?: string;
   /**
    * When `success === false`, a machine-readable tag that explains why
    * the provider refused the refund. Lets the service layer surface a
-   * specific operator-facing message (e.g. "manual refund required")
-   * instead of a generic "provider refused" placeholder.
+   * specific operator-facing message instead of the generic "provider
+   * refused" placeholder. See `RefundFailureReason` for the
+   * discriminator contract + mapping rules.
    */
-  reason?: "manual_refund_required" | "provider_error";
+  reason?: RefundFailureReason;
+  /**
+   * Optional provider-side error code (Wave returns numeric codes,
+   * OM returns string slugs). Surfaced to the operator dashboard for
+   * forensics; never bubbled into the user-facing message because it
+   * may include provider-internal correlation IDs.
+   */
+  providerCode?: string;
 }
 
 /**

@@ -3,6 +3,7 @@ import { pingHandler } from "./handlers/ping";
 import { pruneExpiredInvitesHandler } from "./handlers/prune-expired-invites";
 import { firestoreBackupHandler } from "./handlers/firestore-backup";
 import { firestoreRestoreHandler } from "./handlers/firestore-restore";
+import { expireStalePaymentsHandler } from "./handlers/expire-stale-payments";
 
 /**
  * Registered admin-runner job handlers.
@@ -23,6 +24,10 @@ const handlers = new Map<string, JobHandler>([
   // Sprint-3 T4.3 closure — disaster-recovery surface.
   [firestoreBackupHandler.descriptor.jobKey, firestoreBackupHandler as JobHandler],
   [firestoreRestoreHandler.descriptor.jobKey, firestoreRestoreHandler as JobHandler],
+  // P1-21 (audit L1) — closes the "expired status defined but never
+  // assigned" gap by giving operators a deterministic way to flip
+  // long-stale pending/processing payments to expired.
+  [expireStalePaymentsHandler.descriptor.jobKey, expireStalePaymentsHandler as JobHandler],
 ]);
 
 export function getHandler(jobKey: string): JobHandler | null {

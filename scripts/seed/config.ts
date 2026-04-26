@@ -273,6 +273,15 @@ export const RESETTABLE_COLLECTIONS = [
   "checkinLocks",
   // Refund serialisation locks. Reset-only in staging.
   "refundLocks",
+  // Phase-1 hardening — payment idempotency keys (P1-06) carry 24 h
+  // TTL but a fresh seed should start without inflight claims so demo
+  // retries don't cache last-run paymentIds. Production never resets.
+  "paymentIdempotencyKeys",
+  // Phase-1 hardening — payout idempotency sentinels (P1-01). One
+  // doc per (orgId, eventId, periodFrom, periodTo) tuple. Wiping in
+  // staging lets demo runs re-create payouts on the same period
+  // without going through the super-admin "soft-cancel" flow.
+  "payoutLocks",
   "offlineSync",
   "sponsorLeads",
   "smsLog",
