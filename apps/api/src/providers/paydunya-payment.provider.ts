@@ -1,4 +1,5 @@
 import { createHash, timingSafeEqual } from "node:crypto";
+import qs from "qs";
 import { ProviderError } from "@/errors/app-error";
 import { logProviderError } from "./provider-error-logger";
 import {
@@ -400,24 +401,15 @@ export class PayDunyaPaymentProvider implements PaymentProvider {
       return false;
     }
 
-    const dataStr = extractDataField(params.rawBody);
-    if (!dataStr) return false;
-
-    let payload: { hash?: unknown };
-    try {
-      payload = JSON.parse(dataStr) as { hash?: unknown };
-    } catch {
-      return false;
-    }
-    if (typeof payload.hash !== "string" || payload.hash.length === 0) {
-      return false;
-    }
+    // Accept both wire formats — see `extractHashField` for the matrix.
+    const receivedHash = extractHashField(params.rawBody);
+    if (!receivedHash) return false;
 
     const expected = createHash("sha512").update(masterKey).digest("hex");
     let receivedBuf: Buffer;
     let expectedBuf: Buffer;
     try {
-      receivedBuf = Buffer.from(payload.hash, "hex");
+      receivedBuf = Buffer.from(receivedHash, "hex");
       expectedBuf = Buffer.from(expected, "hex");
     } catch {
       return false;
@@ -430,13 +422,69 @@ export class PayDunyaPaymentProvider implements PaymentProvider {
 }
 
 /**
- * Extract the `data` field from a PayDunya IPN body. The body is
- * `application/x-www-form-urlencoded` with a single key, but we use
- * URLSearchParams rather than a custom parser so quoting + percent-
- * decoding are handled correctly.
+ * Extract the PayDunya IPN payload's `hash` field from the raw body.
  *
- * Exported for tests so the parser contract stays pinned independently
- * of the provider class.
+ * PayDunya's wire format on the IPN callback is `application/x-www-
+ * form-urlencoded`, with two known shapes in the wild:
+ *
+ *   1. `data=<json-stringified-payload>` — single field whose value
+ *      is JSON. Some sandbox modes use this; older docs imply it.
+ *   2. `data[hash]=...&data[invoice][token]=...&data[status]=...` —
+ *      PHP-style nested form encoding. The official PHP doc sample
+ *      uses `$_POST['data']['hash']`, which only works in PHP when
+ *      the body is form-2. The 2026-04-26 staging incident
+ *      (`POST 400 6ms GuzzleHttp/PHP/5.6.40`) was the variant-2 body
+ *      hitting our variant-1-only parser.
+ *
+ * We accept BOTH shapes so the provider works regardless of which
+ * PayDunya pipeline pushed the IPN. `extractHashField` returns the
+ * candidate hash string (hex) for the SHA-512(MasterKey) compare,
+ * or null if neither shape produces one.
+ *
+ * Exported for tests so the parser contract stays pinned
+ * independently of the provider class.
+ */
+export function extractHashField(rawBody: string): string | null {
+  if (typeof rawBody !== "string" || rawBody.length === 0) return null;
+  try {
+    // Variant 1 — `data=<json>`.
+    const params = new URLSearchParams(rawBody);
+    const dataStr = params.get("data");
+    if (dataStr && dataStr.length > 0) {
+      try {
+        const parsed = JSON.parse(dataStr) as { hash?: unknown };
+        if (typeof parsed.hash === "string" && parsed.hash.length > 0) {
+          return parsed.hash;
+        }
+      } catch {
+        // fall through — try variant 2 instead of failing closed
+      }
+    }
+    // Variant 2 — PHP-style nested form encoding `data[hash]=...`.
+    // Bound the parse so a hostile body can't exhaust memory.
+    const parsedNested = qs.parse(rawBody, {
+      depth: 5,
+      parameterLimit: 200,
+      arrayLimit: 50,
+    }) as { data?: { hash?: unknown } };
+    const nestedHash = parsedNested?.data?.hash;
+    if (typeof nestedHash === "string" && nestedHash.length > 0) {
+      return nestedHash;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Backwards-compatible wrapper kept for tests that depended on the
+ * pre-2026-04-26 contract (returns the JSON string verbatim from the
+ * `data=` field). Variant-2 bodies don't have a single string to
+ * return, so this helper returns null for them — callers that need
+ * variant-2 support must use `extractHashField` directly.
+ *
+ * @deprecated Use `extractHashField` instead — handles both wire formats.
  */
 export function extractDataField(rawBody: string): string | null {
   if (typeof rawBody !== "string" || rawBody.length === 0) return null;
