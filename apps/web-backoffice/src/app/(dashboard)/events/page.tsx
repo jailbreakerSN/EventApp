@@ -6,6 +6,7 @@ import type { EventCategory } from "@teranga/shared-types";
 import { useEvents } from "@/hooks/use-events";
 import { formatDate } from "@/lib/utils";
 import { getEventStatusLabel } from "@/lib/event-status";
+import { HealthBadgeMini } from "@/components/event-health/HealthBadgeMini";
 import { Search, Plus, ChevronLeft, ChevronRight, Calendar, MapPin, Users } from "lucide-react";
 import {
   Select,
@@ -206,6 +207,18 @@ export default function EventsPage() {
                       <Users className="h-3.5 w-3.5" />
                       {event.registeredCount ?? 0}
                     </span>
+                  ),
+                },
+                {
+                  key: "health",
+                  header: "Santé",
+                  hideOnMobile: true,
+                  render: (event) => (
+                    <HealthBadgeMini
+                      registeredCount={event.registeredCount ?? 0}
+                      maxAttendees={event.maxAttendees ?? null}
+                      startDate={event.startDate}
+                    />
                   ),
                 },
                 {

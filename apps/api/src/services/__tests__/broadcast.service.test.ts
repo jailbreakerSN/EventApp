@@ -32,6 +32,13 @@ const mockUserRepo = {
   getFcmTokens: vi.fn().mockResolvedValue([]),
 };
 
+// Plan-gate mock — broadcast.service fetches the org only when SMS
+// or WhatsApp channels are requested. Configurable plan so the gate
+// tests can flip to `free`.
+const mockOrgRepo = {
+  findByIdOrThrow: vi.fn(),
+};
+
 vi.mock("@/repositories/broadcast.repository", () => ({
   broadcastRepository: new Proxy(
     {},
@@ -64,6 +71,15 @@ vi.mock("@/repositories/user.repository", () => ({
     {},
     {
       get: (_target, prop) => (mockUserRepo as Record<string, unknown>)[prop as string],
+    },
+  ),
+}));
+
+vi.mock("@/repositories/organization.repository", () => ({
+  organizationRepository: new Proxy(
+    {},
+    {
+      get: (_target, prop) => (mockOrgRepo as Record<string, unknown>)[prop as string],
     },
   ),
 }));
@@ -315,5 +331,82 @@ describe("BroadcastService.listBroadcasts", () => {
     await expect(service.listBroadcasts("ev-1", {}, { page: 1, limit: 20 }, user)).rejects.toThrow(
       "Accès refusé aux ressources de cette organisation",
     );
+  });
+});
+
+// ─── Plan-feature gates on premium channels (SMS + WhatsApp) ──────────────
+
+describe("BroadcastService.sendBroadcast — plan-feature gates", () => {
+  const orgId = "org-1";
+
+  it("throws PlanLimitError when SMS is requested on a free-plan org", async () => {
+    const user = buildOrganizerUser(orgId);
+    const event = buildEvent({ id: "ev-1", organizationId: orgId });
+    mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
+    mockOrgRepo.findByIdOrThrow.mockResolvedValue({ id: orgId, plan: "free" });
+
+    await expect(
+      service.sendBroadcast(
+        {
+          eventId: "ev-1",
+          title: "Rappel",
+          body: "Bonjour",
+          channels: ["sms"],
+          recipientFilter: "all",
+        },
+        user,
+      ),
+    ).rejects.toThrow(/plan/i);
+    expect(mockBroadcastRepo.create).not.toHaveBeenCalled();
+  });
+
+  it("throws PlanLimitError when WhatsApp is requested on a free-plan org", async () => {
+    const user = buildOrganizerUser(orgId);
+    const event = buildEvent({ id: "ev-1", organizationId: orgId });
+    mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
+    mockOrgRepo.findByIdOrThrow.mockResolvedValue({ id: orgId, plan: "free" });
+
+    await expect(
+      service.sendBroadcast(
+        {
+          eventId: "ev-1",
+          title: "Rappel",
+          body: "Bonjour",
+          channels: ["whatsapp"],
+          recipientFilter: "all",
+        },
+        user,
+      ),
+    ).rejects.toThrow(/plan/i);
+    expect(mockBroadcastRepo.create).not.toHaveBeenCalled();
+  });
+
+  it("does NOT fetch the org when only push / in_app / email channels are used", async () => {
+    const user = buildOrganizerUser(orgId);
+    const event = buildEvent({ id: "ev-1", organizationId: orgId });
+    mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
+    // The broadcast.create + downstream calls are mocked to no-op so
+    // the test focuses on the plan-fetch contract: the org repo
+    // should NEVER be hit when only non-gated channels are used.
+    mockBroadcastRepo.create.mockResolvedValue(
+      buildBroadcast({ id: "bc-1", eventId: "ev-1", status: "sending" }),
+    );
+    mockRegistrationRepo.findByEventCursor.mockResolvedValue({ data: [], nextCursor: null });
+    mockBroadcastRepo.update.mockResolvedValue(undefined);
+    mockBroadcastRepo.findByIdOrThrow.mockResolvedValue(
+      buildBroadcast({ id: "bc-1", eventId: "ev-1", status: "sent" }),
+    );
+
+    await service.sendBroadcast(
+      {
+        eventId: "ev-1",
+        title: "Rappel",
+        body: "Bonjour",
+        channels: ["push", "email", "in_app"],
+        recipientFilter: "all",
+      },
+      user,
+    );
+    expect(mockOrgRepo.findByIdOrThrow).not.toHaveBeenCalled();
   });
 });

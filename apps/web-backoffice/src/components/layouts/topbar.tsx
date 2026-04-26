@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { ThemeToggle, NotificationBell, type NotificationBellRow } from "@teranga/shared-ui";
 import { LanguageSwitcher } from "@/components/language-switcher";
+import { EventSwitcher } from "@/components/layouts/event-switcher";
 import { Keyboard, LogOut, Menu, Search, Shield } from "lucide-react";
 import {
   useNotifications,
@@ -170,8 +171,8 @@ export function TopBar({ onShowShortcuts }: TopBarProps) {
 
   return (
     <header className="h-14 bg-card border-b border-border flex items-center justify-between px-4 sm:px-6 shrink-0">
-      {/* Left: hamburger on mobile */}
-      <div className="flex items-center">
+      {/* Left: hamburger on mobile + event switcher (desktop) */}
+      <div className="flex items-center gap-3 min-w-0">
         <button
           onClick={toggle}
           className="lg:hidden p-2 -ml-1 rounded-lg hover:bg-accent motion-safe:transition-colors"
@@ -181,6 +182,7 @@ export function TopBar({ onShowShortcuts }: TopBarProps) {
         >
           <Menu size={20} className="text-foreground" aria-hidden="true" />
         </button>
+        <EventSwitcher />
       </div>
 
       {/* Centre / Left-of-right: Cmd+K trigger */}

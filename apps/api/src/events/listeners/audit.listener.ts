@@ -1852,6 +1852,299 @@ export function registerAuditListeners(): void {
     });
   });
 
+  // ── Phase O6 — WhatsApp opt-in lifecycle (Meta-required consent log) ──
+
+  eventBus.on("whatsapp.opt_in.granted", async (payload) => {
+    // Privacy: do NOT persist `phoneE164` in the audit log (PII).
+    // The phone number lives on the `whatsappOptIns/{id}` doc — an
+    // investigator with `whatsapp:read` joins from `resourceId =
+    // userId` + `organizationId` to retrieve it on demand. Same
+    // treatment as the magic-link recipient email.
+    await auditService.log({
+      action: "whatsapp.opt_in.granted",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "user",
+      resourceId: payload.userId,
+      eventId: null,
+      organizationId: payload.organizationId,
+      details: {
+        reGrant: payload.reGrant,
+      },
+    });
+  });
+
+  eventBus.on("whatsapp.opt_in.revoked", async (payload) => {
+    // Privacy: do NOT persist `phoneE164` here either (PII). Lookup
+    // via the `whatsappOptIns` doc when needed.
+    await auditService.log({
+      action: "whatsapp.opt_in.revoked",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "user",
+      resourceId: payload.userId,
+      eventId: null,
+      organizationId: payload.organizationId,
+      details: {},
+    });
+  });
+
+  eventBus.on("whatsapp.delivery.failed", async (payload) => {
+    await auditService.log({
+      action: "whatsapp.delivery.failed",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "notification",
+      resourceId: payload.messageId,
+      eventId: null,
+      organizationId: null,
+      details: {
+        recipient: payload.recipient,
+        errorCode: payload.errorCode,
+        errorMessage: payload.errorMessage,
+      },
+    });
+  });
+
+  // ── Phase O7 — Participant ops (tags, notes, merge) ───────────────────
+
+  eventBus.on("participant_profile.updated", async (payload) => {
+    await auditService.log({
+      action: "participant_profile.updated",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "user",
+      resourceId: payload.userId,
+      eventId: null,
+      organizationId: payload.organizationId,
+      details: {
+        tags: payload.tags,
+        notesChanged: payload.notesChanged,
+      },
+    });
+  });
+
+  eventBus.on("participant.merged", async (payload) => {
+    await auditService.log({
+      action: "participant.merged",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "user",
+      resourceId: payload.primaryUserId,
+      eventId: null,
+      organizationId: payload.organizationId,
+      details: {
+        secondaryUserId: payload.secondaryUserId,
+        registrationsMoved: payload.registrationsMoved,
+      },
+    });
+  });
+
+  // ── Phase O8 — Live Event Mode (Floor Ops) ─────────────────────────────
+
+  eventBus.on("incident.created", async (payload) => {
+    await auditService.log({
+      action: "incident.created",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "event",
+      resourceId: payload.incidentId,
+      eventId: payload.eventId,
+      organizationId: payload.organizationId,
+      details: { kind: payload.kind, severity: payload.severity },
+    });
+  });
+
+  eventBus.on("incident.updated", async (payload) => {
+    await auditService.log({
+      action: "incident.updated",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "event",
+      resourceId: payload.incidentId,
+      eventId: payload.eventId,
+      organizationId: payload.organizationId,
+      details: payload.changes,
+    });
+  });
+
+  eventBus.on("incident.resolved", async (payload) => {
+    await auditService.log({
+      action: "incident.resolved",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "event",
+      resourceId: payload.incidentId,
+      eventId: payload.eventId,
+      organizationId: payload.organizationId,
+      details: { durationMs: payload.durationMs },
+    });
+  });
+
+  eventBus.on("emergency_broadcast.sent", async (payload) => {
+    await auditService.log({
+      action: "emergency_broadcast.sent",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "event",
+      resourceId: payload.eventId,
+      eventId: payload.eventId,
+      organizationId: payload.organizationId,
+      details: {
+        reason: payload.reason,
+        channels: payload.channels,
+        recipientCount: payload.recipientCount,
+        dispatchedCount: payload.dispatchedCount,
+      },
+    });
+  });
+
+  eventBus.on("staff_message.posted", async (payload) => {
+    // Privacy: we audit the FACT a message was posted (forensic trail)
+    // without persisting the body. The messageId is enough to retrieve
+    // the row during a moderation review.
+    await auditService.log({
+      action: "staff_message.posted",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "event",
+      resourceId: payload.eventId,
+      eventId: payload.eventId,
+      organizationId: payload.organizationId,
+      details: { messageId: payload.messageId },
+    });
+  });
+
+  // ── Post-event report + cohort + payout request (Phase O9) ────────────
+
+  eventBus.on("post_event_report.generated", async (payload) => {
+    await auditService.log({
+      action: "post_event_report.generated",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "event",
+      resourceId: payload.eventId,
+      eventId: payload.eventId,
+      organizationId: payload.organizationId,
+      details: {
+        registered: payload.registered,
+        checkedIn: payload.checkedIn,
+        grossAmount: payload.grossAmount,
+        payoutAmount: payload.payoutAmount,
+      },
+    });
+  });
+
+  eventBus.on("cohort_export.downloaded", async (payload) => {
+    // PII risk — the row count + segment is enough to investigate a
+    // leak. The participant rows themselves never enter the audit log.
+    await auditService.log({
+      action: "cohort_export.downloaded",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "event",
+      resourceId: payload.eventId,
+      eventId: payload.eventId,
+      organizationId: payload.organizationId,
+      details: { segment: payload.segment, rowCount: payload.rowCount },
+    });
+  });
+
+  eventBus.on("payout.requested", async (payload) => {
+    await auditService.log({
+      action: "payout.requested",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "payout",
+      resourceId: payload.payoutId,
+      eventId: payload.eventId,
+      organizationId: payload.organizationId,
+      details: { netAmount: payload.netAmount },
+    });
+  });
+
+  // ── Event templates + magic links (Phase O10) ─────────────────────────
+
+  eventBus.on("event.cloned_from_template", async (payload) => {
+    await auditService.log({
+      action: "event.cloned_from_template",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "event",
+      resourceId: payload.eventId,
+      eventId: payload.eventId,
+      organizationId: payload.organizationId,
+      details: {
+        templateId: payload.templateId,
+        sessionsAdded: payload.sessionsAdded,
+        commsBlueprintsAdded: payload.commsBlueprintsAdded,
+      },
+    });
+  });
+
+  eventBus.on("magic_link.issued", async (payload) => {
+    // Privacy: we record the tokenHash (NEVER the plaintext token) +
+    // role + expiry. The recipient email is intentionally omitted —
+    // it lives on the magicLinks/{tokenHash} Firestore doc for
+    // forensic lookups, but doesn't enter the immutable audit log.
+    await auditService.log({
+      action: "magic_link.issued",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "magic_link",
+      resourceId: payload.tokenHash,
+      eventId: payload.eventId,
+      organizationId: payload.organizationId,
+      details: {
+        role: payload.role,
+        expiresAt: payload.expiresAt,
+      },
+    });
+  });
+
+  eventBus.on("magic_link.used", async (payload) => {
+    await auditService.log({
+      action: "magic_link.used",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "magic_link",
+      resourceId: payload.tokenHash,
+      eventId: payload.eventId,
+      organizationId: payload.organizationId,
+      details: { role: payload.role },
+    });
+  });
+
+  eventBus.on("magic_link.revoked", async (payload) => {
+    await auditService.log({
+      action: "magic_link.revoked",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "magic_link",
+      resourceId: payload.tokenHash,
+      eventId: payload.eventId,
+      organizationId: payload.organizationId,
+      details: { role: payload.role },
+    });
+  });
+
   // ── Subscription Override (Phase 5 — admin per-org assign) ─────────────
 
   eventBus.on("subscription.overridden", async (payload) => {

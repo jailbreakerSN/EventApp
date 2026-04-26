@@ -42,6 +42,12 @@ export const PlanFeaturesSchema = z.object({
   // `false` (sold-out is an obvious upgrade trigger), starter+ ships
   // `true`. Readers use truthy compare so `undefined` is `false`.
   waitlist: z.boolean().optional(),
+  // Phase O6 — WhatsApp Business gating. Same back-compat policy as
+  // `waitlist`: optional on the schema, truthy compare on the
+  // readers. Free + starter ship `false`; pro + enterprise ship
+  // `true` (cf. `PRO_FEATURES` / `ENTERPRISE_FEATURES` in
+  // `organization.types.ts`).
+  whatsappNotifications: z.boolean().optional(),
 });
 
 // Numeric plan limits — Infinity is represented as the literal number in JSON

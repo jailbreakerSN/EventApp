@@ -4,7 +4,12 @@ import { authenticate, requireEmailVerified } from "@/middlewares/auth.middlewar
 import { validate } from "@/middlewares/validate.middleware";
 import { requirePermission, requireAnyPermission } from "@/middlewares/permission.middleware";
 import { registrationService } from "@/services/registration.service";
-import { PaginationSchema, CheckInRequestSchema } from "@teranga/shared-types";
+import { registrationBulkService } from "@/services/registration-bulk.service";
+import {
+  PaginationSchema,
+  CheckInRequestSchema,
+  BulkRegistrationActionSchema,
+} from "@teranga/shared-types";
 
 const RegisterBody = z.object({
   eventId: z.string(),
@@ -314,10 +319,7 @@ export const registrationRoutes: FastifyPluginAsync = async (fastify) => {
     },
     async (request, reply) => {
       const { registrationId } = request.params as z.infer<typeof ParamsWithRegistrationId>;
-      const result = await registrationService.getWaitlistPosition(
-        registrationId,
-        request.user!,
-      );
+      const result = await registrationService.getWaitlistPosition(registrationId, request.user!);
       return reply.send({ success: true, data: result });
     },
   );
@@ -359,6 +361,54 @@ export const registrationRoutes: FastifyPluginAsync = async (fastify) => {
         scannerDeviceId,
         scannerNonce,
       });
+      return reply.send({ success: true, data: result });
+    },
+  );
+
+  // ─── Bulk cancel (Phase O7) ──────────────────────────────────────────
+  // Sequential per-row cancellation; per-row failures are collected
+  // and returned to the UI rather than aborting the whole batch.
+  fastify.post(
+    "/bulk-cancel",
+    {
+      preHandler: [
+        authenticate,
+        requireEmailVerified,
+        requirePermission("registration:cancel_any"),
+        validate({ body: BulkRegistrationActionSchema }),
+      ],
+      schema: {
+        tags: ["Registrations"],
+        summary: "Bulk-cancel many registrations (per-row failures collected)",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const dto = request.body as z.infer<typeof BulkRegistrationActionSchema>;
+      const result = await registrationBulkService.bulkCancel(dto.registrationIds, request.user!);
+      return reply.send({ success: true, data: result });
+    },
+  );
+
+  // ─── Bulk approve (Phase O7) — promote N waitlisted at once ─────────
+  fastify.post(
+    "/bulk-approve",
+    {
+      preHandler: [
+        authenticate,
+        requireEmailVerified,
+        requirePermission("registration:approve"),
+        validate({ body: BulkRegistrationActionSchema }),
+      ],
+      schema: {
+        tags: ["Registrations"],
+        summary: "Bulk-approve many waitlisted registrations",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const dto = request.body as z.infer<typeof BulkRegistrationActionSchema>;
+      const result = await registrationBulkService.bulkApprove(dto.registrationIds, request.user!);
       return reply.send({ success: true, data: result });
     },
   );

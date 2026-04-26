@@ -200,6 +200,34 @@
         }
       }
     },
+    "/v1/events/{eventId}/health": {
+      "get": {
+        "summary": "Compute the event health score (publication, tickets, venue, pace, comms, staff, checkin) + pacing trajectory",
+        "tags": [
+          "Events"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "eventId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
     "/v1/events/{eventId}/publish": {
       "post": {
         "summary": "Publish an event",
@@ -1141,6 +1169,42 @@
     "/v1/registrations/checkin": {
       "post": {
         "summary": "Check-in via QR code",
+        "tags": [
+          "Registrations"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/registrations/bulk-cancel": {
+      "post": {
+        "summary": "Bulk-cancel many registrations (per-row failures collected)",
+        "tags": [
+          "Registrations"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/registrations/bulk-approve": {
+      "post": {
+        "summary": "Bulk-approve many waitlisted registrations",
         "tags": [
           "Registrations"
         ],
@@ -2817,6 +2881,704 @@
             },
             "in": "path",
             "name": "eventId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/events/{eventId}/comms/timeline": {
+      "get": {
+        "summary": "Aggregated comms timeline for the Comms Center",
+        "tags": [
+          "Communications"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "eventId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/comms/templates": {
+      "get": {
+        "summary": "List the seeded communications templates",
+        "tags": [
+          "Communications"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/me/whatsapp/opt-in": {
+      "post": {
+        "summary": "Grant WhatsApp opt-in for the calling user (org-scoped)",
+        "tags": [
+          "WhatsApp"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Revoke a previously-granted WhatsApp opt-in",
+        "tags": [
+          "WhatsApp"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      },
+      "get": {
+        "summary": "Read the current WhatsApp opt-in record (or null)",
+        "tags": [
+          "WhatsApp"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/whatsapp/webhooks/delivery": {
+      "post": {
+        "summary": "Receive Meta WhatsApp delivery status updates",
+        "tags": [
+          "WhatsApp"
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/organizations/{orgId}/participants/{userId}/profile": {
+      "get": {
+        "summary": "Read the org-scoped participant profile (tags + notes)",
+        "tags": [
+          "Participants"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "orgId",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "userId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      },
+      "patch": {
+        "summary": "Update tags and/or organizer notes for a participant",
+        "tags": [
+          "Participants"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "orgId",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "userId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/organizations/{orgId}/participants/bulk-tag": {
+      "post": {
+        "summary": "Bulk add/remove tags across many participants by registration id",
+        "tags": [
+          "Participants"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "orgId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/organizations/{orgId}/participants/duplicates": {
+      "get": {
+        "summary": "List candidate duplicate participant pairs (email/phone normalised)",
+        "tags": [
+          "Participants"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "orgId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/organizations/{orgId}/participants/merge": {
+      "post": {
+        "summary": "Merge a secondary participant into a primary one (atomic)",
+        "tags": [
+          "Participants"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "orgId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/events/{eventId}/live/stats": {
+      "get": {
+        "summary": "Aggregated live dashboard stats (scan rate, queue, no-show, staff online)",
+        "tags": [
+          "LiveOps"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "eventId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/events/{eventId}/live/incidents": {
+      "post": {
+        "summary": "Log a floor-ops incident",
+        "tags": [
+          "LiveOps"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "eventId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      },
+      "get": {
+        "summary": "List recent incidents",
+        "tags": [
+          "LiveOps"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "eventId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/events/{eventId}/live/incidents/{incidentId}": {
+      "patch": {
+        "summary": "Update an incident (status / assignee / resolution note)",
+        "tags": [
+          "LiveOps"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "eventId",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "incidentId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/events/{eventId}/live/staff-messages": {
+      "post": {
+        "summary": "Post a staff radio message for the event",
+        "tags": [
+          "LiveOps"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "eventId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      },
+      "get": {
+        "summary": "List recent staff radio messages (cold-start fallback)",
+        "tags": [
+          "LiveOps"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "eventId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/events/{eventId}/live/emergency-broadcast": {
+      "post": {
+        "summary": "Send an emergency multi-channel broadcast (push + sms + whatsapp)",
+        "tags": [
+          "LiveOps"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "eventId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/events/{eventId}/post-event/report": {
+      "get": {
+        "summary": "Aggregated post-event snapshot (attendance + comms + finance)",
+        "tags": [
+          "PostEvent"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "eventId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/events/{eventId}/post-event/reconciliation": {
+      "get": {
+        "summary": "Per-(method, status) reconciliation matrix for an event",
+        "tags": [
+          "PostEvent"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "eventId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/events/{eventId}/post-event/report.pdf": {
+      "get": {
+        "summary": "Render + upload the post-event PDF and return a signed URL",
+        "tags": [
+          "PostEvent"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "eventId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/events/{eventId}/post-event/cohort.csv": {
+      "get": {
+        "summary": "Download the cohort CSV (attended / no_show / cancelled / all)",
+        "tags": [
+          "PostEvent"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "eventId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/events/{eventId}/post-event/payout-request": {
+      "post": {
+        "summary": "Organizer-initiated payout request for an event",
+        "tags": [
+          "PostEvent"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "eventId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/event-templates/": {
+      "get": {
+        "summary": "List the 8 starter templates available to organizers",
+        "tags": [
+          "EventTemplates"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/event-templates/clone": {
+      "post": {
+        "summary": "Materialise a template into a new event",
+        "tags": [
+          "EventTemplates"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/magic-links/": {
+      "post": {
+        "summary": "Issue a magic link for a speaker / sponsor portal",
+        "tags": [
+          "MagicLinks"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/magic-links/verify": {
+      "get": {
+        "summary": "Verify a magic-link token (no auth — the URL is the credential)",
+        "tags": [
+          "MagicLinks"
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/magic-links/{tokenHash}/revoke": {
+      "post": {
+        "summary": "Revoke a previously-issued magic link",
+        "tags": [
+          "MagicLinks"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "tokenHash",
             "required": true
           }
         ],
@@ -5915,6 +6677,24 @@
     "/v1/me/whoami": {
       "get": {
         "summary": "Return a safe summary of the current caller (API-key integrator probe)",
+        "tags": [
+          "Me"
+        ],
+        "security": [
+          {
+            "BearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response"
+          }
+        }
+      }
+    },
+    "/v1/me/inbox": {
+      "get": {
+        "summary": "Aggregated organizer inbox signals (urgent, today, week, growth, moderation, team)",
         "tags": [
           "Me"
         ],

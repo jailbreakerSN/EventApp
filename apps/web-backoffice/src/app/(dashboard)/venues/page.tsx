@@ -8,12 +8,6 @@ import {
   CardContent,
   Button,
   Skeleton,
-  Breadcrumb,
-  BreadcrumbList,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
   QueryError,
   SectionHeader,
   StatusPill,
@@ -54,7 +48,8 @@ const STATUS_STYLES: Record<
 // ─── Page ───────────────────────────────────────────────────────────────────
 
 export default function VenuesPage() {
-  const tCommon = useTranslations("common"); void tCommon;
+  const tCommon = useTranslations("common");
+  void tCommon;
   const { data, isLoading, isError, refetch } = useMyVenues();
   const createVenue = useCreateVenue();
   const [showCreate, setShowCreate] = useState(false);
@@ -92,21 +87,6 @@ export default function VenuesPage() {
 
   return (
     <div className="space-y-6">
-      {/* Breadcrumb */}
-      <Breadcrumb className="mb-4">
-        <BreadcrumbList>
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <Link href="/dashboard">Tableau de bord</Link>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbPage>Mes Lieux</BreadcrumbPage>
-          </BreadcrumbItem>
-        </BreadcrumbList>
-      </Breadcrumb>
-
       {/* Header */}
       <SectionHeader
         kicker="— ESPACES"

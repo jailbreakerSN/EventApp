@@ -4,6 +4,7 @@ import { RegisterFcmTokenRequestSchema } from "@teranga/shared-types";
 import { authenticate } from "@/middlewares/auth.middleware";
 import { validate } from "@/middlewares/validate.middleware";
 import { fcmTokensService } from "@/services/fcm-tokens.service";
+import { organizerInboxService } from "@/services/organizer-inbox.service";
 
 // ─── Me Routes (Phase C.1 — Web Push + self-service) ────────────────────────
 // Endpoints scoped to the authenticated caller (`request.user`). FCM token
@@ -122,6 +123,28 @@ export const meRoutes: FastifyPluginAsync = async (fastify) => {
           impersonatedBy: user.impersonatedBy ?? null,
         },
       });
+    },
+  );
+
+  // ─── Organizer Inbox (Phase O2 — task-oriented landing) ──────────────
+  // Aggregated 6-category signal set for the caller's organization.
+  // Read-only, safe to poll every 60 s from the frontend.
+  // Permission gating sits inside the service (`event:read` baseline +
+  // `requireOrganizationAccess`) so the route stays a thin controller.
+  fastify.get(
+    "/inbox",
+    {
+      preHandler: [authenticate],
+      schema: {
+        tags: ["Me"],
+        summary:
+          "Aggregated organizer inbox signals (urgent, today, week, growth, moderation, team)",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const data = await organizerInboxService.getInboxSignals(request.user!);
+      return reply.send({ success: true, data });
     },
   );
 };

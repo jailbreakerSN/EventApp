@@ -49,6 +49,10 @@ const FEATURE_LABELS: Record<keyof PlanFeatures, { fr: string; hint?: string }> 
     fr: "Liste d'attente",
     hint: "Active la promotion FIFO sur les événements complets",
   },
+  whatsappNotifications: {
+    fr: "Notifications WhatsApp",
+    hint: "Canal de diffusion WhatsApp Business — opt-in participant requis",
+  },
 };
 
 const DEFAULT_FEATURES: PlanFeatures = {
@@ -63,6 +67,8 @@ const DEFAULT_FEATURES: PlanFeatures = {
   apiAccess: false,
   whiteLabel: false,
   promoCodes: false,
+  waitlist: false,
+  whatsappNotifications: false,
 };
 
 // ─── Types ────────────────────────────────────────────────────────────────
@@ -171,9 +177,7 @@ export function PlanForm({ mode, plan }: PlanFormProps) {
     p?.entitlements && Object.keys(p.entitlements).length > 0
       ? JSON.stringify(p.entitlements, null, 2)
       : "";
-  const [entitlementsJson, setEntitlementsJson] = useState<string>(
-    serializePlanEntitlements(plan),
-  );
+  const [entitlementsJson, setEntitlementsJson] = useState<string>(serializePlanEntitlements(plan));
   const [entitlementsDirty, setEntitlementsDirty] = useState<boolean>(false);
   const [entitlementsError, setEntitlementsError] = useState<string | null>(null);
 
@@ -215,16 +219,12 @@ export function PlanForm({ mode, plan }: PlanFormProps) {
       const result = EntitlementMapSchema.safeParse(parsed);
       if (!result.success) {
         const first = result.error.errors[0];
-        setEntitlementsError(
-          first ? `${first.path.join(".")}: ${first.message}` : "JSON invalide",
-        );
+        setEntitlementsError(first ? `${first.path.join(".")}: ${first.message}` : "JSON invalide");
       } else {
         setEntitlementsError(null);
       }
     } catch (err) {
-      setEntitlementsError(
-        `JSON malformé : ${err instanceof Error ? err.message : String(err)}`,
-      );
+      setEntitlementsError(`JSON malformé : ${err instanceof Error ? err.message : String(err)}`);
     }
   }, [entitlementsJson]);
 
@@ -352,9 +352,7 @@ export function PlanForm({ mode, plan }: PlanFormProps) {
         // parallel and a React Query refetch brought them in — would
         // PATCH `entitlements: null` and silently clear them.
         const entitlementsPatch: Partial<{ entitlements: EntitlementMap | null }> =
-          entitlementsDirty
-            ? { entitlements: parsedEntitlements.value ?? null }
-            : {};
+          entitlementsDirty ? { entitlements: parsedEntitlements.value ?? null } : {};
         await updatePlan.mutateAsync({
           planId: plan.id,
           dto: {
@@ -736,20 +734,19 @@ export function PlanForm({ mode, plan }: PlanFormProps) {
           <p className="text-xs text-muted-foreground">
             Modèle unifié qui remplace les cartes «&nbsp;Fonctionnalités&nbsp;» et
             «&nbsp;Limites&nbsp;» ci-dessus. Les clés suivent la convention{" "}
-            <code className="font-mono">feature.*</code>,{" "}
-            <code className="font-mono">quota.*</code> ou{" "}
-            <code className="font-mono">tiered.*</code>. Laisser vide pour rester sur le
-            modèle classique.
+            <code className="font-mono">feature.*</code>, <code className="font-mono">quota.*</code>{" "}
+            ou <code className="font-mono">tiered.*</code>. Laisser vide pour rester sur le modèle
+            classique.
           </p>
 
           {entitlementsOverrideActive && (
             <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
               <Info className="h-4 w-4 shrink-0 mt-0.5" aria-hidden="true" />
               <div>
-                Ce plan utilise le modèle entitlements. Pour chaque clé présente
-                ci-dessous, la valeur appliquée est celle du JSON&nbsp;; les cartes
-                «&nbsp;Fonctionnalités&nbsp;» et «&nbsp;Limites&nbsp;» restent utilisées
-                comme valeurs par défaut pour les clés non couvertes.
+                Ce plan utilise le modèle entitlements. Pour chaque clé présente ci-dessous, la
+                valeur appliquée est celle du JSON&nbsp;; les cartes «&nbsp;Fonctionnalités&nbsp;»
+                et «&nbsp;Limites&nbsp;» restent utilisées comme valeurs par défaut pour les clés
+                non couvertes.
               </div>
             </div>
           )}

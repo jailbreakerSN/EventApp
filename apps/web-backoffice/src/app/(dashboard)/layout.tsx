@@ -6,6 +6,7 @@ import { X } from "lucide-react";
 import { toast } from "sonner";
 import { Sidebar } from "@/components/layouts/sidebar";
 import { TopBar } from "@/components/layouts/topbar";
+import { OrganizerBreadcrumbs } from "@/components/layouts/organizer-breadcrumbs";
 import { SidebarProvider } from "@/components/layouts/sidebar-context";
 import { BrandedLoader } from "@/components/branded-loader";
 import { CommandPalette } from "@/components/command-palette";
@@ -130,6 +131,14 @@ function DashboardShell({ children }: { children: React.ReactNode }) {
               </button>
             </div>
           )}
+          {/* Organizer overhaul O1 — auto-derived breadcrumbs.
+              Mounted ABOVE <main> so it doesn't scroll with the page
+              content. The component self-hides on landing routes
+              (/dashboard, /inbox) where a single self-referencing
+              crumb is noise. Pages that previously hand-rolled their
+              own breadcrumb header should be migrated to rely on this
+              shared surface to keep IA uniform. */}
+          <OrganizerBreadcrumbs />
           <main id="main-content" className="flex-1 overflow-y-auto p-4 sm:p-6" tabIndex={-1}>
             {children}
           </main>

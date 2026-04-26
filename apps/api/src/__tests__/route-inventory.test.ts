@@ -230,6 +230,12 @@ describe("route inventory", () => {
       // use, ≤ 60 s TTL, Origin-bound, per-IP rate-limited 30/min.
       // Requiring a bearer token would be circular.
       "POST /v1/impersonation/exchange",
+      // Phase O6 — Meta WhatsApp delivery webhook. Meta calls this
+      // endpoint directly with status updates (sent / delivered / read /
+      // failed). Bearer auth can't apply; Meta's `X-Hub-Signature-256`
+      // header is verified by a dedicated middleware (placeholder in
+      // dev — wired to the real HMAC check at production-deploy time).
+      "POST /v1/whatsapp/webhooks/delivery",
     ]);
 
     it("every mutating route authenticates (except the documented webhook list)", () => {
@@ -262,6 +268,12 @@ describe("route inventory", () => {
         "POST /v1/me/fcm-tokens",
         "DELETE /v1/me/fcm-tokens",
         "DELETE /v1/me/fcm-tokens/:tokenFingerprint",
+        // Phase O6 — WhatsApp opt-in: each route mutates the caller's
+        // own consent record. Service derives the doc id from
+        // `request.user.uid` + the supplied organizationId so the
+        // permission gate is intrinsic to the resource's primary key.
+        "POST /v1/me/whatsapp/opt-in",
+        "DELETE /v1/me/whatsapp/opt-in",
         "POST /v1/notifications/:id/read",
         "POST /v1/notifications/read-all",
         "POST /v1/notifications/subscribe",

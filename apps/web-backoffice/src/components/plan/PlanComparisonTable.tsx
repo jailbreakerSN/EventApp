@@ -31,6 +31,7 @@ const FEATURE_LABELS: Record<PlanFeature, string> = {
   whiteLabel: "White-label",
   promoCodes: "Codes promo",
   waitlist: "Liste d'attente",
+  whatsappNotifications: "Notifications WhatsApp",
 };
 
 const LIMIT_ROWS: {

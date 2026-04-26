@@ -97,7 +97,10 @@ export function canViewOrganizerShell(userRoles: readonly UserRole[]): boolean {
  *     oriented home). A super-admin who also holds `organizer` can
  *     cross over to `/dashboard` via the topbar "Voir comme organisateur"
  *     switcher.
- *  2. Organizer roles — `/dashboard`.
+ *  2. Organizer roles — `/inbox` (Phase O2 task-oriented landing — see
+ *     docs/organizer-overhaul/PLAN.md). Pre-O2 this returned `/dashboard`,
+ *     which is a metric panel rather than a "what needs me today?"
+ *     surface; the inbox replaces it as the post-login default.
  *  3. Venue-only roles — `/venues`.
  *  4. Anything else — `/unauthorized`.
  *
@@ -115,7 +118,7 @@ export function canViewOrganizerShell(userRoles: readonly UserRole[]): boolean {
  */
 export function resolveLandingRoute(userRoles: readonly UserRole[]): string {
   if (isAdminRole(userRoles)) return "/admin/inbox";
-  if (isOrganizerRole(userRoles)) return "/dashboard";
+  if (isOrganizerRole(userRoles)) return "/inbox";
   if (isVenueRole(userRoles)) return "/venues";
   return "/unauthorized";
 }

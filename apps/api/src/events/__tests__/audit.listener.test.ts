@@ -633,7 +633,19 @@ describe("Audit Listener", () => {
       // Phase-2 follow-up #2 — `payment.expired` handler tracks
       // both the auto-timeout cron AND the user-initiated cancel
       // of pending_payment registrations.
-      const EXPECTED_HANDLER_COUNT = 104;
+      // Phase O6 — 3 whatsapp.* listeners added (opt_in.granted,
+      // opt_in.revoked, delivery.failed).
+      // Phase O7 — 2 participant ops listeners added
+      // (participant_profile.updated, participant.merged).
+      // Phase O8 — 5 floor-ops listeners added (incident.created /
+      // .updated / .resolved + emergency_broadcast.sent +
+      // staff_message.posted).
+      // Phase O9 — 3 post-event listeners added
+      // (post_event_report.generated, cohort_export.downloaded,
+      // payout.requested).
+      // Phase O10 — 4 listeners added (event.cloned_from_template,
+      // magic_link.issued, magic_link.used, magic_link.revoked).
+      const EXPECTED_HANDLER_COUNT = 121;
 
       expect(registered).toHaveLength(EXPECTED_HANDLER_COUNT);
       // Each registered event name should be unique — a double

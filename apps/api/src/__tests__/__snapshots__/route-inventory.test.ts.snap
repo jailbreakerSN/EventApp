@@ -82,11 +82,14 @@ POST /v1/badges/generate auth emailVerified perms=[badge:generate]
 GET /v1/badges/me/:eventId auth perms=[badge:view_own]
 GET /v1/badges/me/:eventId/pdf auth perms=[badge:view_own]
 GET /v1/badges/offline-sync/:eventId auth perms=[checkin:sync_offline]
+GET /v1/comms/templates auth perms=[broadcast:read]
 GET /v1/conversations auth perms=[messaging:read_own]
 POST /v1/conversations auth emailVerified perms=[messaging:send]
 GET /v1/conversations/:conversationId/messages auth perms=[messaging:read_own]
 POST /v1/conversations/:conversationId/messages auth emailVerified perms=[messaging:send]
 POST /v1/conversations/:conversationId/read auth emailVerified perms=[messaging:read_own]
+GET /v1/event-templates auth perms=[event:create]
+POST /v1/event-templates/clone auth emailVerified perms=[event:create]
 GET /v1/events auth
 POST /v1/events auth emailVerified perms=[event:create]
 DELETE /v1/events/:eventId auth emailVerified perms=[event:delete]
@@ -106,6 +109,7 @@ GET /v1/events/:eventId/checkin/stats auth perms=[checkin:view_log]
 POST /v1/events/:eventId/checkin/sync auth emailVerified perms=[checkin:scan]
 GET /v1/events/:eventId/checkins auth perms=[checkin:view_log]
 POST /v1/events/:eventId/clone auth emailVerified perms=[event:create]
+GET /v1/events/:eventId/comms/timeline auth perms=[broadcast:read]
 GET /v1/events/:eventId/feed auth perms=[feed:read]
 POST /v1/events/:eventId/feed auth emailVerified perms=[feed:create_post]
 DELETE /v1/events/:eventId/feed/:postId auth emailVerified perms=[feed:create_post]
@@ -116,6 +120,19 @@ DELETE /v1/events/:eventId/feed/:postId/comments/:commentId auth emailVerified p
 POST /v1/events/:eventId/feed/:postId/like auth emailVerified perms=[feed:read]
 POST /v1/events/:eventId/feed/:postId/pin auth emailVerified perms=[feed:moderate]
 POST /v1/events/:eventId/feed/upload-url auth emailVerified perms=[feed:create_post]
+GET /v1/events/:eventId/health auth
+POST /v1/events/:eventId/live/emergency-broadcast auth emailVerified perms=[broadcast:send]
+GET /v1/events/:eventId/live/incidents auth perms=[checkin:view_log]
+POST /v1/events/:eventId/live/incidents auth emailVerified perms=[checkin:scan]
+PATCH /v1/events/:eventId/live/incidents/:incidentId auth emailVerified perms=[event:update]
+GET /v1/events/:eventId/live/staff-messages auth perms=[checkin:scan]
+POST /v1/events/:eventId/live/staff-messages auth emailVerified perms=[checkin:scan]
+GET /v1/events/:eventId/live/stats auth perms=[checkin:view_log]
+GET /v1/events/:eventId/post-event/cohort.csv auth perms=[registration:export]
+POST /v1/events/:eventId/post-event/payout-request auth emailVerified perms=[payout:create]
+GET /v1/events/:eventId/post-event/reconciliation auth perms=[payout:read]
+GET /v1/events/:eventId/post-event/report auth perms=[event:read]
+GET /v1/events/:eventId/post-event/report.pdf auth perms=[event:read]
 GET /v1/events/:eventId/promo-codes auth perms=[event:read]
 POST /v1/events/:eventId/promo-codes auth emailVerified perms=[event:update]
 POST /v1/events/:eventId/promo-codes/validate none
@@ -163,9 +180,16 @@ POST /v1/events/sponsors/:sponsorId/upload-url auth emailVerified perms=[sponsor
 POST /v1/impersonation/exchange none
 POST /v1/invites/accept auth emailVerified
 POST /v1/invites/decline auth emailVerified
+POST /v1/magic-links auth emailVerified perms=[event:update]
+POST /v1/magic-links/:tokenHash/revoke auth emailVerified perms=[event:update]
+GET /v1/magic-links/verify none
 DELETE /v1/me/fcm-tokens auth
 POST /v1/me/fcm-tokens auth
 DELETE /v1/me/fcm-tokens/:tokenFingerprint auth
+GET /v1/me/inbox auth
+DELETE /v1/me/whatsapp/opt-in auth
+GET /v1/me/whatsapp/opt-in auth
+POST /v1/me/whatsapp/opt-in auth
 GET /v1/me/whoami auth
 GET /v1/newsletter/confirm none
 POST /v1/newsletter/send auth perms=[platform:manage]
@@ -202,6 +226,11 @@ DELETE /v1/organizations/:orgId/invites/:inviteId auth emailVerified perms=[orga
 DELETE /v1/organizations/:orgId/members auth emailVerified perms=[organization:manage_members]
 POST /v1/organizations/:orgId/members auth emailVerified perms=[organization:manage_members]
 PATCH /v1/organizations/:orgId/members/:memberId/role auth emailVerified perms=[organization:manage_members]
+GET /v1/organizations/:orgId/participants/:userId/profile auth perms=[registration:read_all]
+PATCH /v1/organizations/:orgId/participants/:userId/profile auth emailVerified perms=[registration:read_all]
+POST /v1/organizations/:orgId/participants/bulk-tag auth emailVerified perms=[registration:read_all]
+GET /v1/organizations/:orgId/participants/duplicates auth perms=[registration:read_all]
+POST /v1/organizations/:orgId/participants/merge auth emailVerified perms=[registration:read_all]
 GET /v1/organizations/:orgId/subscription auth perms=[organization:manage_billing]
 POST /v1/organizations/:orgId/subscription/cancel auth emailVerified perms=[organization:manage_billing]
 POST /v1/organizations/:orgId/subscription/downgrade auth emailVerified perms=[organization:manage_billing]
@@ -236,6 +265,8 @@ POST /v1/registrations/:registrationId/approve auth emailVerified perms=[registr
 POST /v1/registrations/:registrationId/cancel auth flags=[any(registration:cancel_any,registration:cancel_own)]
 POST /v1/registrations/:registrationId/cancel-pending auth perms=[registration:cancel_own]
 GET /v1/registrations/:registrationId/waitlist-position auth perms=[registration:read_own]
+POST /v1/registrations/bulk-approve auth emailVerified perms=[registration:approve]
+POST /v1/registrations/bulk-cancel auth emailVerified perms=[registration:cancel_any]
 POST /v1/registrations/checkin auth perms=[checkin:scan]
 GET /v1/registrations/event/:eventId auth perms=[registration:read_all]
 GET /v1/registrations/me auth
@@ -252,5 +283,6 @@ POST /v1/venues/:venueId/approve auth emailVerified perms=[venue:approve]
 GET /v1/venues/:venueId/events none
 POST /v1/venues/:venueId/reactivate auth emailVerified perms=[venue:manage_all]
 POST /v1/venues/:venueId/suspend auth emailVerified perms=[venue:manage_all]
-GET /v1/venues/mine auth"
+GET /v1/venues/mine auth
+POST /v1/whatsapp/webhooks/delivery none"
 `;

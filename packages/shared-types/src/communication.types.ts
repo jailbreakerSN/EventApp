@@ -3,7 +3,13 @@ import { NotificationPreferenceValueSchema } from "./notification-preferences.ty
 
 // ─── Communication Channel ──────────────────────────────────────────────────
 
-export const CommunicationChannelSchema = z.enum(["sms", "email", "push", "in_app"]);
+// Phase O6 — `whatsapp` joins the channel set. WhatsApp is the
+// dominant messaging channel in Senegal; surfacing it as a first-class
+// peer of email/sms/push lets the composer + timeline + notification
+// preferences treat it like any other delivery surface. Plan-gating
+// (`features.whatsappNotifications`) and the opt-in flow live in the
+// backend services — the channel enum itself just declares existence.
+export const CommunicationChannelSchema = z.enum(["sms", "email", "push", "in_app", "whatsapp"]);
 
 export type CommunicationChannel = z.infer<typeof CommunicationChannelSchema>;
 

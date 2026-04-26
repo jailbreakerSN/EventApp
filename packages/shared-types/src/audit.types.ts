@@ -211,6 +211,38 @@ export const AuditActionSchema = z.enum([
   // seen before". Details carry `hashPrefix` + redacted IP + UA
   // hash, never the plaintext key.
   "api_key.verified",
+  // Phase O6 — WhatsApp opt-in lifecycle. Each opt-in / revoke writes
+  // one audit row with the consent metadata (phoneE164, organizationId)
+  // for legal traceability of Meta-required consent.
+  "whatsapp.opt_in.granted",
+  "whatsapp.opt_in.revoked",
+  // Phase O6 — delivery webhook from Meta. We log only `failed` to
+  // keep the audit log readable; sent/delivered/read updates land in
+  // structured logs but not the audit collection.
+  "whatsapp.delivery.failed",
+  // Phase O7 — participant ops (tags / notes / merge). Tag mutations
+  // and notes edits go through profile.updated; merge produces a
+  // dedicated event because the side-effect is much larger
+  // (registrations re-pointed, secondary archived).
+  "participant_profile.updated",
+  "participant.merged",
+  // Phase O8 — Live Event Mode (Floor Ops).
+  "incident.created",
+  "incident.updated",
+  "incident.resolved",
+  "emergency_broadcast.sent",
+  "staff_message.posted",
+  // Phase O9 — Post-event Report + Reconciliation.
+  // `cohort_export` covers both PDF + CSV downloads since both
+  // surface the same scrubbed cohort and exfiltrate participant data.
+  "post_event_report.generated",
+  "cohort_export.downloaded",
+  "payout.requested",
+  // Phase O10 — Event templates + magic links.
+  "event.cloned_from_template",
+  "magic_link.issued",
+  "magic_link.revoked",
+  "magic_link.used",
 ]);
 
 export type AuditAction = z.infer<typeof AuditActionSchema>;

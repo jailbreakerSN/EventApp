@@ -96,6 +96,30 @@ export const COLLECTIONS = {
   NOTIFICATION_PREFERENCES: "notificationPreferences",
   SMS_LOG: "smsLog",
   EMAIL_LOG: "emailLog",
+  // Phase O6 — per-(user, org) WhatsApp opt-in records. One document
+  // per consent grant; revocation flips status + sets revokedAt
+  // rather than deleting the row (audit trail).
+  WHATSAPP_OPT_INS: "whatsappOptIns",
+  // Phase O6 — append-only delivery webhook log (Meta status updates
+  // for outbound WhatsApp messages: sent / delivered / read / failed).
+  WHATSAPP_DELIVERY_LOG: "whatsappDeliveryLog",
+  // Phase O7 — org-scoped participant profile (tags + organizer notes).
+  // One doc per (organizationId, userId) pair; deterministic id makes
+  // get-by-key O(1) and ties cleanly to per-org Firestore rules.
+  PARTICIPANT_PROFILES: "participantProfiles",
+  // Phase O8 — Live Event Mode (Floor Ops).
+  //   - INCIDENTS:     operator-logged signalements per event.
+  //   - STAFF_MESSAGES: in-event chat ("staff radio"), per event.
+  // Both collections are event-scoped via `eventId` field; rules
+  // restrict reads to organizers/co-organizers/staff of that event.
+  INCIDENTS: "incidents",
+  STAFF_MESSAGES: "staffMessages",
+  // Phase O10 — magic-link tokens for speaker/sponsor portals. Doc id
+  // is `sha256(token)` so the plaintext never lives at rest. The
+  // collection is intentionally written + read only by the API
+  // service; participants reach the token via email and the verify
+  // endpoint resolves it server-side.
+  MAGIC_LINKS: "magicLinks",
   SPEAKERS: "speakers",
   SPONSORS: "sponsors",
   SPONSOR_LEADS: "sponsorLeads",

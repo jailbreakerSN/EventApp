@@ -286,6 +286,25 @@ export const RESETTABLE_COLLECTIONS = [
   "sponsorLeads",
   "smsLog",
   "emailLog",
+  // Phase O8 — Live Event Mode (Floor Ops). Reset between runs so
+  // demo events don't carry over stale incidents or staff radio
+  // chatter. No corresponding seed writer ships rows by default;
+  // the data is operator-generated at the live event surface.
+  "incidents",
+  "staffMessages",
+  // Phase O6 — WhatsApp opt-in registry + Meta delivery webhook log.
+  // The opt-in table holds GDPR-relevant consent records; reset in
+  // staging so demos start with a clean roster. The delivery log is
+  // an append-only forensic trail of Meta status callbacks.
+  "whatsappOptIns",
+  "whatsappDeliveryLog",
+  // Phase O7 — org-scoped participant profile (tags + notes). Reset
+  // in staging so the dedup detection fixtures stay deterministic.
+  "participantProfiles",
+  // Phase O10 — magic-link tokens for speaker / sponsor portals.
+  // Doc id = sha256(token); resetting wipes any in-flight test
+  // tokens so demo runs can re-issue without colliding hash keys.
+  "magicLinks",
   // Money
   "receipts",
   "payouts",

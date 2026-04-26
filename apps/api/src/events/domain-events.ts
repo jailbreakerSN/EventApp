@@ -1351,6 +1351,26 @@ export interface DomainEventMap {
   "api_key.revoked": ApiKeyRevokedEvent;
   "api_key.rotated": ApiKeyRotatedEvent;
   "api_key.verified": ApiKeyVerifiedEvent;
+  // Phase O6 — WhatsApp opt-in + delivery
+  "whatsapp.opt_in.granted": WhatsappOptInGrantedEvent;
+  "whatsapp.opt_in.revoked": WhatsappOptInRevokedEvent;
+  "whatsapp.delivery.failed": WhatsappDeliveryFailedEvent;
+  // Phase O7 — Participant ops
+  "participant_profile.updated": ParticipantProfileUpdatedEvent;
+  "participant.merged": ParticipantMergedEvent;
+  // Phase O8 — Live Event Mode (Floor Ops)
+  "incident.created": IncidentCreatedEvent;
+  "incident.updated": IncidentUpdatedEvent;
+  "incident.resolved": IncidentResolvedEvent;
+  "emergency_broadcast.sent": EmergencyBroadcastSentEvent;
+  "staff_message.posted": StaffMessagePostedEvent;
+  "post_event_report.generated": PostEventReportGeneratedEvent;
+  "cohort_export.downloaded": CohortExportDownloadedEvent;
+  "payout.requested": PayoutRequestedEvent;
+  "event.cloned_from_template": EventClonedFromTemplateEvent;
+  "magic_link.issued": MagicLinkIssuedEvent;
+  "magic_link.used": MagicLinkUsedEvent;
+  "magic_link.revoked": MagicLinkRevokedEvent;
   // Plan coupons (Phase 7+ item #7) — redemption itself is captured on
   // the subscription doc + couponRedemptions collection; we only emit
   // lifecycle signals here (create / update / archive).
@@ -1547,6 +1567,202 @@ export interface ApiKeyVerifiedEvent extends BaseEventPayload {
   ipHash: string;
   /** SHA-256 of the user-agent, truncated to 16 hex chars. */
   uaHash: string;
+}
+
+// ─── Phase O6 — WhatsApp opt-in lifecycle + delivery failures ──────────────
+
+/**
+ * Privacy: the audit-bound payload intentionally OMITS the phone
+ * number. The phone lives on the `whatsappOptIns/{userId_orgId}`
+ * doc; an investigator with `whatsapp:read` joins from
+ * `(userId, organizationId)` to retrieve it on demand. Mirror of
+ * the magic-link recipient-email handling — PII does not enter the
+ * immutable audit log per CLAUDE.md.
+ */
+export interface WhatsappOptInGrantedEvent extends BaseEventPayload {
+  userId: string;
+  organizationId: string;
+  /** True when the participant re-grants after a previous revoke. */
+  reGrant: boolean;
+}
+
+export interface WhatsappOptInRevokedEvent extends BaseEventPayload {
+  userId: string;
+  organizationId: string;
+}
+
+export interface WhatsappDeliveryFailedEvent extends BaseEventPayload {
+  /** Meta message id (or `mock-wa-…` in dev). */
+  messageId: string;
+  /** Recipient E.164 phone number. */
+  recipient: string;
+  /** Optional Meta error code. */
+  errorCode: string | null;
+  /** Optional human-readable error from Meta. */
+  errorMessage: string | null;
+}
+
+// ─── Phase O7 — Participant ops (tags / notes / merge) ────────────────────
+
+export interface ParticipantProfileUpdatedEvent extends BaseEventPayload {
+  organizationId: string;
+  userId: string;
+  /** Tags AFTER the update. */
+  tags: string[];
+  /** Whether the notes field was changed (we don't log the value for privacy). */
+  notesChanged: boolean;
+}
+
+export interface ParticipantMergedEvent extends BaseEventPayload {
+  organizationId: string;
+  primaryUserId: string;
+  secondaryUserId: string;
+  /** Number of registrations re-pointed from secondary → primary. */
+  registrationsMoved: number;
+}
+
+// ─── Phase O8 — Live Event Mode (Floor Ops) ──────────────────────────────
+
+export interface IncidentCreatedEvent extends BaseEventPayload {
+  incidentId: string;
+  eventId: string;
+  organizationId: string;
+  kind: string;
+  severity: string;
+}
+
+export interface IncidentUpdatedEvent extends BaseEventPayload {
+  incidentId: string;
+  eventId: string;
+  organizationId: string;
+  changes: Record<string, unknown>;
+}
+
+export interface IncidentResolvedEvent extends BaseEventPayload {
+  incidentId: string;
+  eventId: string;
+  organizationId: string;
+  /** Time in ms between createdAt and resolvedAt — useful for SLA. */
+  durationMs: number;
+}
+
+export interface EmergencyBroadcastSentEvent extends BaseEventPayload {
+  eventId: string;
+  organizationId: string;
+  /** Operator-supplied reason captured at send time. */
+  reason: string;
+  channels: string[];
+  recipientCount: number;
+  dispatchedCount: number;
+}
+
+/**
+ * Phase O8 — Forensic trail for the per-event staff radio. We record
+ * the message id, NOT the body — the body is private chat between
+ * staff during a live event and shouldn't leak into long-term audit.
+ * The id is enough to retrieve the message during an investigation.
+ */
+export interface StaffMessagePostedEvent extends BaseEventPayload {
+  messageId: string;
+  eventId: string;
+  organizationId: string;
+}
+
+/**
+ * Phase O9 — Snapshot of the post-event report at view time. The
+ * payload carries the headline numbers (registered, checked-in,
+ * gross, payout) so the audit row is informative without fetching
+ * the live aggregation again at audit-display time. No PII.
+ */
+export interface PostEventReportGeneratedEvent extends BaseEventPayload {
+  eventId: string;
+  organizationId: string;
+  registered: number;
+  checkedIn: number;
+  grossAmount: number;
+  payoutAmount: number;
+}
+
+/**
+ * Phase O9 — Cohort CSV download. We capture the segment (`attended`
+ * / `no_show` / `cancelled` / `all`) and the row count so the audit
+ * answers "who pulled how many participant rows" without storing the
+ * data itself. PII never enters the audit log.
+ */
+export interface CohortExportDownloadedEvent extends BaseEventPayload {
+  eventId: string;
+  organizationId: string;
+  segment: "attended" | "no_show" | "cancelled" | "all";
+  rowCount: number;
+}
+
+/**
+ * Phase O9 — Payout request (organizer-initiated). Distinct from
+ * `payout.created` (the underlying ledger event) because the payout
+ * service is shared with admin-driven payouts; this event tags the
+ * organizer-initiated path so the audit table can show "Demande de
+ * versement" instead of the generic creation row.
+ */
+export interface PayoutRequestedEvent extends BaseEventPayload {
+  payoutId: string;
+  eventId: string;
+  organizationId: string;
+  netAmount: number;
+}
+
+/**
+ * Phase O10 — event was cloned from a starter template. Distinct from
+ * `event.created` so the audit table can render the templating
+ * origin (and so analytics can aggregate template usage).
+ */
+export interface EventClonedFromTemplateEvent extends BaseEventPayload {
+  eventId: string;
+  organizationId: string;
+  templateId: string;
+  sessionsAdded: number;
+  commsBlueprintsAdded: number;
+}
+
+/**
+ * Phase O10 — magic-link issued. The audit payload carries the
+ * `tokenHash` (Firestore doc id of the persisted record) but NOT the
+ * recipient email or the plaintext token — both are PII / credentials
+ * that don't belong in the immutable audit log per CLAUDE.md. An
+ * investigator with `magic_link:read` joins from the audit row's
+ * `resourceId = tokenHash` to the `magicLinks/{tokenHash}` doc to
+ * retrieve the recipient email when forensics actually need it.
+ */
+export interface MagicLinkIssuedEvent extends BaseEventPayload {
+  tokenHash: string;
+  role: "speaker" | "sponsor";
+  resourceId: string;
+  eventId: string;
+  organizationId: string;
+  expiresAt: string;
+}
+
+/**
+ * Phase O10 — magic-link first use. The "actor" is the link itself
+ * (`magic-link:<hash>`) since we don't have a user uid for an
+ * unauthenticated portal visit.
+ */
+export interface MagicLinkUsedEvent extends BaseEventPayload {
+  tokenHash: string;
+  role: "speaker" | "sponsor";
+  resourceId: string;
+  eventId: string;
+  organizationId: string;
+}
+
+/**
+ * Phase O10 — magic-link revoked by an organizer.
+ */
+export interface MagicLinkRevokedEvent extends BaseEventPayload {
+  tokenHash: string;
+  role: "speaker" | "sponsor";
+  resourceId: string;
+  eventId: string;
+  organizationId: string;
 }
 
 export type DomainEventName = keyof DomainEventMap;

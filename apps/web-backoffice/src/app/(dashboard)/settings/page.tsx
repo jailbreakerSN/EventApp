@@ -13,20 +13,7 @@ import {
 import { firebaseAuth } from "@/lib/firebase";
 import { useAuth } from "@/hooks/use-auth";
 import { User, Shield, Bell, Save, Loader2, Check, Eye, EyeOff, Phone, Globe } from "lucide-react";
-import {
-  Card,
-  CardContent,
-  Button,
-  Input,
-  InlineErrorBanner,
-  Select,
-  Breadcrumb,
-  BreadcrumbList,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from "@teranga/shared-ui";
+import { Card, CardContent, Button, Input, InlineErrorBanner, Select } from "@teranga/shared-ui";
 import { useErrorHandler, type ResolvedError } from "@/hooks/use-error-handler";
 
 // ─── Password strength helper ────────────────────────────────────────────────
@@ -281,21 +268,6 @@ export default function SettingsPage() {
 
   return (
     <div className="max-w-3xl space-y-6">
-      {/* Breadcrumb */}
-      <Breadcrumb className="mb-2">
-        <BreadcrumbList>
-          <BreadcrumbItem>
-            <BreadcrumbLink asChild>
-              <Link href="/">Tableau de bord</Link>
-            </BreadcrumbLink>
-          </BreadcrumbItem>
-          <BreadcrumbSeparator />
-          <BreadcrumbItem>
-            <BreadcrumbPage>Parametres</BreadcrumbPage>
-          </BreadcrumbItem>
-        </BreadcrumbList>
-      </Breadcrumb>
-
       <div>
         <h1 className="text-2xl font-bold text-foreground">{t("settings")}</h1>
         <p className="text-muted-foreground text-sm mt-1">
