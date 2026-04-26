@@ -7,6 +7,8 @@ import {
   type RefundResult,
   type VerifyWebhookParams,
 } from "./payment-provider.interface";
+import { ProviderError } from "@/errors/app-error";
+import { logProviderError } from "./provider-error-logger";
 
 /**
  * Orange Money payment provider.
@@ -52,7 +54,21 @@ async function getAccessToken(): Promise<string> {
   });
 
   if (!response.ok) {
-    throw new Error(`Orange Money OAuth error: ${response.status}`);
+    // P1-11 — raw OAuth body kept off the user-facing error. Logged
+    // via `logProviderError` (request-context aware) so SRE keeps
+    // the diagnostic without leaking provider internals to clients.
+    const body = await response.text().catch(() => "");
+    logProviderError({
+      providerName: "orange_money",
+      operation: "oauth_token",
+      httpStatus: response.status,
+      body,
+    });
+    throw new ProviderError({
+      providerName: "orange_money",
+      httpStatus: response.status,
+      providerCode: "oauth_failed",
+    });
   }
 
   const data = (await response.json()) as { access_token: string; expires_in: number };
@@ -90,15 +106,50 @@ export class OrangeMoneyPaymentProvider implements PaymentProvider {
     });
 
     if (!response.ok) {
-      const body = await response.text();
-      throw new Error(`Orange Money API error (${response.status}): ${body}`);
+      // P1-11 — body NOT concatenated into the error message. Logged
+      // separately via `logProviderError` so the user-facing surface
+      // never carries provider-internal traces.
+      const body = await response.text().catch(() => "");
+      logProviderError({
+        providerName: "orange_money",
+        operation: "initiate",
+        httpStatus: response.status,
+        body,
+        paymentId: params.paymentId,
+      });
+      throw new ProviderError({
+        providerName: "orange_money",
+        httpStatus: response.status,
+      });
     }
 
-    const data = (await response.json()) as {
-      pay_token: string;
-      payment_url: string;
-      notif_token: string;
-    };
+    // P1-10 (audit C4) — raw OM response carries `notif_token`, the
+    // pre-shared symmetric secret OM uses to sign callbacks. Never
+    // store, log, or pass it downstream — explicitly delete it before
+    // the parsed body can be touched by anything else, and narrow the
+    // typed view so callers can't reach for it without changing this
+    // file. Invariant: `notif_token` is configured server-side (env
+    // var ORANGE_MONEY_NOTIF_TOKEN), so we already know it; the API
+    // copy is redundant and dangerous.
+    const raw = (await response.json()) as Record<string, unknown>;
+    if ("notif_token" in raw) {
+      delete raw.notif_token;
+    }
+    const data = raw as { pay_token?: unknown; payment_url?: unknown };
+    if (typeof data.pay_token !== "string" || typeof data.payment_url !== "string") {
+      logProviderError({
+        providerName: "orange_money",
+        operation: "initiate.parse",
+        httpStatus: response.status,
+        body: "missing pay_token / payment_url",
+        paymentId: params.paymentId,
+      });
+      throw new ProviderError({
+        providerName: "orange_money",
+        httpStatus: response.status,
+        providerCode: "malformed_response",
+      });
+    }
 
     return {
       providerTransactionId: data.pay_token,

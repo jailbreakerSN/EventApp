@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import {
   type Payment,
+  type PaymentClientView,
   type PaymentStatus,
   type PaymentMethod,
   type PaymentSummary,
@@ -143,6 +144,33 @@ function assertAllowedReturnUrl(returnUrl: string): string {
     );
   }
   return returnUrl;
+}
+
+// ─── PaymentClientView projection (P1-09 / P1-12) ──────────────────────────
+//
+// Strips two provider-internal fields from any `Payment` before it crosses
+// a public surface:
+//
+//   - `providerMetadata` — raw provider response (OM `notif_token`,
+//     customer phone numbers, internal correlation IDs, …).
+//   - `callbackUrl` — internal webhook URL that reveals our infra
+//     topology and lets a malicious caller bypass our rate-limit by
+//     posting directly to the URL.
+//
+// Every public service method that returns payment data MUST funnel
+// through this helper. The only path allowed to expose the raw shape
+// is the super-admin platform listing, which renders the metadata
+// behind a redaction helper.
+//
+// Snapshot-test enforced: `payment.service.test.ts` →
+// "PaymentClientView projection — no provider internals leak".
+export function toPaymentClientView(payment: Payment): PaymentClientView {
+  const {
+    providerMetadata: _providerMetadata,
+    callbackUrl: _callbackUrl,
+    ...rest
+  } = payment;
+  return rest as PaymentClientView;
 }
 
 // ─── Service ────────────────────────────────────────────────────────────────
@@ -652,19 +680,42 @@ export class PaymentService extends BaseService {
 
   /**
    * Get payment status (for polling from frontend).
+   *
+   * Returns a projected `PaymentClientView` (no `providerMetadata`,
+   * no `callbackUrl`) — the raw `Payment` shape is reserved for the
+   * super-admin platform-management surface, which has its own
+   * redaction helper. P1-09 (audit C3).
+   *
+   * P1-14 (audit cross-org IDOR) — `requireOrganizationAccess` runs
+   * for EVERY non-owner caller, including system-admin roles whose
+   * roles claim might list multiple orgs. The previous shape only
+   * gated `payment:read_all` callers, leaving an org-A admin with a
+   * payment:read_all + cross-org event scope able to read org-B
+   * payments. The new flow:
+   *
+   *   1. owner short-circuit (`payment.userId === user.uid`)
+   *   2. super-admin short-circuit (`platform:manage` implies all)
+   *   3. otherwise: require `payment:read_all` AND
+   *      `requireOrganizationAccess(payment.organizationId)`.
    */
-  async getPaymentStatus(paymentId: string, user: AuthUser): Promise<Payment> {
+  async getPaymentStatus(paymentId: string, user: AuthUser): Promise<PaymentClientView> {
     this.requirePermission(user, "payment:read_own");
     const payment = await paymentRepository.findByIdOrThrow(paymentId);
-    if (payment.userId !== user.uid && !user.roles.some(isAdminSystemRole)) {
+    const isOwner = payment.userId === user.uid;
+    const isSuperAdmin = user.roles.some(isAdminSystemRole);
+    if (!isOwner && !isSuperAdmin) {
       this.requirePermission(user, "payment:read_all");
       this.requireOrganizationAccess(user, payment.organizationId);
     }
-    return payment;
+    return toPaymentClientView(payment);
   }
 
   /**
    * List payments for an event (organizer view).
+   *
+   * Returns projected `PaymentClientView[]` so the org-admin dashboard
+   * never has to know about `providerMetadata` / `callbackUrl`. The
+   * pagination meta is forwarded unchanged. P1-09.
    */
   async listEventPayments(
     eventId: string,
@@ -675,7 +726,11 @@ export class PaymentService extends BaseService {
     this.requirePermission(user, "payment:read_all");
     const event = await eventRepository.findByIdOrThrow(eventId);
     this.requireOrganizationAccess(user, event.organizationId);
-    return paymentRepository.findByEvent(eventId, filters, pagination);
+    const result = await paymentRepository.findByEvent(eventId, filters, pagination);
+    return {
+      data: result.data.map(toPaymentClientView),
+      meta: result.meta,
+    };
   }
 
   /**

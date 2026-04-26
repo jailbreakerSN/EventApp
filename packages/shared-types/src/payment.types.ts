@@ -52,6 +52,32 @@ export const PaymentSchema = z.object({
 
 export type Payment = z.infer<typeof PaymentSchema>;
 
+// ─── Client-facing Projection (P1-09 / P1-12) ────────────────────────────────
+//
+// `Payment` carries provider-internal fields that the customer / organiser-
+// facing surfaces never need:
+//
+//   - `providerMetadata` — raw provider response, may include OM
+//     `notif_token`, customer phone numbers, internal correlation IDs.
+//     Phase-1 audit C3.
+//   - `callbackUrl`      — internal webhook URL built from
+//     `paymentWebhookUrl(method)`. Reveals our infra topology and lets
+//     a malicious caller bypass rate limits by hitting the URL directly.
+//
+// Every public surface (status polling, event listing, summary endpoint)
+// MUST go through `PaymentClientViewSchema`. The only path allowed to
+// return raw `Payment` is the super-admin `platform:manage` listing,
+// which renders the masked metadata behind a redaction helper.
+//
+// Snapshot-test enforced: see `payment.service.test.ts` →
+// "PaymentClientView projection — no provider internals leak".
+export const PaymentClientViewSchema = PaymentSchema.omit({
+  providerMetadata: true,
+  callbackUrl: true,
+});
+
+export type PaymentClientView = z.infer<typeof PaymentClientViewSchema>;
+
 // ─── Request Schemas ─────────────────────────────────────────────────────────
 
 export const InitiatePaymentSchema = z.object({

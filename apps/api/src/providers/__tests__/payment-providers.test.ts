@@ -42,26 +42,60 @@ describe("WavePaymentProvider", () => {
     expect(opts.method).toBe("POST");
   });
 
-  it("throws on Wave API error", async () => {
+  it("throws ProviderError (no body in message) on Wave API error — P1-11", async () => {
+    // Regression guard for P1-11 (audit C5): the previous shape was
+    // `throw new Error(\`Wave API error (\${status}): \${body}\`)` which
+    // surfaced provider-internal traces (Wave's debug breadcrumbs,
+    // sometimes customer phone numbers) to anyone who could trigger a
+    // 4xx/5xx. The new contract:
+    //   - throws `ProviderError` (typed, code: PROVIDER_ERROR, 502)
+    //   - `details.providerName === "wave"`
+    //   - `details.httpStatus === 400`
+    //   - `Error.message` contains NO substring of the raw body
+    //   - body is logged out-of-band via `logProviderError`
+    const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+
     mockFetch.mockResolvedValueOnce({
       ok: false,
       status: 400,
-      text: async () => "Bad request",
+      text: async () => "internal-debug-trace-XYZ",
     });
 
     const { WavePaymentProvider } = await import("../wave-payment.provider");
+    const { ProviderError } = await import("@/errors/app-error");
     const provider = new WavePaymentProvider();
 
-    await expect(
-      provider.initiate({
+    let caught: unknown;
+    try {
+      await provider.initiate({
         paymentId: "pay-1",
         amount: 5000,
         currency: "XOF",
         description: "Test",
         callbackUrl: "http://x",
         returnUrl: "http://x",
-      }),
-    ).rejects.toThrow("Wave API error");
+      });
+    } catch (err) {
+      caught = err;
+    }
+
+    expect(caught).toBeInstanceOf(ProviderError);
+    const e = caught as InstanceType<typeof ProviderError>;
+    expect(e.providerName).toBe("wave");
+    expect(e.httpStatus).toBe(400);
+    expect(e.code).toBe("PROVIDER_ERROR");
+    expect(e.statusCode).toBe(502);
+    // Body MUST NOT appear in the user-facing message.
+    expect(e.message).not.toContain("internal-debug-trace-XYZ");
+
+    // Body MUST appear in the structured stderr log so SRE keeps the
+    // diagnostic.
+    const stderrCalls = stderrSpy.mock.calls.flat().join("");
+    expect(stderrCalls).toContain("internal-debug-trace-XYZ");
+    expect(stderrCalls).toContain('"providerName":"wave"');
+    expect(stderrCalls).toContain('"operation":"initiate"');
+
+    stderrSpy.mockRestore();
   });
 
   it("verifies payment status", async () => {
@@ -147,28 +181,102 @@ describe("OrangeMoneyPaymentProvider", () => {
     expect(result.redirectUrl).toContain("om.orange.sn");
   });
 
-  it("throws on OM API error", async () => {
+  it("throws ProviderError (no body in message) on OM API error — P1-11", async () => {
+    // Regression guard for P1-11 (audit C5) — same contract as the
+    // Wave equivalent above: structured ProviderError, body logged
+    // out-of-band, never concatenated into the user-facing message.
+    const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+
     // OAuth token may be cached from prior test, so mock payment call as first or second
     mockFetch.mockImplementation(async (url: string) => {
       if (typeof url === "string" && url.includes("oauth")) {
         return { ok: true, json: async () => ({ access_token: "token_err", expires_in: 3600 }) };
       }
-      return { ok: false, status: 500, text: async () => "Server error" };
+      return {
+        ok: false,
+        status: 500,
+        text: async () => "om-internal-trace-ABC",
+      };
     });
 
     const { OrangeMoneyPaymentProvider } = await import("../orange-money-payment.provider");
+    const { ProviderError } = await import("@/errors/app-error");
     const provider = new OrangeMoneyPaymentProvider();
 
-    await expect(
-      provider.initiate({
+    let caught: unknown;
+    try {
+      await provider.initiate({
         paymentId: "pay-2",
         amount: 10000,
         currency: "XOF",
         description: "Test",
         callbackUrl: "http://x",
         returnUrl: "http://x",
-      }),
-    ).rejects.toThrow("Orange Money API error");
+      });
+    } catch (err) {
+      caught = err;
+    }
+
+    expect(caught).toBeInstanceOf(ProviderError);
+    const e = caught as InstanceType<typeof ProviderError>;
+    expect(e.providerName).toBe("orange_money");
+    expect(e.httpStatus).toBe(500);
+    expect(e.message).not.toContain("om-internal-trace-ABC");
+
+    const stderrCalls = stderrSpy.mock.calls.flat().join("");
+    expect(stderrCalls).toContain("om-internal-trace-ABC");
+    expect(stderrCalls).toContain('"providerName":"orange_money"');
+
+    stderrSpy.mockRestore();
+  });
+
+  it("strips notif_token from OM initiate response — P1-10", async () => {
+    // Regression guard for P1-10 (audit C4): the OM initiate response
+    // carries `notif_token` (the pre-shared symmetric secret OM uses
+    // to sign callbacks). The provider MUST explicitly delete it
+    // BEFORE the parsed body can be observed by anything else, so it
+    // can't end up in `providerMetadata`, audit logs, or the returned
+    // `InitiateResult`.
+    mockFetch.mockReset();
+    // First call: OAuth token (cache may already be warm; mock both
+    // shapes via mockImplementation so the test is order-independent).
+    mockFetch.mockImplementation(async (url: string) => {
+      if (typeof url === "string" && url.includes("oauth")) {
+        return {
+          ok: true,
+          json: async () => ({ access_token: "token_strip", expires_in: 3600 }),
+        };
+      }
+      return {
+        ok: true,
+        json: async () => ({
+          pay_token: "om_strip_pay",
+          payment_url: "https://om.orange.sn/pay/strip",
+          // The dangerous field — verify it does not surface anywhere.
+          notif_token: "SUPER-SECRET-NOTIF-TOKEN-DO-NOT-LEAK",
+        }),
+      };
+    });
+
+    const { OrangeMoneyPaymentProvider } = await import("../orange-money-payment.provider");
+    const provider = new OrangeMoneyPaymentProvider();
+
+    const result = await provider.initiate({
+      paymentId: "pay-3",
+      amount: 7500,
+      currency: "XOF",
+      description: "Strip notif_token test",
+      callbackUrl: "http://x",
+      returnUrl: "http://x",
+    });
+
+    expect(result.providerTransactionId).toBe("om_strip_pay");
+    expect(result.redirectUrl).toBe("https://om.orange.sn/pay/strip");
+    // Belt-and-suspenders: serialise the whole result and ensure no
+    // substring of the secret survives.
+    const serialised = JSON.stringify(result);
+    expect(serialised).not.toContain("SUPER-SECRET-NOTIF-TOKEN-DO-NOT-LEAK");
+    expect(serialised).not.toContain("notif_token");
   });
 
   it("refund is not supported and returns {success:false, reason:'manual_refund_required'}", async () => {

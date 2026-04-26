@@ -187,12 +187,18 @@ describe("POST /v1/payments/initiate", () => {
       },
     });
     expect(res.statusCode).toBe(201);
+    // Service signature, post-P1-06: (eventId, ticketTypeId, method,
+    // returnUrl, user, opts). The route reads `Idempotency-Key` from
+    // headers and threads it through the `opts` bag — `undefined`
+    // here because this test doesn't set the header (the synthetic
+    // fingerprint takes over server-side).
     expect(mockPaymentService.initiatePayment).toHaveBeenCalledWith(
       "evt-1",
       "t1",
       "mock",
       "http://localhost:3002/return",
       expect.objectContaining({ uid: "participant-1" }),
+      expect.objectContaining({ idempotencyKey: undefined }),
     );
   });
 });

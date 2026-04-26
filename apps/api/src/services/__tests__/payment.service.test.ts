@@ -550,6 +550,68 @@ describe("PaymentService.getPaymentStatus", () => {
       "Permission manquante",
     );
   });
+
+  // ── P1-09 (audit C3) — PaymentClientView projection ──────────────────────
+  it("returns a PaymentClientView (no providerMetadata, no callbackUrl) for owner — P1-09", async () => {
+    const user = buildAuthUser({ roles: ["participant"] });
+    const payment = buildPayment({
+      userId: user.uid,
+      // Both fields populated to prove the projection actually strips
+      // them — the previous shape returned the raw `Payment` shape and
+      // these would have surfaced unredacted.
+      providerMetadata: { secret_internal: "DO-NOT-LEAK" },
+      callbackUrl: "http://api.teranga.app/v1/payments/webhook/wave",
+    });
+    mockPaymentRepo.findByIdOrThrow.mockResolvedValue(payment);
+
+    const result = await service.getPaymentStatus(payment.id, user);
+
+    expect(result.id).toBe(payment.id);
+    // The projection removes these two fields. They MUST NOT appear
+    // even as `null` — `omit()` removes the key entirely.
+    expect("providerMetadata" in result).toBe(false);
+    expect("callbackUrl" in result).toBe(false);
+    // Belt-and-suspenders: serialise + grep for the secret string.
+    const serialised = JSON.stringify(result);
+    expect(serialised).not.toContain("DO-NOT-LEAK");
+    expect(serialised).not.toContain("/payments/webhook");
+  });
+
+  it("returns a PaymentClientView for org admin — P1-09", async () => {
+    const orgId = "org-projection";
+    const admin = buildOrganizerUser(orgId);
+    const payment = buildPayment({
+      userId: "other-user",
+      organizationId: orgId,
+      providerMetadata: { internal_trace: "PROVIDER-INTERNAL-XYZ" },
+      callbackUrl: "http://api.teranga.app/v1/payments/webhook/orange_money",
+    });
+    mockPaymentRepo.findByIdOrThrow.mockResolvedValue(payment);
+
+    const result = await service.getPaymentStatus(payment.id, admin);
+
+    expect("providerMetadata" in result).toBe(false);
+    expect("callbackUrl" in result).toBe(false);
+    expect(JSON.stringify(result)).not.toContain("PROVIDER-INTERNAL-XYZ");
+  });
+
+  // ── P1-14 (audit cross-org IDOR) ─────────────────────────────────────────
+  it("rejects an org-A admin trying to read an org-B payment with a 'payment:read_all' role — P1-14", async () => {
+    // Cross-org IDOR regression guard. Org-A admin holds
+    // `payment:read_all` (org-scoped). They should NOT be able to read
+    // a payment belonging to org-B even by URL-trying its id, because
+    // `requireOrganizationAccess` runs in the non-owner branch.
+    const orgAAdmin = buildOrganizerUser("org-A");
+    const orgBPayment = buildPayment({
+      userId: "victim-user",
+      organizationId: "org-B",
+    });
+    mockPaymentRepo.findByIdOrThrow.mockResolvedValue(orgBPayment);
+
+    await expect(service.getPaymentStatus(orgBPayment.id, orgAAdmin)).rejects.toThrow(
+      "Accès refusé",
+    );
+  });
 });
 
 // ─── listEventPayments ─────────────────────────────────────────────────────
@@ -607,6 +669,33 @@ describe("PaymentService.listEventPayments", () => {
     await expect(
       service.listEventPayments("ev-1", {}, { page: 1, limit: 20 }, otherOrgUser),
     ).rejects.toThrow("Accès refusé");
+  });
+
+  // ── P1-09 (audit C3) — projection on the list endpoint too ───────────────
+  it("returns PaymentClientView[] (no provider internals) on the org listing — P1-09", async () => {
+    mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
+    const dirty = buildPayment({
+      eventId: "ev-1",
+      providerMetadata: { secret_om_internal: "MUST-NOT-SURFACE" },
+      callbackUrl: "http://api.teranga.app/v1/payments/webhook/wave",
+    });
+    mockPaymentRepo.findByEvent.mockResolvedValue({
+      data: [dirty],
+      meta: { total: 1, page: 1, limit: 20, totalPages: 1 },
+    });
+
+    const result = await service.listEventPayments(
+      "ev-1",
+      {},
+      { page: 1, limit: 20 },
+      organizer,
+    );
+
+    expect(result.data).toHaveLength(1);
+    const [row] = result.data;
+    expect("providerMetadata" in row).toBe(false);
+    expect("callbackUrl" in row).toBe(false);
+    expect(JSON.stringify(result.data)).not.toContain("MUST-NOT-SURFACE");
   });
 });
 

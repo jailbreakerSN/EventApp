@@ -7,6 +7,8 @@ import {
   type RefundResult,
   type VerifyWebhookParams,
 } from "./payment-provider.interface";
+import { ProviderError } from "@/errors/app-error";
+import { logProviderError } from "./provider-error-logger";
 
 /**
  * Wave Mobile Money payment provider.
@@ -45,8 +47,23 @@ export class WavePaymentProvider implements PaymentProvider {
     });
 
     if (!response.ok) {
-      const body = await response.text();
-      throw new Error(`Wave API error (${response.status}): ${body}`);
+      // P1-11 — body logged out-of-band via `logProviderError` so it
+      // never reaches the user-facing `Error.message`. The previous
+      // shape concatenated the body into the message and bubbled it
+      // through the global Fastify error handler, exposing Wave's
+      // internal traces to anyone who could trigger a 4xx/5xx.
+      const body = await response.text().catch(() => "");
+      logProviderError({
+        providerName: "wave",
+        operation: "initiate",
+        httpStatus: response.status,
+        body,
+        paymentId: params.paymentId,
+      });
+      throw new ProviderError({
+        providerName: "wave",
+        httpStatus: response.status,
+      });
     }
 
     const data = (await response.json()) as {
