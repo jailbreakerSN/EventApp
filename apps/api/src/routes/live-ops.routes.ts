@@ -63,6 +63,10 @@ export const liveOpsRoutes: FastifyPluginAsync = async (fastify) => {
   );
 
   // ─── Incidents ───────────────────────────────────────────────────────
+  // W10-P2 / S3 — incident creation is the floor-ops abuse surface (a
+  // hijacked staff session could spam fake incidents to drown the
+  // real ones). 30/min lets a busy event log every legitimate
+  // incident (typical ceiling: ~5 per hour) without enabling DoS.
   fastify.post(
     "/:eventId/live/incidents",
     {
@@ -72,6 +76,9 @@ export const liveOpsRoutes: FastifyPluginAsync = async (fastify) => {
         requirePermission("checkin:scan"),
         validate({ params: ParamsWithEventId, body: CreateIncidentSchema }),
       ],
+      config: {
+        rateLimit: { max: 30, timeWindow: "1 minute" },
+      },
       schema: {
         tags: ["LiveOps"],
         summary: "Log a floor-ops incident",
@@ -132,6 +139,9 @@ export const liveOpsRoutes: FastifyPluginAsync = async (fastify) => {
   );
 
   // ─── Staff messages ──────────────────────────────────────────────────
+  // W10-P2 / S3 — staff radio is rate-limited symmetrically with
+  // incidents (30/min). Two staff coordinating a busy gate can each
+  // post comfortably within the budget.
   fastify.post(
     "/:eventId/live/staff-messages",
     {
@@ -141,6 +151,9 @@ export const liveOpsRoutes: FastifyPluginAsync = async (fastify) => {
         requirePermission("checkin:scan"),
         validate({ params: ParamsWithEventId, body: CreateStaffMessageSchema }),
       ],
+      config: {
+        rateLimit: { max: 30, timeWindow: "1 minute" },
+      },
       schema: {
         tags: ["LiveOps"],
         summary: "Post a staff radio message for the event",

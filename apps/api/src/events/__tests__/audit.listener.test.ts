@@ -300,7 +300,11 @@ describe("Audit Listener", () => {
     expect(auditService.log).toHaveBeenCalledTimes(18);
   });
 
-  it("logs newsletter.subscriber_created with subscriber id + email", async () => {
+  it("logs newsletter.subscriber_created with subscriber id + source (PII redacted)", async () => {
+    // W10-P2 / S4 — email is NOT persisted on the audit row; it lives
+    // on `newsletterSubscribers/{subscriberId}` so investigators can
+    // join via resourceId. Senegal Loi 2008-12 erasure stays
+    // single-collection.
     eventBus.emit("newsletter.subscriber_created", {
       subscriberId: "sub-42",
       email: "sub@test.com",
@@ -320,13 +324,19 @@ describe("Audit Listener", () => {
       resourceId: "sub-42",
       eventId: null,
       organizationId: null,
-      details: { email: "sub@test.com", source: "website" },
+      details: { source: "website" },
     });
+    // Defensive: prove the email did NOT slip into details.
+    const call = (auditService.log as ReturnType<typeof vi.fn>).mock.calls.find(
+      ([entry]) => entry.action === "newsletter.subscriber_created",
+    );
+    expect(JSON.stringify(call?.[0]?.details ?? {})).not.toContain("sub@test.com");
   });
 
-  it("logs newsletter.subscriber_confirmed with email + confirmedAt (consent trail)", async () => {
-    // GDPR/CASL: the audit log entry for this event is the legally
-    // defensible "when did the user consent" record.
+  it("logs newsletter.subscriber_confirmed with confirmedAt only (PII redacted, consent trail intact)", async () => {
+    // The consent record = (resourceId = subscriberId, confirmedAt). The
+    // email lives on the parent doc; together they still form a legally
+    // defensible CASL/GDPR consent trail. W10-P2 / S4 redaction.
     eventBus.emit("newsletter.subscriber_confirmed", {
       subscriberId: "sub-99",
       email: "confirmed@test.com",
@@ -346,11 +356,12 @@ describe("Audit Listener", () => {
       resourceId: "sub-99",
       eventId: null,
       organizationId: null,
-      details: {
-        email: "confirmed@test.com",
-        confirmedAt: "2026-04-21T12:30:00.000Z",
-      },
+      details: { confirmedAt: "2026-04-21T12:30:00.000Z" },
     });
+    const call = (auditService.log as ReturnType<typeof vi.fn>).mock.calls.find(
+      ([entry]) => entry.action === "newsletter.subscriber_confirmed",
+    );
+    expect(JSON.stringify(call?.[0]?.details ?? {})).not.toContain("confirmed@test.com");
   });
 
   it("logs newsletter.sent with actor + broadcast id + subject", async () => {

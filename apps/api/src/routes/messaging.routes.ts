@@ -12,6 +12,13 @@ import { z } from "zod";
 
 const ConversationIdParams = z.object({ conversationId: z.string() });
 
+// W10-P2 / S3 — messaging mutation rate limit. 30 sends per minute is
+// generous for live event chat (a participant DM-ing the organiser
+// during a session) and bounds spammers below the rate where moderators
+// could inspect every conversation. Applies to send + create-conv +
+// mark-read uniformly.
+const MESSAGING_MUTATION_RATE_LIMIT = { max: 30, timeWindow: "1 minute" } as const;
+
 export async function messagingRoutes(app: FastifyInstance) {
   // ─── Create or get conversation ─────────────────────────────────────────
   app.post(
@@ -23,6 +30,7 @@ export async function messagingRoutes(app: FastifyInstance) {
         requirePermission("messaging:send"),
         validate({ body: CreateConversationSchema }),
       ],
+      config: { rateLimit: MESSAGING_MUTATION_RATE_LIMIT },
     },
     async (request, reply) => {
       const dto = request.body as z.infer<typeof CreateConversationSchema>;
@@ -58,6 +66,7 @@ export async function messagingRoutes(app: FastifyInstance) {
         requirePermission("messaging:send"),
         validate({ params: ConversationIdParams, body: SendMessageSchema }),
       ],
+      config: { rateLimit: MESSAGING_MUTATION_RATE_LIMIT },
     },
     async (request, reply) => {
       const { conversationId } = request.params as z.infer<typeof ConversationIdParams>;
@@ -95,6 +104,7 @@ export async function messagingRoutes(app: FastifyInstance) {
         requirePermission("messaging:read_own"),
         validate({ params: ConversationIdParams }),
       ],
+      config: { rateLimit: MESSAGING_MUTATION_RATE_LIMIT },
     },
     async (request, reply) => {
       const { conversationId } = request.params as z.infer<typeof ConversationIdParams>;
