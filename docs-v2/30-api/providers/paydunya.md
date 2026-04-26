@@ -1,12 +1,21 @@
 ---
 title: PayDunya — Intégration Provider
-status: planned
+status: shipped (hosted-checkout) / planned (SOFTPAY + disbursements)
 last_updated: 2026-04-26
 ---
 
 # PayDunya — Intégration Provider
 
-> **Statut : planifié (Phase 2)** — Cette documentation formalise l'intégration PayDunya en tant que **provider agrégateur unique** pour les paiements Wave, Orange Money, Free Money et carte bancaire dans la zone WAEMU. Le provider PayDunya n'est pas encore implémenté ; il remplacera les clients directs Wave et Orange Money à l'issue de la Phase 2 du plan de durcissement paiements.
+> **Statut : Phase 2 partiellement livrée** — Le provider `PayDunyaPaymentProvider` est **implémenté et activable en production via env-flag** (cf. §1.2 ci-dessous). Couvre :
+>
+> - ✅ Hosted checkout (initiate + redirect)
+> - ✅ IPN webhook (signature SHA-512 + anti-tampering invariants)
+> - ✅ Verify (réconciliation tardive — Phase 3 callers)
+> - 🔲 SOFTPAY direct flow — Phase 3
+> - 🔲 Disbursement API v2 — Phase 4
+> - 🔲 Refund API — pas de support PayDunya en 2026-04 (`manual_refund_required`)
+>
+> **Activation production** : positionner les 3 secrets `PAYDUNYA_MASTER_KEY` / `PAYDUNYA_PRIVATE_KEY` / `PAYDUNYA_TOKEN`. Pour rollback d'urgence vers Wave/OM directs : `LEGACY_PROVIDER=true`.
 >
 > **Décisions verrouillées (Phase 0 audit) :**
 > - **D1** : PayDunya est notre seul intégrateur paiement à terme (modèle agrégateur).
@@ -820,29 +829,41 @@ PayDunya ne publie pas de SLA officiel. Observations communauté + intégrateurs
 
 ---
 
-## 15. Checklist d'intégration (Phase 2)
+## 15. Checklist d'intégration
 
-À cocher avant merge de la PR Phase 2 :
+### 15.1 Phase 2 — livrée dans ce sprint
 
-- [ ] `PayDunyaPaymentProvider` implémente les 4 méthodes de l'interface
-- [ ] Secrets dans GCP Secret Manager (3 clés × 2 envs)
-- [ ] `assertRequiredSecrets()` au boot refuse `PAYDUNYA_MODE === "live"` sans clés
+- [x] `PayDunyaPaymentProvider` implémente les 4 méthodes de l'interface (`apps/api/src/providers/paydunya-payment.provider.ts`)
+- [x] Boot-time assertion `assertProviderSecrets` refuse une demi-config (MasterKey sans Private/Token) — incluant les 3 cas tests des combinaisons partielles
+- [x] Body parser Fastify dédié `application/x-www-form-urlencoded` scopé aux routes `/webhook/*` (rawBody capturé pour la signature, projection canonique pour le handler)
+- [x] `verifyWebhook()` implémente SHA-512(MasterKey) + `timingSafeEqual` + length-check (P1-25 invariant)
+- [x] Anti-tampering invariants dans `payment.service.ts:handleWebhook` : `expectedAmount` + `expectedPaymentId` cross-check via metadata
+- [x] `ProviderError` typé avec retry policy : codes `50` / `99` retriables, `4004` / `42` not-found, le reste fatal
+- [x] Mapping de statut complet (`completed` / `pending` / `cancelled` / `failed` / `expired`) — `pending` et statuts inconnus tombent en `pending` défensif
+- [x] `refund()` retourne `{ success: false, reason: "manual_refund_required" }` ; le service surface une copie française opérateur ("Contactez votre point de vente …")
+- [x] Tests provider exhaustifs : 31 cas (initiate happy + 5 erreurs + verify happy + 4 fallbacks + refund + 11 verifyWebhook + 6 extractDataField)
+- [x] Tests anti-tampering dans le service (5 cas) + tests route webhook (5 cas IPN form-encoded)
+- [x] Boot-time secret extension `assertProviderSecrets` (8 nouveaux cas test)
+- [x] Plan rollback documenté : `LEGACY_PROVIDER=true` + secrets directs Wave/OM rebasculent vers les providers Phase 1
+- [x] `WebhookProviderSchema` étendu (+ `paydunya` + `card`) ; `ParamsWithProvider` du webhook utilise désormais `WebhookProviderSchema` (pas `PaymentMethodSchema`)
+- [x] `webhook-ip-allowlist.middleware.ts` reconnaît `PAYDUNYA_WEBHOOK_IPS` (livré en Phase 1)
+- [x] PayDunya AuditAction + payment.bulk_expired déjà mappés (Phase 1 follow-up)
+
+### 15.2 Phase 2 — restant avant rollout production
+
+- [ ] Secrets PROD dans GCP Secret Manager (3 clés × 2 envs sandbox/live)
 - [ ] Pino `redact` couvre `req.headers.PAYDUNYA-*` + `req.body.data`
-- [ ] `@fastify/formbody` enregistré pour le webhook
-- [ ] rawBody capturé **avant** le parse formbody (custom plugin Fastify)
-- [ ] `verifyWebhook()` implémente le SHA-512 + `timingSafeEqual`
-- [ ] `webhookEvents/<token>` idempotency via `tx.create()`
-- [ ] Anti-tampering : amount + payment_id + token cross-check
-- [ ] `ProviderError` typé + retry policy retriable codes seulement
-- [ ] Mapping de statut complet (`completed`/`pending`/`cancelled`/`failed`/`expired`)
-- [ ] `refund()` retourne `{ success: false, reason: "manual_refund_required" }`
-- [ ] Tests des 9 cas du tableau §10.1
-- [ ] Snapshot route-inventory + permission-matrix refresh si nouvelles routes
-- [ ] Audit log via `eventBus.emit('payment.*', ...)` sur chaque mutation
-- [ ] `paydunya.md` (ce fichier) cross-référencé depuis `docs-v2/30-api/payments.md`
-- [ ] Test sandbox E2E : initiate → redirect → IPN → succeeded → badge généré
-- [ ] Tests `@security-reviewer` + `@firestore-transaction-auditor` + `@domain-event-auditor` ✅
-- [ ] Plan rollback documenté : `LEGACY_PROVIDER=true` rebascule sur Wave/OM directs
+- [ ] `PAYDUNYA_WEBHOOK_IPS` configuré en production (boot warning sinon)
+- [ ] Test sandbox E2E manuel : initiate → redirect → IPN → succeeded → badge généré
+- [ ] Pré-bascule : laisser tourner Wave/OM directs en parallèle pendant 30 j, comparer les payments réels
+- [ ] Audit final `@security-reviewer` + `@firestore-transaction-auditor` + `@domain-event-auditor` ✅
+
+### 15.3 Phase 3+ — hors scope
+
+- [ ] SOFTPAY direct flow (UI custom par wallet — `wave-senegal`, `orange-money-senegal`, `free-money-senegal`)
+- [ ] Reconciliation cron : sweep payments `processing` > 5 min via `provider.verify()`
+- [ ] Disbursement API v2 (`/api/v2/disburse/*`) — payouts vers les organisations
+- [ ] Multi-pays (CI / BJ / BF / TG / ML) — actuellement scope Sénégal uniquement
 
 ---
 

@@ -55,8 +55,12 @@ function providerLabel(p: WebhookProvider): string {
       return "Orange Money";
     case "free_money":
       return "Free Money";
+    case "card":
+      return "Carte bancaire";
     case "mock":
       return "Mock (dev)";
+    case "paydunya":
+      return "PayDunya";
   }
 }
 

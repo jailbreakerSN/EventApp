@@ -67,6 +67,26 @@ const GROUPS: ProviderSecretGroup[] = [
     hint:
       "OM needs the OAuth secret + merchant key to initiate, and the notif_token to verify webhooks.",
   },
+  // Phase 2 — PayDunya as the WAEMU-region aggregator. The trigger is
+  // the MasterKey; the companion vars are required so initiate +
+  // webhook verify both work end-to-end. Skipping any of them silently
+  // fails:
+  //   - missing PRIVATE_KEY   → POST /checkout-invoice/create returns
+  //                              401 with no auth header context
+  //   - missing TOKEN         → some endpoints (refund, disburse)
+  //                              reject; checkout works but reconciliation
+  //                              breaks
+  //   - missing PRIVATE_KEY/TOKEN AND verifyWebhook() is called → the
+  //                              SHA-512(MasterKey) check still runs, so
+  //                              webhooks succeed BUT the initiate path
+  //                              has been dead since boot
+  {
+    provider: "paydunya",
+    triggerVar: "PAYDUNYA_MASTER_KEY",
+    requiredCompanions: ["PAYDUNYA_PRIVATE_KEY", "PAYDUNYA_TOKEN"],
+    hint:
+      "PayDunya needs all three keys (MASTER + PRIVATE + TOKEN) to authenticate every API call. The MasterKey alone only verifies webhooks; initiate fails 401.",
+  },
 ];
 
 export interface ProviderSecretAssertionInput {

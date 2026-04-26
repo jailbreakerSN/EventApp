@@ -104,6 +104,80 @@ describe("checkProviderSecrets", () => {
     expect(result.errors.some((e) => e.includes("orange_money"))).toBe(true);
   });
 
+  // ── PayDunya (Phase 2) ────────────────────────────────────────────────────
+  it("returns ok=true when all 3 PayDunya env vars are set", () => {
+    const result = checkProviderSecrets({
+      env: {
+        PAYDUNYA_MASTER_KEY: "mk",
+        PAYDUNYA_PRIVATE_KEY: "pk",
+        PAYDUNYA_TOKEN: "tk",
+      },
+      nodeEnv: "development",
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  it("flags every missing PayDunya companion var", () => {
+    const result = checkProviderSecrets({
+      env: { PAYDUNYA_MASTER_KEY: "mk" },
+      nodeEnv: "development",
+    });
+    expect(result.ok).toBe(false);
+    expect(result.errors).toHaveLength(1);
+    const msg = result.errors[0];
+    expect(msg).toContain("paydunya");
+    expect(msg).toContain("PAYDUNYA_PRIVATE_KEY");
+    expect(msg).toContain("PAYDUNYA_TOKEN");
+    // Operator hint must call out the silent-failure mode (initiate
+    // 401s while webhook verify still works, so the provider looks
+    // healthy from one angle).
+    expect(msg).toContain("MasterKey alone");
+  });
+
+  it("flags partial PayDunya config (some companions set, others missing)", () => {
+    const result = checkProviderSecrets({
+      env: {
+        PAYDUNYA_MASTER_KEY: "mk",
+        PAYDUNYA_PRIVATE_KEY: "pk",
+        // PAYDUNYA_TOKEN missing
+      },
+      nodeEnv: "development",
+    });
+    expect(result.ok).toBe(false);
+    expect(result.errors[0]).toContain("PAYDUNYA_TOKEN");
+    expect(result.errors[0]).not.toContain("PAYDUNYA_PRIVATE_KEY");
+  });
+
+  it("treats empty-string PayDunya secrets as unset (the L3 footgun)", () => {
+    const result = checkProviderSecrets({
+      env: {
+        PAYDUNYA_MASTER_KEY: "mk",
+        PAYDUNYA_PRIVATE_KEY: "",
+        PAYDUNYA_TOKEN: "  ",
+      },
+      nodeEnv: "development",
+    });
+    expect(result.ok).toBe(false);
+    expect(result.errors[0]).toContain("PAYDUNYA_PRIVATE_KEY");
+    expect(result.errors[0]).toContain("PAYDUNYA_TOKEN");
+  });
+
+  it("reports Wave + OM + PayDunya errors when all three are half-configured", () => {
+    const result = checkProviderSecrets({
+      env: {
+        WAVE_API_KEY: "k",
+        ORANGE_MONEY_CLIENT_ID: "ci",
+        PAYDUNYA_MASTER_KEY: "mk",
+      },
+      nodeEnv: "development",
+    });
+    expect(result.ok).toBe(false);
+    expect(result.errors).toHaveLength(3);
+    expect(result.errors.some((e) => e.includes("wave"))).toBe(true);
+    expect(result.errors.some((e) => e.includes("orange_money"))).toBe(true);
+    expect(result.errors.some((e) => e.includes("paydunya"))).toBe(true);
+  });
+
   // ── PAYMENT_WEBHOOK_SECRET ────────────────────────────────────────────────
   it("requires PAYMENT_WEBHOOK_SECRET in production", () => {
     const result = checkProviderSecrets({

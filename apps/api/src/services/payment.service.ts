@@ -35,6 +35,7 @@ import {
 import { mockPaymentProvider } from "@/providers/mock-payment.provider";
 import { wavePaymentProvider } from "@/providers/wave-payment.provider";
 import { orangeMoneyPaymentProvider } from "@/providers/orange-money-payment.provider";
+import { paydunyaPaymentProvider } from "@/providers/paydunya-payment.provider";
 import { computePlatformFee, computeAvailableOn } from "@/config/finance";
 import { getOwnedWebHosts, paymentReturnUrl, paymentWebhookUrl } from "@/config/public-urls";
 import { appendLedgerEntry } from "./balance-ledger";
@@ -42,20 +43,68 @@ import { appendLedgerEntry } from "./balance-ledger";
 // ─── Provider Registry ──────────────────────────────────────────────────────
 
 /**
- * Provider routing:
- * - In production (when API keys are set), routes to real providers
- * - In development, falls back to mock provider for all methods
+ * Provider routing strategy
+ * ─────────────────────────
+ *
+ * PRIMARY (Phase 2+): PayDunya as a single aggregator fronting Wave /
+ * Orange Money / Free Money / card. Activated when `PAYDUNYA_MASTER_KEY`
+ * is set (boot assertion enforces all three PayDunya keys are coherent
+ * — see `assertProviderSecrets`). One KYC, one webhook format, one
+ * channel-routing decision per payment.
+ *
+ * FALLBACK (legacy direct integrations): Wave + OM direct providers
+ * shipped in Phase 1. Kept behind two escape hatches for the
+ * 30-day post-cutover rollback window:
+ *
+ *   1. `LEGACY_PROVIDER=true` env flag — explicit operator override
+ *      that disables PayDunya routing even when the keys are set.
+ *      Use during a provider incident (PayDunya outage, suspected
+ *      key compromise, …) to fail back to direct Wave/OM in seconds.
+ *   2. Absent PayDunya keys (`PAYDUNYA_MASTER_KEY` unset) — implicit
+ *      fallback used during the gradual roll-out. Same posture as
+ *      Phase 1 production.
+ *
+ * MOCK (development): when neither PayDunya nor the legacy direct
+ * keys are configured, every method falls through to
+ * `mockPaymentProvider`. Production blocks the mock path via the
+ * `IS_PROD && method === "mock"` guard in `getProvider`.
+ *
+ * Spec: docs-v2/30-api/providers/paydunya.md §1.2.
  */
 const IS_PROD = process.env.NODE_ENV === "production";
 const HAS_WAVE = !!process.env.WAVE_API_KEY;
 const HAS_OM = !!process.env.ORANGE_MONEY_CLIENT_ID;
+const HAS_PAYDUNYA = !!process.env.PAYDUNYA_MASTER_KEY;
+const LEGACY_PROVIDER = process.env.LEGACY_PROVIDER === "true";
+/**
+ * Active when PayDunya keys are configured AND the legacy-rollback
+ * flag is OFF. The flag is the single source of truth for the
+ * "use PayDunya vs use direct" decision so the registry is easy to
+ * trace during an incident response.
+ */
+const PAYDUNYA_ENABLED = HAS_PAYDUNYA && !LEGACY_PROVIDER;
 
 const providers: Record<string, PaymentProvider> = {
   mock: mockPaymentProvider,
-  wave: HAS_WAVE ? wavePaymentProvider : mockPaymentProvider,
-  orange_money: HAS_OM ? orangeMoneyPaymentProvider : mockPaymentProvider,
-  free_money: mockPaymentProvider, // TODO: implement when Free Money API available
-  card: mockPaymentProvider, // TODO: implement with PayDunya/Stripe
+  wave: PAYDUNYA_ENABLED
+    ? paydunyaPaymentProvider
+    : HAS_WAVE
+      ? wavePaymentProvider
+      : mockPaymentProvider,
+  orange_money: PAYDUNYA_ENABLED
+    ? paydunyaPaymentProvider
+    : HAS_OM
+      ? orangeMoneyPaymentProvider
+      : mockPaymentProvider,
+  free_money: PAYDUNYA_ENABLED ? paydunyaPaymentProvider : mockPaymentProvider,
+  card: PAYDUNYA_ENABLED ? paydunyaPaymentProvider : mockPaymentProvider,
+  // The `paydunya` key isn't a public PaymentMethod — it's the
+  // provider name used by the webhook router so a PayDunya IPN
+  // POST'd to `/v1/payments/webhook/paydunya` resolves to the right
+  // verifier. Always present (regardless of feature flag) so
+  // operators can replay historical webhook events from the admin
+  // surface even after rolling back.
+  paydunya: paydunyaPaymentProvider,
 };
 
 function getProvider(method: PaymentMethod): PaymentProvider {
@@ -76,9 +125,13 @@ function getProvider(method: PaymentMethod): PaymentProvider {
  * translate null into a 404 rather than leaking the registry shape via
  * an exception. Allows mock in production only if `NODE_ENV !== "production"`,
  * matching `getProvider` semantics.
+ *
+ * Accepts the WebhookProvider name space (which includes `paydunya`,
+ * not a member of PaymentMethod). The registry is keyed by string so
+ * the lookup is safe regardless of which enum the caller comes from.
  */
 export function getProviderForWebhook(providerName: string): PaymentProvider | null {
-  const provider = providers[providerName as PaymentMethod];
+  const provider = providers[providerName];
   if (!provider) return null;
   if (IS_PROD && providerName === "mock") return null;
   return provider;
@@ -539,6 +592,58 @@ export class PaymentService extends BaseService {
     const payment = await paymentRepository.findByProviderTransactionId(providerTransactionId);
     if (!payment) {
       throw new NotFoundError("Payment", providerTransactionId);
+    }
+
+    // ── Anti-tampering invariants (Phase 2 / threat T-PD-03 / T-PD-04) ──
+    //
+    // A valid signature on a PayDunya IPN proves the request CAME FROM
+    // PayDunya — it does NOT bind the payload to any specific Payment.
+    // A malicious actor who briefly intercepted any valid PayDunya
+    // webhook could re-emit it after mutating the amount or substituting
+    // a different invoice token. These cross-checks turn the IPN into
+    // a strongly-bound message:
+    //
+    //   1. providerTransactionId match — guaranteed by the lookup
+    //      above; if `payment` is non-null, this invariant holds.
+    //   2. metadata.expectedPaymentId === payment.id — the IPN's
+    //      `custom_data.payment_id` is the value WE sent at initiate
+    //      time. If the payload claims it's for a different Payment,
+    //      something tampered.
+    //   3. metadata.expectedAmount === payment.amount — same idea
+    //      for the invoice total.
+    //
+    // Both checks are SKIPPED when the metadata field is null/missing
+    // — Wave / OM / mock don't carry these fields, and surfacing the
+    // requirement on every provider would break their flows. Today
+    // PayDunya's body parser is the only writer that populates these
+    // fields (see `payments.routes.ts:addContentTypeParser`).
+    //
+    // On mismatch we throw `ValidationError` — the route handler
+    // returns 400 to the provider, the webhook log row is marked
+    // `failed`, and the operator is paged via the audit alert (the
+    // mismatch is conclusively a tampering attempt or a config drift,
+    // not a transient issue retry can fix).
+    const expectedPaymentId = metadata?.expectedPaymentId;
+    if (typeof expectedPaymentId === "string" && expectedPaymentId !== payment.id) {
+      throw new ValidationError(
+        "Webhook payload tampering detected: payment_id mismatch",
+        {
+          reason: "payload_tampering",
+          field: "payment_id",
+          expected: payment.id,
+        },
+      );
+    }
+    const expectedAmount = metadata?.expectedAmount;
+    if (typeof expectedAmount === "number" && expectedAmount !== payment.amount) {
+      throw new ValidationError(
+        "Webhook payload tampering detected: amount mismatch",
+        {
+          reason: "payload_tampering",
+          field: "amount",
+          expected: payment.amount,
+        },
+      );
     }
 
     // Quick idempotency check (full check inside transaction below)

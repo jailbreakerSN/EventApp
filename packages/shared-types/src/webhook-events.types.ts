@@ -40,7 +40,21 @@ export type WebhookProcessingStatus = z.infer<typeof WebhookProcessingStatusSche
 // this separate from `PaymentMethodSchema` (which includes wallets not
 // used via webhook) so Trivy doesn't chase false paths and the type
 // system catches a new-provider addition at the call site.
-export const WebhookProviderSchema = z.enum(["wave", "orange_money", "free_money", "mock"]);
+//
+// Phase 2 — `paydunya` is the aggregator provider that fronts Wave /
+// OM / Free Money / card via a single IPN endpoint. It's a webhook
+// SOURCE (we accept POSTs from PayDunya) but NOT a `PaymentMethod`
+// (users don't pick "paydunya" — they pick Wave / OM / etc., and
+// the registry routes through PayDunya based on env config). Keeping
+// the two schemas separate lets each evolve independently.
+export const WebhookProviderSchema = z.enum([
+  "wave",
+  "orange_money",
+  "free_money",
+  "card",
+  "mock",
+  "paydunya",
+]);
 export type WebhookProvider = z.infer<typeof WebhookProviderSchema>;
 
 // ─── Stored event ────────────────────────────────────────────────────────────
