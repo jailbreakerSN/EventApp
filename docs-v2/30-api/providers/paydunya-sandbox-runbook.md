@@ -254,7 +254,125 @@ Pour ré-activer PayDunya après résolution : retirer `LEGACY_PROVIDER` (ou le 
 
 ---
 
-## 6. Pour aller plus loin
+## 6. Déploiement staging (Cloud Run)
+
+Pour tester l'E2E sur l'URL staging publique (au lieu de localhost), suivez ce flow.
+
+### 6.1 GitHub Secrets (one-time, par environnement)
+
+Aller dans : **Settings → Environments → staging → Environment secrets**.
+
+Si l'environment `staging` n'existe pas encore, le créer (**New environment** → nom : `staging` → save).
+
+Ajouter les 3 secrets PayDunya :
+
+| Secret name | Source | Type |
+|---|---|---|
+| `PAYDUNYA_MASTER_KEY` | Dashboard PayDunya → API → Clé Principale | public-ish (signature webhook) |
+| `PAYDUNYA_PRIVATE_KEY` | Dashboard PayDunya → API → Clé Privée | **secret** (auth API) |
+| `PAYDUNYA_TOKEN` | Dashboard PayDunya → API → Token | **secret** (header ops sensibles) |
+
+> ⚠️ **Ne PAS ajouter `PAYDUNYA_PUBLIC_KEY`** — c'est pour les SDK client-side, jamais utilisé côté server. La coller par erreur dans `PAYDUNYA_PRIVATE_KEY` casse silencieusement les `initiate()` (401).
+
+### 6.2 Workflow déclencheur
+
+Le workflow `.github/workflows/deploy-staging.yml` injecte automatiquement ces secrets dans Cloud Run au moment du `gcloud run deploy` (job `deploy-api`). `PAYDUNYA_MODE=sandbox` est hardcodé dans le workflow (vs prod qui sera `live` quand le workflow `deploy-production.yml` sera créé).
+
+Trigger options :
+
+```bash
+# Option A — automatique : un push sur develop déclenche staging
+git push origin develop
+
+# Option B — manuelle : workflow_dispatch depuis GitHub Actions UI
+# https://github.com/jailbreakerSN/EventApp/actions/workflows/deploy-staging.yml
+# → Run workflow → branche develop → Run
+```
+
+### 6.3 Vérification post-deploy
+
+Une fois le job `deploy-api` `success`, vérifier que l'instance Cloud Run a bien démarré (l'assertion P1-18 fail-CLOSE si la config PayDunya est partielle) :
+
+```bash
+# Récupérer l'URL Cloud Run
+gcloud run services describe teranga-api-staging \
+  --region europe-west1 \
+  --format='value(status.url)'
+
+# Health check
+curl https://teranga-api-staging-<hash>-ew.a.run.app/v1/health
+
+# Inspect Cloud Run logs (boot stage)
+gcloud run services logs read teranga-api-staging --region europe-west1 --limit 50
+```
+
+Au boot vous devez voir :
+```
+[INFO] Teranga API listening on 0.0.0.0:8080
+```
+
+Si la config PayDunya est partielle (ex: `PAYDUNYA_TOKEN` manquant en GH Secrets), l'API refuse de démarrer :
+```
+Boot aborted — payment provider secrets misconfigured (P1-18):
+  - Provider « paydunya » is half-configured: PAYDUNYA_MASTER_KEY is set
+    but missing `PAYDUNYA_TOKEN`. PayDunya needs all three keys (MASTER
+    + PRIVATE + TOKEN) to authenticate every API call.
+```
+→ Cloud Run restart-loop. Aller corriger le secret manquant dans GH → redeploy.
+
+### 6.4 Configuration callback PayDunya
+
+Le `callback_url` envoyé à PayDunya à chaque `initiate()` est construit côté server à partir de `API_BASE_URL` (cf. `apps/api/src/config/public-urls.ts → paymentWebhookUrl`). Pour le staging :
+
+```
+API_BASE_URL=https://teranga-api-staging-<hash>-ew.a.run.app
+callback_url envoyé à PayDunya = https://teranga-api-staging-<hash>-ew.a.run.app/v1/payments/webhook/paydunya
+```
+
+PayDunya **n'a PAS besoin** d'un setup côté dashboard pour le callback URL — il est fourni dynamiquement à chaque création d'invoice. Pas d'action manuelle requise.
+
+### 6.5 Test E2E sur staging
+
+1. Ouvrir `https://app-participant-staging-<hash>-ew.a.run.app`
+2. Login avec le compte test seed (`participant@teranga.dev`)
+3. Choisir un événement payant → s'inscrire → **Payer avec Wave** (ou OM, free_money, card)
+4. Le navigateur redirige vers `https://paydunya.com/checkout/invoice/<token>`
+5. Sur la page PayDunya, utiliser le client fictif :
+   - Numéro : `+221 77 171 0757`
+   - Mot de passe : `password123`
+   - Email : `dameleprince@gmail.com`
+6. Cliquer **Payer**
+7. Vérifier dans le backoffice staging :
+   - **`/admin/webhooks`** : ligne `paydunya` `processed`
+   - **`/admin/audit`** : rows `payment.initiated` + `payment.succeeded`
+   - **`/admin/payments`** : le payment `succeeded`
+   - **Event organizer view** : `registeredCount` + `soldCount` incrémentés
+   - **Email reçu** par `dameleprince@gmail.com` (reçu de paiement)
+
+### 6.6 Rollback d'urgence
+
+Pendant un incident PayDunya en staging :
+
+```bash
+# Cloud Run console → service teranga-api-staging → "Edit & Deploy New Revision"
+# Variables → ajouter LEGACY_PROVIDER=true → Deploy
+```
+
+OU via `gcloud` :
+
+```bash
+gcloud run services update teranga-api-staging \
+  --region europe-west1 \
+  --update-env-vars LEGACY_PROVIDER=true
+```
+
+⚠️ **En staging actuel** : aucun secret `WAVE_API_KEY` / `ORANGE_MONEY_*` n'est configuré, donc `LEGACY_PROVIDER=true` rebascule sur **mock provider** (qui est bloqué par `IS_PROD && method === "mock"` côté service → 400). Pour avoir un vrai fallback, il faut d'abord configurer Wave/OM directs en GH Secrets staging.
+
+Pour la production, l'ordre des opérations est inverse : configurer Wave/OM directs **avant** PayDunya pour avoir le rollback opérationnel jour 1.
+
+---
+
+## 7. Pour aller plus loin
 
 | | |
 |---|---|
@@ -262,5 +380,6 @@ Pour ré-activer PayDunya après résolution : retirer `LEGACY_PROVIDER` (ou le 
 | API webhook flow détaillé | spec §6 |
 | Threat model | spec §13 |
 | PR Phase 2 | https://github.com/jailbreakerSN/EventApp/pull/195 |
+| Workflow deploy-staging | [`.github/workflows/deploy-staging.yml`](../../../.github/workflows/deploy-staging.yml) |
 | PayDunya doc officielle | https://developers.paydunya.com/doc/FR/http_json |
 | Test sandbox numbers | spec §12.1 |

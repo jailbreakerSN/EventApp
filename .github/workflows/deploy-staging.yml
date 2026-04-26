@@ -401,6 +401,23 @@ jobs:
         # The '^@^' prefix tells gcloud to use '@' as the delimiter between
         # env var entries instead of the default ','. This is required because
         # CORS_ORIGINS contains commas.
+        #
+        # PayDunya (Phase 2) — three secrets injected from the staging
+        # environment scope:
+        #   PAYDUNYA_MODE=sandbox           hardcoded; staging uses the
+        #                                   sandbox base URL. Flip to
+        #                                   `live` when promoting to the
+        #                                   (yet-to-exist) production
+        #                                   workflow.
+        #   PAYDUNYA_MASTER_KEY             public-ish identifier; signs
+        #                                   the IPN webhook (SHA-512).
+        #   PAYDUNYA_PRIVATE_KEY            secret; auths server-to-server
+        #                                   API calls.
+        #   PAYDUNYA_TOKEN                  secret; additional header for
+        #                                   sensitive ops (refund / disburse).
+        # Boot-time `assertProviderSecrets()` (P1-18 + Phase 2) refuses
+        # to start if any of MASTER/PRIVATE/TOKEN is set without the
+        # other two — half-config = fail loud.
         run: |
           gcloud run deploy teranga-api-staging \
             --image europe-west1-docker.pkg.dev/${{ needs.setup.outputs.project_id }}/teranga/teranga-api:${{ env.DEPLOY_SHA }} \
@@ -413,7 +430,7 @@ jobs:
             --concurrency 80 \
             --no-cpu-boost \
             --timeout 360 \
-            --set-env-vars "^@^NODE_ENV=staging@FIREBASE_PROJECT_ID=${{ needs.setup.outputs.project_id }}@FIREBASE_STORAGE_BUCKET=${{ needs.setup.outputs.firebase_storage_bucket }}@QR_SECRET=${{ secrets.QR_SECRET }}@WEBHOOK_SECRET=${{ secrets.WEBHOOK_SECRET }}@RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}@SENTRY_DSN=${{ secrets.SENTRY_DSN }}@CORS_ORIGINS=${{ needs.setup.outputs.cors_origins }}@API_BASE_URL=${{ needs.setup.outputs.api_url }}@PARTICIPANT_WEB_URL=${{ needs.setup.outputs.participant_url }}@WEB_BACKOFFICE_URL=${{ needs.setup.outputs.backoffice_url }}@RATE_LIMIT_MAX=100@RATE_LIMIT_WINDOW_MS=60000@LOG_LEVEL=info"
+            --set-env-vars "^@^NODE_ENV=staging@FIREBASE_PROJECT_ID=${{ needs.setup.outputs.project_id }}@FIREBASE_STORAGE_BUCKET=${{ needs.setup.outputs.firebase_storage_bucket }}@QR_SECRET=${{ secrets.QR_SECRET }}@WEBHOOK_SECRET=${{ secrets.WEBHOOK_SECRET }}@PAYMENT_WEBHOOK_SECRET=${{ secrets.WEBHOOK_SECRET }}@RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}@SENTRY_DSN=${{ secrets.SENTRY_DSN }}@CORS_ORIGINS=${{ needs.setup.outputs.cors_origins }}@API_BASE_URL=${{ needs.setup.outputs.api_url }}@PARTICIPANT_WEB_URL=${{ needs.setup.outputs.participant_url }}@WEB_BACKOFFICE_URL=${{ needs.setup.outputs.backoffice_url }}@RATE_LIMIT_MAX=100@RATE_LIMIT_WINDOW_MS=60000@LOG_LEVEL=info@PAYDUNYA_MODE=sandbox@PAYDUNYA_MASTER_KEY=${{ secrets.PAYDUNYA_MASTER_KEY }}@PAYDUNYA_PRIVATE_KEY=${{ secrets.PAYDUNYA_PRIVATE_KEY }}@PAYDUNYA_TOKEN=${{ secrets.PAYDUNYA_TOKEN }}"
           # --timeout 360 covers the admin-jobs runner's 5-minute
           # MAX_RUN_MS + ~1 min of headroom. Without this, a long
           # handler would land as a client-side 504 while Cloud Run
