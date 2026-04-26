@@ -15,7 +15,7 @@
  * owning org.
  */
 
-import { useState } from "react";
+import { parseAsString } from "nuqs";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -32,7 +32,10 @@ import {
   Select,
   DataTable,
   type DataTableColumn,
+  ResultCount,
+  PageSizeSelector,
 } from "@teranga/shared-ui";
+import { useTableState } from "@/hooks/use-table-state";
 import {
   Mail,
   Clock,
@@ -105,20 +108,37 @@ export default function AdminInvitesPage() {
   const rawRole = searchParams?.get("role") ?? "";
   const initialRole = ROLE_OPTIONS.some((o) => o.value === rawRole) ? rawRole : "";
 
-  const [status, setStatus] = useState(initialStatus);
-  const [role, setRole] = useState(initialRole);
-  const [page, setPage] = useState(1);
-  const limit = 20;
+  // W3 migration — useTableState owns URL state. Inbox deep-link contract
+  // (?status=expired) preserved via defaults.filters seeded from the
+  // useSearchParams hydration above. status and role accept any string
+  // (whitelisted by initialStatus / initialRole guards) so unknown values
+  // never reach the backend.
+  const t = useTableState<{ status?: string; role?: string }>({
+    urlNamespace: "invites",
+    defaults: {
+      sort: { field: "createdAt", dir: "desc" },
+      pageSize: 25,
+      filters: {
+        status: initialStatus || undefined,
+        role: initialRole || undefined,
+      },
+    },
+    sortableFields: ["createdAt", "expiresAt", "status"] as const,
+    filterParsers: { status: parseAsString, role: parseAsString },
+  });
 
   const { data, isLoading } = useAdminInvites({
-    status: (status || undefined) as InviteStatus | undefined,
-    role: (role || undefined) as OrgMemberRole | undefined,
-    page,
-    limit,
+    status: (t.filters.status || undefined) as InviteStatus | undefined,
+    role: (t.filters.role || undefined) as OrgMemberRole | undefined,
+    page: t.page,
+    limit: t.pageSize,
+    orderBy: t.sort?.field as "createdAt" | "expiresAt" | "status" | undefined,
+    orderDir: t.sort?.dir,
   });
 
   const invites: OrganizationInvite[] = data?.data ?? [];
-  const meta = data?.meta ?? { page: 1, limit, total: 0, totalPages: 1 };
+  const meta = data?.meta ?? { page: 1, limit: t.pageSize, total: 0, totalPages: 1 };
+  const hasActive = t.activeFilterCount > 0;
 
   return (
     <div className="container mx-auto max-w-6xl space-y-6 p-6">
@@ -136,14 +156,20 @@ export default function AdminInvitesPage() {
         </BreadcrumbList>
       </Breadcrumb>
 
-      <div className="flex flex-wrap items-center gap-3">
-        <Mail className="h-7 w-7 text-primary" aria-hidden="true" />
-        <h1 className="text-2xl font-bold text-foreground">Invitations</h1>
-        {status === "expired" && (
-          <Badge variant="destructive" className="ml-1">
-            Filtre : expirées
-          </Badge>
-        )}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <Mail className="h-7 w-7 text-primary" aria-hidden="true" />
+          <h1 className="text-2xl font-bold text-foreground">Invitations</h1>
+          {t.filters.status === "expired" && (
+            <Badge variant="destructive" className="ml-1">
+              Filtre : expirées
+            </Badge>
+          )}
+        </div>
+        <div className="flex items-center gap-3">
+          <ResultCount total={meta.total} loading={isLoading} />
+          <PageSizeSelector value={t.pageSize} onChange={t.setPageSize} />
+        </div>
       </div>
       <p className="text-sm text-muted-foreground">
         Vue ops cross-organisations des invitations. Ouvrir la fiche de l&apos;organisation pour
@@ -160,11 +186,8 @@ export default function AdminInvitesPage() {
           </label>
           <Select
             id="inv-status"
-            value={status}
-            onChange={(e) => {
-              setStatus(e.target.value);
-              setPage(1);
-            }}
+            value={t.filters.status ?? ""}
+            onChange={(e) => t.setFilter("status", e.target.value || undefined)}
             aria-label="Filtrer par statut"
           >
             {STATUS_OPTIONS.map((o) => (
@@ -183,11 +206,8 @@ export default function AdminInvitesPage() {
           </label>
           <Select
             id="inv-role"
-            value={role}
-            onChange={(e) => {
-              setRole(e.target.value);
-              setPage(1);
-            }}
+            value={t.filters.role ?? ""}
+            onChange={(e) => t.setFilter("role", e.target.value || undefined)}
             aria-label="Filtrer par rôle"
           >
             {ROLE_OPTIONS.map((o) => (
@@ -197,15 +217,30 @@ export default function AdminInvitesPage() {
             ))}
           </Select>
         </div>
+        {hasActive ? (
+          <button
+            type="button"
+            onClick={t.reset}
+            className="self-end text-sm text-muted-foreground hover:text-foreground underline-offset-4 hover:underline"
+          >
+            Tout effacer
+          </button>
+        ) : null}
       </div>
 
       <Card>
         <CardContent className="p-0">
           <DataTable<OrganizationInvite & Record<string, unknown>>
             aria-label="Liste des invitations"
-            emptyMessage="Aucune invitation trouvée"
+            emptyMessage={
+              hasActive
+                ? "Aucun résultat — essayez d'élargir les filtres."
+                : "Aucune invitation trouvée"
+            }
             responsiveCards
             loading={isLoading}
+            sort={t.sort}
+            onToggleSort={t.toggleSort}
             data={invites as (OrganizationInvite & Record<string, unknown>)[]}
             onRowClick={(inv) => {
               // Org detail is the canonical action surface for invites
@@ -221,6 +256,8 @@ export default function AdminInvitesPage() {
                   key: "status",
                   header: "Statut",
                   primary: true,
+                  sortable: true,
+                  sortField: "status",
                   render: (inv) => {
                     const meta = STATUS_BADGE[inv.status] ?? STATUS_BADGE.pending;
                     const Icon = meta.icon;
@@ -272,6 +309,8 @@ export default function AdminInvitesPage() {
                 {
                   key: "expiresAt",
                   header: "Expire",
+                  sortable: true,
+                  sortField: "expiresAt",
                   render: (inv) => (
                     <span className="text-xs text-muted-foreground whitespace-nowrap">
                       {formatDate(inv.expiresAt)}
@@ -284,9 +323,12 @@ export default function AdminInvitesPage() {
         </CardContent>
       </Card>
 
-      {!isLoading && meta.totalPages > 1 && (
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-muted-foreground">
+      {!isLoading && meta.totalPages > 1 ? (
+        <nav
+          aria-label="Pagination des invitations"
+          className="flex items-center justify-between"
+        >
+          <p className="text-sm text-muted-foreground" aria-current="page">
             Page {meta.page} sur {meta.totalPages} ({meta.total} invitation
             {meta.total > 1 ? "s" : ""})
           </p>
@@ -294,8 +336,8 @@ export default function AdminInvitesPage() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page <= 1}
+              onClick={() => t.setPage(Math.max(1, t.page - 1))}
+              disabled={t.page <= 1}
               aria-label="Page précédente"
             >
               Précédent
@@ -303,15 +345,15 @@ export default function AdminInvitesPage() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setPage((p) => Math.min(meta.totalPages, p + 1))}
-              disabled={page >= meta.totalPages}
+              onClick={() => t.setPage(Math.min(meta.totalPages, t.page + 1))}
+              disabled={t.page >= meta.totalPages}
               aria-label="Page suivante"
             >
               Suivant
             </Button>
           </div>
-        </div>
-      )}
+        </nav>
+      ) : null}
     </div>
   );
 }

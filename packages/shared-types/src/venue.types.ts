@@ -247,6 +247,13 @@ export const AdminEventQuerySchema = z.object({
   parentEventId: z.string().max(128).optional(),
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().positive().max(100).default(20),
+  /**
+   * Per-route sort whitelist (data-listing doctrine). Backed by the
+   * existing organizationId+status+createdAt and createdAt indexes
+   * on the events collection.
+   */
+  orderBy: z.enum(["createdAt", "startDate", "title", "status"]).optional(),
+  orderDir: z.enum(["asc", "desc"]).optional(),
 });
 
 export type AdminEventQuery = z.infer<typeof AdminEventQuerySchema>;

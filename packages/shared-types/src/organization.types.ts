@@ -175,6 +175,9 @@ export const AdminInviteQuerySchema = z.object({
   role: OrgMemberRoleSchema.optional(),
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().positive().max(100).default(20),
+  /** Per-route sort whitelist (data-listing doctrine). */
+  orderBy: z.enum(["createdAt", "expiresAt", "status"]).optional(),
+  orderDir: z.enum(["asc", "desc"]).optional(),
 });
 
 export type AdminInviteQuery = z.infer<typeof AdminInviteQuerySchema>;

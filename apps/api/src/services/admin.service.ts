@@ -1662,7 +1662,12 @@ class AdminService extends BaseService {
         isRecurringParent: query.isRecurringParent,
         parentEventId: query.parentEventId,
       },
-      { page: query.page, limit: query.limit },
+      {
+        page: query.page,
+        limit: query.limit,
+        orderBy: query.orderBy ?? "createdAt",
+        orderDir: query.orderDir ?? "desc",
+      },
     );
   }
 
@@ -2115,7 +2120,12 @@ class AdminService extends BaseService {
     this.requireAnyPermission(user, ["platform:audit_read", "platform:manage"]);
     return adminRepository.listAllInvites(
       { status: query.status, organizationId: query.organizationId, role: query.role },
-      { page: query.page, limit: query.limit },
+      {
+        page: query.page,
+        limit: query.limit,
+        orderBy: query.orderBy ?? "createdAt",
+        orderDir: query.orderDir ?? "desc",
+      },
     );
   }
 
