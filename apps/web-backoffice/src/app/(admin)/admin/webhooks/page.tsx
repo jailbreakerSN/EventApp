@@ -14,6 +14,8 @@
  */
 
 import { useState } from "react";
+import { parseAsString } from "nuqs";
+import { useTableState } from "@/hooks/use-table-state";
 import {
   Badge,
   Breadcrumb,
@@ -28,7 +30,11 @@ import {
   type DataTableColumn,
   SectionHeader,
   Select,
+  Button,
+  ResultCount,
+  PageSizeSelector,
 } from "@teranga/shared-ui";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Clock, Webhook } from "lucide-react";
 import type {
   WebhookEventLog,
@@ -65,17 +71,31 @@ function providerLabel(p: WebhookProvider): string {
 }
 
 export default function AdminWebhooksPage() {
-  const [provider, setProvider] = useState<string>("");
-  const [processingStatus, setProcessingStatus] = useState<string>("");
   const [activeWebhookId, setActiveWebhookId] = useState<string | null>(null);
 
+  // W3 migration — useTableState owns URL state for the filter dropdowns
+  // and page / pageSize. The webhook log is a stream archetype (time is
+  // the contract); no user-chosen sort UI. Doctrine: chronological, with
+  // filter narrowing.
+  const t = useTableState<{ provider?: string; processingStatus?: string }>({
+    urlNamespace: "webhooks",
+    defaults: { sort: null, pageSize: 25 },
+    sortableFields: [],
+    filterParsers: { provider: parseAsString, processingStatus: parseAsString },
+  });
+
   const { data, isLoading } = useAdminWebhookEvents({
-    provider: provider ? (provider as WebhookProvider) : undefined,
-    processingStatus: processingStatus ? (processingStatus as WebhookProcessingStatus) : undefined,
-    limit: 50,
+    provider: t.filters.provider ? (t.filters.provider as WebhookProvider) : undefined,
+    processingStatus: t.filters.processingStatus
+      ? (t.filters.processingStatus as WebhookProcessingStatus)
+      : undefined,
+    page: t.page,
+    limit: t.pageSize,
   });
 
   const events: WebhookEventLog[] = data?.data ?? [];
+  const meta = data?.meta ?? { page: 1, limit: t.pageSize, total: 0, totalPages: 1 };
+  const hasActive = t.activeFilterCount > 0;
 
   const columns: DataTableColumn<WebhookEventLog & Record<string, unknown>>[] = [
     {
@@ -146,51 +166,68 @@ export default function AdminWebhooksPage() {
         subtitle="Historique et replay des webhooks reçus des fournisseurs de paiement (Wave, Orange Money, Free Money)."
       />
 
-      {/* Filters --------------------------------------------------------- */}
-      <div className="flex flex-wrap items-end gap-3">
-        <div className="min-w-[180px] flex-1 sm:flex-initial">
-          <label
-            htmlFor="provider-filter"
-            className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-muted-foreground"
-          >
-            Provider
-          </label>
-          <Select
-            id="provider-filter"
-            value={provider}
-            onChange={(e) => setProvider(e.target.value)}
-          >
-            <option value="">Tous</option>
-            <option value="wave">Wave</option>
-            <option value="orange_money">Orange Money</option>
-            <option value="free_money">Free Money</option>
-            <option value="mock">Mock (dev)</option>
-          </Select>
+      {/* Toolbar — filters + result count + page-size --------------------- */}
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="min-w-[180px] flex-1 sm:flex-initial">
+            <label
+              htmlFor="provider-filter"
+              className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-muted-foreground"
+            >
+              Provider
+            </label>
+            <Select
+              id="provider-filter"
+              value={t.filters.provider ?? ""}
+              onChange={(e) => t.setFilter("provider", e.target.value || undefined)}
+              aria-label="Filtrer par provider"
+            >
+              <option value="">Tous</option>
+              <option value="wave">Wave</option>
+              <option value="orange_money">Orange Money</option>
+              <option value="free_money">Free Money</option>
+              <option value="mock">Mock (dev)</option>
+            </Select>
+          </div>
+          <div className="min-w-[180px] flex-1 sm:flex-initial">
+            <label
+              htmlFor="status-filter"
+              className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-muted-foreground"
+            >
+              Traitement
+            </label>
+            <Select
+              id="status-filter"
+              value={t.filters.processingStatus ?? ""}
+              onChange={(e) => t.setFilter("processingStatus", e.target.value || undefined)}
+              aria-label="Filtrer par statut de traitement"
+            >
+              <option value="">Tous</option>
+              <option value="received">Received</option>
+              <option value="processed">Processed</option>
+              <option value="failed">Failed</option>
+            </Select>
+          </div>
+          {hasActive ? (
+            <button
+              type="button"
+              onClick={t.reset}
+              className="self-end text-sm text-muted-foreground hover:text-foreground underline-offset-4 hover:underline"
+            >
+              Tout effacer
+            </button>
+          ) : null}
         </div>
-        <div className="min-w-[180px] flex-1 sm:flex-initial">
-          <label
-            htmlFor="status-filter"
-            className="mb-1 block text-[11px] font-medium uppercase tracking-wider text-muted-foreground"
-          >
-            Traitement
-          </label>
-          <Select
-            id="status-filter"
-            value={processingStatus}
-            onChange={(e) => setProcessingStatus(e.target.value)}
-          >
-            <option value="">Tous</option>
-            <option value="received">Received</option>
-            <option value="processed">Processed</option>
-            <option value="failed">Failed</option>
-          </Select>
+        <div className="flex items-center gap-3">
+          <ResultCount total={meta.total} loading={isLoading} />
+          <PageSizeSelector value={t.pageSize} onChange={t.setPageSize} />
         </div>
       </div>
 
       {/* Events table --------------------------------------------------- */}
       <Card>
         <CardContent className="p-0">
-          {!isLoading && events.length === 0 ? (
+          {!isLoading && events.length === 0 && !hasActive ? (
             <div className="flex flex-col items-center gap-2 p-10 text-center">
               <Webhook className="h-8 w-8 text-muted-foreground" aria-hidden="true" />
               <div className="text-sm font-semibold text-foreground">Aucun webhook enregistré</div>
@@ -202,7 +239,7 @@ export default function AdminWebhooksPage() {
           ) : (
             <DataTable<WebhookEventLog & Record<string, unknown>>
               aria-label="Historique des webhooks"
-              emptyMessage="Aucun webhook pour ces filtres"
+              emptyMessage="Aucun résultat — essayez d'élargir les filtres."
               responsiveCards
               loading={isLoading}
               data={events as (WebhookEventLog & Record<string, unknown>)[]}
@@ -212,6 +249,42 @@ export default function AdminWebhooksPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Pagination */}
+      {!isLoading && meta.totalPages > 1 ? (
+        <nav
+          aria-label="Pagination des webhooks"
+          className="flex items-center justify-between text-sm text-muted-foreground"
+        >
+          <span aria-current="page">
+            Page {meta.page} sur {meta.totalPages} ({meta.total} webhook{meta.total > 1 ? "s" : ""})
+          </span>
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => t.setPage(Math.max(1, t.page - 1))}
+              disabled={t.page <= 1}
+              aria-label="Page précédente"
+            >
+              <ChevronLeft className="h-4 w-4" />
+              Précédent
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => t.setPage(Math.min(meta.totalPages, t.page + 1))}
+              disabled={t.page >= meta.totalPages}
+              aria-label="Page suivante"
+            >
+              Suivant
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </nav>
+      ) : null}
 
       <WebhookEventDetailModal
         webhookId={activeWebhookId}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { parseAsString } from "nuqs";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import {
@@ -19,7 +19,10 @@ import {
   BreadcrumbLink,
   BreadcrumbPage,
   BreadcrumbSeparator,
+  ResultCount,
+  PageSizeSelector,
 } from "@teranga/shared-ui";
+import { useTableState } from "@/hooks/use-table-state";
 import { MapPin, Search, ShieldCheck, Ban, CheckCircle } from "lucide-react";
 import { useApproveVenue, useSuspendVenue, useReactivateVenue } from "@/hooks/use-venues";
 import { useAdminVenues } from "@/hooks/use-admin";
@@ -80,11 +83,25 @@ export default function AdminVenuesPage() {
   // actually apply the filter instead of silently showing the whole list.
   const searchParams = useSearchParams();
   const initialStatus = searchParams?.get("status") ?? "";
-  const [search, setSearch] = useState("");
-  const [typeFilter, setTypeFilter] = useState("");
-  const [statusFilter, setStatusFilter] = useState(initialStatus);
-  const [page, setPage] = useState(1);
-  const limit = 20;
+
+  // W3 migration — useTableState owns URL state. Inbox deep-link contract
+  // preserved (`/admin/venues?status=pending` from the
+  // "X lieux en attente de modération" signal still hydrates the filtered
+  // view via defaults.filters.status).
+  const t = useTableState<{ venueType?: string; status?: string }>({
+    urlNamespace: "venues",
+    defaults: {
+      sort: null,
+      pageSize: 25,
+      filters: {
+        status: STATUS_OPTIONS.some((o) => o.value === initialStatus)
+          ? initialStatus || undefined
+          : undefined,
+      },
+    },
+    sortableFields: [],
+    filterParsers: { venueType: parseAsString, status: parseAsString },
+  });
 
   // Hits /v1/admin/venues — surfaces every status (pending / approved /
   // suspended / archived). The previous implementation called the public
@@ -92,15 +109,16 @@ export default function AdminVenuesPage() {
   // drops `status`), so deep-links from the inbox like
   // `/admin/venues?status=pending` rendered approved venues only.
   const { data, isLoading } = useAdminVenues({
-    q: search || undefined,
-    venueType: (typeFilter || undefined) as VenueType | undefined,
-    status: (statusFilter || undefined) as VenueStatus | undefined,
-    page,
-    limit,
+    q: t.debouncedQ || undefined,
+    venueType: (t.filters.venueType || undefined) as VenueType | undefined,
+    status: (t.filters.status || undefined) as VenueStatus | undefined,
+    page: t.page,
+    limit: t.pageSize,
   });
 
   const venues: Venue[] = data?.data ?? [];
-  const meta = data?.meta ?? { page: 1, limit, total: 0, totalPages: 1 };
+  const meta = data?.meta ?? { page: 1, limit: t.pageSize, total: 0, totalPages: 1 };
+  const hasActive = t.activeFilterCount > 0 || !!t.q;
 
   const approveVenue = useApproveVenue();
   const suspendVenue = useSuspendVenue();
@@ -144,23 +162,26 @@ export default function AdminVenuesPage() {
           <MapPin className="h-7 w-7 text-primary" />
           <h1 className="text-2xl font-bold text-foreground">Gestion des lieux</h1>
         </div>
-        <CsvExportButton
-          resource="venues"
-          filters={statusFilter ? `status=${encodeURIComponent(statusFilter)}` : ""}
-        />
+        <div className="flex items-center gap-3">
+          <ResultCount total={meta.total} loading={isLoading} />
+          <PageSizeSelector value={t.pageSize} onChange={t.setPageSize} />
+          <CsvExportButton
+            resource="venues"
+            filters={t.filters.status ? `status=${encodeURIComponent(t.filters.status)}` : ""}
+          />
+        </div>
       </div>
 
       {/* Filters */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:flex-wrap">
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
+            type="search"
+            role="searchbox"
             placeholder="Rechercher par nom..."
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              setPage(1);
-            }}
+            value={t.q}
+            onChange={(e) => t.setQ(e.target.value)}
             className="pl-9"
             aria-label="Rechercher des lieux"
           />
@@ -176,11 +197,8 @@ export default function AdminVenuesPage() {
             </label>
             <Select
               id="type-filter"
-              value={typeFilter}
-              onChange={(e) => {
-                setTypeFilter(e.target.value);
-                setPage(1);
-              }}
+              value={t.filters.venueType ?? ""}
+              onChange={(e) => t.setFilter("venueType", e.target.value || undefined)}
               aria-label="Filtrer par type"
             >
               {TYPE_OPTIONS.map((opt) => (
@@ -200,11 +218,8 @@ export default function AdminVenuesPage() {
             </label>
             <Select
               id="status-filter"
-              value={statusFilter}
-              onChange={(e) => {
-                setStatusFilter(e.target.value);
-                setPage(1);
-              }}
+              value={t.filters.status ?? ""}
+              onChange={(e) => t.setFilter("status", e.target.value || undefined)}
               aria-label="Filtrer par statut"
             >
               {STATUS_OPTIONS.map((opt) => (
@@ -215,6 +230,15 @@ export default function AdminVenuesPage() {
             </Select>
           </div>
         </div>
+        {hasActive ? (
+          <button
+            type="button"
+            onClick={t.reset}
+            className="self-end text-sm text-muted-foreground hover:text-foreground underline-offset-4 hover:underline"
+          >
+            Tout effacer
+          </button>
+        ) : null}
       </div>
 
       {/* Data Table */}
@@ -222,7 +246,11 @@ export default function AdminVenuesPage() {
         <CardContent className="p-0">
           <DataTable<Venue & Record<string, unknown>>
             aria-label="Liste des lieux"
-            emptyMessage="Aucun lieu trouve"
+            emptyMessage={
+              hasActive
+                ? "Aucun résultat — essayez d'élargir les filtres."
+                : "Aucun lieu trouvé"
+            }
             responsiveCards
             loading={isLoading}
             data={venues as (Venue & Record<string, unknown>)[]}
@@ -346,9 +374,12 @@ export default function AdminVenuesPage() {
       </Card>
 
       {/* Pagination */}
-      {!isLoading && meta.totalPages > 1 && (
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-muted-foreground">
+      {!isLoading && meta.totalPages > 1 ? (
+        <nav
+          aria-label="Pagination des lieux"
+          className="flex items-center justify-between"
+        >
+          <p className="text-sm text-muted-foreground" aria-current="page">
             Page {meta.page} sur {meta.totalPages} ({meta.total} lieu
             {meta.total > 1 ? "x" : ""})
           </p>
@@ -356,24 +387,24 @@ export default function AdminVenuesPage() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page <= 1}
-              aria-label="Page precedente"
+              onClick={() => t.setPage(Math.max(1, t.page - 1))}
+              disabled={t.page <= 1}
+              aria-label="Page précédente"
             >
-              Precedent
+              Précédent
             </Button>
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setPage((p) => Math.min(meta.totalPages, p + 1))}
-              disabled={page >= meta.totalPages}
+              onClick={() => t.setPage(Math.min(meta.totalPages, t.page + 1))}
+              disabled={t.page >= meta.totalPages}
               aria-label="Page suivante"
             >
               Suivant
             </Button>
           </div>
-        </div>
-      )}
+        </nav>
+      ) : null}
     </div>
   );
 }
