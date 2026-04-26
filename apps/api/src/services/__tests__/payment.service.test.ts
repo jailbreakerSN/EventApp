@@ -1128,6 +1128,266 @@ describe("PaymentService.resumePayment", () => {
   });
 });
 
+// ─── verifyAndFinalize (ADR-0018) ──────────────────────────────────────────
+
+describe("PaymentService.verifyAndFinalize", () => {
+  const owner = buildAuthUser({ uid: "user-1", roles: ["participant"] });
+
+  // ── Happy path — succeeded ──────────────────────────────────────────────
+
+  it("flips Payment + Registration to succeeded/confirmed when provider.verify returns succeeded", async () => {
+    const payment = buildPayment({
+      userId: "user-1",
+      status: "processing",
+      providerTransactionId: "PD_TKN_42",
+      amount: 5000,
+    });
+    const registration = buildRegistration({
+      id: payment.registrationId,
+      eventId: payment.eventId,
+      ticketTypeId: "tt-1",
+      status: "pending_payment",
+    });
+    const event = buildEvent({
+      id: payment.eventId,
+      ticketTypes: [
+        { id: "tt-1", name: "Standard", price: 5000, soldCount: 0 } as never,
+      ],
+    });
+
+    mockPaymentRepo.findByIdOrThrow.mockResolvedValue(payment);
+    mockProvider.verify.mockResolvedValue({ status: "succeeded", metadata: {} });
+    // Tx-internal reads: payment, registration, event
+    mockTxGet
+      .mockResolvedValueOnce({ exists: true, data: () => payment })
+      .mockResolvedValueOnce({ exists: true, data: () => registration })
+      .mockResolvedValueOnce({ exists: true, data: () => event });
+
+    const result = await service.verifyAndFinalize(payment.id, owner);
+
+    expect(result).toEqual({
+      paymentId: payment.id,
+      status: "succeeded",
+      outcome: "succeeded",
+    });
+
+    // Provider was actually called
+    expect(mockProvider.verify).toHaveBeenCalledWith("PD_TKN_42");
+
+    // Payment + Registration + Event flipped via tx
+    expect(mockTxUpdate).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ status: "succeeded" }),
+    );
+    expect(mockTxUpdate).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ status: "confirmed" }),
+    );
+
+    // Both canonical event AND audit event emitted
+    const emitNames = mockEventBus.emit.mock.calls.map((c) => c[0]);
+    expect(emitNames).toContain("payment.succeeded");
+    expect(emitNames).toContain("payment.verified_from_redirect");
+
+    // Audit event carries the outcome + provider name
+    const auditCall = mockEventBus.emit.mock.calls.find(
+      (c) => c[0] === "payment.verified_from_redirect",
+    );
+    expect(auditCall?.[1]).toMatchObject({
+      paymentId: payment.id,
+      outcome: "succeeded",
+      providerName: "mock",
+    });
+  });
+
+  // ── Happy path — failed ─────────────────────────────────────────────────
+
+  it("flips Payment to failed + Registration to cancelled when provider.verify returns failed", async () => {
+    const payment = buildPayment({
+      userId: "user-1",
+      status: "processing",
+      providerTransactionId: "PD_TKN_43",
+    });
+
+    mockPaymentRepo.findByIdOrThrow.mockResolvedValue(payment);
+    mockProvider.verify.mockResolvedValue({
+      status: "failed",
+      metadata: { reason: "Refused by provider" },
+    });
+    mockTxGet.mockResolvedValueOnce({ exists: true, data: () => payment });
+
+    const result = await service.verifyAndFinalize(payment.id, owner);
+
+    expect(result).toEqual({
+      paymentId: payment.id,
+      status: "failed",
+      outcome: "failed",
+    });
+
+    expect(mockTxUpdate).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ status: "failed" }),
+    );
+    expect(mockTxUpdate).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ status: "cancelled" }),
+    );
+
+    const emitNames = mockEventBus.emit.mock.calls.map((c) => c[0]);
+    expect(emitNames).toContain("payment.failed");
+    expect(emitNames).toContain("payment.verified_from_redirect");
+  });
+
+  // ── Pending verify ──────────────────────────────────────────────────────
+
+  it("when provider.verify returns pending, leaves Payment unchanged + emits audit only", async () => {
+    const payment = buildPayment({
+      userId: "user-1",
+      status: "processing",
+      providerTransactionId: "PD_TKN_44",
+    });
+    mockPaymentRepo.findByIdOrThrow.mockResolvedValue(payment);
+    mockProvider.verify.mockResolvedValue({ status: "pending", metadata: {} });
+
+    const result = await service.verifyAndFinalize(payment.id, owner);
+
+    expect(result.outcome).toBe("pending");
+    // No tx reached because we short-circuit on pending.
+    expect(mockTxUpdate).not.toHaveBeenCalled();
+    // Only the audit event fires (canonical succeeded/failed are state-bound).
+    const emitNames = mockEventBus.emit.mock.calls.map((c) => c[0]);
+    expect(emitNames).toEqual(["payment.verified_from_redirect"]);
+    expect(mockEventBus.emit.mock.calls[0][1]).toMatchObject({ outcome: "pending" });
+  });
+
+  // ── Idempotency: already terminal ───────────────────────────────────────
+
+  it("short-circuits when payment is already succeeded — no provider call, no tx, no events", async () => {
+    const payment = buildPayment({
+      userId: "user-1",
+      status: "succeeded",
+      providerTransactionId: "PD_TKN_45",
+    });
+    mockPaymentRepo.findByIdOrThrow.mockResolvedValue(payment);
+
+    const result = await service.verifyAndFinalize(payment.id, owner);
+
+    expect(result.outcome).toBe("succeeded");
+    expect(result.status).toBe("succeeded");
+    // Critical: chatty front-end retries must NOT cascade into provider quota.
+    expect(mockProvider.verify).not.toHaveBeenCalled();
+    expect(mockTxUpdate).not.toHaveBeenCalled();
+    expect(mockEventBus.emit).not.toHaveBeenCalled();
+  });
+
+  it.each(["failed", "refunded", "expired"] as const)(
+    "short-circuits on terminal status %s (no provider call)",
+    async (status) => {
+      const payment = buildPayment({
+        userId: "user-1",
+        status,
+        providerTransactionId: "PD_TKN_X",
+      });
+      mockPaymentRepo.findByIdOrThrow.mockResolvedValue(payment);
+
+      const result = await service.verifyAndFinalize(payment.id, owner);
+
+      expect(result.status).toBe(status);
+      expect(mockProvider.verify).not.toHaveBeenCalled();
+    },
+  );
+
+  // ── Idempotency: IPN raced ahead, Payment is terminal inside the tx ─────
+
+  it("noops the tx when an IPN flipped Payment to succeeded between the outer read and the inner-tx read", async () => {
+    // Outer read still sees `processing` → we proceed to call verify.
+    // Provider returns succeeded → we enter the tx. Inside the tx, the
+    // IPN webhook landed and already flipped the Payment → succeeded.
+    // The wasNewlySucceeded flag stays false; no double-emit, no
+    // double-ledger.
+    const payment = buildPayment({
+      userId: "user-1",
+      status: "processing",
+      providerTransactionId: "PD_TKN_46",
+    });
+    const racedPayment = { ...payment, status: "succeeded" as const };
+
+    mockPaymentRepo.findByIdOrThrow.mockResolvedValue(payment);
+    mockProvider.verify.mockResolvedValue({ status: "succeeded", metadata: {} });
+    mockTxGet.mockResolvedValueOnce({ exists: true, data: () => racedPayment });
+
+    const result = await service.verifyAndFinalize(payment.id, owner);
+
+    expect(result.outcome).toBe("succeeded");
+    // No tx writes because the inner-tx idempotency guard returned early.
+    expect(mockTxUpdate).not.toHaveBeenCalled();
+    // Canonical event NOT re-emitted (handler already fired).
+    const emitNames = mockEventBus.emit.mock.calls.map((c) => c[0]);
+    expect(emitNames).not.toContain("payment.succeeded");
+    // Audit-only emit DOES fire — operators want to know verify-on-return ran.
+    expect(emitNames).toContain("payment.verified_from_redirect");
+  });
+
+  // ── Permission denial ───────────────────────────────────────────────────
+
+  it("rejects callers without payment:read_own permission", async () => {
+    const noPermUser = buildAuthUser({ uid: "user-1", roles: [] as never[] });
+    await expect(service.verifyAndFinalize("pay-1", noPermUser)).rejects.toThrow(
+      /Permission manquante/,
+    );
+    expect(mockPaymentRepo.findByIdOrThrow).not.toHaveBeenCalled();
+  });
+
+  // ── IDOR — cross-user payment access ────────────────────────────────────
+
+  it("rejects a non-owner caller (cross-user payment access guard) with 403", async () => {
+    const payment = buildPayment({ userId: "other-user", status: "processing" });
+    mockPaymentRepo.findByIdOrThrow.mockResolvedValue(payment);
+
+    await expect(service.verifyAndFinalize(payment.id, owner)).rejects.toThrow(
+      /vos propres paiements/i,
+    );
+    // Provider must NOT be called on a forbidden access — would leak
+    // the existence of the Payment to the wrong user via timing.
+    expect(mockProvider.verify).not.toHaveBeenCalled();
+  });
+
+  // ── Edge — missing providerTransactionId ────────────────────────────────
+
+  it("rejects with ValidationError when the payment has no providerTransactionId (P1-07 placeholder)", async () => {
+    const payment = buildPayment({
+      userId: "user-1",
+      status: "pending",
+      providerTransactionId: null,
+    });
+    mockPaymentRepo.findByIdOrThrow.mockResolvedValue(payment);
+
+    await expect(service.verifyAndFinalize(payment.id, owner)).rejects.toThrow(
+      /session fournisseur active|annulez et réessayez/i,
+    );
+    expect(mockProvider.verify).not.toHaveBeenCalled();
+  });
+
+  // ── Provider error path ─────────────────────────────────────────────────
+
+  it("surfaces provider.verify errors verbatim (no swallow + no partial state)", async () => {
+    const payment = buildPayment({
+      userId: "user-1",
+      status: "processing",
+      providerTransactionId: "PD_TKN_47",
+    });
+    mockPaymentRepo.findByIdOrThrow.mockResolvedValue(payment);
+    mockProvider.verify.mockRejectedValue(new Error("Provider API down"));
+
+    await expect(service.verifyAndFinalize(payment.id, owner)).rejects.toThrow(
+      /Provider API down/,
+    );
+    // No state mutations on provider error — the front-end can retry.
+    expect(mockTxUpdate).not.toHaveBeenCalled();
+    expect(mockEventBus.emit).not.toHaveBeenCalled();
+  });
+});
+
 // ─── listEventPayments ─────────────────────────────────────────────────────
 
 describe("PaymentService.listEventPayments", () => {

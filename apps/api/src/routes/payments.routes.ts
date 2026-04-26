@@ -1,4 +1,6 @@
 import type { FastifyPluginAsync, FastifyRequest } from "fastify";
+import crypto from "node:crypto";
+import qs from "qs";
 import { z } from "zod";
 import { authenticate, requireEmailVerified } from "@/middlewares/auth.middleware";
 import { validate } from "@/middlewares/validate.middleware";
@@ -201,6 +203,121 @@ export const paymentRoutes: FastifyPluginAsync = async (fastify) => {
     return /\/webhooks?(?:\/|$)/.test(path);
   };
 
+  /**
+   * Detects a PayDunya raw IPN payload at the JSON top level. Used by
+   * the application/json parser to apply the same projection as the
+   * form-urlencoded parser when PayDunya posts JSON directly (observed
+   * in sandbox; not the documented format but happens in the wild).
+   *
+   * Heuristic: presence of BOTH `hash` (string) and `invoice` (object).
+   * `hash` alone isn't enough (other providers carry a `hash` field too)
+   * and `invoice` alone isn't enough (PayDunya nests invoice under
+   * `data.invoice` in some response shapes). The conjunction is
+   * unambiguous for the IPN case.
+   */
+  const isPayDunyaRawJson = (parsed: unknown): boolean => {
+    if (!parsed || typeof parsed !== "object") return false;
+    const obj = parsed as Record<string, unknown>;
+    return (
+      typeof obj.hash === "string" &&
+      obj.invoice != null &&
+      typeof obj.invoice === "object"
+    );
+  };
+
+  /**
+   * Project PayDunya's raw IPN payload onto the canonical
+   * PaymentWebhookSchema shape used by the route handler. Mirror of
+   * the form-urlencoded parser's projection — the two share this
+   * helper so a future change to the canonical schema lands once.
+   *
+   * See `PaymentService.handleWebhook` for the cross-check invariants
+   * (`expectedAmount` / `expectedPaymentId`) that consume `metadata`.
+   */
+  const projectPayDunyaPayload = (
+    payload: Record<string, unknown>,
+  ): { providerTransactionId: string; status: "succeeded" | "failed"; metadata: Record<string, unknown> } => {
+    const invoice =
+      payload.invoice && typeof payload.invoice === "object"
+        ? (payload.invoice as Record<string, unknown>)
+        : {};
+    const customData =
+      payload.custom_data && typeof payload.custom_data === "object"
+        ? (payload.custom_data as Record<string, unknown>)
+        : {};
+    // Coerce a value to number when it's already a number OR a numeric
+    // string (PHP-style nested form encoding via `qs.parse` returns
+    // every leaf as a string; the variant-1 JSON path returns the
+    // typed number). Returns null for anything that doesn't look like
+    // a finite number — handler treats null as "skip the cross-check"
+    // matching the documented Wave/OM contract.
+    const coerceFiniteNumber = (v: unknown): number | null => {
+      if (typeof v === "number" && Number.isFinite(v)) return v;
+      if (typeof v === "string") {
+        const n = Number(v);
+        return Number.isFinite(n) ? n : null;
+      }
+      return null;
+    };
+    return {
+      providerTransactionId: typeof invoice.token === "string" ? invoice.token : "",
+      status: payload.status === "completed" ? "succeeded" : "failed",
+      metadata: {
+        providerName: "paydunya",
+        expectedAmount: coerceFiniteNumber(invoice.total_amount),
+        expectedPaymentId:
+          typeof customData.payment_id === "string" ? customData.payment_id : null,
+        providerCode:
+          typeof payload.response_code === "string" ? payload.response_code : null,
+        providerStatus: typeof payload.status === "string" ? payload.status : null,
+      },
+    };
+  };
+
+  /**
+   * Forensic log emitted on every webhook rejection (4xx / 5xx).
+   * Captures STRUCTURE and SHAPE of the inbound request — never the
+   * raw body content (provider payloads are signed and may include
+   * customer phone / email which we don't want sprayed across logs).
+   *
+   * Operator value: when an IPN integration fails silently (the
+   * symptom that triggered the 2026-04-26 incident), this log line is
+   * the single place that tells us WHAT we received and WHY we
+   * rejected. Without it, the same incident takes 4 hours to diagnose;
+   * with it, ~5 minutes.
+   *
+   * Privacy: keys-only of the parsed body (`Object.keys`), the
+   * Content-Type header, the body byte-size, the rejection status, and
+   * a SHA-256 fingerprint of the rawBody (first 16 hex chars) so the
+   * same payload across two retries from the provider is visibly the
+   * "same" without leaking content.
+   */
+  fastify.addHook("onResponse", async (request, reply) => {
+    if (!isWebhookRequest(request)) return;
+    if (reply.statusCode < 400) return;
+    const body = (request.body ?? null) as Record<string, unknown> | null;
+    const rawBody =
+      (request as FastifyRequest & { rawBody?: string }).rawBody ?? "";
+    const fingerprint = rawBody
+      ? crypto.createHash("sha256").update(rawBody).digest("hex").slice(0, 16)
+      : null;
+    request.log.warn(
+      {
+        event: "webhook.rejected",
+        path: (request.url ?? "").split("?")[0],
+        statusCode: reply.statusCode,
+        contentType: request.headers["content-type"] ?? null,
+        // structural-only diagnostics — no payload content leaks
+        bodyKeys: body && typeof body === "object" ? Object.keys(body) : [],
+        bodyByteSize: rawBody.length,
+        rawBodyFingerprint: fingerprint,
+        userAgent: request.headers["user-agent"] ?? null,
+        remoteIp: request.ip,
+      },
+      "webhook.rejected",
+    );
+  });
+
   fastify.addContentTypeParser(
     "application/json",
     { parseAs: "string" },
@@ -211,10 +328,33 @@ export const paymentRoutes: FastifyPluginAsync = async (fastify) => {
         // path check is anchored on a slash boundary (NOT a substring)
         // so a request whose query-string contains `/webhook/` can't
         // smuggle the rawBody attachment onto a non-webhook route.
-        if (isWebhookRequest(req)) {
+        const onWebhook = isWebhookRequest(req);
+        if (onWebhook) {
           (req as FastifyRequest & { rawBody?: string }).rawBody = body;
         }
         const parsed = body ? JSON.parse(body) : {};
+
+        // ── PayDunya JSON-shaped IPN projection (hotfix 2026-04-26) ──
+        // Some PayDunya integrations / sandbox modes POST the IPN as
+        // `application/json` instead of the documented form-urlencoded
+        // wrapper. When that happens the body lands here as the raw
+        // payload (`{ hash, invoice, custom_data, status, ... }`)
+        // which doesn't match the canonical `PaymentWebhookSchema`
+        // (`{ providerTransactionId, status, metadata? }`) and Zod
+        // rejects with 400 BEFORE the per-route handler runs.
+        //
+        // Mirror the projection logic from the form-urlencoded
+        // parser below so EITHER wire format produces the canonical
+        // shape downstream. Heuristic: projection only triggers on
+        // webhook paths AND the parsed body is a PayDunya-shaped
+        // object (top-level `invoice.token` + `hash` present). Any
+        // other JSON request — including legitimate provider IPNs
+        // from Wave/OM that genuinely send canonical-shaped JSON —
+        // passes through unchanged.
+        if (onWebhook && isPayDunyaRawJson(parsed)) {
+          done(null, projectPayDunyaPayload(parsed as Record<string, unknown>));
+          return;
+        }
         done(null, parsed);
       } catch (err) {
         done(err as Error, undefined);
@@ -260,64 +400,94 @@ export const paymentRoutes: FastifyPluginAsync = async (fastify) => {
           return;
         }
         (req as FastifyRequest & { rawBody?: string }).rawBody = body;
-        // Extract the `data` field; convert its JSON contents into
-        // the canonical PaymentWebhookSchema shape (providerTxId +
-        // status + metadata) so the existing webhook handler works
-        // unchanged for both JSON and form-encoded providers.
+        // ── PayDunya wire-format detection (2026-04-26 root-cause fix) ──
+        //
+        // PayDunya documentation says they POST `application/x-www-form-
+        // urlencoded` with the data under the `data` key. The PHP doc
+        // sample uses `$_POST['data']['hash']` — which works in PHP
+        // ONLY when the body uses PHP-style nested form encoding:
+        //
+        //   data[hash]=abc&data[status]=completed&data[invoice][token]=xyz
+        //
+        // (NOT `data=<json-stringified-payload>`. PHP's $_POST does not
+        // auto-deserialize JSON.)
+        //
+        // Some PayDunya integrations / sandbox modes use the JSON-string
+        // variant `data=<json>` — historically what our parser was
+        // written against. Both are valid at the wire level; we accept
+        // BOTH:
+        //
+        //   1. Try `URLSearchParams.get("data")` → if it returns a
+        //      non-null string, JSON.parse it (legacy variant).
+        //   2. Otherwise, parse the body via `qs` (PHP-style nested)
+        //      and read `parsed.data` directly as the payload object.
+        //
+        // The 2026-04-26 staging incident (`POST 400 6ms GuzzleHttp`)
+        // was the form-1 parser silently returning `{}` for a form-2
+        // body, which then failed Zod validation upstream. This fix
+        // accepts both shapes; the projection helper feeds them to the
+        // canonical PaymentWebhookSchema downstream.
         const params = new URLSearchParams(body);
         const dataStr = params.get("data");
-        if (!dataStr) {
+
+        let payload: Record<string, unknown> | null = null;
+
+        if (dataStr) {
+          // Variant 1 — `data=<json-string>`. Phase-2 security review
+          // B-1 — `dataStr` is attacker-controlled. A SyntaxError from
+          // `JSON.parse` here used to propagate to the outer catch
+          // which called `done(err as Error, undefined)`. Fastify
+          // serialised that raw error message into the 500 response
+          // body, leaking the parser internals. Catch the parse
+          // separately and respond with a clean 400.
+          try {
+            payload = JSON.parse(dataStr) as Record<string, unknown>;
+          } catch {
+            const err: Error & { statusCode?: number } = new Error(
+              "Webhook payload is not valid JSON",
+            );
+            err.statusCode = 400;
+            done(err, undefined);
+            return;
+          }
+        } else {
+          // Variant 2 — PHP-style nested form encoding. `qs.parse`
+          // turns `data[hash]=x&data[invoice][token]=y` into
+          // `{ data: { hash: "x", invoice: { token: "y" } } }`. We
+          // bound the parse depth + parameter count so a hostile
+          // payload can't exhaust memory by nesting indefinitely or
+          // declaring a million top-level keys (matches qs's own
+          // recommended hardening for untrusted input).
+          const parsed = qs.parse(body, {
+            depth: 5,
+            parameterLimit: 200,
+            // arrayLimit: small — PayDunya invoices have at most a
+            // dozen items; a body with thousands of array indices is
+            // either pathological or hostile.
+            arrayLimit: 50,
+          });
+          const dataField = (parsed as Record<string, unknown>)["data"];
+          if (dataField && typeof dataField === "object") {
+            payload = dataField as Record<string, unknown>;
+          }
+        }
+
+        if (!payload) {
+          // Neither wire format produced a usable payload. Return an
+          // empty object so the downstream Zod validator surfaces a
+          // clean 400 (`providerTransactionId required`) — better
+          // than a 500.
           done(null, {});
           return;
         }
-        // Phase-2 security review B-1 — `dataStr` is attacker-
-        // controlled. A SyntaxError from `JSON.parse` here used to
-        // propagate to the outer catch which called
-        // `done(err as Error, undefined)`. Fastify serialised that
-        // raw error message into the 500 response body, leaking the
-        // parser internals. Catch the parse separately and respond
-        // with a clean 400 — the verifyWebhook step would have
-        // rejected the payload anyway, but failing fast here keeps
-        // the error contract predictable for monitoring dashboards.
-        let payload: Record<string, unknown>;
-        try {
-          payload = JSON.parse(dataStr) as Record<string, unknown>;
-        } catch {
-          const err: Error & { statusCode?: number } = new Error(
-            "Webhook payload is not valid JSON",
-          );
-          err.statusCode = 400;
-          done(err, undefined);
-          return;
-        }
         // Project PayDunya's payload shape onto our canonical webhook
-        // schema. PayDunya invoice `token` → `providerTransactionId`;
-        // PayDunya `status` ("completed" / "cancelled" / …) → our
-        // narrow ("succeeded" / "failed") via mapping. Anything else
-        // (`pending`, unknown) drops to `failed` defensively — the
-        // handler treats it as a no-op via the inner-tx idempotency
-        // guard.
-        const invoice =
-          payload && typeof payload === "object" && payload.invoice && typeof payload.invoice === "object"
-            ? (payload.invoice as Record<string, unknown>)
-            : {};
-        const customData =
-          payload && typeof payload === "object" && payload.custom_data && typeof payload.custom_data === "object"
-            ? (payload.custom_data as Record<string, unknown>)
-            : {};
-        // Anti-tampering invariants (T-PD-03 / T-PD-04). PayDunya
-        // signs the IPN with SHA-512(MasterKey) — a valid signature
-        // proves the request came from PayDunya but does NOT bind
-        // the payload to any specific Payment. A malicious actor who
-        // briefly intercepted any valid PayDunya webhook could
-        // re-emit it with a tampered amount or substituted token.
-        // The handler defends with three cross-checks (executed in
-        // `handleWebhook`):
-        //   1. Payment.providerTransactionId === invoice.token
-        //   2. Payment.amount             === invoice.total_amount
-        //   3. Payment.id                 === custom_data.payment_id
-        // Surface the expected values explicitly on metadata so the
-        // handler doesn't re-parse the raw payload.
+        // schema. Logic factored into `projectPayDunyaPayload` so the
+        // application/json parser (which fires when PayDunya posts
+        // JSON instead of form-urlencoded — observed in sandbox) can
+        // share the exact same projection. Anti-tampering invariants
+        // (T-PD-03 / T-PD-04) are enforced in `handleWebhook` against
+        // `metadata.expectedAmount` / `metadata.expectedPaymentId` —
+        // the projection surfaces both fields for that cross-check.
         //
         // Phase-2 security review P-2 — we deliberately do NOT carry
         // the full PayDunya payload on `metadata` because:
@@ -327,31 +497,7 @@ export const paymentRoutes: FastifyPluginAsync = async (fastify) => {
         //      which inflates the Firestore doc and duplicates the
         //      `hash` field (SHA-512 of MasterKey).
         // Surface only the projection fields the handler needs.
-        const mapped = {
-          providerTransactionId: typeof invoice.token === "string" ? invoice.token : "",
-          status:
-            payload.status === "completed" ? "succeeded" : "failed",
-          metadata: {
-            providerName: "paydunya",
-            // Cross-check fields surfaced for the handler to verify
-            // BEFORE entering the tx. Non-null when PayDunya sent
-            // them; null tells the handler to skip the check (other
-            // providers don't carry these).
-            expectedAmount:
-              typeof invoice.total_amount === "number" ? invoice.total_amount : null,
-            expectedPaymentId:
-              typeof customData.payment_id === "string" ? customData.payment_id : null,
-            // Surface the PayDunya-side `response_code` for operator
-            // forensics; cheap to keep + part of every PayDunya IPN.
-            providerCode:
-              typeof payload.response_code === "string" ? payload.response_code : null,
-            // Raw status from the provider, useful when the canonical
-            // mapping (completed → succeeded, …) hides the original
-            // value (e.g. `expired` becomes `failed`).
-            providerStatus: typeof payload.status === "string" ? payload.status : null,
-          },
-        };
-        done(null, mapped);
+        done(null, projectPayDunyaPayload(payload));
       } catch (err) {
         done(err as Error, undefined);
       }
@@ -643,6 +789,56 @@ export const paymentRoutes: FastifyPluginAsync = async (fastify) => {
     async (request, reply) => {
       const { paymentId } = request.params as z.infer<typeof ParamsWithPaymentId>;
       const result = await paymentService.resumePayment(paymentId, request.user!);
+      return reply.send({ success: true, data: result });
+    },
+  );
+
+  // ─── Verify-on-return — ADR-0018 ──────────────────────────────────────────
+  // Robust fallback when the provider's IPN webhook doesn't deliver
+  // (PayDunya sandbox is the canonical case). The participant is
+  // redirected back from the hosted checkout to /payment-status; the
+  // page calls this endpoint once on mount, which proactively reads
+  // the official payment state via `provider.verify()` and finalises
+  // the Payment with the SAME state-machine flip the IPN webhook would
+  // have done — atomic Payment + Registration + counter + ledger
+  // entries, plus the canonical `payment.succeeded` / `payment.failed`
+  // emit. Idempotent: a no-op if the IPN has already finalised the
+  // Payment, AND the verify call itself is skipped on terminal status
+  // so a chatty front-end can't flood the provider.
+  //
+  // Permission: `payment:read_own` — verify is a read of the
+  // provider's official state (no NEW state requested), so the read-
+  // own permission is sufficient. The service-layer ownership check
+  // narrows it further to "this user's own payment".
+  //
+  // Rate-limit: tighter than the global bucket (20/min/user) because
+  // a misbehaving front-end on retry-loop must not cascade into the
+  // provider's API quota. /payment-status normally calls this exactly
+  // once per flow; legitimate retry from a user clicking "Vérifier
+  // maintenant" is bounded.
+  fastify.post(
+    "/:paymentId/verify",
+    {
+      config: {
+        rateLimit: {
+          max: 20,
+          timeWindow: "1 minute",
+        },
+      },
+      preHandler: [
+        authenticate,
+        requirePermission("payment:read_own"),
+        validate({ params: ParamsWithPaymentId }),
+      ],
+      schema: {
+        tags: ["Payments"],
+        summary: "Verify a payment with the provider (verify-on-return fallback for IPN)",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const { paymentId } = request.params as z.infer<typeof ParamsWithPaymentId>;
+      const result = await paymentService.verifyAndFinalize(paymentId, request.user!);
       return reply.send({ success: true, data: result });
     },
   );

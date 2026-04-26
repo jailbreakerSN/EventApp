@@ -29,6 +29,7 @@
     "pdf-lib": "^1.17.1",
     "pino": "^9.6.0",
     "qrcode": "^1.5.4",
+    "qs": "^6.15.1",
     "react": "^19",
     "react-dom": "^19",
     "resend": "^6.12.2",
@@ -38,6 +39,7 @@
   "devDependencies": {
     "@types/node": "^22.10.5",
     "@types/qrcode": "^1.5.6",
+    "@types/qs": "^6.15.0",
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
     "@types/sanitize-html": "^2.16.1",

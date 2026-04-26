@@ -1050,6 +1050,318 @@ export class PaymentService extends BaseService {
   }
 
   /**
+   * ADR-0018 — Verify-on-return: finalise a payment by reading the
+   * official state from the provider, used as a robust fallback when
+   * the provider's IPN delivery is unreliable (notably PayDunya
+   * sandbox).
+   *
+   * Flow when the participant lands on /payment-status after redirect-
+   * back from the provider hosted checkout:
+   *
+   *   1. Authorize — owner-only (the user who initiated the payment).
+   *   2. Idempotency short-circuit — if the Payment is already
+   *      terminal (succeeded / failed / refunded / expired), return
+   *      the current state. The IPN may have raced ahead and
+   *      finalised the Payment already.
+   *   3. Resolve provider — derive from the stored payment.method.
+   *      For PayDunya routing, getProvider(method) returns
+   *      paydunyaPaymentProvider (provider.name === "paydunya"); for
+   *      legacy direct-Wave/OM, it returns the matching provider.
+   *   4. Call provider.verify(providerTransactionId) — the provider
+   *      hits its own confirm-invoice API and returns the official
+   *      state (succeeded / failed / pending). The response is
+   *      authoritative because we made the call (no payload-tampering
+   *      vector — see ADR-0018 §threat model).
+   *   5. If terminal, run the SAME state-machine flip as the IPN
+   *      success/failure path (Payment update + Registration confirm
+   *      + Event counter increment + ledger entries + payment.succeeded
+   *      / payment.failed emit). Idempotency-safe — the inner-tx
+   *      re-read prevents double-application even if the IPN lands
+   *      milliseconds later.
+   *   6. Emit `payment.verified_from_redirect` for audit traceability
+   *      so operators can distinguish IPN-finalised vs. verify-
+   *      finalised when investigating provider-IPN reliability.
+   *
+   * No provider call is made if the Payment is already terminal
+   * (step 2). This is critical: a chatty front-end could repeatedly
+   * call /verify on a /payment-status remount, and we don't want to
+   * pay an outbound API call per remount.
+   *
+   * Permission: `payment:read_own` (the verify path is a read of the
+   * provider's official state — no NEW state is requested, we only
+   * synchronise our local mirror with what the provider already
+   * decided).
+   */
+  async verifyAndFinalize(
+    paymentId: string,
+    user: AuthUser,
+  ): Promise<{ paymentId: string; status: PaymentStatus; outcome: "succeeded" | "failed" | "pending" }> {
+    this.requirePermission(user, "payment:read_own");
+
+    const payment = await paymentRepository.findByIdOrThrow(paymentId);
+
+    // Owner-only — even payment:read_all admins don't get to trigger a
+    // verify on someone else's payment, because the call has the side
+    // effect of flipping our local mirror. State-mutation rights are
+    // narrower than read rights.
+    if (payment.userId !== user.uid) {
+      throw new ForbiddenError(
+        "Vous ne pouvez vérifier que vos propres paiements",
+      );
+    }
+
+    // Idempotency — already-terminal payments need no provider call.
+    // This guard is essential: the front-end may call /verify on every
+    // remount of /payment-status, and we don't want to bombard the
+    // provider with redundant confirm-invoice calls.
+    if (
+      payment.status === "succeeded" ||
+      payment.status === "failed" ||
+      payment.status === "refunded" ||
+      payment.status === "expired"
+    ) {
+      return {
+        paymentId: payment.id,
+        status: payment.status,
+        outcome:
+          payment.status === "succeeded"
+            ? "succeeded"
+            : payment.status === "failed" || payment.status === "expired"
+              ? "failed"
+              : "succeeded", // refunded => was succeeded
+      };
+    }
+
+    if (!payment.providerTransactionId) {
+      // The two-phase initiate (P1-07) didn't reach tx2 — there's no
+      // provider session to verify against. The cron timeout will
+      // sweep this row to expired in due course; the user sees a
+      // clean error instead of a 500.
+      throw new ValidationError(
+        "Ce paiement n'a pas encore de session fournisseur active. Annulez et réessayez.",
+        { reason: "no_provider_transaction" },
+      );
+    }
+
+    const provider = getProvider(payment.method);
+
+    // Provider verify — synchronous server-to-server call. PayDunya
+    // hits /checkout-invoice/confirm/<token>; Wave hits the equivalent
+    // session endpoint. Whatever they return is authoritative.
+    const verifyResult = await provider.verify(payment.providerTransactionId);
+
+    const requestId = getRequestId();
+    const now = new Date().toISOString();
+    const audit = (outcome: "succeeded" | "failed" | "pending") => {
+      eventBus.emit("payment.verified_from_redirect", {
+        paymentId: payment.id,
+        registrationId: payment.registrationId,
+        eventId: payment.eventId,
+        organizationId: payment.organizationId,
+        outcome,
+        providerName: provider.name,
+        actorId: user.uid,
+        requestId,
+        timestamp: now,
+      });
+    };
+
+    if (verifyResult.status === "pending") {
+      // Provider hasn't finalised on its side either — leave our
+      // Payment in `processing` and tell the caller to keep polling.
+      // Audit-log the inconclusive verify so operators investigating
+      // a stuck-payment incident can see the verify path was tried.
+      audit("pending");
+      return { paymentId: payment.id, status: payment.status, outcome: "pending" };
+    }
+
+    // ── Terminal: run the same state-machine flip as the IPN path ──
+    // The transaction logic mirrors handleWebhook's success / failure
+    // branches BYTE-FOR-BYTE on the parts that matter (idempotency
+    // guard, registration flip, event counter, ledger entries). The
+    // ONLY differences:
+    //   - no anti-tampering checks (we made the verify call ourselves,
+    //     no attacker-controllable payload to validate)
+    //   - the metadata blob carries a `source: "verify_on_return"`
+    //     marker so providerMetadata reads can distinguish the path
+    //     in audit forensics
+    //
+    // Note: this is intentionally NOT factored into a shared private
+    // helper with handleWebhook — the existing code is the most-
+    // exercised financial path and stays untouched here. A follow-up
+    // refactor can DRY both call sites once verify-on-return has
+    // baked in production for a sprint.
+    const enrichedMetadata = {
+      ...(verifyResult.metadata ?? {}),
+      source: "verify_on_return" as const,
+      verifiedAt: now,
+      providerName: provider.name,
+    };
+
+    if (verifyResult.status === "succeeded") {
+      let wasNewlySucceeded = false;
+      await db.runTransaction(async (tx) => {
+        const payRef = db.collection(COLLECTIONS.PAYMENTS).doc(payment.id);
+        const paySnap = await tx.get(payRef);
+        if (!paySnap.exists) return;
+        const freshPayment = paySnap.data() as Payment;
+
+        if (
+          freshPayment.status === "succeeded" ||
+          freshPayment.status === "failed" ||
+          freshPayment.status === "refunded"
+        ) {
+          return;
+        }
+
+        wasNewlySucceeded = true;
+
+        const regRef = db.collection(COLLECTIONS.REGISTRATIONS).doc(payment.registrationId);
+        const regSnap = await tx.get(regRef);
+        if (!regSnap.exists) {
+          throw new NotFoundError("Registration", payment.registrationId);
+        }
+
+        const eventRef = db.collection(COLLECTIONS.EVENTS).doc(payment.eventId);
+        const eventSnap = await tx.get(eventRef);
+        const eventData = eventSnap.data() as Event | undefined;
+
+        tx.update(payRef, {
+          status: "succeeded" as PaymentStatus,
+          completedAt: now,
+          updatedAt: now,
+          providerMetadata: enrichedMetadata,
+        });
+
+        tx.update(regRef, {
+          status: "confirmed",
+          updatedAt: now,
+        });
+
+        const eventUpdate: Record<string, unknown> = {
+          registeredCount: FieldValue.increment(1),
+          updatedAt: now,
+        };
+        if (eventData) {
+          const reg = regSnap.data() as Registration;
+          eventUpdate.ticketTypes = eventData.ticketTypes.map((tt) =>
+            tt.id === reg.ticketTypeId ? { ...tt, soldCount: tt.soldCount + 1 } : tt,
+          );
+        }
+        tx.update(eventRef, eventUpdate);
+
+        const platformFee = computePlatformFee(freshPayment.amount);
+        const availableOn = computeAvailableOn(
+          now,
+          eventData?.endDate ?? eventData?.startDate ?? null,
+        );
+        const description = `Billet : ${eventData?.title ?? freshPayment.eventId}`;
+
+        appendLedgerEntry(tx, {
+          organizationId: freshPayment.organizationId,
+          eventId: freshPayment.eventId,
+          paymentId: freshPayment.id,
+          payoutId: null,
+          kind: "payment",
+          amount: freshPayment.amount,
+          status: "pending",
+          availableOn,
+          description,
+          createdBy: "system:payment.verify",
+          createdAt: now,
+        });
+        if (platformFee > 0) {
+          appendLedgerEntry(tx, {
+            organizationId: freshPayment.organizationId,
+            eventId: freshPayment.eventId,
+            paymentId: freshPayment.id,
+            payoutId: null,
+            kind: "platform_fee",
+            amount: -platformFee,
+            status: "pending",
+            availableOn,
+            description: `Frais plateforme (${Math.round(
+              (platformFee / freshPayment.amount) * 100,
+            )}%)`,
+            createdBy: "system:payment.verify",
+            createdAt: now,
+          });
+        }
+      });
+
+      // Same wasNewlySucceeded gate as handleWebhook — the canonical
+      // payment.succeeded event MUST fire only on the actual
+      // processing → succeeded transition, never on a no-op (e.g.
+      // an IPN that landed milliseconds before our verify call).
+      if (wasNewlySucceeded) {
+        eventBus.emit("payment.succeeded", {
+          paymentId: payment.id,
+          registrationId: payment.registrationId,
+          eventId: payment.eventId,
+          organizationId: payment.organizationId,
+          amount: payment.amount,
+          actorId: payment.userId,
+          requestId,
+          timestamp: now,
+        });
+      }
+
+      audit("succeeded");
+      return { paymentId: payment.id, status: "succeeded", outcome: "succeeded" };
+    }
+
+    // verifyResult.status === "failed"
+    let wasNewlyFailed = false;
+    await db.runTransaction(async (tx) => {
+      const payRef = db.collection(COLLECTIONS.PAYMENTS).doc(payment.id);
+      const paySnap = await tx.get(payRef);
+      if (!paySnap.exists) return;
+      const freshPayment = paySnap.data() as Payment;
+
+      if (
+        freshPayment.status === "succeeded" ||
+        freshPayment.status === "failed" ||
+        freshPayment.status === "refunded"
+      ) {
+        return;
+      }
+
+      wasNewlyFailed = true;
+
+      const regRef = db.collection(COLLECTIONS.REGISTRATIONS).doc(payment.registrationId);
+
+      tx.update(payRef, {
+        status: "failed" as PaymentStatus,
+        failureReason:
+          (verifyResult.metadata?.reason as string) ??
+          "Paiement refusé par le fournisseur (vérification à retour de redirection)",
+        updatedAt: now,
+        providerMetadata: enrichedMetadata,
+      });
+
+      tx.update(regRef, {
+        status: "cancelled",
+        updatedAt: now,
+      });
+    });
+
+    if (wasNewlyFailed) {
+      eventBus.emit("payment.failed", {
+        paymentId: payment.id,
+        registrationId: payment.registrationId,
+        eventId: payment.eventId,
+        organizationId: payment.organizationId,
+        actorId: payment.userId,
+        requestId,
+        timestamp: now,
+      });
+    }
+
+    audit("failed");
+    return { paymentId: payment.id, status: "failed", outcome: "failed" };
+  }
+
+  /**
    * List payments for an event (organizer view).
    *
    * Returns projected `PaymentClientView[]` so the org-admin dashboard
