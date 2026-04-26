@@ -1311,6 +1311,9 @@ export interface DomainEventMap {
   "whatsapp.opt_in.granted": WhatsappOptInGrantedEvent;
   "whatsapp.opt_in.revoked": WhatsappOptInRevokedEvent;
   "whatsapp.delivery.failed": WhatsappDeliveryFailedEvent;
+  // Phase O7 — Participant ops
+  "participant_profile.updated": ParticipantProfileUpdatedEvent;
+  "participant.merged": ParticipantMergedEvent;
   // Plan coupons (Phase 7+ item #7) — redemption itself is captured on
   // the subscription doc + couponRedemptions collection; we only emit
   // lifecycle signals here (create / update / archive).
@@ -1488,6 +1491,25 @@ export interface WhatsappDeliveryFailedEvent extends BaseEventPayload {
   errorCode: string | null;
   /** Optional human-readable error from Meta. */
   errorMessage: string | null;
+}
+
+// ─── Phase O7 — Participant ops (tags / notes / merge) ────────────────────
+
+export interface ParticipantProfileUpdatedEvent extends BaseEventPayload {
+  organizationId: string;
+  userId: string;
+  /** Tags AFTER the update. */
+  tags: string[];
+  /** Whether the notes field was changed (we don't log the value for privacy). */
+  notesChanged: boolean;
+}
+
+export interface ParticipantMergedEvent extends BaseEventPayload {
+  organizationId: string;
+  primaryUserId: string;
+  secondaryUserId: string;
+  /** Number of registrations re-pointed from secondary → primary. */
+  registrationsMoved: number;
 }
 
 export type DomainEventName = keyof DomainEventMap;

@@ -1777,6 +1777,42 @@ export function registerAuditListeners(): void {
     });
   });
 
+  // ── Phase O7 — Participant ops (tags, notes, merge) ───────────────────
+
+  eventBus.on("participant_profile.updated", async (payload) => {
+    await auditService.log({
+      action: "participant_profile.updated",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "user",
+      resourceId: payload.userId,
+      eventId: null,
+      organizationId: payload.organizationId,
+      details: {
+        tags: payload.tags,
+        notesChanged: payload.notesChanged,
+      },
+    });
+  });
+
+  eventBus.on("participant.merged", async (payload) => {
+    await auditService.log({
+      action: "participant.merged",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "user",
+      resourceId: payload.primaryUserId,
+      eventId: null,
+      organizationId: payload.organizationId,
+      details: {
+        secondaryUserId: payload.secondaryUserId,
+        registrationsMoved: payload.registrationsMoved,
+      },
+    });
+  });
+
   // ── Subscription Override (Phase 5 — admin per-org assign) ─────────────
 
   eventBus.on("subscription.overridden", async (payload) => {

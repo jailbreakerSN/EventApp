@@ -88,6 +88,10 @@ export const COLLECTIONS = {
   // Phase O6 — append-only delivery webhook log (Meta status updates
   // for outbound WhatsApp messages: sent / delivered / read / failed).
   WHATSAPP_DELIVERY_LOG: "whatsappDeliveryLog",
+  // Phase O7 — org-scoped participant profile (tags + organizer notes).
+  // One doc per (organizationId, userId) pair; deterministic id makes
+  // get-by-key O(1) and ties cleanly to per-org Firestore rules.
+  PARTICIPANT_PROFILES: "participantProfiles",
   SPEAKERS: "speakers",
   SPONSORS: "sponsors",
   SPONSOR_LEADS: "sponsorLeads",

@@ -13,6 +13,7 @@ export * from "./balance-transaction.types";
 export * from "./communication.types";
 export * from "./comms-template.types";
 export * from "./whatsapp.types";
+export * from "./participant-profile.types";
 export * from "./speaker.types";
 export * from "./sponsor.types";
 export * from "./api.types";

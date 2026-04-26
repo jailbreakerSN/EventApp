@@ -625,7 +625,9 @@ describe("Audit Listener", () => {
       // Sprint-4 T3.2 — 3 scheduled_admin_op.* listeners added.
       // Phase O6 — 3 whatsapp.* listeners added (opt_in.granted,
       // opt_in.revoked, delivery.failed).
-      const EXPECTED_HANDLER_COUNT = 102;
+      // Phase O7 — 2 participant ops listeners added
+      // (participant_profile.updated, participant.merged).
+      const EXPECTED_HANDLER_COUNT = 104;
 
       expect(registered).toHaveLength(EXPECTED_HANDLER_COUNT);
       // Each registered event name should be unique — a double

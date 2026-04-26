@@ -194,6 +194,12 @@ export const AuditActionSchema = z.enum([
   // keep the audit log readable; sent/delivered/read updates land in
   // structured logs but not the audit collection.
   "whatsapp.delivery.failed",
+  // Phase O7 — participant ops (tags / notes / merge). Tag mutations
+  // and notes edits go through profile.updated; merge produces a
+  // dedicated event because the side-effect is much larger
+  // (registrations re-pointed, secondary archived).
+  "participant_profile.updated",
+  "participant.merged",
 ]);
 
 export type AuditAction = z.infer<typeof AuditActionSchema>;
