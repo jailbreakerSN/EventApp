@@ -415,7 +415,7 @@ jobs:
         # PAYMENT_WEBHOOK_SECRET), RESEND_API_KEY — all moved to
         # Secret Manager. Plain env vars retained here cover only:
         #   - non-sensitive runtime config (URLs, log level, plan
-        //     limits, NODE_ENV, …)
+        #     limits, NODE_ENV, …)
         #   - PAYDUNYA_MODE (flag value, not a secret)
         #   - SENTRY_DSN (DSN format is public-by-design — Sentry SDKs
         #     embed it in client bundles)
