@@ -11,6 +11,7 @@ export * from "./messaging.types";
 export * from "./payment.types";
 export * from "./balance-transaction.types";
 export * from "./communication.types";
+export * from "./comms-template.types";
 export * from "./speaker.types";
 export * from "./sponsor.types";
 export * from "./api.types";
