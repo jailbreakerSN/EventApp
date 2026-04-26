@@ -62,8 +62,11 @@ assertSafeTarget({ allowReset: true });
 const DRY_RUN =
   process.argv.includes("--dry-run") || process.env.RESET_DRY_RUN === "true";
 
-const STORAGE_BUCKET =
-  process.env.FIREBASE_STORAGE_BUCKET ?? `${PROJECT_ID}.appspot.com`;
+// Bucket name is resolved at run-time (see resolveStorageBucket below) so a
+// fresh Firebase project — which defaults to `<project>.firebasestorage.app`
+// since the late-2024 naming rollout — works without any operator config.
+// FIREBASE_STORAGE_BUCKET still wins when set (custom bucket names, CI
+// pre-discovery via the Firebase Management API in seed-staging.yml).
 
 // Storage paths the seed + API ever write to. Anything outside these
 // prefixes is left alone — operators may keep their own dev fixtures
@@ -100,10 +103,57 @@ import { getAuth } from "firebase-admin/auth";
 import { getFirestore, type Firestore } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
 
-const app = initializeApp({ projectId: PROJECT_ID, storageBucket: STORAGE_BUCKET });
+const app = initializeApp({ projectId: PROJECT_ID });
 const db = getFirestore(app);
 const auth = getAuth(app);
 const storage = getStorage(app);
+
+/**
+ * Resolve the Firebase Storage bucket for the active project.
+ *
+ * Order of precedence:
+ *   1. `FIREBASE_STORAGE_BUCKET` env var (operator override / CI pre-
+ *      discovery via the Firebase Management API).
+ *   2. For emulator targets, the legacy `<project>.appspot.com` form —
+ *      the storage emulator accepts any bucket name and a real `exists()`
+ *      probe round-trips against the local emulator unnecessarily.
+ *   3. Probe the two well-known Firebase bucket conventions and use the
+ *      first one that exists:
+ *        - `<project>.firebasestorage.app` (new default since the late-
+ *          2024 Firebase Storage naming rollout)
+ *        - `<project>.appspot.com`         (legacy default)
+ *
+ * Probing means moving to a new project never requires touching this
+ * script or the workflow — the bucket name is auto-discovered from
+ * whichever convention the project actually uses.
+ */
+async function resolveStorageBucket(): Promise<string> {
+  const override = process.env.FIREBASE_STORAGE_BUCKET;
+  if (override) return override;
+
+  if (SEED_TARGET === "emulator") return `${PROJECT_ID}.appspot.com`;
+
+  const candidates = [
+    `${PROJECT_ID}.firebasestorage.app`,
+    `${PROJECT_ID}.appspot.com`,
+  ];
+  const failures: string[] = [];
+  for (const candidate of candidates) {
+    try {
+      const [exists] = await storage.bucket(candidate).exists();
+      if (exists) return candidate;
+      failures.push(`${candidate} (not found)`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      failures.push(`${candidate} (${msg})`);
+    }
+  }
+  throw new Error(
+    `Could not auto-discover the Firebase Storage bucket for project ${PROJECT_ID}. ` +
+      `Tried: ${failures.join(", ")}. ` +
+      `Set FIREBASE_STORAGE_BUCKET explicitly if your project uses a custom bucket name.`,
+  );
+}
 
 // ─── Firestore ────────────────────────────────────────────────────────────
 
@@ -187,8 +237,8 @@ async function processAuthUsers(): Promise<number> {
  *
  * In `--dry-run`, returns the count of objects that WOULD be deleted.
  */
-async function processStorage(): Promise<{ deleted: number; perPrefix: Record<string, number> }> {
-  const bucket = storage.bucket();
+async function processStorage(bucketName: string): Promise<{ deleted: number; perPrefix: Record<string, number> }> {
+  const bucket = storage.bucket(bucketName);
   const perPrefix: Record<string, number> = {};
   let total = 0;
 
@@ -218,8 +268,9 @@ async function processStorage(): Promise<{ deleted: number; perPrefix: Record<st
 async function reset(): Promise<void> {
   const label = PROJECT_LABEL[PROJECT_ID] ?? PROJECT_ID;
   const mode = DRY_RUN ? "DRY-RUN — nothing will be deleted" : "WRITE";
+  const storageBucket = await resolveStorageBucket();
   console.log(
-    `\n⚠️  RESET (${mode}): target=${SEED_TARGET}, project=${PROJECT_ID}, label=${label}, bucket=${STORAGE_BUCKET}\n`,
+    `\n⚠️  RESET (${mode}): target=${SEED_TARGET}, project=${PROJECT_ID}, label=${label}, bucket=${storageBucket}\n`,
   );
 
   console.log("📦 Firestore collections:");
@@ -240,8 +291,8 @@ async function reset(): Promise<void> {
     `  ✓ ${DRY_RUN ? "would delete" : "deleted"} ${authCount} auth users`,
   );
 
-  console.log(`\n🗂️  Storage bucket (${STORAGE_BUCKET}):`);
-  const storageRes = await processStorage();
+  console.log(`\n🗂️  Storage bucket (${storageBucket}):`);
+  const storageRes = await processStorage(storageBucket);
   for (const prefix of STORAGE_PATH_PREFIXES) {
     const count = storageRes.perPrefix[prefix] ?? 0;
     if (count > 0) {
