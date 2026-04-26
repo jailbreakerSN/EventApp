@@ -407,6 +407,12 @@ export const EventSearchQuerySchema = z.object({
   dateTo: z.string().datetime().optional(), // events starting on or before
   organizationId: z.string().optional(),
   isFeatured: zStringBoolean().optional(),
+  /**
+   * Filter by ticket pricing. "free" = at least one ticket type with price === 0
+   * AND no paid-only access. "paid" = all ticket types have price > 0.
+   * Documents with no ticket types are treated as free.
+   */
+  price: z.enum(["free", "paid"]).optional(),
   page: z.coerce.number().int().positive().default(1),
   limit: z.coerce.number().int().positive().max(100).default(20),
   orderBy: z.enum(["startDate", "createdAt", "title"]).default("startDate"),

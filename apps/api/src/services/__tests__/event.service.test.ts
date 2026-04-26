@@ -5,6 +5,7 @@ import {
   type UpdateEventDto,
   type CreateTicketTypeDto,
   type Location,
+  type TicketType,
 } from "@teranga/shared-types";
 import {
   buildAuthUser,
@@ -1011,6 +1012,93 @@ describe("EventService.search", () => {
 
     expect(result.data).toHaveLength(1);
     expect(result.data[0].title).toBe("Teranga Fest");
+  });
+
+  describe("price filter", () => {
+    const ticket = (overrides: Partial<TicketType>): TicketType => ({
+      id: overrides.id ?? "tt",
+      name: overrides.name ?? "Standard",
+      price: overrides.price ?? 0,
+      currency: "XOF",
+      totalQuantity: 100,
+      soldCount: 0,
+      accessZoneIds: [],
+      isVisible: true,
+      ...overrides,
+    });
+
+    const freeEvt = buildEvent({
+      title: "Free Workshop",
+      ticketTypes: [ticket({ id: "t1", price: 0 })],
+    });
+    const paidEvt = buildEvent({
+      title: "Paid Conference",
+      ticketTypes: [ticket({ id: "t2", price: 5000 })],
+    });
+    const mixedEvt = buildEvent({
+      title: "Mixed",
+      ticketTypes: [
+        ticket({ id: "t3", name: "VIP", price: 10000 }),
+        ticket({ id: "t4", name: "Free seat", price: 0 }),
+      ],
+    });
+    const noTicketEvt = buildEvent({ title: "No tickets yet", ticketTypes: [] });
+
+    it("price=free keeps events with at least one zero-priced ticket and ticketless events", async () => {
+      mockEventRepo.search.mockResolvedValue({
+        data: [freeEvt, paidEvt, mixedEvt, noTicketEvt],
+        meta: { page: 1, limit: 20, total: 4, totalPages: 1 },
+      });
+
+      const result = await service.search({
+        price: "free",
+        page: 1,
+        limit: 20,
+        orderBy: "startDate",
+        orderDir: "asc",
+      });
+
+      expect(result.data.map((e) => e.title)).toEqual([
+        "Free Workshop",
+        "Mixed",
+        "No tickets yet",
+      ]);
+      expect(result.meta.total).toBe(3);
+    });
+
+    it("price=paid keeps only events whose ticket types are all priced", async () => {
+      mockEventRepo.search.mockResolvedValue({
+        data: [freeEvt, paidEvt, mixedEvt, noTicketEvt],
+        meta: { page: 1, limit: 20, total: 4, totalPages: 1 },
+      });
+
+      const result = await service.search({
+        price: "paid",
+        page: 1,
+        limit: 20,
+        orderBy: "startDate",
+        orderDir: "asc",
+      });
+
+      expect(result.data.map((e) => e.title)).toEqual(["Paid Conference"]);
+      expect(result.meta.total).toBe(1);
+    });
+
+    it("absent price filter leaves results untouched", async () => {
+      mockEventRepo.search.mockResolvedValue({
+        data: [freeEvt, paidEvt],
+        meta: { page: 1, limit: 20, total: 2, totalPages: 1 },
+      });
+
+      const result = await service.search({
+        page: 1,
+        limit: 20,
+        orderBy: "startDate",
+        orderDir: "asc",
+      });
+
+      expect(result.data).toHaveLength(2);
+    });
   });
 });
 

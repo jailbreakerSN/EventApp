@@ -1343,6 +1343,21 @@ export class EventService extends BaseService {
       result.meta.totalPages = Math.ceil(result.data.length / query.limit);
     }
 
+    // Price filter — ticketTypes is a nested array, not natively Firestore-queryable.
+    // free = no ticket types OR at least one with price === 0
+    // paid = at least one ticket type AND all have price > 0
+    if (query.price) {
+      result.data = result.data.filter((e) => {
+        const types = e.ticketTypes ?? [];
+        if (query.price === "free") {
+          return types.length === 0 || types.some((t) => t.price === 0);
+        }
+        return types.length > 0 && types.every((t) => t.price > 0);
+      });
+      result.meta.total = result.data.length;
+      result.meta.totalPages = Math.ceil(result.data.length / query.limit);
+    }
+
     return result;
   }
 
