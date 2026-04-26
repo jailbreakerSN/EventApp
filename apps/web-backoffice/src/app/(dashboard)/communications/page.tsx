@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { Send, Mail, Smartphone, Bell, Clock, CalendarClock } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useEventBroadcasts, useSendBroadcast } from "@/hooks/use-broadcasts";
@@ -16,12 +15,6 @@ import {
   Textarea,
   Spinner,
   Badge,
-  Breadcrumb,
-  BreadcrumbList,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
 } from "@teranga/shared-ui";
 import type { CommunicationChannel, BroadcastRecipientFilter } from "@teranga/shared-types";
 import { PlanGate } from "@/components/plan/PlanGate";
@@ -106,19 +99,6 @@ export default function CommunicationsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <Breadcrumb className="mb-4">
-          <BreadcrumbList>
-            <BreadcrumbItem>
-              <BreadcrumbLink asChild>
-                <Link href="/">Tableau de bord</Link>
-              </BreadcrumbLink>
-            </BreadcrumbItem>
-            <BreadcrumbSeparator />
-            <BreadcrumbItem>
-              <BreadcrumbPage>Communications</BreadcrumbPage>
-            </BreadcrumbItem>
-          </BreadcrumbList>
-        </Breadcrumb>
         <h1 className="text-2xl font-bold">{t("communications")}</h1>
         <p className="text-muted-foreground">
           Envoyez des messages aux participants de vos evenements

@@ -1,26 +1,12 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback, type KeyboardEvent } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
-import {
-  LayoutDashboard,
-  CalendarDays,
-  PlusCircle,
-  Users,
-  QrCode,
-  BarChart3,
-  Wallet,
-  Megaphone,
-  Bell,
-  Building2,
-  Settings,
-  LogOut,
-  MapPin,
-  type LucideIcon,
-} from "lucide-react";
+import { PlusCircle, LogOut, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
+import { useOrganizerNav } from "@/hooks/use-organizer-nav";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -36,63 +22,15 @@ interface CommandItem {
   hint?: string;
 }
 
-// ─── Static command definitions ──────────────────────────────────────────────
-
-const PAGE_COMMANDS: Omit<CommandItem, "action">[] = [
-  {
-    id: "dashboard",
-    label: "Tableau de bord",
-    category: "Pages",
-    icon: LayoutDashboard,
-    href: "/dashboard",
-  },
-  { id: "events", label: "Événements", category: "Pages", icon: CalendarDays, href: "/events" },
-  {
-    id: "events-new",
-    label: "Nouvel événement",
-    category: "Pages",
-    icon: PlusCircle,
-    href: "/events/new",
-  },
-  {
-    id: "participants",
-    label: "Participants",
-    category: "Pages",
-    icon: Users,
-    href: "/participants",
-  },
-  { id: "badges", label: "Badges & QR", category: "Pages", icon: QrCode, href: "/badges" },
-  { id: "analytics", label: "Analytiques", category: "Pages", icon: BarChart3, href: "/analytics" },
-  { id: "finance", label: "Finances", category: "Pages", icon: Wallet, href: "/finance" },
-  {
-    id: "communications",
-    label: "Communications",
-    category: "Pages",
-    icon: Megaphone,
-    href: "/communications",
-  },
-  {
-    id: "notifications",
-    label: "Notifications",
-    category: "Pages",
-    icon: Bell,
-    href: "/notifications",
-  },
-  {
-    id: "organization",
-    label: "Organisation",
-    category: "Pages",
-    icon: Building2,
-    href: "/organization",
-  },
-  { id: "settings", label: "Paramètres", category: "Pages", icon: Settings, href: "/settings" },
-  // Venue host pages
-  { id: "venues", label: "Mes Lieux", category: "Pages", icon: MapPin, href: "/venues" },
+// Palette-only Pages entries — actions that aren't sidebar destinations
+// but still make sense as a "go to" target (e.g. "Nouvel événement"
+// jumps to the creation form). Kept separate from the role-filtered
+// sidebar nav so we don't pollute the rail with sub-pages.
+const PALETTE_EXTRA_PAGES: { id: string; label: string; icon: LucideIcon; href: string }[] = [
+  { id: "events-new", label: "Nouvel événement", icon: PlusCircle, href: "/events/new" },
   // NOTE: admin pages are NOT listed here — they live in the dedicated
   // (admin) shell with its own command palette. An admin reaches them
-  // via the "Administration" pill in the top bar. Keeping admin routes
-  // out of this palette prevents cross-shell navigation noise for
-  // organizers (who would see them as un-navigable search hits anyway).
+  // via the "Administration" pill in the top bar.
 ];
 
 // ─── Category badge colors ────────────────────────────────────────────────────
@@ -126,36 +64,67 @@ export function CommandPalette() {
     setMounted(true);
   }, []);
 
-  // Build full command list (actions need access to router/logout, built each render)
-  const allCommands: CommandItem[] = [
-    ...PAGE_COMMANDS.map((cmd) => ({
-      ...cmd,
+  // Page commands derive from the canonical organizer-nav taxonomy
+  // (`useOrganizerNav`). Same source as the sidebar and the upcoming
+  // breadcrumbs — drift is impossible because there is exactly one
+  // place to add a route. The hook already filters by role, so a
+  // co-organizer never sees a /finance suggestion, and a venue
+  // manager only sees /venues.
+  const { allItems } = useOrganizerNav();
+
+  const allCommands: CommandItem[] = useMemo(() => {
+    const navCommands: CommandItem[] = allItems
+      .filter((item) => item.inPalette !== false && !item.comingSoon)
+      .map((item) => ({
+        id: item.id,
+        label: item.label,
+        category: "Pages" as const,
+        icon: item.icon,
+        href: item.href,
+        hint: item.shortcut,
+        action: () => {
+          router.push(item.href);
+          close();
+        },
+      }));
+
+    const extraPages: CommandItem[] = PALETTE_EXTRA_PAGES.map((p) => ({
+      id: p.id,
+      label: p.label,
+      category: "Pages" as const,
+      icon: p.icon,
+      href: p.href,
       action: () => {
-        router.push(cmd.href!);
+        router.push(p.href);
         close();
       },
-    })),
-    {
-      id: "action-new-event",
-      label: "Créer un événement",
-      category: "Actions",
-      icon: PlusCircle,
-      action: () => {
-        router.push("/events/new");
-        close();
+    }));
+
+    const actions: CommandItem[] = [
+      {
+        id: "action-new-event",
+        label: "Créer un événement",
+        category: "Actions" as const,
+        icon: PlusCircle,
+        action: () => {
+          router.push("/events/new");
+          close();
+        },
       },
-    },
-    {
-      id: "action-logout",
-      label: "Se déconnecter",
-      category: "Actions",
-      icon: LogOut,
-      action: async () => {
-        close();
-        await logout();
+      {
+        id: "action-logout",
+        label: "Se déconnecter",
+        category: "Actions" as const,
+        icon: LogOut,
+        action: async () => {
+          close();
+          await logout();
+        },
       },
-    },
-  ];
+    ];
+
+    return [...navCommands, ...extraPages, ...actions];
+  }, [allItems, router, logout]);
 
   // ── Filtering ──────────────────────────────────────────────────────────────
 
