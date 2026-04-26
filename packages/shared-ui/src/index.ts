@@ -65,7 +65,23 @@ export { Switch, type SwitchProps } from "./components/switch";
 export { Pagination, type PaginationProps } from "./components/pagination";
 export { SearchInput, type SearchInputProps } from "./components/search-input";
 export { FileUpload, type FileUploadProps } from "./components/file-upload";
-export { DataTable, type DataTableProps, type DataTableColumn } from "./components/data-table";
+export {
+  DataTable,
+  type DataTableProps,
+  type DataTableColumn,
+  type DataTableSortState,
+  type SortDirection,
+} from "./components/data-table";
+export {
+  FilterBar,
+  type FilterBarProps,
+  FilterChip,
+  type FilterChipProps,
+  ResultCount,
+  type ResultCountProps,
+  PageSizeSelector,
+  type PageSizeSelectorProps,
+} from "./components/filter-bar";
 export { RadioGroup, type RadioGroupProps, type RadioOption } from "./components/radio-group";
 export {
   SectionHeader,
