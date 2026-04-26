@@ -58,6 +58,14 @@ export const AuditActionSchema = z.enum([
   "message.sent",
   "broadcast.sent",
   "payout.created",
+  // Phase Finance — emitted by the hourly `releaseAvailableFunds` Cloud
+  // Function when one or more `pending` ledger entries graduate to
+  // `available` (their `availableOn` window has elapsed). One row per org
+  // per scheduler run, with the count + signed net amount + sample of
+  // released entry IDs in `details`. The audit listener owns no handler
+  // for this — Cloud Functions write directly because the API's
+  // in-process eventBus isn't reachable from a scheduled job context.
+  "balance_transaction.released",
   "payment.initiated",
   "payment.succeeded",
   "payment.failed",

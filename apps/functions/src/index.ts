@@ -18,10 +18,7 @@ export { onBadgeCreated } from "./triggers/badge.triggers";
 // PR — the API service now owns waitlist promotion end-to-end so audit
 // + notifications flow through a single path. See
 // `apps/api/src/services/registration.service.ts#promoteNextWaitlisted`.
-export {
-  onRegistrationCreated,
-  onRegistrationApproved,
-} from "./triggers/registration.triggers";
+export { onRegistrationCreated, onRegistrationApproved } from "./triggers/registration.triggers";
 
 // ─── Check-in Triggers ───────────────────────────────────────────────────────
 export { onCheckinCompleted } from "./triggers/checkin.triggers";
@@ -74,3 +71,10 @@ export { reconcileResendSegment } from "./triggers/resend/reconcile-resend-segme
 // sending mailbox and writes alert docs + ERROR-level Cloud Logs when the
 // rate exceeds platform thresholds (2% warn, 5% critical).
 export { monitorBounceRate } from "./triggers/notification-health.triggers";
+
+// ─── Balance Release (Phase Finance) ────────────────────────────────────────
+// Hourly scheduled job: graduates `pending` balanceTransactions entries to
+// `available` once their `availableOn` window has elapsed. Closes the gap
+// between the /finance page's "Libéré 7j après la fin de l'événement" promise
+// and reality — without this job, funds stay locked indefinitely.
+export { releaseAvailableFunds } from "./triggers/balance.triggers";
