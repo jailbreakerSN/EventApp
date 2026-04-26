@@ -1,14 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { CheckCircle, Download, Loader2, XCircle, ArrowLeft } from "lucide-react";
+import { CheckCircle, Download, Loader2, XCircle, ArrowLeft, RefreshCw } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocale, useTranslations } from "next-intl";
 import { eventsApi, receiptsApi, registrationsApi } from "@/lib/api-client";
-import { usePaymentStatus } from "@/hooks/use-payments";
+import { usePaymentStatus, useVerifyPayment } from "@/hooks/use-payments";
 import {
   Button,
   Card,
@@ -32,6 +32,29 @@ export default function PaymentStatusPage() {
 
   const [redirectCountdown, setRedirectCountdown] = useState<number | null>(null);
   const [receiptState, setReceiptState] = useState<"idle" | "loading" | "error">("idle");
+
+  // ADR-0018 — Verify-on-return state machine
+  // ─────────────────────────────────────────
+  // The page may be reached via three paths:
+  //   1. PayDunya redirect-back → fire verify ONCE on mount (the
+  //      common case; resolves the flow in <1 s without waiting on
+  //      the 3 s polling tick).
+  //   2. User reload of an in-flight tab → mount fires verify AGAIN;
+  //      the API short-circuits if the Payment is already terminal,
+  //      so this is cheap.
+  //   3. User clicks "Vérifier maintenant" → manual re-trigger when
+  //      polling has been stuck on `processing` for too long (gives
+  //      the participant a sense of agency rather than a frozen
+  //      spinner).
+  //
+  // `mountVerifyDoneRef` guards the auto-verify against React Strict
+  // Mode's double-mount in dev; the manual button bypasses the ref
+  // by calling the mutation directly.
+  const verifyMutation = useVerifyPayment();
+  const mountVerifyDoneRef = useRef(false);
+  const [verifyOutcome, setVerifyOutcome] = useState<
+    "idle" | "verifying" | "succeeded" | "failed" | "pending" | "error"
+  >("idle");
 
   const handleReceiptDownload = async () => {
     if (!paymentId || receiptState === "loading") return;
@@ -78,6 +101,60 @@ export default function PaymentStatusPage() {
   const isSuccess = status === "succeeded";
   const isFailed = isTerminal && !isSuccess;
 
+  // ADR-0018 — verify-on-mount. Fires exactly once per page mount as
+  // a fast finalisation path that doesn't wait on the IPN webhook.
+  // Skipped when:
+  //   - paymentId missing (no-op page)
+  //   - polling already reported a terminal state (verify is no-op)
+  // The mutation itself is server-side idempotent — chatty remounts
+  // won't cascade into provider quota.
+  useEffect(() => {
+    if (!paymentId) return;
+    if (mountVerifyDoneRef.current) return;
+    if (isTerminal) {
+      // Already terminal from polling — no need to ping the provider.
+      mountVerifyDoneRef.current = true;
+      return;
+    }
+    mountVerifyDoneRef.current = true;
+    setVerifyOutcome("verifying");
+    verifyMutation
+      .mutateAsync(paymentId)
+      .then((res) => {
+        const outcome =
+          (res as { data?: { outcome?: "succeeded" | "failed" | "pending" } })?.data?.outcome ??
+          "pending";
+        setVerifyOutcome(outcome);
+      })
+      .catch(() => {
+        // Non-fatal — fall back to the polling path. Surface a
+        // discreet error state so the manual retry button shows.
+        setVerifyOutcome("error");
+      });
+    // `mountVerifyDoneRef` is the load-bearing idempotency guard:
+    // every re-run of this effect (e.g. when polling flips `isTerminal`
+    // false → true) returns early because the ref was set on the first
+    // mount. Including `isTerminal` + `verifyMutation` in deps is
+    // therefore safe AND satisfies react-hooks/exhaustive-deps without
+    // needing a disable comment (the project's ESLint config doesn't
+    // register the rule, so the disable comment itself triggers
+    // "rule definition not found").
+  }, [paymentId, isTerminal, verifyMutation]);
+
+  const handleManualVerify = () => {
+    if (!paymentId || verifyMutation.isPending) return;
+    setVerifyOutcome("verifying");
+    verifyMutation
+      .mutateAsync(paymentId)
+      .then((res) => {
+        const outcome =
+          (res as { data?: { outcome?: "succeeded" | "failed" | "pending" } })?.data?.outcome ??
+          "pending";
+        setVerifyOutcome(outcome);
+      })
+      .catch(() => setVerifyOutcome("error"));
+  };
+
   const { data: myRegsData } = useQuery({
     queryKey: ["my-registrations-for-qr", eventId],
     queryFn: () => registrationsApi.getMyRegistrations({ limit: 100 }),
@@ -110,7 +187,7 @@ export default function PaymentStatusPage() {
       <div className="mx-auto max-w-lg px-4 py-16">
         <EmptyStateEditorial
           icon={XCircle}
-          kicker="— PAIEMENT"
+          kicker={t("kicker")}
           title={t("noPaymentSpecified")}
           action={
             <Link
@@ -144,7 +221,7 @@ export default function PaymentStatusPage() {
       </Link>
 
       <SectionHeader
-        kicker="— PAIEMENT"
+        kicker={t("kicker")}
         title={event?.title ?? t("pageTitleFallback")}
         size="hero"
         as="h1"
@@ -157,12 +234,47 @@ export default function PaymentStatusPage() {
               <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-amber-50 dark:bg-amber-950/50">
                 <Loader2 className="h-10 w-10 animate-spin text-amber-500 dark:text-amber-400" />
               </div>
-              <h2 className="font-serif-display mt-4 text-[24px] font-semibold leading-[1.15] tracking-[-0.02em]">{t("processingHeading")}</h2>
-              <p className="mt-2 text-center text-muted-foreground">{t("processingHint")}</p>
+              <h2 className="font-serif-display mt-4 text-[24px] font-semibold leading-[1.15] tracking-[-0.02em]">
+                {t("processingHeading")}
+              </h2>
+              <p className="mt-2 text-center text-muted-foreground">
+                {/* ADR-0018 — copy adapts to the verify-on-return state.
+                    "verifying" tells the user we're actively asking the
+                    provider; "pending" tells them we're falling back to
+                    polling; default is the original idle hint. */}
+                {verifyOutcome === "verifying"
+                  ? t("verifyingHint")
+                  : verifyOutcome === "pending"
+                    ? t("pollingFallbackHint")
+                    : verifyOutcome === "error"
+                      ? t("verifyErrorHint")
+                      : t("processingHint")}
+              </p>
               {payment && (
                 <p className="mt-3 text-lg font-semibold text-teranga-gold">
                   {formatCurrency(payment.amount, payment.currency, regional)}
                 </p>
+              )}
+              {/* Manual re-verify button — appears when the auto-verify
+                  was inconclusive ("pending" / "error") so the user has
+                  agency. Hidden during the initial verify-on-mount to
+                  avoid a flash of the button. */}
+              {(verifyOutcome === "pending" || verifyOutcome === "error") && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleManualVerify}
+                  disabled={verifyMutation.isPending}
+                  aria-label={t("verifyNowAria")}
+                  className="mt-5 rounded-full"
+                >
+                  {verifyMutation.isPending ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
+                  ) : (
+                    <RefreshCw className="mr-2 h-4 w-4" aria-hidden="true" />
+                  )}
+                  {t("verifyNow")}
+                </Button>
               )}
             </>
           )}

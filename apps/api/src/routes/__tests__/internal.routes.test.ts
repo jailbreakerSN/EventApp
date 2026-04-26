@@ -15,6 +15,22 @@ vi.mock("@/services/notification-dispatcher.service", () => ({
   },
 }));
 
+// Phase 3 — reconciliation surface mock. Lazy-imported by the route
+// at handler time, so the mock only needs to exist when `paymentService`
+// is dynamically required.
+const mockReconcile = vi.fn().mockResolvedValue({
+  scanned: 7,
+  finalizedSucceeded: 3,
+  finalizedFailed: 1,
+  stillPending: 2,
+  errored: 1,
+});
+vi.mock("@/services/payment.service", () => ({
+  paymentService: {
+    reconcileStuckPayments: (...args: unknown[]) => mockReconcile(...args),
+  },
+}));
+
 // Stable secret for tests — must match what the route reads from `config`.
 // Hoisted via vi.hoisted so the vi.mock factory can reference it.
 const { TEST_SECRET } = vi.hoisted(() => ({
@@ -45,6 +61,7 @@ afterAll(async () => {
 
 beforeEach(() => {
   mockDispatch.mockClear();
+  mockReconcile.mockClear();
 });
 
 describe("POST /v1/internal/notifications/dispatch", () => {
@@ -128,5 +145,117 @@ describe("POST /v1/internal/notifications/dispatch", () => {
     });
     expect(res.statusCode).toBe(400);
     expect(mockDispatch).not.toHaveBeenCalled();
+  });
+});
+
+// ─── Phase 3 — POST /v1/internal/payments/reconcile ────────────────────────
+
+describe("POST /v1/internal/payments/reconcile", () => {
+  it("returns 404 when the secret header is missing (probe-invisible surface)", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/internal/payments/reconcile",
+      payload: {},
+    });
+    expect(res.statusCode).toBe(404);
+    expect(mockReconcile).not.toHaveBeenCalled();
+  });
+
+  it("returns 404 when the secret is wrong", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/internal/payments/reconcile",
+      headers: { "X-Internal-Dispatch-Secret": "nope" },
+      payload: {},
+    });
+    expect(res.statusCode).toBe(404);
+    expect(mockReconcile).not.toHaveBeenCalled();
+  });
+
+  it("returns 200 + sweep stats when the secret matches", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/internal/payments/reconcile",
+      headers: { "X-Internal-Dispatch-Secret": TEST_SECRET },
+      payload: {},
+    });
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body);
+    expect(body.success).toBe(true);
+    expect(body.data).toMatchObject({
+      scanned: 7,
+      finalizedSucceeded: 3,
+      finalizedFailed: 1,
+      stillPending: 2,
+      errored: 1,
+    });
+    // Empty body → service called with empty options (defaults apply)
+    expect(mockReconcile).toHaveBeenCalledWith({});
+  });
+
+  it("forwards window + batchSize overrides to the service when provided", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/internal/payments/reconcile",
+      headers: { "X-Internal-Dispatch-Secret": TEST_SECRET },
+      payload: { windowMinMs: 60_000, windowMaxMs: 1_800_000, batchSize: 100 },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(mockReconcile).toHaveBeenCalledWith({
+      windowMinMs: 60_000,
+      windowMaxMs: 1_800_000,
+      batchSize: 100,
+    });
+  });
+
+  it("rejects out-of-bound batchSize at the validation layer (400)", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/internal/payments/reconcile",
+      headers: { "X-Internal-Dispatch-Secret": TEST_SECRET },
+      payload: { batchSize: 99999 },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(mockReconcile).not.toHaveBeenCalled();
+  });
+
+  // FAIL-1 fix — secret guard now runs BEFORE the Zod body validator.
+  // An unauthenticated probe with a malformed body MUST see 404 (same
+  // as a probe with a valid body), not 400 — otherwise the response-
+  // code difference reveals the endpoint exists.
+  it("returns 404 (not 400) when the secret is wrong AND the body is invalid (no oracle leak)", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/internal/payments/reconcile",
+      headers: { "X-Internal-Dispatch-Secret": "wrong" },
+      payload: { batchSize: "not-a-number" },
+    });
+    expect(res.statusCode).toBe(404);
+    expect(mockReconcile).not.toHaveBeenCalled();
+  });
+
+  // FAIL-3 fix — cross-field refine ensures windowMinMs < windowMaxMs.
+  it("rejects windowMinMs >= windowMaxMs at the validation layer (400)", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/internal/payments/reconcile",
+      headers: { "X-Internal-Dispatch-Secret": TEST_SECRET },
+      payload: { windowMinMs: 60_000 * 30, windowMaxMs: 60_000 * 10 },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(mockReconcile).not.toHaveBeenCalled();
+  });
+
+  // FAIL-3 fix — windowMinMs has a 1-minute floor so a stolen secret
+  // can't bypass the operational "give the IPN a chance" intent.
+  it("rejects windowMinMs below the 60s floor (400)", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/internal/payments/reconcile",
+      headers: { "X-Internal-Dispatch-Secret": TEST_SECRET },
+      payload: { windowMinMs: 1, windowMaxMs: 3_600_000 },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(mockReconcile).not.toHaveBeenCalled();
   });
 });

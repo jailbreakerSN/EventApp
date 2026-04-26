@@ -649,7 +649,10 @@ describe("Audit Listener", () => {
       // ADR-0018 — `payment.verified_from_redirect` handler logs
       // the outcome observed when the verify-on-return path
       // finalises a Payment (vs. the IPN webhook).
-      const EXPECTED_HANDLER_COUNT = 122;
+      // Phase 3 — `payment.reconciliation_swept` handler logs the
+      // cron-tick aggregate (scanned / succeeded / failed / pending /
+      // errored) so ops dashboards can graph the IPN-miss rate.
+      const EXPECTED_HANDLER_COUNT = 123;
 
       expect(registered).toHaveLength(EXPECTED_HANDLER_COUNT);
       // Each registered event name should be unique — a double

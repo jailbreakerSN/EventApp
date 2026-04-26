@@ -1362,6 +1362,394 @@ export class PaymentService extends BaseService {
   }
 
   /**
+   * Phase 3 — Reconciliation cron sweep.
+   *
+   * Scans Firestore for payments stuck in `processing` past the
+   * configured "IPN should have arrived by now" threshold, calls
+   * `provider.verify()` server-to-server for each one, and finalises
+   * the Payment with the official provider state. The complementary
+   * piece to verify-on-return: covers the case where the participant
+   * closed the tab BEFORE landing on /payment-status, so the
+   * client-driven verify never fires.
+   *
+   * State-machine relationship to onPaymentTimeout
+   * ───────────────────────────────────────────────
+   * The existing `onPaymentTimeout` cron sweeps EVERY payment past
+   * the (default 30 min) TTL and flips it to `expired` regardless of
+   * provider state. That's the safety net.
+   *
+   * Reconciliation runs INSIDE that window (default 5–25 min after
+   * createdAt) — early enough to give the provider time to actually
+   * succeed, late enough that a missed IPN is the likely explanation.
+   * For each candidate it asks the provider what really happened:
+   *   - succeeded → finalise as a confirmed Payment (same tx as IPN)
+   *   - failed    → finalise as a failed Payment (same tx as IPN)
+   *   - pending   → leave alone; either the next reconciliation tick
+   *                 picks it up, or onPaymentTimeout expires it
+   *
+   * Authorization
+   * ─────────────
+   * System-mode only (no AuthUser). Method is `public` (not
+   * `private`) so test files can exercise it directly without
+   * routing through the internal endpoint, and so future internal
+   * callers (e.g. an admin "Run reconciliation now" button on
+   * /admin/audit) can call it cleanly. The trust boundary is at
+   * the route layer — any HTTP surface that exposes this method
+   * MUST gate on the shared-secret pattern documented in
+   * `internal.routes.ts`. Adding new public methods that call this
+   * one is a security decision: confirm with the platform team
+   * before merging.
+   *
+   * Idempotency
+   * ───────────
+   * Inner-tx guard inside each `db.runTransaction(...)` makes a
+   * concurrent IPN landing safe — whichever wins, the other becomes
+   * a no-op. The reconciliation method itself is also safe to run
+   * concurrently with the verify-on-return path: same guard, same
+   * outcome.
+   *
+   * Bounding
+   * ────────
+   * - `batchSize` caps the number of payments processed per
+   *   invocation; defaults to 50. Anything beyond is left for the
+   *   next tick. Prevents one slow provider from blocking the
+   *   entire cron timeout.
+   * - Each provider call is awaited sequentially (not parallel) so
+   *   a slow provider doesn't fan out into hundreds of concurrent
+   *   outbound HTTP calls. With 50 payments × 2 s/call worst-case =
+   *   100 s, well within Cloud Functions' 540 s timeout.
+   *
+   * Returns aggregate stats per outcome bucket so the operator can
+   * size the IPN-reliability gap from the audit log over time.
+   *
+   * See ADR-0018 §"Follow-ups required" for the full design context.
+   */
+  async reconcileStuckPayments(opts: {
+    /** Lower bound — payments newer than this are skipped (give the IPN a chance). Default 5 min. */
+    windowMinMs?: number;
+    /** Upper bound — payments older than this are left for onPaymentTimeout. Default 25 min. */
+    windowMaxMs?: number;
+    /** Max payments processed per invocation. Default 50. */
+    batchSize?: number;
+  } = {}): Promise<{
+    scanned: number;
+    finalizedSucceeded: number;
+    finalizedFailed: number;
+    stillPending: number;
+    errored: number;
+  }> {
+    const windowMinMs = opts.windowMinMs ?? 5 * 60 * 1000;
+    const windowMaxMs = opts.windowMaxMs ?? 25 * 60 * 1000;
+    const batchSize = Math.min(opts.batchSize ?? 50, 200);
+
+    const now = Date.now();
+    const lowerBound = new Date(now - windowMaxMs).toISOString();
+    const upperBound = new Date(now - windowMinMs).toISOString();
+
+    // Window query: createdAt ∈ [now-windowMax, now-windowMin] AND
+    // status = "processing". Single composite index is sufficient
+    // (`status, createdAt` — already declared in firestore.indexes.json).
+    const snap = await db
+      .collection(COLLECTIONS.PAYMENTS)
+      .where("status", "==", "processing")
+      .where("createdAt", ">=", lowerBound)
+      .where("createdAt", "<=", upperBound)
+      .orderBy("createdAt", "asc")
+      .limit(batchSize)
+      .get();
+
+    let finalizedSucceeded = 0;
+    let finalizedFailed = 0;
+    let stillPending = 0;
+    let errored = 0;
+
+    for (const doc of snap.docs) {
+      const payment = { id: doc.id, ...doc.data() } as Payment;
+      try {
+        const result = await this.reconcileSinglePayment(payment);
+        if (result.outcome === "succeeded") finalizedSucceeded += 1;
+        else if (result.outcome === "failed") finalizedFailed += 1;
+        else stillPending += 1;
+      } catch (err) {
+        // Per-payment failures must not abort the whole sweep — one
+        // misbehaving provider response would block reconciliation
+        // for everyone else. Log + continue. The aggregate event
+        // emit at the end carries the `errored` count for ops
+        // dashboards.
+        errored += 1;
+        process.stderr.write(
+          `${JSON.stringify({
+            level: "error",
+            event: "payment.reconciliation.payment_error",
+            paymentId: payment.id,
+            err: err instanceof Error ? err.message : String(err),
+            time: new Date().toISOString(),
+          })}\n`,
+        );
+      }
+    }
+
+    // Aggregate audit emit — operators read this from /admin/audit
+    // (action: payment.reconciliation_swept) to size the IPN-
+    // reliability gap over time. Emitted regardless of stats so a
+    // healthy zero-stuck-payments tick is also visible (proves the
+    // cron is alive vs. silently failing).
+    eventBus.emit("payment.reconciliation_swept", {
+      scanned: snap.size,
+      finalizedSucceeded,
+      finalizedFailed,
+      stillPending,
+      errored,
+      windowMinMs,
+      windowMaxMs,
+      actorId: "system:payment.reconciliation",
+      requestId: getRequestId() ?? "system:payment.reconciliation",
+      timestamp: new Date().toISOString(),
+    });
+
+    return {
+      scanned: snap.size,
+      finalizedSucceeded,
+      finalizedFailed,
+      stillPending,
+      errored,
+    };
+  }
+
+  /**
+   * Internal helper — finalises a single stuck payment by asking the
+   * provider for its official state and applying the same state-machine
+   * flip the IPN webhook would have done. Mirrors the logic inside
+   * `verifyAndFinalize` but with `actorId="system:payment.reconciliation"`
+   * and no ownership check (system-mode).
+   *
+   * Tracked as a Phase-2 follow-up TODO (collapse with handleWebhook +
+   * verifyAndFinalize into a single private helper) — kept duplicated
+   * here on purpose to minimise regression risk on the most-exercised
+   * financial path during the reconciliation roll-out.
+   */
+  private async reconcileSinglePayment(payment: Payment): Promise<{
+    paymentId: string;
+    outcome: "succeeded" | "failed" | "pending";
+  }> {
+    if (
+      payment.status === "succeeded" ||
+      payment.status === "failed" ||
+      payment.status === "refunded" ||
+      payment.status === "expired"
+    ) {
+      // Already terminal between query and processing — no-op.
+      return { paymentId: payment.id, outcome: payment.status === "succeeded" ? "succeeded" : "failed" };
+    }
+
+    if (!payment.providerTransactionId) {
+      // Two-phase initiate (P1-07) didn't reach tx2 — there's no
+      // provider session to verify against. Leave for onPaymentTimeout.
+      return { paymentId: payment.id, outcome: "pending" };
+    }
+
+    const provider = getProvider(payment.method);
+    const verifyResult = await provider.verify(payment.providerTransactionId);
+
+    const requestId = getRequestId();
+    const now = new Date().toISOString();
+    const audit = (outcome: "succeeded" | "failed" | "pending") => {
+      eventBus.emit("payment.verified_from_redirect", {
+        paymentId: payment.id,
+        registrationId: payment.registrationId,
+        eventId: payment.eventId,
+        organizationId: payment.organizationId,
+        outcome,
+        providerName: provider.name,
+        // System-mode reconciliation — actorId is the cron, not a user.
+        actorId: "system:payment.reconciliation",
+        requestId: requestId ?? "system:payment.reconciliation",
+        timestamp: now,
+      });
+    };
+
+    if (verifyResult.status === "pending") {
+      audit("pending");
+      return { paymentId: payment.id, outcome: "pending" };
+    }
+
+    const enrichedMetadata = {
+      ...(verifyResult.metadata ?? {}),
+      source: "reconciliation" as const,
+      verifiedAt: now,
+      providerName: provider.name,
+    };
+
+    if (verifyResult.status === "succeeded") {
+      let wasNewlySucceeded = false;
+      await db.runTransaction(async (tx) => {
+        const payRef = db.collection(COLLECTIONS.PAYMENTS).doc(payment.id);
+        const paySnap = await tx.get(payRef);
+        if (!paySnap.exists) return;
+        const freshPayment = paySnap.data() as Payment;
+
+        // FAIL-2 fix (security review 2026-04-26) — `expired` MUST be in
+        // the terminal-state set here. `onPaymentTimeout` runs every 5
+        // min and can flip the payment to `expired` between the outer
+        // window query and this transactional re-read; without the
+        // guard the reconciliation tx would overwrite `expired` →
+        // `succeeded` and emit a spurious `payment.succeeded` for an
+        // already-released seat.
+        if (
+          freshPayment.status === "succeeded" ||
+          freshPayment.status === "failed" ||
+          freshPayment.status === "refunded" ||
+          freshPayment.status === "expired"
+        ) {
+          return;
+        }
+        wasNewlySucceeded = true;
+
+        const regRef = db.collection(COLLECTIONS.REGISTRATIONS).doc(payment.registrationId);
+        const regSnap = await tx.get(regRef);
+        if (!regSnap.exists) {
+          throw new NotFoundError("Registration", payment.registrationId);
+        }
+
+        const eventRef = db.collection(COLLECTIONS.EVENTS).doc(payment.eventId);
+        const eventSnap = await tx.get(eventRef);
+        const eventData = eventSnap.data() as Event | undefined;
+
+        tx.update(payRef, {
+          status: "succeeded" as PaymentStatus,
+          completedAt: now,
+          updatedAt: now,
+          providerMetadata: enrichedMetadata,
+        });
+        tx.update(regRef, { status: "confirmed", updatedAt: now });
+
+        const eventUpdate: Record<string, unknown> = {
+          registeredCount: FieldValue.increment(1),
+          updatedAt: now,
+        };
+        if (eventData) {
+          const reg = regSnap.data() as Registration;
+          eventUpdate.ticketTypes = eventData.ticketTypes.map((tt) =>
+            tt.id === reg.ticketTypeId ? { ...tt, soldCount: tt.soldCount + 1 } : tt,
+          );
+        }
+        tx.update(eventRef, eventUpdate);
+
+        const platformFee = computePlatformFee(freshPayment.amount);
+        const availableOn = computeAvailableOn(
+          now,
+          eventData?.endDate ?? eventData?.startDate ?? null,
+        );
+        const description = `Billet : ${eventData?.title ?? freshPayment.eventId}`;
+
+        appendLedgerEntry(tx, {
+          organizationId: freshPayment.organizationId,
+          eventId: freshPayment.eventId,
+          paymentId: freshPayment.id,
+          payoutId: null,
+          kind: "payment",
+          amount: freshPayment.amount,
+          status: "pending",
+          availableOn,
+          description,
+          createdBy: "system:payment.reconciliation",
+          createdAt: now,
+        });
+        if (platformFee > 0) {
+          appendLedgerEntry(tx, {
+            organizationId: freshPayment.organizationId,
+            eventId: freshPayment.eventId,
+            paymentId: freshPayment.id,
+            payoutId: null,
+            kind: "platform_fee",
+            amount: -platformFee,
+            status: "pending",
+            availableOn,
+            description: `Frais plateforme (${Math.round(
+              (platformFee / freshPayment.amount) * 100,
+            )}%)`,
+            createdBy: "system:payment.reconciliation",
+            createdAt: now,
+          });
+        }
+      });
+
+      if (wasNewlySucceeded) {
+        eventBus.emit("payment.succeeded", {
+          paymentId: payment.id,
+          registrationId: payment.registrationId,
+          eventId: payment.eventId,
+          organizationId: payment.organizationId,
+          amount: payment.amount,
+          actorId: payment.userId,
+          requestId,
+          timestamp: now,
+        });
+      }
+
+      audit("succeeded");
+      return { paymentId: payment.id, outcome: "succeeded" };
+    }
+
+    // verifyResult.status === "failed"
+    let wasNewlyFailed = false;
+    await db.runTransaction(async (tx) => {
+      const payRef = db.collection(COLLECTIONS.PAYMENTS).doc(payment.id);
+      const paySnap = await tx.get(payRef);
+      if (!paySnap.exists) return;
+      const freshPayment = paySnap.data() as Payment;
+      // FAIL-2 fix (security review 2026-04-26) — `expired` in the
+      // terminal-state set so onPaymentTimeout race between the
+      // outer scan and this tx commit doesn't get clobbered.
+      if (
+        freshPayment.status === "succeeded" ||
+        freshPayment.status === "failed" ||
+        freshPayment.status === "refunded" ||
+        freshPayment.status === "expired"
+      ) {
+        return;
+      }
+      wasNewlyFailed = true;
+
+      const regRef = db.collection(COLLECTIONS.REGISTRATIONS).doc(payment.registrationId);
+      // FAIL-4 fix (security review 2026-04-26) — `verifyResult.metadata`
+      // is `Record<string, unknown>`; the previous `as string` cast was
+      // a type assertion with no runtime check. A future provider that
+      // populates `metadata.reason` with raw API response text would
+      // write un-sanitised content to Firestore, then render it
+      // verbatim on /payment-status. Bound to a safe printable string
+      // truncated to 120 chars; fall back to the localized default.
+      const rawReason = verifyResult.metadata?.reason;
+      const safeReason =
+        typeof rawReason === "string" && rawReason.length > 0 && rawReason.length <= 120
+          ? rawReason
+          : "Paiement refusé par le fournisseur (réconciliation)";
+      tx.update(payRef, {
+        status: "failed" as PaymentStatus,
+        failureReason: safeReason,
+        updatedAt: now,
+        providerMetadata: enrichedMetadata,
+      });
+      tx.update(regRef, { status: "cancelled", updatedAt: now });
+    });
+
+    if (wasNewlyFailed) {
+      eventBus.emit("payment.failed", {
+        paymentId: payment.id,
+        registrationId: payment.registrationId,
+        eventId: payment.eventId,
+        organizationId: payment.organizationId,
+        actorId: payment.userId,
+        requestId,
+        timestamp: now,
+      });
+    }
+
+    audit("failed");
+    return { paymentId: payment.id, outcome: "failed" };
+  }
+
+  /**
    * List payments for an event (organizer view).
    *
    * Returns projected `PaymentClientView[]` so the org-admin dashboard

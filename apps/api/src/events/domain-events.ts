@@ -453,6 +453,36 @@ export interface PaymentVerifiedFromRedirectEvent extends BaseEventPayload {
 }
 
 /**
+ * Phase 3 reconciliation cron heartbeat. Emitted exactly once per
+ * cron invocation (every 10 min in prod) — captures the aggregate
+ * outcome of the sweep so operators can size the IPN-reliability
+ * gap from the audit log over time.
+ *
+ * NOT a per-payment event: each payment that the sweep finalises
+ * also emits the canonical `payment.succeeded` / `payment.failed`
+ * (for the state flip) AND `payment.verified_from_redirect`
+ * (with `outcome: succeeded|failed|pending`, source-tagged via the
+ * `actorId: "system:payment.reconciliation"`). This event is the
+ * cron-level summary on top of those.
+ *
+ * `errored` is the count of payments that threw during their
+ * individual reconciliation attempt — the sweep never aborts on a
+ * single failure; per-payment errors are logged + counted here.
+ *
+ * See ADR-0018 §"Phase 3 daily reconciliation" + the cron in
+ * `apps/functions/src/triggers/payment.triggers.ts`.
+ */
+export interface PaymentReconciliationSweptEvent extends BaseEventPayload {
+  scanned: number;
+  finalizedSucceeded: number;
+  finalizedFailed: number;
+  stillPending: number;
+  errored: number;
+  windowMinMs: number;
+  windowMaxMs: number;
+}
+
+/**
  * Fires when a payment expires WITHOUT reaching `succeeded`. Two
  * distinct trigger paths converge on this event:
  *
@@ -1233,6 +1263,7 @@ export interface DomainEventMap {
   "payment.succeeded": PaymentSucceededEvent;
   "payment.failed": PaymentFailedEvent;
   "payment.verified_from_redirect": PaymentVerifiedFromRedirectEvent;
+  "payment.reconciliation_swept": PaymentReconciliationSweptEvent;
   // Phase 2 follow-up — explicit expiration distinct from `failed`.
   // Triggered by the auto-expirer cron OR by user-initiated cancel
   // of a pending_payment registration. See `PaymentExpiredEvent`

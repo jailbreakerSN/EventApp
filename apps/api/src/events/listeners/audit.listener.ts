@@ -1386,6 +1386,37 @@ export function registerAuditListeners(): void {
     });
   });
 
+  // Phase 3 reconciliation cron heartbeat — one row per sweep tick.
+  // Read from /admin/audit?action=payment.reconciliation_swept by ops
+  // dashboards to graph the IPN-miss rate (a healthy `scanned: 0`
+  // signal proves the cron is alive vs. silently dead, while a
+  // sustained `finalizedSucceeded > 0` signals chronic IPN drift
+  // worth escalating to the provider).
+  eventBus.on("payment.reconciliation_swept", async (payload) => {
+    await auditService.log({
+      action: "payment.reconciliation_swept",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      // No resource — this is a cron-tick aggregate, not a per-row
+      // mutation. Use a sentinel so list queries by resourceType
+      // surface it cleanly.
+      resourceType: "payment_reconciliation_sweep",
+      resourceId: `sweep_${payload.timestamp}`,
+      eventId: null,
+      organizationId: null,
+      details: {
+        scanned: payload.scanned,
+        finalizedSucceeded: payload.finalizedSucceeded,
+        finalizedFailed: payload.finalizedFailed,
+        stillPending: payload.stillPending,
+        errored: payload.errored,
+        windowMinMs: payload.windowMinMs,
+        windowMaxMs: payload.windowMaxMs,
+      },
+    });
+  });
+
   eventBus.on("payment.refunded", async (payload) => {
     await auditService.log({
       action: "payment.refunded",
