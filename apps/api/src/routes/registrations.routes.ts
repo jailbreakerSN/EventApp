@@ -9,6 +9,7 @@ import {
   PaginationSchema,
   CheckInRequestSchema,
   BulkRegistrationActionSchema,
+  RegistrationStatusSchema,
 } from "@teranga/shared-types";
 
 const RegisterBody = z.object({
@@ -107,13 +108,31 @@ export const registrationRoutes: FastifyPluginAsync = async (fastify) => {
   );
 
   // ─── Get Event Registrations (organizer) ─────────────────────────────────
+  // Query: PaginationSchema + optional `status` filter (single value or
+  // comma-separated for multi-select). orderBy whitelisted to indexed
+  // fields. The status filter was previously declared in the frontend hook
+  // but stripped by the route's PaginationSchema-only validation — silent
+  // UI bug surfaced during the W2 migration.
+  const EventRegistrationsQuerySchema = PaginationSchema.extend({
+    status: z
+      .preprocess((v) => {
+        if (typeof v !== "string") return v;
+        if (!v.includes(",")) return v;
+        return v.split(",").map((s) => s.trim()).filter(Boolean);
+      }, z.union([RegistrationStatusSchema, z.array(RegistrationStatusSchema).min(1).max(10)]))
+      .optional(),
+    orderBy: z.enum(["createdAt", "updatedAt", "status"]).optional(),
+  });
   fastify.get(
     "/event/:eventId",
     {
       preHandler: [
         authenticate,
         requirePermission("registration:read_all"),
-        validate({ params: z.object({ eventId: z.string() }), query: PaginationSchema }),
+        validate({
+          params: z.object({ eventId: z.string() }),
+          query: EventRegistrationsQuerySchema,
+        }),
       ],
       schema: {
         tags: ["Registrations"],
@@ -123,11 +142,14 @@ export const registrationRoutes: FastifyPluginAsync = async (fastify) => {
     },
     async (request, reply) => {
       const { eventId } = request.params as { eventId: string };
-      const pagination = request.query as z.infer<typeof PaginationSchema>;
+      const { status, ...pagination } = request.query as z.infer<
+        typeof EventRegistrationsQuerySchema
+      >;
+      const statuses = status === undefined ? undefined : Array.isArray(status) ? status : [status];
       const result = await registrationService.getEventRegistrations(
         eventId,
         request.user!,
-        undefined,
+        statuses,
         pagination,
       );
       return reply.send({ success: true, data: result.data, meta: result.meta });

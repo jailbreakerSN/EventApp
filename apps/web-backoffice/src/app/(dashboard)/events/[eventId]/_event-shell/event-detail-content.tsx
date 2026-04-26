@@ -2,7 +2,9 @@
 
 import { useState, useCallback, useRef } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { parseAsString } from "nuqs";
 import { toast } from "sonner";
+import { useTableState } from "@/hooks/use-table-state";
 import {
   ConfirmDialog,
   getErrorMessage,
@@ -11,6 +13,8 @@ import {
   DataTable,
   type DataTableColumn,
   EmptyState,
+  ResultCount,
+  PageSizeSelector,
   Skeleton,
   Breadcrumb,
   BreadcrumbList,
@@ -1221,18 +1225,29 @@ export function TicketsTab({ event }: { event: Event }) {
 }
 
 export function RegistrationsTab({ eventId }: { eventId: string }) {
-  const [page, setPage] = useState(1);
-  const [statusFilter, setStatusFilter] = useState("");
-  const limit = 15;
+  // W2 migration — useTableState owns the URL state for status / sort /
+  // page / pageSize. The status filter was previously declared in the
+  // hook but stripped by the route's PaginationSchema-only validation;
+  // the matching backend route now accepts `status` as single value or
+  // comma-separated multi-select. Sortable columns expose createdAt /
+  // status; PaginationSchema's orderBy whitelist clamps the rest.
+  const t = useTableState<{ status?: string }>({
+    urlNamespace: `regs-${eventId.slice(0, 8)}`,
+    defaults: { sort: { field: "createdAt", dir: "desc" }, pageSize: 25 },
+    sortableFields: ["createdAt", "updatedAt", "status"] as const,
+    filterParsers: { status: parseAsString },
+  });
 
   const {
     data,
     isLoading,
     refetch: refetchRegistrations,
   } = useEventRegistrations(eventId, {
-    page,
-    limit,
-    status: statusFilter || undefined,
+    page: t.page,
+    limit: t.pageSize,
+    status: t.filters.status || undefined,
+    orderBy: t.sort?.field as "createdAt" | "updatedAt" | "status" | undefined,
+    orderDir: t.sort?.dir,
   });
   const approve = useApproveRegistration();
   const cancelReg = useCancelRegistration();
@@ -1242,6 +1257,7 @@ export function RegistrationsTab({ eventId }: { eventId: string }) {
   const meta = data?.meta;
   const totalPages = meta?.totalPages ?? 1;
   const waitlistedCount = registrations.filter((r) => r.status === "waitlisted").length;
+  const hasActive = !!t.filters.status;
 
   const csvData = registrations.map((r) => ({
     participantName: r.participantName ?? r.userId,
@@ -1314,13 +1330,13 @@ export function RegistrationsTab({ eventId }: { eventId: string }) {
               Promouvoir tout ({waitlistedCount})
             </button>
           )}
+          <ResultCount total={meta?.total} loading={isLoading} />
+          <PageSizeSelector value={t.pageSize} onChange={t.setPageSize} />
           <select
-            value={statusFilter}
-            onChange={(e) => {
-              setStatusFilter(e.target.value);
-              setPage(1);
-            }}
+            value={t.filters.status ?? ""}
+            onChange={(e) => t.setFilter("status", e.target.value || undefined)}
             className="px-3 py-1.5 rounded-lg border border-border text-sm bg-card focus:outline-none"
+            aria-label="Filtrer par statut d'inscription"
           >
             <option value="">Tous les statuts</option>
             <option value="confirmed">Confirmé</option>
@@ -1330,6 +1346,15 @@ export function RegistrationsTab({ eventId }: { eventId: string }) {
             <option value="cancelled">Annulé</option>
             <option value="checked_in">Entré</option>
           </select>
+          {hasActive ? (
+            <button
+              type="button"
+              onClick={t.reset}
+              className="text-sm text-muted-foreground hover:text-foreground underline-offset-4 hover:underline"
+            >
+              Tout effacer
+            </button>
+          ) : null}
           <PlanGate feature="csvExport" fallback="disabled">
             <CsvExportButton
               data={csvData}
@@ -1361,11 +1386,28 @@ export function RegistrationsTab({ eventId }: { eventId: string }) {
         </div>
       ) : registrations.length === 0 ? (
         <div className="bg-card rounded-xl border border-border">
-          <EmptyState
-            icon={Users}
-            title="Aucune inscription pour le moment"
-            description="Partagez le lien de votre événement pour recevoir vos premières inscriptions."
-          />
+          {hasActive ? (
+            <EmptyState
+              icon={Users}
+              title="Aucun résultat"
+              description="Aucune inscription ne correspond à ce filtre. Essayez d'élargir la sélection."
+              action={
+                <button
+                  type="button"
+                  onClick={t.reset}
+                  className="text-sm font-medium text-primary hover:underline"
+                >
+                  Effacer les filtres
+                </button>
+              }
+            />
+          ) : (
+            <EmptyState
+              icon={Users}
+              title="Aucune inscription pour le moment"
+              description="Partagez le lien de votre événement pour recevoir vos premières inscriptions."
+            />
+          )}
         </div>
       ) : (
         <>
@@ -1373,6 +1415,8 @@ export function RegistrationsTab({ eventId }: { eventId: string }) {
             aria-label="Liste des inscriptions"
             emptyMessage="Aucune inscription pour le moment"
             responsiveCards
+            sort={t.sort}
+            onToggleSort={t.toggleSort}
             data={registrations as ((typeof registrations)[number] & Record<string, unknown>)[]}
             columns={
               [
@@ -1418,6 +1462,8 @@ export function RegistrationsTab({ eventId }: { eventId: string }) {
                 {
                   key: "status",
                   header: "Statut",
+                  sortable: true,
+                  sortField: "status",
                   render: (reg) => (
                     <Badge variant={getStatusVariant(reg.status)}>
                       {REG_STATUS[reg.status] ?? reg.status}
@@ -1428,6 +1474,8 @@ export function RegistrationsTab({ eventId }: { eventId: string }) {
                   key: "createdAt",
                   header: "Date",
                   hideOnMobile: true,
+                  sortable: true,
+                  sortField: "createdAt",
                   render: (reg) => (
                     <span className="text-muted-foreground text-xs">
                       {formatDate(reg.createdAt)}
@@ -1508,31 +1556,37 @@ export function RegistrationsTab({ eventId }: { eventId: string }) {
             }
           />
 
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between mt-4 text-sm text-muted-foreground">
-              <span>
-                Page {page} sur {totalPages}
+          {totalPages > 1 ? (
+            <nav
+              aria-label="Pagination des inscriptions"
+              className="flex items-center justify-between mt-4 text-sm text-muted-foreground"
+            >
+              <span aria-current="page">
+                Page {t.page} sur {totalPages} ({meta?.total ?? 0} inscription
+                {(meta?.total ?? 0) > 1 ? "s" : ""})
               </span>
               <div className="flex gap-2">
                 <button
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  disabled={page <= 1}
+                  type="button"
+                  onClick={() => t.setPage(Math.max(1, t.page - 1))}
+                  disabled={t.page <= 1}
                   className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-border hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed"
                   aria-label="Page précédente"
                 >
                   <ChevronLeft className="h-4 w-4" />
                 </button>
                 <button
-                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={page >= totalPages}
+                  type="button"
+                  onClick={() => t.setPage(Math.min(totalPages, t.page + 1))}
+                  disabled={t.page >= totalPages}
                   className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-border hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed"
                   aria-label="Page suivante"
                 >
                   <ChevronRight className="h-4 w-4" />
                 </button>
               </div>
-            </div>
-          )}
+            </nav>
+          ) : null}
         </>
       )}
     </div>
