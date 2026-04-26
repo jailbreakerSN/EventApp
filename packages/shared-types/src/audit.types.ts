@@ -185,6 +185,15 @@ export const AuditActionSchema = z.enum([
   // seen before". Details carry `hashPrefix` + redacted IP + UA
   // hash, never the plaintext key.
   "api_key.verified",
+  // Phase O6 — WhatsApp opt-in lifecycle. Each opt-in / revoke writes
+  // one audit row with the consent metadata (phoneE164, organizationId)
+  // for legal traceability of Meta-required consent.
+  "whatsapp.opt_in.granted",
+  "whatsapp.opt_in.revoked",
+  // Phase O6 — delivery webhook from Meta. We log only `failed` to
+  // keep the audit log readable; sent/delivered/read updates land in
+  // structured logs but not the audit collection.
+  "whatsapp.delivery.failed",
 ]);
 
 export type AuditAction = z.infer<typeof AuditActionSchema>;

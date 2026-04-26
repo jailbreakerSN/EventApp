@@ -14,7 +14,7 @@
  */
 
 import { useMemo, useState } from "react";
-import { Mail, Smartphone, Bell, Sparkles, Clock } from "lucide-react";
+import { Mail, Smartphone, Bell, Sparkles, Clock, MessageCircle } from "lucide-react";
 import { Card, CardContent, Skeleton } from "@teranga/shared-ui";
 import { cn } from "@/lib/utils";
 import { useCommsTemplates } from "@/hooks/use-comms-templates";
@@ -36,6 +36,7 @@ const CHANNEL_ICON: Record<CommunicationChannel, typeof Mail> = {
   email: Mail,
   sms: Smartphone,
   push: Bell,
+  whatsapp: MessageCircle,
   in_app: Bell,
 };
 

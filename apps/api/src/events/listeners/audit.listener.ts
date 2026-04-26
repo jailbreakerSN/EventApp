@@ -1724,6 +1724,59 @@ export function registerAuditListeners(): void {
     });
   });
 
+  // ── Phase O6 — WhatsApp opt-in lifecycle (Meta-required consent log) ──
+
+  eventBus.on("whatsapp.opt_in.granted", async (payload) => {
+    await auditService.log({
+      action: "whatsapp.opt_in.granted",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "user",
+      resourceId: payload.userId,
+      eventId: null,
+      organizationId: payload.organizationId,
+      details: {
+        phoneE164: payload.phoneE164,
+        reGrant: payload.reGrant,
+      },
+    });
+  });
+
+  eventBus.on("whatsapp.opt_in.revoked", async (payload) => {
+    await auditService.log({
+      action: "whatsapp.opt_in.revoked",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "user",
+      resourceId: payload.userId,
+      eventId: null,
+      organizationId: payload.organizationId,
+      details: {
+        phoneE164: payload.phoneE164,
+      },
+    });
+  });
+
+  eventBus.on("whatsapp.delivery.failed", async (payload) => {
+    await auditService.log({
+      action: "whatsapp.delivery.failed",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "notification",
+      resourceId: payload.messageId,
+      eventId: null,
+      organizationId: null,
+      details: {
+        recipient: payload.recipient,
+        errorCode: payload.errorCode,
+        errorMessage: payload.errorMessage,
+      },
+    });
+  });
+
   // ── Subscription Override (Phase 5 — admin per-org assign) ─────────────
 
   eventBus.on("subscription.overridden", async (payload) => {

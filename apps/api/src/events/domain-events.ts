@@ -1307,6 +1307,10 @@ export interface DomainEventMap {
   "api_key.revoked": ApiKeyRevokedEvent;
   "api_key.rotated": ApiKeyRotatedEvent;
   "api_key.verified": ApiKeyVerifiedEvent;
+  // Phase O6 — WhatsApp opt-in + delivery
+  "whatsapp.opt_in.granted": WhatsappOptInGrantedEvent;
+  "whatsapp.opt_in.revoked": WhatsappOptInRevokedEvent;
+  "whatsapp.delivery.failed": WhatsappDeliveryFailedEvent;
   // Plan coupons (Phase 7+ item #7) — redemption itself is captured on
   // the subscription doc + couponRedemptions collection; we only emit
   // lifecycle signals here (create / update / archive).
@@ -1456,6 +1460,34 @@ export interface ApiKeyVerifiedEvent extends BaseEventPayload {
   ipHash: string;
   /** SHA-256 of the user-agent, truncated to 16 hex chars. */
   uaHash: string;
+}
+
+// ─── Phase O6 — WhatsApp opt-in lifecycle + delivery failures ──────────────
+
+export interface WhatsappOptInGrantedEvent extends BaseEventPayload {
+  userId: string;
+  organizationId: string;
+  /** E.164 phone number captured at consent. */
+  phoneE164: string;
+  /** True when the participant re-grants after a previous revoke. */
+  reGrant: boolean;
+}
+
+export interface WhatsappOptInRevokedEvent extends BaseEventPayload {
+  userId: string;
+  organizationId: string;
+  phoneE164: string;
+}
+
+export interface WhatsappDeliveryFailedEvent extends BaseEventPayload {
+  /** Meta message id (or `mock-wa-…` in dev). */
+  messageId: string;
+  /** Recipient E.164 phone number. */
+  recipient: string;
+  /** Optional Meta error code. */
+  errorCode: string | null;
+  /** Optional human-readable error from Meta. */
+  errorMessage: string | null;
 }
 
 export type DomainEventName = keyof DomainEventMap;

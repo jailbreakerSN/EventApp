@@ -28,6 +28,7 @@ const FEATURE_LABELS: Record<PlanFeature, string> = {
   whiteLabel: "White-label",
   promoCodes: "Codes promo",
   waitlist: "Liste d'attente",
+  whatsappNotifications: "Notifications WhatsApp",
 };
 
 function formatPlanCost(display: { priceXof: number; pricingModel: string }): string {
@@ -293,9 +294,7 @@ export function UpgradePreview({
               </button>
             )}
           </div>
-          {couponError && (
-            <p className="mt-2 text-xs text-destructive">{couponError}</p>
-          )}
+          {couponError && <p className="mt-2 text-xs text-destructive">{couponError}</p>}
           {couponPreview && (
             <div className="mt-2 text-xs space-y-0.5">
               <p className="text-green-700 dark:text-green-400 font-medium">

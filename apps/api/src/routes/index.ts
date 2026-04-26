@@ -15,6 +15,7 @@ import { paymentRoutes } from "./payments.routes";
 import { receiptRoutes } from "./receipts.routes";
 import { payoutRoutes } from "./payouts.routes";
 import { communicationRoutes, commsRoutes } from "./communications.routes";
+import { whatsappMeRoutes, whatsappPublicRoutes } from "./whatsapp.routes";
 import { notificationRoutes } from "./notifications.routes";
 import { speakerRoutes } from "./speakers.routes";
 import { sponsorRoutes } from "./sponsors.routes";
@@ -53,6 +54,8 @@ export async function registerRoutes(app: FastifyInstance) {
   await app.register(payoutRoutes, { prefix: "/v1/payouts" });
   await app.register(communicationRoutes, { prefix: "/v1/events" });
   await app.register(commsRoutes, { prefix: "/v1/comms" });
+  await app.register(whatsappMeRoutes, { prefix: "/v1/me/whatsapp" });
+  await app.register(whatsappPublicRoutes, { prefix: "/v1/whatsapp" });
   await app.register(notificationRoutes, { prefix: "/v1/notifications" });
   await app.register(speakerRoutes, { prefix: "/v1/events" });
   await app.register(sponsorRoutes, { prefix: "/v1/events" });

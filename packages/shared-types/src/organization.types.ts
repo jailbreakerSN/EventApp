@@ -266,6 +266,15 @@ export interface PlanFeatures {
    * default that matches the free-tier value).
    */
   waitlist?: boolean;
+  /**
+   * Phase O6 — gates the WhatsApp Business API channel. Free + starter
+   * tiers ship without it (Meta charges per template, broadcast volume
+   * matters for unit economics); pro + enterprise unlock the channel
+   * end-to-end (composer toggle, lifecycle dispatcher route, opt-in
+   * banner). Optional on the interface for the same backward-compat
+   * reasons as `waitlist`.
+   */
+  whatsappNotifications?: boolean;
 }
 
 export type PlanFeature = keyof PlanFeatures;
@@ -324,6 +333,9 @@ const PRO_FEATURES: PlanFeatures = {
   whiteLabel: false,
   promoCodes: true,
   waitlist: true,
+  // Phase O6 — WhatsApp Business unlocked for Pro+ (per-message
+  // pricing makes the channel viable only above starter volumes).
+  whatsappNotifications: true,
 };
 
 const ENTERPRISE_FEATURES: PlanFeatures = {
@@ -339,6 +351,7 @@ const ENTERPRISE_FEATURES: PlanFeatures = {
   whiteLabel: true,
   promoCodes: true,
   waitlist: true,
+  whatsappNotifications: true,
 };
 
 /**

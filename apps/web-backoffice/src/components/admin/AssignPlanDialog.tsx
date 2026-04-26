@@ -54,6 +54,7 @@ const FEATURE_LABELS: Record<keyof PlanFeatures, string> = {
   whiteLabel: "Marque blanche",
   promoCodes: "Codes promo",
   waitlist: "Liste d'attente",
+  whatsappNotifications: "Notifications WhatsApp",
 };
 
 type LimitKey = "maxEvents" | "maxParticipantsPerEvent" | "maxMembers";
@@ -184,9 +185,7 @@ export function AssignPlanDialog({ open, org, onClose }: AssignPlanDialogProps) 
         if (!zodResult.success) {
           const first = zodResult.error.issues[0];
           setEntitlementsJsonError(
-            first
-              ? `${first.path.join(".") || "(root)"}: ${first.message}`
-              : "JSON invalide",
+            first ? `${first.path.join(".") || "(root)"}: ${first.message}` : "JSON invalide",
           );
           return;
         }

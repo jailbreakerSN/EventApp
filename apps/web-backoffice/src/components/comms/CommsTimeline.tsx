@@ -30,12 +30,17 @@ import { cn } from "@/lib/utils";
 import type { CommsTimelineEntry, CommsTimelineResponse } from "@/hooks/use-comms-timeline";
 import type { CommunicationChannel } from "@teranga/shared-types";
 
-const CHANNELS: readonly CommunicationChannel[] = ["email", "push", "sms", "in_app"];
+// Phase O6 — `whatsapp` joins the row set. Order = top-to-bottom row
+// in the gantt; we keep email at the top (highest broadcast volume),
+// then push (mobile), sms, whatsapp (Senegal-dominant), then in_app
+// (lowest engagement — bottom of the visual stack).
+const CHANNELS: readonly CommunicationChannel[] = ["email", "push", "sms", "whatsapp", "in_app"];
 
 const CHANNEL_LABEL: Record<CommunicationChannel, string> = {
   email: "Email",
   push: "Push",
   sms: "SMS",
+  whatsapp: "WhatsApp",
   in_app: "In-app",
 };
 
@@ -43,6 +48,10 @@ const CHANNEL_COLOR: Record<CommunicationChannel, { stroke: string; fill: string
   email: { stroke: "stroke-sky-500", fill: "fill-sky-500" },
   push: { stroke: "stroke-violet-500", fill: "fill-violet-500" },
   sms: { stroke: "stroke-emerald-500", fill: "fill-emerald-500" },
+  // Meta WhatsApp brand green is `#25D366`. Tailwind doesn't ship it,
+  // so we lean on `green-500` which reads close enough at the marker
+  // size and stays distinct from the SMS emerald row.
+  whatsapp: { stroke: "stroke-green-500", fill: "fill-green-500" },
   in_app: { stroke: "stroke-amber-500", fill: "fill-amber-500" },
 };
 
@@ -96,7 +105,8 @@ export function buildTimelineGeometry(args: {
     email: PADDING.top + ROW_HEIGHT * 0 + ROW_HEIGHT / 2,
     push: PADDING.top + ROW_HEIGHT * 1 + ROW_HEIGHT / 2,
     sms: PADDING.top + ROW_HEIGHT * 2 + ROW_HEIGHT / 2,
-    in_app: PADDING.top + ROW_HEIGHT * 3 + ROW_HEIGHT / 2,
+    whatsapp: PADDING.top + ROW_HEIGHT * 3 + ROW_HEIGHT / 2,
+    in_app: PADDING.top + ROW_HEIGHT * 4 + ROW_HEIGHT / 2,
   };
 
   if (entries.length === 0 || !rangeStart || !rangeEnd) {

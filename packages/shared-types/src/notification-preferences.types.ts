@@ -25,11 +25,16 @@ export const NotificationChannelPreferenceSchema = z.object({
   sms: z.boolean().optional(),
   push: z.boolean().optional(),
   in_app: z.boolean().optional(),
+  // Phase O6 — WhatsApp opt-in lives in a separate collection
+  // (`whatsappOptIns`) because the consent semantics are different:
+  // Meta requires explicit opt-in BEFORE we send the first
+  // template-based message. This per-key override only narrows the
+  // scope further (e.g. "I opted in but don't want THIS notification
+  // key over WhatsApp"). Absent → defer to the global opt-in state.
+  whatsapp: z.boolean().optional(),
 });
 
-export type NotificationChannelPreference = z.infer<
-  typeof NotificationChannelPreferenceSchema
->;
+export type NotificationChannelPreference = z.infer<typeof NotificationChannelPreferenceSchema>;
 
 /**
  * Per-key preference value. Either:
@@ -43,6 +48,4 @@ export const NotificationPreferenceValueSchema = z.union([
   NotificationChannelPreferenceSchema,
 ]);
 
-export type NotificationPreferenceValue = z.infer<
-  typeof NotificationPreferenceValueSchema
->;
+export type NotificationPreferenceValue = z.infer<typeof NotificationPreferenceValueSchema>;

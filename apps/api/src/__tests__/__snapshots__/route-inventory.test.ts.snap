@@ -170,6 +170,9 @@ DELETE /v1/me/fcm-tokens auth
 POST /v1/me/fcm-tokens auth
 DELETE /v1/me/fcm-tokens/:tokenFingerprint auth
 GET /v1/me/inbox auth
+DELETE /v1/me/whatsapp/opt-in auth
+GET /v1/me/whatsapp/opt-in auth
+POST /v1/me/whatsapp/opt-in auth
 GET /v1/me/whoami auth
 GET /v1/newsletter/confirm none
 POST /v1/newsletter/send auth perms=[platform:manage]
@@ -253,5 +256,6 @@ POST /v1/venues/:venueId/approve auth emailVerified perms=[venue:approve]
 GET /v1/venues/:venueId/events none
 POST /v1/venues/:venueId/reactivate auth emailVerified perms=[venue:manage_all]
 POST /v1/venues/:venueId/suspend auth emailVerified perms=[venue:manage_all]
-GET /v1/venues/mine auth"
+GET /v1/venues/mine auth
+POST /v1/whatsapp/webhooks/delivery none"
 `;

@@ -19,7 +19,7 @@
  */
 
 import { useEffect, useState } from "react";
-import { Send, CalendarClock, Mail, Smartphone, Bell, Eye } from "lucide-react";
+import { Send, CalendarClock, Mail, Smartphone, Bell, Eye, MessageCircle } from "lucide-react";
 import { Button, Card, CardContent, Input, Select, Textarea } from "@teranga/shared-ui";
 import { PlanGate } from "@/components/plan/PlanGate";
 import {
@@ -54,6 +54,7 @@ const CHANNEL_LABEL: Record<CommunicationChannel, string> = {
   push: "Push",
   sms: "SMS",
   email: "Email",
+  whatsapp: "WhatsApp",
   in_app: "In-app",
 };
 
@@ -61,6 +62,7 @@ const CHANNEL_ICON: Record<CommunicationChannel, typeof Mail> = {
   push: Bell,
   sms: Smartphone,
   email: Mail,
+  whatsapp: MessageCircle,
   in_app: Bell,
 };
 
@@ -179,34 +181,43 @@ export function CommsComposer({
               role="group"
               aria-labelledby="composer-channels-label"
             >
-              {(["push", "sms", "email", "in_app"] as CommunicationChannel[]).map((ch) => {
-                const Icon = CHANNEL_ICON[ch];
-                const selected = channels.includes(ch);
-                const btn = (
-                  <button
-                    key={ch}
-                    type="button"
-                    onClick={() => toggleChannel(ch)}
-                    aria-pressed={selected}
-                    className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium motion-safe:transition-colors ${
-                      selected
-                        ? "border-teranga-gold bg-teranga-gold/10 text-teranga-gold"
-                        : "border-border text-muted-foreground"
-                    }`}
-                  >
-                    <Icon className="h-3.5 w-3.5" aria-hidden="true" />
-                    {CHANNEL_LABEL[ch]}
-                  </button>
-                );
-                if (ch === "sms") {
-                  return (
-                    <PlanGate key={ch} feature="smsNotifications" fallback="disabled">
-                      {btn}
-                    </PlanGate>
+              {(["push", "sms", "whatsapp", "email", "in_app"] as CommunicationChannel[]).map(
+                (ch) => {
+                  const Icon = CHANNEL_ICON[ch];
+                  const selected = channels.includes(ch);
+                  const btn = (
+                    <button
+                      key={ch}
+                      type="button"
+                      onClick={() => toggleChannel(ch)}
+                      aria-pressed={selected}
+                      className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium motion-safe:transition-colors ${
+                        selected
+                          ? "border-teranga-gold bg-teranga-gold/10 text-teranga-gold"
+                          : "border-border text-muted-foreground"
+                      }`}
+                    >
+                      <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+                      {CHANNEL_LABEL[ch]}
+                    </button>
                   );
-                }
-                return btn;
-              })}
+                  if (ch === "sms") {
+                    return (
+                      <PlanGate key={ch} feature="smsNotifications" fallback="disabled">
+                        {btn}
+                      </PlanGate>
+                    );
+                  }
+                  if (ch === "whatsapp") {
+                    return (
+                      <PlanGate key={ch} feature="whatsappNotifications" fallback="disabled">
+                        {btn}
+                      </PlanGate>
+                    );
+                  }
+                  return btn;
+                },
+              )}
             </div>
           </div>
 

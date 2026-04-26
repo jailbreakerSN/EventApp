@@ -81,6 +81,13 @@ export const COLLECTIONS = {
   NOTIFICATION_PREFERENCES: "notificationPreferences",
   SMS_LOG: "smsLog",
   EMAIL_LOG: "emailLog",
+  // Phase O6 — per-(user, org) WhatsApp opt-in records. One document
+  // per consent grant; revocation flips status + sets revokedAt
+  // rather than deleting the row (audit trail).
+  WHATSAPP_OPT_INS: "whatsappOptIns",
+  // Phase O6 — append-only delivery webhook log (Meta status updates
+  // for outbound WhatsApp messages: sent / delivered / read / failed).
+  WHATSAPP_DELIVERY_LOG: "whatsappDeliveryLog",
   SPEAKERS: "speakers",
   SPONSORS: "sponsors",
   SPONSOR_LEADS: "sponsorLeads",
