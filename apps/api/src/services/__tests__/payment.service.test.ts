@@ -402,6 +402,101 @@ describe("PaymentService.initiatePayment", () => {
       ),
     ).resolves.toBeDefined();
   });
+
+  // ── P1-13 over-limit branch (audit follow-up) ──────────────────────────
+  // The default `mockOrgRepo.findByIdOrThrow` returns a `pro`-plan
+  // org with `paidTickets: true`, so every test above exercises the
+  // happy plan-gate branch. The over-limit branch — a free / starter
+  // org attempting to collect on a paid ticket — was untested. Pin
+  // it now so the gate can never silently regress.
+  it("rejects with PlanLimitError when org plan lacks paidTickets — P1-13", async () => {
+    mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
+    // Override the default pro-plan org with a free-plan one for THIS
+    // test only — `mockResolvedValueOnce` so subsequent tests still
+    // see the default.
+    mockOrgRepo.findByIdOrThrow.mockResolvedValueOnce({
+      id: orgId,
+      plan: "free",
+      effectivePlan: "free",
+      effectiveLimits: { maxEvents: 3, maxParticipantsPerEvent: 50, maxMembers: 1 },
+      effectiveFeatures: {
+        paidTickets: false,
+        qrScanning: false,
+        customBadges: false,
+        csvExport: false,
+        smsNotifications: false,
+        advancedAnalytics: false,
+        speakerPortal: false,
+        sponsorPortal: false,
+        apiAccess: false,
+        whiteLabel: false,
+        promoCodes: false,
+      },
+    });
+
+    await expect(
+      service.initiatePayment("ev-1", "vip", "mock", undefined, user),
+    ).rejects.toThrow(/paidTickets|Limite du plan/i);
+
+    // CRITICAL: the gate fires BEFORE any other state is read. No
+    // ticket validation, no provider call, no idempotency claim —
+    // the free-plan org never sees the ticket business logic at all.
+    expect(mockProvider.initiate).not.toHaveBeenCalled();
+    expect(mockRunTransaction).not.toHaveBeenCalled();
+    expect(mockTxSet).not.toHaveBeenCalled();
+  });
+
+  // ── P1-06 / P1-07 idempotency replay branch (audit follow-up) ─────────
+  // The replay path returns `{ kind: "replayed", paymentId,
+  // redirectUrl }` directly from tx1 and skips the provider call
+  // entirely — that's the entire purpose of the idempotency claim.
+  // Untested before this commit; now pinned so a regression that
+  // collapses the `replayed` early-return into a fresh-path fallback
+  // (which would call the provider on every retry, charging the
+  // user N times) lights up CI immediately.
+  it("returns the cached paymentId without re-calling the provider on idempotent replay — P1-06/P1-07", async () => {
+    mockEventRepo.findByIdOrThrow.mockResolvedValue(event);
+    const cachedPaymentId = "pay-cached-replay-1";
+    const cachedRedirectUrl = "http://mock-checkout/cached_tx";
+    // Tx1: idempotency doc EXISTS with a cached paymentId → service
+    // re-reads the cached Payment, surfaces its redirectUrl, and
+    // returns immediately. NO duplicate-registration check, NO
+    // placeholder write, NO provider call.
+    mockTxGet
+      .mockResolvedValueOnce({
+        exists: true,
+        data: () => ({ paymentId: cachedPaymentId, redirectUrl: cachedRedirectUrl }),
+      })
+      .mockResolvedValueOnce({
+        exists: true,
+        data: () => ({
+          id: cachedPaymentId,
+          redirectUrl: cachedRedirectUrl,
+          // Other fields irrelevant — the route only reads paymentId + redirectUrl.
+        }),
+      });
+
+    const result = await service.initiatePayment("ev-1", "vip", "mock", undefined, user, {
+      idempotencyKey: "ik-replay-test-1",
+    });
+
+    expect(result).toEqual({
+      paymentId: cachedPaymentId,
+      redirectUrl: cachedRedirectUrl,
+    });
+    // CRITICAL invariants of the replay path:
+    //   1. provider.initiate was NEVER called → no double-charge.
+    //   2. No new placeholder Payment / Registration / idempotency
+    //      doc was written → tx1 returned `replayed` before any set.
+    //   3. payment.initiated event was NOT re-emitted → audit trail
+    //      stays consistent with the original initiate call.
+    expect(mockProvider.initiate).not.toHaveBeenCalled();
+    expect(mockTxSet).not.toHaveBeenCalled();
+    expect(mockEventBus.emit).not.toHaveBeenCalledWith(
+      "payment.initiated",
+      expect.anything(),
+    );
+  });
 });
 
 // ─── handleWebhook ─────────────────────────────────────────────────────────

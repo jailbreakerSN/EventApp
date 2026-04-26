@@ -761,6 +761,7 @@ exports[`shared-types contract snapshots > AuditLogEntrySchema shape is stable 1
           "organization.suspended",
           "organization.updated",
           "organization.verified",
+          "payment.bulk_expired",
           "payment.failed",
           "payment.initiated",
           "payment.refunded",
@@ -775,6 +776,8 @@ exports[`shared-types contract snapshots > AuditLogEntrySchema shape is stable 1
           "push.clicked",
           "push.displayed",
           "receipt.generated",
+          "refund.failed",
+          "refund.issued",
           "registration.approved",
           "registration.cancelled",
           "registration.created",
@@ -3649,6 +3652,176 @@ exports[`shared-types contract snapshots > OrganizationSchema shape is stable 1`
           "kind": "nullable",
         },
         "kind": "optional",
+      },
+    },
+  },
+  "kind": "object",
+}
+`;
+
+exports[`shared-types contract snapshots > PaymentClientViewSchema shape is stable 1`] = `
+{
+  "fields": {
+    "amount": {
+      "required": true,
+      "shape": {
+        "checks": [
+          "int",
+          "min",
+        ],
+        "kind": "number",
+      },
+    },
+    "completedAt": {
+      "required": true,
+      "shape": {
+        "inner": {
+          "checks": [
+            "datetime",
+          ],
+          "kind": "string",
+        },
+        "kind": "nullable",
+      },
+    },
+    "createdAt": {
+      "required": true,
+      "shape": {
+        "checks": [
+          "datetime",
+        ],
+        "kind": "string",
+      },
+    },
+    "currency": {
+      "required": true,
+      "shape": {
+        "kind": "literal",
+        "value": "XOF",
+      },
+    },
+    "eventId": {
+      "required": true,
+      "shape": {
+        "kind": "string",
+      },
+    },
+    "failureReason": {
+      "required": true,
+      "shape": {
+        "inner": {
+          "kind": "string",
+        },
+        "kind": "nullable",
+      },
+    },
+    "id": {
+      "required": true,
+      "shape": {
+        "kind": "string",
+      },
+    },
+    "initiatedAt": {
+      "required": true,
+      "shape": {
+        "checks": [
+          "datetime",
+        ],
+        "kind": "string",
+      },
+    },
+    "method": {
+      "required": true,
+      "shape": {
+        "kind": "enum",
+        "values": [
+          "card",
+          "free_money",
+          "mock",
+          "orange_money",
+          "wave",
+        ],
+      },
+    },
+    "organizationId": {
+      "required": true,
+      "shape": {
+        "kind": "string",
+      },
+    },
+    "providerTransactionId": {
+      "required": true,
+      "shape": {
+        "inner": {
+          "kind": "string",
+        },
+        "kind": "nullable",
+      },
+    },
+    "redirectUrl": {
+      "required": true,
+      "shape": {
+        "inner": {
+          "kind": "string",
+        },
+        "kind": "nullable",
+      },
+    },
+    "refundedAmount": {
+      "required": false,
+      "shape": {
+        "hasDefault": true,
+        "inner": {
+          "checks": [
+            "int",
+          ],
+          "kind": "number",
+        },
+        "kind": "default",
+      },
+    },
+    "registrationId": {
+      "required": true,
+      "shape": {
+        "kind": "string",
+      },
+    },
+    "returnUrl": {
+      "required": true,
+      "shape": {
+        "inner": {
+          "kind": "string",
+        },
+        "kind": "nullable",
+      },
+    },
+    "status": {
+      "required": true,
+      "shape": {
+        "kind": "enum",
+        "values": [
+          "expired",
+          "failed",
+          "pending",
+          "processing",
+          "refunded",
+          "succeeded",
+        ],
+      },
+    },
+    "updatedAt": {
+      "required": true,
+      "shape": {
+        "checks": [
+          "datetime",
+        ],
+        "kind": "string",
+      },
+    },
+    "userId": {
+      "required": true,
+      "shape": {
+        "kind": "string",
       },
     },
   },

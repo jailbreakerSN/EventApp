@@ -14,6 +14,7 @@ const {
   mockPayoutRepo,
   mockPaymentRepo,
   mockEventRepo,
+  mockOrgRepo,
   mockEventBus,
   mockTxGet,
   mockTxUpdate,
@@ -60,6 +61,36 @@ const {
     mockEventRepo: {
       findByIdOrThrow: vi.fn(),
     },
+    // Phase-1 audit follow-up — `createPayout()` now fetches the
+    // organisation to enforce a defensive `paidTickets` plan-feature
+    // gate. Default mock returns a `pro`-plan org so existing tests
+    // pass; tests that exercise the over-limit branch override
+    // per-case via `mockResolvedValueOnce`.
+    mockOrgRepo: {
+      findByIdOrThrow: vi.fn(async () => ({
+        id: "org-1",
+        plan: "pro",
+        effectivePlan: "pro",
+        effectiveLimits: {
+          maxEvents: Infinity,
+          maxParticipantsPerEvent: 2000,
+          maxMembers: 50,
+        },
+        effectiveFeatures: {
+          paidTickets: true,
+          qrScanning: true,
+          customBadges: true,
+          csvExport: true,
+          smsNotifications: true,
+          advancedAnalytics: true,
+          speakerPortal: true,
+          sponsorPortal: true,
+          apiAccess: false,
+          whiteLabel: false,
+          promoCodes: true,
+        },
+      })),
+    },
     mockEventBus: { emit: vi.fn() },
     mockTxGet: _mockTxGet,
     mockTxUpdate: _mockTxUpdate,
@@ -93,6 +124,15 @@ vi.mock("@/repositories/event.repository", () => ({
     {},
     {
       get: (_t, p) => (mockEventRepo as Record<string, unknown>)[p as string],
+    },
+  ),
+}));
+
+vi.mock("@/repositories/organization.repository", () => ({
+  organizationRepository: new Proxy(
+    {},
+    {
+      get: (_t, p) => (mockOrgRepo as Record<string, unknown>)[p as string],
     },
   ),
 }));
@@ -286,6 +326,36 @@ describe("PayoutService.createPayout", () => {
         }),
       ],
       meta: { total: 2, page: 1, limit: 10000, totalPages: 1 },
+    });
+    // Phase-1 audit follow-up — the in-tx read sequence is now:
+    //   1. tx.get(lockRef)              → { exists: false } (no existing lock)
+    //   2. tx.get(paymentsQuery)        → docs with succeeded payments
+    //   3. tx.get(balanceTransactions)  → ledger entries (existing)
+    // The previous test only stubbed the third call; the new
+    // createPayout() reads the lock + payments inside the tx so we
+    // queue all three responses in order.
+    mockTxGet.mockResolvedValueOnce({ exists: false });
+    mockTxGet.mockResolvedValueOnce({
+      docs: [
+        {
+          id: "pay-1",
+          data: () => ({
+            id: "pay-1",
+            status: "succeeded",
+            completedAt: "2025-03-15T10:00:00Z",
+            createdAt: "2025-03-15T10:00:00Z",
+          }),
+        },
+        {
+          id: "pay-2",
+          data: () => ({
+            id: "pay-2",
+            status: "succeeded",
+            completedAt: "2025-03-16T10:00:00Z",
+            createdAt: "2025-03-16T10:00:00Z",
+          }),
+        },
+      ],
     });
     // Linked ledger entries (written at payment.succeeded time) that should
     // be swept into this payout. P1-05 recomputes totalAmount from the

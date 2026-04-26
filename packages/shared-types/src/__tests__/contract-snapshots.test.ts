@@ -27,6 +27,7 @@ import {
   UploadUrlResponseSchema,
   // Payment
   PaymentSchema,
+  PaymentClientViewSchema,
   PayoutSchema,
   // User
   UserProfileSchema,
@@ -225,6 +226,11 @@ describe("shared-types contract snapshots", () => {
     { name: "UploadUrlResponseSchema", schema: UploadUrlResponseSchema },
     // Payment
     { name: "PaymentSchema", schema: PaymentSchema },
+    // P1-09 (audit C3) — public-facing projection. Pinning its shape
+    // is the regression guard for the "no providerMetadata, no
+    // callbackUrl" invariant on `getPaymentStatus`,
+    // `listEventPayments`, and `getEventPaymentSummary`.
+    { name: "PaymentClientViewSchema", schema: PaymentClientViewSchema },
     { name: "PayoutSchema", schema: PayoutSchema },
     // User
     { name: "UserProfileSchema", schema: UserProfileSchema },

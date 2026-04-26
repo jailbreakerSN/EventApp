@@ -20,6 +20,7 @@ import {
   ConflictError,
   DuplicateRegistrationError,
   NotFoundError,
+  ProviderError,
   RegistrationClosedError,
   EventFullError,
 } from "@/errors/app-error";
@@ -232,8 +233,26 @@ export class PaymentService extends BaseService {
   ): Promise<{ paymentId: string; redirectUrl: string }> {
     this.requirePermission(user, "payment:initiate");
 
-    // ── Read event ──
+    // ── Read event (needed to derive organizationId for the plan gate) ──
     const event = await eventRepository.findByIdOrThrow(eventId);
+
+    // ── P1-13 (audit H1) — paidTickets plan-feature gate at payment init ──
+    // Money-of-record enforcement at the payment layer. Event creation
+    // already enforces this at event.service.ts; we re-enforce here so a
+    // free / starter org that downgrades AFTER creating a paid event can
+    // never collect real money via this code path.
+    //
+    // Audit follow-up: gate fires immediately after the event lookup
+    // (the only doc read REQUIRED to derive `organizationId`) and
+    // BEFORE any other state-derived branch — event-status check,
+    // ticket validation, capacity guard. A free/starter org never
+    // exercises ticket business logic for a paid ticket, even on
+    // events the operator created before downgrading. The earlier
+    // shape ran the event-status + ticket-validation branches
+    // first; the fix preserves the spec ("BEFORE any other state
+    // change").
+    const org = await organizationRepository.findByIdOrThrow(event.organizationId);
+    this.requirePlanFeature(org, "paidTickets");
 
     if (event.status !== "published") {
       const reason =
@@ -256,14 +275,6 @@ export class PaymentService extends BaseService {
     if (ticketType.price <= 0) {
       throw new ValidationError("Ce billet est gratuit. Utilisez l'inscription classique.");
     }
-
-    // ── P1-13 (audit H1) — paidTickets plan-feature gate at payment init ──
-    // Money-of-record enforcement at the payment layer. Event creation
-    // already enforces this at event.service.ts; we re-enforce here so a
-    // free / starter org that downgrades AFTER creating a paid event can
-    // never collect real money via this code path.
-    const org = await organizationRepository.findByIdOrThrow(event.organizationId);
-    this.requirePlanFeature(org, "paidTickets");
 
     // ── Check availability ──
     if (ticketType.totalQuantity !== null && ticketType.soldCount >= ticketType.totalQuantity) {
@@ -448,8 +459,27 @@ export class PaymentService extends BaseService {
       // rather than an orphan `pending` record. The reconciliation
       // job (Phase 3) double-checks any `pending` records older than
       // 5 min via `provider.verify()`.
+      //
+      // Phase-1 audit follow-up: ONLY `ProviderError` is allowed to
+      // surface its message into `Payment.failureReason` — that
+      // message is the sanitised French copy from `app-error.ts`
+      // (e.g. "Le fournisseur de paiement « wave » a répondu avec
+      // une erreur (502)"). Raw Node.js network errors
+      // (`connect ECONNREFUSED 10.0.0.1:443`, `fetch failed`,
+      // `AbortError`) MUST NOT reach the wire because:
+      //   1. failureReason ends up on `getPaymentStatus` and
+      //      `listEventPayments` responses (it's NOT in the
+      //      PaymentClientView omit set).
+      //   2. The raw message can leak our infra IPs, internal
+      //      hostnames, or DNS topology to the participant /
+      //      organizer dashboard.
+      // The sanitised fallback covers timeouts and DNS failures
+      // with operator-actionable French copy. The full underlying
+      // error stays on stderr via `provider-error-logger` (P1-11).
       const failureReason =
-        err instanceof Error ? err.message.slice(0, 500) : "Provider initiate failed";
+        err instanceof ProviderError
+          ? err.message.slice(0, 500)
+          : "Erreur réseau lors de la connexion au fournisseur — réessayez dans quelques instants";
       await db
         .collection(COLLECTIONS.PAYMENTS)
         .doc(payId)

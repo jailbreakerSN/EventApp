@@ -62,6 +62,18 @@ export const AuditActionSchema = z.enum([
   "payment.succeeded",
   "payment.failed",
   "payment.refunded",
+  // Phase-1 audit follow-up — refund customer-notification + provider-
+  // failure variants emit dedicated events for the dispatcher; the
+  // audit trail logs them as distinct rows so post-incident analysis
+  // can separate "we issued a refund and notified the customer" from
+  // "we tried to refund and the provider rejected".
+  "refund.issued",
+  "refund.failed",
+  // P1-21 — emitted per ≤ 400-row batch by the
+  // `expire-stale-payments` admin job. Captures bulk Payment + linked
+  // Registration mutations the operator dashboard timeline needs to
+  // reflect outside the coarse `admin.job_completed` summary.
+  "payment.bulk_expired",
   "receipt.generated",
   // ── Speaker & Sponsor ──────────────────────────────────────────────────────
   "speaker.added",
