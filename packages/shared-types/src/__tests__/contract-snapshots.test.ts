@@ -27,7 +27,9 @@ import {
   UploadUrlResponseSchema,
   // Payment
   PaymentSchema,
+  PaymentClientViewSchema,
   PayoutSchema,
+  WebhookProviderSchema,
   // User
   UserProfileSchema,
   // API envelope
@@ -225,7 +227,16 @@ describe("shared-types contract snapshots", () => {
     { name: "UploadUrlResponseSchema", schema: UploadUrlResponseSchema },
     // Payment
     { name: "PaymentSchema", schema: PaymentSchema },
+    // P1-09 (audit C3) — public-facing projection. Pinning its shape
+    // is the regression guard for the "no providerMetadata, no
+    // callbackUrl" invariant on `getPaymentStatus`,
+    // `listEventPayments`, and `getEventPaymentSummary`.
+    { name: "PaymentClientViewSchema", schema: PaymentClientViewSchema },
     { name: "PayoutSchema", schema: PayoutSchema },
+    // Phase 2 — wire-facing source enum: who can POST webhooks at us.
+    // Adding a new aggregator (e.g. mtn_money) MUST touch this snapshot
+    // so the addition is reviewable in the same diff.
+    { name: "WebhookProviderSchema", schema: WebhookProviderSchema },
     // User
     { name: "UserProfileSchema", schema: UserProfileSchema },
   ];

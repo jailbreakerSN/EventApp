@@ -4,8 +4,39 @@ import { logger } from "firebase-functions/v2";
 import { db, messaging, COLLECTIONS } from "../utils/admin";
 
 /**
- * Payment timeout: cancels pending payments that haven't completed within 30 minutes.
- * Runs every 5 minutes.
+ * Payment timeout — auto-expires payments stuck without resolution.
+ *
+ * Phase 2 follow-up rewrite: aligned with the canonical state machine
+ * established by P1-21 (`expire-stale-payments` admin job) and the
+ * Phase 2 `payment.expired` domain event.
+ *
+ * What changed from the original
+ * ──────────────────────────────
+ *   - Targets BOTH `pending` (Phase-1 P1-07 placeholders that never
+ *     completed initiate tx2) AND `processing` (user redirected to
+ *     PayDunya but never came back). The previous shape only swept
+ *     `processing`, leaving stale `pending` rows accumulating
+ *     indefinitely whenever the provider call failed.
+ *   - Sets `status = "expired"` (not `"failed"`). Failed = provider
+ *     explicitly rejected; expired = timeout. Distinct so the audit
+ *     grid + dispatcher can render targeted operator copy.
+ *   - TTL configurable via `PAYMENT_TIMEOUT_MS` env var. Default 30 min
+ *     for production behaviour parity; staging can override to a
+ *     shorter window via Cloud Run env injection.
+ *   - registeredCount NOT decremented — `pending_payment` and `pending`
+ *     placeholders never increment the counter (only the
+ *     `payment.succeeded` IPN path does, cf. Phase 1 P1-04).
+ *   - Mirrors the user-initiated cancel path's invariants: linked
+ *     Registration flips to `cancelled` only when its status is
+ *     `pending_payment` (defensive — never touch a registration that
+ *     somehow became `confirmed` between the outer query and the batch
+ *     commit; the IPN race is covered by the inner-tx idempotency
+ *     guard in handleWebhook).
+ *
+ * Cron cadence: every 5 minutes. The 30-min TTL means the user has up
+ * to 35 min to complete the PayDunya flow before the placeholder
+ * registration is released for re-registration. Tweak via
+ * `PAYMENT_TIMEOUT_MS` if needed.
  */
 export const onPaymentTimeout = onSchedule(
   {
@@ -16,56 +47,158 @@ export const onPaymentTimeout = onSchedule(
     timeoutSeconds: 120,
   },
   async () => {
-    const TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
+    const TIMEOUT_MS = Number(process.env.PAYMENT_TIMEOUT_MS) || 30 * 60 * 1000;
     const cutoff = new Date(Date.now() - TIMEOUT_MS).toISOString();
 
-    const pendingPayments = await db
-      .collection(COLLECTIONS.PAYMENTS)
-      .where("status", "==", "processing")
-      .where("createdAt", "<", cutoff)
-      .limit(100)
-      .get();
+    // Sweep BOTH pending (Phase-1 P1-07 placeholder, no provider session)
+    // AND processing (user redirected, no IPN yet). Two queries because
+    // Firestore `where in` with `<` orderBy on a different field
+    // requires a composite index on (status, createdAt) which exists
+    // for "==" queries but the `in` form would need a separate index.
+    // Two simple queries are cheap and avoid the index proliferation.
+    const [pendingSnap, processingSnap] = await Promise.all([
+      db
+        .collection(COLLECTIONS.PAYMENTS)
+        .where("status", "==", "pending")
+        .where("createdAt", "<", cutoff)
+        .limit(50)
+        .get(),
+      db
+        .collection(COLLECTIONS.PAYMENTS)
+        .where("status", "==", "processing")
+        .where("createdAt", "<", cutoff)
+        .limit(50)
+        .get(),
+    ]);
 
-    if (pendingPayments.empty) return;
+    const docs = [...pendingSnap.docs, ...processingSnap.docs];
+    if (docs.length === 0) return;
 
-    const now = new Date().toISOString();
-    let cancelled = 0;
+    let expired = 0;
+    let raced = 0;
 
-    // Process in batches of 490 (Firestore batch limit is 500)
-    const docs = pendingPayments.docs;
-    for (let i = 0; i < docs.length; i += 490) {
-      const chunk = docs.slice(i, i + 490);
-      const batch = db.batch();
+    // ADR-0017 + senior review fix (firestore-transaction-auditor):
+    // Each Payment must be expired in its own runTransaction with a fresh
+    // re-read inside the tx callback so a successful IPN that lands
+    // between the outer query and our write CANNOT be silently overwritten
+    // by an `expired` flip. The previous batch shape had no such guard —
+    // a confirmed Payment + Registration could be wiped to expired/cancelled
+    // by a racing scheduler tick.
+    //
+    // Trade-off: 1 transaction per stuck payment vs. one batch commit. With
+    // a `limit(50)` per query the worst-case fan-out is 100 small txs per
+    // tick, well within Firestore's quota and within the 120s timeout.
+    for (const doc of docs) {
+      try {
+        const result = await db.runTransaction(async (tx) => {
+          const fresh = await tx.get(doc.ref);
+          if (!fresh.exists) return "missing" as const;
+          const freshData = fresh.data() as { status?: string; registrationId?: string };
 
-      for (const doc of chunk) {
-        const payment = doc.data();
+          // Idempotency guard: only flip if the payment is STILL in a
+          // non-terminal state. A racing IPN may have already moved it
+          // to succeeded / failed / refunded — leave that alone.
+          if (freshData.status !== "pending" && freshData.status !== "processing") {
+            return "raced" as const;
+          }
 
-        // Cancel payment
-        batch.update(doc.ref, {
-          status: "failed",
-          failureReason: "Délai de paiement expiré (30 min)",
-          updatedAt: now,
+          const txNow = new Date().toISOString();
+
+          tx.update(doc.ref, {
+            status: "expired",
+            failureReason:
+              "Paiement expiré : aucun retour fournisseur après le délai imparti",
+            updatedAt: txNow,
+          });
+
+          // Release the linked Registration's slot if it's still in
+          // pending_payment. registeredCount is NOT decremented because
+          // pending_payment never incremented it (Phase 1 P1-04 invariant).
+          if (freshData.registrationId) {
+            const regRef = db
+              .collection(COLLECTIONS.REGISTRATIONS)
+              .doc(freshData.registrationId);
+            const reg = await tx.get(regRef);
+            const regStatus = (reg.data() as { status?: string } | undefined)?.status;
+            // Defense: never overwrite a registration that somehow became
+            // confirmed / cancelled between query and tx commit.
+            if (regStatus === "pending_payment") {
+              tx.update(regRef, {
+                status: "cancelled",
+                updatedAt: txNow,
+              });
+            }
+          }
+
+          return "expired" as const;
         });
 
-        // Cancel associated registration
-        const regRef = db.collection(COLLECTIONS.REGISTRATIONS).doc(payment.registrationId);
-        batch.update(regRef, {
-          status: "cancelled",
-          updatedAt: now,
-        });
+        if (result === "expired") {
+          expired += 1;
 
-        cancelled++;
+          // Audit log write — required by domain-event-auditor since the
+          // API-side eventBus listener in audit.listener.ts is unreachable
+          // from a Cloud Function. Two entries (one per affected resource)
+          // mirror the `payment.expired` + `registration.cancelled` events
+          // emitted by the user-initiated `cancelPending` path.
+          const payment = doc.data();
+          const auditNow = new Date().toISOString();
+          await Promise.all([
+            db.collection(COLLECTIONS.AUDIT_LOGS).add({
+              actorId: "system:onPaymentTimeout",
+              action: "payment.expired",
+              resourceType: "payment",
+              resourceId: doc.id,
+              organizationId: payment.organizationId ?? null,
+              eventId: payment.eventId ?? null,
+              details: {
+                reason: "timeout",
+                registrationId: payment.registrationId ?? null,
+                timeoutMs: TIMEOUT_MS,
+              },
+              createdAt: auditNow,
+            }),
+            payment.registrationId
+              ? db.collection(COLLECTIONS.AUDIT_LOGS).add({
+                  actorId: "system:onPaymentTimeout",
+                  action: "registration.cancelled",
+                  resourceType: "registration",
+                  resourceId: payment.registrationId,
+                  organizationId: payment.organizationId ?? null,
+                  eventId: payment.eventId ?? null,
+                  details: {
+                    reason: "payment_timeout",
+                    paymentId: doc.id,
+                  },
+                  createdAt: auditNow,
+                })
+              : Promise.resolve(),
+          ]).catch((auditErr) => {
+            // Audit failure must not roll back the state-machine flip.
+            logger.error("Failed to write audit log for expired payment", {
+              paymentId: doc.id,
+              err: auditErr,
+            });
+          });
+        } else if (result === "raced") {
+          raced += 1;
+        }
+      } catch (err) {
+        logger.error("Failed to expire stale payment", {
+          paymentId: doc.id,
+          err,
+        });
       }
-
-      await batch.commit();
     }
 
-    if (cancelled > 0) {
-      logger.info(`Payment timeout: cancelled ${cancelled} expired payments`, {
-        cutoff,
-        cancelled,
-      });
-    }
+    logger.info(`Payment timeout sweep done`, {
+      cutoff,
+      timeoutMs: TIMEOUT_MS,
+      expired,
+      raced,
+      pendingScanned: pendingSnap.size,
+      processingScanned: processingSnap.size,
+    });
   },
 );
 

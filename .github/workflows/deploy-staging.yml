@@ -401,6 +401,29 @@ jobs:
         # The '^@^' prefix tells gcloud to use '@' as the delimiter between
         # env var entries instead of the default ','. This is required because
         # CORS_ORIGINS contains commas.
+        #
+        # PayDunya (Phase 2) — only `PAYDUNYA_MODE` (a non-secret
+        # config flag) is injected here. The 3 actual PayDunya secrets
+        # (MASTER_KEY, PRIVATE_KEY, TOKEN) live in GCP Secret Manager
+        # and are bound to this service via the one-shot
+        # `secrets-bootstrap.yml` ops workflow. See ADR-0016 for the
+        # security rationale (--set-env-vars stores values in plaintext
+        # on the Cloud Run service config; --update-secrets stores only
+        # references and gates read access via per-secret IAM).
+        #
+        # Same migration applies to QR_SECRET, WEBHOOK_SECRET (alias
+        # PAYMENT_WEBHOOK_SECRET), RESEND_API_KEY — all moved to
+        # Secret Manager. Plain env vars retained here cover only:
+        #   - non-sensitive runtime config (URLs, log level, plan
+        #     limits, NODE_ENV, …)
+        #   - PAYDUNYA_MODE (flag value, not a secret)
+        #   - SENTRY_DSN (DSN format is public-by-design — Sentry SDKs
+        #     embed it in client bundles)
+        #
+        # Boot-time `assertProviderSecrets()` (P1-18 + Phase 2) reads
+        # the env vars regardless of source — secret-bound or plain —
+        # and refuses to start if any provider's secret triplet is
+        # half-configured.
         run: |
           gcloud run deploy teranga-api-staging \
             --image europe-west1-docker.pkg.dev/${{ needs.setup.outputs.project_id }}/teranga/teranga-api:${{ env.DEPLOY_SHA }} \
@@ -413,7 +436,7 @@ jobs:
             --concurrency 80 \
             --no-cpu-boost \
             --timeout 360 \
-            --set-env-vars "^@^NODE_ENV=staging@FIREBASE_PROJECT_ID=${{ needs.setup.outputs.project_id }}@FIREBASE_STORAGE_BUCKET=${{ needs.setup.outputs.firebase_storage_bucket }}@QR_SECRET=${{ secrets.QR_SECRET }}@WEBHOOK_SECRET=${{ secrets.WEBHOOK_SECRET }}@RESEND_API_KEY=${{ secrets.RESEND_API_KEY }}@SENTRY_DSN=${{ secrets.SENTRY_DSN }}@CORS_ORIGINS=${{ needs.setup.outputs.cors_origins }}@API_BASE_URL=${{ needs.setup.outputs.api_url }}@PARTICIPANT_WEB_URL=${{ needs.setup.outputs.participant_url }}@WEB_BACKOFFICE_URL=${{ needs.setup.outputs.backoffice_url }}@RATE_LIMIT_MAX=100@RATE_LIMIT_WINDOW_MS=60000@LOG_LEVEL=info"
+            --set-env-vars "^@^NODE_ENV=staging@FIREBASE_PROJECT_ID=${{ needs.setup.outputs.project_id }}@FIREBASE_STORAGE_BUCKET=${{ needs.setup.outputs.firebase_storage_bucket }}@SENTRY_DSN=${{ secrets.SENTRY_DSN }}@CORS_ORIGINS=${{ needs.setup.outputs.cors_origins }}@API_BASE_URL=${{ needs.setup.outputs.api_url }}@PARTICIPANT_WEB_URL=${{ needs.setup.outputs.participant_url }}@WEB_BACKOFFICE_URL=${{ needs.setup.outputs.backoffice_url }}@RATE_LIMIT_MAX=100@RATE_LIMIT_WINDOW_MS=60000@LOG_LEVEL=info@PAYDUNYA_MODE=sandbox"
           # --timeout 360 covers the admin-jobs runner's 5-minute
           # MAX_RUN_MS + ~1 min of headroom. Without this, a long
           # handler would land as a client-side 504 while Cloud Run

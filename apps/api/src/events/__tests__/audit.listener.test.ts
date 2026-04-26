@@ -623,6 +623,16 @@ describe("Audit Listener", () => {
       // Sprint-2 T2.2 — `event.restored` listener added.
       // Sprint-2 S1 — `event.series_cancelled` listener added.
       // Sprint-4 T3.2 — 3 scheduled_admin_op.* listeners added.
+      // Phase-1 audit follow-up — 3 new handlers for refund / bulk-
+      // expired events that were emitted by the service / job layers
+      // but had no audit row mapping. The previous count of 99
+      // silently dropped these mutations from the audit trail.
+      // (`refund.issued` + `refund.failed` + `payment.bulk_expired` = +3.)
+      // Phase-2 audit follow-up — `payment.tampering_attempted`
+      // handler closes the security-trail gap on rejected IPNs.
+      // Phase-2 follow-up #2 — `payment.expired` handler tracks
+      // both the auto-timeout cron AND the user-initiated cancel
+      // of pending_payment registrations.
       // Phase O6 — 3 whatsapp.* listeners added (opt_in.granted,
       // opt_in.revoked, delivery.failed).
       // Phase O7 — 2 participant ops listeners added
@@ -635,7 +645,7 @@ describe("Audit Listener", () => {
       // payout.requested).
       // Phase O10 — 4 listeners added (event.cloned_from_template,
       // magic_link.issued, magic_link.used, magic_link.revoked).
-      const EXPECTED_HANDLER_COUNT = 116;
+      const EXPECTED_HANDLER_COUNT = 121;
 
       expect(registered).toHaveLength(EXPECTED_HANDLER_COUNT);
       // Each registered event name should be unique — a double

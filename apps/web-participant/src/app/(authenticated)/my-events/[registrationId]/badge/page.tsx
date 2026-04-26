@@ -176,7 +176,7 @@ export default function BadgePage() {
       <div className="mx-auto max-w-lg px-6 py-16">
         <EmptyStateEditorial
           icon={AlertTriangle}
-          kicker="— INTROUVABLE"
+          kicker={t("registrationNotFoundKicker")}
           title={t("registrationNotFound")}
           action={
             <Link
@@ -193,6 +193,31 @@ export default function BadgePage() {
 
   const isConfirmed = registration.status === "confirmed" || registration.status === "checked_in";
   const holderName = registration.participantName ?? user?.displayName ?? user?.email ?? "";
+
+  // Defense-in-depth: refuse to render an "actionable" badge surface for
+  // registrations that aren't in a credentialled state. The list view
+  // already hides the badge link for these, but a participant might
+  // bookmark / share the URL — don't expose a QR-shaped placeholder
+  // that hints "you're in" when payment hasn't cleared.
+  if (!isConfirmed) {
+    return (
+      <div className="mx-auto max-w-lg px-6 py-16">
+        <EmptyStateEditorial
+          icon={AlertTriangle}
+          kicker={t("badgeUnavailableKicker")}
+          title={t("notYetAvailable")}
+          action={
+            <Link
+              href="/my-events"
+              className="text-sm font-medium text-teranga-gold-dark hover:underline"
+            >
+              {t("backToMyEvents")}
+            </Link>
+          }
+        />
+      </div>
+    );
+  }
 
   const passFields = [
     { label: tSuccess("dateLabel"), value: formatDate(registration.createdAt, regional) },
@@ -213,7 +238,7 @@ export default function BadgePage() {
         {t("backToMyEvents")}
       </Link>
 
-      <SectionHeader kicker="— BADGE" title={t("title")} size="hero" as="h1" />
+      <SectionHeader kicker={t("kicker")} title={t("title")} size="hero" as="h1" />
 
       {/* Offline-from-cache notice — only shows when we're rendering from
           IndexedDB because the network failed. Keeps the participant

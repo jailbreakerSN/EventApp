@@ -461,7 +461,10 @@
     "savedOfflineToast": "Badge saved offline ⚡",
     "savedOfflineChip": "Saved offline",
     "saveOfflineError": "Couldn’t save offline. Please retry.",
-    "cachedNotice": "You’re offline. This badge is loaded from the local cache."
+    "cachedNotice": "You’re offline. This badge is loaded from the local cache.",
+    "kicker": "— BADGE",
+    "registrationNotFoundKicker": "— NOT FOUND",
+    "badgeUnavailableKicker": "— BADGE UNAVAILABLE"
   },
   "registerFlow": {
     "subtitle": "Registration",
@@ -486,6 +489,28 @@
       "pending_payment": "pending payment",
       "waitlisted": "on the waitlist",
       "checked_in": "checked in"
+    },
+    "pendingPayment": {
+      "title": "Payment incomplete",
+      "description": "Your registration is on hold: finish the payment to confirm it. You can resume the open payment session or cancel and try again.",
+      "resumeCta": "Resume payment",
+      "cancelCta": "Cancel & retry",
+      "cancelConfirm": "Cancel this pending registration? You will be able to register again right after.",
+      "cancelSuccess": "Registration cancelled. You can now register again.",
+      "noPaymentLinkedError": "This registration is not linked to any payment. Cancel it and try again.",
+      "resumeFailed": "Could not resume the payment. Cancel and try again."
+    },
+    "pendingApproval": {
+      "title": "Awaiting approval",
+      "description": "The organiser is reviewing your registration. You will be notified as soon as it is confirmed."
+    },
+    "waitlisted": {
+      "title": "On the waitlist",
+      "description": "You are on the waitlist. If a seat opens up, you will be promoted automatically."
+    },
+    "checkedIn": {
+      "title": "You have already entered",
+      "description": "Your badge was scanned at the event entrance."
     },
     "selectHeading": "Choose your ticket",
     "soldOut": "Sold out",
@@ -627,6 +652,20 @@
     "cancel": "Cancel",
     "cancelled": "Cancelled",
     "cancelledSuccess": "Registration cancelled successfully.",
+    "resumePayment": "Resume payment",
+    "abandonPayment": "Abandon",
+    "abandonedSuccess": "Registration abandoned. You can register again at any time.",
+    "pendingPaymentNotice": "Your registration is pending payment.",
+    "abandonDialog": {
+      "title": "Abandon this payment?",
+      "description": "Your provisional registration will be cancelled. You can register again at any time as long as there are seats available.",
+      "confirm": "Yes, abandon",
+      "cancel": "No, continue"
+    },
+    "errors": {
+      "paymentIdMissing": "Cannot resume this payment: reference missing. Please reload the page.",
+      "noRedirectUrl": "The payment provider didn’t return a URL. Please retry in a moment."
+    },
     "viewToggleAria": "Toggle between list and calendar view",
     "viewList": "List",
     "viewCalendar": "Calendar",

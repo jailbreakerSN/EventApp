@@ -813,6 +813,16 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Payout locks — deterministic idempotency sentinels for payout
+    // sweeps (P1-01 / payments audit C2). Doc id is a composite of
+    // (orgId, eventId, periodFrom, periodTo); existence proves a
+    // payout has already been created for that period. Permanent
+    // (one payout per period); deletion only via the super-admin
+    // soft-cancel-payout flow. Admin SDK only — never client-accessed.
+    match /payoutLocks/{lockId} {
+      allow read, write: if false;
+    }
+
     // Feature flags — platform-wide toggles. Read goes through the API
     // (`useFeatureFlag` hook + the future server-side evaluator); writes
     // are super-admin-only via the admin routes. Direct client read

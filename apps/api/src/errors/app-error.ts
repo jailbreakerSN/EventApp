@@ -323,3 +323,66 @@ export class PlanLimitError extends AppError {
     });
   }
 }
+
+/**
+ * Raised when a payment provider (Wave / Orange Money / PayDunya / …)
+ * returns a non-2xx HTTP response or a known error code.
+ *
+ * P1-11 (audit C5) — the previous shape concatenated the provider's raw
+ * response body into the `Error.message` (e.g. `"Wave API error (400):
+ * <body>"`). That payload can carry provider-internal identifiers,
+ * stack traces, debug breadcrumbs, or customer PII. Bubbling it through
+ * the global error handler exposed those internals to anyone hitting
+ * `/v1/payments/initiate` — including unauthenticated probers triggering
+ * provider failures on purpose.
+ *
+ * The new shape:
+ *   - `message` is generic French ("Le fournisseur de paiement … a
+ *     répondu avec une erreur"), safe to surface to end users.
+ *   - `providerName`, `httpStatus`, `providerCode` are structured for
+ *     metrics / dashboards.
+ *   - The raw body is NOT carried on the error. Providers log it
+ *     separately via `process.stderr.write` (request-context aware) so
+ *     SRE keeps the diagnostic without leaking it to clients.
+ *   - 502 Bad Gateway — the upstream is broken, not the caller's fault.
+ */
+export class ProviderError extends AppError {
+  public readonly providerName: string;
+  public readonly httpStatus: number;
+  public readonly providerCode?: string;
+  public readonly retriable: boolean;
+
+  constructor(args: {
+    providerName: string;
+    httpStatus: number;
+    providerCode?: string;
+    retriable?: boolean;
+    /**
+     * Optional override for the user-facing message. Provider code that
+     * needs a more specific message MUST pass a sanitised string —
+     * NEVER pass the raw provider body. Defaults to the generic
+     * "fournisseur a répondu avec une erreur" copy.
+     */
+    message?: string;
+    cause?: Error;
+  }) {
+    super({
+      message:
+        args.message ??
+        `Le fournisseur de paiement « ${args.providerName} » a répondu avec une erreur (${args.httpStatus})`,
+      code: ERROR_CODES.PROVIDER_ERROR,
+      statusCode: 502,
+      details: {
+        providerName: args.providerName,
+        httpStatus: args.httpStatus,
+        ...(args.providerCode ? { providerCode: args.providerCode } : {}),
+      },
+      cause: args.cause,
+      isOperational: true,
+    });
+    this.providerName = args.providerName;
+    this.httpStatus = args.httpStatus;
+    this.providerCode = args.providerCode;
+    this.retriable = args.retriable ?? false;
+  }
+}

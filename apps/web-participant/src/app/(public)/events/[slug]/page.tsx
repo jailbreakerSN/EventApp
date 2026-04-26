@@ -11,7 +11,6 @@ import {
   Twitter,
   MessageSquare,
   ArrowLeft,
-  ArrowRight,
   AlertTriangle,
   CalendarX,
   Clock,
@@ -32,6 +31,7 @@ import { EventJsonLd } from "@/components/event-detail/event-jsonld";
 import { ShareButtons } from "@/components/share-buttons";
 import { SaveEventButton } from "@/components/save-event-button";
 import { AddToCalendar } from "@/components/add-to-calendar";
+import { EventRegisterCta } from "./event-register-cta";
 import { mapEventToEditorialCardProps } from "@/lib/editorial-card-props";
 import { getCoverGradient } from "@/lib/cover-gradient";
 import { intlLocale } from "@/lib/intl-locale";
@@ -670,31 +670,29 @@ export default async function EventDetailPage({ params }: PageProps) {
 
             <div className="px-4 pb-5 pt-4">
               {canRegister ? (
-                <>
-                  <Link
-                    href={`/register/${event.id}`}
-                    className={`inline-flex h-12 w-full items-center justify-center gap-2 rounded-full px-6 text-sm font-semibold transition-colors bg-teranga-navy text-white hover:bg-teranga-navy/90 dark:bg-teranga-gold dark:text-teranga-navy dark:hover:bg-teranga-gold-light`}
-                  >
-                    {availability.state === "waitlist_open"
+                <EventRegisterCta
+                  eventId={event.id}
+                  defaultLabel={
+                    availability.state === "waitlist_open"
                       ? tDetail("joinWaitlist")
                       : isFree
                         ? tDetail("registerFree")
-                        : tDetail("ctaRegister")}
-                    <ArrowRight className="h-4 w-4" aria-hidden="true" />
-                  </Link>
-                  <p className="mt-2.5 text-center text-[11px] text-muted-foreground">
-                    {availability.state === "waitlist_open"
+                        : tDetail("ctaRegister")
+                  }
+                  defaultSubLabel={
+                    availability.state === "waitlist_open"
                       ? tDetail("waitlistNotice")
                       : isFree
                         ? tDetail("pricing.freeNoPayment")
-                        : tDetail("pricing.paymentSecured")}
-                  </p>
-                  {event.requiresApproval && availability.state !== "waitlist_open" && (
-                    <p className="mt-1.5 text-center text-[11px] text-muted-foreground">
-                      {tDetail("approvalRequired")}
-                    </p>
-                  )}
-                </>
+                        : tDetail("pricing.paymentSecured")
+                  }
+                  canRegister={canRegister}
+                  approvalRequiredLabel={
+                    event.requiresApproval && availability.state !== "waitlist_open"
+                      ? tDetail("approvalRequired")
+                      : null
+                  }
+                />
               ) : (
                 <RegistrationUnavailableCard reason={availability.reason} t={tDetail} />
               )}

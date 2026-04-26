@@ -14,18 +14,29 @@ const {
   mockPayoutRepo,
   mockPaymentRepo,
   mockEventRepo,
+  mockOrgRepo,
   mockEventBus,
   mockTxGet,
   mockTxUpdate,
   mockTxSet,
+  mockTxCreate,
   mockRunTransaction,
   mockCollection,
 } = vi.hoisted(() => {
   const _mockTxGet = vi.fn();
   const _mockTxUpdate = vi.fn();
   const _mockTxSet = vi.fn();
+  // P1-01 — payoutLocks sentinel uses tx.create() inside the
+  // transaction. Default behaviour: succeed (no existing lock).
+  // Tests can override per-case via mockTxCreate.mockImplementationOnce.
+  const _mockTxCreate = vi.fn();
   const _mockRunTransaction = vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => {
-    const tx = { get: _mockTxGet, update: _mockTxUpdate, set: _mockTxSet };
+    const tx = {
+      get: _mockTxGet,
+      update: _mockTxUpdate,
+      set: _mockTxSet,
+      create: _mockTxCreate,
+    };
     return fn(tx);
   });
   // Minimal chainable collection().doc()/where() mock that covers both
@@ -50,10 +61,41 @@ const {
     mockEventRepo: {
       findByIdOrThrow: vi.fn(),
     },
+    // Phase-1 audit follow-up — `createPayout()` now fetches the
+    // organisation to enforce a defensive `paidTickets` plan-feature
+    // gate. Default mock returns a `pro`-plan org so existing tests
+    // pass; tests that exercise the over-limit branch override
+    // per-case via `mockResolvedValueOnce`.
+    mockOrgRepo: {
+      findByIdOrThrow: vi.fn(async () => ({
+        id: "org-1",
+        plan: "pro",
+        effectivePlan: "pro",
+        effectiveLimits: {
+          maxEvents: Infinity,
+          maxParticipantsPerEvent: 2000,
+          maxMembers: 50,
+        },
+        effectiveFeatures: {
+          paidTickets: true,
+          qrScanning: true,
+          customBadges: true,
+          csvExport: true,
+          smsNotifications: true,
+          advancedAnalytics: true,
+          speakerPortal: true,
+          sponsorPortal: true,
+          apiAccess: false,
+          whiteLabel: false,
+          promoCodes: true,
+        },
+      })),
+    },
     mockEventBus: { emit: vi.fn() },
     mockTxGet: _mockTxGet,
     mockTxUpdate: _mockTxUpdate,
     mockTxSet: _mockTxSet,
+    mockTxCreate: _mockTxCreate,
     mockRunTransaction: _mockRunTransaction,
     mockCollection: _mockCollection,
   };
@@ -86,6 +128,15 @@ vi.mock("@/repositories/event.repository", () => ({
   ),
 }));
 
+vi.mock("@/repositories/organization.repository", () => ({
+  organizationRepository: new Proxy(
+    {},
+    {
+      get: (_t, p) => (mockOrgRepo as Record<string, unknown>)[p as string],
+    },
+  ),
+}));
+
 vi.mock("@/events/event-bus", () => ({ eventBus: mockEventBus }));
 vi.mock("@/context/request-context", () => ({ getRequestId: () => "test-request-id" }));
 vi.mock("@/config/firebase", () => ({
@@ -95,6 +146,7 @@ vi.mock("@/config/firebase", () => ({
   },
   COLLECTIONS: {
     PAYOUTS: "payouts",
+    PAYOUT_LOCKS: "payoutLocks",
     PAYMENTS: "payments",
     EVENTS: "events",
     BALANCE_TRANSACTIONS: "balanceTransactions",
@@ -275,8 +327,43 @@ describe("PayoutService.createPayout", () => {
       ],
       meta: { total: 2, page: 1, limit: 10000, totalPages: 1 },
     });
+    // Phase-1 audit follow-up — the in-tx read sequence is now:
+    //   1. tx.get(lockRef)              → { exists: false } (no existing lock)
+    //   2. tx.get(paymentsQuery)        → docs with succeeded payments
+    //   3. tx.get(balanceTransactions)  → ledger entries (existing)
+    // The previous test only stubbed the third call; the new
+    // createPayout() reads the lock + payments inside the tx so we
+    // queue all three responses in order.
+    mockTxGet.mockResolvedValueOnce({ exists: false });
+    mockTxGet.mockResolvedValueOnce({
+      docs: [
+        {
+          id: "pay-1",
+          data: () => ({
+            id: "pay-1",
+            status: "succeeded",
+            completedAt: "2025-03-15T10:00:00Z",
+            createdAt: "2025-03-15T10:00:00Z",
+          }),
+        },
+        {
+          id: "pay-2",
+          data: () => ({
+            id: "pay-2",
+            status: "succeeded",
+            completedAt: "2025-03-16T10:00:00Z",
+            createdAt: "2025-03-16T10:00:00Z",
+          }),
+        },
+      ],
+    });
     // Linked ledger entries (written at payment.succeeded time) that should
-    // be swept into this payout.
+    // be swept into this payout. P1-05 recomputes totalAmount from the
+    // entries' `amount` fields inside the tx (ledger as source of truth),
+    // so the mocks now carry explicit amounts. The 5 % platform fee on
+    // 15 000 gross = 750; refund of 500 on pay-2 produces a `refund`
+    // entry that's `available` from inception (not swept, but subtracted
+    // from net).
     mockTxGet.mockResolvedValueOnce({
       docs: [
         {
@@ -285,6 +372,7 @@ describe("PayoutService.createPayout", () => {
             id: "bt-1",
             paymentId: "pay-1",
             kind: "payment",
+            amount: 10000,
             status: "available",
             payoutId: null,
           }),
@@ -295,6 +383,7 @@ describe("PayoutService.createPayout", () => {
             id: "bt-2",
             paymentId: "pay-1",
             kind: "platform_fee",
+            amount: -500,
             status: "available",
             payoutId: null,
           }),
@@ -305,6 +394,29 @@ describe("PayoutService.createPayout", () => {
             id: "bt-3",
             paymentId: "pay-2",
             kind: "payment",
+            amount: 5000,
+            status: "available",
+            payoutId: null,
+          }),
+        },
+        {
+          ref: { update: vi.fn() },
+          data: () => ({
+            id: "bt-4",
+            paymentId: "pay-2",
+            kind: "platform_fee",
+            amount: -250,
+            status: "available",
+            payoutId: null,
+          }),
+        },
+        {
+          ref: { update: vi.fn() },
+          data: () => ({
+            id: "bt-5",
+            paymentId: "pay-2",
+            kind: "refund",
+            amount: -500, // partial refund of 500
             status: "available",
             payoutId: null,
           }),
@@ -325,14 +437,26 @@ describe("PayoutService.createPayout", () => {
     expect(result.status).toBe("pending");
     expect(result.paymentIds).toEqual(["pay-1", "pay-2"]);
     // totalAmount = (10000 - 0) + (5000 - 500) = 14500
+    // P1-05 — totalAmount recomputed from tx-fresh ledger entries:
+    //   txGross = 10 000 (pay-1) + 5 000 (pay-2) = 15 000
+    //   txRefundedSinceOuterRead = 500 (pay-2 partial refund)
+    //   txTotalAmount = 15 000 − 500 = 14 500 (matches what the
+    //                                          old outer-read logic
+    //                                          produced too — by design)
+    //   txPlatformFee = 500 + 250 = 750
+    //   txNetAmount = 14 500 − 750 = 13 750
     expect(result.totalAmount).toBe(14500);
+    expect(result.platformFee).toBe(750);
+    expect(result.netAmount).toBe(13750);
     expect(result.platformFeeRate).toBe(0.05);
 
-    // Transaction writes: payout doc (set) + payout ledger entry (set) +
-    // 3 source-entry flips (update).
+    // Transaction writes: payout-lock create (1) + payout doc (set) +
+    // payout-debit ledger entry (set) + 4 source-entry flips (update for
+    // payment + fee rows; refund rows are NOT swept).
     expect(mockRunTransaction).toHaveBeenCalledTimes(1);
+    expect(mockTxCreate).toHaveBeenCalledTimes(1);
     expect(mockTxSet).toHaveBeenCalledTimes(2);
-    expect(mockTxUpdate).toHaveBeenCalledTimes(3);
+    expect(mockTxUpdate).toHaveBeenCalledTimes(4);
 
     // Verify the payout ledger entry has the correct shape
     const ledgerEntry = mockTxSet.mock.calls
@@ -341,7 +465,7 @@ describe("PayoutService.createPayout", () => {
       | { amount: number; status: string; payoutId: string }
       | undefined;
     expect(ledgerEntry).toBeDefined();
-    expect(ledgerEntry!.amount).toBe(-13775); // −netAmount = −(14500 − 725)
+    expect(ledgerEntry!.amount).toBe(-13750); // −txNetAmount (P1-05 ledger-derived)
     expect(ledgerEntry!.status).toBe("paid_out");
 
     expect(mockEventBus.emit).toHaveBeenCalledWith(

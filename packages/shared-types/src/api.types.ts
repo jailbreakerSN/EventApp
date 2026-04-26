@@ -114,6 +114,13 @@ export const ERROR_CODES = {
   // depending on reading — we map to PlanLimitError (403) for
   // consistency with the rest of the plan gates.
   API_KEY_PLAN_LIMIT: "API_KEY_PLAN_LIMIT",
+  // P1-11 — payment provider returned a non-2xx HTTP response. The raw
+  // body is NEVER concatenated into the user-facing message because it
+  // can carry provider-internal identifiers, debug traces, or even
+  // customer PII. The body is logged separately via the request logger
+  // for SRE; the client just sees a generic "provider error" with the
+  // `providerName` + HTTP status. 502 Bad Gateway on the wire.
+  PROVIDER_ERROR: "PROVIDER_ERROR",
 } as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[keyof typeof ERROR_CODES];

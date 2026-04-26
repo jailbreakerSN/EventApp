@@ -7,6 +7,8 @@ import {
   type RefundResult,
   type VerifyWebhookParams,
 } from "./payment-provider.interface";
+import { ProviderError } from "@/errors/app-error";
+import { logProviderError } from "./provider-error-logger";
 
 /**
  * Orange Money payment provider.
@@ -32,14 +34,41 @@ const OM_MERCHANT_KEY = process.env.ORANGE_MONEY_MERCHANT_KEY ?? "";
 // because it's not a client credential — it's a shared symmetric token.
 const OM_NOTIF_TOKEN = process.env.ORANGE_MONEY_NOTIF_TOKEN ?? "";
 
-// Cache OAuth token in memory
+// ─── OAuth token cache (P1-20) ─────────────────────────────────────────────
+//
+// P1-20 (audit M8) — Promise-based memoization (request coalescing).
+//
+// The previous shape stored a resolved string (`cachedToken.value`)
+// AFTER the fetch returned. Two concurrent `initiate()` calls hitting
+// the cache when it was empty / expired both saw `null` and both
+// triggered an OAuth fetch — wasting the auth quota and racing for
+// who got to overwrite `cachedToken` last.
+//
+// The new shape stores an in-flight Promise. Concurrent callers
+// arriving while the fetch is pending await the SAME promise and
+// receive the same token. The promise is only set to `null` when:
+//   1. it resolves, and we've stored the resolved token in
+//      `cachedToken` for future reads, OR
+//   2. it rejects — we clear it so the next caller retries from
+//      scratch instead of inheriting the failure.
+//
+// Token TTL is read from the OAuth response (`expires_in`) with a
+// 60 s safety margin so the cache invalidates BEFORE the provider
+// considers it expired (clock skew + retry tolerance).
 let cachedToken: { value: string; expiresAt: number } | null = null;
+let inflightTokenPromise: Promise<string> | null = null;
 
-async function getAccessToken(): Promise<string> {
-  if (cachedToken && Date.now() < cachedToken.expiresAt) {
-    return cachedToken.value;
-  }
+/**
+ * Test seam — clears both the resolved cache and the in-flight
+ * promise. Lets concurrency tests run from a known empty state
+ * without touching module internals.
+ */
+export function __resetOmTokenCacheForTests(): void {
+  cachedToken = null;
+  inflightTokenPromise = null;
+}
 
+async function fetchOauthToken(): Promise<string> {
   const credentials = Buffer.from(`${OM_CLIENT_ID}:${OM_CLIENT_SECRET}`).toString("base64");
   const response = await fetch("https://api.orange.com/oauth/v3/token", {
     method: "POST",
@@ -52,7 +81,21 @@ async function getAccessToken(): Promise<string> {
   });
 
   if (!response.ok) {
-    throw new Error(`Orange Money OAuth error: ${response.status}`);
+    // P1-11 — raw OAuth body kept off the user-facing error. Logged
+    // via `logProviderError` (request-context aware) so SRE keeps
+    // the diagnostic without leaking provider internals to clients.
+    const body = await response.text().catch(() => "");
+    logProviderError({
+      providerName: "orange_money",
+      operation: "oauth_token",
+      httpStatus: response.status,
+      body,
+    });
+    throw new ProviderError({
+      providerName: "orange_money",
+      httpStatus: response.status,
+      providerCode: "oauth_failed",
+    });
   }
 
   const data = (await response.json()) as { access_token: string; expires_in: number };
@@ -60,8 +103,28 @@ async function getAccessToken(): Promise<string> {
     value: data.access_token,
     expiresAt: Date.now() + (data.expires_in - 60) * 1000, // refresh 60s early
   };
-
   return cachedToken.value;
+}
+
+async function getAccessToken(): Promise<string> {
+  if (cachedToken && Date.now() < cachedToken.expiresAt) {
+    return cachedToken.value;
+  }
+  // Coalesce concurrent callers onto a single in-flight fetch.
+  // First caller starts the fetch + stashes the promise; subsequent
+  // callers find the promise and `await` it directly. On settle (success
+  // or failure) we clear `inflightTokenPromise` so the NEXT cache-miss
+  // starts a fresh fetch instead of replaying the resolved promise.
+  if (!inflightTokenPromise) {
+    inflightTokenPromise = (async () => {
+      try {
+        return await fetchOauthToken();
+      } finally {
+        inflightTokenPromise = null;
+      }
+    })();
+  }
+  return inflightTokenPromise;
 }
 
 export class OrangeMoneyPaymentProvider implements PaymentProvider {
@@ -90,15 +153,50 @@ export class OrangeMoneyPaymentProvider implements PaymentProvider {
     });
 
     if (!response.ok) {
-      const body = await response.text();
-      throw new Error(`Orange Money API error (${response.status}): ${body}`);
+      // P1-11 — body NOT concatenated into the error message. Logged
+      // separately via `logProviderError` so the user-facing surface
+      // never carries provider-internal traces.
+      const body = await response.text().catch(() => "");
+      logProviderError({
+        providerName: "orange_money",
+        operation: "initiate",
+        httpStatus: response.status,
+        body,
+        paymentId: params.paymentId,
+      });
+      throw new ProviderError({
+        providerName: "orange_money",
+        httpStatus: response.status,
+      });
     }
 
-    const data = (await response.json()) as {
-      pay_token: string;
-      payment_url: string;
-      notif_token: string;
-    };
+    // P1-10 (audit C4) — raw OM response carries `notif_token`, the
+    // pre-shared symmetric secret OM uses to sign callbacks. Never
+    // store, log, or pass it downstream — explicitly delete it before
+    // the parsed body can be touched by anything else, and narrow the
+    // typed view so callers can't reach for it without changing this
+    // file. Invariant: `notif_token` is configured server-side (env
+    // var ORANGE_MONEY_NOTIF_TOKEN), so we already know it; the API
+    // copy is redundant and dangerous.
+    const raw = (await response.json()) as Record<string, unknown>;
+    if ("notif_token" in raw) {
+      delete raw.notif_token;
+    }
+    const data = raw as { pay_token?: unknown; payment_url?: unknown };
+    if (typeof data.pay_token !== "string" || typeof data.payment_url !== "string") {
+      logProviderError({
+        providerName: "orange_money",
+        operation: "initiate.parse",
+        httpStatus: response.status,
+        body: "missing pay_token / payment_url",
+        paymentId: params.paymentId,
+      });
+      throw new ProviderError({
+        providerName: "orange_money",
+        httpStatus: response.status,
+        providerCode: "malformed_response",
+      });
+    }
 
     return {
       providerTransactionId: data.pay_token,

@@ -418,6 +418,32 @@ export interface PaymentFailedEvent extends BaseEventPayload {
   organizationId: string;
 }
 
+/**
+ * Fires when a payment expires WITHOUT reaching `succeeded`. Two
+ * distinct trigger paths converge on this event:
+ *
+ *   1. Auto-expirer (Cloud Function `onPaymentTimeout`, every 5 min)
+ *      flips payments stuck in `pending` / `processing` past the
+ *      configured TTL. `reason = "timeout"`.
+ *   2. User-initiated cancel of a `pending_payment` registration
+ *      via `POST /v1/registrations/:id/cancel-pending`. The linked
+ *      Payment doc (if any) is flipped here to release the slot.
+ *      `reason = "user_cancelled"`.
+ *
+ * Distinct from `payment.failed` (provider explicitly rejected) so
+ * the audit trail + notification dispatcher can render targeted
+ * copy ("votre paiement a expiré, vous pouvez retenter") instead
+ * of the generic provider-rejection wording.
+ */
+export interface PaymentExpiredEvent extends BaseEventPayload {
+  paymentId: string;
+  registrationId: string;
+  eventId: string;
+  organizationId: string;
+  /** Discriminator — drives the dispatcher's template selection. */
+  reason: "timeout" | "user_cancelled";
+}
+
 export interface PaymentRefundedEvent extends BaseEventPayload {
   paymentId: string;
   registrationId: string;
@@ -1172,6 +1198,11 @@ export interface DomainEventMap {
   "payment.initiated": PaymentInitiatedEvent;
   "payment.succeeded": PaymentSucceededEvent;
   "payment.failed": PaymentFailedEvent;
+  // Phase 2 follow-up — explicit expiration distinct from `failed`.
+  // Triggered by the auto-expirer cron OR by user-initiated cancel
+  // of a pending_payment registration. See `PaymentExpiredEvent`
+  // for the `reason` discriminator.
+  "payment.expired": PaymentExpiredEvent;
   "payment.refunded": PaymentRefundedEvent;
   "refund.issued": RefundIssuedEvent;
   "refund.failed": RefundFailedEvent;
@@ -1295,6 +1326,19 @@ export interface DomainEventMap {
   // mutations beyond the coarse `admin.job_completed` summary.
   // Precedent: `checkin.bulk_synced`.
   "invite.bulk_expired": InviteBulkExpiredEvent;
+  // P1-21 (audit L1) — emitted per batch commit by the
+  // `expire-stale-payments` handler. One event per ≤ 400-row commit,
+  // carries the count + cutoff + runId so the audit trail has a
+  // fine-grained record of bulk Payment expirations. Mirrors
+  // `invite.bulk_expired`.
+  "payment.bulk_expired": PaymentBulkExpiredEvent;
+  // Phase 2 / threat T-PD-03 — fires when `handleWebhook` rejects an
+  // IPN whose anti-tampering invariants didn't hold (mismatched
+  // amount / payment_id, missing required fields on a PayDunya
+  // payload). Lets the audit listener record the attempt so
+  // post-incident analysis can spot recon attempts that signature-
+  // verify but try to bind to a different Payment.
+  "payment.tampering_attempted": PaymentTamperingAttemptedEvent;
   // T2.1 — admin replayed a stored webhook event from /admin/webhooks.
   // Fires at replay start (before the handler runs) so security
   // listeners see the attempt even if the handler hangs.
@@ -1391,6 +1435,53 @@ export interface InviteBulkExpiredEvent {
   runId: string;
   count: number;
   processedAt: string;
+}
+
+/**
+ * P1-21 (audit L1) — emitted by the `expire-stale-payments` handler
+ * on each ≤ 400-row batch commit. Carries the actor + run context +
+ * the cutoff used (so a forensic operator running with a non-default
+ * staleAfterHours leaves a paper trail).
+ */
+export interface PaymentBulkExpiredEvent {
+  actorUid: string;
+  jobKey: string;
+  runId: string;
+  count: number;
+  /** ISO-8601 cutoff used by this run (`now - staleAfterHours`). */
+  cutoffIso: string;
+  processedAt: string;
+}
+
+/**
+ * Phase 2 / threat T-PD-03 — emitted by `handleWebhook` when the
+ * anti-tampering cross-checks fail. The webhook signature verified
+ * (so the request CAME from PayDunya), but the payload's bound
+ * fields (`payment_id` / `amount`) don't match the Payment doc.
+ * That's either a payload-tampering attempt by a man-in-the-middle
+ * or a config drift — either way, ops needs a paper trail.
+ *
+ * `requestId` is provided by the webhook route via the request
+ * context; `actorId` is the synthetic `system:webhook` since the
+ * IPN has no Firebase user attached.
+ */
+export interface PaymentTamperingAttemptedEvent {
+  paymentId: string;
+  organizationId: string;
+  /** Discriminator: `payment_id` / `amount` / future fields. */
+  field: string;
+  /** What we expected (the value from `Payment.{id|amount}`). */
+  expectedValue: string | number;
+  /**
+   * What the IPN claimed. Sliced to bounded length so a hostile
+   * payload can't bloat the audit row.
+   */
+  receivedValue: string | number | null;
+  /** Provider name from the metadata (`paydunya` today). */
+  providerName: string;
+  actorId: string;
+  requestId: string;
+  timestamp: string;
 }
 
 /** T2.1 — emitted by WebhookEventsService.replay() at attempt start. */

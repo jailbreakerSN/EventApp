@@ -62,6 +62,32 @@ export const AuditActionSchema = z.enum([
   "payment.succeeded",
   "payment.failed",
   "payment.refunded",
+  // Phase 2 follow-up — explicit expiration of a payment, either by
+  // the auto-expirer cron (timeout > TTL) or by user-initiated cancel
+  // of a pending_payment registration. Distinct from `payment.failed`
+  // (provider rejection) so the audit grid can filter "expired" vs
+  // "rejected" cleanly.
+  "payment.expired",
+  // Phase-1 audit follow-up — refund customer-notification + provider-
+  // failure variants emit dedicated events for the dispatcher; the
+  // audit trail logs them as distinct rows so post-incident analysis
+  // can separate "we issued a refund and notified the customer" from
+  // "we tried to refund and the provider rejected".
+  "refund.issued",
+  "refund.failed",
+  // P1-21 — emitted per ≤ 400-row batch by the
+  // `expire-stale-payments` admin job. Captures bulk Payment + linked
+  // Registration mutations the operator dashboard timeline needs to
+  // reflect outside the coarse `admin.job_completed` summary.
+  "payment.bulk_expired",
+  // Phase 2 / threat T-PD-03 — fires when handleWebhook rejects an
+  // IPN whose anti-tampering invariants failed. The webhook signature
+  // verified (so the request came from the provider), but the
+  // payload's bound fields (payment_id / amount) didn't match the
+  // Payment doc. Required for the security trail because the webhook
+  // log row only marks `failed`, which isn't surfaced on the
+  // standard `/admin/audit` grid.
+  "payment.tampering_attempted",
   "receipt.generated",
   // ── Speaker & Sponsor ──────────────────────────────────────────────────────
   "speaker.added",

@@ -234,8 +234,31 @@ export const registrationsApi = {
   getMyRegistrations: (params: { page?: number; limit?: number } = {}) =>
     api.get<PaginatedResponse<Registration>>(`/v1/registrations/me${buildQuery(params)}`),
 
+  /**
+   * Phase B-1 — return the user's current ACTIVE registration for the
+   * event (any non-terminal status) or null. Drives the "right CTA"
+   * UX on the event detail + register page so we never show
+   * "S'inscrire" when the user has a pending_payment, nor "Voir mon
+   * badge" when their payment never confirmed.
+   */
+  getMyForEvent: (eventId: string) =>
+    api.get<ApiResponse<Registration | null>>(
+      `/v1/registrations/me/event/${encodeURIComponent(eventId)}`,
+    ),
+
   cancel: (registrationId: string) =>
     api.post<ApiResponse<void>>(`/v1/registrations/${registrationId}/cancel`, {}),
+
+  /**
+   * Phase B-3 — user-initiated cancel of a stuck pending_payment
+   * registration. Releases the slot so the user can re-register
+   * cleanly with a different payment method or attempt.
+   */
+  cancelPending: (registrationId: string) =>
+    api.post<ApiResponse<{ id: string; status: "cancelled" }>>(
+      `/v1/registrations/${encodeURIComponent(registrationId)}/cancel-pending`,
+      {},
+    ),
 };
 
 export const badgesApi = {
@@ -347,6 +370,20 @@ export const paymentsApi = {
 
   getStatus: (paymentId: string) =>
     api.get<ApiResponse<Payment>>(`/v1/payments/${paymentId}/status`),
+
+  /**
+   * Phase B-2 — re-fetch the existing PayDunya redirectUrl for a
+   * payment stuck in `processing`. Lets a user who closed the
+   * checkout tab finish the SAME session — no double-charge, no
+   * orphan invoice. The service-layer rejects the resume on any
+   * non-resumable status (succeeded / failed / refunded / expired)
+   * with a typed `details.reason` so the UI renders targeted copy.
+   */
+  resume: (paymentId: string) =>
+    api.post<ApiResponse<{ paymentId: string; redirectUrl: string; status: string }>>(
+      `/v1/payments/${encodeURIComponent(paymentId)}/resume`,
+      {},
+    ),
 
   refund: (paymentId: string, reason?: string) =>
     api.post<ApiResponse<Payment>>(`/v1/payments/${paymentId}/refund`, { reason }),

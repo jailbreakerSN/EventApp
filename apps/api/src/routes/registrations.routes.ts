@@ -67,6 +67,45 @@ export const registrationRoutes: FastifyPluginAsync = async (fastify) => {
     },
   );
 
+  // ─── Phase B-1 — Get my registration for a specific event ────────────────
+  // Used by the participant web app to render the right CTA on the
+  // event detail page + register page. Returns the user's current
+  // ACTIVE registration (any non-terminal status) or null if none.
+  // Enables UX differentiation between confirmed (show badge),
+  // pending_payment (show "Resume" / "Cancel"), and no-registration
+  // (show "Register" CTA).
+  fastify.get(
+    "/me/event/:eventId",
+    {
+      preHandler: [
+        authenticate,
+        // Defence-in-depth: the service layer already enforces
+        // `registration:read_own` (see registration.service.ts), but
+        // gating at the route layer too means malformed tokens / API
+        // keys without the right scope are rejected before any
+        // Firestore read. Matches the convention used by every other
+        // read route on this file.
+        requirePermission("registration:read_own"),
+        validate({ params: z.object({ eventId: z.string() }) }),
+      ],
+      schema: {
+        tags: ["Registrations"],
+        summary: "Get my current registration for an event (any non-terminal status)",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const { eventId } = request.params as { eventId: string };
+      const registration = await registrationService.getMyRegistrationForEvent(
+        eventId,
+        request.user!,
+      );
+      // Return shape: { data: Registration | null }. Null is a valid
+      // 200 response (no registration is a normal state, not an error).
+      return reply.send({ success: true, data: registration });
+    },
+  );
+
   // ─── Get Event Registrations (organizer) ─────────────────────────────────
   fastify.get(
     "/event/:eventId",
@@ -141,6 +180,47 @@ export const registrationRoutes: FastifyPluginAsync = async (fastify) => {
     async (request, reply) => {
       const { registrationId } = request.params as z.infer<typeof ParamsWithRegistrationId>;
       await registrationService.cancel(registrationId, request.user!);
+      return reply.send({ success: true, data: { id: registrationId, status: "cancelled" } });
+    },
+  );
+
+  // ─── Phase B-3 — Cancel a stuck pending_payment registration ─────────────
+  // User-facing endpoint: lets the participant abort a payment they
+  // never finished (PayDunya redirect-back without IPN, browser
+  // closed mid-flow, user changed their mind, …) so they can re-
+  // register cleanly. Strictly scoped to status=`pending_payment`;
+  // confirmed/pending/waitlisted registrations go through the
+  // regular cancel path which decrements the event counter +
+  // promotes waitlisted entries.
+  //
+  // The atomic mutation flips the linked Payment doc (if any) to
+  // `expired` and emits `payment.expired` so the email dispatcher
+  // can send the "votre paiement a expiré, vous pouvez retenter"
+  // template. Counter is NOT touched — pending_payment never
+  // incremented it (cf. Phase 1 P1-04 invariant).
+  //
+  // Permission: `registration:cancel_own` only — operators force-
+  // cancelling go through the regular DELETE / cancel route. The
+  // service-layer check additionally enforces owner identity so a
+  // participant with `cancel_own` on their own scope can't abort
+  // someone else's pending_payment.
+  fastify.post(
+    "/:registrationId/cancel-pending",
+    {
+      preHandler: [
+        authenticate,
+        requirePermission("registration:cancel_own"),
+        validate({ params: ParamsWithRegistrationId }),
+      ],
+      schema: {
+        tags: ["Registrations"],
+        summary: "Cancel my own pending_payment registration (release the slot)",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const { registrationId } = request.params as z.infer<typeof ParamsWithRegistrationId>;
+      await registrationService.cancelPending(registrationId, request.user!);
       return reply.send({ success: true, data: { id: registrationId, status: "cancelled" } });
     },
   );
