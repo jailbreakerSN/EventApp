@@ -99,6 +99,12 @@ export const COLLECTIONS = {
   // restrict reads to organizers/co-organizers/staff of that event.
   INCIDENTS: "incidents",
   STAFF_MESSAGES: "staffMessages",
+  // Phase O10 — magic-link tokens for speaker/sponsor portals. Doc id
+  // is `sha256(token)` so the plaintext never lives at rest. The
+  // collection is intentionally written + read only by the API
+  // service; participants reach the token via email and the verify
+  // endpoint resolves it server-side.
+  MAGIC_LINKS: "magicLinks",
   SPEAKERS: "speakers",
   SPONSORS: "sponsors",
   SPONSOR_LEADS: "sponsorLeads",

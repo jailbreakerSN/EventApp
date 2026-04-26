@@ -30,12 +30,15 @@ const baseRegistration: Registration = {
 };
 
 describe("isEventFinal — temporal gate", () => {
-  const evt = (over: Partial<Event>): Event =>
-    ({
-      startDate: "2026-04-26T10:00:00.000Z",
-      endDate: "2026-04-26T18:00:00.000Z",
-      ...over,
-    }) as Event;
+  // The helper accepts `Pick<Event, "startDate"> & { endDate?: string | null }`
+  // — we use a permissive shape so legacy rows without an explicit
+  // endDate still resolve through the 12h fallback.
+  type EvtFixture = { startDate: string; endDate?: string | null };
+  const evt = (over: Partial<EvtFixture>): EvtFixture => ({
+    startDate: "2026-04-26T10:00:00.000Z",
+    endDate: "2026-04-26T18:00:00.000Z",
+    ...over,
+  });
 
   it("returns false when `now` is before the end date", () => {
     expect(isEventFinal(evt({}), new Date("2026-04-26T15:00:00.000Z"))).toBe(false);

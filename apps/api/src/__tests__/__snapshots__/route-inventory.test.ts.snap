@@ -88,6 +88,8 @@ POST /v1/conversations auth emailVerified perms=[messaging:send]
 GET /v1/conversations/:conversationId/messages auth perms=[messaging:read_own]
 POST /v1/conversations/:conversationId/messages auth emailVerified perms=[messaging:send]
 POST /v1/conversations/:conversationId/read auth emailVerified perms=[messaging:read_own]
+GET /v1/event-templates auth perms=[event:create]
+POST /v1/event-templates/clone auth emailVerified perms=[event:create]
 GET /v1/events auth
 POST /v1/events auth emailVerified perms=[event:create]
 DELETE /v1/events/:eventId auth emailVerified perms=[event:delete]
@@ -178,6 +180,9 @@ POST /v1/events/sponsors/:sponsorId/upload-url auth emailVerified perms=[sponsor
 POST /v1/impersonation/exchange none
 POST /v1/invites/accept auth emailVerified
 POST /v1/invites/decline auth emailVerified
+POST /v1/magic-links auth emailVerified perms=[event:update]
+POST /v1/magic-links/:tokenHash/revoke auth emailVerified perms=[event:update]
+GET /v1/magic-links/verify none
 DELETE /v1/me/fcm-tokens auth
 POST /v1/me/fcm-tokens auth
 DELETE /v1/me/fcm-tokens/:tokenFingerprint auth

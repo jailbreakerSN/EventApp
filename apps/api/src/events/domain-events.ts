@@ -1323,6 +1323,10 @@ export interface DomainEventMap {
   "post_event_report.generated": PostEventReportGeneratedEvent;
   "cohort_export.downloaded": CohortExportDownloadedEvent;
   "payout.requested": PayoutRequestedEvent;
+  "event.cloned_from_template": EventClonedFromTemplateEvent;
+  "magic_link.issued": MagicLinkIssuedEvent;
+  "magic_link.used": MagicLinkUsedEvent;
+  "magic_link.revoked": MagicLinkRevokedEvent;
   // Plan coupons (Phase 7+ item #7) — redemption itself is captured on
   // the subscription doc + couponRedemptions collection; we only emit
   // lifecycle signals here (create / update / archive).
@@ -1608,6 +1612,58 @@ export interface PayoutRequestedEvent extends BaseEventPayload {
   eventId: string;
   organizationId: string;
   netAmount: number;
+}
+
+/**
+ * Phase O10 — event was cloned from a starter template. Distinct from
+ * `event.created` so the audit table can render the templating
+ * origin (and so analytics can aggregate template usage).
+ */
+export interface EventClonedFromTemplateEvent extends BaseEventPayload {
+  eventId: string;
+  organizationId: string;
+  templateId: string;
+  sessionsAdded: number;
+  commsBlueprintsAdded: number;
+}
+
+/**
+ * Phase O10 — magic-link issued. We log the recipient email + token
+ * hash but NEVER the plaintext token (privacy + security). The
+ * recipient email is forensically valuable for "who got the link".
+ */
+export interface MagicLinkIssuedEvent extends BaseEventPayload {
+  tokenHash: string;
+  role: "speaker" | "sponsor";
+  resourceId: string;
+  eventId: string;
+  organizationId: string;
+  recipientEmail: string;
+  expiresAt: string;
+}
+
+/**
+ * Phase O10 — magic-link first use. The "actor" is the link itself
+ * (`magic-link:<hash>`) since we don't have a user uid for an
+ * unauthenticated portal visit.
+ */
+export interface MagicLinkUsedEvent extends BaseEventPayload {
+  tokenHash: string;
+  role: "speaker" | "sponsor";
+  resourceId: string;
+  eventId: string;
+  organizationId: string;
+}
+
+/**
+ * Phase O10 — magic-link revoked by an organizer.
+ */
+export interface MagicLinkRevokedEvent extends BaseEventPayload {
+  tokenHash: string;
+  role: "speaker" | "sponsor";
+  resourceId: string;
+  eventId: string;
+  organizationId: string;
 }
 
 export type DomainEventName = keyof DomainEventMap;

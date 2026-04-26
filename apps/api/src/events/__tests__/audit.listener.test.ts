@@ -633,7 +633,9 @@ describe("Audit Listener", () => {
       // Phase O9 — 3 post-event listeners added
       // (post_event_report.generated, cohort_export.downloaded,
       // payout.requested).
-      const EXPECTED_HANDLER_COUNT = 112;
+      // Phase O10 — 4 listeners added (event.cloned_from_template,
+      // magic_link.issued, magic_link.used, magic_link.revoked).
+      const EXPECTED_HANDLER_COUNT = 116;
 
       expect(registered).toHaveLength(EXPECTED_HANDLER_COUNT);
       // Each registered event name should be unique — a double

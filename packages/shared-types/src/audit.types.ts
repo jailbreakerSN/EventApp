@@ -212,6 +212,11 @@ export const AuditActionSchema = z.enum([
   "post_event_report.generated",
   "cohort_export.downloaded",
   "payout.requested",
+  // Phase O10 — Event templates + magic links.
+  "event.cloned_from_template",
+  "magic_link.issued",
+  "magic_link.revoked",
+  "magic_link.used",
 ]);
 
 export type AuditAction = z.infer<typeof AuditActionSchema>;

@@ -169,7 +169,10 @@ class PostEventReportService extends BaseService {
  * provided, otherwise fall back to `startDate + 12h` (same heuristic
  * the live-window helper uses on the frontend).
  */
-export function isEventFinal(event: Event, now: Date): boolean {
+export function isEventFinal(
+  event: Pick<Event, "startDate"> & { endDate?: string | null },
+  now: Date,
+): boolean {
   const startMs = new Date(event.startDate).getTime();
   const endMs = event.endDate
     ? new Date(event.endDate).getTime()

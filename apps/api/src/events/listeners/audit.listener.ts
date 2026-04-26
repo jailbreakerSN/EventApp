@@ -1944,6 +1944,74 @@ export function registerAuditListeners(): void {
     });
   });
 
+  // ── Event templates + magic links (Phase O10) ─────────────────────────
+
+  eventBus.on("event.cloned_from_template", async (payload) => {
+    await auditService.log({
+      action: "event.cloned_from_template",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "event",
+      resourceId: payload.eventId,
+      eventId: payload.eventId,
+      organizationId: payload.organizationId,
+      details: {
+        templateId: payload.templateId,
+        sessionsAdded: payload.sessionsAdded,
+        commsBlueprintsAdded: payload.commsBlueprintsAdded,
+      },
+    });
+  });
+
+  eventBus.on("magic_link.issued", async (payload) => {
+    // Privacy: we record the recipientEmail (forensic — who received
+    // the link) and the tokenHash (NEVER the plaintext token).
+    await auditService.log({
+      action: "magic_link.issued",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "magic_link",
+      resourceId: payload.tokenHash,
+      eventId: payload.eventId,
+      organizationId: payload.organizationId,
+      details: {
+        role: payload.role,
+        recipientEmail: payload.recipientEmail,
+        expiresAt: payload.expiresAt,
+      },
+    });
+  });
+
+  eventBus.on("magic_link.used", async (payload) => {
+    await auditService.log({
+      action: "magic_link.used",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "magic_link",
+      resourceId: payload.tokenHash,
+      eventId: payload.eventId,
+      organizationId: payload.organizationId,
+      details: { role: payload.role },
+    });
+  });
+
+  eventBus.on("magic_link.revoked", async (payload) => {
+    await auditService.log({
+      action: "magic_link.revoked",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "magic_link",
+      resourceId: payload.tokenHash,
+      eventId: payload.eventId,
+      organizationId: payload.organizationId,
+      details: { role: payload.role },
+    });
+  });
+
   // ── Subscription Override (Phase 5 — admin per-org assign) ─────────────
 
   eventBus.on("subscription.overridden", async (payload) => {
