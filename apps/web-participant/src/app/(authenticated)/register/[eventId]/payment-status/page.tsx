@@ -131,12 +131,15 @@ export default function PaymentStatusPage() {
         // discreet error state so the manual retry button shows.
         setVerifyOutcome("error");
       });
-    // We deliberately depend only on `paymentId` — `isTerminal` is
-    // referenced for the early-return decision but recomputing the
-    // effect on every poll tick would bombard the provider. The
-    // `mountVerifyDoneRef` guard handles re-runs.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [paymentId]);
+    // `mountVerifyDoneRef` is the load-bearing idempotency guard:
+    // every re-run of this effect (e.g. when polling flips `isTerminal`
+    // false → true) returns early because the ref was set on the first
+    // mount. Including `isTerminal` + `verifyMutation` in deps is
+    // therefore safe AND satisfies react-hooks/exhaustive-deps without
+    // needing a disable comment (the project's ESLint config doesn't
+    // register the rule, so the disable comment itself triggers
+    // "rule definition not found").
+  }, [paymentId, isTerminal, verifyMutation]);
 
   const handleManualVerify = () => {
     if (!paymentId || verifyMutation.isPending) return;
