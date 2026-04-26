@@ -77,9 +77,25 @@ export async function buildApp() {
   // ─── Content-Type Enforcement ─────────────────────────────────────────────
   // Mutation endpoints must send JSON. Prevents accidental form-encoded or
   // multipart payloads from reaching handlers that expect parsed JSON bodies.
+  //
+  // EXEMPTION (2026-04-26 hotfix) — payment-provider webhook routes
+  // legitimately receive non-JSON Content-Types. PayDunya in particular
+  // POSTs IPNs as `application/x-www-form-urlencoded` with a single
+  // `data=<json>` field (their wire format, see ADR + provider doc).
+  // The path-anchored skip below mirrors `isWebhookRequest()` in
+  // payments.routes.ts so a payload-shaped attack on a non-webhook
+  // route still hits the 415, while the legitimate PayDunya IPN reaches
+  // the route's per-content-type body parser. Slash-bounded match so
+  // `/foo?path=/payments/webhook/x` cannot smuggle the exemption.
   app.addHook("onRequest", (request, reply, done) => {
     const mutationMethods = ["POST", "PATCH", "PUT"];
     if (mutationMethods.includes(request.method)) {
+      const path = (request.url ?? "").split("?")[0];
+      const isWebhookPath = /\/payments\/webhook(?:\/|$)/.test(path);
+      if (isWebhookPath) {
+        done();
+        return;
+      }
       const contentType = request.headers["content-type"];
       if (contentType && !contentType.includes("application/json")) {
         reply.status(415).send({
