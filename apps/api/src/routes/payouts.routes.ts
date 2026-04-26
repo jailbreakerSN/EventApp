@@ -4,15 +4,28 @@ import { authenticate, requireEmailVerified } from "@/middlewares/auth.middlewar
 import { validate } from "@/middlewares/validate.middleware";
 import { requirePermission } from "@/middlewares/permission.middleware";
 import { payoutService } from "@/services/payout.service";
-import { CreatePayoutSchema, PayoutQuerySchema } from "@teranga/shared-types";
+import {
+  CreatePayoutSchema,
+  IsoDateTimeSchema,
+  PayoutQuerySchema,
+} from "@teranga/shared-types";
 
 const ParamsWithEventId = z.object({ eventId: z.string() });
 const ParamsWithOrgId = z.object({ orgId: z.string() });
 const ParamsWithPayoutId = z.object({ payoutId: z.string() });
 
+// P1-22 (audit L4) — `periodFrom` / `periodTo` were typed as bare
+// `z.string()`, accepting any input. The downstream service feeds
+// these straight into Firestore range filters; a malformed string
+// caused either an opaque "invalid timestamp" 500 OR (worse) a
+// query that silently matched nothing because Firestore string
+// comparison treated the input as a different value space than the
+// stored ISO timestamps. Switching to the shared `IsoDateTimeSchema`
+// (z.string().datetime()) rejects malformed input with a clean 400
+// at the route boundary.
 const CalculateQuery = z.object({
-  periodFrom: z.string(),
-  periodTo: z.string(),
+  periodFrom: IsoDateTimeSchema,
+  periodTo: IsoDateTimeSchema,
 });
 
 export const payoutRoutes: FastifyPluginAsync = async (fastify) => {

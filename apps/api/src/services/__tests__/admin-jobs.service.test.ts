@@ -125,12 +125,13 @@ describe("AdminJobsService.listRegisteredJobs", () => {
     const jobs = adminJobsService.listRegisteredJobs(admin);
 
     const keys = jobs.map((j) => j.jobKey).sort();
-    // Four handlers are registered today — ping + prune-expired-invites
-    // + Sprint-3 T4.3 backup/restore pair. Pinning the exact list is
-    // deliberate: adding a handler MUST be a visible diff so the review
-    // can decide whether the new job needs extra tests / access-control
-    // treatment.
+    // Five handlers are registered today — ping + prune-expired-invites
+    // + Sprint-3 T4.3 backup/restore pair + P1-21 expire-stale-payments.
+    // Pinning the exact list is deliberate: adding a handler MUST be a
+    // visible diff so the review can decide whether the new job needs
+    // extra tests / access-control treatment.
     expect(keys).toEqual([
+      "expire-stale-payments",
       "firestore-backup",
       "firestore-restore",
       "ping",

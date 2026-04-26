@@ -1295,6 +1295,12 @@ export interface DomainEventMap {
   // mutations beyond the coarse `admin.job_completed` summary.
   // Precedent: `checkin.bulk_synced`.
   "invite.bulk_expired": InviteBulkExpiredEvent;
+  // P1-21 (audit L1) — emitted per batch commit by the
+  // `expire-stale-payments` handler. One event per ≤ 400-row commit,
+  // carries the count + cutoff + runId so the audit trail has a
+  // fine-grained record of bulk Payment expirations. Mirrors
+  // `invite.bulk_expired`.
+  "payment.bulk_expired": PaymentBulkExpiredEvent;
   // T2.1 — admin replayed a stored webhook event from /admin/webhooks.
   // Fires at replay start (before the handler runs) so security
   // listeners see the attempt even if the handler hangs.
@@ -1370,6 +1376,22 @@ export interface InviteBulkExpiredEvent {
   jobKey: string;
   runId: string;
   count: number;
+  processedAt: string;
+}
+
+/**
+ * P1-21 (audit L1) — emitted by the `expire-stale-payments` handler
+ * on each ≤ 400-row batch commit. Carries the actor + run context +
+ * the cutoff used (so a forensic operator running with a non-default
+ * staleAfterHours leaves a paper trail).
+ */
+export interface PaymentBulkExpiredEvent {
+  actorUid: string;
+  jobKey: string;
+  runId: string;
+  count: number;
+  /** ISO-8601 cutoff used by this run (`now - staleAfterHours`). */
+  cutoffIso: string;
   processedAt: string;
 }
 
