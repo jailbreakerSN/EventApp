@@ -4,11 +4,13 @@ import {
   type QrScanResult,
   type Event,
   type Organization,
+  type PaymentStatus,
   type UserProfile,
 } from "@teranga/shared-types";
 import { registrationRepository } from "@/repositories/registration.repository";
 import { eventRepository } from "@/repositories/event.repository";
 import { organizationRepository } from "@/repositories/organization.repository";
+import { paymentRepository } from "@/repositories/payment.repository";
 import { userRepository } from "@/repositories/user.repository";
 import { type PaginationParams, type PaginatedResult } from "@/repositories/base.repository";
 import { runTransaction, FieldValue } from "@/repositories/transaction.helper";
@@ -19,6 +21,7 @@ import {
   DuplicateRegistrationError,
   EmailNotVerifiedError,
   EventFullError,
+  ForbiddenError,
   RegistrationClosedError,
   QrInvalidError,
   QrAlreadyUsedError,
@@ -265,6 +268,32 @@ export class RegistrationService extends BaseService {
     return registrationRepository.findByUser(user.uid, pagination);
   }
 
+  /**
+   * Phase B-1 — return the user's current ACTIVE registration for the
+   * given event, or `null` if none exists. "Active" excludes terminal
+   * states (`cancelled` / `refunded` / `expired`) so a user who
+   * cancelled a stale pending_payment can re-register cleanly.
+   *
+   * Used by the participant web app to render the right CTA on the
+   * event detail page and the register page:
+   *   - null              → "S'inscrire à l'événement" (normal flow)
+   *   - pending_payment   → "Compléter mon paiement" + cancel option
+   *   - confirmed         → "Vous êtes inscrit" + view badge
+   *   - pending (approval)→ "En attente de validation"
+   *   - waitlisted        → "Sur liste d'attente"
+   *   - checked_in        → "Vous avez déjà accédé à l'événement"
+   *
+   * Permission: `registration:read_own` (the user reads their own
+   * registration). Same scope as `getMyRegistrations`.
+   */
+  async getMyRegistrationForEvent(
+    eventId: string,
+    user: AuthUser,
+  ): Promise<Registration | null> {
+    this.requirePermission(user, "registration:read_own");
+    return registrationRepository.findCurrentForUser(eventId, user.uid);
+  }
+
   async getEventRegistrations(
     eventId: string,
     user: AuthUser,
@@ -432,6 +461,141 @@ export class RegistrationService extends BaseService {
           requestId: reqId,
           timestamp: new Date().toISOString(),
         });
+      });
+    }
+  }
+
+  /**
+   * Phase B-3 — User-initiated cancel of a registration that's stuck in
+   * `pending_payment`. Differs from `cancel()` in three important ways:
+   *
+   *   1. Targets ONLY `pending_payment`. Confirmed / pending / waitlisted
+   *      go through the regular `cancel()` path (which decrements the
+   *      counter + promotes waitlisted, etc.).
+   *   2. Atomically flips the linked Payment doc (if any) to `expired`
+   *      so the operator-side dashboard reflects the new state and the
+   *      `payment.expired` event can fire downstream notifications.
+   *   3. Does NOT decrement Event.registeredCount — pending_payment
+   *      registrations were never counted (counter is incremented only
+   *      on the `payment.succeeded` IPN path; cf. Phase 1 P1-04).
+   *
+   * Permission: `registration:cancel_own` (owner only — operators use
+   * the regular `cancel` path for forced cancellations).
+   *
+   * Idempotent: a second call on an already-cancelled registration
+   * throws ValidationError (matching the regular cancel behaviour).
+   *
+   * Side-effects after commit:
+   *   - `registration.cancelled` event (audit trail + waitlist promotion
+   *     listeners — but waitlist won't trigger because the registration
+   *     was never `confirmed`)
+   *   - `payment.expired` event when a linked Payment was flipped (so
+   *     the email "votre paiement a expiré, vous pouvez retenter" fires)
+   */
+  async cancelPending(registrationId: string, user: AuthUser): Promise<void> {
+    const registration = await registrationRepository.findByIdOrThrow(registrationId);
+
+    if (registration.userId !== user.uid) {
+      throw new ForbiddenError(
+        "Vous ne pouvez annuler que vos propres inscriptions en attente de paiement",
+      );
+    }
+    this.requirePermission(user, "registration:cancel_own");
+
+    if (registration.status !== "pending_payment") {
+      throw new ValidationError(
+        `Cette opération ne s'applique qu'aux inscriptions en attente de paiement. ` +
+          `Statut actuel : ${registration.status}.`,
+      );
+    }
+
+    const result = await runTransaction(async (tx) => {
+      // Re-read inside tx for true idempotency (concurrent IPN may have
+      // flipped the registration to confirmed between the outer read
+      // and this transaction).
+      const regRef = registrationRepository.ref.doc(registrationId);
+      const regSnap = await tx.get(regRef);
+      if (!regSnap.exists) {
+        throw new NotFoundError("Registration", registrationId);
+      }
+      const fresh = { id: regSnap.id, ...regSnap.data() } as Registration;
+
+      if (fresh.status === "cancelled") {
+        throw new ValidationError("L'inscription est déjà annulée");
+      }
+      if (fresh.status !== "pending_payment") {
+        // The registration progressed (e.g. PayDunya IPN landed mid-
+        // cancel). Refuse the cancel cleanly so the user re-fetches
+        // the now-confirmed state.
+        throw new ValidationError(
+          "Cette inscription n'est plus en attente de paiement et ne peut plus être annulée par cette voie.",
+        );
+      }
+
+      // Find the linked Payment via its registrationId field. There
+      // SHOULD be exactly one (Phase 1 P1-07's two-phase initiate
+      // creates one Payment doc per Registration). Defensive handling
+      // for the edge case where tx2 of initiate failed and only the
+      // placeholder Payment exists.
+      const paymentsQuery = await tx.get(
+        paymentRepository.ref
+          .where("registrationId", "==", registrationId)
+          .where("status", "in", ["pending", "processing"])
+          .limit(1),
+      );
+
+      const now = new Date().toISOString();
+      tx.update(regRef, { status: "cancelled", updatedAt: now });
+
+      let cancelledPaymentId: string | null = null;
+      if (!paymentsQuery.empty) {
+        const payDoc = paymentsQuery.docs[0];
+        cancelledPaymentId = payDoc.id;
+        tx.update(payDoc.ref, {
+          status: "expired" as PaymentStatus,
+          failureReason: "Paiement annulé par l'utilisateur avant finalisation",
+          updatedAt: now,
+        });
+      }
+
+      return {
+        eventId: fresh.eventId,
+        organizationId: "", // resolved below from the event for the audit emit
+        cancelledPaymentId,
+      };
+    });
+
+    // Resolve organizationId outside the tx (read-after-commit) so the
+    // audit emit carries it. The event doc is the canonical source of
+    // truth for organizationId; reading it here costs one extra read
+    // but keeps the tx focused on the mutation.
+    const event = await eventRepository.findByIdOrThrow(result.eventId);
+    const organizationId = event.organizationId;
+    const now = new Date().toISOString();
+    const requestId = getRequestId();
+
+    // Domain events fired AFTER commit so listeners (audit, notification
+    // dispatcher, future webhooks) react to a stable state.
+    eventBus.emit("registration.cancelled", {
+      registrationId,
+      eventId: result.eventId,
+      userId: user.uid,
+      organizationId,
+      actorId: user.uid,
+      requestId,
+      timestamp: now,
+    });
+
+    if (result.cancelledPaymentId) {
+      eventBus.emit("payment.expired", {
+        paymentId: result.cancelledPaymentId,
+        registrationId,
+        eventId: result.eventId,
+        organizationId,
+        actorId: user.uid,
+        requestId,
+        timestamp: now,
+        reason: "user_cancelled",
       });
     }
   }

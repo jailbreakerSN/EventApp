@@ -18,9 +18,29 @@ export function useInitiatePayment() {
       method?: PaymentMethod;
       returnUrl?: string;
     }) => paymentsApi.initiate(eventId, ticketTypeId, method, returnUrl),
-    onSuccess: () => {
+    onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({ queryKey: ["my-registrations"] });
+      queryClient.invalidateQueries({
+        queryKey: ["my-registration-for-event", vars.eventId],
+      });
     },
+  });
+}
+
+/**
+ * Phase B-2 — resume a payment that's stuck in `processing` (user
+ * came back from PayDunya without finishing). Returns the existing
+ * redirectUrl so the user re-launches the SAME PayDunya checkout
+ * session — no new invoice, no double-charge, no orphan Payment.
+ *
+ * The mutation does NOT auto-redirect: the caller decides what to do
+ * with the response (typically `window.location.href = data.redirectUrl`).
+ * This keeps the hook composable with both the register page (full
+ * redirect) and the my-events list (could open in a new tab).
+ */
+export function useResumePayment() {
+  return useMutation({
+    mutationFn: (paymentId: string) => paymentsApi.resume(paymentId),
   });
 }
 

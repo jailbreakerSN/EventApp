@@ -42,6 +42,7 @@ const mockPaymentService = {
   initiatePayment: vi.fn(),
   handleWebhook: vi.fn(),
   getPaymentStatus: vi.fn(),
+  resumePayment: vi.fn(),
   refundPayment: vi.fn(),
   getMyPayments: vi.fn(),
   getEventPayments: vi.fn(),
@@ -493,6 +494,80 @@ describe("POST /v1/payments/mock-checkout/:txId/complete (P1-16)", () => {
       data: { status: "succeeded" },
     });
     expect(__mockSimulateCallback).toHaveBeenCalledWith("mock_tx_ok", false);
+  });
+});
+
+// ─── Phase B-2 — POST /v1/payments/:paymentId/resume ─────────────────────
+
+describe("POST /v1/payments/:paymentId/resume", () => {
+  it("401 without auth", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/payments/pay-1/resume",
+    });
+    expect(res.statusCode).toBe(401);
+    expect(mockPaymentService.resumePayment).not.toHaveBeenCalled();
+  });
+
+  it("403 when caller has no payment:initiate permission (default participant)", async () => {
+    // Override the default participant to a no-perm user.
+    mockVerifyIdToken.mockResolvedValueOnce({
+      uid: "test-user",
+      email: "test@example.com",
+      email_verified: true,
+      roles: [],
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/payments/pay-1/resume",
+      headers: authHeader,
+    });
+    expect(res.statusCode).toBe(403);
+    expect(mockPaymentService.resumePayment).not.toHaveBeenCalled();
+  });
+
+  it("403 when caller's email is not verified (paid-flow guard)", async () => {
+    mockVerifyIdToken.mockResolvedValueOnce({
+      uid: "buyer-1",
+      email: "buyer@example.com",
+      email_verified: false,
+      roles: ["participant"],
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/payments/pay-1/resume",
+      headers: authHeader,
+    });
+    expect(res.statusCode).toBe(403);
+    expect(mockPaymentService.resumePayment).not.toHaveBeenCalled();
+  });
+
+  it("200 forwards to service.resumePayment and returns the redirectUrl", async () => {
+    mockPaymentService.resumePayment.mockResolvedValue({
+      paymentId: "pay-1",
+      redirectUrl: "https://paydunya.com/checkout/invoice/abc",
+      status: "processing",
+    });
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/payments/pay-1/resume",
+      headers: authHeader,
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(JSON.parse(res.body)).toEqual({
+      success: true,
+      data: {
+        paymentId: "pay-1",
+        redirectUrl: "https://paydunya.com/checkout/invoice/abc",
+        status: "processing",
+      },
+    });
+    expect(mockPaymentService.resumePayment).toHaveBeenCalledWith(
+      "pay-1",
+      expect.objectContaining({ uid: "participant-1" }),
+    );
   });
 });
 

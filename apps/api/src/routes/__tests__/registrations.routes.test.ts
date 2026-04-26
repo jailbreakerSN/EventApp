@@ -14,11 +14,13 @@ vi.mock("@/config/firebase", () => ({
 
 const mockRegistrationService = {
   cancel: vi.fn(),
+  cancelPending: vi.fn(),
   approve: vi.fn(),
   checkIn: vi.fn(),
   getEventRegistrations: vi.fn(),
   register: vi.fn(),
   getMyRegistrations: vi.fn(),
+  getMyRegistrationForEvent: vi.fn(),
 };
 
 vi.mock("@/services/registration.service", () => ({
@@ -164,5 +166,142 @@ describe("Registration routes — aliases for web client compatibility", () => {
 
     expect(res.statusCode).toBe(401);
     expect(mockRegistrationService.cancel).not.toHaveBeenCalled();
+  });
+});
+
+// ─── Phase B-1 — GET /v1/registrations/me/event/:eventId ─────────────────
+
+describe("GET /v1/registrations/me/event/:eventId", () => {
+  it("401 without auth", async () => {
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/registrations/me/event/event-1",
+    });
+    expect(res.statusCode).toBe(401);
+    expect(mockRegistrationService.getMyRegistrationForEvent).not.toHaveBeenCalled();
+  });
+
+  it("403 when caller lacks registration:read_own permission", async () => {
+    // Pin the route-layer requirePermission gate added post-security
+    // review. A token with no role doesn't compute the permission, so
+    // the middleware must reject before any service call.
+    mockVerifyIdToken.mockResolvedValueOnce({
+      uid: "test-user",
+      email: "test@example.com",
+      email_verified: true,
+      roles: [],
+    });
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/registrations/me/event/event-1",
+      headers: authHeader,
+    });
+    expect(res.statusCode).toBe(403);
+    expect(mockRegistrationService.getMyRegistrationForEvent).not.toHaveBeenCalled();
+  });
+
+  it("200 returns the user's current registration when present", async () => {
+    mockRegistrationService.getMyRegistrationForEvent.mockResolvedValue({
+      id: "reg-1",
+      status: "pending_payment",
+      eventId: "event-1",
+    });
+
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/registrations/me/event/event-1",
+      headers: authHeader,
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body);
+    expect(body.success).toBe(true);
+    expect(body.data.status).toBe("pending_payment");
+    expect(mockRegistrationService.getMyRegistrationForEvent).toHaveBeenCalledWith(
+      "event-1",
+      expect.objectContaining({ uid: "organizer-1" }),
+    );
+  });
+
+  it("200 returns null when no registration exists (caller renders 'Register' CTA)", async () => {
+    mockRegistrationService.getMyRegistrationForEvent.mockResolvedValue(null);
+
+    const res = await app.inject({
+      method: "GET",
+      url: "/v1/registrations/me/event/event-99",
+      headers: authHeader,
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(JSON.parse(res.body)).toEqual({ success: true, data: null });
+  });
+});
+
+// ─── Phase B-3 — POST /v1/registrations/:registrationId/cancel-pending ───
+
+describe("POST /v1/registrations/:registrationId/cancel-pending", () => {
+  it("401 without auth", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/registrations/reg-1/cancel-pending",
+      payload: {},
+    });
+    expect(res.statusCode).toBe(401);
+    expect(mockRegistrationService.cancelPending).not.toHaveBeenCalled();
+  });
+
+  it("403 when caller lacks registration:cancel_own permission", async () => {
+    // Override the default authed-as-organizer to a no-perm user.
+    // Organizer DOES have cancel_own (inherits from participant), so
+    // we explicitly strip permissions for this test.
+    mockVerifyIdToken.mockResolvedValueOnce({
+      uid: "test-user",
+      email: "test@example.com",
+      email_verified: true,
+      roles: [],
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/registrations/reg-1/cancel-pending",
+      headers: authHeader,
+    });
+    expect(res.statusCode).toBe(403);
+    expect(mockRegistrationService.cancelPending).not.toHaveBeenCalled();
+  });
+
+  it("200 forwards to service.cancelPending and returns the cancelled status", async () => {
+    mockRegistrationService.cancelPending.mockResolvedValue(undefined);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/registrations/reg-1/cancel-pending",
+      headers: authHeader,
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(JSON.parse(res.body)).toEqual({
+      success: true,
+      data: { id: "reg-1", status: "cancelled" },
+    });
+    expect(mockRegistrationService.cancelPending).toHaveBeenCalledWith(
+      "reg-1",
+      expect.objectContaining({ uid: "organizer-1" }),
+    );
+  });
+
+  it("400 surfaces the service-layer ValidationError when status isn't pending_payment", async () => {
+    // Service throws ValidationError for confirmed/cancelled/etc.
+    mockRegistrationService.cancelPending.mockRejectedValueOnce(
+      Object.assign(
+        new Error("Cette opération ne s'applique qu'aux inscriptions en attente de paiement."),
+        { statusCode: 400 },
+      ),
+    );
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/registrations/reg-1/cancel-pending",
+      headers: authHeader,
+    });
+    expect(res.statusCode).toBe(400);
   });
 });

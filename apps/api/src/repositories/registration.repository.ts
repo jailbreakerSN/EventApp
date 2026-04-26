@@ -50,6 +50,48 @@ export class RegistrationRepository extends BaseRepository<Registration> {
     ]);
   }
 
+  /**
+   * Phase B-1 — find the user's most recent ACTIVE registration (any
+   * non-terminal status) for a given event. Used by the participant
+   * web app to render the right CTA on the event detail page +
+   * register page (pending_payment ⇒ "Resume payment", confirmed ⇒
+   * "View badge", etc.).
+   *
+   * Differs from `findExisting()`:
+   *   - `findExisting` filters to confirmed/pending/waitlisted (the
+   *     dup-check guard for free registrations).
+   *   - `findCurrentForUser` includes `pending_payment` and
+   *     `checked_in` so the UI sees the full picture.
+   *   - Excludes `cancelled` / `refunded` / `expired` because those
+   *     are TERMINAL — the user can re-register from scratch.
+   *
+   * Returns the most recent match (tx-safe via createdAt desc) when
+   * multiple non-cancelled rows exist (rare; defensive ordering).
+   */
+  async findCurrentForUser(
+    eventId: string,
+    userId: string,
+  ): Promise<Registration | null> {
+    // Use `findMany` with limit=1 + orderBy createdAt DESC. If the user
+    // has both a stale `pending_payment` (from a stuck flow) AND a
+    // `confirmed` (a successful retry), we want the confirmed one to
+    // win — `desc` puts the latest first. `findOne()` doesn't support
+    // ordering, hence the findMany path.
+    const result = await this.findMany(
+      [
+        { field: "eventId", op: "==", value: eventId },
+        { field: "userId", op: "==", value: userId },
+        {
+          field: "status",
+          op: "in",
+          value: ["confirmed", "pending", "pending_payment", "waitlisted", "checked_in"],
+        },
+      ],
+      { page: 1, limit: 1, orderBy: "createdAt", orderDir: "desc" },
+    );
+    return result.data[0] ?? null;
+  }
+
   async findByQrCode(qrCodeValue: string): Promise<Registration | null> {
     return this.findOne([
       { field: "qrCodeValue", op: "==", value: qrCodeValue },

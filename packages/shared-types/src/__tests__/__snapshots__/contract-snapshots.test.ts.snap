@@ -762,6 +762,7 @@ exports[`shared-types contract snapshots > AuditLogEntrySchema shape is stable 1
           "organization.updated",
           "organization.verified",
           "payment.bulk_expired",
+          "payment.expired",
           "payment.failed",
           "payment.initiated",
           "payment.refunded",
@@ -4372,6 +4373,18 @@ exports[`shared-types contract snapshots > RegistrationSchema shape is stable 1`
       },
     },
     "participantName": {
+      "required": false,
+      "shape": {
+        "inner": {
+          "inner": {
+            "kind": "string",
+          },
+          "kind": "nullable",
+        },
+        "kind": "optional",
+      },
+    },
+    "paymentId": {
       "required": false,
       "shape": {
         "inner": {

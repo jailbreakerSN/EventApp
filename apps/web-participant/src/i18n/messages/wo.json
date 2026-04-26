@@ -465,7 +465,10 @@
     "savedOfflineToast": "Badge denc nañu ko ci dul laaj rezo ⚡",
     "savedOfflineChip": "Denc nañu ci dul laaj rezo",
     "saveOfflineError": "Mënul a denc. Jéemal ay saañu.",
-    "cachedNotice": "Nga ci biti internet. Badge bi dafa jóge ci sa téléfoon."
+    "cachedNotice": "Nga ci biti internet. Badge bi dafa jóge ci sa téléfoon.",
+    "kicker": "— BADGE",
+    "registrationNotFoundKicker": "— GISUL",
+    "badgeUnavailableKicker": "— BADGE BU AMUL"
   },
   "registerFlow": {
     "subtitle": "Bind",
@@ -481,6 +484,28 @@
     "verificationResent": "Yónnaat nañu link bi. Xoolal sa bokso imeyl.",
     "verificationResendError": "Mënul a yónnee imeyl bi. Jéem ci ay saañu.",
     "alreadyRegistered": "Bind nga ba jàllee",
+    "pendingPayment": {
+      "title": "Payement bi mucc na",
+      "description": "Sa bindu da ngay xaar : mat sa payement ngir nangu ko. Mën nga jàllale paye ba walla ngeen am ngeen jëfandikoo bu bees.",
+      "resumeCta": "Jàllale payement bi",
+      "cancelCta": "Bañ & jëfandikoo bu bees",
+      "cancelConfirm": "Bañ bindu bi ? Mën nga ko bindaat ci moom ci ñu di.",
+      "cancelSuccess": "Bindu bi bañ nañ ko. Mën nga bindaat fii.",
+      "noPaymentLinkedError": "Bindu bi amul payement. Bañ ko, jëfandikoo bu bees.",
+      "resumeFailed": "Mënul jàllale payement bi. Bañ, jëfandikoo bu bees."
+    },
+    "pendingApproval": {
+      "title": "Di xaar nangu",
+      "description": "Ki taxawal xew-xew di xool sa bindu. Di la xamal ñu nangu ko."
+    },
+    "waitlisted": {
+      "title": "Ci liste xaar",
+      "description": "Nga ngi ci liste xaar bi. Su am benn place, di la nangu ci moom ci ñu di."
+    },
+    "checkedIn": {
+      "title": "Dugg nga ba ci xew-xew bi",
+      "description": "Sa badge dañ ko skan ci buntu xew-xew bi."
+    },
     "selectHeading": "Tann sa billet",
     "soldOut": "Mat na",
     "seatsLeft": "{count, plural, one {# seat des} other {# seat des}}",
@@ -588,6 +613,20 @@
     "leaveWaitlist": "Génn liste d'attente bi",
     "cancel": "Bayyi",
     "cancelled": "Bayyi nañu",
+    "resumePayment": "Tëgg payement bi",
+    "abandonPayment": "Bayyi",
+    "abandonedSuccess": "Inscription bi bayyi nañu. Mën nga ko def yeneen sax.",
+    "pendingPaymentNotice": "Inscription bi am na payement bu xaar.",
+    "abandonDialog": {
+      "title": "Bayyi payement bi ?",
+      "description": "Inscription bi day ñu ko bayyi. Mën nga ko def yeneen sax bu fekkee am na palaas.",
+      "confirm": "Waaw, bayyil",
+      "cancel": "Déedéet, jëfandikoo bu yagg"
+    },
+    "errors": {
+      "paymentIdMissing": "Mën uñu tëggati payement bi : référence amul. Buleen pageel bi.",
+      "noRedirectUrl": "Fournisseur bi joxewul URL. Buleen jéem yeneen sax."
+    },
     "viewToggleAria": "Tanleel ci liste walla calendrier",
     "viewList": "Liste",
     "viewCalendar": "Calendrier",

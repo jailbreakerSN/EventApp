@@ -418,6 +418,32 @@ export interface PaymentFailedEvent extends BaseEventPayload {
   organizationId: string;
 }
 
+/**
+ * Fires when a payment expires WITHOUT reaching `succeeded`. Two
+ * distinct trigger paths converge on this event:
+ *
+ *   1. Auto-expirer (Cloud Function `onPaymentTimeout`, every 5 min)
+ *      flips payments stuck in `pending` / `processing` past the
+ *      configured TTL. `reason = "timeout"`.
+ *   2. User-initiated cancel of a `pending_payment` registration
+ *      via `POST /v1/registrations/:id/cancel-pending`. The linked
+ *      Payment doc (if any) is flipped here to release the slot.
+ *      `reason = "user_cancelled"`.
+ *
+ * Distinct from `payment.failed` (provider explicitly rejected) so
+ * the audit trail + notification dispatcher can render targeted
+ * copy ("votre paiement a expiré, vous pouvez retenter") instead
+ * of the generic provider-rejection wording.
+ */
+export interface PaymentExpiredEvent extends BaseEventPayload {
+  paymentId: string;
+  registrationId: string;
+  eventId: string;
+  organizationId: string;
+  /** Discriminator — drives the dispatcher's template selection. */
+  reason: "timeout" | "user_cancelled";
+}
+
 export interface PaymentRefundedEvent extends BaseEventPayload {
   paymentId: string;
   registrationId: string;
@@ -1172,6 +1198,11 @@ export interface DomainEventMap {
   "payment.initiated": PaymentInitiatedEvent;
   "payment.succeeded": PaymentSucceededEvent;
   "payment.failed": PaymentFailedEvent;
+  // Phase 2 follow-up — explicit expiration distinct from `failed`.
+  // Triggered by the auto-expirer cron OR by user-initiated cancel
+  // of a pending_payment registration. See `PaymentExpiredEvent`
+  // for the `reason` discriminator.
+  "payment.expired": PaymentExpiredEvent;
   "payment.refunded": PaymentRefundedEvent;
   "refund.issued": RefundIssuedEvent;
   "refund.failed": RefundFailedEvent;
