@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { getTerangaEnv, isProduction, shouldSkipScheduledJobInThisEnv } from "../env";
+import { getTerangaEnv, isProduction, productionOnly } from "../env";
 
 // ─── env helper coverage ──────────────────────────────────────────────────
 //
-// Pin both the project-id detection AND the per-job staging policy. The
+// Pin both the project-id detection AND the productionOnly wrapper. The
 // first regression we'd ship without these is "cron in staging eats
 // provider verify quota" — high-impact, silent, hard to spot in logs.
 
@@ -46,8 +46,17 @@ describe("getTerangaEnv", () => {
   });
 });
 
-describe("shouldSkipScheduledJobInThisEnv", () => {
+describe("productionOnly wrapper", () => {
   const original = process.env.GCLOUD_PROJECT;
+
+  function makeLogger() {
+    return {
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      debug: vi.fn(),
+    };
+  }
 
   beforeEach(() => {
     delete process.env.GCLOUD_PROJECT;
@@ -59,37 +68,71 @@ describe("shouldSkipScheduledJobInThisEnv", () => {
     } else {
       process.env.GCLOUD_PROJECT = original;
     }
-    vi.unstubAllEnvs();
   });
 
-  it("returns FALSE in production for every job key (cron always runs in prod)", () => {
+  it("invokes the inner function in production", async () => {
     process.env.GCLOUD_PROJECT = "teranga-events-prod";
-    expect(shouldSkipScheduledJobInThisEnv("release-available-funds")).toBe(false);
-    expect(shouldSkipScheduledJobInThisEnv("reconcile-payments")).toBe(false);
-    // Even an unknown key — production never short-circuits scheduled jobs.
-    expect(shouldSkipScheduledJobInThisEnv("unknown-job")).toBe(false);
+    const inner = vi.fn(async () => undefined);
+    const logger = makeLogger();
+
+    const wrapped = productionOnly("balance.release", logger as never, inner);
+    await wrapped();
+
+    expect(inner).toHaveBeenCalledTimes(1);
+    expect(logger.info).not.toHaveBeenCalledWith(
+      expect.stringContaining("skipped"),
+      expect.anything(),
+    );
   });
 
-  it("returns TRUE in staging for the registered staging-disabled jobs", () => {
+  it("short-circuits with INFO log in staging — inner function never runs", async () => {
     process.env.GCLOUD_PROJECT = "teranga-app-990a8";
-    expect(shouldSkipScheduledJobInThisEnv("release-available-funds")).toBe(true);
-    expect(shouldSkipScheduledJobInThisEnv("reconcile-payments")).toBe(true);
+    const inner = vi.fn();
+    const logger = makeLogger();
+
+    const wrapped = productionOnly("balance.release", logger as never, inner);
+    await wrapped();
+
+    expect(inner).not.toHaveBeenCalled();
+    expect(logger.info).toHaveBeenCalledWith(
+      "balance.release: skipped (non-production env)",
+      expect.objectContaining({ event: "balance.release.skipped", env: "staging" }),
+    );
   });
 
-  it("returns FALSE in staging for jobs NOT in the staging-disabled set", () => {
-    // Jobs we want to keep auto in every env — passive monitoring,
-    // Resend reconciliation, auth triggers — must NOT be impacted by
-    // the env guard. Pin that here.
-    process.env.GCLOUD_PROJECT = "teranga-app-990a8";
-    expect(shouldSkipScheduledJobInThisEnv("monitor-bounce-rate")).toBe(false);
-    expect(shouldSkipScheduledJobInThisEnv("reconcile-resend-segment")).toBe(false);
-    expect(shouldSkipScheduledJobInThisEnv("send-event-reminders")).toBe(false);
+  it("short-circuits in development (unset GCLOUD_PROJECT)", async () => {
+    const inner = vi.fn();
+    const logger = makeLogger();
+
+    const wrapped = productionOnly("payment.reconciliation", logger as never, inner);
+    await wrapped();
+
+    expect(inner).not.toHaveBeenCalled();
+    expect(logger.info).toHaveBeenCalledWith(
+      "payment.reconciliation: skipped (non-production env)",
+      expect.objectContaining({ env: "development" }),
+    );
   });
 
-  it("returns TRUE in development for staging-disabled jobs (same policy as staging)", () => {
-    // Local emulator runs are dev — same suppression so an emulator
-    // session doesn't churn audit logs with "no entries due" rows.
-    expect(shouldSkipScheduledJobInThisEnv("release-available-funds")).toBe(true);
-    expect(shouldSkipScheduledJobInThisEnv("reconcile-payments")).toBe(true);
+  it("forwards arguments to the inner function in production", async () => {
+    process.env.GCLOUD_PROJECT = "teranga-events-prod";
+    const inner = vi.fn(async (_event: { foo: string }) => undefined);
+    const logger = makeLogger();
+
+    const wrapped = productionOnly("test.job", logger as never, inner);
+    await wrapped({ foo: "bar" });
+
+    expect(inner).toHaveBeenCalledWith({ foo: "bar" });
+  });
+
+  it("propagates errors thrown by the inner function in production", async () => {
+    process.env.GCLOUD_PROJECT = "teranga-events-prod";
+    const inner = vi.fn(async () => {
+      throw new Error("boom");
+    });
+    const logger = makeLogger();
+
+    const wrapped = productionOnly("test.job", logger as never, inner);
+    await expect(wrapped()).rejects.toThrow("boom");
   });
 });

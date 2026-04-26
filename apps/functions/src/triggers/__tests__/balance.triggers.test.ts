@@ -152,7 +152,10 @@ describe("releaseAvailableFunds", () => {
 
     await expect(handler()).resolves.toBeUndefined();
 
-    expect(logger.error).toHaveBeenCalledWith("balance.release: API call timed out (480s)");
+    expect(logger.error).toHaveBeenCalledWith(
+      "balance.release: API call timed out (480s)",
+      expect.objectContaining({ event: "balance.release.timeout" }),
+    );
   });
 
   it("logs a generic error on any other fetch failure", async () => {

@@ -1,6 +1,6 @@
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { logger } from "firebase-functions/v2";
-import { getTerangaEnv, shouldSkipScheduledJobInThisEnv } from "../utils/env";
+import { productionOnly } from "../utils/env";
 
 // ─── Balance release scheduled job (Phase Finance) ───────────────────────────
 //
@@ -18,19 +18,20 @@ import { getTerangaEnv, shouldSkipScheduledJobInThisEnv } from "../utils/env";
 //
 // Architecture:
 //   This trigger is a thin scheduler wrapper. The actual sweep + audit
-//   logic lives in the API at apps/api/src/jobs/handlers/release-available-funds.ts
-//   (function `runReleaseSweep`), called both by:
+//   logic lives on `BalanceService.releaseAvailableFunds`, called both
+//   by:
 //     1. The internal endpoint `/v1/internal/balance/release-available`
 //        (this trigger's HTTP target).
 //     2. The admin runner via /admin/jobs (jobKey:
 //        `release-available-funds`) — for staging where this cron is
-//        disabled, or post-incident catch-up runs in production.
+//        suppressed via `productionOnly(...)`, or post-incident
+//        catch-up runs in production.
 //   Single source of truth on the API side; this trigger just fires it.
 //
 // Env policy:
-//   In staging + dev the cron short-circuits with an INFO log. The same
-//   job logic remains available via /admin/jobs for manual triggering.
-//   See apps/functions/src/utils/env.ts.
+//   `productionOnly(...)` short-circuits in staging + dev with an
+//   INFO log. The same job logic remains available via /admin/jobs
+//   for manual triggering.
 
 export const releaseAvailableFunds = onSchedule(
   {
@@ -41,21 +42,13 @@ export const releaseAvailableFunds = onSchedule(
     maxInstances: 1, // single-writer; concurrent runs would just contend
     timeoutSeconds: 540,
   },
-  async () => {
-    // Env guard — staging + dev short-circuit. Operators trigger this
-    // manually via /admin/jobs in non-prod environments.
-    if (shouldSkipScheduledJobInThisEnv("release-available-funds")) {
-      logger.info("balance.release: skipped (non-production env)", {
-        env: getTerangaEnv(),
-      });
-      return;
-    }
-
+  productionOnly("balance.release", logger, async () => {
     const apiBaseUrl = process.env.API_BASE_URL;
     const secret = process.env.INTERNAL_DISPATCH_SECRET;
 
     if (!apiBaseUrl || !secret) {
       logger.warn("balance.release: missing API_BASE_URL or INTERNAL_DISPATCH_SECRET", {
+        event: "balance.release.misconfigured",
         hasUrl: Boolean(apiBaseUrl),
         hasSecret: Boolean(secret),
       });
@@ -67,8 +60,9 @@ export const releaseAvailableFunds = onSchedule(
     // Client-side timeout bounded BELOW the function's 540s budget so the
     // log emission has headroom even if Cloud Run takes its time. The
     // sweep is a write-bound operation: at BATCH_SIZE 500 and ~50ms per
-    // commit, 50_000 entries finish in ~5 minutes — 480s gives that case
-    // 30s of headroom while pre-empting pathologically slow Firestore.
+    // commit, the cron's 5_000-entry default page finishes in ~5–10s.
+    // 480s gives the worst-case (50_000 ad-hoc backlog drain) 30s of
+    // headroom while pre-empting pathologically slow Firestore.
     const controller = new AbortController();
     const timeoutHandle = setTimeout(() => controller.abort(), 480_000);
 
@@ -80,7 +74,8 @@ export const releaseAvailableFunds = onSchedule(
           "Content-Type": "application/json",
           "X-Internal-Dispatch-Secret": secret,
         },
-        // Empty body → endpoint defaults (asOf = now, maxEntries = 50_000).
+        // Empty body → endpoint defaults (asOf = now, maxEntries = 5_000
+        // for the cron path).
         body: JSON.stringify({}),
         signal: controller.signal,
       });
@@ -95,8 +90,10 @@ export const releaseAvailableFunds = onSchedule(
 
       if (!response.ok) {
         logger.error("balance.release: API returned non-2xx", {
+          event: "balance.release.failed",
           status: response.status,
           body: text.slice(0, 1000),
+          durationMs: Date.now() - start,
         });
         return;
       }
@@ -104,20 +101,27 @@ export const releaseAvailableFunds = onSchedule(
       const data = (payload as { data?: { released?: number; organizationsAudited?: number } })
         ?.data;
       logger.info("balance.release: sweep complete", {
+        event: "balance.release.swept",
+        path: "cron",
         released: data?.released ?? 0,
         organizationsAudited: data?.organizationsAudited ?? 0,
         durationMs: Date.now() - start,
       });
     } catch (err) {
       if (err instanceof Error && err.name === "AbortError") {
-        logger.error("balance.release: API call timed out (480s)");
+        logger.error("balance.release: API call timed out (480s)", {
+          event: "balance.release.timeout",
+          durationMs: Date.now() - start,
+        });
       } else {
         logger.error("balance.release: API call failed", {
+          event: "balance.release.failed",
           err: err instanceof Error ? err.message : String(err),
+          durationMs: Date.now() - start,
         });
       }
     } finally {
       clearTimeout(timeoutHandle);
     }
-  },
+  }),
 );

@@ -663,7 +663,11 @@ describe("Audit Listener", () => {
       // Phase 3 — `payment.reconciliation_swept` handler logs the
       // cron-tick aggregate (scanned / succeeded / failed / pending /
       // errored) so ops dashboards can graph the IPN-miss rate.
-      const EXPECTED_HANDLER_COUNT = 123;
+      // Phase Finance — 2 balance-release listeners added:
+      //   - `balance_transaction.released` (per-org summary)
+      //   - `balance.release_swept` (cron-tick heartbeat, even on
+      //     no-op runs, so dashboards can detect a silently-dead cron)
+      const EXPECTED_HANDLER_COUNT = 125;
 
       expect(registered).toHaveLength(EXPECTED_HANDLER_COUNT);
       // Each registered event name should be unique — a double

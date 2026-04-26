@@ -2,7 +2,7 @@ import { onDocumentWritten } from "firebase-functions/v2/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { logger } from "firebase-functions/v2";
 import { db, messaging, COLLECTIONS } from "../utils/admin";
-import { getTerangaEnv, shouldSkipScheduledJobInThisEnv } from "../utils/env";
+import { productionOnly } from "../utils/env";
 
 /**
  * Payment timeout — auto-expires payments stuck without resolution.
@@ -452,18 +452,11 @@ export const onPaymentReconciliation = onSchedule(
     memory: "256MiB",
     timeoutSeconds: 120,
   },
-  async () => {
-    // Env guard — staging + dev short-circuit. The same job logic
-    // remains available via /admin/jobs (jobKey: reconcile-payments)
-    // for manual triggering when an operator needs to test the IPN
-    // recovery path without spinning a real cron.
-    if (shouldSkipScheduledJobInThisEnv("reconcile-payments")) {
-      logger.info("payment.reconciliation: skipped (non-production env)", {
-        env: getTerangaEnv(),
-      });
-      return;
-    }
-
+  // Env guard — staging + dev short-circuit with an INFO log. The same
+  // job logic remains available via /admin/jobs (jobKey:
+  // reconcile-payments) for manual triggering when an operator needs to
+  // test the IPN recovery path without spinning a real cron.
+  productionOnly("payment.reconciliation", logger, async () => {
     const apiBaseUrl = process.env.API_BASE_URL;
     const secret = process.env.INTERNAL_DISPATCH_SECRET;
 
@@ -533,5 +526,5 @@ export const onPaymentReconciliation = onSchedule(
     } finally {
       clearTimeout(timeoutHandle);
     }
-  },
+  }),
 );

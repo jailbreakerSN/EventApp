@@ -483,6 +483,69 @@ export interface PaymentReconciliationSweptEvent extends BaseEventPayload {
 }
 
 /**
+ * Per-organization summary emitted by the `release-available-funds` job
+ * (called by both the hourly Cloud Function cron and the admin runner)
+ * after one or more `pending` ledger entries graduate to `available`.
+ *
+ * One emit per organization per sweep — the audit listener writes one
+ * row carrying the count + signed netAmount + capped sample of entry IDs.
+ *
+ * Pattern note: the analogous payment-reconciliation flow emits a single
+ * cron-tick heartbeat (`payment.reconciliation_swept`) without per-org
+ * fan-out because reconciliation is per-payment by design. The release
+ * sweep is per-org by design (one organization can have many entries
+ * graduating in the same tick), so per-org granularity is the right
+ * shape for forensics queries.
+ */
+export interface BalanceTransactionReleasedEvent extends BaseEventPayload {
+  organizationId: string;
+  /** Number of `pending → available` flips for this org in this sweep. */
+  count: number;
+  /**
+   * Signed XOF total across all released entries. Positive = net credit
+   * to the org's balance (payment minus platform_fee). Can be negative
+   * if the sweep's slice happened to release only fee-bearing entries
+   * — rare but representable.
+   */
+  netAmount: number;
+  /**
+   * First N released entry IDs (cap = 50). When `truncated` is true,
+   * additional IDs are not surfaced in the audit row — the entries
+   * themselves are the detailed audit trail.
+   */
+  sampleEntryIds: string[];
+  truncated: boolean;
+  /**
+   * Trigger discriminator — `admin-job:<runId>` for /admin/jobs UI runs,
+   * `system:cron-<uuid>` for the hourly Cloud Function. Lets ops grep
+   * the audit grid for "manual vs scheduled" attribution.
+   */
+  runId: string;
+}
+
+/**
+ * Cron-tick heartbeat for the release sweep. Emitted EXACTLY once per
+ * `runReleaseSweep` invocation regardless of whether any entry was
+ * actually released — a healthy `released: 0` tick proves the cron is
+ * alive vs. silently dead, and ops dashboards can graph release
+ * cadence over time. Mirrors `payment.reconciliation_swept`.
+ */
+export interface BalanceReleaseSweptEvent extends BaseEventPayload {
+  /** Number of ledger entries flipped pending → available across all orgs. */
+  released: number;
+  /** Number of organizations that had at least one entry released. */
+  organizationsAffected: number;
+  /** ISO upper bound used by the sweep query. Defaults to invocation time. */
+  asOf: string;
+  /**
+   * Trigger discriminator — `admin-job:<runId>` for /admin/jobs UI runs,
+   * `system:cron-<uuid>` for the hourly Cloud Function. Same shape as
+   * `BalanceTransactionReleasedEvent.runId`.
+   */
+  runId: string;
+}
+
+/**
  * Fires when a payment expires WITHOUT reaching `succeeded`. Two
  * distinct trigger paths converge on this event:
  *
@@ -1264,6 +1327,10 @@ export interface DomainEventMap {
   "payment.failed": PaymentFailedEvent;
   "payment.verified_from_redirect": PaymentVerifiedFromRedirectEvent;
   "payment.reconciliation_swept": PaymentReconciliationSweptEvent;
+  // Phase Finance — per-org released summary + cron-tick heartbeat,
+  // emitted by `balanceService.releaseAvailableFunds`.
+  "balance_transaction.released": BalanceTransactionReleasedEvent;
+  "balance.release_swept": BalanceReleaseSweptEvent;
   // Phase 2 follow-up — explicit expiration distinct from `failed`.
   // Triggered by the auto-expirer cron OR by user-initiated cancel
   // of a pending_payment registration. See `PaymentExpiredEvent`
