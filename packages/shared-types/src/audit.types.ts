@@ -68,6 +68,14 @@ export const AuditActionSchema = z.enum([
   // (provider rejection) so the audit grid can filter "expired" vs
   // "rejected" cleanly.
   "payment.expired",
+  // ADR-0018 — verify-on-return path. Logs the OUTCOME observed when
+  // the participant lands on /payment-status and we proactively call
+  // provider.verify(). Distinct from `payment.succeeded` /
+  // `payment.failed` (which still fire for the actual state flip)
+  // because operators investigating a stuck-payment incident need to
+  // see WHICH path finalised the Payment (IPN vs. user-triggered
+  // verify) — useful for sizing the IPN-reliability incident.
+  "payment.verified_from_redirect",
   // Phase-1 audit follow-up — refund customer-notification + provider-
   // failure variants emit dedicated events for the dispatcher; the
   // audit trail logs them as distinct rows so post-incident analysis

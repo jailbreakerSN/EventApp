@@ -1359,6 +1359,33 @@ export function registerAuditListeners(): void {
     });
   });
 
+  // ADR-0018 — verify-on-return. The participant lands on
+  // /payment-status after redirect-back from the provider checkout;
+  // we proactively call provider.verify() to read the official
+  // payment state without waiting for the (potentially flaky) IPN.
+  // This audit row records which path finalised the Payment so an
+  // operator investigating a stuck-payment incident can size the
+  // IPN-reliability problem cleanly. The canonical
+  // payment.succeeded / payment.failed events still fire for the
+  // actual state flip — this row is purely for forensic context.
+  eventBus.on("payment.verified_from_redirect", async (payload) => {
+    await auditService.log({
+      action: "payment.verified_from_redirect",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "payment",
+      resourceId: payload.paymentId,
+      eventId: payload.eventId,
+      organizationId: payload.organizationId,
+      details: {
+        registrationId: payload.registrationId,
+        outcome: payload.outcome,
+        providerName: payload.providerName,
+      },
+    });
+  });
+
   eventBus.on("payment.refunded", async (payload) => {
     await auditService.log({
       action: "payment.refunded",

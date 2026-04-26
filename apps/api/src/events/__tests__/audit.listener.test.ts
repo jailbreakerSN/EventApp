@@ -633,7 +633,10 @@ describe("Audit Listener", () => {
       // Phase-2 follow-up #2 — `payment.expired` handler tracks
       // both the auto-timeout cron AND the user-initiated cancel
       // of pending_payment registrations.
-      const EXPECTED_HANDLER_COUNT = 104;
+      // ADR-0018 — `payment.verified_from_redirect` handler logs
+      // the outcome observed when the verify-on-return path
+      // finalises a Payment (vs. the IPN webhook).
+      const EXPECTED_HANDLER_COUNT = 105;
 
       expect(registered).toHaveLength(EXPECTED_HANDLER_COUNT);
       // Each registered event name should be unique — a double

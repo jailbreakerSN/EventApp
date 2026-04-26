@@ -419,6 +419,40 @@ export interface PaymentFailedEvent extends BaseEventPayload {
 }
 
 /**
+ * Fires when a payment is finalised via the verify-on-return path
+ * (POST /v1/payments/:paymentId/verify) instead of via the provider's
+ * IPN webhook. The user has been redirected back from the provider
+ * checkout and we proactively call `provider.verify()` server-side to
+ * read the official payment state — used as a robust fallback when
+ * the provider's IPN delivery is unreliable (notably PayDunya
+ * sandbox).
+ *
+ * Always co-fires with the canonical `payment.succeeded` /
+ * `payment.failed` event when the verify-on-return flow flips a
+ * Payment terminal — listeners that care about the actual payment
+ * outcome subscribe to those, this event is purely audit-facing so
+ * operators can see HOW the finalisation happened (IPN vs. user-
+ * triggered verify) when investigating a discrepancy.
+ *
+ * `outcome` mirrors the canonical event that fired (`succeeded` /
+ * `failed`); `pending` means the verify call returned non-terminal,
+ * so neither canonical event fired and the Payment stays in
+ * `processing` waiting for a future poll or IPN.
+ *
+ * See ADR-0018 for the full dual-path design rationale.
+ */
+export interface PaymentVerifiedFromRedirectEvent extends BaseEventPayload {
+  paymentId: string;
+  registrationId: string;
+  eventId: string;
+  organizationId: string;
+  /** Final state observed via provider.verify(). */
+  outcome: "succeeded" | "failed" | "pending";
+  /** Provider name (paydunya / wave / orange_money / mock). */
+  providerName: string;
+}
+
+/**
  * Fires when a payment expires WITHOUT reaching `succeeded`. Two
  * distinct trigger paths converge on this event:
  *
@@ -1198,6 +1232,7 @@ export interface DomainEventMap {
   "payment.initiated": PaymentInitiatedEvent;
   "payment.succeeded": PaymentSucceededEvent;
   "payment.failed": PaymentFailedEvent;
+  "payment.verified_from_redirect": PaymentVerifiedFromRedirectEvent;
   // Phase 2 follow-up — explicit expiration distinct from `failed`.
   // Triggered by the auto-expirer cron OR by user-initiated cancel
   // of a pending_payment registration. See `PaymentExpiredEvent`
