@@ -158,4 +158,85 @@ export const internalRoutes: FastifyPluginAsync = async (fastify) => {
       return reply.status(202).send({ success: true });
     },
   );
+
+  // ─── Phase 3 — Payments Reconciliation Sweep ────────────────────────────
+  // Internal endpoint hit by the `paymentReconciliation` Cloud Function
+  // every 10 min. Scans Firestore for payments stuck in `processing`
+  // past the IPN-window, calls the provider's verify endpoint, and
+  // finalises with the same state-machine flip as the IPN webhook.
+  //
+  // ── Authentication ────────────────────────────────────────────────────
+  // Same shared-secret guard as `/notifications/dispatch`. The endpoint
+  // is fail-closed (404) when the secret env var is unset or below the
+  // minimum length so an un-provisioned environment can't accidentally
+  // expose the sweep to the public internet.
+  //
+  // ── Authorisation ────────────────────────────────────────────────────
+  // System-mode — no AuthUser. The service method `reconcileStuckPayments`
+  // operates on every Payment in the window without ownership checks
+  // (state-machine flips driven by the provider's verify response, not
+  // by per-user mutation). The shared-secret + IP-locked Cloud Functions
+  // posture is the only line of defence here.
+  //
+  // ── Rate limiting ────────────────────────────────────────────────────
+  // Tighter than the dispatch endpoint (30/min) — the sweep is intended
+  // to fire at most once per 10 min, never in parallel. A stolen secret
+  // used as a sweep amplifier would burn provider verify quota fast;
+  // the cap means even a flooded attacker can trigger at most 30 sweeps
+  // per minute, each bounded by `batchSize` (default 50) → at most
+  // 1500 verify calls/min/instance.
+  const ReconcileBody = z.object({
+    /** Lower bound — payments newer than this are skipped (give the IPN a chance). Optional override. */
+    windowMinMs: z.number().int().positive().max(60 * 60 * 1000).optional(),
+    /** Upper bound — payments older than this are left for onPaymentTimeout. Optional override. */
+    windowMaxMs: z.number().int().positive().max(60 * 60 * 1000).optional(),
+    /** Max payments processed per invocation. Optional override. */
+    batchSize: z.number().int().positive().max(200).optional(),
+  });
+
+  fastify.post(
+    "/payments/reconcile",
+    {
+      config: {
+        rateLimit: {
+          max: 30,
+          timeWindow: "1 minute",
+        },
+      },
+      preHandler: [validate({ body: ReconcileBody })],
+      schema: {
+        hide: true,
+        summary: "Internal — Phase 3 payments reconciliation sweep",
+      },
+    },
+    async (request, reply) => {
+      const providedSecret = request.headers["x-internal-dispatch-secret"];
+      const expected = config.INTERNAL_DISPATCH_SECRET;
+
+      if (typeof expected !== "string" || expected.length < 32) {
+        return reply.status(404).send({ success: false, error: { code: "NOT_FOUND" } });
+      }
+
+      if (
+        typeof providedSecret !== "string" ||
+        providedSecret.length === 0 ||
+        !timingSafeCompare(providedSecret, expected)
+      ) {
+        return reply.status(404).send({ success: false, error: { code: "NOT_FOUND" } });
+      }
+
+      const body = request.body as z.infer<typeof ReconcileBody>;
+
+      // Lazy import to avoid the circular require risk in the route
+      // module (paymentService imports event-bus + config + …).
+      const { paymentService } = await import("@/services/payment.service");
+      const stats = await paymentService.reconcileStuckPayments({
+        ...(body.windowMinMs !== undefined ? { windowMinMs: body.windowMinMs } : {}),
+        ...(body.windowMaxMs !== undefined ? { windowMaxMs: body.windowMaxMs } : {}),
+        ...(body.batchSize !== undefined ? { batchSize: body.batchSize } : {}),
+      });
+
+      return reply.status(200).send({ success: true, data: stats });
+    },
+  );
 };

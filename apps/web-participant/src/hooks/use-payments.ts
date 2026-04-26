@@ -44,6 +44,53 @@ export function useResumePayment() {
   });
 }
 
+/**
+ * ADR-0018 — Verify-on-return: ask the API to read the payment
+ * provider's official state and finalise the local Payment record.
+ * Used as a robust fallback when the provider's IPN webhook fails
+ * to fire (notably PayDunya sandbox).
+ *
+ * Industry pattern: same shape as Stripe's `paymentIntents.confirm`
+ * call after a 3DS redirect — the front-end is the trigger, but the
+ * source of truth is the provider, queried server-to-server.
+ *
+ * The mutation invalidates `payment-status` so the polling hook
+ * (`usePaymentStatus`) immediately picks up the finalised state
+ * without waiting for its 3 s tick. Also invalidates the
+ * `my-registrations` lists so the badge surface re-renders the
+ * confirmed registration.
+ *
+ * Failure semantics:
+ *   - HTTP error (network / 5xx)             → mutation error;
+ *                                              caller falls back to
+ *                                              polling
+ *   - Service ValidationError (no tx-id)     → typed error from the
+ *                                              shared error handler
+ *   - Outcome `pending`                      → resolves successfully;
+ *                                              caller must fall back
+ *                                              to polling because the
+ *                                              provider hasn't
+ *                                              finalised either side
+ *
+ * Out of scope here: redirecting / showing toasts. The page consumes
+ * the outcome and decides UX.
+ */
+export function useVerifyPayment() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (paymentId: string) => paymentsApi.verify(paymentId),
+    onSuccess: (_data, paymentId) => {
+      // Force the polling hook to re-fetch immediately so the page
+      // reflects the finalised state without waiting for the next 3s
+      // tick. Cheap because the API short-circuits identical calls
+      // on terminal status.
+      queryClient.invalidateQueries({ queryKey: ["payment-status", paymentId] });
+      queryClient.invalidateQueries({ queryKey: ["my-registrations"] });
+      queryClient.invalidateQueries({ queryKey: ["my-registration-for-event"] });
+    },
+  });
+}
+
 export function useValidatePromoCode() {
   return useMutation({
     mutationFn: ({

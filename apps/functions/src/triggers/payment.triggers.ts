@@ -409,3 +409,113 @@ export const onPaymentFailed = onDocumentWritten(
     }
   },
 );
+
+/**
+ * ADR-0018 / Phase 3 — Payments reconciliation cron.
+ *
+ * Complementary to `verifyAndFinalize` (frontend-driven) and
+ * `onPaymentTimeout` (TTL safety net). Catches the case where:
+ *   - the participant CLOSED the tab before redirect-back, so the
+ *     verify-on-return path never fired; AND
+ *   - the provider IPN didn't fire either (e.g. PayDunya sandbox
+ *     flake).
+ *
+ * Schedule: every 10 minutes. Window: payments stuck in `processing`
+ * with createdAt ∈ [now - 25 min, now - 5 min]. Outside that window:
+ *   - newer than 5 min → too early; the IPN may still arrive.
+ *   - older than 25 min → onPaymentTimeout will sweep them shortly
+ *                          (default 30 min TTL) and flip to expired.
+ *
+ * Implementation: thin proxy to the API's `/v1/internal/payments/
+ * reconcile` endpoint. The API service holds all the provider keys,
+ * the ledger logic, the domain-event bus — duplicating that here
+ * would split the source of truth. Same pattern as the existing
+ * notification triggers (reminder / certificate / post-event) which
+ * proxy to `/v1/internal/notifications/dispatch`.
+ *
+ * Auth: shared secret (`INTERNAL_DISPATCH_SECRET` env), same as the
+ * dispatcher endpoint. Provisioned via `secrets-bootstrap.yml`.
+ *
+ * Idempotency: the API endpoint is idempotent per Payment (each
+ * verify call short-circuits on terminal status). Even if Cloud
+ * Scheduler fires twice on the same tick (rare), the duplicate
+ * sweeps are no-ops.
+ *
+ * Timeout: Cloud Scheduler hard-caps at 540 s; we set 60 s here
+ * because the API endpoint itself is bounded (max batch=50 × 2 s
+ * worst-case provider RTT = 100 s, but each call is awaited and
+ * the API's request-level rate limit caps total time).
+ */
+export const onPaymentReconciliation = onSchedule(
+  {
+    schedule: "every 10 minutes",
+    region: "europe-west1",
+    timeZone: "Africa/Dakar",
+    memory: "256MiB",
+    timeoutSeconds: 120,
+  },
+  async () => {
+    const apiBaseUrl = process.env.API_BASE_URL;
+    const secret = process.env.INTERNAL_DISPATCH_SECRET;
+
+    if (!apiBaseUrl || !secret) {
+      logger.warn("payment.reconciliation: missing API_BASE_URL or INTERNAL_DISPATCH_SECRET", {
+        hasUrl: Boolean(apiBaseUrl),
+        hasSecret: Boolean(secret),
+      });
+      return;
+    }
+
+    const url = `${apiBaseUrl.replace(/\/$/, "")}/v1/internal/payments/reconcile`;
+
+    // 60 s timeout — bounds the cron tick if the API is hung. The
+    // outer Cloud Scheduler timeout is 120 s so we have headroom for
+    // log emission on timeout.
+    const controller = new AbortController();
+    const timeoutHandle = setTimeout(() => controller.abort(), 60_000);
+
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Internal-Dispatch-Secret": secret,
+        },
+        // Empty body → API uses the configured defaults (windowMin=5min,
+        // windowMax=25min, batch=50). Operators can adjust per-env via
+        // a future override mechanism without redeploying this trigger.
+        body: JSON.stringify({}),
+        signal: controller.signal,
+      });
+
+      const text = await response.text();
+      let payload: unknown = null;
+      try {
+        payload = JSON.parse(text);
+      } catch {
+        // non-JSON response (e.g. 502 from upstream) — log raw body bounded.
+      }
+
+      if (!response.ok) {
+        logger.error("payment.reconciliation: API returned non-2xx", {
+          status: response.status,
+          body: text.slice(0, 1000),
+        });
+        return;
+      }
+
+      const stats = (payload as { data?: Record<string, number> })?.data;
+      logger.info("payment.reconciliation: sweep complete", { stats });
+    } catch (err) {
+      if (err instanceof Error && err.name === "AbortError") {
+        logger.error("payment.reconciliation: API call timed out (60s)");
+      } else {
+        logger.error("payment.reconciliation: API call failed", {
+          err: err instanceof Error ? err.message : String(err),
+        });
+      }
+    } finally {
+      clearTimeout(timeoutHandle);
+    }
+  },
+);

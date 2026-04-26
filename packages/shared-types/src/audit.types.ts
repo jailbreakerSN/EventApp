@@ -76,6 +76,11 @@ export const AuditActionSchema = z.enum([
   // see WHICH path finalised the Payment (IPN vs. user-triggered
   // verify) — useful for sizing the IPN-reliability incident.
   "payment.verified_from_redirect",
+  // Phase 3 reconciliation cron (every 10 min) heartbeat — one row
+  // per sweep with aggregate stats (scanned / succeeded / failed /
+  // pending / errored). Lets ops dashboards graph the IPN-miss rate
+  // over time without scanning per-payment events. See ADR-0018.
+  "payment.reconciliation_swept",
   // Phase-1 audit follow-up — refund customer-notification + provider-
   // failure variants emit dedicated events for the dispatcher; the
   // audit trail logs them as distinct rows so post-incident analysis

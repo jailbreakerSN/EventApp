@@ -32,3 +32,4 @@ Start from the [template](./0000-template.md). Each ADR is immutable once `Accep
 | [0015](./0015-trust-proxy-auth-aware-rate-limit.md) | Trust proxy + auth-aware rate limiting | Accepted | 2026-04 |
 | [0016](./0016-runtime-secrets-via-secret-manager.md) | Runtime secrets via GCP Secret Manager | Accepted | 2026-04 |
 | [0017](./0017-registration-payment-state-machine.md) | Registration / Payment state machine | Accepted | 2026-04 |
+| [0018](./0018-verify-on-return.md) | Verify-on-return as IPN-fallback finalisation path | Accepted | 2026-04 |

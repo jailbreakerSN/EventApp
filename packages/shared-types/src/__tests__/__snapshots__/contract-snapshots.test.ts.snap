@@ -776,6 +776,7 @@ exports[`shared-types contract snapshots > AuditLogEntrySchema shape is stable 1
           "payment.expired",
           "payment.failed",
           "payment.initiated",
+          "payment.reconciliation_swept",
           "payment.refunded",
           "payment.succeeded",
           "payment.tampering_attempted",

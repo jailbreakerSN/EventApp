@@ -30,7 +30,12 @@ export { onCheckinCompleted } from "./triggers/checkin.triggers";
 export { onFeedPostCreated, onRegistrationConfirmed } from "./triggers/notification.triggers";
 
 // ─── Payment Triggers ───────────────────────────────────────────────────────
-export { onPaymentTimeout, onPaymentSucceeded, onPaymentFailed } from "./triggers/payment.triggers";
+export {
+  onPaymentTimeout,
+  onPaymentSucceeded,
+  onPaymentFailed,
+  onPaymentReconciliation,
+} from "./triggers/payment.triggers";
 
 // ─── Scheduled Reminders ────────────────────────────────────────────────────
 export { sendEventReminders, sendSessionReminders } from "./triggers/reminder.triggers";

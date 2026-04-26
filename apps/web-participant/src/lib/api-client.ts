@@ -385,6 +385,32 @@ export const paymentsApi = {
       {},
     ),
 
+  /**
+   * ADR-0018 — Verify-on-return: ask the API to call the payment
+   * provider's verify endpoint server-side and finalise the Payment
+   * with the official state, used as a robust fallback when the IPN
+   * never lands (PayDunya sandbox in particular).
+   *
+   * Idempotent on the API side — chatty front-end remounts won't
+   * cascade into provider quota; already-terminal payments
+   * short-circuit without a provider call.
+   *
+   * Response shape mirrors the service-layer return type:
+   *   - `outcome: "succeeded" | "failed"` — Payment is now terminal
+   *   - `outcome: "pending"`              — provider hasn't finalised
+   *                                         either; the front-end
+   *                                         should fall back to
+   *                                         polling /status.
+   */
+  verify: (paymentId: string) =>
+    api.post<
+      ApiResponse<{
+        paymentId: string;
+        status: string;
+        outcome: "succeeded" | "failed" | "pending";
+      }>
+    >(`/v1/payments/${encodeURIComponent(paymentId)}/verify`, {}),
+
   refund: (paymentId: string, reason?: string) =>
     api.post<ApiResponse<Payment>>(`/v1/payments/${paymentId}/refund`, { reason }),
 };
