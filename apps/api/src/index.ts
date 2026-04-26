@@ -6,6 +6,7 @@ initSentry();
 
 import { buildApp } from "./app";
 import { config } from "./config/index";
+import { assertProviderSecrets } from "./config/assert-provider-secrets";
 
 // ─── Graceful Shutdown ────────────────────────────────────────────────────────
 // Cloud Run sends SIGTERM before stopping a container. We drain in-flight
@@ -14,6 +15,20 @@ import { config } from "./config/index";
 const SHUTDOWN_TIMEOUT_MS = 10_000;
 
 async function main() {
+  // P1-18 (audit L3) — boot-time assertion that payment-provider
+  // secrets are coherent (all-set or all-unset for each provider).
+  // Half-configured providers silently break webhook verification in
+  // production; we'd rather refuse to start than serve traffic with
+  // a 30-minute-invisible-failure mode. The check throws on any
+  // misconfiguration; the outer try/catch below catches it and exits
+  // with code 1 + a clear stderr message.
+  try {
+    assertProviderSecrets();
+  } catch (err) {
+    process.stderr.write(`${err instanceof Error ? err.message : String(err)}\n`);
+    process.exit(1);
+  }
+
   const app = await buildApp();
 
   // ── Graceful shutdown handler ───────────────────────────────────────────

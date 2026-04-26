@@ -3,6 +3,7 @@ import { z } from "zod";
 import { authenticate, requireEmailVerified } from "@/middlewares/auth.middleware";
 import { validate } from "@/middlewares/validate.middleware";
 import { requirePermission } from "@/middlewares/permission.middleware";
+import { webhookIpAllowlist } from "@/middlewares/webhook-ip-allowlist.middleware";
 import {
   paymentService,
   signWebhookPayload,
@@ -230,7 +231,18 @@ export const paymentRoutes: FastifyPluginAsync = async (fastify) => {
           timeWindow: "1 minute",
         },
       },
-      preHandler: [validate({ params: ParamsWithProvider, body: PaymentWebhookSchema })],
+      // P1-15 (audit H6) — IP allowlist runs BEFORE the validate
+      // preHandler so a request from outside the provider's documented
+      // webhook CIDRs gets rejected with a 403 before its body is
+      // parsed, the HMAC is computed, or any Firestore read fires.
+      // Defence-in-depth: a leaked HMAC secret stays useless without
+      // network-layer access. Fail-open if the env var for this
+      // provider is unset (dev / staging posture); fail-closed when
+      // operators have pinned the allowlist.
+      preHandler: [
+        webhookIpAllowlist,
+        validate({ params: ParamsWithProvider, body: PaymentWebhookSchema }),
+      ],
       schema: {
         tags: ["Payments"],
         summary: "Payment provider webhook callback (per-provider signature verification)",

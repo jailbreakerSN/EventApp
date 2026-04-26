@@ -942,12 +942,31 @@ export class PaymentService extends BaseService {
     //   3. Lock release is inside this transaction — tied to the DB
     //      commit, so a retry on contention doesn't release a lock that
     //      still protects an in-flight provider call.
+    // P1-17 (audit M4) — capture audit attribution fields from inside
+    // the transaction so the `payment.refunded` / `refund.issued`
+    // emits draw from `freshPayment`, not the stale outer snapshot.
+    // The fields (registrationId / eventId / organizationId) are
+    // immutable on payments in practice, so this is defence-in-depth
+    // — but it standardises the "audit-row-from-tx-state" pattern
+    // already followed by `handleWebhook` and `appendLedgerEntry`.
     let isFullRefund = false;
+    let auditAttribution: {
+      registrationId: string;
+      eventId: string;
+      organizationId: string;
+      userId: string;
+    } | null = null;
     await db.runTransaction(async (tx) => {
       const payRef = db.collection(COLLECTIONS.PAYMENTS).doc(paymentId);
       const paySnap = await tx.get(payRef);
       if (!paySnap.exists) throw new NotFoundError("Payment", paymentId);
       const freshPayment = paySnap.data() as Payment;
+      auditAttribution = {
+        registrationId: freshPayment.registrationId,
+        eventId: freshPayment.eventId,
+        organizationId: freshPayment.organizationId,
+        userId: freshPayment.userId,
+      };
 
       // Re-validate against fresh state — a concurrent refund may have
       // completed between the outer read and this transaction.
@@ -1069,15 +1088,32 @@ export class PaymentService extends BaseService {
       tx.delete(lockRef);
     });
 
+    // P1-17 (audit M4) — `auditAttribution` is captured inside the tx
+    // above so the audit / notification events draw from the
+    // transactional re-read instead of the stale outer snapshot.
+    // The non-null assertion is safe: the tx either commits and
+    // populates `auditAttribution` or throws, in which case we never
+    // reach this code path.
+    /* istanbul ignore next */
+    if (!auditAttribution) {
+      throw new Error("auditAttribution missing — tx state was not captured");
+    }
+    const attribution = auditAttribution as {
+      registrationId: string;
+      eventId: string;
+      organizationId: string;
+      userId: string;
+    };
+
     // Generic audit / state-transition event — fires on every successful
     // refund regardless of template routing. Kept so audit consumers,
     // accounting exports, and the admin-facing timeline don't have to
     // track the new refund-specific events.
     eventBus.emit("payment.refunded", {
       paymentId,
-      registrationId: payment.registrationId,
-      eventId: payment.eventId,
-      organizationId: payment.organizationId,
+      registrationId: attribution.registrationId,
+      eventId: attribution.eventId,
+      organizationId: attribution.organizationId,
       amount: refundAmount,
       reason,
       actorId: user.uid,
@@ -1092,9 +1128,9 @@ export class PaymentService extends BaseService {
     // with distinct copy without branching off `payment.refunded`.
     eventBus.emit("refund.issued", {
       paymentId,
-      registrationId: payment.registrationId,
-      eventId: payment.eventId,
-      organizationId: payment.organizationId,
+      registrationId: attribution.registrationId,
+      eventId: attribution.eventId,
+      organizationId: attribution.organizationId,
       amount: refundAmount,
       reason,
       actorId: user.uid,

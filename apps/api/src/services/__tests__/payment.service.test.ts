@@ -801,6 +801,85 @@ describe("PaymentService.refundPayment", () => {
     expect(mockTxUpdate).toHaveBeenCalledTimes(1);
   });
 
+  // ── P1-17 (audit M4) — refund-event audit attribution from tx-state ──────
+  it("attributes payment.refunded + refund.issued from the in-tx fresh payment, not the outer snapshot — P1-17", async () => {
+    // Outer read returns a payment with attribution X; the
+    // transactional re-read returns the SAME doc with different
+    // (hypothetical) attribution Y. The audit-row-from-tx-state
+    // contract requires the emit to use Y. The fields are
+    // immutable on payments today, so this is a defensive guard
+    // — but it pins the convention so future code that mutates
+    // `organizationId` (e.g. an org rename / merge) can't break
+    // the audit trail by emitting from a stale snapshot.
+    const outerSnapshot = buildPayment({
+      status: "succeeded",
+      organizationId: "org-OUTER",
+      registrationId: "reg-OUTER",
+      eventId: "evt-OUTER",
+      amount: 4000,
+      refundedAmount: 0,
+    });
+    const txSnapshot = {
+      ...outerSnapshot,
+      organizationId: "org-FRESH",
+      registrationId: "reg-FRESH",
+      eventId: "evt-FRESH",
+    };
+
+    // requireOrganizationAccess on the OUTER snapshot, so the actor
+    // needs to be in org-OUTER — that's the gate the user actually
+    // crosses before the tx runs.
+    const actor = buildOrganizerUser("org-OUTER");
+
+    mockPaymentRepo.findByIdOrThrow
+      .mockResolvedValueOnce(outerSnapshot)
+      .mockResolvedValueOnce({ ...txSnapshot, refundedAmount: 4000, status: "refunded" });
+    mockProvider.refund.mockResolvedValue({ success: true });
+    // tx.get returns the FRESH snapshot — full refund branch reads
+    // regRef + eventRef next so we mock those too.
+    mockTxGet
+      .mockResolvedValueOnce({ exists: true, data: () => txSnapshot })
+      .mockResolvedValueOnce({ exists: true, data: () => ({ ticketTypeId: "tt-1" }) })
+      .mockResolvedValueOnce({
+        exists: true,
+        data: () => ({ ticketTypes: [{ id: "tt-1", soldCount: 7 }] }),
+      });
+
+    await service.refundPayment(outerSnapshot.id, undefined, "tx-state attribution", actor);
+
+    // Both emits MUST carry the FRESH attribution (org-FRESH, reg-FRESH,
+    // evt-FRESH), NOT the outer snapshot's (org-OUTER, …).
+    expect(mockEventBus.emit).toHaveBeenCalledWith(
+      "payment.refunded",
+      expect.objectContaining({
+        paymentId: outerSnapshot.id,
+        organizationId: "org-FRESH",
+        registrationId: "reg-FRESH",
+        eventId: "evt-FRESH",
+      }),
+    );
+    expect(mockEventBus.emit).toHaveBeenCalledWith(
+      "refund.issued",
+      expect.objectContaining({
+        paymentId: outerSnapshot.id,
+        organizationId: "org-FRESH",
+        registrationId: "reg-FRESH",
+        eventId: "evt-FRESH",
+      }),
+    );
+    // Belt-and-suspenders: the stale "OUTER" attribution must not
+    // appear on either emit.
+    const emitCalls = mockEventBus.emit.mock.calls;
+    const refundedEmits = emitCalls.filter(
+      (c: unknown[]) => c[0] === "payment.refunded" || c[0] === "refund.issued",
+    );
+    for (const [, payload] of refundedEmits) {
+      expect((payload as { organizationId: string }).organizationId).not.toBe("org-OUTER");
+      expect((payload as { registrationId: string }).registrationId).not.toBe("reg-OUTER");
+      expect((payload as { eventId: string }).eventId).not.toBe("evt-OUTER");
+    }
+  });
+
   it("rejects when a concurrent refund has already applied (fresh read inside tx)", async () => {
     const payment = buildPayment({
       status: "succeeded",
