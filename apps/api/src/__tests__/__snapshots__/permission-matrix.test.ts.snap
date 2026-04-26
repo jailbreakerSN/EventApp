@@ -163,6 +163,7 @@ GET /v1/organizations/:orgId/usage perm=organization:read allow=[organizer,super
 POST /v1/payments/:paymentId/refund perm=payment:refund allow=[organizer,super_admin]
 POST /v1/payments/:paymentId/resume perm=payment:initiate allow=[organizer,participant,super_admin,venue_manager]
 GET /v1/payments/:paymentId/status perm=payment:read_own allow=[organizer,participant,super_admin,venue_manager]
+POST /v1/payments/:paymentId/verify perm=payment:read_own allow=[organizer,participant,super_admin,venue_manager]
 GET /v1/payments/event/:eventId perm=payment:read_all allow=[organizer,super_admin]
 GET /v1/payments/event/:eventId/summary perm=payment:view_reports allow=[organizer,super_admin]
 POST /v1/payments/initiate perm=payment:initiate allow=[organizer,participant,super_admin,venue_manager]

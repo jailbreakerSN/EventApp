@@ -779,6 +779,7 @@ exports[`shared-types contract snapshots > AuditLogEntrySchema shape is stable 1
           "payment.refunded",
           "payment.succeeded",
           "payment.tampering_attempted",
+          "payment.verified_from_redirect",
           "payout.created",
           "payout.requested",
           "plan.archived",

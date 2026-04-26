@@ -647,6 +647,56 @@ export const paymentRoutes: FastifyPluginAsync = async (fastify) => {
     },
   );
 
+  // ─── Verify-on-return — ADR-0018 ──────────────────────────────────────────
+  // Robust fallback when the provider's IPN webhook doesn't deliver
+  // (PayDunya sandbox is the canonical case). The participant is
+  // redirected back from the hosted checkout to /payment-status; the
+  // page calls this endpoint once on mount, which proactively reads
+  // the official payment state via `provider.verify()` and finalises
+  // the Payment with the SAME state-machine flip the IPN webhook would
+  // have done — atomic Payment + Registration + counter + ledger
+  // entries, plus the canonical `payment.succeeded` / `payment.failed`
+  // emit. Idempotent: a no-op if the IPN has already finalised the
+  // Payment, AND the verify call itself is skipped on terminal status
+  // so a chatty front-end can't flood the provider.
+  //
+  // Permission: `payment:read_own` — verify is a read of the
+  // provider's official state (no NEW state requested), so the read-
+  // own permission is sufficient. The service-layer ownership check
+  // narrows it further to "this user's own payment".
+  //
+  // Rate-limit: tighter than the global bucket (20/min/user) because
+  // a misbehaving front-end on retry-loop must not cascade into the
+  // provider's API quota. /payment-status normally calls this exactly
+  // once per flow; legitimate retry from a user clicking "Vérifier
+  // maintenant" is bounded.
+  fastify.post(
+    "/:paymentId/verify",
+    {
+      config: {
+        rateLimit: {
+          max: 20,
+          timeWindow: "1 minute",
+        },
+      },
+      preHandler: [
+        authenticate,
+        requirePermission("payment:read_own"),
+        validate({ params: ParamsWithPaymentId }),
+      ],
+      schema: {
+        tags: ["Payments"],
+        summary: "Verify a payment with the provider (verify-on-return fallback for IPN)",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const { paymentId } = request.params as z.infer<typeof ParamsWithPaymentId>;
+      const result = await paymentService.verifyAndFinalize(paymentId, request.user!);
+      return reply.send({ success: true, data: result });
+    },
+  );
+
   // ─── List Event Payments (organizer) ──────────────────────────────────────
   fastify.get(
     "/event/:eventId",

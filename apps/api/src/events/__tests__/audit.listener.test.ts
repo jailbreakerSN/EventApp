@@ -633,6 +633,7 @@ describe("Audit Listener", () => {
       // Phase-2 follow-up #2 — `payment.expired` handler tracks
       // both the auto-timeout cron AND the user-initiated cancel
       // of pending_payment registrations.
+
       // Phase O6 — 3 whatsapp.* listeners added (opt_in.granted,
       // opt_in.revoked, delivery.failed).
       // Phase O7 — 2 participant ops listeners added
@@ -645,7 +646,10 @@ describe("Audit Listener", () => {
       // payout.requested).
       // Phase O10 — 4 listeners added (event.cloned_from_template,
       // magic_link.issued, magic_link.used, magic_link.revoked).
-      const EXPECTED_HANDLER_COUNT = 121;
+      // ADR-0018 — `payment.verified_from_redirect` handler logs
+      // the outcome observed when the verify-on-return path
+      // finalises a Payment (vs. the IPN webhook).
+      const EXPECTED_HANDLER_COUNT = 122;
 
       expect(registered).toHaveLength(EXPECTED_HANDLER_COUNT);
       // Each registered event name should be unique — a double
