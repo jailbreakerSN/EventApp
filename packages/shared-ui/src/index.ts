@@ -82,6 +82,16 @@ export {
   PageSizeSelector,
   type PageSizeSelectorProps,
 } from "./components/filter-bar";
+export {
+  BottomSheet,
+  type BottomSheetProps,
+  BottomSheetBody,
+  BottomSheetFooter,
+} from "./components/bottom-sheet";
+export {
+  FiltersBottomSheet,
+  type FiltersBottomSheetProps,
+} from "./components/filters-bottom-sheet";
 export { RadioGroup, type RadioGroupProps, type RadioOption } from "./components/radio-group";
 export {
   SectionHeader,
