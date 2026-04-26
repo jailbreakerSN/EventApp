@@ -55,9 +55,26 @@ export interface WhereClause {
 
 // ─── Base Repository ──────────────────────────────────────────────────────────
 
+/**
+ * Per-repository soft-delete configuration. When set, `findMany` excludes
+ * documents whose `field` matches any value in `tombstones` unless the caller
+ * explicitly passes `{ includeArchived: true }`.
+ *
+ * Defaults to `null` (no implicit exclusion) for backwards compatibility.
+ * Sub-repositories opt in by setting `protected readonly softDelete = …` in
+ * their constructor body or as a class field initialiser.
+ *
+ * See `docs/design-system/data-listing.md` § Backend primitives.
+ */
+export interface SoftDeleteConfig {
+  field: string;
+  tombstones: readonly string[];
+}
+
 export class BaseRepository<T extends { id: string }> {
   protected collection: CollectionReference<DocumentData>;
   protected resourceName: string;
+  protected readonly softDelete: SoftDeleteConfig | null = null;
 
   constructor(collectionName: string, resourceName?: string) {
     this.collection = db.collection(collectionName);
@@ -95,6 +112,7 @@ export class BaseRepository<T extends { id: string }> {
   async findMany(
     filters: WhereClause[] = [],
     pagination?: PaginationParams,
+    options: { includeArchived?: boolean } = {},
   ): Promise<PaginatedResult<T>> {
     return withSpan({ op: "db.firestore", name: `${this.resourceName}.findMany` }, async () => {
       const { page = 1, orderBy = "createdAt", orderDir = "desc" } = pagination ?? {};
@@ -104,9 +122,23 @@ export class BaseRepository<T extends { id: string }> {
       // pagination correctly.
       const limit = Math.min(pagination?.limit ?? 20, MAX_PAGE_SIZE);
 
+      // P0.4 — when the repository declares a soft-delete config, inject
+      // the tombstone filter automatically unless the caller opts out via
+      // `includeArchived: true`. Defends against archived rows leaking
+      // into list endpoints whose authors forgot to use `findActive()`.
+      const effectiveFilters = [...filters];
+      if (this.softDelete && !options.includeArchived) {
+        const { field, tombstones } = this.softDelete;
+        if (tombstones.length === 1) {
+          effectiveFilters.push({ field, op: "!=", value: tombstones[0] });
+        } else if (tombstones.length > 1) {
+          effectiveFilters.push({ field, op: "not-in", value: [...tombstones] });
+        }
+      }
+
       let query: Query<DocumentData> = this.collection;
 
-      for (const filter of filters) {
+      for (const filter of effectiveFilters) {
         query = query.where(filter.field, filter.op, filter.value);
       }
 
