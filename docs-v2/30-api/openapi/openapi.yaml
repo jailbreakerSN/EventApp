@@ -1934,6 +1934,27 @@ paths:
 
 
 
+  "/v1/payments/{paymentId}/verify":
+    post:
+      summary: "Verify a payment with the provider (verify-on-return fallback for IPN)"
+      tags:
+        - "Payments"
+      security:
+        - BearerAuth: []
+      parameters:
+        - schema:
+            type: "string"
+
+          in: "path"
+          name: "paymentId"
+          required: true
+      responses:
+        "200":
+          description: "Default Response"
+
+
+
+
   "/v1/payments/event/{eventId}":
     get:
       summary: "List payments for an event"
