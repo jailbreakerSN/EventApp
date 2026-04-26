@@ -197,14 +197,62 @@ describe("checkProviderSecrets", () => {
   });
 
   // ── Warnings on missing webhook IP allowlists in production ───────────────
-  it("warns (not errors) when production lacks webhook IP allowlists", () => {
+  it("warns (not errors) for ENABLED providers that lack a webhook IP allowlist", () => {
+    // Phase-2 audit follow-up: warnings only fire for providers
+    // that are actually configured (their trigger var is set).
+    // This test enables ALL three to verify the full warning set.
     const result = checkProviderSecrets({
-      env: { PAYMENT_WEBHOOK_SECRET: "s" },
+      env: {
+        PAYMENT_WEBHOOK_SECRET: "s",
+        WAVE_API_KEY: "wk",
+        WAVE_API_SECRET: "ws",
+        ORANGE_MONEY_CLIENT_ID: "ci",
+        ORANGE_MONEY_CLIENT_SECRET: "cs",
+        ORANGE_MONEY_MERCHANT_KEY: "mk",
+        ORANGE_MONEY_NOTIF_TOKEN: "nt",
+        PAYDUNYA_MASTER_KEY: "pmk",
+        PAYDUNYA_PRIVATE_KEY: "ppk",
+        PAYDUNYA_TOKEN: "pt",
+      },
       nodeEnv: "production",
     });
     expect(result.ok).toBe(true); // warnings don't fail the boot
     expect(result.warnings.some((w) => w.includes("WAVE_WEBHOOK_IPS"))).toBe(true);
     expect(result.warnings.some((w) => w.includes("OM_WEBHOOK_IPS"))).toBe(true);
+    expect(result.warnings.some((w) => w.includes("PAYDUNYA_WEBHOOK_IPS"))).toBe(true);
+  });
+
+  it("does NOT warn about IP allowlists for providers that are disabled (trigger var unset)", () => {
+    // Production with NO providers configured — should not warn
+    // about ANY of the IP allowlist vars. Otherwise operators see
+    // 3 noise warnings on every boot of a new env until they wire
+    // a provider, training them to ignore real warnings.
+    const result = checkProviderSecrets({
+      env: { PAYMENT_WEBHOOK_SECRET: "s" },
+      nodeEnv: "production",
+    });
+    expect(result.ok).toBe(true);
+    expect(result.warnings.some((w) => w.includes("WAVE_WEBHOOK_IPS"))).toBe(false);
+    expect(result.warnings.some((w) => w.includes("OM_WEBHOOK_IPS"))).toBe(false);
+    expect(result.warnings.some((w) => w.includes("PAYDUNYA_WEBHOOK_IPS"))).toBe(false);
+  });
+
+  it("warns selectively per enabled provider", () => {
+    // Wave enabled, OM disabled, PayDunya enabled → 2 warnings
+    // (Wave + PayDunya), no OM warning.
+    const result = checkProviderSecrets({
+      env: {
+        PAYMENT_WEBHOOK_SECRET: "s",
+        WAVE_API_KEY: "wk",
+        WAVE_API_SECRET: "ws",
+        PAYDUNYA_MASTER_KEY: "pmk",
+        PAYDUNYA_PRIVATE_KEY: "ppk",
+        PAYDUNYA_TOKEN: "pt",
+      },
+      nodeEnv: "production",
+    });
+    expect(result.warnings.some((w) => w.includes("WAVE_WEBHOOK_IPS"))).toBe(true);
+    expect(result.warnings.some((w) => w.includes("OM_WEBHOOK_IPS"))).toBe(false);
     expect(result.warnings.some((w) => w.includes("PAYDUNYA_WEBHOOK_IPS"))).toBe(true);
   });
 });
@@ -250,9 +298,16 @@ describe("assertProviderSecrets", () => {
   });
 
   it("emits warnings to stderr but does NOT throw on a warning-only result", () => {
+    // Phase-2 update — warnings only fire for ENABLED providers
+    // (their trigger var is set). Configure Wave so the IP-allowlist
+    // warning fires; everything else is fine for production.
     expect(() =>
       assertProviderSecrets({
-        env: { PAYMENT_WEBHOOK_SECRET: "s" },
+        env: {
+          PAYMENT_WEBHOOK_SECRET: "s",
+          WAVE_API_KEY: "wk",
+          WAVE_API_SECRET: "ws",
+        },
         nodeEnv: "production",
       }),
     ).not.toThrow();

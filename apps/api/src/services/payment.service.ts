@@ -612,37 +612,92 @@ export class PaymentService extends BaseService {
     //   3. metadata.expectedAmount === payment.amount — same idea
     //      for the invoice total.
     //
-    // Both checks are SKIPPED when the metadata field is null/missing
-    // — Wave / OM / mock don't carry these fields, and surfacing the
-    // requirement on every provider would break their flows. Today
-    // PayDunya's body parser is the only writer that populates these
-    // fields (see `payments.routes.ts:addContentTypeParser`).
+    // For PayDunya specifically (metadata.providerName === "paydunya")
+    // both fields are REQUIRED. A missing field is treated as an
+    // attack vector — an attacker who controls the IPN body could
+    // strip `invoice.total_amount` to bypass the amount cross-check.
+    // Phase-2 security review P-1 closed this gap.
     //
-    // On mismatch we throw `ValidationError` — the route handler
-    // returns 400 to the provider, the webhook log row is marked
-    // `failed`, and the operator is paged via the audit alert (the
-    // mismatch is conclusively a tampering attempt or a config drift,
-    // not a transient issue retry can fix).
+    // For Wave / OM / mock the fields are SKIPPED (those providers
+    // don't carry expectedPaymentId / expectedAmount on their
+    // payload). The provider-name discriminator decides which
+    // contract applies.
+    //
+    // On mismatch / missing field we throw `ValidationError` — the
+    // route handler returns 400 to the provider, the webhook log row
+    // is marked `failed`, and a `payment.tampering_attempted` event
+    // fires for the audit listener (Phase-2 follow-up).
+    const isPayDunya = metadata?.providerName === "paydunya";
     const expectedPaymentId = metadata?.expectedPaymentId;
+    const expectedAmount = metadata?.expectedAmount;
+
+    /**
+     * Internal helper — fires the tampering audit event AND throws
+     * the user-facing ValidationError. Centralised so every reject
+     * branch leaves the same paper trail in `auditLogs`. Receives
+     * the field discriminator + observed/expected values; truncates
+     * the received value to a bounded length so a hostile payload
+     * can't bloat the audit row.
+     */
+    const flagTampering = (
+      field: "payment_id" | "amount",
+      received: string | number | null,
+      expected: string | number,
+      message: string,
+    ): never => {
+      const receivedSafe =
+        typeof received === "string" ? received.slice(0, 200) : received;
+      eventBus.emit("payment.tampering_attempted", {
+        paymentId: payment.id,
+        organizationId: payment.organizationId,
+        field,
+        expectedValue: expected,
+        receivedValue: receivedSafe,
+        providerName: typeof metadata?.providerName === "string" ? metadata.providerName : "unknown",
+        actorId: "system:webhook",
+        requestId: getRequestId() ?? "system:webhook",
+        timestamp: new Date().toISOString(),
+      });
+      throw new ValidationError(message, {
+        reason: "payload_tampering",
+        field,
+        expected,
+      });
+    };
+
+    if (isPayDunya) {
+      if (typeof expectedPaymentId !== "string") {
+        flagTampering(
+          "payment_id",
+          expectedPaymentId === undefined ? null : (expectedPaymentId as string | number | null),
+          payment.id,
+          "Webhook payload tampering detected: missing payment_id",
+        );
+      }
+      if (typeof expectedAmount !== "number") {
+        flagTampering(
+          "amount",
+          expectedAmount === undefined ? null : (expectedAmount as string | number | null),
+          payment.amount,
+          "Webhook payload tampering detected: missing amount",
+        );
+      }
+    }
+
     if (typeof expectedPaymentId === "string" && expectedPaymentId !== payment.id) {
-      throw new ValidationError(
+      flagTampering(
+        "payment_id",
+        expectedPaymentId,
+        payment.id,
         "Webhook payload tampering detected: payment_id mismatch",
-        {
-          reason: "payload_tampering",
-          field: "payment_id",
-          expected: payment.id,
-        },
       );
     }
-    const expectedAmount = metadata?.expectedAmount;
     if (typeof expectedAmount === "number" && expectedAmount !== payment.amount) {
-      throw new ValidationError(
+      flagTampering(
+        "amount",
+        expectedAmount,
+        payment.amount,
         "Webhook payload tampering detected: amount mismatch",
-        {
-          reason: "payload_tampering",
-          field: "amount",
-          expected: payment.amount,
-        },
       );
     }
 

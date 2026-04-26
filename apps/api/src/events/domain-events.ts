@@ -1301,6 +1301,13 @@ export interface DomainEventMap {
   // fine-grained record of bulk Payment expirations. Mirrors
   // `invite.bulk_expired`.
   "payment.bulk_expired": PaymentBulkExpiredEvent;
+  // Phase 2 / threat T-PD-03 — fires when `handleWebhook` rejects an
+  // IPN whose anti-tampering invariants didn't hold (mismatched
+  // amount / payment_id, missing required fields on a PayDunya
+  // payload). Lets the audit listener record the attempt so
+  // post-incident analysis can spot recon attempts that signature-
+  // verify but try to bind to a different Payment.
+  "payment.tampering_attempted": PaymentTamperingAttemptedEvent;
   // T2.1 — admin replayed a stored webhook event from /admin/webhooks.
   // Fires at replay start (before the handler runs) so security
   // listeners see the attempt even if the handler hangs.
@@ -1393,6 +1400,37 @@ export interface PaymentBulkExpiredEvent {
   /** ISO-8601 cutoff used by this run (`now - staleAfterHours`). */
   cutoffIso: string;
   processedAt: string;
+}
+
+/**
+ * Phase 2 / threat T-PD-03 — emitted by `handleWebhook` when the
+ * anti-tampering cross-checks fail. The webhook signature verified
+ * (so the request CAME from PayDunya), but the payload's bound
+ * fields (`payment_id` / `amount`) don't match the Payment doc.
+ * That's either a payload-tampering attempt by a man-in-the-middle
+ * or a config drift — either way, ops needs a paper trail.
+ *
+ * `requestId` is provided by the webhook route via the request
+ * context; `actorId` is the synthetic `system:webhook` since the
+ * IPN has no Firebase user attached.
+ */
+export interface PaymentTamperingAttemptedEvent {
+  paymentId: string;
+  organizationId: string;
+  /** Discriminator: `payment_id` / `amount` / future fields. */
+  field: string;
+  /** What we expected (the value from `Payment.{id|amount}`). */
+  expectedValue: string | number;
+  /**
+   * What the IPN claimed. Sliced to bounded length so a hostile
+   * payload can't bloat the audit row.
+   */
+  receivedValue: string | number | null;
+  /** Provider name from the metadata (`paydunya` today). */
+  providerName: string;
+  actorId: string;
+  requestId: string;
+  timestamp: string;
 }
 
 /** T2.1 — emitted by WebhookEventsService.replay() at attempt start. */

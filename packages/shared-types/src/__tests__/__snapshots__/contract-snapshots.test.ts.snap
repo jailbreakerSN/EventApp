@@ -766,6 +766,7 @@ exports[`shared-types contract snapshots > AuditLogEntrySchema shape is stable 1
           "payment.initiated",
           "payment.refunded",
           "payment.succeeded",
+          "payment.tampering_attempted",
           "payout.created",
           "plan.archived",
           "plan.created",
@@ -5552,5 +5553,19 @@ exports[`shared-types contract snapshots > UserProfileSchema shape is stable 1`]
     },
   },
   "kind": "object",
+}
+`;
+
+exports[`shared-types contract snapshots > WebhookProviderSchema shape is stable 1`] = `
+{
+  "kind": "enum",
+  "values": [
+    "card",
+    "free_money",
+    "mock",
+    "orange_money",
+    "paydunya",
+    "wave",
+  ],
 }
 `;

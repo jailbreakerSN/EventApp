@@ -1404,6 +1404,32 @@ export function registerAuditListeners(): void {
     });
   });
 
+  // ── Phase 2 / T-PD-03 — payment.tampering_attempted ──
+  // Fires when handleWebhook rejects an IPN whose anti-tampering
+  // invariants failed. The signature verified (so the request came
+  // from the provider) BUT the payload's bound fields (payment_id /
+  // amount) didn't match the Payment doc. Required for the security
+  // trail — the webhook log row marks `failed` but isn't surfaced
+  // on the `/admin/audit` grid.
+  eventBus.on("payment.tampering_attempted", async (payload) => {
+    await auditService.log({
+      action: "payment.tampering_attempted",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "payment",
+      resourceId: payload.paymentId,
+      eventId: null,
+      organizationId: payload.organizationId,
+      details: {
+        field: payload.field,
+        expectedValue: payload.expectedValue,
+        receivedValue: payload.receivedValue,
+        providerName: payload.providerName,
+      },
+    });
+  });
+
   // ── P1-21 — payment.bulk_expired ──
   // Emitted per committed batch by the `expire-stale-payments` admin
   // job. One audit row per batch (not per row) — the row carries the

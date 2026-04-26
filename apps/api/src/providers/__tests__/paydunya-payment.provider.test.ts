@@ -227,6 +227,48 @@ describe("PayDunyaPaymentProvider.initiate", () => {
     stderrSpy.mockRestore();
   });
 
+  // Test-coverage audit follow-up — `!json.token` guard covers a
+  // PayDunya API drift where the response_code is "00" but the
+  // token is missing. Silent mishandling without this guard.
+  it("throws ProviderError when response_code='00' but token is missing (API drift guard)", async () => {
+    const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        response_code: "00",
+        response_text: "https://paydunya.com/some-url",
+        // token field deliberately absent
+      }),
+    });
+
+    const { PayDunyaPaymentProvider } = await import("../paydunya-payment.provider");
+    const { ProviderError } = await import("@/errors/app-error");
+    const provider = new PayDunyaPaymentProvider();
+
+    let caught: unknown;
+    try {
+      await provider.initiate({
+        paymentId: "pay_no_token",
+        amount: 5000,
+        currency: "XOF",
+        description: "test",
+        callbackUrl: "https://x",
+        returnUrl: "https://x",
+      });
+    } catch (err) {
+      caught = err;
+    }
+    expect(caught).toBeInstanceOf(ProviderError);
+    const e = caught as InstanceType<typeof ProviderError>;
+    expect(e.providerName).toBe("paydunya");
+    // Body wasn't an "08" — the guard fires before any mapping kicks
+    // in, so providerCode is the response_code string itself ("00")
+    // OR undefined depending on where the guard lands. Either way,
+    // the error MUST be raised (no silent acceptance).
+    stderrSpy.mockRestore();
+  });
+
   it("throws ProviderError(network_timeout, retriable) on AbortError", async () => {
     const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
     mockFetch.mockImplementationOnce(async () => {
@@ -374,6 +416,61 @@ describe("PayDunyaPaymentProvider.verify", () => {
     const result = await provider.verify("BAD_JSON");
     expect(result.status).toBe("failed");
     expect((result.metadata as { reason?: string }).reason).toBe("malformed_response");
+  });
+
+  // Test-coverage audit follow-up — generic provider-error branch
+  // when response_code is non-"00" and not in NOT_FOUND_CODES.
+  // Covers wallet-upstream errors / "08" malformed-field / etc. that
+  // the reconciliation sweep needs to surface as `failed` without
+  // crashing the batch.
+  it("returns failed (NOT throws) on a non-recognised response_code (e.g. '08')", async () => {
+    const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        response_code: "08",
+        response_text: "Le champ total_amount est obligatoire",
+      }),
+    });
+
+    const { PayDunyaPaymentProvider } = await import("../paydunya-payment.provider");
+    const provider = new PayDunyaPaymentProvider();
+
+    const result = await provider.verify("PROVIDER_ERR");
+    expect(result.status).toBe("failed");
+    expect((result.metadata as { reason?: string }).reason).toBe("provider_error");
+    expect((result.metadata as { responseCode?: string }).responseCode).toBe("08");
+
+    // Confirms the body is logged out-of-band (P1-11 contract).
+    const stderrOutput = stderrSpy.mock.calls.flat().join("");
+    expect(stderrOutput).toContain('"providerName":"paydunya"');
+    expect(stderrOutput).toContain('"operation":"verify"');
+
+    stderrSpy.mockRestore();
+  });
+
+  // Test-coverage audit follow-up — `42` is the second member of
+  // NOT_FOUND_CODES (alongside `4004`). A regression that drops it
+  // from the set would silently route expired invoices to the
+  // generic provider-error path. Pin both members.
+  it("returns failed with reason='transaction_not_found' on response_code 42 (expired)", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        response_code: "42",
+        response_text: "Token invalid or expired",
+      }),
+    });
+
+    const { PayDunyaPaymentProvider } = await import("../paydunya-payment.provider");
+    const provider = new PayDunyaPaymentProvider();
+
+    const result = await provider.verify("EXPIRED_TKN");
+    expect(result.status).toBe("failed");
+    expect((result.metadata as { reason?: string }).reason).toBe("transaction_not_found");
+    expect((result.metadata as { responseCode?: string }).responseCode).toBe("42");
   });
 
   it("URL-encodes the providerTransactionId in the path", async () => {
