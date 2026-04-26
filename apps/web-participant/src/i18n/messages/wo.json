@@ -1043,5 +1043,12 @@
       "androidCta": "Samp",
       "closeDialog": "Tëj"
     }
+  },
+  "cookieConsent": {
+    "title": "Sa cere ci kaaraange",
+    "body": "Teranga dafa jëfandikoo cookies ngir niiral teere ak yokk plateforme. Doomu ay xibaar yu publicité. Mën nga nangu walla baña ci jamano ju nekk.",
+    "privacyLink": "Xam lu ëpp",
+    "accept": "Nangu",
+    "reject": "Baña"
   }
 }

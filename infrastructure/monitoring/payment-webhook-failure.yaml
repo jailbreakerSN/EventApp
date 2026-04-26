@@ -1,0 +1,39 @@
+# Cloud Monitoring alert — payment webhook 4xx rate (Wave 10 / W10-P3).
+#
+# Fires when payment-provider webhook calls (`POST /v1/payments/webhook/*`)
+# return ≥ 5 % 4xx over a 15-minute window. That signals either a provider
+# misconfiguration (signature mismatch, expired secret) or an attempted
+# tampering attack. Either way, ops must triage within 30 min — every
+# rejected webhook means a payment whose state is now drifting.
+
+displayName: "Payments: webhook 4xx rate ≥ 5% (15m sustained)"
+documentation:
+  content: |
+    The payment webhook surface is rejecting ≥ 5% of incoming requests
+    over a rolling 15 min window. Possible causes:
+
+      - Provider rotated their HMAC secret without ours being updated
+        (rotate `PAYDUNYA_MASTER_KEY` / `WAVE_WEBHOOK_SECRET` per
+        docs/runbooks/secret-rotation.md).
+      - Provider IP allowlist drift (`webhook-ip-allowlist.middleware.ts`).
+      - Active tampering attempt — check the audit trail for
+        `payment.tampering_attempted` rows.
+
+    DO NOT silence this alert without verifying the audit trail.
+    Runbook: docs/runbooks/incident-response.md § Payment webhook.
+  mimeType: text/markdown
+combiner: OR
+enabled: true
+conditions:
+  - displayName: "Webhook 4xx ratio over 5% for 15 minutes"
+    conditionPrometheusQueryLanguage:
+      query: |
+        (
+          sum(rate(teranga_http_requests_total{route=~"/v1/payments/webhook.*", status_code=~"4.."}[15m]))
+          /
+          sum(rate(teranga_http_requests_total{route=~"/v1/payments/webhook.*"}[15m]))
+        ) > 0.05
+      duration: 900s
+      evaluationInterval: 60s
+alertStrategy:
+  autoClose: 1800s

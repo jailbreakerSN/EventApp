@@ -20,6 +20,15 @@ const CommentIdParams = z.object({
   commentId: z.string(),
 });
 
+// W10-P2 / S3 — feed mutation rate-limit budget. Content endpoints are
+// the prime spam / harassment surface (anyone with feed:create_post can
+// post + comment). 30 mutations per minute is generous for a real
+// participant who's live-tweeting an event but bounds spammers below
+// the threshold where moderators can't keep up. The cap applies to
+// post / comment / like / pin / patch / delete uniformly so a script
+// can't pivot between verbs to amplify.
+const FEED_MUTATION_RATE_LIMIT = { max: 30, timeWindow: "1 minute" } as const;
+
 export async function feedRoutes(app: FastifyInstance) {
   // ─── Upload URL for feed images (must be registered before generic POST) ──
   app.post(
@@ -31,6 +40,7 @@ export async function feedRoutes(app: FastifyInstance) {
         requirePermission("feed:create_post"),
         validate({ params: EventIdParams, body: UploadUrlRequestSchema }),
       ],
+      config: { rateLimit: FEED_MUTATION_RATE_LIMIT },
     },
     async (request, reply) => {
       const { eventId } = request.params as z.infer<typeof EventIdParams>;
@@ -68,6 +78,7 @@ export async function feedRoutes(app: FastifyInstance) {
         requirePermission("feed:create_post"),
         validate({ params: EventIdParams, body: CreateFeedPostSchema }),
       ],
+      config: { rateLimit: FEED_MUTATION_RATE_LIMIT },
     },
     async (request, reply) => {
       const { eventId } = request.params as z.infer<typeof EventIdParams>;
@@ -87,6 +98,7 @@ export async function feedRoutes(app: FastifyInstance) {
         requirePermission("feed:read"),
         validate({ params: PostIdParams }),
       ],
+      config: { rateLimit: FEED_MUTATION_RATE_LIMIT },
     },
     async (request, reply) => {
       const { eventId, postId } = request.params as z.infer<typeof PostIdParams>;
@@ -105,6 +117,7 @@ export async function feedRoutes(app: FastifyInstance) {
         requirePermission("feed:moderate"),
         validate({ params: PostIdParams }),
       ],
+      config: { rateLimit: FEED_MUTATION_RATE_LIMIT },
     },
     async (request, reply) => {
       const { eventId, postId } = request.params as z.infer<typeof PostIdParams>;
@@ -126,6 +139,7 @@ export async function feedRoutes(app: FastifyInstance) {
           body: z.object({ content: z.string().min(1).max(2000) }),
         }),
       ],
+      config: { rateLimit: FEED_MUTATION_RATE_LIMIT },
     },
     async (request, reply) => {
       const { eventId, postId } = request.params as z.infer<typeof PostIdParams>;
@@ -145,6 +159,7 @@ export async function feedRoutes(app: FastifyInstance) {
         requirePermission("feed:create_post"),
         validate({ params: PostIdParams }),
       ],
+      config: { rateLimit: FEED_MUTATION_RATE_LIMIT },
     },
     async (request, reply) => {
       const { eventId, postId } = request.params as z.infer<typeof PostIdParams>;
@@ -181,6 +196,7 @@ export async function feedRoutes(app: FastifyInstance) {
         requirePermission("feed:create_post"),
         validate({ params: PostIdParams, body: CreateFeedCommentSchema }),
       ],
+      config: { rateLimit: FEED_MUTATION_RATE_LIMIT },
     },
     async (request, reply) => {
       const { eventId, postId } = request.params as z.infer<typeof PostIdParams>;
@@ -200,6 +216,7 @@ export async function feedRoutes(app: FastifyInstance) {
         requirePermission("feed:create_post"),
         validate({ params: CommentIdParams }),
       ],
+      config: { rateLimit: FEED_MUTATION_RATE_LIMIT },
     },
     async (request, reply) => {
       const { eventId, postId, commentId } = request.params as z.infer<typeof CommentIdParams>;

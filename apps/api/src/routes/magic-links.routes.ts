@@ -41,6 +41,13 @@ const TokenHashParam = z.object({
 
 export const magicLinksRoutes: FastifyPluginAsync = async (fastify) => {
   // ─── Issue ────────────────────────────────────────────────────────
+  // W10-P2 / S3 — magic-link issuance is an email/SMS amplification
+  // primitive (the API may dispatch a Resend send + a WhatsApp
+  // template per call). Cap at 5 issues per minute per caller —
+  // tighter than the global `user:*` 120/min budget. Bulk speaker
+  // onboarding for a 50-speaker conference still completes in 10
+  // minutes; an attacker who steals an organiser session can't burn
+  // through Resend credits at scale.
   fastify.post(
     "/",
     {
@@ -50,6 +57,9 @@ export const magicLinksRoutes: FastifyPluginAsync = async (fastify) => {
         requirePermission("event:update"),
         validate({ body: IssueMagicLinkSchema }),
       ],
+      config: {
+        rateLimit: { max: 5, timeWindow: "1 minute" },
+      },
       schema: {
         tags: ["MagicLinks"],
         summary: "Issue a magic link for a speaker / sponsor portal",
@@ -70,10 +80,19 @@ export const magicLinksRoutes: FastifyPluginAsync = async (fastify) => {
   );
 
   // ─── Verify (unauthenticated — the URL is the credential) ────────
+  // W10-P2 / S3 — unauthenticated endpoint, brute-force-attractive.
+  // The token namespace is 64 hex chars (≈10^77) so brute force is
+  // already economically infeasible, but we cap each IP at 30 verifies
+  // per minute to bound the cost of a noisy scan. Legitimate use
+  // (speaker re-opens portal page, page reloads on flaky network)
+  // stays well under the cap.
   fastify.get(
     "/verify",
     {
       preHandler: [validate({ query: TokenQuery })],
+      config: {
+        rateLimit: { max: 30, timeWindow: "1 minute" },
+      },
       schema: {
         tags: ["MagicLinks"],
         summary: "Verify a magic-link token (no auth — the URL is the credential)",

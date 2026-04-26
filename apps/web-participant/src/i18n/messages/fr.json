@@ -1200,5 +1200,12 @@
       "androidCta": "Installer",
       "closeDialog": "Fermer"
     }
+  },
+  "cookieConsent": {
+    "title": "Vos préférences de confidentialité",
+    "body": "Teranga utilise des cookies de mesure d'audience et de suivi d'erreurs pour améliorer la plateforme. Aucun cookie publicitaire. Vous pouvez accepter ou refuser à tout moment.",
+    "privacyLink": "En savoir plus",
+    "accept": "Accepter",
+    "reject": "Refuser"
   }
 }

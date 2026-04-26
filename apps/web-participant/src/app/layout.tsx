@@ -7,6 +7,7 @@ import { Toaster } from "@teranga/shared-ui";
 import { OfflineIndicator } from "@/components/offline-indicator";
 import { ImpersonationBanner } from "@/components/impersonation-banner";
 import { SwRegister } from "@/components/sw-register";
+import { CookieConsentBanner } from "@/components/cookie-consent";
 import "./globals.css";
 
 const inter = Inter({
@@ -110,6 +111,12 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           <Providers>{children}</Providers>
           <Toaster />
           <SwRegister />
+          {/* W10-P6 / L4 — cookie consent banner (Senegal Loi 2008-12 +
+              GDPR). Self-gates on `localStorage.teranga_cookie_consent_v1`;
+              renders nothing once the user has chosen. The Sentry
+              client init re-checks consent before activating analytics
+              + replay (currently inert; future-proofed). */}
+          <CookieConsentBanner />
         </NextIntlClientProvider>
       </body>
     </html>

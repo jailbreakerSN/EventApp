@@ -4,6 +4,22 @@ import { auditService } from "@/services/audit.service";
 // ─── Audit Listener ─────────────────────────────────────────────────────────
 // Subscribes to ALL domain events and writes structured audit log entries.
 // Fire-and-forget — errors are caught inside auditService, never propagated.
+//
+// PII policy (W10-P2 / S4)
+// ────────────────────────
+// `details` is persisted long-term and queried by support, ops, and
+// regulators. PII (email, phoneNumber, recipientEmail, full name) MUST
+// stay OFF the audit row — the resourceId points back to a Firestore
+// doc that already carries the same data and is subject to the user's
+// erasure rights. The audit log is a write-only forensic record, so
+// duplicating PII there means GDPR / Senegal Loi 2008-12 erasure
+// requests need a second sweep across `auditLogs`.
+//
+// Pattern (mirrors `magic_link.issued`): record `resourceId =
+// <subscriberId | inviteId | tokenHash>` and any structural metadata
+// the audit grid needs. Investigators join back to the parent doc for
+// the email / phone — and that join is itself an auditable read on
+// the protected collection.
 
 export function registerAuditListeners(): void {
   // ── Registration Events ─────────────────────────────────────────────────
@@ -766,7 +782,11 @@ export function registerAuditListeners(): void {
       resourceId: payload.subscriberId,
       eventId: null,
       organizationId: null,
-      details: { email: payload.email, source: payload.source },
+      // PII policy: email lives on `newsletterSubscribers/{subscriberId}`,
+      // resourceId carries the join key. Audit row stores only the
+      // acquisition source — sufficient for the "where do subs come
+      // from" dashboard without duplicating PII.
+      details: { source: payload.source },
     });
   });
 
@@ -781,9 +801,11 @@ export function registerAuditListeners(): void {
       eventId: null,
       organizationId: null,
       // GDPR/CASL: the confirmation timestamp is the legally relevant
-      // "when did they consent" record. Email retained alongside so the
-      // audit log alone is a valid consent trail.
-      details: { email: payload.email, confirmedAt: payload.confirmedAt },
+      // "when did they consent" record. Email is omitted per the PII
+      // policy above — investigators join `subscriberId` to the parent
+      // doc; the audit row + parent doc together still form the
+      // complete consent trail.
+      details: { confirmedAt: payload.confirmedAt },
     });
   });
 
@@ -971,7 +993,10 @@ export function registerAuditListeners(): void {
       resourceId: payload.inviteId,
       eventId: null,
       organizationId: payload.organizationId,
-      details: { email: payload.email, role: payload.role },
+      // PII policy: invitee email lives on `invites/{inviteId}` —
+      // resourceId carries the join key. The role is structural metadata
+      // and stays on the audit row.
+      details: { role: payload.role },
     });
   });
 
@@ -1013,7 +1038,8 @@ export function registerAuditListeners(): void {
       resourceId: payload.inviteId,
       eventId: null,
       organizationId: payload.organizationId,
-      details: { email: payload.email },
+      // PII policy: invitee email omitted — see `invite.created`.
+      details: {},
     });
   });
 
@@ -1950,6 +1976,16 @@ export function registerAuditListeners(): void {
   });
 
   eventBus.on("whatsapp.delivery.failed", async (payload) => {
+    // PII policy (W10-P2 / S4): the WhatsApp recipient is a raw E.164
+    // phone number — the same kind of data we already strip from
+    // `whatsapp.opt_in.granted` / `revoked`. Persist the last-4 digits
+    // only so the audit row stays useful for "did the failure cluster
+    // on a single MNO" triage without the audit log carrying PII.
+    // Investigators join `messageId` (resourceId) → whatsappDeliveryLog
+    // for the full recipient when needed; that join is itself audit-
+    // tracked.
+    const recipient = typeof payload.recipient === "string" ? payload.recipient : "";
+    const recipientLast4 = recipient.length >= 4 ? recipient.slice(-4) : "****";
     await auditService.log({
       action: "whatsapp.delivery.failed",
       actorId: payload.actorId,
@@ -1960,7 +1996,7 @@ export function registerAuditListeners(): void {
       eventId: null,
       organizationId: null,
       details: {
-        recipient: payload.recipient,
+        recipientLast4,
         errorCode: payload.errorCode,
         errorMessage: payload.errorMessage,
       },

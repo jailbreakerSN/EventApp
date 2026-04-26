@@ -856,9 +856,7 @@ describe("Sprint C.3 — Feature flags (server-only)", () => {
 
   it("denies super_admin direct write (super-admin uses the admin route)", async () => {
     const db = superAdmin().firestore();
-    await assertFails(
-      db.collection("featureFlags").doc("wave3-launch").update({ enabled: false }),
-    );
+    await assertFails(db.collection("featureFlags").doc("wave3-launch").update({ enabled: false }));
   });
 });
 
@@ -964,5 +962,202 @@ describe("Sprint C.3 — Session bookmarks (owner-scoped)", () => {
   it("denies organizer cross-org bookmark read", async () => {
     const db = orgUser("org-admin", "org-1").firestore();
     await assertFails(db.collection("sessionBookmarks").doc("bm-alice-1").get());
+  });
+});
+
+// ─── Wave 10 / W10-P2 / S2 — O8-O10 server-only collections ─────────────────
+// All six collections are API-mediated (the API enforces
+// requireOrganizationAccess + permission checks before reading or
+// writing). Defense-in-depth deny here so a future feature flag that
+// flips client SDK access on can't accidentally bypass the audit
+// trail. Each describe block exercises one concrete deny per role
+// space so a future relaxation has to land alongside an explicit
+// permissioned rule + a matching test.
+
+describe("W10-P2 — Incidents (O8, server-only)", () => {
+  beforeEach(async () => {
+    await seed("incidents", "inc-1", {
+      eventId: "evt-1",
+      organizationId: "org-1",
+      severity: "warning",
+      status: "open",
+    });
+  });
+
+  it("denies any client read", async () => {
+    await assertFails(participant().firestore().collection("incidents").doc("inc-1").get());
+  });
+
+  it("denies organizer-of-the-org direct read (must go via API)", async () => {
+    await assertFails(
+      orgUser("organizer", "org-1").firestore().collection("incidents").doc("inc-1").get(),
+    );
+  });
+
+  it("denies super-admin direct write", async () => {
+    await assertFails(
+      superAdmin().firestore().collection("incidents").doc("inc-1").update({ status: "resolved" }),
+    );
+  });
+});
+
+describe("W10-P2 — Staff messages (O8, server-only)", () => {
+  beforeEach(async () => {
+    await seed("staffMessages", "msg-1", {
+      eventId: "evt-1",
+      organizationId: "org-1",
+      body: "All gates open",
+    });
+  });
+
+  it("denies any client read", async () => {
+    await assertFails(participant().firestore().collection("staffMessages").doc("msg-1").get());
+  });
+
+  it("denies staff-of-the-org direct read (radio is push-driven)", async () => {
+    await assertFails(
+      _staff("staff-1", "org-1").firestore().collection("staffMessages").doc("msg-1").get(),
+    );
+  });
+
+  it("denies any client write", async () => {
+    await assertFails(
+      orgUser("organizer", "org-1")
+        .firestore()
+        .collection("staffMessages")
+        .doc("new-msg")
+        .set({ body: "x" }),
+    );
+  });
+});
+
+describe("W10-P2 — Magic links (O10, server-only — token IS the credential)", () => {
+  beforeEach(async () => {
+    await seed("magicLinks", "tokenhash-abc", {
+      role: "speaker",
+      eventId: "evt-1",
+      organizationId: "org-1",
+      expiresAt: "2026-12-31T00:00:00Z",
+    });
+  });
+
+  it("denies any client read (token enumeration would defeat the credential)", async () => {
+    await assertFails(
+      participant().firestore().collection("magicLinks").doc("tokenhash-abc").get(),
+    );
+  });
+
+  it("denies super-admin direct read (issuance/revoke goes through API)", async () => {
+    await assertFails(superAdmin().firestore().collection("magicLinks").doc("tokenhash-abc").get());
+  });
+
+  it("denies any client write", async () => {
+    await assertFails(
+      orgUser("organizer", "org-1")
+        .firestore()
+        .collection("magicLinks")
+        .doc("tokenhash-new")
+        .set({ role: "speaker" }),
+    );
+  });
+});
+
+describe("W10-P2 — WhatsApp opt-ins (O6, server-only — consent audit-tracked)", () => {
+  beforeEach(async () => {
+    await seed("whatsappOptIns", "user-1__org-1", {
+      userId: "user-1",
+      organizationId: "org-1",
+      phoneE164: "+221770000000",
+      grantedAt: "2026-04-01T00:00:00Z",
+    });
+  });
+
+  it("denies the opt-in's owner from reading their own record (must go via /me API)", async () => {
+    await assertFails(
+      participant("user-1").firestore().collection("whatsappOptIns").doc("user-1__org-1").get(),
+    );
+  });
+
+  it("denies organizer cross-tenant read", async () => {
+    await assertFails(
+      orgUser("organizer", "org-1")
+        .firestore()
+        .collection("whatsappOptIns")
+        .doc("user-1__org-1")
+        .get(),
+    );
+  });
+
+  it("denies any client write (would bypass consent audit row)", async () => {
+    await assertFails(
+      participant("user-1")
+        .firestore()
+        .collection("whatsappOptIns")
+        .doc("user-1__org-1")
+        .update({ phoneE164: "+221770000001" }),
+    );
+  });
+});
+
+describe("W10-P2 — WhatsApp delivery log (O6, append-only via Meta callback)", () => {
+  beforeEach(async () => {
+    await seed("whatsappDeliveryLog", "msg-1__delivered", {
+      messageId: "msg-1",
+      status: "delivered",
+      recipient: "+221770000000",
+    });
+  });
+
+  it("denies any client read (cross-tenant recipient phone exposure)", async () => {
+    await assertFails(
+      participant().firestore().collection("whatsappDeliveryLog").doc("msg-1__delivered").get(),
+    );
+  });
+
+  it("denies super-admin direct write (only Meta webhook should write)", async () => {
+    await assertFails(
+      superAdmin()
+        .firestore()
+        .collection("whatsappDeliveryLog")
+        .doc("msg-1__failed")
+        .set({ status: "failed" }),
+    );
+  });
+});
+
+describe("W10-P2 — Participant profiles (O7, server-only — PII-heavy)", () => {
+  beforeEach(async () => {
+    await seed("participantProfiles", "profile-1", {
+      userId: "user-1",
+      organizationId: "org-1",
+      tags: ["VIP"],
+      notes: "Allergic to peanuts",
+    });
+  });
+
+  it("denies the profile's owner from reading their own record (must go via /me API)", async () => {
+    await assertFails(
+      participant("user-1").firestore().collection("participantProfiles").doc("profile-1").get(),
+    );
+  });
+
+  it("denies organizer-of-the-org direct read (must go via participant.service)", async () => {
+    await assertFails(
+      orgUser("organizer", "org-1")
+        .firestore()
+        .collection("participantProfiles")
+        .doc("profile-1")
+        .get(),
+    );
+  });
+
+  it("denies any client write (notes are PII; updates audit-tracked)", async () => {
+    await assertFails(
+      orgUser("organizer", "org-1")
+        .firestore()
+        .collection("participantProfiles")
+        .doc("profile-1")
+        .update({ notes: "x" }),
+    );
   });
 });

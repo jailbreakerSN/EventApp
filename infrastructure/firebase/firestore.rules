@@ -866,5 +866,65 @@ service cloud.firestore {
 
       allow create, update, delete: if false;
     }
+
+    // ─── Wave 10 / W10-P2 / S2 — O8-O10 collections ────────────────────────
+    // Pre-W10 these six collections were covered only by the top-level
+    // deny-all default. Making the deny explicit forces every future
+    // reviewer to look at intent before relaxing access — and gives us a
+    // place to attach the per-collection rationale.
+
+    // Incidents — Floor Ops floor log (Phase O8). Org-scoped event-level
+    // collection. The API serves all reads + writes (incident.service.ts
+    // enforces requireOrganizationAccess + permission checks); clients
+    // never read directly. Fast deny here so a future feature flag that
+    // flips client SDK access on doesn't accidentally bypass the audit
+    // trail in audit.listener.ts § "incident.created/updated/resolved".
+    match /incidents/{incidentId} {
+      allow read, write: if false;
+    }
+
+    // Staff messages — Floor Ops radio (Phase O8). Same posture as
+    // incidents: API-mediated, clients receive realtime via push only,
+    // no direct Firestore read. The rule blocks a hypothetical
+    // client-side "live radio" feature from leaking cross-tenant.
+    match /staffMessages/{messageId} {
+      allow read, write: if false;
+    }
+
+    // Magic links (Phase O10). Doc id is the SHA-256 hash of the
+    // plaintext token. Reads happen ONLY inside magic-link.service
+    // verify() / revoke() paths; the token itself is the credential
+    // and never round-trips through a client SDK. Writes are API-only.
+    // Direct client access would let an attacker enumerate the
+    // magic-link surface and time signature checks server-side.
+    match /magicLinks/{tokenHash} {
+      allow read, write: if false;
+    }
+
+    // WhatsApp opt-ins (Phase O6). Carries a participant's phone
+    // number + consent metadata, scoped per (userId, organizationId).
+    // Reads + writes go through whatsappOptInService; the audit trail
+    // captures every consent change. Direct client access would
+    // bypass the consent audit row.
+    match /whatsappOptIns/{optInId} {
+      allow read, write: if false;
+    }
+
+    // WhatsApp delivery log (Phase O6). Append-only record of every
+    // Meta delivery callback. Doc id = `${messageId}__${status}` for
+    // idempotent retries. Reads are super-admin observability only
+    // (the delivery dashboard) and go through the API.
+    match /whatsappDeliveryLog/{logId} {
+      allow read, write: if false;
+    }
+
+    // Participant profiles (Phase O7). Carries free-text notes + tags
+    // + computed segments. Heavily PII (notes can contain dietary
+    // restrictions, accessibility needs). Reads + writes go through
+    // participantProfileService; client SDK access would defeat the
+    // org-scoped read enforcement.
+    match /participantProfiles/{profileId} {
+      allow read, write: if false;
+    }
   }
 }

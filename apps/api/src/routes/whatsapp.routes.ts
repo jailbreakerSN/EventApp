@@ -33,10 +33,19 @@ const RevokeQuery = z.object({ organizationId: z.string().min(1) });
 
 export const whatsappMeRoutes: FastifyPluginAsync = async (fastify) => {
   // ─── Grant Opt-In ─────────────────────────────────────────────────────
+  // W10-P2 / S3 — opt-in is the door to the per-org WhatsApp template
+  // send budget. A spammer who hijacked a session could grant + revoke
+  // in a loop to inflate Meta cost telemetry. Cap at 10 grants per
+  // minute per caller — well above legitimate user behaviour (one
+  // toggle per organisation per session) but below any economic abuse
+  // threshold.
   fastify.post(
     "/opt-in",
     {
       preHandler: [authenticate, validate({ body: CreateWhatsappOptInSchema })],
+      config: {
+        rateLimit: { max: 10, timeWindow: "1 minute" },
+      },
       schema: {
         tags: ["WhatsApp"],
         summary: "Grant WhatsApp opt-in for the calling user (org-scoped)",
@@ -51,10 +60,14 @@ export const whatsappMeRoutes: FastifyPluginAsync = async (fastify) => {
   );
 
   // ─── Revoke Opt-In ────────────────────────────────────────────────────
+  // Symmetrical 10/min cap — see grant rationale above.
   fastify.delete(
     "/opt-in",
     {
       preHandler: [authenticate, validate({ query: RevokeQuery })],
+      config: {
+        rateLimit: { max: 10, timeWindow: "1 minute" },
+      },
       schema: {
         tags: ["WhatsApp"],
         summary: "Revoke a previously-granted WhatsApp opt-in",

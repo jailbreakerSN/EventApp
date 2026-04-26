@@ -1,0 +1,38 @@
+# Cloud Monitoring alert — API 5xx rate (Wave 10 / W10-P3).
+#
+# Fires when the API's 5xx rate exceeds 1% of total requests sustained
+# for 10 minutes. Routes to Slack #prod-incidents and PagerDuty.
+#
+# Source: `teranga_http_requests_total` Prometheus counter scraped from
+# the `/metrics` endpoint into Cloud Monitoring's managed Prometheus.
+# Labels carry status_code so we can split 5xx from the total.
+#
+# Channels list is empty — the deploy workflow injects per-env channels.
+# Edit this file, not the console.
+
+displayName: "API: 5xx rate ≥ 1% (10m sustained)"
+documentation:
+  content: |
+    The API is returning 5xx for ≥ 1% of requests over a rolling 10 min
+    window. Investigate immediately:
+      1. Check Sentry issue stream for the spike's signature.
+      2. `kubectl logs -l app=teranga-api` (Cloud Run logs).
+      3. If localised to one route, consider a Cloud Run revision-pin
+         rollback (see docs/runbooks/production-launch.md).
+    Runbook: docs/runbooks/incident-response.md.
+  mimeType: text/markdown
+combiner: OR
+enabled: true
+conditions:
+  - displayName: "5xx ratio over 1% for 10 minutes"
+    conditionPrometheusQueryLanguage:
+      query: |
+        (
+          sum(rate(teranga_http_requests_total{status_code=~"5.."}[10m]))
+          /
+          sum(rate(teranga_http_requests_total[10m]))
+        ) > 0.01
+      duration: 600s
+      evaluationInterval: 60s
+alertStrategy:
+  autoClose: 1800s # 30m auto-close after the rate drops back under
