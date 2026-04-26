@@ -468,11 +468,18 @@ export const onPaymentReconciliation = onSchedule(
 
     const url = `${apiBaseUrl.replace(/\/$/, "")}/v1/internal/payments/reconcile`;
 
-    // 60 s timeout — bounds the cron tick if the API is hung. The
-    // outer Cloud Scheduler timeout is 120 s so we have headroom for
-    // log emission on timeout.
+    // 90 s client-side timeout — bounded BELOW the Cloud Scheduler
+    // 120 s function timeout to leave 30 s of headroom for log
+    // emission on timeout. The API endpoint default-iterates 50
+    // payments × ~2 s/provider RTT = ~100 s worst case, so a 60 s
+    // client timeout would prematurely abort otherwise-successful
+    // sweeps and log "timed out" while the API kept running and
+    // emitted the success heartbeat — confusing audit records. 90 s
+    // gives the API ~10 s to finalise on average while still cutting
+    // off pathologically slow provider replies before they bleed
+    // into the next cron tick.
     const controller = new AbortController();
-    const timeoutHandle = setTimeout(() => controller.abort(), 60_000);
+    const timeoutHandle = setTimeout(() => controller.abort(), 90_000);
 
     try {
       const response = await fetch(url, {

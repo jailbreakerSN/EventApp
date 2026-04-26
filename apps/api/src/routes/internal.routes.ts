@@ -1,4 +1,4 @@
-import type { FastifyPluginAsync } from "fastify";
+import type { FastifyPluginAsync, FastifyRequest, FastifyReply } from "fastify";
 import crypto from "node:crypto";
 import { z } from "zod";
 import { config } from "@/config";
@@ -185,14 +185,50 @@ export const internalRoutes: FastifyPluginAsync = async (fastify) => {
   // the cap means even a flooded attacker can trigger at most 30 sweeps
   // per minute, each bounded by `batchSize` (default 50) → at most
   // 1500 verify calls/min/instance.
-  const ReconcileBody = z.object({
-    /** Lower bound — payments newer than this are skipped (give the IPN a chance). Optional override. */
-    windowMinMs: z.number().int().positive().max(60 * 60 * 1000).optional(),
-    /** Upper bound — payments older than this are left for onPaymentTimeout. Optional override. */
-    windowMaxMs: z.number().int().positive().max(60 * 60 * 1000).optional(),
-    /** Max payments processed per invocation. Optional override. */
-    batchSize: z.number().int().positive().max(200).optional(),
-  });
+  const ReconcileBody = z
+    .object({
+      /** Lower bound — payments newer than this are skipped. Min 1 min so IPN has headroom. */
+      windowMinMs: z.number().int().min(60 * 1000).max(60 * 60 * 1000).optional(),
+      /** Upper bound — payments older than this are left for onPaymentTimeout. */
+      windowMaxMs: z.number().int().positive().max(60 * 60 * 1000).optional(),
+      /** Max payments processed per invocation. Hard ceiling 200. */
+      batchSize: z.number().int().positive().max(200).optional(),
+    })
+    // FAIL-3 fix — cross-field validation. Without this a stolen secret
+    // could submit `{ windowMinMs: 60000, windowMaxMs: 3600000 }` to
+    // sweep every processing payment up to 1 h old in one call,
+    // bypassing the operational "give the IPN a chance" intent.
+    .refine(
+      (b) =>
+        b.windowMinMs === undefined ||
+        b.windowMaxMs === undefined ||
+        b.windowMinMs < b.windowMaxMs,
+      { message: "windowMinMs must be strictly less than windowMaxMs" },
+    );
+
+  /**
+   * Internal-route secret guard.
+   *
+   * FAIL-1 fix (security review 2026-04-26) — runs as a SEPARATE
+   * preHandler BEFORE `validate(...)` so an unauthenticated probe
+   * with a malformed body sees the same 404 as an unauthenticated
+   * probe with a syntactically valid body. Otherwise the response-code
+   * difference (400 vs 404) leaks the existence of the endpoint.
+   */
+  const internalSecretGuard = async (request: FastifyRequest, reply: FastifyReply) => {
+    const providedSecret = request.headers["x-internal-dispatch-secret"];
+    const expected = config.INTERNAL_DISPATCH_SECRET;
+    if (typeof expected !== "string" || expected.length < 32) {
+      return reply.status(404).send({ success: false, error: { code: "NOT_FOUND" } });
+    }
+    if (
+      typeof providedSecret !== "string" ||
+      providedSecret.length === 0 ||
+      !timingSafeCompare(providedSecret, expected)
+    ) {
+      return reply.status(404).send({ success: false, error: { code: "NOT_FOUND" } });
+    }
+  };
 
   fastify.post(
     "/payments/reconcile",
@@ -203,28 +239,16 @@ export const internalRoutes: FastifyPluginAsync = async (fastify) => {
           timeWindow: "1 minute",
         },
       },
-      preHandler: [validate({ body: ReconcileBody })],
+      // SECRET CHECK FIRST — before validate, so unauth probes see the
+      // same 404 regardless of body shape (closes the auth-bypass oracle
+      // surfaced by the security review).
+      preHandler: [internalSecretGuard, validate({ body: ReconcileBody })],
       schema: {
         hide: true,
         summary: "Internal — Phase 3 payments reconciliation sweep",
       },
     },
     async (request, reply) => {
-      const providedSecret = request.headers["x-internal-dispatch-secret"];
-      const expected = config.INTERNAL_DISPATCH_SECRET;
-
-      if (typeof expected !== "string" || expected.length < 32) {
-        return reply.status(404).send({ success: false, error: { code: "NOT_FOUND" } });
-      }
-
-      if (
-        typeof providedSecret !== "string" ||
-        providedSecret.length === 0 ||
-        !timingSafeCompare(providedSecret, expected)
-      ) {
-        return reply.status(404).send({ success: false, error: { code: "NOT_FOUND" } });
-      }
-
       const body = request.body as z.infer<typeof ReconcileBody>;
 
       // Lazy import to avoid the circular require risk in the route

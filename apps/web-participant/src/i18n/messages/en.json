@@ -588,6 +588,7 @@
     "pageTitleFallback": "Payment",
     "processingHeading": "Payment in progress…",
     "processingHint": "Your payment is being processed. This page will update automatically.",
+    "kicker": "— PAYMENT",
     "verifyingHint": "Checking the status with your payment provider…",
     "pollingFallbackHint": "The provider hasn’t confirmed the payment yet. This page will keep checking every 3 seconds.",
     "verifyErrorHint": "Couldn’t verify the payment right now. Please retry in a moment.",

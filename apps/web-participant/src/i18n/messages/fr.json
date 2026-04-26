@@ -591,6 +591,7 @@
     "pageTitleFallback": "Paiement",
     "processingHeading": "Paiement en cours…",
     "processingHint": "Votre paiement est en cours de traitement. Cette page se met à jour automatiquement.",
+    "kicker": "— PAIEMENT",
     "verifyingHint": "Vérification du statut auprès de votre fournisseur de paiement…",
     "pollingFallbackHint": "Le fournisseur n'a pas encore confirmé le paiement. Cette page continuera à vérifier toutes les 3 secondes.",
     "verifyErrorHint": "Impossible de vérifier le paiement pour le moment. Réessayez dans quelques instants.",

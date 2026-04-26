@@ -218,4 +218,44 @@ describe("POST /v1/internal/payments/reconcile", () => {
     expect(res.statusCode).toBe(400);
     expect(mockReconcile).not.toHaveBeenCalled();
   });
+
+  // FAIL-1 fix — secret guard now runs BEFORE the Zod body validator.
+  // An unauthenticated probe with a malformed body MUST see 404 (same
+  // as a probe with a valid body), not 400 — otherwise the response-
+  // code difference reveals the endpoint exists.
+  it("returns 404 (not 400) when the secret is wrong AND the body is invalid (no oracle leak)", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/internal/payments/reconcile",
+      headers: { "X-Internal-Dispatch-Secret": "wrong" },
+      payload: { batchSize: "not-a-number" },
+    });
+    expect(res.statusCode).toBe(404);
+    expect(mockReconcile).not.toHaveBeenCalled();
+  });
+
+  // FAIL-3 fix — cross-field refine ensures windowMinMs < windowMaxMs.
+  it("rejects windowMinMs >= windowMaxMs at the validation layer (400)", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/internal/payments/reconcile",
+      headers: { "X-Internal-Dispatch-Secret": TEST_SECRET },
+      payload: { windowMinMs: 60_000 * 30, windowMaxMs: 60_000 * 10 },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(mockReconcile).not.toHaveBeenCalled();
+  });
+
+  // FAIL-3 fix — windowMinMs has a 1-minute floor so a stolen secret
+  // can't bypass the operational "give the IPN a chance" intent.
+  it("rejects windowMinMs below the 60s floor (400)", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/internal/payments/reconcile",
+      headers: { "X-Internal-Dispatch-Secret": TEST_SECRET },
+      payload: { windowMinMs: 1, windowMaxMs: 3_600_000 },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(mockReconcile).not.toHaveBeenCalled();
+  });
 });

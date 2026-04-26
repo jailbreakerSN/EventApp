@@ -136,7 +136,7 @@ describe("onPaymentReconciliation — cron trigger", () => {
     );
   });
 
-  it("logs an AbortError when fetch is aborted (cron-tick timeout)", async () => {
+  it("logs an AbortError when fetch is aborted (cron-tick 90 s timeout)", async () => {
     const fetchMock = vi.fn().mockImplementation(() => {
       const err = new Error("aborted");
       err.name = "AbortError";

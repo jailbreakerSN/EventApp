@@ -178,7 +178,18 @@ function seedBucket(payments: Payment[]) {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  // mockReset (not clearAllMocks) — we queue `mockResolvedValueOnce`
+  // sequences on `mockTxGet` and `mockProviderVerify` per test;
+  // `clearAllMocks` only wipes call history, leaving queued return
+  // values intact so a leftover queue from one test would infect
+  // the next. Matches the canonical pattern from the testing skill.
+  mockProviderVerify.mockReset();
+  mockEventBusEmit.mockReset();
+  mockTxGet.mockReset();
+  mockTxUpdate.mockReset();
+  mockTxSet.mockReset();
+  mockRunTransaction.mockClear();
+  mockGetRequestId.mockClear();
   paymentsBucket.length = 0;
 });
 

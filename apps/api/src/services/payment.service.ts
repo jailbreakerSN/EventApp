@@ -1389,8 +1389,16 @@ export class PaymentService extends BaseService {
    *
    * Authorization
    * ─────────────
-   * System-mode only (no AuthUser). Caller must guard the surface
-   * (see `internal.routes.ts` shared-secret pattern).
+   * System-mode only (no AuthUser). Method is `public` (not
+   * `private`) so test files can exercise it directly without
+   * routing through the internal endpoint, and so future internal
+   * callers (e.g. an admin "Run reconciliation now" button on
+   * /admin/audit) can call it cleanly. The trust boundary is at
+   * the route layer — any HTTP surface that exposes this method
+   * MUST gate on the shared-secret pattern documented in
+   * `internal.routes.ts`. Adding new public methods that call this
+   * one is a security decision: confirm with the platform team
+   * before merging.
    *
    * Idempotency
    * ───────────
@@ -1580,10 +1588,18 @@ export class PaymentService extends BaseService {
         if (!paySnap.exists) return;
         const freshPayment = paySnap.data() as Payment;
 
+        // FAIL-2 fix (security review 2026-04-26) — `expired` MUST be in
+        // the terminal-state set here. `onPaymentTimeout` runs every 5
+        // min and can flip the payment to `expired` between the outer
+        // window query and this transactional re-read; without the
+        // guard the reconciliation tx would overwrite `expired` →
+        // `succeeded` and emit a spurious `payment.succeeded` for an
+        // already-released seat.
         if (
           freshPayment.status === "succeeded" ||
           freshPayment.status === "failed" ||
-          freshPayment.status === "refunded"
+          freshPayment.status === "refunded" ||
+          freshPayment.status === "expired"
         ) {
           return;
         }
@@ -1682,21 +1698,35 @@ export class PaymentService extends BaseService {
       const paySnap = await tx.get(payRef);
       if (!paySnap.exists) return;
       const freshPayment = paySnap.data() as Payment;
+      // FAIL-2 fix (security review 2026-04-26) — `expired` in the
+      // terminal-state set so onPaymentTimeout race between the
+      // outer scan and this tx commit doesn't get clobbered.
       if (
         freshPayment.status === "succeeded" ||
         freshPayment.status === "failed" ||
-        freshPayment.status === "refunded"
+        freshPayment.status === "refunded" ||
+        freshPayment.status === "expired"
       ) {
         return;
       }
       wasNewlyFailed = true;
 
       const regRef = db.collection(COLLECTIONS.REGISTRATIONS).doc(payment.registrationId);
+      // FAIL-4 fix (security review 2026-04-26) — `verifyResult.metadata`
+      // is `Record<string, unknown>`; the previous `as string` cast was
+      // a type assertion with no runtime check. A future provider that
+      // populates `metadata.reason` with raw API response text would
+      // write un-sanitised content to Firestore, then render it
+      // verbatim on /payment-status. Bound to a safe printable string
+      // truncated to 120 chars; fall back to the localized default.
+      const rawReason = verifyResult.metadata?.reason;
+      const safeReason =
+        typeof rawReason === "string" && rawReason.length > 0 && rawReason.length <= 120
+          ? rawReason
+          : "Paiement refusé par le fournisseur (réconciliation)";
       tx.update(payRef, {
         status: "failed" as PaymentStatus,
-        failureReason:
-          (verifyResult.metadata?.reason as string) ??
-          "Paiement refusé par le fournisseur (réconciliation)",
+        failureReason: safeReason,
         updatedAt: now,
         providerMetadata: enrichedMetadata,
       });

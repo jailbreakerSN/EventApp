@@ -556,6 +556,7 @@
   "paymentStatus": {
     "processingHeading": "Paye bi di dox…",
     "processingHint": "Sa paye bi di traite. Xët bi di yeesal mu bu nekk.",
+    "kicker": "— PAYE",
     "verifyingHint": "Ñu ngi laaj statut bi ci sa fournisseur de paiement…",
     "pollingFallbackHint": "Fournisseur bi defwul ko fésal ba leegi. Xët bi day def laaj 3 segund yu nekk.",
     "verifyErrorHint": "Mën uñu laaj paye bi leegi. Buleen jéem yeneen sax.",

@@ -184,7 +184,7 @@ export default function PaymentStatusPage() {
       <div className="mx-auto max-w-lg px-4 py-16">
         <EmptyStateEditorial
           icon={XCircle}
-          kicker="— PAIEMENT"
+          kicker={t("kicker")}
           title={t("noPaymentSpecified")}
           action={
             <Link
@@ -218,7 +218,7 @@ export default function PaymentStatusPage() {
       </Link>
 
       <SectionHeader
-        kicker="— PAIEMENT"
+        kicker={t("kicker")}
         title={event?.title ?? t("pageTitleFallback")}
         size="hero"
         as="h1"
