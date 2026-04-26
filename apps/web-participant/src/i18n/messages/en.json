@@ -355,6 +355,9 @@
       "filters": "Filters",
       "openFilters": "Open filters",
       "activeFilterCount": "{count, plural, one {# active filter} other {# active filters}}",
+      "recentSearches": "Recent searches",
+      "clearRecents": "Clear history",
+      "removeRecent": "Remove “{query}” from history",
       "sort": {
         "label": "Sort",
         "soonest": "Date — soonest first",

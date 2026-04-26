@@ -358,6 +358,9 @@
       "filters": "Filtres",
       "openFilters": "Ouvrir les filtres",
       "activeFilterCount": "{count, plural, one {# filtre actif} other {# filtres actifs}}",
+      "recentSearches": "Recherches récentes",
+      "clearRecents": "Effacer l'historique",
+      "removeRecent": "Retirer « {query} » de l'historique",
       "sort": {
         "label": "Trier",
         "soonest": "Date — prochains d'abord",
