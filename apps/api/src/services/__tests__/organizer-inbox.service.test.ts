@@ -111,7 +111,18 @@ beforeEach(() => {
  *   events.active   (last)
  */
 function seedZeroCounts(overrides: Partial<Record<number, number>> = {}) {
-  const slots = [0, 1, 2, 3, 4, 5, 6, 7, 8];
+  // 10 slots after Phase O3 added events.at_risk_j14:
+  //   0 payments.failed_7d
+  //   1 events.published_no_venue_j7
+  //   2 events.live_now
+  //   3 events.publish_due_7d
+  //   4 payments.pending_24h
+  //   5 speakers.unconfirmed
+  //   6 invites.pending
+  //   7 invites.expired
+  //   8 events.active
+  //   9 events.at_risk_j14   ← O3
+  const slots = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
   for (const idx of slots) {
     queueCount.push(overrides[idx] ?? 0);
   }
@@ -158,6 +169,21 @@ describe("OrganizerInboxService.getInboxSignals — happy path & shape", () => {
     const result = await organizerInboxService.getInboxSignals(user);
     const signal = result.signals.find((s) => s.id === "invites.pending");
     expect(signal?.title).toBe("1 invitation en attente");
+  });
+
+  it("emits 'events.at_risk_j14' as urgent/warning when the proxy count is non-zero (Phase O3)", async () => {
+    const user = buildOrganizerUser("org-1");
+    seedZeroCounts({ 9: 2 });
+
+    const result = await organizerInboxService.getInboxSignals(user);
+    const signal = result.signals.find((s) => s.id === "events.at_risk_j14");
+
+    expect(signal).toBeDefined();
+    expect(signal?.category).toBe("urgent");
+    expect(signal?.severity).toBe("warning");
+    expect(signal?.count).toBe(2);
+    expect(signal?.title).toContain("sous-inscrits");
+    expect(signal?.href).toContain("atRisk=true");
   });
 });
 

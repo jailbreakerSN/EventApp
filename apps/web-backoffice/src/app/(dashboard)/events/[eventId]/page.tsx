@@ -26,6 +26,7 @@ import {
 } from "@teranga/shared-ui";
 import { PlanGate } from "@/components/plan/PlanGate";
 import { PushPermissionBanner } from "@/components/push-permission-banner";
+import { EventHealthCard } from "@/components/event-health/EventHealthCard";
 import { CsvExportButton, type CsvColumn } from "@/components/csv-export-button";
 import {
   useEvent,
@@ -232,12 +233,14 @@ export default function EventDetailPage() {
         </div>
       </div>
 
+      {/* Phase O3 — composite health gauge + pacing chart. Self-loading
+          card; falls back to a skeleton while the score is computed. */}
+      <EventHealthCard eventId={eventId} className="mb-6" />
+
       {/* Phase C.2 — push opt-in banner, shown only after a successful
           publish. The banner self-hides if the user already granted /
           denied / hit the dismiss cap. Never renders on initial load. */}
-      {showPushBanner && (
-        <PushPermissionBanner trigger="event-published" className="mb-6" />
-      )}
+      {showPushBanner && <PushPermissionBanner trigger="event-published" className="mb-6" />}
 
       {/* Tabs */}
       <div className="flex gap-1 border-b border-border mb-6 overflow-x-auto scrollbar-none">
@@ -1211,7 +1214,11 @@ function RegistrationsTab({ eventId }: { eventId: string }) {
   const [statusFilter, setStatusFilter] = useState("");
   const limit = 15;
 
-  const { data, isLoading, refetch: refetchRegistrations } = useEventRegistrations(eventId, {
+  const {
+    data,
+    isLoading,
+    refetch: refetchRegistrations,
+  } = useEventRegistrations(eventId, {
     page,
     limit,
     status: statusFilter || undefined,

@@ -96,6 +96,7 @@ class OrganizerInboxService extends BaseService {
     const now = new Date();
     const nowIso = now.toISOString();
     const sevenDaysFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    const fourteenDaysFromNow = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000).toISOString();
     const oneDayFromNow = new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString();
     const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
@@ -116,6 +117,13 @@ class OrganizerInboxService extends BaseService {
       // growth (computed below — needs org doc)
       orgDoc,
       activeEventsCount,
+      // O3 — proxy signal for the "low health pacing" alert. Counts
+      // events whose registration is < 50 % of capacity with < 14 days
+      // to go. Cheap single-count proxy for the full health score
+      // (computed on-demand in `event-health.service.ts`); the inbox
+      // uses this as a hint, the event detail surfaces the precise
+      // score + pacing chart.
+      eventsAtRiskJ14,
     ] = await Promise.all([
       safeCount("payments.failed_7d", async () => {
         const snap = await db
@@ -238,6 +246,24 @@ class OrganizerInboxService extends BaseService {
           .get();
         return snap.data().count;
       }),
+      safeCount("events.at_risk_j14", async () => {
+        // Proxy for the full "score < 60" health alert. We can't
+        // compute the score without N reads per event; a single
+        // composite count covers the most-actionable subset:
+        // published events starting in [now+1d, now+14d] with very
+        // low absolute registration (< 10). The precise per-event
+        // score lives on /events/[id]/health (Phase O3).
+        const snap = await db
+          .collection(COLLECTIONS.EVENTS)
+          .where("organizationId", "==", orgId)
+          .where("status", "==", "published")
+          .where("startDate", ">=", oneDayFromNow)
+          .where("startDate", "<=", fourteenDaysFromNow)
+          .where("registeredCount", "<", 10)
+          .count()
+          .get();
+        return snap.data().count;
+      }),
     ]);
 
     const signals: OrganizerInboxSignal[] = [];
@@ -276,6 +302,23 @@ class OrganizerInboxService extends BaseService {
         description: "Surveiller le check-in et la salle. Cliquer pour la vue live.",
         count: eventsLiveNow,
         href: "/events?status=published&live=true",
+      });
+    }
+
+    // O3 — events at risk (proxy for the health-score-below-60 alert).
+    // Promoted to `urgent` severity because under-registered events at
+    // J-14 are the canonical "operator did not realise this was failing"
+    // failure mode the inbox is designed to surface.
+    if (eventsAtRiskJ14 > 0) {
+      signals.push({
+        id: "events.at_risk_j14",
+        category: "urgent",
+        severity: "warning",
+        title: `${eventsAtRiskJ14} événement${eventsAtRiskJ14 > 1 ? "s" : ""} sous-inscrit${eventsAtRiskJ14 > 1 ? "s" : ""} à J-14`,
+        description:
+          "Très peu d'inscriptions à 2 semaines de l'événement. Lancer un rappel ou ajuster la cible.",
+        count: eventsAtRiskJ14,
+        href: "/events?status=published&atRisk=true",
       });
     }
 

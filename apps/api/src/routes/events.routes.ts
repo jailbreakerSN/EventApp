@@ -4,6 +4,7 @@ import { authenticate, requireEmailVerified, optionalAuth } from "@/middlewares/
 import { validate } from "@/middlewares/validate.middleware";
 import { requirePermission } from "@/middlewares/permission.middleware";
 import { eventService } from "@/services/event.service";
+import { eventHealthService } from "@/services/event-health.service";
 import { registrationService } from "@/services/registration.service";
 import { eventRepository } from "@/repositories/event.repository";
 import { uploadService } from "@/services/upload.service";
@@ -112,6 +113,28 @@ export const eventRoutes: FastifyPluginAsync = async (fastify) => {
       const { eventId } = request.params as z.infer<typeof ParamsWithEventId>;
       const event = await eventService.getById(eventId, request.user ?? undefined);
       return reply.send({ success: true, data: event });
+    },
+  );
+
+  // ─── Get Event Health Score (Phase O3 — organizer overhaul) ───────────────
+  // Composite score 0-100 + pacing trajectory. Permission gate inside the
+  // service (`event:read` baseline + requireOrganizationAccess), so the
+  // route stays a thin controller.
+  fastify.get(
+    "/:eventId/health",
+    {
+      preHandler: [authenticate, validate({ params: ParamsWithEventId })],
+      schema: {
+        tags: ["Events"],
+        summary:
+          "Compute the event health score (publication, tickets, venue, pace, comms, staff, checkin) + pacing trajectory",
+        security: [{ BearerAuth: [] }],
+      },
+    },
+    async (request, reply) => {
+      const { eventId } = request.params as z.infer<typeof ParamsWithEventId>;
+      const data = await eventHealthService.getEventHealth(eventId, request.user!);
+      return reply.send({ success: true, data });
     },
   );
 

@@ -35,6 +35,17 @@ vi.mock("@/services/registration.service", () => ({
   },
 }));
 
+// Phase O3 — the GET /:eventId/health route imports the event-health
+// service, which transitively loads the registration repository (and
+// therefore `db.collection`). Stubbing the service here keeps this
+// route-level test focused on routing + auth wiring; the precise
+// score-computation contract is exercised by event-health.service.test.ts.
+vi.mock("@/services/event-health.service", () => ({
+  eventHealthService: {
+    getEventHealth: vi.fn(),
+  },
+}));
+
 // ─── Mock event service ─────────────────────────────────────────────────────
 
 const mockEventService = {

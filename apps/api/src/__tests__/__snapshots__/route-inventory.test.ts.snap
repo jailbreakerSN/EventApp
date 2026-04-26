@@ -116,6 +116,7 @@ DELETE /v1/events/:eventId/feed/:postId/comments/:commentId auth emailVerified p
 POST /v1/events/:eventId/feed/:postId/like auth emailVerified perms=[feed:read]
 POST /v1/events/:eventId/feed/:postId/pin auth emailVerified perms=[feed:moderate]
 POST /v1/events/:eventId/feed/upload-url auth emailVerified perms=[feed:create_post]
+GET /v1/events/:eventId/health auth
 GET /v1/events/:eventId/promo-codes auth perms=[event:read]
 POST /v1/events/:eventId/promo-codes auth emailVerified perms=[event:update]
 POST /v1/events/:eventId/promo-codes/validate none
