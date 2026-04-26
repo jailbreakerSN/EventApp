@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { parseAsString, parseAsStringEnum, useQueryStates } from "nuqs";
 import { CsvExportButton } from "@/components/admin/csv-export-button";
 import { SavedViewsBar } from "@/components/admin/saved-views-bar";
 import { AuditDiffView } from "@/components/admin/audit-diff-view";
@@ -20,9 +20,12 @@ import {
   BreadcrumbLink,
   BreadcrumbPage,
   BreadcrumbSeparator,
+  ResultCount,
+  PageSizeSelector,
 } from "@teranga/shared-ui";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useAdminAuditLogs } from "@/hooks/use-admin";
+import { useTableState } from "@/hooks/use-table-state";
 import { useTranslations } from "next-intl";
 import { groupAuditRowsByDakarDay, type TimelineLog } from "@/lib/audit-timeline";
 
@@ -35,6 +38,8 @@ const ACTION_OPTIONS = [
   { value: "user", label: "Utilisateurs" },
   { value: "payment", label: "Paiements" },
 ] as const;
+
+type ActionFilter = (typeof ACTION_OPTIONS)[number]["value"];
 
 const ACTION_GROUP_STYLES: Record<
   string,
@@ -81,66 +86,64 @@ function formatDate(timestamp: string) {
   });
 }
 
+type Filters = {
+  action?: ActionFilter;
+  actorId?: string;
+  resourceType?: string;
+  dateFrom?: string;
+  dateTo?: string;
+};
+
 export default function AdminAuditPage() {
   const tCommon = useTranslations("common");
   void tCommon;
 
-  // Phase 7 — deep-link support. Inbox cards + detail pages route to
-  // this page with pre-filtered query strings (e.g. ?actorId=xyz,
-  // ?resourceType=organization, ?action=payment.failed). We initialise
-  // state from the URL so those links land in the filtered view.
-  const searchParams = useSearchParams();
-  const [page, setPage] = useState(1);
-  const [actionFilter, setActionFilter] = useState(searchParams?.get("action") ?? "");
-  const [actorIdFilter, setActorIdFilter] = useState(searchParams?.get("actorId") ?? "");
-  // T2.6 — server-side free-text search over `details` JSON + action +
-  // actor + resource ids. The input is debounced via a local mirror
-  // (`searchInput`) so each keystroke doesn't refire the query; 300ms
-  // is the sweet spot between "feels live" and "doesn't spam Firestore".
-  const [searchInput, setSearchInput] = useState(searchParams?.get("search") ?? "");
-  const [debouncedSearch, setDebouncedSearch] = useState(searchInput);
-  const [resourceTypeFilter, setResourceTypeFilter] = useState(
-    searchParams?.get("resourceType") ?? "",
-  );
-  const [dateFrom, setDateFrom] = useState(searchParams?.get("dateFrom") ?? "");
-  const [dateTo, setDateTo] = useState(searchParams?.get("dateTo") ?? "");
-  // T2.6 — UI viewport: "table" = flat paginated list (default);
-  // "timeline" = grouped by day with a chronological ruler.
-  const [viewMode, setViewMode] = useState<"table" | "timeline">(
-    searchParams?.get("view") === "timeline" ? "timeline" : "table",
-  );
+  // W2 migration — useTableState owns the URL state for q / filters /
+  // page / pageSize. Phase 7 deep-link contract preserved: external links
+  // landing on /admin/audit?actorId=xyz / ?resourceType=organization /
+  // ?action=payment.failed still reach the filtered view because nuqs
+  // hydrates from URL on mount.
+  const t = useTableState<Filters>({
+    urlNamespace: "",
+    defaults: { sort: null, pageSize: 25 },
+    sortableFields: [],
+    filterParsers: {
+      action: parseAsStringEnum<ActionFilter>(["", "registration", "event", "organization", "venue", "user", "payment"]),
+      actorId: parseAsString,
+      resourceType: parseAsString,
+      dateFrom: parseAsString,
+      dateTo: parseAsString,
+    },
+    debounceMs: 300,
+  });
 
-  // Debounce the search input → query value.
-  useEffect(() => {
-    const handle = window.setTimeout(() => setDebouncedSearch(searchInput), 300);
-    return () => window.clearTimeout(handle);
-  }, [searchInput]);
+  // viewMode is a UI discriminator (table vs timeline), not a result
+  // filter — keep it out of useTableState so it doesn't inflate
+  // activeFilterCount. Persisted to URL in its own slot for
+  // bookmarkability.
+  const [{ view }, setViewUrl] = useQueryStates(
+    { view: parseAsStringEnum<"table" | "timeline">(["table", "timeline"]) },
+    { history: "replace", shallow: true },
+  );
+  const viewMode: "table" | "timeline" = view ?? "table";
+  const setViewMode = (next: "table" | "timeline") =>
+    setViewUrl({ view: next === "table" ? null : next });
 
   const { data, isLoading } = useAdminAuditLogs({
-    page,
-    limit: 20,
-    ...(actionFilter ? { action: actionFilter } : {}),
-    ...(actorIdFilter ? { actorId: actorIdFilter } : {}),
-    ...(resourceTypeFilter ? { resourceType: resourceTypeFilter } : {}),
-    ...(debouncedSearch.trim().length >= 2 ? { search: debouncedSearch.trim() } : {}),
-    ...(dateFrom ? { dateFrom } : {}),
-    ...(dateTo ? { dateTo } : {}),
+    page: t.page,
+    limit: t.pageSize,
+    ...(t.filters.action ? { action: t.filters.action } : {}),
+    ...(t.filters.actorId ? { actorId: t.filters.actorId } : {}),
+    ...(t.filters.resourceType ? { resourceType: t.filters.resourceType } : {}),
+    ...(t.debouncedQ.trim().length >= 2 ? { search: t.debouncedQ.trim() } : {}),
+    ...(t.filters.dateFrom ? { dateFrom: t.filters.dateFrom } : {}),
+    ...(t.filters.dateTo ? { dateTo: t.filters.dateTo } : {}),
   });
 
   const logs = data?.data ?? [];
-  const meta = data?.meta ?? { page: 1, limit: 20, total: 0, totalPages: 1 };
-
-  // T2.6 — search is now server-side; rows arriving here are already
-  // the final filtered set for the current page. The local
-  // `filteredLogs` alias is preserved so the table render code below
-  // doesn't need to change.
+  const meta = data?.meta ?? { page: 1, limit: t.pageSize, total: 0, totalPages: 1 };
   const filteredLogs = logs;
 
-  // T2.6 — timeline view: group rows by the Dakar calendar day.
-  // Extracted to `@/lib/audit-timeline` for pure-unit testability
-  // (T5.3). The util keeps the Africa/Dakar timezone contract so
-  // operators anywhere on the globe see the same day boundaries as
-  // the events actually occurred in Senegal.
   const timelineGroups = useMemo(() => {
     if (viewMode !== "timeline") return null;
     return groupAuditRowsByDakarDay(filteredLogs as TimelineLog[]);
@@ -150,13 +153,15 @@ export default function AdminAuditPage() {
   // mirrors whatever the admin is currently looking at.
   const exportFilters = useMemo(() => {
     const params = new URLSearchParams();
-    if (actionFilter) params.set("action", actionFilter);
-    if (actorIdFilter) params.set("actorId", actorIdFilter);
-    if (resourceTypeFilter) params.set("resourceType", resourceTypeFilter);
-    if (dateFrom) params.set("dateFrom", dateFrom);
-    if (dateTo) params.set("dateTo", dateTo);
+    if (t.filters.action) params.set("action", t.filters.action);
+    if (t.filters.actorId) params.set("actorId", t.filters.actorId);
+    if (t.filters.resourceType) params.set("resourceType", t.filters.resourceType);
+    if (t.filters.dateFrom) params.set("dateFrom", t.filters.dateFrom);
+    if (t.filters.dateTo) params.set("dateTo", t.filters.dateTo);
     return params.toString();
-  }, [actionFilter, actorIdFilter, resourceTypeFilter, dateFrom, dateTo]);
+  }, [t.filters]);
+
+  const hasActive = t.q || t.activeFilterCount > 0;
 
   return (
     <div className="space-y-6">
@@ -175,10 +180,12 @@ export default function AdminAuditPage() {
         </BreadcrumbList>
       </Breadcrumb>
 
-      {/* Header + export action + view toggle (T2.6) */}
+      {/* Header + export action + view toggle */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-bold text-foreground">Journal d&apos;audit</h1>
         <div className="flex items-center gap-2">
+          <ResultCount total={meta.total} loading={isLoading} />
+          <PageSizeSelector value={t.pageSize} onChange={t.setPageSize} />
           <div
             role="tablist"
             aria-label="Type d'affichage"
@@ -209,22 +216,19 @@ export default function AdminAuditPage() {
         </div>
       </div>
 
-      {/* T3.2 — Saved views chip bar. */}
+      {/* Saved views chip bar. */}
       <SavedViewsBar surfaceKey="admin-audit" />
 
       {/* Active-filter breadcrumb pills (Phase 7 — visible state). */}
-      {(actorIdFilter || resourceTypeFilter) && (
+      {(t.filters.actorId || t.filters.resourceType || hasActive) && (
         <div className="flex flex-wrap items-center gap-2 text-xs">
           <span className="text-muted-foreground">Filtres :</span>
-          {actorIdFilter && (
+          {t.filters.actorId && (
             <Badge variant="outline" className="gap-1.5 py-1">
-              actor = <code className="font-mono text-[10px]">{actorIdFilter.slice(0, 12)}…</code>
+              actor = <code className="font-mono text-[10px]">{t.filters.actorId.slice(0, 12)}…</code>
               <button
                 type="button"
-                onClick={() => {
-                  setActorIdFilter("");
-                  setPage(1);
-                }}
+                onClick={() => t.setFilter("actorId", undefined)}
                 aria-label="Retirer le filtre actor"
                 className="text-muted-foreground hover:text-foreground"
               >
@@ -232,21 +236,27 @@ export default function AdminAuditPage() {
               </button>
             </Badge>
           )}
-          {resourceTypeFilter && (
+          {t.filters.resourceType && (
             <Badge variant="outline" className="gap-1.5 py-1">
-              type = {resourceTypeFilter}
+              type = {t.filters.resourceType}
               <button
                 type="button"
-                onClick={() => {
-                  setResourceTypeFilter("");
-                  setPage(1);
-                }}
+                onClick={() => t.setFilter("resourceType", undefined)}
                 aria-label="Retirer le filtre type"
                 className="text-muted-foreground hover:text-foreground"
               >
                 ×
               </button>
             </Badge>
+          )}
+          {hasActive && (
+            <button
+              type="button"
+              onClick={t.reset}
+              className="ml-auto text-muted-foreground hover:text-foreground underline-offset-4 hover:underline"
+            >
+              Tout effacer
+            </button>
           )}
         </div>
       )}
@@ -264,11 +274,8 @@ export default function AdminAuditPage() {
             id="audit-text-filter"
             type="search"
             placeholder="Acteur, ID ressource, ou contenu JSON…"
-            value={searchInput}
-            onChange={(e) => {
-              setSearchInput(e.target.value);
-              setPage(1);
-            }}
+            value={t.q}
+            onChange={(e) => t.setQ(e.target.value)}
             aria-label="Rechercher dans l'ensemble du journal d'audit (acteur, ressource, contenu du détail JSON)"
             aria-describedby="audit-search-hint"
           />
@@ -282,11 +289,10 @@ export default function AdminAuditPage() {
             Type d&apos;action
           </label>
           <Select
-            value={actionFilter}
-            onChange={(e) => {
-              setActionFilter(e.target.value);
-              setPage(1);
-            }}
+            value={t.filters.action ?? ""}
+            onChange={(e) =>
+              t.setFilter("action", (e.target.value || undefined) as ActionFilter | undefined)
+            }
             aria-label="Filtrer par type d'action"
           >
             {ACTION_OPTIONS.map((opt) => (
@@ -302,11 +308,8 @@ export default function AdminAuditPage() {
           </label>
           <Input
             type="date"
-            value={dateFrom}
-            onChange={(e) => {
-              setDateFrom(e.target.value);
-              setPage(1);
-            }}
+            value={t.filters.dateFrom ?? ""}
+            onChange={(e) => t.setFilter("dateFrom", e.target.value || undefined)}
             aria-label="Date de début"
           />
         </div>
@@ -316,11 +319,8 @@ export default function AdminAuditPage() {
           </label>
           <Input
             type="date"
-            value={dateTo}
-            onChange={(e) => {
-              setDateTo(e.target.value);
-              setPage(1);
-            }}
+            value={t.filters.dateTo ?? ""}
+            onChange={(e) => t.setFilter("dateTo", e.target.value || undefined)}
             aria-label="Date de fin"
           />
         </div>
@@ -345,7 +345,9 @@ export default function AdminAuditPage() {
           ) : timelineGroups.length === 0 ? (
             <Card>
               <CardContent className="p-6 text-center text-sm text-muted-foreground">
-                Aucune entrée sur cette période.
+                {hasActive
+                  ? "Aucun résultat — essayez d'élargir les filtres."
+                  : "Aucune entrée d'audit pour le moment."}
               </CardContent>
             </Card>
           ) : (
@@ -369,69 +371,43 @@ export default function AdminAuditPage() {
                       const resourceType = (log.resourceType as string) ?? "";
                       const resourceId = (log.resourceId as string) ?? "";
                       const url = getResourceUrl(resourceType, resourceId);
-                      // B5 closure — show a diff toggle on rows whose
-                      // `details` payload is structured. The toggle
-                      // is only rendered when there's something to
-                      // unfold, so simple events (e.g. `*.created`
-                      // with no details) don't get a useless caret.
-                      const details = log.details;
-                      const hasDetails =
-                        details != null &&
-                        typeof details === "object" &&
-                        Object.keys(details as Record<string, unknown>).length > 0;
-                      const rowKey = (log.id as string) ?? `${action}-${log.timestamp}`;
+                      const timestamp = (log.timestamp as string) ?? "";
+                      const detail = log.details as Record<string, unknown> | undefined;
+                      const style = getActionStyle(action);
                       return (
-                        <div key={rowKey} className="px-4 py-2.5 text-sm">
-                        <div
-                          className="flex flex-wrap items-center justify-between gap-3"
+                        <article
+                          key={(log.id as string) ?? `${actor}-${timestamp}`}
+                          className="flex flex-col gap-1 px-4 py-3 text-sm"
                         >
-                          <div className="flex items-center gap-2">
-                            <Badge variant={getActionStyle(action).variant}>{action}</Badge>
-                            <span className="text-muted-foreground">
-                              par{" "}
-                              <span className="text-foreground font-medium">{actor || "—"}</span>
-                            </span>
-                            {resourceType && (
+                          <header className="flex flex-wrap items-center gap-2">
+                            <Badge variant={style.variant}>{action}</Badge>
+                            <span className="font-medium text-foreground">{actor}</span>
+                            {url ? (
+                              <Link
+                                href={url}
+                                className="text-muted-foreground hover:text-foreground hover:underline"
+                              >
+                                {resourceType} ·{" "}
+                                <code className="font-mono text-[11px]">
+                                  {resourceId.slice(0, 12)}
+                                </code>
+                              </Link>
+                            ) : (
                               <span className="text-muted-foreground">
-                                sur{" "}
-                                {url ? (
-                                  <Link
-                                    href={url}
-                                    className="text-foreground font-medium hover:underline"
-                                  >
-                                    {resourceType} {resourceId.slice(0, 8)}
-                                  </Link>
-                                ) : (
-                                  <span className="text-foreground font-medium">
-                                    {resourceType} {resourceId.slice(0, 8)}
-                                  </span>
-                                )}
+                                {resourceType ? `${resourceType} · ` : ""}
+                                <code className="font-mono text-[11px]">
+                                  {resourceId.slice(0, 12)}
+                                </code>
                               </span>
                             )}
-                          </div>
-                          <time
-                            dateTime={log.timestamp as string}
-                            className="text-xs text-muted-foreground whitespace-nowrap"
-                          >
-                            {new Date(log.timestamp as string).toLocaleTimeString("fr-SN", {
-                              timeZone: "Africa/Dakar",
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })}
-                          </time>
-                        </div>
-                        {hasDetails && (
-                          <details className="mt-2 group">
-                            <summary className="cursor-pointer select-none text-[11px] font-medium text-muted-foreground hover:text-foreground">
-                              <span className="group-open:hidden">Voir le détail ▸</span>
-                              <span className="hidden group-open:inline">Masquer le détail ▾</span>
-                            </summary>
-                            <div className="mt-2">
-                              <AuditDiffView details={details} action={action} />
-                            </div>
-                          </details>
-                        )}
-                        </div>
+                            <span className="ml-auto text-xs text-muted-foreground">
+                              {timestamp ? formatDate(timestamp) : "—"}
+                            </span>
+                          </header>
+                          {detail && Object.keys(detail).length > 0 && (
+                            <AuditDiffView details={detail} />
+                          )}
+                        </article>
                       );
                     })}
                   </CardContent>
@@ -441,83 +417,58 @@ export default function AdminAuditPage() {
           )}
         </div>
       ) : (
-        /* Table */
         <Card>
           <CardContent className="p-0">
             <DataTable<Record<string, unknown>>
               aria-label="Journal d'audit"
-              emptyMessage="Aucune entrée trouvée"
-              responsiveCards
               loading={isLoading}
-              data={filteredLogs as Record<string, unknown>[]}
+              emptyMessage={
+                hasActive
+                  ? "Aucun résultat — essayez d'élargir les filtres."
+                  : "Aucune entrée d'audit pour le moment."
+              }
+              data={filteredLogs}
+              responsiveCards
               columns={
                 [
                   {
                     key: "action",
                     header: "Action",
                     primary: true,
-                    render: (log) => (
-                      <Badge variant={getActionStyle(log.action as string).variant}>
-                        {log.action as string}
-                      </Badge>
-                    ),
+                    render: (log) => {
+                      const action = (log.action as string) ?? "";
+                      const style = getActionStyle(action);
+                      return <Badge variant={style.variant}>{action}</Badge>;
+                    },
                   },
                   {
                     key: "actor",
                     header: "Acteur",
                     render: (log) => {
-                      // Prefer the denormalized actorDisplayName (T1.1); fall
-                      // back to the truncated actorId for historical rows
-                      // written before the denorm landed. Render the actorId
-                      // underneath in a muted font when both are present so
-                      // operators can still copy the raw UID from the UI.
-                      const displayName = log.actorDisplayName as string | null | undefined;
-                      const actorId = (log.actorId as string) ?? "";
-                      if (displayName) {
-                        return (
-                          <div className="flex flex-col">
-                            <span className="text-sm font-medium text-foreground">
-                              {displayName}
-                            </span>
-                            <code className="font-mono text-[10px] text-muted-foreground">
-                              {actorId.slice(0, 12)}
-                              {actorId.length > 12 ? "…" : ""}
-                            </code>
-                          </div>
-                        );
-                      }
-                      return (
-                        <span className="font-mono text-xs text-muted-foreground">
-                          {actorId.slice(0, 12)}
-                          {actorId.length > 12 ? "…" : ""}
-                        </span>
-                      );
+                      const actor =
+                        (log.actorDisplayName as string | null | undefined) ??
+                        (log.actorId as string | undefined) ??
+                        "";
+                      return <span className="font-medium text-foreground">{actor}</span>;
                     },
                   },
                   {
                     key: "resource",
                     header: "Ressource",
-                    hideOnMobile: true,
                     render: (log) => {
-                      const type = (log.resourceType as string) ?? "";
-                      const id = (log.resourceId as string) ?? "";
-                      const url = getResourceUrl(type, id);
+                      const resourceType = (log.resourceType as string) ?? "";
+                      const resourceId = (log.resourceId as string) ?? "";
+                      const url = getResourceUrl(resourceType, resourceId);
                       const label = (
                         <span className="text-muted-foreground">
-                          <span className="font-medium text-foreground">{type}</span>
-                          {id ? (
-                            <span className="ml-1 font-mono text-xs">
-                              {id.slice(0, 12)}
-                              {id.length > 12 ? "…" : ""}
-                            </span>
-                          ) : null}
+                          {resourceType ? `${resourceType} · ` : ""}
+                          <code className="font-mono text-[11px]">{resourceId.slice(0, 12)}</code>
                         </span>
                       );
                       return url ? (
                         <Link
                           href={url}
-                          className="hover:underline hover:text-teranga-gold"
-                          title={`Ouvrir ${type} ${id}`}
+                          className="text-muted-foreground hover:text-foreground hover:underline"
                         >
                           {label}
                         </Link>
@@ -543,15 +494,19 @@ export default function AdminAuditPage() {
       )}
 
       {/* Pagination */}
-      {!isLoading && meta.totalPages > 1 && (
-        <div className="flex items-center justify-between text-sm text-muted-foreground">
-          <span>
+      {!isLoading && meta.totalPages > 1 ? (
+        <nav
+          aria-label="Pagination du journal d'audit"
+          className="flex items-center justify-between text-sm text-muted-foreground"
+        >
+          <span aria-current="page">
             Page {meta.page} sur {meta.totalPages} ({meta.total} entrée{meta.total > 1 ? "s" : ""})
           </span>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={meta.page <= 1}
+              type="button"
+              onClick={() => t.setPage(Math.max(1, t.page - 1))}
+              disabled={t.page <= 1}
               className="inline-flex items-center gap-1 rounded-md border border-border bg-background px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
               aria-label="Page précédente"
             >
@@ -559,8 +514,9 @@ export default function AdminAuditPage() {
               Précédent
             </button>
             <button
-              onClick={() => setPage((p) => Math.min(meta.totalPages, p + 1))}
-              disabled={meta.page >= meta.totalPages}
+              type="button"
+              onClick={() => t.setPage(Math.min(meta.totalPages, t.page + 1))}
+              disabled={t.page >= meta.totalPages}
               className="inline-flex items-center gap-1 rounded-md border border-border bg-background px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
               aria-label="Page suivante"
             >
@@ -568,8 +524,8 @@ export default function AdminAuditPage() {
               <ChevronRight className="h-4 w-4" />
             </button>
           </div>
-        </div>
-      )}
+        </nav>
+      ) : null}
     </div>
   );
 }
