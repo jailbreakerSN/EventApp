@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useDebouncedValue } from "@/hooks/use-debounced-value";
+import { parseAsString } from "nuqs";
 import { normalizeFr } from "@teranga/shared-types";
 import Link from "next/link";
 import type { EventCategory } from "@teranga/shared-types";
 import { useEvents } from "@/hooks/use-events";
+import { useTableState } from "@/hooks/use-table-state";
 import { formatDate } from "@/lib/utils";
 import { getEventStatusLabel } from "@/lib/event-status";
 import { HealthBadgeMini } from "@/components/event-health/HealthBadgeMini";
@@ -18,11 +18,11 @@ import {
   EmptyState,
   DataTable,
   type DataTableColumn,
+  ResultCount,
+  PageSizeSelector,
 } from "@teranga/shared-ui";
 
 // Must match EventCategorySchema in packages/shared-types/src/event.types.ts
-// — any mismatch would send an invalid filter to /v1/events/org/:orgId now
-// that filtering is server-side (the API rejects with 422).
 const CATEGORY_OPTIONS = [
   { value: "", label: "Toutes les catégories" },
   { value: "conference", label: "Conférence" },
@@ -37,26 +37,22 @@ const CATEGORY_OPTIONS = [
   { value: "other", label: "Autre" },
 ];
 
-export default function EventsPage() {
-  const [search, setSearch] = useState("");
-  const debouncedSearch = useDebouncedValue(search, 300);
-  const [category, setCategory] = useState("");
-  const [page, setPage] = useState(1);
-  const limit = 10;
+const SORTABLE_FIELDS = ["startDate", "createdAt", "title"] as const;
 
-  // Reset to page 1 when filters change so the user is never stranded on a
-  // page that the new filter set doesn't reach.
-  useEffect(() => {
-    setPage(1);
-  }, [debouncedSearch, category]);
+export default function EventsPage() {
+  const t = useTableState<{ category?: string }>({
+    urlNamespace: "events",
+    defaults: { sort: { field: "startDate", dir: "desc" }, pageSize: 25 },
+    sortableFields: SORTABLE_FIELDS,
+    filterParsers: { category: parseAsString },
+  });
 
   const { data, isLoading, isError, refetch } = useEvents({
-    page,
-    limit,
-    // Category is filtered server-side now — client-side filtering silently
-    // dropped matches on later pages (Firestore paginated `limit` results
-    // before the filter ran).
-    category: (category || undefined) as EventCategory | undefined,
+    page: t.page,
+    limit: t.pageSize,
+    category: (t.filters.category || undefined) as EventCategory | undefined,
+    orderBy: t.sort?.field,
+    orderDir: t.sort?.dir,
   });
 
   const allEvents = data?.data ?? [];
@@ -64,15 +60,17 @@ export default function EventsPage() {
   const totalPages = meta?.totalPages ?? 1;
 
   // Title search stays client-side per the doctrine for organiser-scoped
-  // event listings: bounded cardinality (≤ plan max), and the per-page
-  // result set is already small. Substring match is normalizeFr-folded so
-  // "senegal" matches "Sénégal". This page will graduate to a server-side
-  // searchKeywords[] query when the org-events listByOrganization endpoint
-  // gets the same treatment as public /events (P2).
-  const normalizedNeedle = debouncedSearch ? normalizeFr(debouncedSearch) : "";
+  // event listings: bounded cardinality, per-page substring is acceptable,
+  // and the participant /events page already covers cross-org full-text
+  // via searchKeywords[]. normalizeFr matches behaviour ("senegal" vs
+  // "Sénégal") with the rest of the platform. P2 graduates this to a
+  // server-side searchKeywords query alongside the orgEvents endpoint.
+  const normalizedNeedle = t.debouncedQ ? normalizeFr(t.debouncedQ) : "";
   const events = normalizedNeedle
     ? allEvents.filter((event) => normalizeFr(event.title).includes(normalizedNeedle))
     : allEvents;
+
+  const hasActiveFilter = t.activeFilterCount > 0 || !!t.q;
 
   return (
     <div>
@@ -87,36 +85,52 @@ export default function EventsPage() {
         </Link>
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-col sm:flex-row gap-3 mb-6">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <input
-            type="text"
-            placeholder="Rechercher un événement..."
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              setPage(1);
-            }}
-            aria-label="Rechercher un événement"
-            className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
-          />
+      {/* Filters — wired through useTableState (URL-persistent). */}
+      <div className="space-y-3 mb-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="relative flex-1 max-w-md">
+            <Search
+              className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none"
+              aria-hidden="true"
+            />
+            <input
+              type="search"
+              role="searchbox"
+              placeholder="Rechercher un événement..."
+              value={t.q}
+              onChange={(e) => t.setQ(e.target.value)}
+              aria-label="Rechercher un événement"
+              className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-border text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary"
+            />
+          </div>
+          <div className="flex items-center gap-3 shrink-0">
+            <ResultCount total={meta?.total} loading={isLoading} />
+            <PageSizeSelector value={t.pageSize} onChange={t.setPageSize} />
+          </div>
         </div>
-        <Select
-          value={category}
-          onChange={(e) => {
-            setCategory(e.target.value);
-            setPage(1);
-          }}
-          aria-label="Filtrer par catégorie"
-        >
-          {CATEGORY_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label}
-            </option>
-          ))}
-        </Select>
+
+        <div className="flex flex-wrap items-center gap-3">
+          <Select
+            value={t.filters.category ?? ""}
+            onChange={(e) => t.setFilter("category", e.target.value || undefined)}
+            aria-label="Filtrer par catégorie"
+          >
+            {CATEGORY_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </Select>
+          {hasActiveFilter ? (
+            <button
+              type="button"
+              onClick={t.reset}
+              className="text-sm text-muted-foreground hover:text-foreground underline-offset-4 hover:underline"
+            >
+              Tout effacer
+            </button>
+          ) : null}
+        </div>
       </div>
 
       {/* Content */}
@@ -124,11 +138,20 @@ export default function EventsPage() {
         <QueryError onRetry={refetch} />
       ) : !isLoading && events.length === 0 ? (
         <div className="bg-card rounded-xl border border-border">
-          {search || category ? (
+          {hasActiveFilter ? (
             <EmptyState
               icon={Search}
-              title="Aucun événement trouvé"
+              title="Aucun résultat"
               description="Aucun événement ne correspond à vos filtres. Essayez d'élargir votre recherche."
+              action={
+                <button
+                  type="button"
+                  onClick={t.reset}
+                  className="text-sm font-medium text-primary hover:underline"
+                >
+                  Effacer les filtres
+                </button>
+              }
             />
           ) : (
             <EmptyState
@@ -154,12 +177,16 @@ export default function EventsPage() {
             responsiveCards
             loading={isLoading}
             data={events as ((typeof events)[number] & Record<string, unknown>)[]}
+            sort={t.sort}
+            onToggleSort={t.toggleSort}
             columns={
               [
                 {
                   key: "title",
                   header: "Événement",
                   primary: true,
+                  sortable: true,
+                  sortField: "title",
                   render: (event) => (
                     <span className="font-medium text-foreground max-w-[250px] truncate inline-block">
                       {event.title}
@@ -169,6 +196,8 @@ export default function EventsPage() {
                 {
                   key: "startDate",
                   header: "Date",
+                  sortable: true,
+                  sortField: "startDate",
                   render: (event) => (
                     <span className="inline-flex items-center gap-1.5 text-muted-foreground whitespace-nowrap">
                       <Calendar className="h-3.5 w-3.5" />
@@ -234,6 +263,7 @@ export default function EventsPage() {
                 {
                   key: "actions",
                   header: "Actions",
+                  stopRowNavigation: true,
                   render: (event) => (
                     <Link
                       href={`/events/${event.id}`}
@@ -248,27 +278,29 @@ export default function EventsPage() {
           />
 
           {/* Pagination */}
-          {totalPages > 1 && (
+          {totalPages > 1 ? (
             <nav
               className="flex items-center justify-between mt-4 text-sm text-muted-foreground"
-              aria-label="Pagination"
+              aria-label="Pagination des événements"
             >
               <span aria-current="page">
-                Page {page} sur {totalPages} ({meta?.total ?? 0} résultat
+                Page {t.page} sur {totalPages} ({meta?.total ?? 0} résultat
                 {(meta?.total ?? 0) > 1 ? "s" : ""})
               </span>
               <div className="flex gap-2">
                 <button
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  disabled={page <= 1}
+                  type="button"
+                  onClick={() => t.setPage(Math.max(1, t.page - 1))}
+                  disabled={t.page <= 1}
                   aria-label="Page précédente"
                   className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-border hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed"
                 >
                   <ChevronLeft className="h-4 w-4" aria-hidden="true" /> Précédent
                 </button>
                 <button
-                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={page >= totalPages}
+                  type="button"
+                  onClick={() => t.setPage(Math.min(totalPages, t.page + 1))}
+                  disabled={t.page >= totalPages}
                   aria-label="Page suivante"
                   className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg border border-border hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed"
                 >
@@ -276,7 +308,7 @@ export default function EventsPage() {
                 </button>
               </div>
             </nav>
-          )}
+          ) : null}
         </>
       )}
     </div>
