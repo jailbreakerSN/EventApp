@@ -48,6 +48,12 @@ const KNOWN_SUB_LABELS: Record<string, string> = {
   payments: "Paiements",
   edit: "Modifier",
   new: "Nouveau",
+  // Phase O4 — top-level event sections.
+  overview: "Vue d'ensemble",
+  configuration: "Configuration",
+  audience: "Audience",
+  operations: "Opérations",
+  infos: "Infos",
 };
 
 export function humaniseSubSection(segment: string): string {
