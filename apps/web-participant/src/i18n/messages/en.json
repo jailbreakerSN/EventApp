@@ -1191,5 +1191,12 @@
       "androidCta": "Install",
       "closeDialog": "Close"
     }
+  },
+  "cookieConsent": {
+    "title": "Your privacy preferences",
+    "body": "Teranga uses analytics and error-tracking cookies to improve the platform. No advertising cookies. You can accept or decline at any time.",
+    "privacyLink": "Learn more",
+    "accept": "Accept",
+    "reject": "Decline"
   }
 }

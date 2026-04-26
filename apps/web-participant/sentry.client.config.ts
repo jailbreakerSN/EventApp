@@ -19,7 +19,21 @@ import { setErrorReporter } from "@teranga/shared-types";
 
 const dsn = process.env.NEXT_PUBLIC_SENTRY_DSN;
 
-if (dsn) {
+// W10-P6 / L4 — Senegal Loi 2008-12 + GDPR alignment. Sentry is
+// observability tracking + (eventually) session replay; we treat it
+// as a non-essential cookie and gate init on user consent. The
+// CookieConsentBanner persists the choice in localStorage under
+// `teranga_cookie_consent_v1`; if it's absent or "rejected", we hold
+// off on init. The consent banner broadcasts a `teranga:cookie-
+// consent` CustomEvent on accept so we can lazily init without a
+// page reload.
+function hasCookieConsent(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.localStorage.getItem("teranga_cookie_consent_v1") === "accepted";
+}
+
+function init() {
+  if (!dsn) return;
   Sentry.init({
     dsn,
     environment: process.env.NEXT_PUBLIC_VERCEL_ENV ?? process.env.NODE_ENV,
@@ -54,4 +68,22 @@ if (dsn) {
       Sentry.captureException(error);
     });
   });
+}
+
+if (typeof window !== "undefined" && dsn) {
+  if (hasCookieConsent()) {
+    init();
+  } else {
+    // Lazy-init on user consent so the SDK never loads for users who
+    // declined. The banner dispatches `teranga:cookie-consent` with
+    // detail = "accepted" | "rejected" — we only act on accept.
+    const onConsent = (event: Event) => {
+      const detail = (event as CustomEvent<string>).detail;
+      if (detail === "accepted") {
+        init();
+        window.removeEventListener("teranga:cookie-consent", onConsent);
+      }
+    };
+    window.addEventListener("teranga:cookie-consent", onConsent);
+  }
 }
