@@ -9,6 +9,7 @@ import {
 import { db } from "@/config/firebase";
 import { NotFoundError } from "@/errors/app-error";
 import { trackFirestoreReads } from "@/context/request-context";
+import { withSpan } from "@/observability/sentry";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -60,10 +61,12 @@ export class BaseRepository<T extends { id: string }> {
   // explicitly — see `admin.repository.ts` and the inline routes.
 
   async findById(id: string): Promise<T | null> {
-    const doc = await this.collection.doc(id).get();
-    trackFirestoreReads(1);
-    if (!doc.exists) return null;
-    return { id: doc.id, ...doc.data() } as T;
+    return withSpan({ op: "db.firestore", name: `${this.resourceName}.findById` }, async () => {
+      const doc = await this.collection.doc(id).get();
+      trackFirestoreReads(1);
+      if (!doc.exists) return null;
+      return { id: doc.id, ...doc.data() } as T;
+    });
   }
 
   async findByIdOrThrow(id: string): Promise<T> {
@@ -76,57 +79,60 @@ export class BaseRepository<T extends { id: string }> {
     filters: WhereClause[] = [],
     pagination?: PaginationParams,
   ): Promise<PaginatedResult<T>> {
-    const { page = 1, limit = 20, orderBy = "createdAt", orderDir = "desc" } = pagination ?? {};
+    return withSpan({ op: "db.firestore", name: `${this.resourceName}.findMany` }, async () => {
+      const { page = 1, limit = 20, orderBy = "createdAt", orderDir = "desc" } = pagination ?? {};
 
-    let query: Query<DocumentData> = this.collection;
+      let query: Query<DocumentData> = this.collection;
 
-    // Apply where filters
-    for (const filter of filters) {
-      query = query.where(filter.field, filter.op, filter.value);
-    }
+      for (const filter of filters) {
+        query = query.where(filter.field, filter.op, filter.value);
+      }
 
-    // Count total (for pagination meta)
-    const countSnap = await query.count().get();
-    trackFirestoreReads(1); // aggregate count() = 1 read
-    const total = countSnap.data().count;
+      const countSnap = await query.count().get();
+      trackFirestoreReads(1); // aggregate count() = 1 read
+      const total = countSnap.data().count;
 
-    // Apply ordering and pagination
-    query = query
-      .orderBy(orderBy, orderDir)
-      .offset((page - 1) * limit)
-      .limit(limit);
+      query = query
+        .orderBy(orderBy, orderDir)
+        .offset((page - 1) * limit)
+        .limit(limit);
 
-    const snapshot = await query.get();
-    trackFirestoreReads(snapshot.size);
-    const data = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }) as T);
+      const snapshot = await query.get();
+      trackFirestoreReads(snapshot.size);
+      const data = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }) as T);
 
-    return {
-      data,
-      meta: {
-        page,
-        limit,
-        total,
-        totalPages: Math.ceil(total / limit),
-      },
-    };
+      return {
+        data,
+        meta: {
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit),
+        },
+      };
+    });
   }
 
   async findOne(filters: WhereClause[]): Promise<T | null> {
-    let query: Query<DocumentData> = this.collection;
-    for (const filter of filters) {
-      query = query.where(filter.field, filter.op, filter.value);
-    }
-    const snapshot = await query.limit(1).get();
-    trackFirestoreReads(snapshot.size || 1); // empty result still bills 1
-    if (snapshot.empty) return null;
-    const doc = snapshot.docs[0];
-    return { id: doc.id, ...doc.data() } as T;
+    return withSpan({ op: "db.firestore", name: `${this.resourceName}.findOne` }, async () => {
+      let query: Query<DocumentData> = this.collection;
+      for (const filter of filters) {
+        query = query.where(filter.field, filter.op, filter.value);
+      }
+      const snapshot = await query.limit(1).get();
+      trackFirestoreReads(snapshot.size || 1); // empty result still bills 1
+      if (snapshot.empty) return null;
+      const doc = snapshot.docs[0];
+      return { id: doc.id, ...doc.data() } as T;
+    });
   }
 
   async exists(id: string): Promise<boolean> {
-    const doc = await this.collection.doc(id).get();
-    trackFirestoreReads(1);
-    return doc.exists;
+    return withSpan({ op: "db.firestore", name: `${this.resourceName}.exists` }, async () => {
+      const doc = await this.collection.doc(id).get();
+      trackFirestoreReads(1);
+      return doc.exists;
+    });
   }
 
   // ── Write ─────────────────────────────────────────────────────────────
@@ -134,53 +140,61 @@ export class BaseRepository<T extends { id: string }> {
   async create(
     data: Omit<T, "id" | "createdAt" | "updatedAt"> & Record<string, unknown>,
   ): Promise<T> {
-    const now = new Date().toISOString();
-    const docRef = this.collection.doc();
-    const document = {
-      ...data,
-      id: docRef.id,
-      createdAt: now,
-      updatedAt: now,
-    };
-    await docRef.set(document);
-    return document as unknown as T;
+    return withSpan({ op: "db.firestore", name: `${this.resourceName}.create` }, async () => {
+      const now = new Date().toISOString();
+      const docRef = this.collection.doc();
+      const document = {
+        ...data,
+        id: docRef.id,
+        createdAt: now,
+        updatedAt: now,
+      };
+      await docRef.set(document);
+      return document as unknown as T;
+    });
   }
 
   async createWithId(
     id: string,
     data: Omit<T, "id" | "createdAt" | "updatedAt"> & Record<string, unknown>,
   ): Promise<T> {
-    const now = new Date().toISOString();
-    const docRef = this.collection.doc(id);
-    const document = {
-      ...data,
-      id,
-      createdAt: now,
-      updatedAt: now,
-    };
-    await docRef.set(document);
-    return document as unknown as T;
+    return withSpan({ op: "db.firestore", name: `${this.resourceName}.createWithId` }, async () => {
+      const now = new Date().toISOString();
+      const docRef = this.collection.doc(id);
+      const document = {
+        ...data,
+        id,
+        createdAt: now,
+        updatedAt: now,
+      };
+      await docRef.set(document);
+      return document as unknown as T;
+    });
   }
 
   async update(id: string, data: Partial<T> & Record<string, unknown>): Promise<void> {
-    const docRef = this.collection.doc(id);
-    const doc = await docRef.get();
-    if (!doc.exists) throw new NotFoundError(this.resourceName, id);
+    return withSpan({ op: "db.firestore", name: `${this.resourceName}.update` }, async () => {
+      const docRef = this.collection.doc(id);
+      const doc = await docRef.get();
+      if (!doc.exists) throw new NotFoundError(this.resourceName, id);
 
-    await docRef.update({
-      ...data,
-      updatedAt: new Date().toISOString(),
+      await docRef.update({
+        ...data,
+        updatedAt: new Date().toISOString(),
+      });
     });
   }
 
   async softDelete(id: string, statusField = "status", statusValue = "archived"): Promise<void> {
-    const docRef = this.collection.doc(id);
-    const doc = await docRef.get();
-    if (!doc.exists) throw new NotFoundError(this.resourceName, id);
+    return withSpan({ op: "db.firestore", name: `${this.resourceName}.softDelete` }, async () => {
+      const docRef = this.collection.doc(id);
+      const doc = await docRef.get();
+      if (!doc.exists) throw new NotFoundError(this.resourceName, id);
 
-    await docRef.update({
-      [statusField]: statusValue,
-      updatedAt: new Date().toISOString(),
+      await docRef.update({
+        [statusField]: statusValue,
+        updatedAt: new Date().toISOString(),
+      });
     });
   }
 
@@ -214,9 +228,11 @@ export class BaseRepository<T extends { id: string }> {
   }
 
   async increment(id: string, field: string, amount = 1): Promise<void> {
-    await this.collection.doc(id).update({
-      [field]: FieldValue.increment(amount),
-      updatedAt: new Date().toISOString(),
+    return withSpan({ op: "db.firestore", name: `${this.resourceName}.increment` }, async () => {
+      await this.collection.doc(id).update({
+        [field]: FieldValue.increment(amount),
+        updatedAt: new Date().toISOString(),
+      });
     });
   }
 
@@ -225,21 +241,23 @@ export class BaseRepository<T extends { id: string }> {
   async batchGet(ids: string[]): Promise<T[]> {
     if (ids.length === 0) return [];
 
-    // Firestore getAll has a limit of 100 docs
-    const results: T[] = [];
-    const chunks = chunkArray(ids, 100);
+    return withSpan({ op: "db.firestore", name: `${this.resourceName}.batchGet` }, async () => {
+      // Firestore getAll has a limit of 100 docs
+      const results: T[] = [];
+      const chunks = chunkArray(ids, 100);
 
-    for (const chunk of chunks) {
-      const refs = chunk.map((id) => this.collection.doc(id));
-      const docs = await db.getAll(...refs);
-      for (const doc of docs) {
-        if (doc.exists) {
-          results.push({ id: doc.id, ...doc.data() } as T);
+      for (const chunk of chunks) {
+        const refs = chunk.map((id) => this.collection.doc(id));
+        const docs = await db.getAll(...refs);
+        for (const doc of docs) {
+          if (doc.exists) {
+            results.push({ id: doc.id, ...doc.data() } as T);
+          }
         }
       }
-    }
 
-    return results;
+      return results;
+    });
   }
 
   // ── Raw access (for complex queries in specific repositories) ─────────

@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 import path from "path";
 import createNextIntlPlugin from "next-intl/plugin";
+import { withSentryConfig } from "@sentry/nextjs";
 
 const withNextIntl = createNextIntlPlugin("./src/i18n/request.ts");
 
@@ -70,4 +71,25 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default withNextIntl(nextConfig);
+// Wave 10 / W10-P1 — Sentry instrumentation. `withSentryConfig` wraps
+// the Next config so the SDK auto-injects browser + server tracing
+// without manual `instrumentation.ts` boilerplate. When `SENTRY_DSN`
+// is unset the SDK still wraps but stays silent (init no-ops). The
+// auth-token / org / project fields are read from env at build time
+// for source-map upload — falling back to a no-op release when unset
+// so non-prod builds don't fail when Sentry credentials are missing.
+const sentryWebpackPluginOptions = {
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT_BACKOFFICE ?? "teranga-web-backoffice",
+  authToken: process.env.SENTRY_AUTH_TOKEN,
+  silent: !process.env.CI,
+  // Don't fail the build when source-map upload fails (e.g. missing
+  // auth token in a sandbox build) — the runtime SDK still works.
+  errorHandler: () => undefined,
+  // Hide the inner instrumentation from public stack traces.
+  hideSourceMaps: true,
+  disableLogger: true,
+  // Wave 10 follow-up: enable widenClientFileUpload for full coverage.
+};
+
+export default withSentryConfig(withNextIntl(nextConfig), sentryWebpackPluginOptions);

@@ -16,7 +16,7 @@ import { registerSocAlertListeners } from "@/events/listeners/soc-alert.listener
 import { flushFirestoreUsage } from "@/services/firestore-usage.service";
 import { registerEffectivePlanListeners } from "@/events/listeners/effective-plan.listener";
 import { registerEventDenormListeners } from "@/events/listeners/event-denorm.listener";
-import { captureError } from "@/observability/sentry";
+import { captureError, setSentryUser } from "@/observability/sentry";
 // Side-effect import: registers the email channel adapter on the
 // NotificationDispatcherService so catalog-driven sends work out of the
 // box. No exported bindings used here; the import statement is the wiring.
@@ -26,10 +26,87 @@ import "@/services/email/dispatcher-adapter";
 // sends require this to land before the first dispatch fires.
 import "@/services/notifications/channels/in-app.channel";
 
+// ─── Pino redact paths (Wave 10 / W10-P1) ────────────────────────────────
+// Pino walks each log object and substitutes any field at one of these
+// paths with the censor string before writing. Covered surfaces:
+//   - Request headers (Authorization, Cookie) — Firebase ID tokens, Org
+//     API keys, SSO cookies. Leaking these into Cloud Logging would let
+//     anyone with log-viewer IAM impersonate any caller.
+//   - Response Set-Cookie — symmetrical guard for upstream-set sessions.
+//   - PayDunya IPN body (`req.body.data`) — provider-encoded JSON
+//     blob carrying customer email + payment metadata. Webhook routes
+//     legitimately log the body for observability; redaction is the
+//     only way to keep IPNs out of Cloud Logging in plaintext.
+//   - Webhook signatures (`*.signature`, `*.token`) — anti-replay tokens
+//     and HMAC inputs that an attacker with log access could re-use
+//     during the (short) signature validity window.
+//   - PII keys (email, phoneNumber, *.email, *.phoneNumber) — Senegal
+//     Loi 2008-12 + GDPR alignment. Audit log details writes already
+//     carry this rule (see `redactPiiFromDetails`); this is the
+//     defense-in-depth layer for free-form `request.log.info({ user })`
+//     calls that bypass the audit listener.
+//   - Payment provider raw response (`*.paymentToken`, `*.cardNumber`,
+//     `*.cvv`) — should never be in the codebase but the redact is a
+//     belt-and-braces.
+//
+// The list uses Pino's wildcard `*.foo` syntax (matches one level under
+// any object). Top-level paths are exact. Add new paths conservatively
+// — over-redacting is fine; under-redacting is a security incident.
+export const PINO_REDACT_PATHS = [
+  // Request headers
+  "req.headers.authorization",
+  "req.headers.cookie",
+  "req.headers['x-api-key']",
+  "request.headers.authorization",
+  "request.headers.cookie",
+  "headers.authorization",
+  "headers.cookie",
+  // Response cookies
+  'res.headers["set-cookie"]',
+  'response.headers["set-cookie"]',
+  // Webhook bodies
+  "req.body.data",
+  "req.body.password",
+  "req.body.token",
+  "req.body.signature",
+  "request.body.data",
+  "request.body.password",
+  "request.body.token",
+  "request.body.signature",
+  "body.password",
+  "body.token",
+  "body.signature",
+  // PII keys (top-level and one-level nested)
+  "email",
+  "phoneNumber",
+  "phone",
+  "*.email",
+  "*.phoneNumber",
+  "*.phone",
+  "*.recipientEmail",
+  "*.recipientPhone",
+  // Payment surface
+  "*.paymentToken",
+  "*.cardNumber",
+  "*.cvv",
+  "*.pan",
+  // Auth surface
+  "*.idToken",
+  "*.refreshToken",
+  "*.accessToken",
+  "*.apiKey",
+  "*.apiSecret",
+  "*.hmacSecret",
+];
+
 export async function buildApp() {
   const app = Fastify({
     logger: {
       level: config.LOG_LEVEL,
+      redact: {
+        paths: PINO_REDACT_PATHS,
+        censor: "[REDACTED]",
+      },
       transport:
         config.NODE_ENV === "development"
           ? { target: "pino-pretty", options: { colorize: true } }
@@ -124,10 +201,18 @@ export async function buildApp() {
     );
   });
 
-  // Enrich context with user info after authentication middleware runs
+  // Enrich context with user info after authentication middleware runs.
+  // W10-P1 — also push the user onto Sentry's scope so any
+  // `captureException` fired downstream this request is attributed to
+  // the caller. `sendDefaultPii: false` is set globally, so only the
+  // uid is sent to Sentry — never the email.
   app.addHook("preHandler", (request, _reply, done) => {
     if (request.user) {
       enrichContext(request.user.uid, request.user.organizationId);
+      setSentryUser({
+        uid: request.user.uid,
+        organizationId: request.user.organizationId ?? null,
+      });
     }
     done();
   });

@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 import path from "path";
 import createNextIntlPlugin from "next-intl/plugin";
+import { withSentryConfig } from "@sentry/nextjs";
 
 const withNextIntl = createNextIntlPlugin("./src/i18n/request.ts");
 
@@ -65,4 +66,18 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default withNextIntl(nextConfig);
+// Wave 10 / W10-P1 — Sentry instrumentation. Same wrapper posture as
+// web-backoffice. The participant app is the public funnel; Web
+// Vitals capture is its primary observability use case (SEO + UX
+// metrics on flaky African networks).
+const sentryWebpackPluginOptions = {
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT_PARTICIPANT ?? "teranga-web-participant",
+  authToken: process.env.SENTRY_AUTH_TOKEN,
+  silent: !process.env.CI,
+  errorHandler: () => undefined,
+  hideSourceMaps: true,
+  disableLogger: true,
+};
+
+export default withSentryConfig(withNextIntl(nextConfig), sentryWebpackPluginOptions);

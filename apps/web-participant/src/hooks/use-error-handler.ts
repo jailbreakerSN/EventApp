@@ -42,9 +42,12 @@ export interface ResolvedError {
  *     else resolved.toast();
  *   }
  *
- * In Phase 3 this hook also reports every resolved error to Sentry with
- * `error.code` as a tag. Intentionally not wired here yet — Phase 3 adds
- * the `onReport` callback and the Sentry import.
+ * Wave 10 / W10-P1 — every resolved error reaches Sentry via the
+ * `setErrorReporter` slot wired in `sentry.client.config.ts`. The
+ * Sentry-bound reporter tags each event with `error.code`,
+ * `error.reason`, and `error.status` so the issue stream filters
+ * cleanly by error class instead of stack signature. The reporter
+ * slot is no-op when `NEXT_PUBLIC_SENTRY_DSN` is unset (local dev).
  */
 export function useErrorHandler() {
   const tErrors = useTranslations("errors");

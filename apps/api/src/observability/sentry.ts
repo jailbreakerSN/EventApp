@@ -58,3 +58,73 @@ export async function closeSentry(timeoutMs = 2000): Promise<void> {
 export function isSentryEnabled(): boolean {
   return initialized;
 }
+
+/**
+ * W10-P1 — outbound dependency tracing.
+ *
+ * Wraps a callback in a Sentry span so the operation shows up as a
+ * child of the parent request transaction in distributed traces. We
+ * use this for Firestore reads (the dominant latency source) and for
+ * outbound HTTP that v8's auto-instrumentation can't see (e.g. wrapped
+ * helpers, channel adapters, PDF generation).
+ *
+ * When Sentry isn't initialized OR no parent transaction exists, the
+ * callback runs unchanged — no overhead, no broken traces.
+ *
+ * Usage:
+ *
+ *     return withSpan({ op: "db.firestore", name: "events.findById" }, async () => {
+ *       return docRef.get();
+ *     });
+ *
+ * Conventions for `op`:
+ *   - "db.firestore"  — any Firestore operation
+ *   - "http.client"   — outbound HTTP we wrap manually
+ *   - "channel.send"  — notification dispatcher channel adapters
+ *   - "pdf.render"    — pdf-lib + canvas badge / receipt rendering
+ *
+ * Conventions for `name`:
+ *   - "<resource>.<verb>" — `events.findById`, `users.batchGet`, etc.
+ */
+type SpanAttribute = string | number | boolean;
+
+export async function withSpan<T>(
+  options: { op: string; name: string; data?: Record<string, SpanAttribute> },
+  callback: () => Promise<T>,
+): Promise<T> {
+  if (!initialized) return callback();
+  return Sentry.startSpan(
+    { op: options.op, name: options.name, attributes: options.data },
+    async () => callback(),
+  );
+}
+
+/**
+ * Set the current request's user context on Sentry's scope so future
+ * `captureException` calls within this request are attributed to the
+ * caller. Wired from the auth middleware after token verification.
+ *
+ * Cross-tenant safety
+ * ───────────────────
+ * Cloud Run handles many concurrent requests in a single Node process.
+ * Writing via `Sentry.setUser()` / `Sentry.setTag()` would land on the
+ * GLOBAL scope and bleed between concurrent requests — Request A's
+ * `organizationId` could end up tagging Request B's exception.
+ *
+ * Instead we write to `Sentry.getIsolationScope()` which Sentry's
+ * httpIntegration scopes per-async-context (per HTTP request). Each
+ * incoming Fastify request gets its own isolation scope at handler
+ * entry, so user + org attribution stays request-local.
+ *
+ * `sendDefaultPii: false` is set globally — only the uid is sent,
+ * never the email or IP. Override per-deploy via env if PII
+ * attribution is needed for debugging.
+ */
+export function setSentryUser(user: { uid: string; organizationId?: string | null }): void {
+  if (!initialized) return;
+  const scope = Sentry.getIsolationScope();
+  scope.setUser({ id: user.uid });
+  if (user.organizationId) {
+    scope.setTag("organizationId", user.organizationId);
+  }
+}
