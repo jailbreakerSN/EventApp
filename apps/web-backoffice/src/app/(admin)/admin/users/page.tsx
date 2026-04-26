@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
+import { parseAsString } from "nuqs";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -10,8 +11,8 @@ import {
   useUpdateUserStatus,
 } from "@/hooks/use-admin";
 import { useBulkSelection } from "@/hooks/use-bulk-selection";
-import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { useRowKeyboardNav } from "@/hooks/use-row-keyboard-nav";
+import { useTableState } from "@/hooks/use-table-state";
 import { BulkActionBar } from "@/components/admin/bulk-action-bar";
 import { SavedViewsBar } from "@/components/admin/saved-views-bar";
 import { toast } from "sonner";
@@ -30,6 +31,8 @@ import {
   BreadcrumbSeparator,
   DataTable,
   type DataTableColumn,
+  ResultCount,
+  PageSizeSelector,
 } from "@teranga/shared-ui";
 import { Users, Shield, Search, Ban, CheckCircle, AlertTriangle } from "lucide-react";
 import type { AdminUserRow } from "@teranga/shared-types";
@@ -208,31 +211,36 @@ function RoleEditor({
 
 // ─── Page ───────────────────────────────────────────────────────────────────
 
+type UsersFilters = { role?: string };
+
+const SORTABLE_FIELDS = ["createdAt", "displayName", "email"] as const;
+
 export default function AdminUsersPage() {
   const tCommon = useTranslations("common");
   void tCommon;
   const router = useRouter();
-  const [search, setSearch] = useState("");
-  const debouncedSearch = useDebouncedValue(search, 300);
-  const [roleFilter, setRoleFilter] = useState("");
-  const [page, setPage] = useState(1);
-  const limit = 20;
 
-  // Reset to page 1 when the debounced query changes — otherwise the user
-  // could land on page 4 of an old result set with a new query string.
-  useEffect(() => {
-    setPage(1);
-  }, [debouncedSearch, roleFilter]);
+  // P1.7 — useTableState owns the URL state for q/role/sort/page/pageSize.
+  // No more local useState bookkeeping; refresh reproduces the view exactly,
+  // and a Slack-shared URL lands the recipient on the same filtered set.
+  const t = useTableState<UsersFilters>({
+    urlNamespace: "users",
+    defaults: { sort: { field: "createdAt", dir: "desc" }, pageSize: 25 },
+    sortableFields: SORTABLE_FIELDS,
+    filterParsers: { role: parseAsString },
+  });
 
   const { data, isLoading } = useAdminUsers({
-    q: debouncedSearch || undefined,
-    role: roleFilter || undefined,
-    page,
-    limit,
+    q: t.debouncedQ || undefined,
+    role: t.filters.role || undefined,
+    page: t.page,
+    limit: t.pageSize,
+    orderBy: t.sort?.field as "createdAt" | "displayName" | "email" | undefined,
+    orderDir: t.sort?.dir,
   });
 
   const users: AdminUserRow[] = data?.data ?? [];
-  const meta = data?.meta ?? { page: 1, limit, total: 0, totalPages: 1 };
+  const meta = data?.meta ?? { page: 1, limit: t.pageSize, total: 0, totalPages: 1 };
 
   // B2 — row keyboard nav (j/k/Enter/Esc/Home/End). The hook is
   // idempotent on `items.length` change so we don't need to reset
@@ -334,40 +342,60 @@ export default function AdminUsersPage() {
       {/* T3.2 — Saved views chip bar. */}
       <SavedViewsBar surfaceKey="admin-users" />
 
-      {/* Search + Filters */}
-      <div className="space-y-4">
-        <div className="relative max-w-md">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="Rechercher par nom ou email..."
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              setPage(1);
-            }}
-            className="pl-9"
-            aria-label="Rechercher des utilisateurs"
-          />
+      {/* Search + Filters — wired through useTableState (URL-persistent). */}
+      <div className="space-y-3">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div className="relative max-w-md flex-1">
+            <Search
+              className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground pointer-events-none"
+              aria-hidden="true"
+            />
+            <Input
+              type="search"
+              role="searchbox"
+              placeholder="Rechercher par nom ou email..."
+              value={t.q}
+              onChange={(e) => t.setQ(e.target.value)}
+              className="pl-9"
+              aria-label="Rechercher des utilisateurs"
+            />
+          </div>
+          <div className="flex items-center gap-3 shrink-0">
+            <ResultCount total={meta.total} loading={isLoading} />
+            <PageSizeSelector value={t.pageSize} onChange={t.setPageSize} />
+          </div>
         </div>
 
         <div className="flex flex-wrap gap-2" role="group" aria-label="Filtrer par role">
-          {ROLE_FILTERS.map((rf) => (
-            <button
-              key={rf.value}
-              onClick={() => {
-                setRoleFilter(rf.value);
-                setPage(1);
-              }}
-              className={`rounded-full px-3 py-1 text-sm font-medium transition-colors ${
-                roleFilter === rf.value
-                  ? "bg-primary text-primary-foreground"
-                  : "bg-muted text-muted-foreground hover:bg-muted/80"
-              }`}
-              aria-pressed={roleFilter === rf.value}
+          {ROLE_FILTERS.map((rf) => {
+            const isActive = (t.filters.role ?? "") === rf.value;
+            return (
+              <button
+                key={rf.value}
+                type="button"
+                onClick={() => t.setFilter("role", rf.value || undefined)}
+                className={`rounded-full px-3 py-1 text-sm font-medium transition-colors ${
+                  isActive
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-muted text-muted-foreground hover:bg-muted/80"
+                }`}
+                aria-pressed={isActive}
+              >
+                {rf.label}
+              </button>
+            );
+          })}
+          {t.activeFilterCount > 0 || t.q ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={t.reset}
+              className="text-muted-foreground hover:text-foreground"
             >
-              {rf.label}
-            </button>
-          ))}
+              Tout effacer
+            </Button>
+          ) : null}
         </div>
       </div>
 
@@ -376,7 +404,11 @@ export default function AdminUsersPage() {
         <CardContent className="p-0">
           <DataTable<AdminUserRow & Record<string, unknown>>
             aria-label="Liste des utilisateurs"
-            emptyMessage="Aucun utilisateur trouve"
+            emptyMessage={
+              t.activeFilterCount > 0 || t.q
+                ? "Aucun résultat — essayez d'élargir les filtres."
+                : "Aucun utilisateur trouvé"
+            }
             responsiveCards
             loading={isLoading}
             data={users as (AdminUserRow & Record<string, unknown>)[]}
@@ -385,6 +417,8 @@ export default function AdminUsersPage() {
             onRowClick={(u) => router.push(`/admin/users/${encodeURIComponent(u.uid)}`)}
             activeRowIndex={activeIndex}
             onRowHover={setActiveIndex}
+            sort={t.sort}
+            onToggleSort={t.toggleSort}
             columns={
               [
                 {
@@ -423,6 +457,8 @@ export default function AdminUsersPage() {
                   key: "displayName",
                   header: "Nom / Email",
                   primary: true,
+                  sortable: true,
+                  sortField: "displayName",
                   render: (user) => (
                     <div className="flex items-start gap-2">
                       <div>
@@ -560,9 +596,12 @@ export default function AdminUsersPage() {
       </BulkActionBar>
 
       {/* Pagination */}
-      {!isLoading && meta.totalPages > 1 && (
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-muted-foreground">
+      {!isLoading && meta.totalPages > 1 ? (
+        <nav
+          aria-label="Pagination des utilisateurs"
+          className="flex items-center justify-between"
+        >
+          <p className="text-sm text-muted-foreground" aria-current="page">
             Page {meta.page} sur {meta.totalPages} ({meta.total} utilisateur
             {meta.total > 1 ? "s" : ""})
           </p>
@@ -570,24 +609,24 @@ export default function AdminUsersPage() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page <= 1}
-              aria-label="Page precedente"
+              onClick={() => t.setPage(Math.max(1, t.page - 1))}
+              disabled={t.page <= 1}
+              aria-label="Page précédente"
             >
-              Precedent
+              Précédent
             </Button>
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setPage((p) => Math.min(meta.totalPages, p + 1))}
-              disabled={page >= meta.totalPages}
+              onClick={() => t.setPage(Math.min(meta.totalPages, t.page + 1))}
+              disabled={t.page >= meta.totalPages}
               aria-label="Page suivante"
             >
               Suivant
             </Button>
           </div>
-        </div>
-      )}
+        </nav>
+      ) : null}
     </div>
   );
 }

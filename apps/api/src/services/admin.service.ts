@@ -1306,7 +1306,12 @@ class AdminService extends BaseService {
     this.requireAnyPermission(user, ["platform:audit_read", "platform:manage"]);
     const page = await adminRepository.listAllUsers(
       { q: query.q, role: query.role, isActive: query.isActive },
-      { page: query.page, limit: query.limit },
+      {
+        page: query.page,
+        limit: query.limit,
+        orderBy: query.orderBy ?? "createdAt",
+        orderDir: query.orderDir ?? "desc",
+      },
     );
 
     // P0.6 — batch the JWT ↔ Firestore drift check via auth.getUsers([uids])
