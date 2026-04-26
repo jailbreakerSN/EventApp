@@ -628,7 +628,9 @@ describe("Audit Listener", () => {
       // but had no audit row mapping. The previous count of 99
       // silently dropped these mutations from the audit trail.
       // (`refund.issued` + `refund.failed` + `payment.bulk_expired` = +3.)
-      const EXPECTED_HANDLER_COUNT = 102;
+      // Phase-2 audit follow-up — `payment.tampering_attempted`
+      // handler closes the security-trail gap on rejected IPNs.
+      const EXPECTED_HANDLER_COUNT = 103;
 
       expect(registered).toHaveLength(EXPECTED_HANDLER_COUNT);
       // Each registered event name should be unique — a double

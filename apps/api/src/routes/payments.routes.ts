@@ -15,9 +15,9 @@ import { config } from "@/config";
 import {
   InitiatePaymentSchema,
   PaymentWebhookSchema,
-  PaymentMethodSchema,
   RefundPaymentSchema,
   PaymentQuerySchema,
+  WebhookProviderSchema,
   type WebhookProvider,
 } from "@teranga/shared-types";
 
@@ -180,25 +180,175 @@ export const paymentRoutes: FastifyPluginAsync = async (fastify) => {
     },
   );
 
-  // ─── Provider-specific raw-body parser ────────────────────────────────────
+  // ─── Provider-specific raw-body parsers ───────────────────────────────────
   // Webhook signature verification MUST run over the exact bytes the
   // provider signed. The default Fastify JSON parser reorders keys on
   // re-serialise, breaking HMAC comparisons with Wave/OM. Register a
   // content-type parser scoped to the webhook paths that attaches the
   // raw string to `request.rawBody` AND still parses JSON into
   // `request.body` so the route handlers keep working unchanged.
+  // Path-anchored predicate that classifies the request as a webhook
+  // route. We strip the query string first so an attacker can't
+  // smuggle `/webhook/` via `?ref=/webhook/x`, and we anchor on a
+  // slash boundary so `mock-checkout-webhook` (hypothetical sibling
+  // path) wouldn't match. Used by both the JSON parser AND the
+  // form-encoded parser to keep their scopes consistent.
+  const isWebhookRequest = (req: FastifyRequest): boolean => {
+    const path = (req.url ?? "").split("?")[0];
+    return /\/webhook(?:\/|$)/.test(path);
+  };
+
   fastify.addContentTypeParser(
     "application/json",
     { parseAs: "string" },
     (req, body: string, done) => {
       try {
         // Only attach rawBody on webhook paths — elsewhere the usual
-        // parsed-body flow is what downstream handlers expect.
-        if (req.url.startsWith("/webhook/") || req.url === "/webhook") {
+        // parsed-body flow is what downstream handlers expect. The
+        // path check is anchored on a slash boundary (NOT a substring)
+        // so a request whose query-string contains `/webhook/` can't
+        // smuggle the rawBody attachment onto a non-webhook route.
+        if (isWebhookRequest(req)) {
           (req as FastifyRequest & { rawBody?: string }).rawBody = body;
         }
         const parsed = body ? JSON.parse(body) : {};
         done(null, parsed);
+      } catch (err) {
+        done(err as Error, undefined);
+      }
+    },
+  );
+
+  // Phase 2 — PayDunya IPN parser. PayDunya posts the IPN as
+  // `application/x-www-form-urlencoded` with a SINGLE field `data`
+  // whose value is a JSON-stringified payload. The signature
+  // (SHA-512 of the merchant MasterKey) is INSIDE that JSON, so we:
+  //   1. capture the raw body for `verifyWebhook` (which extracts
+  //      `data=` via URLSearchParams, not via a re-serialised object)
+  //   2. parse `data` into `request.body` so the downstream handler
+  //      can read `body.providerTransactionId` / `body.status` /
+  //      `body.metadata` exactly like the JSON-shaped Wave/OM webhooks
+  //
+  // Why scope this to webhook paths only: the rest of the API
+  // (e.g. /admin form submissions if any) never receives PayDunya
+  // shape, so leaking this parser globally would mask bugs.
+  fastify.addContentTypeParser(
+    "application/x-www-form-urlencoded",
+    { parseAs: "string" },
+    (req, body: string, done) => {
+      try {
+        // Path-anchored scope check (see `isWebhookRequest` above).
+        // Substring-match would let an attacker smuggle `/webhook/`
+        // via a query-string and trigger the form-encoded code path
+        // on a non-webhook route — surfaced by Phase-2 security audit.
+        if (!isWebhookRequest(req)) {
+          // Outside webhook paths: surface a clean 415. Without an
+          // explicit statusCode the error handler defaults to 500,
+          // which the global onRequest hook in app.ts ALREADY
+          // prevents in production (it returns 415 itself before
+          // we ever reach this parser). In tests the parser is
+          // exercised directly, so we set the statusCode here for
+          // a consistent contract.
+          const err: Error & { statusCode?: number } = new Error(
+            "Content-Type application/x-www-form-urlencoded is only accepted on webhook routes",
+          );
+          err.statusCode = 415;
+          done(err, undefined);
+          return;
+        }
+        (req as FastifyRequest & { rawBody?: string }).rawBody = body;
+        // Extract the `data` field; convert its JSON contents into
+        // the canonical PaymentWebhookSchema shape (providerTxId +
+        // status + metadata) so the existing webhook handler works
+        // unchanged for both JSON and form-encoded providers.
+        const params = new URLSearchParams(body);
+        const dataStr = params.get("data");
+        if (!dataStr) {
+          done(null, {});
+          return;
+        }
+        // Phase-2 security review B-1 — `dataStr` is attacker-
+        // controlled. A SyntaxError from `JSON.parse` here used to
+        // propagate to the outer catch which called
+        // `done(err as Error, undefined)`. Fastify serialised that
+        // raw error message into the 500 response body, leaking the
+        // parser internals. Catch the parse separately and respond
+        // with a clean 400 — the verifyWebhook step would have
+        // rejected the payload anyway, but failing fast here keeps
+        // the error contract predictable for monitoring dashboards.
+        let payload: Record<string, unknown>;
+        try {
+          payload = JSON.parse(dataStr) as Record<string, unknown>;
+        } catch {
+          const err: Error & { statusCode?: number } = new Error(
+            "Webhook payload is not valid JSON",
+          );
+          err.statusCode = 400;
+          done(err, undefined);
+          return;
+        }
+        // Project PayDunya's payload shape onto our canonical webhook
+        // schema. PayDunya invoice `token` → `providerTransactionId`;
+        // PayDunya `status` ("completed" / "cancelled" / …) → our
+        // narrow ("succeeded" / "failed") via mapping. Anything else
+        // (`pending`, unknown) drops to `failed` defensively — the
+        // handler treats it as a no-op via the inner-tx idempotency
+        // guard.
+        const invoice =
+          payload && typeof payload === "object" && payload.invoice && typeof payload.invoice === "object"
+            ? (payload.invoice as Record<string, unknown>)
+            : {};
+        const customData =
+          payload && typeof payload === "object" && payload.custom_data && typeof payload.custom_data === "object"
+            ? (payload.custom_data as Record<string, unknown>)
+            : {};
+        // Anti-tampering invariants (T-PD-03 / T-PD-04). PayDunya
+        // signs the IPN with SHA-512(MasterKey) — a valid signature
+        // proves the request came from PayDunya but does NOT bind
+        // the payload to any specific Payment. A malicious actor who
+        // briefly intercepted any valid PayDunya webhook could
+        // re-emit it with a tampered amount or substituted token.
+        // The handler defends with three cross-checks (executed in
+        // `handleWebhook`):
+        //   1. Payment.providerTransactionId === invoice.token
+        //   2. Payment.amount             === invoice.total_amount
+        //   3. Payment.id                 === custom_data.payment_id
+        // Surface the expected values explicitly on metadata so the
+        // handler doesn't re-parse the raw payload.
+        //
+        // Phase-2 security review P-2 — we deliberately do NOT carry
+        // the full PayDunya payload on `metadata` because:
+        //   1. The full body is already persisted on
+        //      `webhookEvents/<id>.rawBody` for forensic replay.
+        //   2. `metadata` is written to `Payment.providerMetadata`,
+        //      which inflates the Firestore doc and duplicates the
+        //      `hash` field (SHA-512 of MasterKey).
+        // Surface only the projection fields the handler needs.
+        const mapped = {
+          providerTransactionId: typeof invoice.token === "string" ? invoice.token : "",
+          status:
+            payload.status === "completed" ? "succeeded" : "failed",
+          metadata: {
+            providerName: "paydunya",
+            // Cross-check fields surfaced for the handler to verify
+            // BEFORE entering the tx. Non-null when PayDunya sent
+            // them; null tells the handler to skip the check (other
+            // providers don't carry these).
+            expectedAmount:
+              typeof invoice.total_amount === "number" ? invoice.total_amount : null,
+            expectedPaymentId:
+              typeof customData.payment_id === "string" ? customData.payment_id : null,
+            // Surface the PayDunya-side `response_code` for operator
+            // forensics; cheap to keep + part of every PayDunya IPN.
+            providerCode:
+              typeof payload.response_code === "string" ? payload.response_code : null,
+            // Raw status from the provider, useful when the canonical
+            // mapping (completed → succeeded, …) hides the original
+            // value (e.g. `expired` becomes `failed`).
+            providerStatus: typeof payload.status === "string" ? payload.status : null,
+          },
+        };
+        done(null, mapped);
       } catch (err) {
         done(err as Error, undefined);
       }
@@ -218,8 +368,14 @@ export const paymentRoutes: FastifyPluginAsync = async (fastify) => {
   // bound this endpoint tightly (600 req/min) to keep a single
   // misbehaving provider gateway from exhausting the global bucket
   // for regular API traffic.
+  // Phase 2 — accept the broader `WebhookProviderSchema` here so
+  // PayDunya IPNs (POSTs to `/v1/payments/webhook/paydunya`) resolve.
+  // `WebhookProvider` is the SOURCE list (who can send us webhooks);
+  // `PaymentMethod` is the DESTINATION list (what users can pick at
+  // checkout). They overlap on `wave` / `orange_money` / `free_money`
+  // / `card` / `mock` and diverge on `paydunya` (webhook-only).
   const ParamsWithProvider = z.object({
-    provider: PaymentMethodSchema,
+    provider: WebhookProviderSchema,
   });
 
   fastify.post(
@@ -258,8 +414,23 @@ export const paymentRoutes: FastifyPluginAsync = async (fastify) => {
         });
       }
 
-      const rawBody =
-        (request as FastifyRequest & { rawBody?: string }).rawBody ?? JSON.stringify(request.body);
+      // Phase-2 audit follow-up — explicit fail-CLOSED instead of
+      // silently re-serialising. If `rawBody` is missing the parser
+      // didn't run (or ran wrong), and `JSON.stringify(request.body)`
+      // would be a re-ordered serialisation that breaks every
+      // signed-body provider (Wave HMAC, PayDunya SHA-512). Better
+      // to refuse loudly than to silently 403 every webhook.
+      const rawBody = (request as FastifyRequest & { rawBody?: string }).rawBody;
+      if (typeof rawBody !== "string") {
+        return reply.status(400).send({
+          success: false,
+          error: {
+            code: "VALIDATION_ERROR",
+            message:
+              "Webhook raw body unavailable — content-type-parser misconfigured for this route.",
+          },
+        });
+      }
 
       if (!provider.verifyWebhook({ rawBody, headers: request.headers })) {
         return reply.status(403).send({
@@ -350,8 +521,22 @@ export const paymentRoutes: FastifyPluginAsync = async (fastify) => {
           error: { code: "NOT_FOUND", message: "Mock provider indisponible" },
         });
       }
-      const rawBody =
-        (request as FastifyRequest & { rawBody?: string }).rawBody ?? JSON.stringify(request.body);
+      // Same fail-CLOSED contract as the per-provider webhook above.
+      // The legacy /webhook endpoint is mock-only in dev/staging,
+      // but the explicit guard prevents a future provider that POSTs
+      // here with form-encoded (without the parser registering
+      // rawBody) from silently failing signature verification.
+      const rawBody = (request as FastifyRequest & { rawBody?: string }).rawBody;
+      if (typeof rawBody !== "string") {
+        return reply.status(400).send({
+          success: false,
+          error: {
+            code: "VALIDATION_ERROR",
+            message:
+              "Webhook raw body unavailable — content-type-parser misconfigured for this route.",
+          },
+        });
+      }
       if (!provider.verifyWebhook({ rawBody, headers: request.headers })) {
         return reply.status(403).send({
           success: false,

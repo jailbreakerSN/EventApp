@@ -74,6 +74,14 @@ export const AuditActionSchema = z.enum([
   // Registration mutations the operator dashboard timeline needs to
   // reflect outside the coarse `admin.job_completed` summary.
   "payment.bulk_expired",
+  // Phase 2 / threat T-PD-03 — fires when handleWebhook rejects an
+  // IPN whose anti-tampering invariants failed. The webhook signature
+  // verified (so the request came from the provider), but the
+  // payload's bound fields (payment_id / amount) didn't match the
+  // Payment doc. Required for the security trail because the webhook
+  // log row only marks `failed`, which isn't surfaced on the
+  // standard `/admin/audit` grid.
+  "payment.tampering_attempted",
   "receipt.generated",
   // ── Speaker & Sponsor ──────────────────────────────────────────────────────
   "speaker.added",

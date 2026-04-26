@@ -254,6 +254,157 @@ describe("POST /v1/payments/webhook/:provider", () => {
     expect(res.statusCode).toBe(400);
     expect(mockPaymentService.handleWebhook).not.toHaveBeenCalled();
   });
+
+  // ── Phase 2 — PayDunya IPN (form-encoded body parser) ───────────────────
+  //
+  // PayDunya posts the IPN as `application/x-www-form-urlencoded` with
+  // a single field `data` whose value is a JSON-stringified payload.
+  // The body parser captures the raw body for signature verification
+  // AND projects the payload onto the canonical PaymentWebhookSchema
+  // shape so downstream handlers stay provider-agnostic. Anti-tampering
+  // invariants (expectedAmount + expectedPaymentId) are surfaced on
+  // metadata for handleWebhook to verify before any state mutation.
+
+  it("accepts PayDunya IPN as application/x-www-form-urlencoded — Phase 2", async () => {
+    mockPaymentService.handleWebhook.mockResolvedValue(undefined);
+    mockProvider.verifyWebhook.mockReturnValue(true);
+
+    const payload = {
+      response_code: "00",
+      response_text: "Paiement reçu",
+      hash: "any-hash-the-mock-accepts",
+      invoice: { token: "PAYDUNYA_TKN", total_amount: 5000, description: "" },
+      custom_data: { payment_id: "pay_paydunya_1" },
+      status: "completed",
+    };
+    const formBody = `data=${encodeURIComponent(JSON.stringify(payload))}`;
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/payments/webhook/paydunya",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      payload: formBody,
+    });
+
+    expect(res.statusCode).toBe(200);
+    // The handler received the canonical shape — the body parser
+    // projected PayDunya `invoice.token` → providerTransactionId,
+    // `status: "completed"` → "succeeded", and surfaced the
+    // anti-tampering fields on metadata.
+    expect(mockPaymentService.handleWebhook).toHaveBeenCalledWith(
+      "PAYDUNYA_TKN",
+      "succeeded",
+      expect.objectContaining({
+        providerName: "paydunya",
+        expectedAmount: 5000,
+        expectedPaymentId: "pay_paydunya_1",
+      }),
+    );
+  });
+
+  it("maps PayDunya `cancelled` / `failed` to `failed`", async () => {
+    mockPaymentService.handleWebhook.mockResolvedValue(undefined);
+    mockProvider.verifyWebhook.mockReturnValue(true);
+
+    for (const status of ["cancelled", "failed"]) {
+      const payload = {
+        response_code: "00",
+        invoice: { token: "TKN" },
+        custom_data: { payment_id: "pay_x" },
+        status,
+      };
+      const formBody = `data=${encodeURIComponent(JSON.stringify(payload))}`;
+      const res = await app.inject({
+        method: "POST",
+        url: "/v1/payments/webhook/paydunya",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        payload: formBody,
+      });
+      expect(res.statusCode).toBe(200);
+      const lastCall = mockPaymentService.handleWebhook.mock.calls.at(-1);
+      expect(lastCall?.[1]).toBe("failed");
+    }
+  });
+
+  it("rejects PayDunya IPN with 403 when verifyWebhook returns false", async () => {
+    mockProvider.verifyWebhook.mockReturnValueOnce(false);
+
+    const payload = {
+      hash: "wrong-hash",
+      invoice: { token: "TKN" },
+      custom_data: { payment_id: "pay_x" },
+      status: "completed",
+    };
+    const formBody = `data=${encodeURIComponent(JSON.stringify(payload))}`;
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/payments/webhook/paydunya",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      payload: formBody,
+    });
+    expect(res.statusCode).toBe(403);
+    expect(mockPaymentService.handleWebhook).not.toHaveBeenCalled();
+  });
+
+  it("does NOT accept x-www-form-urlencoded outside the webhook path scope", async () => {
+    // Defensive: the form-body parser is scoped to `/webhook/*`. A
+    // non-webhook route receiving form-encoded must NOT have it
+    // silently parsed by our PayDunya parser. Fastify falls through
+    // to its default content-type handling → 415 / 400 depending on
+    // the route. Here the /initiate route requires JSON, so a form
+    // body lands as 415 (Unsupported Media Type) via the global
+    // hook in app.ts.
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/payments/initiate",
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+        authorization: "Bearer mock-token",
+      },
+      payload: "data=anything",
+    });
+    // Fastify's content-type-parser scope kicks in here; our parser
+    // is only registered for the payment-routes prefix and explicitly
+    // rejects non-webhook URLs. The exact status depends on which
+    // hook fires first (415 from the global mutation guard, or the
+    // parser's own error). Either way it must NOT reach the service.
+    expect([400, 415]).toContain(res.statusCode);
+    expect(mockPaymentService.initiatePayment).not.toHaveBeenCalled();
+  });
+
+  it("handles a PayDunya IPN with a missing custom_data.payment_id (defensive)", async () => {
+    // PayDunya should always send payment_id (we set it at initiate
+    // time), but defend against malformed payloads anyway.
+    // expectedPaymentId surfaces as null → handler skips that
+    // cross-check (see anti-tampering tests in payment.service.test.ts).
+    mockPaymentService.handleWebhook.mockResolvedValue(undefined);
+    mockProvider.verifyWebhook.mockReturnValue(true);
+
+    const payload = {
+      hash: "ok",
+      invoice: { token: "TKN", total_amount: 5000 },
+      // custom_data omitted entirely
+      status: "completed",
+    };
+    const formBody = `data=${encodeURIComponent(JSON.stringify(payload))}`;
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/payments/webhook/paydunya",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      payload: formBody,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(mockPaymentService.handleWebhook).toHaveBeenCalledWith(
+      "TKN",
+      "succeeded",
+      expect.objectContaining({
+        expectedAmount: 5000,
+        expectedPaymentId: null,
+      }),
+    );
+  });
 });
 
 // ─── P1-16 (audit M6) — Zod validation on mock-checkout /complete ────────

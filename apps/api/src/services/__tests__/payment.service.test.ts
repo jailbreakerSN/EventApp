@@ -738,6 +738,179 @@ describe("PaymentService.handleWebhook", () => {
     mockTxUpdate.mockReset();
     mockPaymentRepo.findByProviderTransactionId.mockReset();
   });
+
+  // ── Phase 2 / threat T-PD-03 — payload-tampering anti-replay ─────────────
+  // PayDunya signs the IPN with SHA-512(MasterKey) — a valid signature
+  // proves PROVENANCE but not BINDING. The webhook handler defends with
+  // explicit cross-checks against `metadata.expectedAmount` and
+  // `metadata.expectedPaymentId` (populated by the form-encoded body
+  // parser in payments.routes.ts). A mismatch is conclusively a
+  // tampering attempt or a config drift — we throw before any state
+  // mutation.
+  describe("anti-tampering invariants — Phase 2 / T-PD-03", () => {
+    it("rejects when metadata.expectedAmount diverges from Payment.amount", async () => {
+      const payment = buildPayment({ status: "processing", amount: 5000 });
+      mockPaymentRepo.findByProviderTransactionId.mockResolvedValue(payment);
+
+      await expect(
+        service.handleWebhook(payment.providerTransactionId!, "succeeded", {
+          providerName: "paydunya",
+          expectedAmount: 50_000, // tampered: was 5000, now 50_000
+          expectedPaymentId: payment.id,
+        }),
+      ).rejects.toThrow(/tampering|amount mismatch/i);
+
+      // Critical: NO state mutation despite a signature-valid IPN.
+      // The handler aborts before entering the runTransaction.
+      expect(mockRunTransaction).not.toHaveBeenCalled();
+
+      // Phase 2 / T-PD-03 — the audit-trail security event MUST fire
+      // before the throw so post-incident analysis can spot recon.
+      expect(mockEventBus.emit).toHaveBeenCalledWith(
+        "payment.tampering_attempted",
+        expect.objectContaining({
+          paymentId: payment.id,
+          field: "amount",
+          expectedValue: 5000,
+          receivedValue: 50_000,
+          providerName: "paydunya",
+          actorId: "system:webhook",
+        }),
+      );
+    });
+
+    it("rejects when metadata.expectedPaymentId diverges from Payment.id (token-substitution attack)", async () => {
+      const payment = buildPayment({ status: "processing", id: "pay_legit_1" });
+      mockPaymentRepo.findByProviderTransactionId.mockResolvedValue(payment);
+
+      await expect(
+        service.handleWebhook(payment.providerTransactionId!, "succeeded", {
+          providerName: "paydunya",
+          expectedAmount: payment.amount,
+          expectedPaymentId: "pay_attacker_attempt", // substituted
+        }),
+      ).rejects.toThrow(/tampering|payment_id mismatch/i);
+
+      expect(mockRunTransaction).not.toHaveBeenCalled();
+      expect(mockEventBus.emit).toHaveBeenCalledWith(
+        "payment.tampering_attempted",
+        expect.objectContaining({
+          paymentId: "pay_legit_1",
+          field: "payment_id",
+          expectedValue: "pay_legit_1",
+          receivedValue: "pay_attacker_attempt",
+          providerName: "paydunya",
+        }),
+      );
+    });
+
+    it("rejects when PayDunya IPN is missing expectedAmount (defence-in-depth)", async () => {
+      // Phase-2 security review P-1 — a crafted PayDunya IPN that
+      // omits `invoice.total_amount` would have surfaced
+      // expectedAmount: null and bypassed the cross-check. Phase-2
+      // closes that by REQUIRING both fields when providerName ===
+      // "paydunya" (the body parser's discriminator).
+      const payment = buildPayment({ status: "processing", amount: 5000 });
+      mockPaymentRepo.findByProviderTransactionId.mockResolvedValue(payment);
+
+      await expect(
+        service.handleWebhook(payment.providerTransactionId!, "succeeded", {
+          providerName: "paydunya",
+          expectedAmount: null, // missing on the IPN payload
+          expectedPaymentId: payment.id,
+        }),
+      ).rejects.toThrow(/missing amount/i);
+      expect(mockRunTransaction).not.toHaveBeenCalled();
+      expect(mockEventBus.emit).toHaveBeenCalledWith(
+        "payment.tampering_attempted",
+        expect.objectContaining({ field: "amount", receivedValue: null }),
+      );
+    });
+
+    it("rejects when PayDunya IPN is missing expectedPaymentId", async () => {
+      const payment = buildPayment({ status: "processing", id: "pay_x" });
+      mockPaymentRepo.findByProviderTransactionId.mockResolvedValue(payment);
+
+      await expect(
+        service.handleWebhook(payment.providerTransactionId!, "succeeded", {
+          providerName: "paydunya",
+          expectedAmount: payment.amount,
+          expectedPaymentId: null,
+        }),
+      ).rejects.toThrow(/missing payment_id/i);
+      expect(mockRunTransaction).not.toHaveBeenCalled();
+      expect(mockEventBus.emit).toHaveBeenCalledWith(
+        "payment.tampering_attempted",
+        expect.objectContaining({ field: "payment_id", receivedValue: null }),
+      );
+    });
+
+    it("ignores cross-check for non-PayDunya providers (Wave / OM / mock compat)", async () => {
+      // Wave/OM/mock don't carry providerName: "paydunya" on
+      // their webhook metadata. The handler MUST skip the strict
+      // cross-check for them — surfacing missing fields would
+      // break every Wave/OM webhook in production.
+      const payment = buildPayment({ status: "processing" });
+      mockPaymentRepo.findByProviderTransactionId.mockResolvedValue(payment);
+      mockTxGet
+        .mockResolvedValueOnce({ exists: true, data: () => payment })
+        .mockResolvedValueOnce({ exists: true, data: () => buildRegistration() })
+        .mockResolvedValueOnce({ exists: true, data: () => buildEvent() });
+
+      // Wave-shaped metadata: `providerName: "wave"` (or absent),
+      // no expected* fields. Handler proceeds normally.
+      await expect(
+        service.handleWebhook(payment.providerTransactionId!, "succeeded", {
+          providerName: "wave",
+        }),
+      ).resolves.toBeUndefined();
+      expect(mockRunTransaction).toHaveBeenCalled();
+    });
+
+    it("ignores cross-check when metadata fields are absent (Wave / OM / mock providers)", async () => {
+      // Wave/OM/mock don't carry expectedAmount/expectedPaymentId on
+      // their webhook payloads. The handler MUST skip the cross-check
+      // for those — surfacing a "missing field" error would break
+      // every Wave/OM webhook in production.
+      const payment = buildPayment({ status: "processing" });
+      mockPaymentRepo.findByProviderTransactionId.mockResolvedValue(payment);
+      mockTxGet
+        .mockResolvedValueOnce({ exists: true, data: () => payment })
+        .mockResolvedValueOnce({ exists: true, data: () => buildRegistration() })
+        .mockResolvedValueOnce({ exists: true, data: () => buildEvent() });
+
+      // No metadata at all → handler proceeds normally.
+      await expect(
+        service.handleWebhook(payment.providerTransactionId!, "succeeded"),
+      ).resolves.toBeUndefined();
+      expect(mockRunTransaction).toHaveBeenCalled();
+    });
+
+    it("accepts when both cross-checks succeed (happy PayDunya path)", async () => {
+      const payment = buildPayment({
+        status: "processing",
+        id: "pay_paydunya_ok",
+        amount: 7500,
+      });
+      mockPaymentRepo.findByProviderTransactionId.mockResolvedValue(payment);
+      mockTxGet
+        .mockResolvedValueOnce({ exists: true, data: () => payment })
+        .mockResolvedValueOnce({ exists: true, data: () => buildRegistration() })
+        .mockResolvedValueOnce({ exists: true, data: () => buildEvent() });
+
+      await service.handleWebhook(payment.providerTransactionId!, "succeeded", {
+        providerName: "paydunya",
+        expectedAmount: 7500,
+        expectedPaymentId: "pay_paydunya_ok",
+      });
+
+      expect(mockRunTransaction).toHaveBeenCalled();
+      expect(mockEventBus.emit).toHaveBeenCalledWith(
+        "payment.succeeded",
+        expect.objectContaining({ paymentId: "pay_paydunya_ok", amount: 7500 }),
+      );
+    });
+  });
 });
 
 // ─── getPaymentStatus ──────────────────────────────────────────────────────
