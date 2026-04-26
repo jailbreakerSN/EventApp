@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useMemo } from "react";
+import { parseAsBoolean, parseAsString } from "nuqs";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -18,10 +19,13 @@ import {
   SectionHeader,
   StatusPill,
   type StatusPillTone,
+  ResultCount,
+  PageSizeSelector,
 } from "@teranga/shared-ui";
 import { ChevronLeft, ChevronRight, Eye, Users, Building, Repeat } from "lucide-react";
 import { useAdminEvents, useAdminOrganizations } from "@/hooks/use-admin";
 import { useRowKeyboardNav } from "@/hooks/use-row-keyboard-nav";
+import { useTableState } from "@/hooks/use-table-state";
 import { useTranslations } from "next-intl";
 
 const STATUS_OPTIONS = [
@@ -52,22 +56,30 @@ export default function AdminEventsPage() {
   const tCommon = useTranslations("common");
   void tCommon;
   const router = useRouter();
-  const [page, setPage] = useState(1);
-  const [status, setStatus] = useState("");
-  // Phase 7+ B1 closure — admin filter pill that restricts the list
-  // to recurring-event series anchors. Off by default to preserve the
-  // existing "all events mixed" view operators are used to.
-  const [seriesOnly, setSeriesOnly] = useState(false);
+
+  // W3 migration — useTableState owns the URL state for status / seriesOnly
+  // / sort / page / pageSize. The "Phase 7+ B1" recurring-series filter
+  // is now a regular boolean in the filter map; preserves the same UX
+  // (the toggle pill above the table reflects URL state).
+  const t = useTableState<{ status?: string; seriesOnly?: boolean }>({
+    urlNamespace: "events",
+    defaults: { sort: { field: "createdAt", dir: "desc" }, pageSize: 25 },
+    sortableFields: ["createdAt", "startDate", "title", "status"] as const,
+    filterParsers: { status: parseAsString, seriesOnly: parseAsBoolean },
+  });
 
   const { data, isLoading } = useAdminEvents({
-    page,
-    limit: 20,
-    ...(status ? { status } : {}),
-    ...(seriesOnly ? { isRecurringParent: true } : {}),
+    page: t.page,
+    limit: t.pageSize,
+    ...(t.filters.status ? { status: t.filters.status } : {}),
+    ...(t.filters.seriesOnly ? { isRecurringParent: true } : {}),
+    orderBy: t.sort?.field as "createdAt" | "startDate" | "title" | "status" | undefined,
+    orderDir: t.sort?.dir,
   });
 
   const events = data?.data ?? [];
-  const meta = data?.meta ?? { page: 1, limit: 20, total: 0, totalPages: 1 };
+  const meta = data?.meta ?? { page: 1, limit: t.pageSize, total: 0, totalPages: 1 };
+  const hasActive = t.activeFilterCount > 0 || !!t.q;
 
   // B2 — row keyboard nav.
   const { activeIndex, setActiveIndex } = useRowKeyboardNav({
@@ -110,16 +122,19 @@ export default function AdminEventsPage() {
         as="h1"
         action={
           <div className="flex flex-wrap items-center gap-2">
+            <ResultCount total={meta.total} loading={isLoading} />
+            <PageSizeSelector value={t.pageSize} onChange={t.setPageSize} />
             <button
               type="button"
-              onClick={() => {
-                setSeriesOnly((v) => !v);
-                setPage(1);
-              }}
-              aria-pressed={seriesOnly}
-              aria-label={seriesOnly ? "Désactiver le filtre séries" : "Afficher uniquement les séries récurrentes"}
+              onClick={() => t.setFilter("seriesOnly", t.filters.seriesOnly ? undefined : true)}
+              aria-pressed={!!t.filters.seriesOnly}
+              aria-label={
+                t.filters.seriesOnly
+                  ? "Désactiver le filtre séries"
+                  : "Afficher uniquement les séries récurrentes"
+              }
               className={
-                seriesOnly
+                t.filters.seriesOnly
                   ? "inline-flex items-center gap-1.5 rounded-md border border-teranga-gold bg-teranga-gold/10 px-3 py-1.5 text-sm font-medium text-teranga-gold transition-colors"
                   : "inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted"
               }
@@ -129,11 +144,8 @@ export default function AdminEventsPage() {
             </button>
             <div className="w-full sm:w-56">
               <Select
-                value={status}
-                onChange={(e) => {
-                  setStatus(e.target.value);
-                  setPage(1);
-                }}
+                value={t.filters.status ?? ""}
+                onChange={(e) => t.setFilter("status", e.target.value || undefined)}
                 aria-label="Filtrer par statut"
               >
                 {STATUS_OPTIONS.map((opt) => (
@@ -143,6 +155,15 @@ export default function AdminEventsPage() {
                 ))}
               </Select>
             </div>
+            {hasActive ? (
+              <button
+                type="button"
+                onClick={t.reset}
+                className="text-sm text-muted-foreground hover:text-foreground underline-offset-4 hover:underline"
+              >
+                Tout effacer
+              </button>
+            ) : null}
           </div>
         }
       />
@@ -152,10 +173,16 @@ export default function AdminEventsPage() {
         <CardContent className="p-0">
           <DataTable<Record<string, unknown>>
             aria-label="Liste des événements"
-            emptyMessage="Aucun événement trouvé"
+            emptyMessage={
+              hasActive
+                ? "Aucun résultat — essayez d'élargir les filtres."
+                : "Aucun événement trouvé"
+            }
             responsiveCards
             loading={isLoading}
             data={events as Record<string, unknown>[]}
+            sort={t.sort}
+            onToggleSort={t.toggleSort}
             // Whole-row click → admin event detail (organizer surface,
             // not the public /events/:id participant page — admins need
             // the organizer tools: edit, cancel, audit).
@@ -168,6 +195,8 @@ export default function AdminEventsPage() {
                   key: "title",
                   header: "Titre",
                   primary: true,
+                  sortable: true,
+                  sortField: "title",
                   render: (event) => {
                     const isParent = (event.isRecurringParent as boolean) === true;
                     const isChild = !!(event.parentEventId as string | null | undefined);
@@ -225,6 +254,8 @@ export default function AdminEventsPage() {
                 {
                   key: "status",
                   header: "Statut",
+                  sortable: true,
+                  sortField: "status",
                   render: (event) => {
                     const statusInfo =
                       STATUS_STYLES[(event.status as string) ?? "draft"] ?? STATUS_STYLES.draft;
@@ -235,6 +266,8 @@ export default function AdminEventsPage() {
                   key: "startDate",
                   header: "Date",
                   hideOnMobile: true,
+                  sortable: true,
+                  sortField: "startDate",
                   render: (event) => (
                     <span className="text-muted-foreground">
                       {event.startDate ? formatDate(event.startDate as string) : "-"}
@@ -282,15 +315,19 @@ export default function AdminEventsPage() {
 
       {/* Pagination */}
       {!isLoading && meta.totalPages > 1 && (
-        <div className="flex items-center justify-between text-sm text-muted-foreground">
-          <span>
+        <nav
+          aria-label="Pagination des événements"
+          className="flex items-center justify-between text-sm text-muted-foreground"
+        >
+          <span aria-current="page">
             Page {meta.page} sur {meta.totalPages} ({meta.total} événement
             {meta.total > 1 ? "s" : ""})
           </span>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={meta.page <= 1}
+              type="button"
+              onClick={() => t.setPage(Math.max(1, t.page - 1))}
+              disabled={t.page <= 1}
               className="inline-flex items-center gap-1 rounded-md border border-border bg-background px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
               aria-label="Page précédente"
             >
@@ -298,8 +335,9 @@ export default function AdminEventsPage() {
               Précédent
             </button>
             <button
-              onClick={() => setPage((p) => Math.min(meta.totalPages, p + 1))}
-              disabled={meta.page >= meta.totalPages}
+              type="button"
+              onClick={() => t.setPage(Math.min(meta.totalPages, t.page + 1))}
+              disabled={t.page >= meta.totalPages}
               className="inline-flex items-center gap-1 rounded-md border border-border bg-background px-3 py-1.5 text-sm hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
               aria-label="Page suivante"
             >
@@ -307,7 +345,7 @@ export default function AdminEventsPage() {
               <ChevronRight className="h-4 w-4" />
             </button>
           </div>
-        </div>
+        </nav>
       )}
     </div>
   );
