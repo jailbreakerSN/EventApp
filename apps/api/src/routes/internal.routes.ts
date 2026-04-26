@@ -86,6 +86,36 @@ function timingSafeCompare(a: string, b: string): boolean {
   return crypto.timingSafeEqual(aBuf, bBuf);
 }
 
+/**
+ * Internal-route secret guard — module-scoped so every internal endpoint
+ * can apply it as a `preHandler` BEFORE `validate(...)`. An unauthenticated
+ * probe with a malformed body MUST see the same 404 as an unauthenticated
+ * probe with a syntactically valid body, otherwise the response-code
+ * difference (400 vs 404) leaks the existence of the endpoint. Inlining
+ * the check after validate (the original `/notifications/dispatch` shape)
+ * is the bug pattern; hoisting + sharing this guard prevents drift.
+ *
+ * Fail-closed (404) when the deployment hasn't provisioned a real secret
+ * yet — a Cloud Run service that booted before the ops-prerequisites
+ * workflow ran sees the same response shape as an unauthenticated probe,
+ * so neither the absence-of-config NOR the wrong-value cases leak the
+ * endpoint's existence.
+ */
+async function internalSecretGuard(request: FastifyRequest, reply: FastifyReply) {
+  const providedSecret = request.headers["x-internal-dispatch-secret"];
+  const expected = config.INTERNAL_DISPATCH_SECRET;
+  if (typeof expected !== "string" || expected.length < 32) {
+    return reply.status(404).send({ success: false, error: { code: "NOT_FOUND" } });
+  }
+  if (
+    typeof providedSecret !== "string" ||
+    providedSecret.length === 0 ||
+    !timingSafeCompare(providedSecret, expected)
+  ) {
+    return reply.status(404).send({ success: false, error: { code: "NOT_FOUND" } });
+  }
+}
+
 export const internalRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.post(
     "/notifications/dispatch",
@@ -101,7 +131,12 @@ export const internalRoutes: FastifyPluginAsync = async (fastify) => {
           timeWindow: "1 minute",
         },
       },
-      preHandler: [validate({ body: InternalDispatchBody })],
+      // SECRET CHECK FIRST — before validate, so unauthenticated probes
+      // with a malformed body see the same 404 as those with a valid
+      // body. Otherwise the response-code difference (400 vs 404) leaks
+      // the endpoint's existence. Same posture as the other two
+      // internal endpoints below.
+      preHandler: [internalSecretGuard, validate({ body: InternalDispatchBody })],
       schema: {
         hide: true, // never exposed in the public Swagger UI
         summary: "Internal dispatcher entry point for Cloud Functions",
@@ -112,27 +147,6 @@ export const internalRoutes: FastifyPluginAsync = async (fastify) => {
       },
     },
     async (request, reply) => {
-      const providedSecret = request.headers["x-internal-dispatch-secret"];
-      const expected = config.INTERNAL_DISPATCH_SECRET;
-
-      // Fail closed (404) when the deployment hasn't provisioned a real
-      // secret yet — typical of a Cloud Run service that booted before the
-      // ops-prerequisites workflow ran. Without this guard the route
-      // would reject every call, including the scheduled job's, but with a
-      // confusing 404 rooted in a misconfiguration rather than a probe.
-      if (typeof expected !== "string" || expected.length < 32) {
-        return reply.status(404).send({ success: false, error: { code: "NOT_FOUND" } });
-      }
-
-      if (
-        typeof providedSecret !== "string" ||
-        providedSecret.length === 0 ||
-        !timingSafeCompare(providedSecret, expected)
-      ) {
-        // 404 to make the surface invisible to unauthenticated probes.
-        return reply.status(404).send({ success: false, error: { code: "NOT_FOUND" } });
-      }
-
       const body = request.body as InternalDispatchBody;
 
       const recipients: NotificationRecipient[] = body.recipients.map((r) => ({
@@ -188,47 +202,36 @@ export const internalRoutes: FastifyPluginAsync = async (fastify) => {
   const ReconcileBody = z
     .object({
       /** Lower bound — payments newer than this are skipped. Min 1 min so IPN has headroom. */
-      windowMinMs: z.number().int().min(60 * 1000).max(60 * 60 * 1000).optional(),
+      windowMinMs: z
+        .number()
+        .int()
+        .min(60 * 1000)
+        .max(60 * 60 * 1000)
+        .optional(),
       /** Upper bound — payments older than this are left for onPaymentTimeout. */
-      windowMaxMs: z.number().int().positive().max(60 * 60 * 1000).optional(),
+      windowMaxMs: z
+        .number()
+        .int()
+        .positive()
+        .max(60 * 60 * 1000)
+        .optional(),
       /** Max payments processed per invocation. Hard ceiling 200. */
       batchSize: z.number().int().positive().max(200).optional(),
     })
+    // `.strict()` BEFORE `.refine()` — Zod returns a ZodEffects after
+    // a refine and the strict-mode setter is no longer reachable on
+    // the wrapper. Order matters; matches the equivalent guard in
+    // `apps/api/src/jobs/handlers/reconcile-payments.ts:inputSchema`.
+    .strict()
     // FAIL-3 fix — cross-field validation. Without this a stolen secret
     // could submit `{ windowMinMs: 60000, windowMaxMs: 3600000 }` to
     // sweep every processing payment up to 1 h old in one call,
     // bypassing the operational "give the IPN a chance" intent.
     .refine(
       (b) =>
-        b.windowMinMs === undefined ||
-        b.windowMaxMs === undefined ||
-        b.windowMinMs < b.windowMaxMs,
+        b.windowMinMs === undefined || b.windowMaxMs === undefined || b.windowMinMs < b.windowMaxMs,
       { message: "windowMinMs must be strictly less than windowMaxMs" },
     );
-
-  /**
-   * Internal-route secret guard.
-   *
-   * FAIL-1 fix (security review 2026-04-26) — runs as a SEPARATE
-   * preHandler BEFORE `validate(...)` so an unauthenticated probe
-   * with a malformed body sees the same 404 as an unauthenticated
-   * probe with a syntactically valid body. Otherwise the response-code
-   * difference (400 vs 404) leaks the existence of the endpoint.
-   */
-  const internalSecretGuard = async (request: FastifyRequest, reply: FastifyReply) => {
-    const providedSecret = request.headers["x-internal-dispatch-secret"];
-    const expected = config.INTERNAL_DISPATCH_SECRET;
-    if (typeof expected !== "string" || expected.length < 32) {
-      return reply.status(404).send({ success: false, error: { code: "NOT_FOUND" } });
-    }
-    if (
-      typeof providedSecret !== "string" ||
-      providedSecret.length === 0 ||
-      !timingSafeCompare(providedSecret, expected)
-    ) {
-      return reply.status(404).send({ success: false, error: { code: "NOT_FOUND" } });
-    }
-  };
 
   fastify.post(
     "/payments/reconcile",
@@ -261,6 +264,74 @@ export const internalRoutes: FastifyPluginAsync = async (fastify) => {
       });
 
       return reply.status(200).send({ success: true, data: stats });
+    },
+  );
+
+  // ── Balance release sweep (Phase Finance) ──────────────────────────────
+  // Cron-fired endpoint that the hourly `releaseAvailableFunds` Cloud
+  // Function calls (with the X-Internal-Dispatch-Secret). Delegates to
+  // `balanceService.releaseAvailableFunds` — the SAME service method the
+  // admin /admin/jobs runner calls via `release-available-funds.ts` —
+  // so the two trigger paths can never drift.
+  //
+  // Authorisation, rate-limiting, fail-closed-404 semantics: identical
+  // to /payments/reconcile above. The secret guard runs FIRST so
+  // unauthenticated probes can't oracle the endpoint via response codes.
+  //
+  // Body is intentionally narrow: cron always runs with default args,
+  // but supports `asOf` / `maxEntries` for emergency catch-up runs.
+  // The default cron `maxEntries` is enforced server-side at 5_000
+  // (one cron-tick = one page of work; backlog drains over multiple
+  // ticks) — operators triggering from /admin/jobs may raise it via
+  // the runner's input.
+  const CRON_DEFAULT_MAX_ENTRIES = 5_000;
+  const ReleaseAvailableBody = z
+    .object({
+      // Same upper-bound rule as the admin handler (5-min grace) so the
+      // cron path can't accidentally widen the sweep window via a
+      // misconfigured body.
+      asOf: z
+        .string()
+        .datetime()
+        .refine((v) => new Date(v).getTime() <= Date.now() + 5 * 60_000, {
+          message: "asOf must not be more than 5 minutes in the future",
+        })
+        .optional(),
+      maxEntries: z.coerce.number().int().positive().max(50_000).optional(),
+    })
+    .strict();
+
+  fastify.post(
+    "/balance/release-available",
+    {
+      config: {
+        rateLimit: {
+          max: 30,
+          timeWindow: "1 minute",
+        },
+      },
+      preHandler: [internalSecretGuard, validate({ body: ReleaseAvailableBody })],
+      schema: {
+        hide: true,
+        summary: "Internal — release pending balance entries past their availableOn window",
+      },
+    },
+    async (request, reply) => {
+      const body = request.body as z.infer<typeof ReleaseAvailableBody>;
+
+      // Lazy import to mirror the /payments/reconcile pattern and dodge
+      // the same circular-require risk (the service module imports
+      // event-bus + repos + config at module-init).
+      const { balanceService } = await import("@/services/balance.service");
+      const result = await balanceService.releaseAvailableFunds({
+        ...(body.asOf !== undefined ? { asOf: body.asOf } : {}),
+        // Cron default cap (5_000) is below the service's hard ceiling
+        // (50_000). Operators on /admin/jobs can raise it explicitly.
+        maxEntries: body.maxEntries ?? CRON_DEFAULT_MAX_ENTRIES,
+        runId: `system:cron-${crypto.randomUUID()}`,
+      });
+
+      return reply.status(200).send({ success: true, data: result });
     },
   );
 };

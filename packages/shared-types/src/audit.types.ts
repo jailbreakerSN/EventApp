@@ -58,6 +58,23 @@ export const AuditActionSchema = z.enum([
   "message.sent",
   "broadcast.sent",
   "payout.created",
+  // Phase Finance — per-organization summary emitted by
+  // `balanceService.releaseAvailableFunds` after one or more `pending`
+  // ledger entries graduate to `available` (their `availableOn` window
+  // has elapsed). One row per org per sweep, carrying count + signed
+  // net amount + capped sample of released entry IDs. Both the cron
+  // path (Cloud Function → internal route → service) and the admin
+  // path (/admin/jobs → runner → handler → service) emit the same
+  // event via the in-process eventBus; the audit listener writes the
+  // row regardless of trigger.
+  "balance_transaction.released",
+  // Phase Finance — cron-tick heartbeat for the release sweep.
+  // Emitted EXACTLY once per `releaseAvailableFunds` invocation
+  // regardless of whether any entry was released — a healthy
+  // `released: 0` tick proves the cron is alive vs. silently dead,
+  // and ops dashboards can graph release cadence over time. Mirrors
+  // `payment.reconciliation_swept`.
+  "balance.release_swept",
   "payment.initiated",
   "payment.succeeded",
   "payment.failed",

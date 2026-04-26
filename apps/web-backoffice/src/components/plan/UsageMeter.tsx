@@ -3,16 +3,28 @@
 interface UsageMeterProps {
   label: string;
   current: number;
-  limit: number;
+  // Accepts number | null | undefined: `Infinity` round-trips through JSON
+  // as `null` (the API returns Infinity on unlimited plans, the wire turns
+  // it into null), and the storage sentinel for unlimited is -1
+  // (PLAN_LIMIT_UNLIMITED). Callers therefore never need to pre-normalise.
+  limit: number | null | undefined;
   compact?: boolean;
 }
 
 export function UsageMeter({ label, current, limit, compact = false }: UsageMeterProps) {
-  const isUnlimited = !isFinite(limit);
-  const percent = isUnlimited ? 0 : Math.min(Math.round((current / limit) * 100), 100);
+  // `Number.isFinite` (strict) rejects null/undefined/NaN/±Infinity without
+  // null→0 coercion, unlike the global `isFinite`. Negative or zero limits
+  // (incl. the PLAN_LIMIT_UNLIMITED sentinel of -1) are treated as unlimited
+  // so a misconfigured plan never renders a 100% red "Limite atteinte" meter.
+  // The `Infinity` case happens in practice because the API returns Infinity
+  // for unlimited plans and JSON.stringify converts it to `null` on the wire.
+  const isUnlimited = !Number.isFinite(limit) || (limit as number) <= 0;
+  const percent = isUnlimited
+    ? 0
+    : Math.min(Math.round((Math.max(0, current) / (limit as number)) * 100), 100);
   const color = percent >= 100 ? "bg-red-500" : percent >= 80 ? "bg-amber-500" : "bg-primary";
 
-  const displayLimit = isUnlimited ? "\u221E" : limit;
+  const displayLimit: number | string = isUnlimited ? "\u221E" : (limit as number);
 
   if (compact) {
     return (

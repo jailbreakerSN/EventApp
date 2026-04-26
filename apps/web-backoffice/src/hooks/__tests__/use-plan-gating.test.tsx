@@ -364,6 +364,84 @@ describe("usePlanGating — checkLimit boundary math (post-audit spec)", () => {
   });
 });
 
+// ─── SPEC: wire-format normalisation for unlimited limits ────────────────
+// The API returns `limit: Infinity` for Pro / Enterprise plans, but
+// JSON.stringify(Infinity) collapses to `null` on the wire — and the
+// storage sentinel for "unlimited" is `-1` (PLAN_LIMIT_UNLIMITED), which
+// can leak through if a denormalised value is passed untransformed. The
+// hook MUST treat all three (null, undefined, -1) as Infinity so the
+// downstream "unlimited iff !Number.isFinite" contract holds. The bug
+// these tests pin shipped the "Limite atteinte" red banner on a Pro
+// plan with 39 / null events — the exact billing-page screenshot.
+describe("usePlanGating — wire-format unlimited normalisation", () => {
+  beforeEach(() => {
+    mockUseAuth.mockReturnValue({ user: { uid: "u-1", organizationId: "org-1" } });
+    mockUseOrganization.mockReturnValue({
+      data: { data: { id: "org-1", plan: "pro" } },
+    });
+  });
+
+  it("treats `limit: null` (post-JSON Infinity) as unlimited — never reports `Limite atteinte`", async () => {
+    // Reproduces the production billing-page screenshot exactly: a Pro
+    // plan with 39 active events, where the API serialised Infinity to
+    // null over the wire. Pre-fix this returned percent: 100 +
+    // allowed: false → red "Limite atteinte" banner.
+    mockGetUsage.mockResolvedValue({
+      data: {
+        events: { current: 39, limit: null },
+        members: { current: 2, limit: null },
+      },
+    });
+    const { result } = renderHook(() => usePlanGating(), { wrapper });
+    await waitFor(() => expect(result.current.usage).toBeDefined());
+
+    const events = result.current.checkLimit("events");
+    expect(events.allowed).toBe(true);
+    expect(events.percent).toBe(0);
+    // The hook re-hydrates null back to Infinity so the downstream
+    // contract (`!Number.isFinite(limit) === isUnlimited`) holds for
+    // every consumer (UsageMeter, PlanGate, sidebar widget).
+    expect(events.limit).toBe(Infinity);
+    expect(result.current.isNearLimit("events")).toBe(false);
+  });
+
+  it("treats `limit: undefined` (missing field) as unlimited", async () => {
+    mockGetUsage.mockResolvedValue({
+      data: {
+        events: { current: 100, limit: undefined as unknown as number },
+        members: { current: 1, limit: 3 },
+      },
+    });
+    const { result } = renderHook(() => usePlanGating(), { wrapper });
+    await waitFor(() => expect(result.current.usage).toBeDefined());
+
+    const events = result.current.checkLimit("events");
+    expect(events.allowed).toBe(true);
+    expect(events.percent).toBe(0);
+    expect(events.limit).toBe(Infinity);
+  });
+
+  it("treats `limit: -1` (PLAN_LIMIT_UNLIMITED sentinel leak) as unlimited", async () => {
+    // The storage sentinel for unlimited is -1. If a denormalised value
+    // ever bypasses the API's runtime-conversion (subscription.service
+    // computes maxEvents = sentinel === -1 ? Infinity : value), the
+    // hook still has to behave correctly. Defence in depth.
+    mockGetUsage.mockResolvedValue({
+      data: {
+        events: { current: 9999, limit: -1 },
+        members: { current: 5, limit: -1 },
+      },
+    });
+    const { result } = renderHook(() => usePlanGating(), { wrapper });
+    await waitFor(() => expect(result.current.usage).toBeDefined());
+
+    const events = result.current.checkLimit("events");
+    expect(events.allowed).toBe(true);
+    expect(events.percent).toBe(0);
+    expect(events.limit).toBe(Infinity);
+  });
+});
+
 describe("usePlanGating — query enablement", () => {
   it("does not fire the usage query when the user has no org", () => {
     mockUseAuth.mockReturnValue({ user: null });

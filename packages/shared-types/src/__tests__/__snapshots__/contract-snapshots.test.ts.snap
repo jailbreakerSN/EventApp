@@ -711,6 +711,8 @@ exports[`shared-types contract snapshots > AuditLogEntrySchema shape is stable 1
           "api_key.verified",
           "badge.bulk_generated",
           "badge.generated",
+          "balance.release_swept",
+          "balance_transaction.released",
           "broadcast.sent",
           "checkin.bulk_synced",
           "checkin.completed",

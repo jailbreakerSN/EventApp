@@ -1412,6 +1412,59 @@ export function registerAuditListeners(): void {
     });
   });
 
+  // Phase Finance — per-organization summary of a release-available-funds
+  // sweep. One row per org per sweep, carrying the count + signed
+  // netAmount + capped sample of released entry IDs. Ops use this row
+  // to answer "how much settled for org X this week" without scanning
+  // the ledger collection. Mirrors the per-payment audit shape used by
+  // the payment-reconciliation flow.
+  eventBus.on("balance_transaction.released", async (payload) => {
+    await auditService.log({
+      action: "balance_transaction.released",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "organization",
+      resourceId: payload.organizationId,
+      eventId: null,
+      organizationId: payload.organizationId,
+      details: {
+        count: payload.count,
+        netAmount: payload.netAmount,
+        sampleEntryIds: payload.sampleEntryIds,
+        truncated: payload.truncated,
+        runId: payload.runId,
+      },
+    });
+  });
+
+  // Phase Finance — release sweep heartbeat. Emitted EXACTLY once per
+  // `releaseAvailableFunds` invocation regardless of whether anything
+  // was released. Mirrors `payment.reconciliation_swept`: a healthy
+  // `released: 0` tick proves the cron is alive vs. silently dead, and
+  // ops dashboards can graph release cadence over time. Read from
+  // /admin/audit?action=balance.release_swept.
+  eventBus.on("balance.release_swept", async (payload) => {
+    await auditService.log({
+      action: "balance.release_swept",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      // Cron-tick aggregate, not a per-row mutation. Same sentinel
+      // pattern as `payment.reconciliation_swept`.
+      resourceType: "balance_release_sweep",
+      resourceId: `sweep_${payload.timestamp}`,
+      eventId: null,
+      organizationId: null,
+      details: {
+        released: payload.released,
+        organizationsAffected: payload.organizationsAffected,
+        asOf: payload.asOf,
+        runId: payload.runId,
+      },
+    });
+  });
+
   // Phase 3 reconciliation cron heartbeat — one row per sweep tick.
   // Read from /admin/audit?action=payment.reconciliation_swept by ops
   // dashboards to graph the IPN-miss rate (a healthy `scanned: 0`

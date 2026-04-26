@@ -31,6 +31,18 @@ vi.mock("@/services/payment.service", () => ({
   },
 }));
 
+// Phase Finance — balance release sweep mock. Same lazy-import pattern.
+const mockReleaseAvailableFunds = vi.fn().mockResolvedValue({
+  released: 4,
+  organizationsAudited: 2,
+  asOf: "2026-04-26T12:00:00.000Z",
+});
+vi.mock("@/services/balance.service", () => ({
+  balanceService: {
+    releaseAvailableFunds: (...args: unknown[]) => mockReleaseAvailableFunds(...args),
+  },
+}));
+
 // Stable secret for tests — must match what the route reads from `config`.
 // Hoisted via vi.hoisted so the vi.mock factory can reference it.
 const { TEST_SECRET } = vi.hoisted(() => ({
@@ -62,6 +74,7 @@ afterAll(async () => {
 beforeEach(() => {
   mockDispatch.mockClear();
   mockReconcile.mockClear();
+  mockReleaseAvailableFunds.mockClear();
 });
 
 describe("POST /v1/internal/notifications/dispatch", () => {
@@ -257,5 +270,153 @@ describe("POST /v1/internal/payments/reconcile", () => {
     });
     expect(res.statusCode).toBe(400);
     expect(mockReconcile).not.toHaveBeenCalled();
+  });
+
+  // Body strictness — extra unknown keys must be rejected. Kept in lock-
+  // step with the equivalent guard on the admin handler's input schema.
+  it("rejects unknown body keys (400) — `.strict()` posture", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/internal/payments/reconcile",
+      headers: { "X-Internal-Dispatch-Secret": TEST_SECRET },
+      payload: { batchSize: 50, unknownExtraKey: "should-fail" },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(mockReconcile).not.toHaveBeenCalled();
+  });
+});
+
+// ─── Phase Finance — POST /v1/internal/balance/release-available ──────────
+//
+// Cron-fired endpoint that the hourly `releaseAvailableFunds` Cloud Function
+// hits. Same posture as `/payments/reconcile`: secret guard FIRST,
+// fail-closed-404, body validation, then delegate to the service. These
+// tests are the route-level coverage that the test-coverage reviewer
+// flagged P0-missing — the handler unit tests cover the sweep logic but
+// don't exercise this route's secret guard, body validator, or
+// oracle-leak guard.
+
+describe("POST /v1/internal/balance/release-available", () => {
+  it("returns 404 when the secret is missing (no service call)", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/internal/balance/release-available",
+      payload: {},
+    });
+    expect(res.statusCode).toBe(404);
+    expect(mockReleaseAvailableFunds).not.toHaveBeenCalled();
+  });
+
+  it("returns 404 when the secret is wrong (constant-time mismatch)", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/internal/balance/release-available",
+      headers: { "X-Internal-Dispatch-Secret": "wrong-secret" },
+      payload: {},
+    });
+    expect(res.statusCode).toBe(404);
+    expect(mockReleaseAvailableFunds).not.toHaveBeenCalled();
+  });
+
+  // Oracle-leak guard — without secret-first, an unauth probe with a
+  // malformed body would land 400 (vs 404 for a syntactically valid
+  // body), letting an attacker confirm the endpoint exists.
+  it("returns 404 (NOT 400) when secret is wrong AND body is malformed (oracle-leak guard)", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/internal/balance/release-available",
+      headers: { "X-Internal-Dispatch-Secret": "wrong-secret" },
+      // `asOf` must be ISO datetime — this would normally trigger 400,
+      // but the secret guard runs FIRST so we get 404.
+      payload: { asOf: "not-a-date" },
+    });
+    expect(res.statusCode).toBe(404);
+    expect(mockReleaseAvailableFunds).not.toHaveBeenCalled();
+  });
+
+  it("delegates to balanceService.releaseAvailableFunds and returns 200 with the result", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/internal/balance/release-available",
+      headers: { "X-Internal-Dispatch-Secret": TEST_SECRET },
+      payload: {},
+    });
+    expect(res.statusCode).toBe(200);
+    expect(mockReleaseAvailableFunds).toHaveBeenCalledTimes(1);
+    const arg = mockReleaseAvailableFunds.mock.calls[0]![0] as Record<string, unknown>;
+    // Cron path tags its runId with `system:cron-<uuid>` so audit
+    // consumers can tell scheduled runs apart from manual runs.
+    expect(typeof arg.runId).toBe("string");
+    expect(arg.runId).toMatch(
+      /^system:cron-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+    );
+    // Cron default cap (5_000) is below the service's hard ceiling
+    // (50_000). Operators on /admin/jobs can raise it explicitly.
+    expect(arg.maxEntries).toBe(5_000);
+
+    const body = res.json() as { success: boolean; data: Record<string, unknown> };
+    expect(body.success).toBe(true);
+    expect(body.data).toMatchObject({ released: 4, organizationsAudited: 2 });
+  });
+
+  it("forwards explicit asOf + maxEntries to the service when supplied", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/internal/balance/release-available",
+      headers: { "X-Internal-Dispatch-Secret": TEST_SECRET },
+      payload: {
+        asOf: new Date(Date.now() - 60_000).toISOString(),
+        maxEntries: 1_000,
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    const arg = mockReleaseAvailableFunds.mock.calls[0]![0] as Record<string, unknown>;
+    expect(arg.maxEntries).toBe(1_000);
+    expect(typeof arg.asOf).toBe("string");
+  });
+
+  it("rejects an asOf more than 5 minutes in the future (400) — operator-typo guard", async () => {
+    const farFuture = new Date(Date.now() + 24 * 3600 * 1000).toISOString();
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/internal/balance/release-available",
+      headers: { "X-Internal-Dispatch-Secret": TEST_SECRET },
+      payload: { asOf: farFuture },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(mockReleaseAvailableFunds).not.toHaveBeenCalled();
+  });
+
+  it("rejects asOf that is not a datetime string (400)", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/internal/balance/release-available",
+      headers: { "X-Internal-Dispatch-Secret": TEST_SECRET },
+      payload: { asOf: "not-a-date" },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(mockReleaseAvailableFunds).not.toHaveBeenCalled();
+  });
+
+  it("rejects maxEntries above the 50_000 cap (400)", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/internal/balance/release-available",
+      headers: { "X-Internal-Dispatch-Secret": TEST_SECRET },
+      payload: { maxEntries: 50_001 },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(mockReleaseAvailableFunds).not.toHaveBeenCalled();
+  });
+
+  it("rejects unknown body keys (400) — `.strict()` posture", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/v1/internal/balance/release-available",
+      headers: { "X-Internal-Dispatch-Secret": TEST_SECRET },
+      payload: { foo: "bar" },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(mockReleaseAvailableFunds).not.toHaveBeenCalled();
   });
 });

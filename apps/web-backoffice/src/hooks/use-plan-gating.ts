@@ -54,9 +54,23 @@ export function usePlanGating() {
       return { allowed: true, current: 0, limit: fallbackLimit, percent: 0 };
     }
     const data = resource === "events" ? usage.events : usage.members;
+    // ─── Wire-format normalisation ──────────────────────────────────────────
+    // The API returns `limit: Infinity` for unlimited plans, but
+    // `JSON.stringify(Infinity)` collapses to `null` on the wire. By the
+    // time the response reaches us, an unlimited limit can therefore be
+    // any of: `Infinity` (defensive client cache), `null` (post-JSON), or
+    // `-1` (the PLAN_LIMIT_UNLIMITED storage sentinel that may leak
+    // through if a denormalised value reaches us untransformed). Re-hydrate
+    // all three back to `Infinity` so downstream consumers see a single
+    // runtime contract: "unlimited iff !Number.isFinite(limit)".
+    const rawLimit = data.limit as number | null | undefined;
+    const limit =
+      rawLimit === null || rawLimit === undefined || rawLimit === -1 || !Number.isFinite(rawLimit)
+        ? Infinity
+        : rawLimit;
     // ─── Defensive percent math ─────────────────────────────────────────────
     // The UI renders `{percent}%` directly into a meter label, so we MUST
-    // return a finite value in [0, 100]. Three edge cases to neutralise:
+    // return a finite value in [0, 100]. Edge cases to neutralise:
     //   - limit <= 0 → division-by-zero (Infinity or NaN). Can happen on
     //     a custom plan override with maxEvents: 0. Treat as "at cap".
     //   - current < 0 → shouldn't happen but guard anyway (negative UI).
@@ -65,15 +79,15 @@ export function usePlanGating() {
     //   - limit === Infinity → unlimited plan; percent stays 0 so the
     //     sidebar meter stays empty rather than rendering `0%` of ∞.
     let percent = 0;
-    if (Number.isFinite(data.limit) && data.limit > 0) {
-      const raw = Math.round((Math.max(0, data.current) / data.limit) * 100);
+    if (Number.isFinite(limit) && limit > 0) {
+      const raw = Math.round((Math.max(0, data.current) / limit) * 100);
       percent = Math.min(100, Math.max(0, raw));
     }
-    const allowed = !Number.isFinite(data.limit) || (data.limit > 0 && data.current < data.limit);
+    const allowed = !Number.isFinite(limit) || (limit > 0 && data.current < limit);
     return {
       allowed,
       current: data.current,
-      limit: data.limit,
+      limit,
       percent,
     };
   }
