@@ -460,6 +460,133 @@ describe("verifyWebhook — per-provider signature verification", () => {
     expect(provider.verifyWebhook({ rawBody, headers: {} })).toBe(false);
   });
 
+  // ── P1-25 (audit test gap #3) — HMAC signature edge cases ──────────────
+  // The previous coverage ran a happy path + a single "invalid-sig"
+  // case. P1-25 pins the failure modes that have actually shipped
+  // production bugs at other companies: timing-attack vulnerable
+  // length comparison, signature re-use across mutated bodies,
+  // empty-body acceptance, whitespace tolerance.
+  it("Wave rejects empty signature header value — P1-25", async () => {
+    process.env.WAVE_API_SECRET = "test-wave-secret";
+    vi.resetModules();
+    const { WavePaymentProvider } = await import("../wave-payment.provider");
+    const provider = new WavePaymentProvider();
+
+    expect(
+      provider.verifyWebhook({ rawBody: "{}", headers: { "x-wave-signature": "" } }),
+    ).toBe(false);
+  });
+
+  it("Wave rejects wrong-length signature (truncated) — P1-25", async () => {
+    // Critical regression guard: `timingSafeEqual` THROWS on
+    // unequal-length buffers. The provider must check length
+    // FIRST and return false; without that guard, a truncated
+    // signature would crash the request handler instead of
+    // being rejected cleanly.
+    process.env.WAVE_API_SECRET = "test-wave-secret";
+    vi.resetModules();
+    const { WavePaymentProvider } = await import("../wave-payment.provider");
+    const provider = new WavePaymentProvider();
+
+    const rawBody = '{"foo":"bar"}';
+    const crypto = await import("node:crypto");
+    const fullSig = crypto.createHmac("sha256", "test-wave-secret").update(rawBody).digest("hex");
+    const truncated = fullSig.slice(0, fullSig.length - 8);
+
+    expect(
+      provider.verifyWebhook({ rawBody, headers: { "x-wave-signature": truncated } }),
+    ).toBe(false);
+  });
+
+  it("Wave rejects when body is mutated after signing (replay protection) — P1-25", async () => {
+    // The exact bytes signed by Wave MUST round-trip unchanged.
+    // Any byte mutation (key reorder by middleware, whitespace
+    // injection, key/value swap) invalidates the HMAC.
+    process.env.WAVE_API_SECRET = "test-wave-secret";
+    vi.resetModules();
+    const { WavePaymentProvider } = await import("../wave-payment.provider");
+    const provider = new WavePaymentProvider();
+
+    const original = '{"amount":5000,"status":"succeeded"}';
+    const mutated = '{"amount":50000,"status":"succeeded"}'; // amount tampered
+    const crypto = await import("node:crypto");
+    const sigOriginal = crypto.createHmac("sha256", "test-wave-secret").update(original).digest("hex");
+
+    // Original body + signature: pass.
+    expect(
+      provider.verifyWebhook({ rawBody: original, headers: { "x-wave-signature": sigOriginal } }),
+    ).toBe(true);
+    // Mutated body + original signature: reject.
+    expect(
+      provider.verifyWebhook({ rawBody: mutated, headers: { "x-wave-signature": sigOriginal } }),
+    ).toBe(false);
+  });
+
+  it("Wave rejects when secret is unset (defence against config drift) — P1-25", async () => {
+    // If WAVE_API_SECRET is unset, the provider MUST refuse all
+    // webhooks (fail-CLOSED). Without this, an attacker could craft
+    // a webhook with any signature and `verifyWebhook` would either
+    // throw or accept (depending on how the empty-secret branch is
+    // written). The startup assertion (P1-18) catches this in
+    // production but the defence-in-depth at the verifier remains
+    // essential for any caller that bypasses the assertion.
+    delete process.env.WAVE_API_SECRET;
+    vi.resetModules();
+    const { WavePaymentProvider } = await import("../wave-payment.provider");
+    const provider = new WavePaymentProvider();
+
+    expect(
+      provider.verifyWebhook({ rawBody: "{}", headers: { "x-wave-signature": "any-value" } }),
+    ).toBe(false);
+  });
+
+  it("Wave HMAC signature for an empty body is still verifiable — P1-25", async () => {
+    // Edge: zero-byte bodies must still verify cleanly. Some
+    // providers send empty-body callbacks (status-only). The
+    // implementation MUST NOT special-case "empty body" as
+    // "unsigned"; it must compute HMAC over the empty string.
+    process.env.WAVE_API_SECRET = "test-wave-secret";
+    vi.resetModules();
+    const { WavePaymentProvider } = await import("../wave-payment.provider");
+    const provider = new WavePaymentProvider();
+
+    const crypto = await import("node:crypto");
+    const sig = crypto.createHmac("sha256", "test-wave-secret").update("").digest("hex");
+
+    expect(
+      provider.verifyWebhook({ rawBody: "", headers: { "x-wave-signature": sig } }),
+    ).toBe(true);
+  });
+
+  it("Wave rejects array-typed signature header (Fastify multi-header edge) — P1-25", async () => {
+    // Fastify exposes `headers` as `string | string[] | undefined`.
+    // Some HTTP/1.1 stacks duplicate headers — the provider's
+    // `readHeader` helper picks `[0]` from arrays. Verify the
+    // happy path (first array element matches) AND the rejection
+    // path (no first element).
+    process.env.WAVE_API_SECRET = "test-wave-secret";
+    vi.resetModules();
+    const { WavePaymentProvider } = await import("../wave-payment.provider");
+    const provider = new WavePaymentProvider();
+
+    const rawBody = '{"foo":"bar"}';
+    const crypto = await import("node:crypto");
+    const sig = crypto.createHmac("sha256", "test-wave-secret").update(rawBody).digest("hex");
+
+    // Empty array → first element undefined → reject.
+    expect(
+      provider.verifyWebhook({ rawBody, headers: { "x-wave-signature": [] } }),
+    ).toBe(false);
+
+    // Array with valid first → accept (first element wins).
+    expect(
+      provider.verifyWebhook({
+        rawBody,
+        headers: { "x-wave-signature": [sig, "decoy"] },
+      }),
+    ).toBe(true);
+  });
+
   it("Orange Money compares `x-om-token` header constant-time to ORANGE_MONEY_NOTIF_TOKEN", async () => {
     process.env.ORANGE_MONEY_NOTIF_TOKEN = "test-om-token-12345";
     vi.resetModules();

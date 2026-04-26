@@ -522,6 +522,127 @@ describe("PaymentService.handleWebhook", () => {
       service.handleWebhook(payment.providerTransactionId!, "succeeded"),
     ).rejects.toThrow();
   });
+
+  // ── P1-23 (audit test gap #1) — concurrent webhook delivery ──────────────
+  // Wave / OM retry webhooks 2–5 times within seconds when they don't
+  // get an immediate 200 ACK. Without the wasNewlySucceeded gate
+  // (P1-08), the inner-tx idempotency guard prevented the LEDGER from
+  // being double-written but every invocation that reached the emit
+  // line still fired `payment.succeeded` — leading to 2-5× notification
+  // bursts, audit row duplicates, and `registration.confirmed`
+  // cascades. The test pins both guards:
+  //
+  //   Path A — outer-guard short-circuit: payment is ALREADY succeeded
+  //     when the second webhook arrives. The `if (payment.status ===
+  //     "succeeded") return` guard fires before the tx, no emit.
+  //
+  //   Path B — inner-tx idempotency: payment was processing at the
+  //     outer read, but the transactional re-read sees succeeded
+  //     (concurrent winner). The wasNewlySucceeded flag stays false
+  //     so emit is suppressed.
+  it("path A: outer-guard skips a webhook for an already-succeeded payment, NO emit — P1-23", async () => {
+    const payment = buildPayment({ status: "succeeded" });
+    mockPaymentRepo.findByProviderTransactionId.mockResolvedValue(payment);
+
+    await service.handleWebhook(payment.providerTransactionId!, "succeeded");
+
+    // Outer guard fires — no transaction, no emit, no ledger writes.
+    expect(mockRunTransaction).not.toHaveBeenCalled();
+    expect(mockEventBus.emit).not.toHaveBeenCalled();
+    expect(mockTxUpdate).not.toHaveBeenCalled();
+    expect(mockTxSet).not.toHaveBeenCalled();
+  });
+
+  it("path B: inner-tx idempotency skips emit when payment flipped concurrently — P1-23", async () => {
+    // Outer read still sees `processing` (the concurrent winner
+    // hasn't published yet from the outer's POV), but the
+    // transactional re-read sees `succeeded` — exactly the race
+    // P1-08 was added to neutralise.
+    const payment = buildPayment({ status: "processing" });
+    mockPaymentRepo.findByProviderTransactionId.mockResolvedValue(payment);
+    mockTxGet.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({ ...payment, status: "succeeded" }),
+    });
+
+    await service.handleWebhook(payment.providerTransactionId!, "succeeded");
+
+    // Tx ran (we entered the runTransaction block) but the inner
+    // guard short-circuited — no writes, no ledger, no emit.
+    expect(mockRunTransaction).toHaveBeenCalledTimes(1);
+    expect(mockTxUpdate).not.toHaveBeenCalled();
+    expect(mockTxSet).not.toHaveBeenCalled();
+    expect(mockEventBus.emit).not.toHaveBeenCalledWith(
+      "payment.succeeded",
+      expect.anything(),
+    );
+  });
+
+  it("emits payment.succeeded EXACTLY ONCE across 5 sequential identical webhook deliveries — P1-23", async () => {
+    // Models the Wave/OM retry burst: same providerTransactionId
+    // delivered 5 times. Stateful mock — after the first `succeeded`
+    // flip, every subsequent fetch / tx-read sees the post-flip
+    // state and short-circuits.
+    const payment = buildPayment({ status: "processing" });
+    let currentStatus: "processing" | "succeeded" = "processing";
+
+    mockPaymentRepo.findByProviderTransactionId.mockImplementation(async () => ({
+      ...payment,
+      status: currentStatus,
+    }));
+
+    // Inside the tx: first read is the payment, then reg, then event.
+    // On the FIRST webhook (status=processing): all 3 reads happen.
+    // On retries (status=succeeded): only the 1st read is reached
+    // (idempotency guard short-circuits before reading reg/event).
+    let txCallIndex = 0;
+    mockTxGet.mockImplementation(async () => {
+      txCallIndex += 1;
+      // Map the call into one of: payment / reg / event.
+      // First-webhook calls: 1 (payment, processing), 2 (reg), 3 (event).
+      // Retry-webhook calls: 4 (payment, succeeded — guard fires).
+      if (currentStatus === "processing" && txCallIndex === 1) {
+        return { exists: true, data: () => ({ ...payment, status: "processing" }) };
+      }
+      if (currentStatus === "processing" && txCallIndex === 2) {
+        return { exists: true, data: () => buildRegistration({ id: payment.registrationId }) };
+      }
+      if (currentStatus === "processing" && txCallIndex === 3) {
+        return { exists: true, data: () => buildEvent({ id: payment.eventId }) };
+      }
+      // Retry path — only reads the payment, sees succeeded, skips.
+      return { exists: true, data: () => ({ ...payment, status: "succeeded" }) };
+    });
+
+    // After the first tx commits the status flip, our state model
+    // mirrors that change so subsequent calls hit the post-flip path.
+    mockTxUpdate.mockImplementation((_ref: unknown, data: { status?: string }) => {
+      if (data.status === "succeeded") currentStatus = "succeeded";
+    });
+
+    // Fire 5 identical webhooks.
+    for (let i = 0; i < 5; i += 1) {
+      await service.handleWebhook(payment.providerTransactionId!, "succeeded");
+    }
+
+    // EXACTLY one `payment.succeeded` emit despite 5 deliveries.
+    const succeededCalls = mockEventBus.emit.mock.calls.filter(
+      (c: unknown[]) => c[0] === "payment.succeeded",
+    );
+    expect(succeededCalls).toHaveLength(1);
+    expect(succeededCalls[0][1]).toMatchObject({
+      paymentId: payment.id,
+      amount: payment.amount,
+    });
+
+    // Cleanup: this test installs persistent `mockImplementation`s
+    // that would otherwise leak into subsequent tests. `vi.clearAllMocks`
+    // (called in the global beforeEach) clears call history but NOT
+    // implementations as of Vitest 2+. Reset the touched mocks here.
+    mockTxGet.mockReset();
+    mockTxUpdate.mockReset();
+    mockPaymentRepo.findByProviderTransactionId.mockReset();
+  });
 });
 
 // ─── getPaymentStatus ──────────────────────────────────────────────────────
@@ -696,6 +817,44 @@ describe("PaymentService.listEventPayments", () => {
     expect("providerMetadata" in row).toBe(false);
     expect("callbackUrl" in row).toBe(false);
     expect(JSON.stringify(result.data)).not.toContain("MUST-NOT-SURFACE");
+  });
+
+  // ── P1-27 (audit test gap #5) — cross-org IDOR on listEventPayments ───────
+  // Sister test to P1-14 (status endpoint IDOR). An organizer with
+  // `payment:read_all` for org-A must NOT be able to list payments
+  // for an event that belongs to org-B by passing the event id. The
+  // service-level guard is `requireOrganizationAccess` — verify it
+  // fires BEFORE the repository is queried (so a misconfigured
+  // permission can never leak data via this path).
+  it("rejects org-A admin listing org-B event payments with 403 — P1-27", async () => {
+    const orgAAdmin = buildOrganizerUser("org-A");
+    const orgBEvent = buildEvent({ id: "evt-cross-org", organizationId: "org-B" });
+    mockEventRepo.findByIdOrThrow.mockResolvedValue(orgBEvent);
+
+    await expect(
+      service.listEventPayments("evt-cross-org", {}, { page: 1, limit: 20 }, orgAAdmin),
+    ).rejects.toThrow(/Accès refusé/);
+
+    // CRITICAL: the repository was NEVER queried. The guard fires at
+    // the service-layer boundary, so a leaky repo (or a future
+    // index that surfaces cross-org rows) can't be exploited via
+    // this surface.
+    expect(mockPaymentRepo.findByEvent).not.toHaveBeenCalled();
+  });
+
+  it("rejects org-A admin listing org-B event payment summary with 403 — P1-27", async () => {
+    // Companion guard for getEventPaymentSummary — same surface,
+    // different aggregation. The summary leaks total revenue + counts
+    // which is competitively sensitive even without per-row metadata.
+    const orgAAdmin = buildOrganizerUser("org-A");
+    const orgBEvent = buildEvent({ id: "evt-cross-org-2", organizationId: "org-B" });
+    mockEventRepo.findByIdOrThrow.mockResolvedValue(orgBEvent);
+
+    await expect(
+      service.getEventPaymentSummary("evt-cross-org-2", orgAAdmin),
+    ).rejects.toThrow(/Accès refusé/);
+
+    expect(mockPaymentRepo.findByEvent).not.toHaveBeenCalled();
   });
 });
 
@@ -1067,6 +1226,169 @@ describe("PaymentService.refundPayment", () => {
       service.refundPayment(payment.id, undefined, undefined, organizer),
     ).rejects.toThrow(/refusé par le fournisseur/);
   });
+
+  // ── P1-24 (audit test gap #2) — refund amount math boundaries ────────────
+  // Pin the integer-arithmetic + status-transition contract. Reference
+  // payment is 10 000 XOF, refundedAmount: 0. Every boundary case is
+  // tested:
+  //
+  //   amount   | expected outcome
+  //   --------- | ----------------------------------------------------
+  //   0         | reject (must be positive)
+  //   -1        | reject (must be positive)
+  //   "0.5"     | reject (must be integer — XOF has no decimals)
+  //   1         | accept; status STAYS `succeeded` (partial)
+  //   9999      | accept; status STAYS `succeeded` (partial)
+  //   10000     | accept; status FLIPS to `refunded` (full refund)
+  //   10001     | reject (exceeds remaining balance)
+  //
+  // The boundary at 10000 → status flip is critical: handleWebhook
+  // and the registeredCount decrement only fire on FULL refund. Off-
+  // by-one errors here would leak refunded payments that still occupy
+  // a registration seat or, conversely, decrement the counter for a
+  // partial that should leave the seat held.
+  describe("amount math boundaries — P1-24", () => {
+    const orgIdLocal = "org-1";
+    const organizerLocal = buildOrganizerUser(orgIdLocal);
+    const TICKET_PRICE = 10_000;
+
+    function setupFreshPayment(refundedAmount = 0): ReturnType<typeof buildPayment> {
+      return buildPayment({
+        status: "succeeded",
+        organizationId: orgIdLocal,
+        amount: TICKET_PRICE,
+        refundedAmount,
+      });
+    }
+
+    it("rejects amount=0 (must be positive)", async () => {
+      const payment = setupFreshPayment();
+      mockPaymentRepo.findByIdOrThrow.mockResolvedValue(payment);
+
+      await expect(
+        service.refundPayment(payment.id, 0, undefined, organizerLocal),
+      ).rejects.toThrow(/positif/);
+      expect(mockProvider.refund).not.toHaveBeenCalled();
+    });
+
+    it("rejects amount=-1 (must be positive)", async () => {
+      const payment = setupFreshPayment();
+      mockPaymentRepo.findByIdOrThrow.mockResolvedValue(payment);
+
+      await expect(
+        service.refundPayment(payment.id, -1, undefined, organizerLocal),
+      ).rejects.toThrow(/positif/);
+      expect(mockProvider.refund).not.toHaveBeenCalled();
+    });
+
+    it("rejects amount=0.5 (must be integer — XOF has no decimals)", async () => {
+      const payment = setupFreshPayment();
+      mockPaymentRepo.findByIdOrThrow.mockResolvedValue(payment);
+
+      await expect(
+        service.refundPayment(payment.id, 0.5, undefined, organizerLocal),
+      ).rejects.toThrow(/entier|décimales/);
+      expect(mockProvider.refund).not.toHaveBeenCalled();
+    });
+
+    it("accepts amount=1 (minimal partial refund) — status stays succeeded", async () => {
+      const payment = setupFreshPayment();
+      mockPaymentRepo.findByIdOrThrow
+        .mockResolvedValueOnce(payment)
+        .mockResolvedValueOnce({ ...payment, refundedAmount: 1 });
+      mockProvider.refund.mockResolvedValue({ success: true });
+      mockTxGet.mockResolvedValueOnce({ exists: true, data: () => payment });
+
+      await service.refundPayment(payment.id, 1, undefined, organizerLocal);
+
+      expect(mockProvider.refund).toHaveBeenCalledWith(payment.providerTransactionId, 1);
+      // Partial refund: only ONE tx.update on the payment (no
+      // registration cancel, no event counter decrement).
+      expect(mockTxUpdate).toHaveBeenCalledTimes(1);
+      expect(mockTxUpdate).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          status: "succeeded", // status stays — it's a PARTIAL refund
+          refundedAmount: 1,
+        }),
+      );
+    });
+
+    it("accepts amount=9999 (1 XOF short of full) — status stays succeeded", async () => {
+      const payment = setupFreshPayment();
+      mockPaymentRepo.findByIdOrThrow
+        .mockResolvedValueOnce(payment)
+        .mockResolvedValueOnce({ ...payment, refundedAmount: 9999 });
+      mockProvider.refund.mockResolvedValue({ success: true });
+      mockTxGet.mockResolvedValueOnce({ exists: true, data: () => payment });
+
+      await service.refundPayment(payment.id, 9999, undefined, organizerLocal);
+
+      expect(mockProvider.refund).toHaveBeenCalledWith(payment.providerTransactionId, 9999);
+      expect(mockTxUpdate).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          status: "succeeded", // off-by-one boundary — still partial
+          refundedAmount: 9999,
+        }),
+      );
+    });
+
+    it("accepts amount=10000 (full refund) — status FLIPS to refunded + decrements counters", async () => {
+      const payment = setupFreshPayment();
+      mockPaymentRepo.findByIdOrThrow
+        .mockResolvedValueOnce(payment)
+        .mockResolvedValueOnce({ ...payment, status: "refunded", refundedAmount: 10000 });
+      mockProvider.refund.mockResolvedValue({ success: true });
+      // Full-refund branch reads payment + reg + event for the
+      // ticketTypes.soldCount decrement (P1-03).
+      mockTxGet
+        .mockResolvedValueOnce({ exists: true, data: () => payment })
+        .mockResolvedValueOnce({ exists: true, data: () => ({ ticketTypeId: "tt-1" }) })
+        .mockResolvedValueOnce({
+          exists: true,
+          data: () => ({ ticketTypes: [{ id: "tt-1", soldCount: 5 }] }),
+        });
+
+      await service.refundPayment(payment.id, 10000, undefined, organizerLocal);
+
+      expect(mockProvider.refund).toHaveBeenCalledWith(payment.providerTransactionId, 10000);
+      // Full refund: payment update + registration cancel + event update = 3
+      expect(mockTxUpdate).toHaveBeenCalledTimes(3);
+      expect(mockTxUpdate).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          status: "refunded", // status flips on full refund
+          refundedAmount: 10000,
+        }),
+      );
+    });
+
+    it("rejects amount=10001 (1 XOF over full balance)", async () => {
+      const payment = setupFreshPayment();
+      mockPaymentRepo.findByIdOrThrow.mockResolvedValue(payment);
+
+      await expect(
+        service.refundPayment(payment.id, 10001, undefined, organizerLocal),
+      ).rejects.toThrow(/dépasse/);
+      expect(mockProvider.refund).not.toHaveBeenCalled();
+    });
+
+    it("rejects when remaining balance is exhausted (refundedAmount=10000 + new=1)", async () => {
+      // Cumulative-refund boundary: 10 000 already refunded, any
+      // further amount must be rejected even if the new amount
+      // alone would have been valid against the original.
+      const payment = setupFreshPayment(/* refundedAmount */ 10000);
+      mockPaymentRepo.findByIdOrThrow.mockResolvedValue(payment);
+      // The outer guard fires first (status === "succeeded" but
+      // remaining = 0). The validate path catches it.
+
+      await expect(
+        service.refundPayment(payment.id, 1, undefined, organizerLocal),
+      ).rejects.toThrow(/dépasse|déjà.*remboursé/i);
+      expect(mockProvider.refund).not.toHaveBeenCalled();
+    });
+  });
 });
 
 // ─── Concurrent-refund lock (Q1a, post-audit) ─────────────────────────────
@@ -1097,6 +1419,14 @@ describe("PaymentService.refundPayment — concurrent-refund lock", () => {
     mockPaymentRepo.findByIdOrThrow.mockResolvedValue(payment);
     const err = Object.assign(new Error("ALREADY_EXISTS"), { code: 6 });
     mockRefundLockCreate.mockRejectedValueOnce(err);
+    // Stale-lock recovery enters a tx that reads the existing lock.
+    // Pin the lock as fresh (expires in 4 min) so recovery returns
+    // false → service throws ConflictError. Without this mock, the
+    // recovery's `existing.exists` check crashes on undefined.
+    mockTxGet.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({ expiresAt: new Date(Date.now() + 4 * 60_000).toISOString() }),
+    });
 
     await expect(
       service.refundPayment(payment.id, undefined, undefined, organizer),
@@ -1159,6 +1489,53 @@ describe("PaymentService.refundPayment — concurrent-refund lock", () => {
 
     // tx.delete called once (for the lock doc) inside the transaction.
     expect(mockTxDelete).toHaveBeenCalledTimes(1);
+  });
+
+  // ── P1-26 (audit test gap #4) — concurrent lock semantics ─────────────────
+  // The defining invariant of the lock: when two refund flows race
+  // for the same payment, EXACTLY ONE provider call happens — the
+  // loser is rejected at the lock-acquire step BEFORE the provider
+  // is touched. This is what protects us from double-charging the
+  // merchant via the provider when the DB write deduplicates but
+  // the provider has already been hit twice.
+  //
+  // The "two simultaneous calls" structural assertion is captured
+  // by "rejects a second concurrent refund for the same payment"
+  // above — same lock-acquire path. This sister test pins the
+  // recovery branch's fresh-lock guard, which is the failure mode
+  // where the recovery would WRONGLY accept a concurrent caller and
+  // both flows would hit the provider.
+  it("stale-lock recovery — loser of fresh contention does NOT reach the provider — P1-26", async () => {
+    // Defensive: the recovery tx must NOT release a lock whose
+    // expiresAt is still in the future. Without that guard, the
+    // recovery path would wrongly accept a concurrent caller and
+    // both flows would hit the provider. This is a separate
+    // invariant from the happy-path concurrent test above —
+    // it pins the recovery's fresh-lock branch.
+    const payment = buildPayment({
+      status: "succeeded",
+      organizationId: "org-1",
+      amount: 5000,
+      refundedAmount: 0,
+    });
+    mockPaymentRepo.findByIdOrThrow.mockResolvedValue(payment);
+
+    // First create throws ALREADY_EXISTS (lock held by another flow).
+    const err = Object.assign(new Error("ALREADY_EXISTS"), { code: 6 });
+    mockRefundLockCreate.mockRejectedValueOnce(err);
+    // Recovery tx reads the existing lock — fresh (expires in 4 min).
+    mockTxGet.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({ expiresAt: new Date(Date.now() + 4 * 60_000).toISOString() }),
+    });
+
+    await expect(
+      service.refundPayment(payment.id, undefined, undefined, organizer),
+    ).rejects.toThrow(/en cours pour ce paiement/);
+
+    // Provider MUST NOT have been called. Lock contention short-
+    // circuits before any network call.
+    expect(mockProvider.refund).not.toHaveBeenCalled();
   });
 });
 
