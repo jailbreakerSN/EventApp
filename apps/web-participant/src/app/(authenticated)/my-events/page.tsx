@@ -1,5 +1,6 @@
 "use client";
 
+import * as React from "react";
 import { useEffect, useMemo, useState } from "react";
 import { parseAsStringEnum, useQueryStates } from "nuqs";
 import { useTableState } from "@/hooks/use-table-state";
@@ -110,10 +111,17 @@ export default function MyEventsPage() {
   };
   // Page reset on tab / viewMode change — tabs surface different data
   // subsets, page N of "upcoming" doesn't map to anything in "past".
+  // We track the previous tab/view in a ref so the effect only fires on
+  // genuine axis transitions; including ts.page in the deps would
+  // create a feedback loop (set page=1 → page changes → effect fires →
+  // tries to set page=1 again).
+  const prevAxisRef = React.useRef<{ tab: TabId; view: ViewMode }>({ tab, view: viewMode });
   useEffect(() => {
-    if (ts.page !== 1) ts.setPage(1);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, viewMode]);
+    if (prevAxisRef.current.tab !== tab || prevAxisRef.current.view !== viewMode) {
+      prevAxisRef.current = { tab, view: viewMode };
+      if (ts.page !== 1) ts.setPage(1);
+    }
+  }, [tab, viewMode, ts]);
 
   const { data, isLoading, error } = useMyRegistrations({ page: ts.page, limit: 20 });
   const cancelMutation = useCancelRegistration();
