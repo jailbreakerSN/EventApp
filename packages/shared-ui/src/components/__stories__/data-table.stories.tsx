@@ -240,30 +240,58 @@ export const CompactDensity: Story = {
   ),
 };
 
+// Scoped CSS class for the sticky-header demo so the scrollbar is hidden
+// across browsers (eliminates the 12–17 px width drift between Linux CI
+// runners and macOS / Windows dev machines that produces flaky visual
+// diffs). Webkit's `::-webkit-scrollbar` is a pseudo-element and can't
+// live on `style={…}`, so we render a tiny <style> block.
+const STICKY_SCROLL_CSS = `
+.sb-sticky-scroll::-webkit-scrollbar { display: none; }
+.sb-sticky-scroll { scrollbar-width: none; -ms-overflow-style: none; }
+`;
+
+function StickyScrollDemo(): JSX.Element {
+  // Force scrollTop=0 on every mount so the screenshot always captures
+  // the same starting frame. Storybook's HMR can preserve scroll position
+  // between renders; this defends against that.
+  const ref = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => {
+    if (ref.current) ref.current.scrollTop = 0;
+  }, []);
+
+  return (
+    <>
+      <style>{STICKY_SCROLL_CSS}</style>
+      {/* Fixed height (not maxHeight) so the layout is identical regardless
+          of viewport — the visual snapshot diff against any baseline stays
+          deterministic. tabIndex + role + aria-label satisfy axe-core's
+          scrollable-region-focusable rule (a scrollable region MUST be
+          reachable by keyboard). Consumers wrapping a real DataTable in
+          a fixed-height scroll container should copy this triplet. */}
+      <div
+        ref={ref}
+        tabIndex={0}
+        role="region"
+        aria-label="Liste défilante avec en-tête épinglé"
+        className="sb-sticky-scroll"
+        style={{ height: 280, overflow: "auto" }}
+      >
+        <DataTable<Reg>
+          aria-label="Sticky header"
+          stickyHeader
+          columns={[
+            { key: "name", header: "Nom", primary: true, sortable: true },
+            { key: "email", header: "Email" },
+            { key: "status", header: "Statut", render: (r) => statusBadge(r.status) },
+          ]}
+          data={[...data, ...data, ...data, ...data, ...data]}
+        />
+      </div>
+    </>
+  );
+}
+
 export const StickyHeaderShowcase: Story = {
   name: "V2: sticky header on tall scroll",
-  render: () => (
-    // tabIndex + role + aria-label keep axe-core's
-    // `scrollable-region-focusable` rule happy on the storybook a11y
-    // pass — a scrollable container MUST be reachable by keyboard. Same
-    // attributes belong on the real-world scroll wrappers consuming
-    // pages use, so this story doubles as the canonical pattern.
-    <div
-      tabIndex={0}
-      role="region"
-      aria-label="Liste défilante avec en-tête épinglé"
-      style={{ maxHeight: 280, overflow: "auto" }}
-    >
-      <DataTable<Reg>
-        aria-label="Sticky header"
-        stickyHeader
-        columns={[
-          { key: "name", header: "Nom", primary: true, sortable: true },
-          { key: "email", header: "Email" },
-          { key: "status", header: "Statut", render: (r) => statusBadge(r.status) },
-        ]}
-        data={[...data, ...data, ...data, ...data, ...data]}
-      />
-    </div>
-  ),
+  render: () => <StickyScrollDemo />,
 };
