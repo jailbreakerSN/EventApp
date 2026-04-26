@@ -22,6 +22,27 @@ vi.mock("@/hooks/use-permissions", () => ({
   usePermissions: () => mockUsePermissions(),
 }));
 
+// Optional override of `useOrganizerNav` — when set, the tests inject a
+// custom taxonomy (e.g. a synthetic comingSoon entry). When null, the
+// real hook runs against the production taxonomy.
+const mockUseOrganizerNav = vi.fn();
+vi.mock("@/hooks/use-organizer-nav", async (importOriginal) => {
+  const actual = (await importOriginal()) as Record<string, unknown> & {
+    buildOrganizerNav: (roles: readonly string[]) => unknown;
+  };
+  return {
+    ...actual,
+    useOrganizerNav: () => {
+      const overridden = mockUseOrganizerNav();
+      if (overridden) return overridden;
+      // Re-derive from the auth mock so the role-driven cases keep
+      // exercising the real role-filter logic.
+      const auth = mockUseAuth();
+      return actual.buildOrganizerNav(auth?.user?.roles ?? []);
+    },
+  };
+});
+
 // Plan widget pulls react-query + the API client. Stub it to avoid
 // firing network calls inside a render test — the widget render IS
 // covered by `use-plan-gating.test.tsx`.
@@ -109,23 +130,41 @@ describe("Sidebar — section headers per role", () => {
 });
 
 describe("Sidebar — comingSoon entries", () => {
-  it("renders the inbox entry as aria-disabled with a 'Bientôt' pill", () => {
+  it("renders comingSoon items as aria-disabled with a 'Bientôt' pill (not as anchor links)", () => {
+    // The production taxonomy at this point has no comingSoon entries
+    // — Phase O2 shipped the /inbox route and removed the flag. The
+    // rendering logic still exists for future surfaces (a Phase O3
+    // entry, etc.), so we cover it via the mockable nav hook that
+    // injects a synthetic comingSoon item.
     mockUseAuth.mockReturnValue({ user: { roles: ["organizer"] } });
     mockUsePermissions.mockReturnValue({ can: () => true });
+    mockUseOrganizerNav.mockReturnValueOnce({
+      sections: [
+        {
+          key: "my-space",
+          label: "Mon espace",
+          items: [
+            {
+              id: "future-feature",
+              href: "/future",
+              icon: () => null,
+              label: "Surface à venir",
+              roles: ["organizer"],
+              comingSoon: true,
+            },
+          ],
+        },
+      ],
+      allItems: [],
+      isCoOrganizer: false,
+      isVenueManager: false,
+    });
 
     renderSidebar();
 
-    // The taxonomy seeds the inbox entry with `comingSoon: true` until
-    // O2 lands. The sidebar contract is: it renders a non-link <div>
-    // with `aria-disabled="true"` and shows a "Bientôt" pill — never a
-    // dead <a href="/inbox">.
     const bientotPills = screen.getAllByText("Bientôt");
     expect(bientotPills.length).toBeGreaterThan(0);
-
-    // The disabled row contains the label text and lives outside any
-    // anchor — assert via the role/disabled state.
-    const disabledRows = screen.getAllByText("Boîte de tâches");
-    expect(disabledRows.length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Surface à venir").length).toBeGreaterThan(0);
   });
 });
 

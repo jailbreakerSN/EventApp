@@ -166,6 +166,7 @@ POST /v1/invites/decline auth emailVerified
 DELETE /v1/me/fcm-tokens auth
 POST /v1/me/fcm-tokens auth
 DELETE /v1/me/fcm-tokens/:tokenFingerprint auth
+GET /v1/me/inbox auth
 GET /v1/me/whoami auth
 GET /v1/newsletter/confirm none
 POST /v1/newsletter/send auth perms=[platform:manage]

@@ -103,9 +103,9 @@ describe("lib/access — resolveLandingRoute", () => {
     expect(resolveLandingRoute(["super_admin", "organizer"])).toBe("/admin/inbox");
   });
 
-  it("pure organizers land on /dashboard", () => {
-    expect(resolveLandingRoute(["organizer"])).toBe("/dashboard");
-    expect(resolveLandingRoute(["co_organizer"])).toBe("/dashboard");
+  it("pure organizers land on /inbox (Phase O2 task-oriented landing)", () => {
+    expect(resolveLandingRoute(["organizer"])).toBe("/inbox");
+    expect(resolveLandingRoute(["co_organizer"])).toBe("/inbox");
   });
 
   it("pure venue_manager lands on /venues", () => {

@@ -134,10 +134,6 @@ const TAXONOMY_BUILDER: () => readonly OrganizerNavSection[] = () => [
         description: "Vos actions du jour, classées par priorité",
         roles: ["organizer", "co_organizer", "super_admin"] as const,
         shortcut: "g i",
-        // Phase O2 ships the route — until then we render the entry
-        // as `comingSoon` so the My-space section header stays
-        // non-empty and the upcoming surface is signalled to users.
-        comingSoon: true,
       },
       {
         id: "dashboard",
