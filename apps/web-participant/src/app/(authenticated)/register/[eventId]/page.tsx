@@ -24,7 +24,7 @@ import {
 import { QRCodeSVG } from "qrcode.react";
 import { toast } from "sonner";
 import { useLocale, useTranslations } from "next-intl";
-import { eventsApi, registrationsApi } from "@/lib/api-client";
+import { eventsApi } from "@/lib/api-client";
 import {
   useRegister,
   useMyRegistrationForEvent,
@@ -165,20 +165,6 @@ export default function RegisterPage() {
     staleTime: 5 * 60_000,
   });
 
-  // Preflight against the user's existing registrations so we never let
-  // them submit a request that the server will reject with 409 CONFLICT
-  // (duplicate_registration). Tight `staleTime` + refetch-on-focus
-  // keeps the check honest when the user opens the page in a new tab
-  // after registering elsewhere — without it, the cached "no existing
-  // registration" answer races the server and produces the silent-toast
-  // loop that error-handling.md was written to kill.
-  const { data: myRegsData, isLoading: regsLoading } = useQuery({
-    queryKey: ["my-registrations-check", eventId],
-    queryFn: () => registrationsApi.getMyRegistrations({ limit: 100 }),
-    staleTime: 5_000,
-    refetchOnWindowFocus: true,
-  });
-
   const registerMutation = useRegister();
   const paymentMutation = useInitiatePayment();
   // Phase B-2 / B-3 — mutations for the pending_payment lifecycle:
@@ -194,7 +180,8 @@ export default function RegisterPage() {
   // states. The dedicated endpoint is server-side filtered and
   // re-fetches on window focus so a payment confirmed in another
   // tab updates the CTA without manual refresh.
-  const { data: myRegForEventData } = useMyRegistrationForEvent(eventId);
+  const { data: myRegForEventData, isLoading: regsLoading } =
+    useMyRegistrationForEvent(eventId);
   const existingRegistration =
     (myRegForEventData as { data?: Registration | null })?.data ?? null;
 

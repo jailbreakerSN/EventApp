@@ -709,6 +709,27 @@ paths:
 
 
 
+  "/v1/registrations/me/event/{eventId}":
+    get:
+      summary: "Get my current registration for an event (any non-terminal status)"
+      tags:
+        - "Registrations"
+      security:
+        - BearerAuth: []
+      parameters:
+        - schema:
+            type: "string"
+
+          in: "path"
+          name: "eventId"
+          required: true
+      responses:
+        "200":
+          description: "Default Response"
+
+
+
+
   "/v1/registrations/event/{eventId}":
     get:
       summary: "List registrations for an event"
@@ -773,6 +794,27 @@ paths:
   "/v1/registrations/{registrationId}/cancel":
     post:
       summary: "Cancel a registration (POST alias for DELETE)"
+      tags:
+        - "Registrations"
+      security:
+        - BearerAuth: []
+      parameters:
+        - schema:
+            type: "string"
+
+          in: "path"
+          name: "registrationId"
+          required: true
+      responses:
+        "200":
+          description: "Default Response"
+
+
+
+
+  "/v1/registrations/{registrationId}/cancel-pending":
+    post:
+      summary: "Cancel my own pending_payment registration (release the slot)"
       tags:
         - "Registrations"
       security:
@@ -1804,6 +1846,27 @@ paths:
   "/v1/payments/{paymentId}/status":
     get:
       summary: "Get payment status (polling)"
+      tags:
+        - "Payments"
+      security:
+        - BearerAuth: []
+      parameters:
+        - schema:
+            type: "string"
+
+          in: "path"
+          name: "paymentId"
+          required: true
+      responses:
+        "200":
+          description: "Default Response"
+
+
+
+
+  "/v1/payments/{paymentId}/resume":
+    post:
+      summary: "Resume an in-flight payment (return existing redirectUrl)"
       tags:
         - "Payments"
       security:
