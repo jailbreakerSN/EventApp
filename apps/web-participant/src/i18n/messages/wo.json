@@ -359,6 +359,9 @@
       "filters": "Filt yi",
       "openFilters": "Ubbi filt yi",
       "activeFilterCount": "{count, plural, one {# filt bu jëfe} other {# filt yu jëfe}}",
+      "recentSearches": "Wut yu yagg",
+      "clearRecents": "Far istori bi",
+      "removeRecent": "Far « {query} » ci istori bi",
       "sort": {
         "label": "Tëj",
         "soonest": "Bés — yu ñëw ci njëkk",

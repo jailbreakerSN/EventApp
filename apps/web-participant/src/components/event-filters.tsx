@@ -4,9 +4,10 @@ import * as React from "react";
 import type { JSX } from "react";
 import { parseAsArrayOf, parseAsString, parseAsStringEnum } from "nuqs";
 import { useTranslations } from "next-intl";
-import { Search, SlidersHorizontal, ArrowUpDown } from "lucide-react";
-import { Input, FiltersBottomSheet } from "@teranga/shared-ui";
+import { Clock, History, Search, SlidersHorizontal, ArrowUpDown, X } from "lucide-react";
+import { Input, FiltersBottomSheet, FilterChip } from "@teranga/shared-ui";
 import { useTableState } from "@/hooks/use-table-state";
+import { useRecentSearches } from "@/hooks/use-recent-searches";
 import { getDateRange } from "@/lib/date-utils";
 
 // Re-export so call sites that import getDateRange from this file keep working.
@@ -151,6 +152,21 @@ export function EventFilters(): JSX.Element {
 
   const hasActive = t.q || t.activeFilterCount > 0;
 
+  // P1.10 Stage B — recent searches persisted to localStorage. Surfaced
+  // as a dropdown below the search input on focus when input is empty.
+  // Recent term picked → applied as the new q. New search committed (q
+  // gets value AND user moves on by tabbing out / pressing Escape) →
+  // added to the recents list.
+  const recentSearches = useRecentSearches("events");
+  const [recentsOpen, setRecentsOpen] = React.useState(false);
+
+  // Commit q to recent searches when the user finishes typing (blur or
+  // Enter). Adding inside onChange would explode the list with every
+  // keystroke; the debounced commit happens on focus exit instead.
+  const commitRecent = (): void => {
+    if (t.q.trim().length >= 2) recentSearches.add(t.q);
+  };
+
   // ─── Render ────────────────────────────────────────────────────────────
 
   return (
@@ -165,13 +181,106 @@ export function EventFilters(): JSX.Element {
           />
           <Input
             type="search"
-            role="searchbox"
+            // ARIA APG combobox pattern — when paired with the recents
+            // dropdown below, the input is a combobox that controls a
+            // listbox, not a plain searchbox. role=combobox is the only
+            // role that supports aria-expanded / aria-controls /
+            // aria-haspopup="listbox" together.
+            role="combobox"
+            aria-haspopup="listbox"
             placeholder={tFilters("searchPlaceholder")}
             value={t.q}
             onChange={(e) => t.setQ(e.target.value)}
+            onFocus={() => setRecentsOpen(true)}
+            // Delay close so a click on a recent-search button registers
+            // before the dropdown unmounts. 150ms matches the
+            // industry-standard delay (Stripe, Linear) for combobox
+            // mousedown latency.
+            onBlur={() => {
+              window.setTimeout(() => setRecentsOpen(false), 150);
+              commitRecent();
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                setRecentsOpen(false);
+                (e.target as HTMLInputElement).blur();
+              } else if (e.key === "Enter") {
+                commitRecent();
+                setRecentsOpen(false);
+              }
+            }}
             className="pl-10"
             aria-label={tFilters("searchPlaceholder")}
+            aria-autocomplete="list"
+            aria-expanded={recentsOpen && t.q.length === 0 && recentSearches.recents.length > 0}
+            aria-controls="event-search-recents"
           />
+          {/* Recent searches dropdown — surfaces on focus when input is
+              empty AND there's history to show. Hidden once the user
+              starts typing because the doctrine deferred categorical
+              autocomplete to a future PR; recent-only is the MVP. */}
+          {recentsOpen && t.q.length === 0 && recentSearches.recents.length > 0 ? (
+            <div
+              id="event-search-recents"
+              role="listbox"
+              aria-label={tFilters("recentSearches")}
+              className="absolute left-0 right-0 top-full z-20 mt-1 rounded-lg border border-border bg-card shadow-lg"
+            >
+              <div className="flex items-center justify-between border-b border-border px-3 py-2 text-xs text-muted-foreground">
+                <span className="inline-flex items-center gap-1.5">
+                  <History className="h-3.5 w-3.5" aria-hidden="true" />
+                  {tFilters("recentSearches")}
+                </span>
+                <button
+                  type="button"
+                  onMouseDown={(e) => {
+                    // mousedown not click — onBlur fires first on the
+                    // input otherwise and the dropdown unmounts before
+                    // the click registers. Same pattern as the recent-
+                    // search row buttons below.
+                    e.preventDefault();
+                    recentSearches.clear();
+                  }}
+                  className="text-muted-foreground hover:text-foreground underline-offset-4 hover:underline"
+                >
+                  {tFilters("clearRecents")}
+                </button>
+              </div>
+              <ul className="py-1">
+                {recentSearches.recents.map((recent) => (
+                  <li key={recent}>
+                    <button
+                      type="button"
+                      role="option"
+                      aria-selected="false"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        t.setQ(recent);
+                        recentSearches.add(recent); // bumps to top
+                        setRecentsOpen(false);
+                      }}
+                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-muted focus:bg-muted focus:outline-none"
+                    >
+                      <Clock className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
+                      <span className="flex-1 truncate">{recent}</span>
+                      <button
+                        type="button"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          recentSearches.remove(recent);
+                        }}
+                        aria-label={tFilters("removeRecent", { query: recent })}
+                        className="rounded-full p-1 text-muted-foreground hover:bg-foreground/10 hover:text-foreground"
+                      >
+                        <X className="h-3 w-3" aria-hidden="true" />
+                      </button>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
@@ -207,6 +316,19 @@ export function EventFilters(): JSX.Element {
           ) : null}
         </div>
       </div>
+
+      {/* Active-filter chips — visible on every viewport so the user can
+          remove a filter in one tap regardless of whether the desktop
+          inline filters or the mobile bottom sheet placed it. */}
+      <ActiveFilterChips
+        state={t}
+        toggleCategory={toggleCategory}
+        setDate={setDate}
+        togglePrice={togglePrice}
+        tFilters={tFilters}
+        tCategories={tCategories}
+        tFormat={tFormat}
+      />
 
       {/* Desktop inline filters (hidden on mobile — bottom sheet covers it). */}
       <div className="hidden md:block space-y-3">
@@ -444,5 +566,126 @@ function SortMenu({
         ))}
       </select>
     </label>
+  );
+}
+
+// ─── ActiveFilterChips ────────────────────────────────────────────────────
+//
+// Renders one removable <FilterChip> per active filter (or per value for
+// multi-select category). The chips are visible on every viewport so the
+// user can clear a filter in one tap regardless of where they applied it
+// (desktop inline filters or mobile bottom sheet). Doctrine MUST for
+// marketplace discovery — the chip + close-button pattern is mandated by
+// `docs/design-system/data-listing.md` § Marketplace discovery — MUST 2.
+
+type ActiveFilterChipsProps = {
+  state: ReturnType<typeof useTableState<Filters>>;
+  toggleCategory: (cat: EventCategory) => void;
+  setDate: (next: (typeof DATE_CHIPS)[number] | undefined) => void;
+  togglePrice: (chip: (typeof PRICE_CHIPS)[number]) => void;
+  tFilters: ReturnType<typeof useTranslations>;
+  tCategories: ReturnType<typeof useTranslations>;
+  tFormat: ReturnType<typeof useTranslations>;
+};
+
+function ActiveFilterChips({
+  state,
+  toggleCategory,
+  setDate,
+  togglePrice,
+  tFilters,
+  tCategories,
+  tFormat,
+}: ActiveFilterChipsProps): JSX.Element | null {
+  const chips: JSX.Element[] = [];
+
+  // Category — multi-select: one chip per selected value so the user can
+  // remove individual categories without touching the others.
+  for (const cat of state.filters.category ?? []) {
+    chips.push(
+      <FilterChip
+        key={`cat:${cat}`}
+        label={tFilters("filterByCategory")}
+        value={tCategories(cat)}
+        onRemove={() => toggleCategory(cat as EventCategory)}
+      />,
+    );
+  }
+
+  if (state.filters.format) {
+    chips.push(
+      <FilterChip
+        key="format"
+        label={tFilters("filterByFormat")}
+        value={tFormat(state.filters.format)}
+        onRemove={() => state.setFilter("format", undefined)}
+      />,
+    );
+  }
+
+  if (state.filters.city) {
+    chips.push(
+      <FilterChip
+        key="city"
+        label={tFilters("filterByCity")}
+        value={state.filters.city}
+        onRemove={() => state.setFilter("city", undefined)}
+      />,
+    );
+  }
+
+  if (state.filters.date) {
+    const labelKey =
+      state.filters.date === "today"
+        ? "today"
+        : state.filters.date === "this_week"
+          ? "thisWeek"
+          : state.filters.date === "this_weekend"
+            ? "thisWeekend"
+            : "thisMonth";
+    chips.push(
+      <FilterChip
+        key="date"
+        label={tFilters("filterByDate")}
+        value={tFilters(labelKey)}
+        onRemove={() => setDate(undefined)}
+      />,
+    );
+  }
+
+  if (state.filters.price) {
+    chips.push(
+      <FilterChip
+        key="price"
+        label={tFilters("filterByPrice")}
+        value={tFilters(state.filters.price)}
+        onRemove={() => togglePrice(state.filters.price as (typeof PRICE_CHIPS)[number])}
+      />,
+    );
+  }
+
+  // q is its own chip — distinct from the value chips so the user can
+  // clear "Recherche: foo" without losing their category selection.
+  if (state.q) {
+    chips.push(
+      <FilterChip
+        key="q"
+        label={tFilters("searchPlaceholder")}
+        value={state.q}
+        onRemove={() => state.setQ("")}
+      />,
+    );
+  }
+
+  if (chips.length === 0) return null;
+
+  return (
+    <div
+      role="region"
+      aria-label={tFilters("activeFilterCount", { count: chips.length })}
+      className="flex flex-wrap items-center gap-2"
+    >
+      {chips}
+    </div>
   );
 }
