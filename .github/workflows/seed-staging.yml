@@ -74,14 +74,15 @@ jobs:
           fi
           echo "✓ Confirmation string matches."
 
-  # ─── Gate 2: environment-protected discovery of project id ───────────────
+  # ─── Gate 2: environment-protected discovery of project id + bucket ──────
   setup:
-    name: Discover staging project id
+    name: Discover staging project id and storage bucket
     runs-on: ubuntu-latest
     needs: verify-confirmation
     environment: staging
     outputs:
       project_id: ${{ steps.discover.outputs.project_id }}
+      firebase_storage_bucket: ${{ steps.discover.outputs.firebase_storage_bucket }}
     steps:
       - uses: google-github-actions/auth@v2
         with:
@@ -89,12 +90,39 @@ jobs:
       - uses: google-github-actions/setup-gcloud@v2
       - id: discover
         run: |
+          set -euo pipefail
+
           PROJECT_ID=$(gcloud config get-value project)
           echo "project_id=${PROJECT_ID}" >> "$GITHUB_OUTPUT"
           echo "Staging project: ${PROJECT_ID}"
           if [ "${PROJECT_ID}" != "teranga-app-990a8" ]; then
             echo "::error::Refusing to run: derived project id '${PROJECT_ID}' is not 'teranga-app-990a8'."
             exit 1
+          fi
+
+          # Discover the actual storage bucket via the Firebase Management
+          # API (same source of truth deploy-staging.yml uses). New Firebase
+          # projects default to <project>.firebasestorage.app; legacy
+          # projects use <project>.appspot.com. Querying the API means we
+          # don't have to hardcode either convention — moving to a new
+          # project just works. seed-reset.ts also probes both names as a
+          # fallback if this lookup ever returns empty.
+          ACCESS_TOKEN=$(gcloud auth print-access-token)
+          BUCKET=""
+          WEB_APPS=$(curl -sf -H "Authorization: Bearer $ACCESS_TOKEN" \
+            "https://firebase.googleapis.com/v1beta1/projects/$PROJECT_ID/webApps" || echo '{}')
+          APP_ID=$(echo "$WEB_APPS" | jq -r '.apps[0].appId // empty')
+          if [ -n "$APP_ID" ]; then
+            CONFIG=$(curl -sf -H "Authorization: Bearer $ACCESS_TOKEN" \
+              "https://firebase.googleapis.com/v1beta1/projects/$PROJECT_ID/webApps/$APP_ID/config" || echo '{}')
+            BUCKET=$(echo "$CONFIG" | jq -r '.storageBucket // empty')
+          fi
+
+          echo "firebase_storage_bucket=${BUCKET}" >> "$GITHUB_OUTPUT"
+          if [ -n "$BUCKET" ]; then
+            echo "Discovered storage bucket: ${BUCKET}"
+          else
+            echo "::warning::Could not discover storage bucket via Firebase Management API; seed-reset.ts will probe candidate bucket names at runtime."
           fi
 
   # ─── Reset Firestore (opt-in, default true) ──────────────────────────────
@@ -120,9 +148,14 @@ jobs:
         # Gate 3b (non-emulator) requires CONFIRM_PHRASE — see seed-reset.ts
         # and docs-v2/50-operations/staging-reset.md. Without it the script
         # throws before any Firestore / Auth / Storage write.
+        # FIREBASE_STORAGE_BUCKET is sourced from the Firebase Management
+        # API in setup; if that lookup returned empty, the script probes
+        # both the new (firebasestorage.app) and legacy (appspot.com)
+        # bucket conventions and uses whichever exists.
         env:
           SEED_TARGET: staging
           FIREBASE_PROJECT_ID: ${{ needs.setup.outputs.project_id }}
+          FIREBASE_STORAGE_BUCKET: ${{ needs.setup.outputs.firebase_storage_bucket }}
           SEED_RESET_CONFIRM: YES_RESET
           CONFIRM_PROJECT: ${{ needs.setup.outputs.project_id }}
           CONFIRM_PHRASE: 'RESET STAGING DATABASE NOW'
