@@ -18,6 +18,7 @@ import { communicationRoutes, commsRoutes } from "./communications.routes";
 import { whatsappMeRoutes, whatsappPublicRoutes } from "./whatsapp.routes";
 import { participantRoutes } from "./participants.routes";
 import { liveOpsRoutes } from "./live-ops.routes";
+import { postEventRoutes } from "./post-event.routes";
 import { notificationRoutes } from "./notifications.routes";
 import { speakerRoutes } from "./speakers.routes";
 import { sponsorRoutes } from "./sponsors.routes";
@@ -60,6 +61,7 @@ export async function registerRoutes(app: FastifyInstance) {
   await app.register(whatsappPublicRoutes, { prefix: "/v1/whatsapp" });
   await app.register(participantRoutes, { prefix: "/v1/organizations/:orgId/participants" });
   await app.register(liveOpsRoutes, { prefix: "/v1/events" });
+  await app.register(postEventRoutes, { prefix: "/v1/events" });
   await app.register(notificationRoutes, { prefix: "/v1/notifications" });
   await app.register(speakerRoutes, { prefix: "/v1/events" });
   await app.register(sponsorRoutes, { prefix: "/v1/events" });

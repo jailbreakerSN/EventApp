@@ -126,6 +126,11 @@ PATCH /v1/events/:eventId/live/incidents/:incidentId auth emailVerified perms=[e
 GET /v1/events/:eventId/live/staff-messages auth
 POST /v1/events/:eventId/live/staff-messages auth emailVerified perms=[checkin:scan]
 GET /v1/events/:eventId/live/stats auth
+GET /v1/events/:eventId/post-event/cohort.csv auth perms=[registration:export]
+POST /v1/events/:eventId/post-event/payout-request auth emailVerified perms=[payout:create]
+GET /v1/events/:eventId/post-event/reconciliation auth perms=[payout:read]
+GET /v1/events/:eventId/post-event/report auth perms=[event:read]
+GET /v1/events/:eventId/post-event/report.pdf auth perms=[event:read]
 GET /v1/events/:eventId/promo-codes auth perms=[event:read]
 POST /v1/events/:eventId/promo-codes auth emailVerified perms=[event:update]
 POST /v1/events/:eventId/promo-codes/validate none

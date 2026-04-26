@@ -206,6 +206,12 @@ export const AuditActionSchema = z.enum([
   "incident.resolved",
   "emergency_broadcast.sent",
   "staff_message.posted",
+  // Phase O9 — Post-event Report + Reconciliation.
+  // `cohort_export` covers both PDF + CSV downloads since both
+  // surface the same scrubbed cohort and exfiltrate participant data.
+  "post_event_report.generated",
+  "cohort_export.downloaded",
+  "payout.requested",
 ]);
 
 export type AuditAction = z.infer<typeof AuditActionSchema>;

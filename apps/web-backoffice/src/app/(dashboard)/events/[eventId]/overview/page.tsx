@@ -20,7 +20,7 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useMemo } from "react";
 import { Card, CardContent, Skeleton } from "@teranga/shared-ui";
-import { CheckCircle2, ArrowRight, AlertTriangle, Radio } from "lucide-react";
+import { CheckCircle2, ArrowRight, AlertTriangle, Radio, FileBarChart } from "lucide-react";
 import { EventHealthCard } from "@/components/event-health/EventHealthCard";
 import { useEventHealth } from "@/hooks/use-event-health";
 import { useEvent } from "@/hooks/use-events";
@@ -133,6 +133,59 @@ export default function EventOverviewPage() {
                 >
                   <Radio className="h-4 w-4" aria-hidden="true" />
                   Lancer le mode live
+                </button>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Post-event report entry point — surfaced once the event has
+          ended (liveState === "after"). Inactive but visible during
+          earlier states so the operator knows the surface exists. */}
+      {event?.status === "published" && (
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div className="flex items-start gap-3">
+                <span
+                  className={cn(
+                    "inline-flex h-9 w-9 items-center justify-center rounded-full",
+                    liveState === "after"
+                      ? "bg-teranga-gold/15 text-teranga-gold-dark"
+                      : "bg-muted text-muted-foreground",
+                  )}
+                  aria-hidden="true"
+                >
+                  <FileBarChart className="h-4 w-4" />
+                </span>
+                <div>
+                  <p className="text-sm font-semibold">Rapport post-événement</p>
+                  <p className="text-xs text-muted-foreground">
+                    {liveState === "after"
+                      ? "Présence, comms, finances + export PDF + cohorte CSV."
+                      : "Disponible une fois l'événement terminé."}
+                  </p>
+                </div>
+              </div>
+              {liveState === "after" ? (
+                <Link
+                  href={`/events/${eventId}/post-event`}
+                  className="inline-flex items-center gap-2 rounded-lg bg-foreground hover:bg-foreground/90 text-background text-sm font-medium px-4 py-2"
+                >
+                  <FileBarChart className="h-4 w-4" aria-hidden="true" />
+                  Ouvrir le rapport
+                </Link>
+              ) : (
+                <button
+                  type="button"
+                  disabled
+                  aria-disabled="true"
+                  title="Disponible après la fin de l'événement"
+                  className="inline-flex items-center gap-2 rounded-lg bg-muted text-muted-foreground text-sm font-medium px-4 py-2 cursor-not-allowed"
+                >
+                  <FileBarChart className="h-4 w-4" aria-hidden="true" />
+                  Ouvrir le rapport
                 </button>
               )}
             </div>

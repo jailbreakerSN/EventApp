@@ -15,6 +15,7 @@ export * from "./comms-template.types";
 export * from "./whatsapp.types";
 export * from "./participant-profile.types";
 export * from "./live-ops.types";
+export * from "./post-event-report.types";
 export * from "./speaker.types";
 export * from "./sponsor.types";
 export * from "./api.types";

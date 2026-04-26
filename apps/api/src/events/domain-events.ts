@@ -1320,6 +1320,9 @@ export interface DomainEventMap {
   "incident.resolved": IncidentResolvedEvent;
   "emergency_broadcast.sent": EmergencyBroadcastSentEvent;
   "staff_message.posted": StaffMessagePostedEvent;
+  "post_event_report.generated": PostEventReportGeneratedEvent;
+  "cohort_export.downloaded": CohortExportDownloadedEvent;
+  "payout.requested": PayoutRequestedEvent;
   // Plan coupons (Phase 7+ item #7) — redemption itself is captured on
   // the subscription doc + couponRedemptions collection; we only emit
   // lifecycle signals here (create / update / archive).
@@ -1563,6 +1566,48 @@ export interface StaffMessagePostedEvent extends BaseEventPayload {
   messageId: string;
   eventId: string;
   organizationId: string;
+}
+
+/**
+ * Phase O9 — Snapshot of the post-event report at view time. The
+ * payload carries the headline numbers (registered, checked-in,
+ * gross, payout) so the audit row is informative without fetching
+ * the live aggregation again at audit-display time. No PII.
+ */
+export interface PostEventReportGeneratedEvent extends BaseEventPayload {
+  eventId: string;
+  organizationId: string;
+  registered: number;
+  checkedIn: number;
+  grossAmount: number;
+  payoutAmount: number;
+}
+
+/**
+ * Phase O9 — Cohort CSV download. We capture the segment (`attended`
+ * / `no_show` / `cancelled` / `all`) and the row count so the audit
+ * answers "who pulled how many participant rows" without storing the
+ * data itself. PII never enters the audit log.
+ */
+export interface CohortExportDownloadedEvent extends BaseEventPayload {
+  eventId: string;
+  organizationId: string;
+  segment: "attended" | "no_show" | "cancelled" | "all";
+  rowCount: number;
+}
+
+/**
+ * Phase O9 — Payout request (organizer-initiated). Distinct from
+ * `payout.created` (the underlying ledger event) because the payout
+ * service is shared with admin-driven payouts; this event tags the
+ * organizer-initiated path so the audit table can show "Demande de
+ * versement" instead of the generic creation row.
+ */
+export interface PayoutRequestedEvent extends BaseEventPayload {
+  payoutId: string;
+  eventId: string;
+  organizationId: string;
+  netAmount: number;
 }
 
 export type DomainEventName = keyof DomainEventMap;

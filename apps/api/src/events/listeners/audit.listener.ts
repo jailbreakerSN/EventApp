@@ -1893,6 +1893,57 @@ export function registerAuditListeners(): void {
     });
   });
 
+  // ── Post-event report + cohort + payout request (Phase O9) ────────────
+
+  eventBus.on("post_event_report.generated", async (payload) => {
+    await auditService.log({
+      action: "post_event_report.generated",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "event",
+      resourceId: payload.eventId,
+      eventId: payload.eventId,
+      organizationId: payload.organizationId,
+      details: {
+        registered: payload.registered,
+        checkedIn: payload.checkedIn,
+        grossAmount: payload.grossAmount,
+        payoutAmount: payload.payoutAmount,
+      },
+    });
+  });
+
+  eventBus.on("cohort_export.downloaded", async (payload) => {
+    // PII risk — the row count + segment is enough to investigate a
+    // leak. The participant rows themselves never enter the audit log.
+    await auditService.log({
+      action: "cohort_export.downloaded",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "event",
+      resourceId: payload.eventId,
+      eventId: payload.eventId,
+      organizationId: payload.organizationId,
+      details: { segment: payload.segment, rowCount: payload.rowCount },
+    });
+  });
+
+  eventBus.on("payout.requested", async (payload) => {
+    await auditService.log({
+      action: "payout.requested",
+      actorId: payload.actorId,
+      requestId: payload.requestId,
+      timestamp: payload.timestamp,
+      resourceType: "payout",
+      resourceId: payload.payoutId,
+      eventId: payload.eventId,
+      organizationId: payload.organizationId,
+      details: { netAmount: payload.netAmount },
+    });
+  });
+
   // ── Subscription Override (Phase 5 — admin per-org assign) ─────────────
 
   eventBus.on("subscription.overridden", async (payload) => {

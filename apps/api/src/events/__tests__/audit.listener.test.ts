@@ -630,7 +630,10 @@ describe("Audit Listener", () => {
       // Phase O8 — 5 floor-ops listeners added (incident.created /
       // .updated / .resolved + emergency_broadcast.sent +
       // staff_message.posted).
-      const EXPECTED_HANDLER_COUNT = 109;
+      // Phase O9 — 3 post-event listeners added
+      // (post_event_report.generated, cohort_export.downloaded,
+      // payout.requested).
+      const EXPECTED_HANDLER_COUNT = 112;
 
       expect(registered).toHaveLength(EXPECTED_HANDLER_COUNT);
       // Each registered event name should be unique — a double
