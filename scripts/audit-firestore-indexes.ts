@@ -189,6 +189,16 @@ function discoverOrderByEnums(): EnumCatalogue {
   const orderDirEnums: string[][] = [];
   const reBy = /orderBy\s*:\s*z\.enum\s*\(\s*\[([^\]]+)\]\s*\)/g;
   const reDir = /orderDir\s*:\s*z\.enum\s*\(\s*\[([^\]]+)\]\s*\)/g;
+  // `z.literal("X")` is the single-value alphabet — treated as a
+  // 1-element enum so the smallest-matching heuristic in
+  // `expandThroughEnums` prefers it over a multi-value enum that
+  // happens to contain X. Without this, narrowing a route to
+  // `orderBy: z.literal("createdAt")` was effectively useless: the
+  // auditor still expanded through any other `["startDate", "createdAt"]`
+  // enum it found in the codebase, demanding a `(userId, startDate)`
+  // composite index that the route forbids.
+  const reByLit = /orderBy\s*:\s*z\.literal\s*\(\s*"([^"]+)"\s*\)/g;
+  const reDirLit = /orderDir\s*:\s*z\.literal\s*\(\s*"([^"]+)"\s*\)/g;
   for (const dir of ENUM_SCAN_DIRS) {
     if (!fs.existsSync(dir)) continue;
     for (const file of walkDir(dir)) {
@@ -201,6 +211,12 @@ function discoverOrderByEnums(): EnumCatalogue {
       while ((m = reDir.exec(src)) !== null) {
         const values = [...m[1].matchAll(/"([^"]+)"/g)].map((x) => x[1]);
         if (values.length > 0) orderDirEnums.push(values);
+      }
+      while ((m = reByLit.exec(src)) !== null) {
+        orderByEnums.push([m[1]]);
+      }
+      while ((m = reDirLit.exec(src)) !== null) {
+        orderDirEnums.push([m[1]]);
       }
     }
   }
@@ -1037,6 +1053,40 @@ function indexMatches(required: RequiredIndex, declared: DeclaredIndex): boolean
 // Main
 // ───────────────────────────────────────────────────────────────────────────
 
+function scanRoutesForOpenPaginationQuery(warnings: Warning[]): void {
+  // Routes that pass the bare `PaginationSchema` (with `orderBy:
+  // z.string().optional()`) as the query validator are a recurring
+  // source of FAILED_PRECONDITION 500s in staging — see PR #215. The
+  // composite-index auditor cannot reason about an open-string orderBy,
+  // so it silently assumes the BaseRepository default and misses every
+  // other reachable variant. Flag these routes so the next reviewer
+  // tightens the schema with an explicit `orderBy: z.enum([...])`.
+  //
+  // `.extend({ orderBy: z.enum([...]).optional() })` is fine because
+  // `.extend` overrides keys (Zod-spec) — only the bare `query:
+  // PaginationSchema` shape (or `Querystring: z.infer<typeof
+  // PaginationSchema>` paired with a bare `query: PaginationSchema`
+  // validator) gets the warning.
+  const routesDir = path.join(ROOT, "apps/api/src/routes");
+  if (!fs.existsSync(routesDir)) return;
+  for (const file of walkDir(routesDir)) {
+    if (file.endsWith(".test.ts")) continue;
+    const src = fs.readFileSync(file, "utf8");
+    const re = /validate\s*\(\s*\{[^}]*\bquery\s*:\s*PaginationSchema\b[^}]*\}\s*\)/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(src)) !== null) {
+      const line = src.slice(0, m.index).split("\n").length;
+      warnings.push({
+        source: `${path.relative(ROOT, file)}:${line}`,
+        message:
+          "Route validates query against bare PaginationSchema (orderBy: z.string().optional()). " +
+          "Replace with a route-local schema declaring `orderBy: z.enum([...])` so the index auditor " +
+          "can expand every reachable sort variant. See PR #215 for the staging-500 class this catches.",
+      });
+    }
+  }
+}
+
 function main(): void {
   const declared = loadDeclaredIndexes();
   const collectionsMap = loadCollectionsMap();
@@ -1044,6 +1094,8 @@ function main(): void {
   const warnings: Warning[] = [];
   const required: RequiredIndex[] = [];
   let filesScanned = 0;
+
+  scanRoutesForOpenPaginationQuery(warnings);
 
   for (const dir of SCAN_DIRS) {
     for (const file of walkDir(dir)) {

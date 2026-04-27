@@ -4,7 +4,6 @@ import {
   CreateApiKeyRequestSchema,
   RevokeApiKeyRequestSchema,
   RotateApiKeyRequestSchema,
-  PaginationSchema,
 } from "@teranga/shared-types";
 import { authenticate, requireEmailVerified } from "@/middlewares/auth.middleware";
 import { requirePermission } from "@/middlewares/permission.middleware";
@@ -38,16 +37,25 @@ export const apiKeysRoutes: FastifyPluginAsync = async (app) => {
   });
 
   // ─── List ──────────────────────────────────────────────────────────────
+  // Page/limit only — `apiKeysService.list` does NOT honour orderBy
+  // (the repository hard-codes `(organizationId, createdAt DESC)`), so
+  // accepting an open `orderBy: z.string().optional()` from the
+  // inherited `PaginationSchema` was a silent surface-area leak. Same
+  // class as the staging /v1/events/org 500 (PR #215).
+  const ApiKeysListQuerySchema = z.object({
+    page: z.coerce.number().int().positive().default(1),
+    limit: z.coerce.number().int().positive().max(100).default(20),
+  });
   app.get<{
     Params: z.infer<typeof OrgParams>;
-    Querystring: z.infer<typeof PaginationSchema>;
+    Querystring: z.infer<typeof ApiKeysListQuerySchema>;
   }>(
     "/v1/organizations/:orgId/api-keys",
     {
       preHandler: [
         authenticate,
         requirePermission("organization:read"),
-        validate({ params: OrgParams, query: PaginationSchema }),
+        validate({ params: OrgParams, query: ApiKeysListQuerySchema }),
       ],
     },
     async (request, reply) => {
