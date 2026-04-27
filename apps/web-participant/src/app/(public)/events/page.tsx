@@ -68,7 +68,17 @@ export default async function EventsPage({ searchParams }: EventsPageProps) {
       orderBy: "startDate",
       orderDir: "asc",
     });
-  } catch {
+  } catch (err) {
+    // Surface the failure to the server logs so a missing Firestore
+    // composite index (FAILED_PRECONDITION) doesn't get silently
+    // converted to "no events" in the UI — that exact bug shipped on
+    // the original migration and the user only spotted it via the
+    // sort dropdown returning empty results. The fallback empty state
+    // is preserved (we still want a graceful page render rather than
+    // a 500), but the error gets a paper trail.
+    process.stderr.write(
+      `[events.search] failed for params ${JSON.stringify(params)}: ${(err as Error).message}\n`,
+    );
     result = { data: [], meta: { page: 1, limit: 12, total: 0, totalPages: 0 } };
   }
 
