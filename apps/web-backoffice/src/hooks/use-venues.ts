@@ -21,10 +21,10 @@ export function useVenue(venueId: string) {
   });
 }
 
-export function useMyVenues() {
+export function useMyVenues(params: Partial<VenueQuery> = {}) {
   return useQuery({
-    queryKey: ["venues", "mine"],
-    queryFn: () => venuesApi.listMyVenues(),
+    queryKey: ["venues", "mine", params],
+    queryFn: () => venuesApi.listMyVenues(params),
   });
 }
 

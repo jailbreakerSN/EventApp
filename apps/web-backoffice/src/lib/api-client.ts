@@ -1126,8 +1126,8 @@ export const venuesApi = {
   getEvents: (venueId: string, params: { page?: number; limit?: number } = {}) =>
     api.get<PaginatedResponse<Event>>(`/v1/venues/${venueId}/events${buildQuery(params)}`),
 
-  listMyVenues: () =>
-    api.get<PaginatedResponse<Venue>>("/v1/venues/mine"),
+  listMyVenues: (params: Partial<VenueQuery> = {}) =>
+    api.get<PaginatedResponse<Venue>>(`/v1/venues/mine${buildQuery(params)}`),
 };
 
 // ─── Badge Templates ───────────────────────────────────────────────────────
