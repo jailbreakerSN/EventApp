@@ -303,7 +303,17 @@ export function EventCalendar({
   const [discoveryEvents, setDiscoveryEvents] = useState<CalendarEvent[]>([]);
   const [discoveryLoading, setDiscoveryLoading] = useState(false);
 
-  const monthLabel = new Date(year, month, 1).toLocaleDateString("fr-FR", {
+  // Anchor the label moment at UTC noon mid-month so no timezone shift
+  // can push it across a month boundary. The previous shape —
+  // `new Date(year, month, 1).toLocaleDateString({ timeZone: "Africa/Dakar" })`
+  // — built LOCAL midnight on day 1 and then re-displayed in Dakar tz.
+  // For any user east of Dakar (Paris UTC+2 in summer, Casablanca UTC+1),
+  // local midnight on April 1 = March 31 22:00 Dakar → label rendered
+  // "mars 2026" while the grid + cursor were correctly on April. Users
+  // reasonably read the header and concluded every event was shifted by
+  // a full month. UTC noon on day 15 is far enough from any boundary
+  // that no inhabited timezone can drift it.
+  const monthLabel = new Date(Date.UTC(year, month, 15, 12, 0, 0)).toLocaleDateString("fr-FR", {
     month: "long",
     year: "numeric",
     timeZone: "Africa/Dakar",

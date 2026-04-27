@@ -26,18 +26,35 @@ const STATUS_DOT: Record<string, string> = {
   refunded: "bg-muted-foreground",
 };
 
-function getDakar(iso: string) {
-  return new Date(new Date(iso).toLocaleString("en-US", { timeZone: "Africa/Dakar" }));
+/**
+ * Parse an ISO timestamp to {year, month (0-indexed), day} in Dakar tz.
+ *
+ * Replaces the old `getDakar()` round-trip
+ * (`new Date(new Date(iso).toLocaleString("en-US", { timeZone: ... }))`)
+ * which was unreliable: `new Date(string)` parsing of localised strings
+ * is implementation-defined per ECMA-262 Annex B and shifts moments by
+ * the user's local UTC offset. en-CA (`YYYY-MM-DD`) is the only locale
+ * that returns a sortable, parser-safe date string across browsers.
+ */
+function getDakarParts(iso: string): { year: number; month: number; day: number } {
+  const str = new Date(iso).toLocaleDateString("en-CA", { timeZone: "Africa/Dakar" });
+  const [y, m, d] = str.split("-").map(Number);
+  return { year: y, month: m - 1, day: d };
 }
 
 export function CalendarView({ registrations }: CalendarViewProps) {
   const t = useTranslations("myEvents.calendar");
 
-  const today = getDakar(new Date().toISOString());
-  const [year, setYear] = useState(today.getFullYear());
-  const [month, setMonth] = useState(today.getMonth()); // 0-indexed
+  const today = useMemo(() => getDakarParts(new Date().toISOString()), []);
+  const [year, setYear] = useState(today.year);
+  const [month, setMonth] = useState(today.month); // 0-indexed
 
-  const monthLabel = new Date(year, month, 1).toLocaleDateString("fr-FR", {
+  // Anchor at UTC noon mid-month so no inhabited timezone can shift the
+  // label across a month boundary. See event-calendar.tsx for the bug
+  // history (label said "mars 2026" while the grid was on April for any
+  // user east of Dakar, because `new Date(year, month, 1)` is LOCAL
+  // midnight and the Dakar-tz formatter rolled it back a day).
+  const monthLabel = new Date(Date.UTC(year, month, 15, 12, 0, 0)).toLocaleDateString("fr-FR", {
     month: "long",
     year: "numeric",
     timeZone: "Africa/Dakar",
@@ -48,20 +65,22 @@ export function CalendarView({ registrations }: CalendarViewProps) {
     const map = new Map<number, RegistrationWithExtras[]>();
     for (const reg of registrations) {
       if (!reg.eventStartDate || reg.status === "cancelled") continue;
-      const d = getDakar(reg.eventStartDate);
-      if (d.getFullYear() === year && d.getMonth() === month) {
-        const day = d.getDate();
-        map.set(day, [...(map.get(day) ?? []), reg]);
+      const parts = getDakarParts(reg.eventStartDate);
+      if (parts.year === year && parts.month === month) {
+        map.set(parts.day, [...(map.get(parts.day) ?? []), reg]);
       }
     }
     return map;
   }, [registrations, year, month]);
 
-  // Grid cells: leading blanks + days of month
-  const firstWeekday = new Date(year, month, 1).getDay(); // 0=Sun
+  // Grid cells: leading blanks + days of month. Both calls anchor at
+  // local midday to dodge the same boundary issue (DST + winter offset
+  // changes have, on rare client clocks, made `new Date(year, month, 1)`
+  // wrap to the previous month for a few hours per year).
+  const firstWeekday = new Date(year, month, 1, 12).getDay(); // 0=Sun
   // Monday-first: shift Sunday (0) to position 6
   const leadingBlanks = (firstWeekday + 6) % 7;
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const daysInMonth = new Date(year, month + 1, 0, 12).getDate();
 
   function prev() {
     if (month === 0) {
@@ -127,8 +146,7 @@ export function CalendarView({ registrations }: CalendarViewProps) {
         {Array.from({ length: daysInMonth }).map((_, idx) => {
           const day = idx + 1;
           const col = (leadingBlanks + idx) % 7;
-          const isToday =
-            day === today.getDate() && month === today.getMonth() && year === today.getFullYear();
+          const isToday = day === today.day && month === today.month && year === today.year;
           const dayRegs = eventsByDay.get(day) ?? [];
           const isLastCol = col === 6;
 

@@ -110,7 +110,20 @@ export class EventRepository extends BaseRepository<Event> {
     if (filters.status) {
       whereFilters.push({ field: "status", op: "==", value: filters.status });
     }
-    return this.findMany(whereFilters, pagination);
+    // Surface a literal default the static index auditor can expand.
+    // Spreading `pagination` directly hid the runtime orderBy values
+    // (the route's Zod enum) from the static analysis, which is how the
+    // staging 500 on `?orderBy=startDate` shipped — no composite index
+    // declared because the auditor only assumed BaseRepository's default
+    // `createdAt desc`. The `?? "createdAt"` fallback now matches the
+    // first member of `OrgEventsQuerySchema.orderBy`, and the auditor
+    // expands through the enum to require every reachable variant.
+    return this.findMany(whereFilters, {
+      page: pagination.page,
+      limit: pagination.limit,
+      orderBy: pagination.orderBy ?? "createdAt",
+      orderDir: pagination.orderDir ?? "desc",
+    });
   }
 
   /**
