@@ -53,14 +53,28 @@ export const eventRoutes: FastifyPluginAsync = async (fastify) => {
   );
 
   // ─── List Organization Events (backoffice — all statuses) ──────────────
-  // Query params: PaginationSchema + optional `category` and `status` for
+  // Query params: closed pagination + optional `category` and `status` for
   // server-side filtering. Keeping the filter on the server lets the UI
   // paginate correctly when a filter is applied (client-side filtering
   // over a single page silently hides matching records on later pages).
-  const OrgEventsQuerySchema = PaginationSchema.extend({
+  //
+  // `orderBy` is intentionally CLOSED to a 2-value enum — staging shipped
+  // a 500 on /v1/events/org/:orgId because the inherited `PaginationSchema`
+  // accepted `orderBy: "startDate"` from the back-office UI but Firestore
+  // had no `(organizationId, startDate)` composite index. The closed enum
+  // lets `scripts/audit-firestore-indexes.ts` expand both reachable values
+  // through its Zod-discovery pass so every required index is gated by CI.
+  const OrgEventsQuerySchema = z.object({
+    page: z.coerce.number().int().positive().default(1),
+    limit: z.coerce.number().int().positive().max(100).default(25),
+    orderBy: z.enum(["startDate", "createdAt"]).default("startDate"),
+    orderDir: z.enum(["asc", "desc"]).default("desc"),
     category: EventCategorySchema.optional(),
     status: EventStatusSchema.optional(),
   });
+  // Reference the import so the linter doesn't complain about it after
+  // the local schema replaced the previous PaginationSchema spread.
+  void PaginationSchema;
   fastify.get(
     "/org/:orgId",
     {

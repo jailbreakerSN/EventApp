@@ -212,12 +212,24 @@ function discoverOrderByEnums(): EnumCatalogue {
  * the literal against known enums. Returns the single literal when no enum
  * contains it (preserves prior behaviour for hard-coded fallbacks like
  * `?? "createdAt"` that don't correspond to a Zod schema).
+ *
+ * When MULTIPLE enums contain the literal, the SMALLEST enum wins. This
+ * is the most-specific-match heuristic: a literal like "createdAt" is in
+ * both EventSearchQuerySchema (`[startDate, createdAt, title]`) AND in
+ * the back-office `OrgEventsQuerySchema` (`[startDate, createdAt]`) —
+ * a repository called from the back-office route should NOT require a
+ * `(organizationId, title)` composite. Picking the smallest matching
+ * enum keeps the expansion tight without forcing every caller to also
+ * declare the schema (we don't trace import graphs). Ties broken by
+ * source order for determinism.
  */
 function expandThroughEnums(literal: string, enums: string[][]): string[] {
+  let best: string[] | null = null;
   for (const e of enums) {
-    if (e.includes(literal)) return e;
+    if (!e.includes(literal)) continue;
+    if (best === null || e.length < best.length) best = e;
   }
-  return [literal];
+  return best ?? [literal];
 }
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -483,24 +495,45 @@ function extractQueryFragments(
     const dir = paired?.dir ?? "DESCENDING";
     orderBys.push({ field: by.field, dir });
 
-    // Zod-enum expansion: when the orderBy literal came from a `?? "X"`
-    // fallback AND X belongs to a known orderBy enum, fan out into every
-    // member of that enum. We deliberately DO NOT auto-expand orderDir
-    // here — most callers commit to a single direction per field at the
-    // UI / route layer, and double-fanning would add indexes for every
-    // chronological list (sessions, notifications) where reverse-order
-    // is never actually exposed. If the orderDir is itself dynamic AND
-    // the auditor needs to catch it, callers can declare both directions
-    // explicitly in the index file. The orderBy *field* expansion is the
-    // class of bug we ship in production (events.search "Ordre
-    // alphabétique" returning empty).
-    if (!by.viaCoalesce) continue;
-    const byAlts = expandThroughEnums(by.field, enums.orderByEnums);
-    if (byAlts.length === 1 && byAlts[0] === by.field) continue; // No expansion.
+    // Zod-enum expansion: when the orderBy or orderDir literal came from
+    // a `?? "X"` fallback AND X belongs to a known enum, fan out into
+    // every member of that enum. Cross-product the two axes — every
+    // (orderBy value, orderDir value) is a reachable runtime combination
+    // and Firestore needs a separate composite index for each.
+    //
+    // Direction expansion catches the staging 500 on
+    // `/v1/events/org/:orgId?orderDir=asc` — the repo had
+    // `orderDir: pagination.orderDir ?? "desc"` (the literal "desc"),
+    // but the route's Zod schema accepts both directions. Without
+    // direction expansion the auditor only required the desc index and
+    // production 500'd as soon as the back-office UI flipped to asc.
+    //
+    // Cost: chronological-only lists (sessions, notifications) end up
+    // with an extra desc index they may never use. Storage-cost ≪
+    // a 500 in production. If a specific call site never wants the
+    // alternate direction, document it in the schema by removing one
+    // direction from the orderDir enum.
+    if (!by.viaCoalesce && !paired?.viaCoalesce) continue;
+
+    const byAlts = by.viaCoalesce
+      ? expandThroughEnums(by.field, enums.orderByEnums)
+      : [by.field];
+    const dirLiteral = paired?.dir === "ASCENDING" ? "asc" : "desc";
+    const dirAlts: ("ASCENDING" | "DESCENDING")[] = paired?.viaCoalesce
+      ? expandThroughEnums(dirLiteral, enums.orderDirEnums).map((d) =>
+          d === "asc" ? "ASCENDING" : "DESCENDING",
+        )
+      : [dir];
+
+    if (byAlts.length === 1 && dirAlts.length === 1 && byAlts[0] === by.field && dirAlts[0] === dir)
+      continue; // No expansion happened — would just duplicate the literal pair.
+
     for (const f of byAlts) {
-      // Skip the literal field itself — it's already in `orderBys` above.
-      if (f === by.field) continue;
-      orderByAlternatives.push({ field: f, dir });
+      for (const d of dirAlts) {
+        // Skip the literal pair itself — it's already in `orderBys` above.
+        if (f === by.field && d === dir) continue;
+        orderByAlternatives.push({ field: f, dir: d });
+      }
     }
   }
 
