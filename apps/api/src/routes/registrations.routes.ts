@@ -51,10 +51,25 @@ export const registrationRoutes: FastifyPluginAsync = async (fastify) => {
   );
 
   // ─── Get My Registrations ────────────────────────────────────────────────
+  // CLOSED orderBy enum, narrowed from the inherited `PaginationSchema`
+  // (which accepts any string). The repository's `findByUser` only has
+  // a `(userId, createdAt DESC)` composite index — sorting by anything
+  // else would raise FAILED_PRECONDITION at runtime, the same class of
+  // bug as the staging /v1/events/org 500 (PR #215). Since the
+  // participant client only sends `page/limit` today the practical
+  // 500 risk is low, but third-party API-key integrators see this
+  // surface and the auditor only catches the leak when the route
+  // declares a closed enum.
+  const MyRegistrationsQuerySchema = z.object({
+    page: z.coerce.number().int().positive().default(1),
+    limit: z.coerce.number().int().positive().max(100).default(20),
+    orderBy: z.literal("createdAt").default("createdAt"),
+    orderDir: z.enum(["asc", "desc"]).default("desc"),
+  });
   fastify.get(
     "/me",
     {
-      preHandler: [authenticate, validate({ query: PaginationSchema })],
+      preHandler: [authenticate, validate({ query: MyRegistrationsQuerySchema })],
       schema: {
         tags: ["Registrations"],
         summary: "Get my registrations",
@@ -62,7 +77,7 @@ export const registrationRoutes: FastifyPluginAsync = async (fastify) => {
       },
     },
     async (request, reply) => {
-      const pagination = request.query as z.infer<typeof PaginationSchema>;
+      const pagination = request.query as z.infer<typeof MyRegistrationsQuerySchema>;
       const result = await registrationService.getMyRegistrations(request.user!, pagination);
       return reply.send({ success: true, data: result.data, meta: result.meta });
     },

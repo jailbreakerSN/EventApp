@@ -33,10 +33,18 @@ export class RegistrationRepository extends BaseRepository<Registration> {
     userId: string,
     pagination?: PaginationParams,
   ): Promise<PaginatedResult<Registration>> {
-    return this.findMany(
-      [{ field: "userId", op: "==", value: userId }],
-      pagination ?? { page: 1, limit: 50, orderBy: "createdAt", orderDir: "desc" },
-    );
+    // Build the pagination object explicitly with a `?? "createdAt"`
+    // literal default so `scripts/audit-firestore-indexes.ts` can expand
+    // through the route's Zod orderBy enum and require a composite
+    // index per reachable variant. Spreading `pagination` directly
+    // would hide the enum from static analysis — the staging 500 we
+    // shipped on /v1/events/org/:orgId paid for that pattern.
+    return this.findMany([{ field: "userId", op: "==", value: userId }], {
+      page: pagination?.page ?? 1,
+      limit: pagination?.limit ?? 50,
+      orderBy: pagination?.orderBy ?? "createdAt",
+      orderDir: pagination?.orderDir ?? "desc",
+    });
   }
 
   async findExisting(
