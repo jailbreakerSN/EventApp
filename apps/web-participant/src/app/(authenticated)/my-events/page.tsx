@@ -51,6 +51,7 @@ import {
 import { useErrorHandler, type ResolvedError } from "@/hooks/use-error-handler";
 import type { Registration } from "@teranga/shared-types";
 import { getCoverGradient } from "@/lib/cover-gradient";
+import { dakarMonthBoundsISO } from "@/lib/date-utils";
 import { intlLocale } from "@/lib/intl-locale";
 
 type StatusKey =
@@ -305,10 +306,11 @@ export default function MyEventsPage() {
   }, [upcoming, eventDetailMap]);
 
   async function handleDiscovery(year: number, month: number): Promise<CalendarEvent[]> {
-    const start = new Date(year, month, 1).toISOString();
-    const end = new Date(year, month + 1, 0, 23, 59, 59).toISOString();
+    // Dakar-anchored bounds — see `dakarMonthBoundsISO()` for the
+    // implicit-LOCAL bug history (PR #215 calendar fix sibling).
+    const { dateFrom, dateTo } = dakarMonthBoundsISO(year, month);
     try {
-      const res = await eventsApi.search({ dateFrom: start, dateTo: end, limit: 50 });
+      const res = await eventsApi.search({ dateFrom, dateTo, limit: 50 });
       return (res.data ?? []).map((ev) => {
         const loc = ev.location;
         const locationStr =
