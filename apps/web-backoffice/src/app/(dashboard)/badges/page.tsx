@@ -1,9 +1,21 @@
 "use client";
 
 import { useState } from "react";
+import { parseAsString } from "nuqs";
 import { PlanGate } from "@/components/plan/PlanGate";
 import { toast } from "sonner";
-import { Card, CardContent, Badge, Button, Skeleton } from "@teranga/shared-ui";
+import {
+  Card,
+  CardContent,
+  Badge,
+  Button,
+  Skeleton,
+  Input,
+  Select,
+  ResultCount,
+  PageSizeSelector,
+  EmptyStateEditorial,
+} from "@teranga/shared-ui";
 import {
   QrCode,
   Download,
@@ -17,6 +29,9 @@ import {
   Loader2,
   CheckCircle2,
   AlertCircle,
+  Search,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useEvents } from "@/hooks/use-events";
@@ -27,6 +42,7 @@ import {
   useDeleteBadgeTemplate,
   useBulkGenerateBadges,
 } from "@/hooks/use-badges";
+import { useTableState } from "@/hooks/use-table-state";
 import type { BadgeTemplate } from "@teranga/shared-types";
 import { useTranslations } from "next-intl";
 
@@ -39,6 +55,21 @@ const FIELD_VISIBILITY_OPTIONS = [
   { key: "showRole", label: "Role" },
   { key: "showPhoto", label: "Photo" },
 ] as const;
+
+// Doctrine-compliant data-listing wiring. Sortable fields mirror the
+// closed Zod enum on `BadgeTemplateQuerySchema.orderBy` — adding a
+// new value here without also extending the schema (and the composite
+// indexes the audit script will require) is a compile-time mistake
+// caught by tsc once the page references it.
+const SORTABLE_FIELDS = ["name", "createdAt", "updatedAt"] as const;
+
+const DEFAULT_FILTER_OPTIONS = [
+  { value: "", label: "Tous les modèles" },
+  { value: "true", label: "Modèles par défaut" },
+  { value: "false", label: "Modèles personnalisés" },
+] as const;
+
+type Filters = { isDefault?: string };
 
 // ─── Page ───────────────────────────────────────────────────────────────────
 
@@ -53,13 +84,50 @@ export default function BadgesPage() {
   const events = eventsData?.data ?? [];
   const [selectedEventId, setSelectedEventId] = useState<string>("");
 
-  // Badge templates
+  // ── Data-listing doctrine — URL-backed search / filter / sort / page ──
+  // The participant-facing /events bug taught us the cost of letting URL
+  // params drift from the API contract. Here the hook owns one source
+  // of truth (`urlNamespace="badges"`), the API enforces the same Zod
+  // shape (BadgeTemplateQuerySchema), and the composite-index auditor
+  // expands the orderBy enum so every reachable sort variant ships
+  // with its required index.
+  const t = useTableState<Filters>({
+    urlNamespace: "badges",
+    defaults: { sort: { field: "name", dir: "asc" }, pageSize: 25 },
+    sortableFields: SORTABLE_FIELDS,
+    filterParsers: { isDefault: parseAsString },
+  });
+
+  // Badge templates — paginated + filtered server-side via the new
+  // BadgeTemplateQuery contract. The bulk-generate selector below the
+  // grid still renders the same `templates` array, which intentionally
+  // means the dropdown shows ONLY the page the user is currently viewing
+  // (matches the operator's expectation: filter to find the template,
+  // then generate against the visible match).
   const {
     data: templatesData,
     isLoading: templatesLoading,
     isError: templatesError,
-  } = useBadgeTemplates(orgId);
+  } = useBadgeTemplates(orgId, {
+    q: t.debouncedQ || undefined,
+    isDefault:
+      t.filters.isDefault === "true"
+        ? true
+        : t.filters.isDefault === "false"
+          ? false
+          : undefined,
+    page: t.page,
+    limit: t.pageSize,
+    orderBy: t.sort?.field as "name" | "createdAt" | "updatedAt" | undefined,
+    orderDir: t.sort?.dir,
+  });
   const templates: BadgeTemplate[] = templatesData?.data ?? [];
+  const meta = templatesData?.meta ?? { page: 1, limit: t.pageSize, total: 0, totalPages: 1 };
+  const hasActiveQueryOrFilters = !!t.q || t.activeFilterCount > 0;
+  const isFilteredEmpty =
+    !templatesLoading && !templatesError && templates.length === 0 && hasActiveQueryOrFilters;
+  const isVirginEmpty =
+    !templatesLoading && !templatesError && templates.length === 0 && !hasActiveQueryOrFilters;
 
   // Mutations
   const createTemplate = useCreateBadgeTemplate();
@@ -423,8 +491,90 @@ export default function BadgesPage() {
         <div>
           <h2 className="text-lg font-semibold text-foreground mb-3 flex items-center gap-2">
             <Palette size={18} />
-            Modeles de badge
+            Modèles de badge
           </h2>
+
+          {/* Toolbar — search + isDefault filter + sort + result count + clear-all.
+              Layout mirrors /venues so operators get one consistent toolbar
+              shape across the back-office (doctrine § Admin table — MUST). */}
+          <div className="space-y-3 mb-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="relative max-w-md flex-1">
+                <Search
+                  className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none"
+                  aria-hidden="true"
+                />
+                <Input
+                  type="search"
+                  role="searchbox"
+                  placeholder="Rechercher un modèle..."
+                  value={t.q}
+                  onChange={(e) => t.setQ(e.target.value)}
+                  className="pl-9"
+                  aria-label="Rechercher des modèles de badge"
+                />
+              </div>
+              <div className="flex items-center gap-3 shrink-0">
+                <ResultCount total={meta.total} loading={templatesLoading} />
+                <PageSizeSelector value={t.pageSize} onChange={t.setPageSize} />
+              </div>
+            </div>
+            <div className="flex flex-wrap items-end gap-3">
+              <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+                <span>Type</span>
+                <Select
+                  value={t.filters.isDefault ?? ""}
+                  onChange={(e) => t.setFilter("isDefault", e.target.value || undefined)}
+                  aria-label="Filtrer par type de modèle"
+                >
+                  {DEFAULT_FILTER_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </Select>
+              </label>
+              <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+                <span>Trier par</span>
+                <Select
+                  value={`${t.sort?.field ?? "name"}:${t.sort?.dir ?? "asc"}`}
+                  onChange={(e) => {
+                    // useTableState exposes only `toggleSort(field)` — to set
+                    // a specific (field, dir) pair from a Select we either
+                    // toggle once (default asc) or twice (flip to desc).
+                    // Same pattern lives in /venues; lifting it into a
+                    // useTableState helper is a follow-up.
+                    const [field, dir] = e.target.value.split(":") as [
+                      (typeof SORTABLE_FIELDS)[number],
+                      "asc" | "desc",
+                    ];
+                    if (t.sort?.field !== field) {
+                      t.toggleSort(field);
+                      if (dir === "desc") t.toggleSort(field);
+                    } else if (t.sort.dir !== dir) {
+                      t.toggleSort(field);
+                    }
+                  }}
+                  aria-label="Trier les modèles"
+                >
+                  <option value="name:asc">Nom (A → Z)</option>
+                  <option value="name:desc">Nom (Z → A)</option>
+                  <option value="createdAt:desc">Récemment ajoutés</option>
+                  <option value="createdAt:asc">Anciens d&apos;abord</option>
+                  <option value="updatedAt:desc">Récemment modifiés</option>
+                </Select>
+              </label>
+              {hasActiveQueryOrFilters ? (
+                <button
+                  type="button"
+                  onClick={t.reset}
+                  className="self-end text-sm text-muted-foreground hover:text-foreground underline-offset-4 hover:underline"
+                >
+                  Tout effacer
+                </button>
+              ) : null}
+            </div>
+          </div>
 
           {/* Loading */}
           {templatesLoading && (
@@ -444,26 +594,54 @@ export default function BadgesPage() {
             <Card>
               <CardContent className="p-6 text-center">
                 <AlertCircle size={32} className="mx-auto text-destructive/50 mb-2" />
-                <p className="text-destructive text-sm">Erreur lors du chargement des modeles</p>
+                <p className="text-destructive text-sm">Erreur lors du chargement des modèles</p>
               </CardContent>
             </Card>
           )}
 
-          {/* Empty */}
-          {!templatesLoading && !templatesError && templates.length === 0 && (
-            <Card>
-              <CardContent className="p-12 text-center">
-                <FileText size={48} className="mx-auto text-muted-foreground/30 mb-4" />
-                <h3 className="text-lg font-semibold text-foreground mb-1">Aucun modele</h3>
-                <p className="text-muted-foreground text-sm">
-                  Creez votre premier modele de badge pour commencer
-                </p>
-              </CardContent>
-            </Card>
+          {/* Empty — virgin (no templates ever) → onboarding CTA */}
+          {isVirginEmpty && (
+            <EmptyStateEditorial
+              icon={FileText}
+              kicker="— AUCUN MODÈLE"
+              title="Démarrez votre catalogue de badges"
+              description="Créez votre premier modèle pour générer des badges personnalisés pour vos événements."
+              action={
+                <Button
+                  onClick={() => {
+                    resetForm();
+                    setShowCreate(true);
+                  }}
+                  size="sm"
+                >
+                  <Plus size={16} className="mr-1.5" />
+                  Créer un modèle
+                </Button>
+              }
+            />
           )}
 
-          {/* Template cards */}
-          {!templatesLoading && templates.length > 0 && (
+          {/* Empty — filtered (has templates but none match) → clear filters */}
+          {isFilteredEmpty && (
+            <EmptyStateEditorial
+              icon={Search}
+              kicker="— AUCUN RÉSULTAT"
+              title="Aucun modèle ne correspond à votre recherche"
+              description="Modifiez votre requête ou réinitialisez les filtres pour voir tous les modèles."
+              action={
+                <button
+                  type="button"
+                  onClick={t.reset}
+                  className="text-sm font-medium text-teranga-gold-dark hover:underline"
+                >
+                  Effacer les filtres
+                </button>
+              }
+            />
+          )}
+
+          {/* Template cards — only when there's at least one match. */}
+          {!templatesLoading && !templatesError && templates.length > 0 && (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {templates.map((template) => (
                 <Card key={template.id} className="hover:border-primary/30 transition-colors">
@@ -555,6 +733,41 @@ export default function BadgesPage() {
                 </Card>
               ))}
             </div>
+          )}
+
+          {/* Pagination — page-numbered for the bounded admin table archetype.
+              Prev/Next disabled at bounds; aria-current on the active page;
+              hidden when only one page exists so the toolbar isn't noisy on
+              freshly-onboarded orgs. */}
+          {!templatesLoading && !templatesError && templates.length > 0 && meta.totalPages > 1 && (
+            <nav
+              aria-label="Pagination des modèles de badge"
+              className="mt-6 flex items-center justify-between gap-3"
+            >
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => t.setPage(t.page - 1)}
+                disabled={t.page <= 1}
+                aria-label="Page précédente"
+              >
+                <ChevronLeft size={14} className="mr-1" />
+                Précédent
+              </Button>
+              <span aria-current="page" className="text-sm text-muted-foreground">
+                Page {meta.page} sur {meta.totalPages}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => t.setPage(t.page + 1)}
+                disabled={t.page >= meta.totalPages}
+                aria-label="Page suivante"
+              >
+                Suivant
+                <ChevronRight size={14} className="ml-1" />
+              </Button>
+            </nav>
           )}
         </div>
 

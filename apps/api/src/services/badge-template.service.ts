@@ -1,11 +1,13 @@
 import {
   type BadgeTemplate,
+  type BadgeTemplateQuery,
   type CreateBadgeTemplateDto,
   type UpdateBadgeTemplateDto,
+  normalizeFr,
 } from "@teranga/shared-types";
 import { badgeTemplateRepository } from "@/repositories/badge-template.repository";
 import { organizationRepository } from "@/repositories/organization.repository";
-import { type PaginationParams, type PaginatedResult } from "@/repositories/base.repository";
+import { type PaginatedResult } from "@/repositories/base.repository";
 import { type AuthUser } from "@/middlewares/auth.middleware";
 import { BaseService } from "./base.service";
 
@@ -35,15 +37,60 @@ export class BadgeTemplateService extends BaseService {
     return template;
   }
 
+  /**
+   * Doctrine-compliant template listing.
+   *
+   * Filters happen in two layers:
+   *   1. Firestore (server-side): `organizationId` equality and the
+   *      `isDefault` boolean filter when supplied. The repository sorts
+   *      by `orderBy`/`orderDir` via the indexed composite.
+   *   2. In-memory (server-side, post-Firestore): accent-folded substring
+   *      match on `template.name`. Templates are bounded per org (typical
+   *      <50, plan-cap at <2000 even for enterprise), so an in-memory
+   *      filter is cheaper than maintaining a denormalised
+   *      `nameNormalized` field + composite index per sort axis. The
+   *      filter runs BEFORE pagination so `meta.total` is honest — no
+   *      "page 2 silently misses results that didn't match q on page 1"
+   *      regression of the kind the doctrine forbids.
+   */
   async listByOrganization(
-    organizationId: string,
+    query: BadgeTemplateQuery,
     user: AuthUser,
-    pagination?: PaginationParams,
   ): Promise<PaginatedResult<BadgeTemplate>> {
     this.requirePermission(user, "badge:generate");
-    this.requireOrganizationAccess(user, organizationId);
+    this.requireOrganizationAccess(user, query.organizationId);
 
-    return badgeTemplateRepository.findByOrganization(organizationId, pagination);
+    // Pull the full org template set from Firestore (capped at 200 by
+    // the repository as a safety net — well above the practical max
+    // even for enterprise tier). Doing q + pagination in-memory keeps
+    // the contract honest for small datasets without forcing a
+    // schema migration.
+    const all = await badgeTemplateRepository.findByOrganization(query.organizationId, {
+      isDefault: query.isDefault,
+      orderBy: query.orderBy,
+      orderDir: query.orderDir,
+    });
+
+    let filtered = all;
+    if (query.q && query.q.trim().length > 0) {
+      const needle = normalizeFr(query.q.trim());
+      filtered = all.filter((t) => normalizeFr(t.name).includes(needle));
+    }
+
+    const total = filtered.length;
+    const totalPages = Math.max(1, Math.ceil(total / query.limit));
+    const start = (query.page - 1) * query.limit;
+    const data = filtered.slice(start, start + query.limit);
+
+    return {
+      data,
+      meta: {
+        page: query.page,
+        limit: query.limit,
+        total,
+        totalPages,
+      },
+    };
   }
 
   async update(templateId: string, dto: UpdateBadgeTemplateDto, user: AuthUser): Promise<void> {

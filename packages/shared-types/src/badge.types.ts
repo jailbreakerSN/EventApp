@@ -115,6 +115,33 @@ export const UpdateBadgeTemplateSchema = CreateBadgeTemplateSchema.partial().omi
 
 export type UpdateBadgeTemplateDto = z.infer<typeof UpdateBadgeTemplateSchema>;
 
+// ─── Badge Template Query (data-listing doctrine) ────────────────────────────
+//
+// Wired into GET /v1/badge-templates. The legacy schema only accepted
+// pagination params and let `orderBy` be any string — which forced the
+// composite-index audit into "unresolved orderBy" warnings and let the
+// front-end forward arbitrary fields the repository never honoured.
+//
+// The doctrine-compliant shape: `q` (accent-folded substring against the
+// template name), `isDefault` boolean filter, paginated, with a closed
+// orderBy enum so the index auditor expands every sort variant
+// automatically. `orderDir` defaults to `asc` to match the alphabetical
+// default operators expect on a small bounded catalogue.
+export const BadgeTemplateQuerySchema = z.object({
+  organizationId: z.string(),
+  q: z.string().max(200).optional(),
+  isDefault: z
+    .union([z.literal("true"), z.literal("false"), z.boolean()])
+    .transform((v) => (typeof v === "boolean" ? v : v === "true"))
+    .optional(),
+  page: z.coerce.number().int().positive().default(1),
+  limit: z.coerce.number().int().positive().max(100).default(25),
+  orderBy: z.enum(["name", "createdAt", "updatedAt"]).default("name"),
+  orderDir: z.enum(["asc", "desc"]).default("asc"),
+});
+
+export type BadgeTemplateQuery = z.infer<typeof BadgeTemplateQuerySchema>;
+
 // ─── Badge Generation Request ────────────────────────────────────────────────
 
 export const BadgeGenerateRequestSchema = z.object({
