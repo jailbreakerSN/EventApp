@@ -2,14 +2,30 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { badgeTemplatesApi, badgesApi } from "@/lib/api-client";
-import type { CreateBadgeTemplateDto, UpdateBadgeTemplateDto } from "@teranga/shared-types";
+import type {
+  BadgeTemplateQuery,
+  CreateBadgeTemplateDto,
+  UpdateBadgeTemplateDto,
+} from "@teranga/shared-types";
 
 // ─── Badge Template Queries ────────────────────────────────────────────────
 
-export function useBadgeTemplates(organizationId: string | undefined) {
+/**
+ * Doctrine-compliant template listing. The full query (q, isDefault,
+ * orderBy, orderDir, page, limit) is part of the queryKey so React Query
+ * refetches cleanly whenever the URL state changes — same wiring as
+ * /venues and /admin/users. `placeholderData: keepPreviousData` is
+ * intentionally NOT set here; the surface is small enough that a hard
+ * refetch is acceptable and the data freshness is more valuable than
+ * the layout-stability of stale rows during transition.
+ */
+export function useBadgeTemplates(
+  organizationId: string | undefined,
+  params: Partial<Omit<BadgeTemplateQuery, "organizationId">> = {},
+) {
   return useQuery({
-    queryKey: ["badge-templates", organizationId],
-    queryFn: () => badgeTemplatesApi.list(organizationId!),
+    queryKey: ["badge-templates", organizationId, params],
+    queryFn: () => badgeTemplatesApi.list(organizationId!, params),
     enabled: !!organizationId,
   });
 }

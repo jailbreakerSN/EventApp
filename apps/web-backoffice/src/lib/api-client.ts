@@ -75,6 +75,7 @@ import type {
   CreateVenueDto,
   UpdateVenueDto,
   BadgeTemplate,
+  BadgeTemplateQuery,
   CreateBadgeTemplateDto,
   UpdateBadgeTemplateDto,
   GeneratedBadge,
@@ -1133,8 +1134,18 @@ export const venuesApi = {
 // ─── Badge Templates ───────────────────────────────────────────────────────
 
 export const badgeTemplatesApi = {
-  list: (organizationId: string, params: { page?: number; limit?: number } = {}) =>
-    api.get<PaginatedResponse<BadgeTemplate>>(`/v1/badge-templates${buildQuery({ organizationId, ...params })}`),
+  // Doctrine-compliant list: forwards the full BadgeTemplateQuery (q,
+  // isDefault, page, limit, orderBy, orderDir) so the backend search +
+  // filter + sort + pagination contract is exercised end-to-end. The
+  // legacy signature (page/limit only) is preserved as a subset by
+  // making every field optional except organizationId.
+  list: (
+    organizationId: string,
+    params: Partial<Omit<BadgeTemplateQuery, "organizationId">> = {},
+  ) =>
+    api.get<PaginatedResponse<BadgeTemplate>>(
+      `/v1/badge-templates${buildQuery({ organizationId, ...params })}`,
+    ),
 
   getById: (templateId: string) =>
     api.get<ApiResponse<BadgeTemplate>>(`/v1/badge-templates/${templateId}`),

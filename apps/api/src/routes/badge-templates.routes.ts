@@ -7,14 +7,10 @@ import { badgeTemplateService } from "@/services/badge-template.service";
 import {
   CreateBadgeTemplateSchema,
   UpdateBadgeTemplateSchema,
-  PaginationSchema,
+  BadgeTemplateQuerySchema,
 } from "@teranga/shared-types";
 
 const ParamsWithTemplateId = z.object({ templateId: z.string() });
-const ListQuery = z.object({
-  organizationId: z.string(),
-  ...PaginationSchema.shape,
-});
 
 export const badgeTemplateRoutes: FastifyPluginAsync = async (fastify) => {
   // ─── Create Badge Template ──────────────────────────────────────────────
@@ -43,10 +39,15 @@ export const badgeTemplateRoutes: FastifyPluginAsync = async (fastify) => {
   );
 
   // ─── List Badge Templates by Organization ───────────────────────────────
+  // Accepts the full BadgeTemplateQuery (q, isDefault, paginated, sorted)
+  // so the data-listing doctrine MUSTs are wired end-to-end. The legacy
+  // `PaginationSchema` shape was open (`orderBy: z.string().optional()`)
+  // which broke the composite-index audit and let the front-end forward
+  // arbitrary fields the repository ignored.
   fastify.get(
     "/",
     {
-      preHandler: [authenticate, validate({ query: ListQuery })],
+      preHandler: [authenticate, validate({ query: BadgeTemplateQuerySchema })],
       schema: {
         tags: ["Badge Templates"],
         summary: "List badge templates for an organization",
@@ -54,15 +55,8 @@ export const badgeTemplateRoutes: FastifyPluginAsync = async (fastify) => {
       },
     },
     async (request, reply) => {
-      const { organizationId, page, limit, orderBy, orderDir } = request.query as z.infer<
-        typeof ListQuery
-      >;
-      const result = await badgeTemplateService.listByOrganization(organizationId, request.user!, {
-        page,
-        limit,
-        orderBy,
-        orderDir,
-      });
+      const query = request.query as z.infer<typeof BadgeTemplateQuerySchema>;
+      const result = await badgeTemplateService.listByOrganization(query, request.user!);
       return reply.send({ success: true, data: result.data, meta: result.meta });
     },
   );

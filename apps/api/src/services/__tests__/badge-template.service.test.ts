@@ -159,3 +159,104 @@ describe("BadgeTemplateService.remove", () => {
     expect(mockTemplateRepo.softDelete).toHaveBeenCalledWith("tpl-1");
   });
 });
+
+// ─── listByOrganization (data-listing doctrine wiring) ───────────────────────
+//
+// Four mandatory cases per the test contract: happy path (incl. server-
+// side q + pagination + sort propagation), permission denial, org-access
+// denial, error path. Plus the doctrine-specific assertions: meta.total
+// reflects the FILTERED count (not the unfiltered fetch), pagination
+// slices the filtered set, accent-folded substring matches "Sénégal" vs
+// "senegal".
+
+describe("BadgeTemplateService.listByOrganization", () => {
+  const baseQuery = {
+    organizationId: "org-1",
+    page: 1,
+    limit: 25,
+    orderBy: "name" as const,
+    orderDir: "asc" as const,
+  };
+
+  it("returns paginated templates and forwards orderBy/orderDir/isDefault to the repo", async () => {
+    const user = buildOrganizerUser("org-1");
+    const templates = [
+      buildTemplate({ id: "t1", name: "Badge Standard" }),
+      buildTemplate({ id: "t2", name: "Badge VIP" }),
+    ];
+    mockTemplateRepo.findByOrganization.mockResolvedValue(templates);
+
+    const result = await service.listByOrganization(
+      { ...baseQuery, isDefault: false, orderBy: "createdAt", orderDir: "desc" },
+      user,
+    );
+
+    expect(result.data).toHaveLength(2);
+    expect(result.meta).toEqual({ page: 1, limit: 25, total: 2, totalPages: 1 });
+    expect(mockTemplateRepo.findByOrganization).toHaveBeenCalledWith("org-1", {
+      isDefault: false,
+      orderBy: "createdAt",
+      orderDir: "desc",
+    });
+  });
+
+  it("filters by accent-folded substring on name (Sénégal matches senegal)", async () => {
+    const user = buildOrganizerUser("org-1");
+    const templates = [
+      buildTemplate({ id: "t1", name: "Sénégal Conférence" }),
+      buildTemplate({ id: "t2", name: "Côte d'Ivoire Workshop" }),
+      buildTemplate({ id: "t3", name: "Mali Hackathon" }),
+    ];
+    mockTemplateRepo.findByOrganization.mockResolvedValue(templates);
+
+    const result = await service.listByOrganization({ ...baseQuery, q: "senegal" }, user);
+
+    expect(result.data).toHaveLength(1);
+    expect(result.data[0].id).toBe("t1");
+    expect(result.meta.total).toBe(1);
+  });
+
+  it("paginates the filtered set honestly (page 2 of 3 with limit=1 yields t2)", async () => {
+    const user = buildOrganizerUser("org-1");
+    const templates = [
+      buildTemplate({ id: "t1", name: "A Badge" }),
+      buildTemplate({ id: "t2", name: "B Badge" }),
+      buildTemplate({ id: "t3", name: "C Badge" }),
+    ];
+    mockTemplateRepo.findByOrganization.mockResolvedValue(templates);
+
+    const result = await service.listByOrganization(
+      { ...baseQuery, page: 2, limit: 1 },
+      user,
+    );
+
+    expect(result.data).toHaveLength(1);
+    expect(result.data[0].id).toBe("t2");
+    expect(result.meta).toEqual({ page: 2, limit: 1, total: 3, totalPages: 3 });
+  });
+
+  it("rejects participant without badge:generate permission", async () => {
+    const user = buildAuthUser({ roles: ["participant"] });
+
+    await expect(service.listByOrganization(baseQuery, user)).rejects.toThrow(
+      "Permission manquante",
+    );
+    expect(mockTemplateRepo.findByOrganization).not.toHaveBeenCalled();
+  });
+
+  it("rejects when user doesn't belong to the requested org", async () => {
+    const user = buildOrganizerUser("org-other");
+
+    await expect(service.listByOrganization(baseQuery, user)).rejects.toThrow("Accès refusé");
+    expect(mockTemplateRepo.findByOrganization).not.toHaveBeenCalled();
+  });
+
+  it("propagates Firestore errors instead of swallowing them", async () => {
+    const user = buildOrganizerUser("org-1");
+    mockTemplateRepo.findByOrganization.mockRejectedValue(new Error("FAILED_PRECONDITION: index"));
+
+    await expect(service.listByOrganization(baseQuery, user)).rejects.toThrow(
+      "FAILED_PRECONDITION: index",
+    );
+  });
+});
