@@ -759,20 +759,44 @@ For each page, the migration is a single PR that ticks every applicable box. The
 
 ### Page-by-page wave plan
 
-| Wave   | Page                                              | Why this order                                                                          |
-| ------ | ------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| **W1** | `/events` participant (discovery)                 | The visible-bug surface. C1, C2, C3 all live here.                                      |
-| **W1** | `/admin/users`                                    | Highest internal-user pain. C6, C8 live here. Reference admin migration.                |
-| **W1** | `/admin/organizations`                            | Sister page to `/admin/users`. Establish the admin pattern in 2 PRs.                    |
-| **W2** | `/events` backoffice                              | Highest organiser pain. Bring searchKeywords + sort + URL state.                        |
-| **W2** | `/events/[id]/audience/registrations`             | Per-event flow; high frequency. Add participant search.                                 |
-| **W2** | `/admin/audit`                                    | Already the reference; light refactor to adopt `useTableState` + DataTable v2.          |
-| **W3** | `/admin/coupons`, `/admin/plans`, `/admin/jobs`   | Lower frequency; bundled.                                                               |
-| **W3** | `/admin/invites`, `/admin/subscriptions`, `/admin/webhooks`, `/admin/api-keys` | Same.                                                                                   |
-| **W3** | `/admin/venues`, `/admin/notifications`           | Same.                                                                                   |
-| **W4** | `/badges`, `/communications`, `/venues`, `/participants` | Organiser pages with no list pattern today; migration adds the missing primitives.      |
-| **W5** | `/my-events`, `/notifications` participant        | Stream-archetype migration; cursor pagination introduced.                               |
-| **W5** | `/messages`, `/feed`                              | Add search post-MVP.                                                                    |
+Status legend: ✅ shipped, 🟡 partial / blocked, ⏳ in-flight, ⬜ not started.
+
+| Wave   | Page                                              | Status | Why this order                                                                          |
+| ------ | ------------------------------------------------- | ------ | --------------------------------------------------------------------------------------- |
+| **W1** | `/events` participant (discovery)                 | ✅     | The visible-bug surface. C1, C2, C3 all live here.                                      |
+| **W1** | `/admin/users`                                    | ✅     | Highest internal-user pain. C6, C8 live here. Reference admin migration.                |
+| **W1** | `/admin/organizations`                            | ✅     | Sister page to `/admin/users`. Establish the admin pattern in 2 PRs.                    |
+| **W2** | `/events` backoffice                              | ✅     | Highest organiser pain. Bring searchKeywords + sort + URL state.                        |
+| **W2** | `/events/[id]/audience/registrations`             | ✅     | Per-event flow; high frequency. Add participant search.                                 |
+| **W2** | `/admin/audit`                                    | ✅     | Already the reference; light refactor to adopt `useTableState` + DataTable v2.          |
+| **W3** | `/admin/coupons`, `/admin/plans`, `/admin/jobs`   | ✅     | Lower frequency; bundled.                                                               |
+| **W3** | `/admin/invites`, `/admin/subscriptions`, `/admin/webhooks`, `/admin/api-keys` | ✅ | Same.                                                                                   |
+| **W3** | `/admin/venues`, `/admin/notifications`           | ✅     | Same.                                                                                   |
+| **W4** | `/venues` organiser                               | ✅     | PR #213. Bare card grid → search + status/type filter + 5-option sort + page-numbered.  |
+| **W4** | `/badges`                                         | ✅     | PR #216. New `BadgeTemplateQuerySchema` + accent-folded q + isDefault filter + 11 indexes. |
+| **W4** | `/communications` (Library tab)                   | ✅     | PR #218. Search + URL state + accent-folded filter on the Bibliothèque tab. Composer/Timeline tabs intentionally untouched (not list archetype). |
+| **W4** | `/participants` Annuaire                          | 🟡     | Stub preserved; backend cross-event participant index lands in O10. Page renders the doctrine chrome (`<SavedViewsMenu>` + `<BulkActionToolbar>`) for review continuity but the directory itself is a CTA-to-events placeholder. |
+| **W5** | `/my-events`, `/notifications` participant        | ✅     | PR #211. Stream-archetype migration; cursor pagination introduced.                      |
+| **W5** | `/messages`, `/feed`                              | ⬜     | Search post-MVP. Stream archetype already correct (chronological, no sort UI).          |
+
+#### Auditor + index hardening shipped alongside the W4 wave
+
+The static composite-index auditor at `scripts/audit-firestore-indexes.ts`
+gained four capabilities while shipping the W4 migrations, all derived
+from real production-class regressions:
+
+| Capability                                          | Lands in | Catches the next…                                                                |
+| --------------------------------------------------- | -------- | -------------------------------------------------------------------------------- |
+| Zod-enum expansion of `?? "literal"` orderBy        | PR #214  | Page that ships a sort menu without the matching composite (the `/events` "Ordre alphabétique" 0-results bug). |
+| `private`/`protected` access modifiers in extractor | PR #214  | Repository methods hidden behind a private dispatcher (`searchByKeyword`, `searchByTagsOrFilters`).             |
+| Single-statement-`if` conditional detection         | PR #214  | Repos that build their where-clauses with `if (filters.x) wheres.push(…)` (no braces) — every clause was treated as MANDATORY before. |
+| Direction expansion + `z.literal` enum + smallest-match heuristic | PR #215 + #217 | Routes whose Zod schema declares both `asc` and `desc` orderDir but the repo literal only covers one direction (the `/v1/events/org/:orgId` 500). |
+| Route-layer scan for bare `validate({ query: PaginationSchema })` | PR #217 | Future routes that inherit the open-string `orderBy` from `PaginationSchema` instead of declaring a closed enum. |
+
+Status: auditor exits 0 with **all primary (maximal + mandatory-only)
+query shapes covered** across the entire codebase. Subset warnings (~840)
+are gated behind `AUDIT_SUBSETS=1` and surface in the strict pre-deploy
+audit on `deploy-staging.yml`.
 
 The waves are work units, not strict timelines — W1 is the first thing built; W2 starts after W1 lands.
 
