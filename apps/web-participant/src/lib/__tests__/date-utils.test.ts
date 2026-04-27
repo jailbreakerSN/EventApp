@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { getDateRange } from "../date-utils";
+import { dakarMonthBoundsISO, getDateRange } from "../date-utils";
 
 /**
  * Regression suite for the participant /events date filter.
@@ -109,5 +109,69 @@ describe("getDateRange", () => {
       expect(end.getDate()).toBe(31); // last day of May
       expect(end.getHours()).toBe(23);
     });
+  });
+});
+
+/**
+ * Regression suite for `dakarMonthBoundsISO()` — used by the
+ * /my-events calendar-discovery overlay to fetch the events visible
+ * in the active month.
+ *
+ * Bug history (sibling to PR #215 calendar fix): the original
+ * formula was `new Date(year, month, 1).toISOString()` which builds
+ * LOCAL midnight on day 1 and re-projects to UTC. For any user east
+ * of Dakar (Paris UTC+2 in DST) that shifts the bound BACKWARD into
+ * the previous month — the discovery overlay would query
+ * `[March 31 22:00 UTC, April 30 21:59 UTC]` instead of the intended
+ * `[April 1, April 30]` Dakar window.
+ *
+ * The fix anchors at UTC noon-style explicit components — Africa/Dakar
+ * is UTC+0 so UTC bounds map exactly to Dakar bounds with no offset
+ * math. These assertions are tz-independent (no `vi.useFakeTimers`)
+ * because they only inspect the canonical ISO output.
+ */
+describe("dakarMonthBoundsISO", () => {
+  it("returns April 1 → April 30 23:59:59.999 UTC for (2026, 3)", () => {
+    const { dateFrom, dateTo } = dakarMonthBoundsISO(2026, 3);
+    expect(dateFrom).toBe("2026-04-01T00:00:00.000Z");
+    expect(dateTo).toBe("2026-04-30T23:59:59.999Z");
+  });
+
+  it("handles December → January wraparound for (2026, 11)", () => {
+    const { dateFrom, dateTo } = dakarMonthBoundsISO(2026, 11);
+    expect(dateFrom).toBe("2026-12-01T00:00:00.000Z");
+    expect(dateTo).toBe("2026-12-31T23:59:59.999Z");
+  });
+
+  it("handles February in a non-leap year (2026 = non-leap)", () => {
+    const { dateFrom, dateTo } = dakarMonthBoundsISO(2026, 1);
+    expect(dateFrom).toBe("2026-02-01T00:00:00.000Z");
+    expect(dateTo).toBe("2026-02-28T23:59:59.999Z");
+  });
+
+  it("handles February in a leap year (2024)", () => {
+    const { dateFrom, dateTo } = dakarMonthBoundsISO(2024, 1);
+    expect(dateFrom).toBe("2024-02-01T00:00:00.000Z");
+    expect(dateTo).toBe("2024-02-29T23:59:59.999Z");
+  });
+
+  it("never depends on the host timezone (ISO output is UTC)", () => {
+    // Both bounds end with `Z` and are deterministic — independent of
+    // whatever TZ the test runner / CI machine is in.
+    const { dateFrom, dateTo } = dakarMonthBoundsISO(2026, 6); // July
+    expect(dateFrom).toMatch(/Z$/);
+    expect(dateTo).toMatch(/Z$/);
+    expect(dateFrom).toBe("2026-07-01T00:00:00.000Z");
+    expect(dateTo).toBe("2026-07-31T23:59:59.999Z");
+  });
+
+  // Critical regression assertion — pre-fix the LOCAL anchor would
+  // shift this to "2026-03-31T22:00:00.000Z" for a Paris client.
+  it("dateFrom for April is exactly April 1 00:00:00 UTC", () => {
+    const { dateFrom } = dakarMonthBoundsISO(2026, 3);
+    const parsed = new Date(dateFrom);
+    expect(parsed.getUTCMonth()).toBe(3);
+    expect(parsed.getUTCDate()).toBe(1);
+    expect(parsed.getUTCHours()).toBe(0);
   });
 });

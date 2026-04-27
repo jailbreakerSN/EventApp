@@ -1,4 +1,31 @@
 /**
+ * Dakar-anchored ISO bounds for a (year, month) pair. Anchored at UTC
+ * because Africa/Dakar is UTC+0, so UTC bounds map exactly to Dakar
+ * bounds with no offset math.
+ *
+ * Used by the calendar-discovery overlay on /my-events to fetch the
+ * events visible in a given month. `new Date(year, month, 1).toISOString()`
+ * was used originally — that's LOCAL midnight on day 1 re-projected to
+ * UTC, which for any user east of Dakar (Paris UTC+2 in DST) shifts
+ * the bound BACKWARD into the previous month. The discovery overlay
+ * would query `[March 31 22:00 UTC, April 30 21:59 UTC]` instead of
+ * `[April 1 00:00 UTC, April 30 23:59 UTC]` — events on the boundary
+ * days were silently filtered out.
+ */
+export function dakarMonthBoundsISO(
+  year: number,
+  monthZeroIndexed: number,
+): { dateFrom: string; dateTo: string } {
+  const dateFrom = new Date(Date.UTC(year, monthZeroIndexed, 1, 0, 0, 0, 0)).toISOString();
+  // `Date.UTC(year, month + 1, 0, ...)` returns the last day of `month`
+  // (the 0-th day of the next month rolls back).
+  const dateTo = new Date(
+    Date.UTC(year, monthZeroIndexed + 1, 0, 23, 59, 59, 999),
+  ).toISOString();
+  return { dateFrom, dateTo };
+}
+
+/**
  * Compute dateFrom/dateTo ISO strings from a date filter shortcut.
  * This is a plain utility (no "use client") so it can be used in both
  * server components and client components.
