@@ -143,6 +143,84 @@ function loadCollectionsMap(): Record<string, string> {
 }
 
 // ───────────────────────────────────────────────────────────────────────────
+// Zod orderBy / orderDir enum discovery
+// ───────────────────────────────────────────────────────────────────────────
+
+/**
+ * Catalogue of every `orderBy: z.enum([...])` and `orderDir: z.enum([...])`
+ * declared in `packages/shared-types/` and `apps/api/src/routes/`.
+ *
+ * Why this exists: the participant /events page shipped with three sort
+ * options (`startDate`, `createdAt`, `title`) declared in the Zod query
+ * schema, but the repository code path was:
+ *
+ *    return this.findMany(wheres, {
+ *      ...pagination,
+ *      orderBy: pagination.orderBy ?? "startDate",
+ *    });
+ *
+ * The previous version of this auditor only saw the literal `"startDate"`
+ * fallback and generated indexes for that single value. A user-facing
+ * "Ordre alphabétique" sort returned `FAILED_PRECONDITION` from Firestore
+ * because no `(status, isPublic, title)` index was declared, and the page
+ * silently swallowed the error as "0 events". This catalogue lets the
+ * auditor expand any `?? "literal"` fallback through the matching Zod
+ * enum so every reachable orderBy value is covered.
+ *
+ * Heuristic, not a proper resolver — we don't trace the variable back to
+ * the enum it came from. We instead match the literal default against any
+ * known orderBy enum that contains it. False positives (over-declaring
+ * indexes) cost storage but are safe; false negatives ship a 500.
+ */
+type EnumCatalogue = {
+  /** Each inner array is one declared `orderBy: z.enum([...])` value list. */
+  orderByEnums: string[][];
+  /** Each inner array is one declared `orderDir: z.enum([...])` value list. */
+  orderDirEnums: string[][];
+};
+
+const ENUM_SCAN_DIRS = [
+  path.join(ROOT, "packages/shared-types/src"),
+  path.join(ROOT, "apps/api/src/routes"),
+];
+
+function discoverOrderByEnums(): EnumCatalogue {
+  const orderByEnums: string[][] = [];
+  const orderDirEnums: string[][] = [];
+  const reBy = /orderBy\s*:\s*z\.enum\s*\(\s*\[([^\]]+)\]\s*\)/g;
+  const reDir = /orderDir\s*:\s*z\.enum\s*\(\s*\[([^\]]+)\]\s*\)/g;
+  for (const dir of ENUM_SCAN_DIRS) {
+    if (!fs.existsSync(dir)) continue;
+    for (const file of walkDir(dir)) {
+      const src = fs.readFileSync(file, "utf8");
+      let m: RegExpExecArray | null;
+      while ((m = reBy.exec(src)) !== null) {
+        const values = [...m[1].matchAll(/"([^"]+)"/g)].map((x) => x[1]);
+        if (values.length > 0) orderByEnums.push(values);
+      }
+      while ((m = reDir.exec(src)) !== null) {
+        const values = [...m[1].matchAll(/"([^"]+)"/g)].map((x) => x[1]);
+        if (values.length > 0) orderDirEnums.push(values);
+      }
+    }
+  }
+  return { orderByEnums, orderDirEnums };
+}
+
+/**
+ * Resolve the alternative values for a `?? "literal"` fallback by matching
+ * the literal against known enums. Returns the single literal when no enum
+ * contains it (preserves prior behaviour for hard-coded fallbacks like
+ * `?? "createdAt"` that don't correspond to a Zod schema).
+ */
+function expandThroughEnums(literal: string, enums: string[][]): string[] {
+  for (const e of enums) {
+    if (e.includes(literal)) return e;
+  }
+  return [literal];
+}
+
+// ───────────────────────────────────────────────────────────────────────────
 // File walking
 // ───────────────────────────────────────────────────────────────────────────
 
@@ -186,8 +264,12 @@ function extractMethods(source: string): MethodScope[] {
   //   function foo(args) {
   //   const foo = async (args) => {
   //   export const foo = (args): R => {
+  // Allow TypeScript access modifiers (`private`, `protected`, `public`) and
+  // `static`. Without this, `private async searchByKeyword(...)` is invisible
+  // to the auditor — exactly the gap that hid the events.search regression
+  // (the call goes through two private branches dispatched by `search()`).
   const headerRe =
-    /(?:^|\n)[ \t]*(?:export\s+)?(?:async\s+)?(?:function\s+|const\s+)?([a-zA-Z_][\w$]*)\s*(?:=\s*(?:async\s*)?(?:\([^)]*\)|[\w$]+)\s*(?::\s*[^={]+)?\s*=>|\([^)]*\)\s*(?::\s*[^{]+)?)\s*\{/g;
+    /(?:^|\n)[ \t]*(?:export\s+)?(?:public\s+|private\s+|protected\s+)?(?:static\s+)?(?:async\s+)?(?:function\s+|const\s+)?([a-zA-Z_][\w$]*)\s*(?:=\s*(?:async\s*)?(?:\([^)]*\)|[\w$]+)\s*(?::\s*[^={]+)?\s*=>|\([^)]*\)\s*(?::\s*[^{]+)?)\s*\{/g;
   const scopes: MethodScope[] = [];
   let m: RegExpExecArray | null;
   while ((m = headerRe.exec(source)) !== null) {
@@ -299,14 +381,27 @@ type UnresolvedOrderBy = {
   expression: string;
 };
 
-function extractQueryFragments(body: string): {
+function extractQueryFragments(
+  body: string,
+  enums: EnumCatalogue = { orderByEnums: [], orderDirEnums: [] },
+): {
   wheres: QueryFragment[];
   orderBys: OrderByFragment[];
+  /**
+   * Alternative orderBy fragments derived from `orderBy: x ?? "Y"` literal
+   * fallbacks expanded through the matching Zod enum (see
+   * `discoverOrderByEnums`). When non-empty, each alternative is treated
+   * as a separate query shape during `enumerateQueryShapes`. Empty when
+   * the method either has no `??` orderBy fallback or its fallback literal
+   * doesn't match any known enum.
+   */
+  orderByAlternatives: OrderByFragment[];
   hasSelect: boolean;
   unresolvedOrderBys: UnresolvedOrderBy[];
 } {
   const wheres: QueryFragment[] = [];
   const orderBys: OrderByFragment[] = [];
+  const orderByAlternatives: OrderByFragment[] = [];
 
   // Pre-compute the span of every `if (...) { ... }` body in the method.
   // A where-clause whose character index sits inside any of these spans is
@@ -353,22 +448,60 @@ function extractQueryFragments(body: string): {
   //   orderBy: pagination?.orderBy ?? "startTime"
   //   orderDir: pagination?.orderDir ?? "asc"
   // We scan for orderBy and orderDir separately and pair them by proximity.
-  const byMatches: Array<{ index: number; field: string }> = [];
-  const dirMatches: Array<{ index: number; dir: "ASCENDING" | "DESCENDING" }> = [];
+  //
+  // Each match also records `viaCoalesce`: true when the literal was the
+  // fallback in a `?? "..."` expression. These are candidates for Zod-enum
+  // expansion via `expandThroughEnums` — the runtime value can be ANY
+  // member of the enum, not just the fallback literal.
+  const byMatches: Array<{ index: number; field: string; viaCoalesce: boolean }> = [];
+  const dirMatches: Array<{
+    index: number;
+    dir: "ASCENDING" | "DESCENDING";
+    viaCoalesce: boolean;
+  }> = [];
   const orderByFieldRe = /orderBy\s*:\s*(?:"([^"]+)"|[^,}\n]*?\?\?\s*"([^"]+)")/g;
   while ((m = orderByFieldRe.exec(body)) !== null) {
-    byMatches.push({ index: m.index, field: (m[1] ?? m[2]) as string });
+    byMatches.push({
+      index: m.index,
+      field: (m[1] ?? m[2]) as string,
+      viaCoalesce: m[2] !== undefined,
+    });
   }
   const orderDirRe = /orderDir\s*:\s*(?:"(asc|desc)"|[^,}\n]*?\?\?\s*"(asc|desc)")/g;
   while ((m = orderDirRe.exec(body)) !== null) {
-    const dir = (m[1] ?? m[2]) === "asc" ? "ASCENDING" : "DESCENDING";
-    dirMatches.push({ index: m.index, dir });
+    const raw = (m[1] ?? m[2]) as "asc" | "desc";
+    dirMatches.push({
+      index: m.index,
+      dir: raw === "asc" ? "ASCENDING" : "DESCENDING",
+      viaCoalesce: m[2] !== undefined,
+    });
   }
   // Pair each orderBy with the nearest orderDir that follows within 200 chars;
   // if no matching orderDir, assume "desc" (matches BaseRepository default).
   for (const by of byMatches) {
     const paired = dirMatches.find((d) => d.index >= by.index && d.index - by.index < 200);
-    orderBys.push({ field: by.field, dir: paired?.dir ?? "DESCENDING" });
+    const dir = paired?.dir ?? "DESCENDING";
+    orderBys.push({ field: by.field, dir });
+
+    // Zod-enum expansion: when the orderBy literal came from a `?? "X"`
+    // fallback AND X belongs to a known orderBy enum, fan out into every
+    // member of that enum. We deliberately DO NOT auto-expand orderDir
+    // here — most callers commit to a single direction per field at the
+    // UI / route layer, and double-fanning would add indexes for every
+    // chronological list (sessions, notifications) where reverse-order
+    // is never actually exposed. If the orderDir is itself dynamic AND
+    // the auditor needs to catch it, callers can declare both directions
+    // explicitly in the index file. The orderBy *field* expansion is the
+    // class of bug we ship in production (events.search "Ordre
+    // alphabétique" returning empty).
+    if (!by.viaCoalesce) continue;
+    const byAlts = expandThroughEnums(by.field, enums.orderByEnums);
+    if (byAlts.length === 1 && byAlts[0] === by.field) continue; // No expansion.
+    for (const f of byAlts) {
+      // Skip the literal field itself — it's already in `orderBys` above.
+      if (f === by.field) continue;
+      orderByAlternatives.push({ field: f, dir });
+    }
   }
 
   // Detect .select(...) — queries that only select specific fields don't
@@ -398,7 +531,7 @@ function extractQueryFragments(body: string): {
     unresolvedOrderBys.push({ expression: expr });
   }
 
-  return { wheres, orderBys, hasSelect, unresolvedOrderBys };
+  return { wheres, orderBys, orderByAlternatives, hasSelect, unresolvedOrderBys };
 }
 
 // Scan for `if (...) { ... }` blocks and return the [start, end) character
@@ -431,33 +564,69 @@ function findIfBlockSpans(source: string): Array<{ start: number; end: number }>
     }
     if (parenDepth !== 0) continue;
 
-    // Skip whitespace to find the opening brace (single-statement `if`
-    // bodies without braces are not tracked; they can hold at most one
-    // statement which is fine for our where-clause detection).
+    // Skip whitespace to find the body. Two body forms are tracked:
+    //   1. Brace-delimited: `if (cond) { ... }` — walk the matching `}`.
+    //   2. Single-statement: `if (cond) wheres.push(...);` — span from the
+    //      first non-whitespace char to the next `;` at depth 0.
+    //
+    // Single-statement tracking is critical: event.repository.ts ships
+    // `if (filters.category) wheres.push({...});` without braces, and
+    // pre-2026-04-26 the auditor treated those clauses as MANDATORY,
+    // hiding the genuine query shapes (and thereby hiding the missing
+    // composite index for `orderBy: title` on the events.search path).
     while (i < source.length && /\s/.test(source[i])) i++;
-    if (source[i] !== "{") continue;
+    if (i >= source.length) continue;
 
-    // Walk the body braces
-    const bodyStart = i + 1;
-    let braceDepth = 1;
-    i = bodyStart;
-    inStr = null;
-    for (; i < source.length && braceDepth > 0; i++) {
-      const ch = source[i];
-      const prev = source[i - 1];
-      if (inStr) {
-        if (ch === inStr && prev !== "\\") inStr = null;
-        continue;
+    if (source[i] === "{") {
+      const bodyStart = i + 1;
+      let braceDepth = 1;
+      i = bodyStart;
+      inStr = null;
+      for (; i < source.length && braceDepth > 0; i++) {
+        const ch = source[i];
+        const prev = source[i - 1];
+        if (inStr) {
+          if (ch === inStr && prev !== "\\") inStr = null;
+          continue;
+        }
+        if (ch === '"' || ch === "'" || ch === "`") {
+          inStr = ch;
+          continue;
+        }
+        if (ch === "{") braceDepth++;
+        else if (ch === "}") braceDepth--;
       }
-      if (ch === '"' || ch === "'" || ch === "`") {
-        inStr = ch;
-        continue;
+      if (braceDepth !== 0) continue;
+      spans.push({ start: bodyStart, end: i - 1 });
+    } else {
+      // Single-statement body — walk to the next `;` at depth 0, ignoring
+      // contents of string literals and balanced parens/brackets/braces.
+      const bodyStart = i;
+      let depth = 0;
+      let inStr2: string | null = null;
+      for (; i < source.length; i++) {
+        const ch = source[i];
+        const prev = source[i - 1];
+        if (inStr2) {
+          if (ch === inStr2 && prev !== "\\") inStr2 = null;
+          continue;
+        }
+        if (ch === '"' || ch === "'" || ch === "`") {
+          inStr2 = ch;
+          continue;
+        }
+        if (ch === "(" || ch === "[" || ch === "{") depth++;
+        else if (ch === ")" || ch === "]" || ch === "}") depth--;
+        else if (ch === ";" && depth === 0) {
+          spans.push({ start: bodyStart, end: i });
+          break;
+        } else if (ch === "\n" && depth === 0) {
+          // No semicolon before newline at depth 0 → ASI-like terminator.
+          spans.push({ start: bodyStart, end: i });
+          break;
+        }
       }
-      if (ch === "{") braceDepth++;
-      else if (ch === "}") braceDepth--;
     }
-    if (braceDepth !== 0) continue;
-    spans.push({ start: bodyStart, end: i - 1 });
   }
   return spans;
 }
@@ -694,22 +863,76 @@ type EnumeratedShape = {
 function enumerateQueryShapes(
   wheres: QueryFragment[],
   orderBys: OrderByFragment[],
+  orderByAlternatives: OrderByFragment[] = [],
 ): EnumeratedShape[] {
   const mandatory = wheres.filter((w) => !w.isOptional);
   const optional = wheres.filter((w) => w.isOptional);
 
+  // Determine the orderBy variants to fan out across. The literal default
+  // (already in `orderBys`) plus every alternative discovered through
+  // Zod-enum expansion. When no alternatives exist this collapses to a
+  // single iteration with the original `orderBys` — preserving prior
+  // behaviour for methods without dynamic orderBy.
+  const orderByVariants: Array<{ orderBys: OrderByFragment[]; key: string }> = [];
+  if (orderByAlternatives.length === 0) {
+    orderByVariants.push({ orderBys, key: "" });
+  } else {
+    // The literal default is the first variant — keep its variant key empty
+    // so existing snapshots / reports don't gain noise when alternatives
+    // weren't discovered.
+    if (orderBys.length > 0) {
+      const o = orderBys[0];
+      orderByVariants.push({ orderBys, key: "" });
+      // Mark every other alternative with a key like `orderBy=title:asc` so
+      // the report explains which Zod-enum branch produced the requirement.
+      for (const alt of orderByAlternatives) {
+        if (alt.field === o.field && alt.dir === o.dir) continue;
+        orderByVariants.push({
+          orderBys: [alt],
+          key: `orderBy=${alt.field}:${alt.dir === "ASCENDING" ? "asc" : "desc"}`,
+        });
+      }
+    } else {
+      for (const alt of orderByAlternatives) {
+        orderByVariants.push({
+          orderBys: [alt],
+          key: `orderBy=${alt.field}:${alt.dir === "ASCENDING" ? "asc" : "desc"}`,
+        });
+      }
+    }
+  }
+
+  const fanOut = (whereVariants: EnumeratedShape[]): EnumeratedShape[] => {
+    if (orderByVariants.length === 1 && !orderByVariants[0].key) return whereVariants;
+    const out: EnumeratedShape[] = [];
+    for (const wv of whereVariants) {
+      for (const ov of orderByVariants) {
+        const variantKey = ov.key ? `${wv.variantKey}|${ov.key}` : wv.variantKey;
+        // An alternative orderBy from a Zod-enum expansion is always primary:
+        // any value in the enum is reachable at runtime, so the index must
+        // exist before deploy. (Optional-where SUBSETS remain subset-severity
+        // — the orderBy expansion doesn't make a partial filter combination
+        // any more reachable.)
+        const severity: "primary" | "subset" =
+          ov.key && wv.severity === "subset" ? "subset" : wv.severity;
+        out.push({ wheres: wv.wheres, orderBys: ov.orderBys, variantKey, severity });
+      }
+    }
+    return out;
+  };
+
   if (optional.length === 0) {
-    return [{ wheres: mandatory, orderBys, variantKey: "all", severity: "primary" }];
+    return fanOut([{ wheres: mandatory, orderBys, variantKey: "all", severity: "primary" }]);
   }
   if (optional.length > MAX_OPTIONAL) {
-    return [
+    return fanOut([
       {
         wheres: [...mandatory, ...optional],
         orderBys,
         variantKey: "maximal",
         severity: "primary",
       },
-    ];
+    ]);
   }
 
   const shapes: EnumeratedShape[] = [];
@@ -728,7 +951,7 @@ function enumerateQueryShapes(
         : keyParts.join("+");
     shapes.push({ wheres: subsetWheres, orderBys, variantKey, severity });
   }
-  return shapes;
+  return fanOut(shapes);
 }
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -784,6 +1007,7 @@ function indexMatches(required: RequiredIndex, declared: DeclaredIndex): boolean
 function main(): void {
   const declared = loadDeclaredIndexes();
   const collectionsMap = loadCollectionsMap();
+  const enums = discoverOrderByEnums();
   const warnings: Warning[] = [];
   const required: RequiredIndex[] = [];
   let filesScanned = 0;
@@ -800,9 +1024,8 @@ function main(): void {
         // Skip constructors.
         if (method.name === "constructor") continue;
 
-        const { wheres, orderBys, hasSelect, unresolvedOrderBys } = extractQueryFragments(
-          method.body,
-        );
+        const { wheres, orderBys, orderByAlternatives, hasSelect, unresolvedOrderBys } =
+          extractQueryFragments(method.body, enums);
 
         // Also inspect raw .collection(COLLECTIONS.X) chains embedded in this method.
         const rawChunks = extractRawCollectionQueries(method.body, collectionsMap);
@@ -860,7 +1083,14 @@ function main(): void {
             });
           }
 
-          for (const shape of enumerateQueryShapes(wheres, effectiveOrderBys)) {
+          // Pass the discovered orderBy alternatives so the enumerator
+          // also fans out across every reachable Zod-enum value (the
+          // events.search regression — see discoverOrderByEnums docstring).
+          for (const shape of enumerateQueryShapes(
+            wheres,
+            effectiveOrderBys,
+            usesFindOne ? [] : orderByAlternatives,
+          )) {
             const idxFields = computeRequiredIndex(shape.wheres, shape.orderBys, hasDefaultOrderBy);
             if (idxFields) {
               required.push({
@@ -877,7 +1107,7 @@ function main(): void {
 
         // Case 2: explicit .collection(COLLECTIONS.X) chains (Cloud Functions, ad-hoc queries).
         for (const raw of rawChunks) {
-          const frag = extractQueryFragments(raw.chunk);
+          const frag = extractQueryFragments(raw.chunk, enums);
           // These are raw chains — no default orderBy.
           const optionalCount = frag.wheres.filter((w) => w.isOptional).length;
           if (optionalCount > MAX_OPTIONAL) {
@@ -886,7 +1116,11 @@ function main(): void {
               message: `${optionalCount} optional where-clauses exceeds MAX_OPTIONAL=${MAX_OPTIONAL}; only the maximal combination is checked.`,
             });
           }
-          for (const shape of enumerateQueryShapes(frag.wheres, frag.orderBys)) {
+          for (const shape of enumerateQueryShapes(
+            frag.wheres,
+            frag.orderBys,
+            frag.orderByAlternatives,
+          )) {
             const idxFields = computeRequiredIndex(shape.wheres, shape.orderBys, false);
             if (idxFields) {
               required.push({
@@ -919,7 +1153,7 @@ function main(): void {
           for (const helperName of helperNames) {
             const helperBody = findSiblingMethodBody(methods, helperName);
             if (helperBody) {
-              const helperFrag = extractQueryFragments(helperBody);
+              const helperFrag = extractQueryFragments(helperBody, enums);
               helperFragments.push(...helperFrag.wheres);
             }
           }
@@ -927,9 +1161,10 @@ function main(): void {
             // Pull any `orderBy: "..."` / `orderDir: "..."` from the
             // pagination literal passed to paginatedQuery. If none,
             // paginatedQuery's implementation defaults kick in.
-            const tailFrag = extractQueryFragments(call.callTail);
+            const tailFrag = extractQueryFragments(call.callTail, enums);
             const mergedWheres = [...wheres, ...helperFragments];
             const explicitOrderBys = [...orderBys, ...tailFrag.orderBys];
+            const mergedAlternatives = [...orderByAlternatives, ...tailFrag.orderByAlternatives];
             const hasDefaultOrderByP = explicitOrderBys.length === 0;
 
             const optionalCountP = mergedWheres.filter((w) => w.isOptional).length;
@@ -939,7 +1174,11 @@ function main(): void {
                 message: `${optionalCountP} optional where-clauses exceeds MAX_OPTIONAL=${MAX_OPTIONAL}; only the maximal combination is checked.`,
               });
             }
-            for (const shape of enumerateQueryShapes(mergedWheres, explicitOrderBys)) {
+            for (const shape of enumerateQueryShapes(
+              mergedWheres,
+              explicitOrderBys,
+              mergedAlternatives,
+            )) {
               const idxFields = computeRequiredIndex(
                 shape.wheres,
                 shape.orderBys,
